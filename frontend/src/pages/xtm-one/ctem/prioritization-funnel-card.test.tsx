@@ -16,6 +16,7 @@ import {
   PrioritizationFunnelCard,
   PrioritizationFunnelPlaceholder,
   PrioritizationFunnelWithCases,
+  signalGateCounts,
 } from "./PrioritizationFunnel";
 import { SAMPLE_FUNNEL, withCasesLayer } from "./prioritization-funnel";
 
@@ -25,6 +26,11 @@ vi.mock("@/hooks/api/useCtemCasesApi", () => ({
     casesRead.options.push(options);
     return casesRead.value;
   },
+}));
+
+const signalsRead = vi.hoisted(() => ({ value: { data: undefined } as { data: unknown; isError?: boolean } }));
+vi.mock("@/hooks/api/useCtemSignalsApi", () => ({
+  useRecentCtemSignals: () => signalsRead.value,
 }));
 
 const NO_OPENAEV: CtemFunnel = {
@@ -225,6 +231,46 @@ describe("the cases layer", () => {
     expect(screen.queryByRole("link", { name: /^Needs attention:/ })).toBeNull();
     expect(screen.queryByTestId("ctem-flow-cases-closed")).toBeNull();
     casesRead.value = { data: undefined };
+  });
+});
+
+// #874: the two gates of the loop as numbers under the funnel, "10 flagged, 3 real".
+describe("the gate counts", () => {
+  it("counts signals in, confirmed, in scope and cases from the counts by state", () => {
+    expect(signalGateCounts({ new: 1, to_validate: 2, discarded: 1, watchlist: 3, confirmed: 1, case_opened: 2 })).toEqual({
+      total: 10,
+      confirmed: 6,
+      inScope: 3,
+      cases: 2,
+      watchlist: 3,
+    });
+  });
+
+  it("draws the line under the stage funnel, and nothing before the signals API answers", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: undefined };
+    const { unmount } = draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.queryByTestId("ctem-funnel-gate-counts")).toBeNull();
+    unmount();
+    signalsRead.value = { data: { total: 3, counts: { to_validate: 1, watchlist: 1, confirmed: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-funnel-gate-counts").textContent).toBe(
+      "Signals: 3 in, 2 confirmed, 1 in scope, 0 opened a case, 1 on the watchlist",
+    );
+    signalsRead.value = { data: undefined };
+  });
+
+  // UX r1 B1 on #875: a count that shares a noun with another count on the same
+  // card names its scope; the gate line never reads as a second total of cases.
+  it("names its scope so its cases never read as the card's open cases", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: { total: 4, counts: { to_validate: 1, discarded: 1, watchlist: 1, case_opened: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    const line = screen.getByTestId("ctem-funnel-gate-counts").textContent ?? "";
+    expect(line.startsWith("Signals: ")).toBe(true);
+    expect(line).toContain("1 opened a case");
+    expect(line).not.toMatch(/\d+ cases?\b/);
+    signalsRead.value = { data: undefined };
   });
 });
 

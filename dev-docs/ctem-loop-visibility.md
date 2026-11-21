@@ -80,6 +80,19 @@ English `reason` line the gate also stores is for agents and is never drawn. A r
 version", never an empty cell. A signal with no decision yet shows "Waiting
 for reconcile".
 
+A stopped signal (watchlist, to validate, discarded) also says what would
+make it a case, built from the same `reason_code` and `reason_params`
+("Becomes a case if criticality rises to High"), in the loop trace under the
+sentence; an in-scope or unknown code has none. The inputs say whether an
+asset matched ("None matched" on a decided record) and the criticality against
+the threshold X ("Medium, below High"). The Prioritization stage draws the two
+gates as one line under the funnel, never a new card: signals in, confirmed,
+in scope, opened a case and the watchlist, from the counts by state of
+`GET /ctem-signals`, refreshed by the `ctem_signal_update` frame. The line
+opens with "Signals:" and says "opened a case", never "cases": the same card
+already counts open cases, and a count that shares a noun with another count
+on the same card names its scope (UX r1 B1 on #875).
+
 ## 4. The loop trace
 
 The only new surface of the program. It answers "where is this object in the
