@@ -29,7 +29,7 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
-from app.services.tool_classification import infer_tool_type
+from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
 logger = logging.getLogger(__name__)
@@ -9668,8 +9668,9 @@ def build_tools_for_provider(provider: str) -> list[ProviderTool] | None:
     """The tools of one provider, each with its read/write type; ``None`` when
     the provider has no tool builder.
 
-    ``tool_type`` is the shared classifier's (``infer_tool_type``), the one a
-    read-only binding enforces.
+    ``tool_type`` is the shared classifier's (``definition_tool_type``: the
+    definition's ``read_only`` declaration, else its name), the one a read-only
+    binding enforces.
     """
     from app.services.integration_tools import PROVIDER_TOOLS as _BUILDERS
     from app.tools.base import CallableToolExecutor
@@ -9688,7 +9689,7 @@ def build_tools_for_provider(provider: str) -> list[ProviderTool] | None:
         ProviderTool(
             name=d.name,
             description=d.description,
-            tool_type=infer_tool_type(d.name),
+            tool_type=definition_tool_type(d),
         )
         for d in defs
     ]

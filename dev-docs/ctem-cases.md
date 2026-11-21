@@ -206,8 +206,12 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 - **One colour per state, everywhere** (board, list badge, case page, widget),
   through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
-  needs attention `medium` (alert), in progress `info`, resolved `low`
-  (success), accepted risk `neutral`. AI purple is never used on Cases (it is
+  needs attention `medium` (alert), in progress `info`, mitigated, watching
+  `low` with the DS `eye` icon as the Chip's own `startIcon` (inside the chip,
+  same left edge and baseline as its siblings) and the
+  `feedback-success-tertiary` segment on every counts bar (#857, UX rounds 1
+  B3 and 2 B1: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
+  `feedback-success-primary` segment), accepted risk `neutral`. AI purple is never used on Cases (it is
   the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
@@ -278,7 +282,10 @@ then the existing AI assessment and facts grid unchanged.
 
 - **Flow strip** (UX decision Q2: a flow strip, not a Kanban; a Kanban
   duplicates the list and drag would bypass the owner, evidence and expiry
-  rules): four state columns, each a header with the state Chip, the exact
+  rules): one column per case state (five since #857), on one row from xl
+  (`BOARD_GRID`, held equal to the state count by
+  `tests_unit/ctem-cases-board-grid.test.ts`), stacked below, never an
+  orphan column; each a header with the state Chip, the exact
   count and, for the two open states, the ageing bar with its legend and the
   overdue line.
 - **Transitions** of the period ("+14 started", "+22 resolved", "+3 risk
@@ -286,11 +293,13 @@ then the existing AI assessment and facts grid unchanged.
   each transition is the first line of the column it flows into ("+14 started
   in 30 d" heads In progress, "+3 risk accepted in 30 d" heads Accepted
   risk); at >= 1440 the arrows between the open columns repeat the two flows
-  of the main path, and at 1080 to 1439 the strip is 2 x 2 with no arrows.
+  of the main path; from 1280 the five columns share one row, below it they
+  stack in one column (#857 UX round 1 B2: the 2 x 2 left Accepted risk
+  alone on a row).
   Every column carries that inflow line, Needs
   attention included ("+18 new in 30 d, +2 reopened"), at a fixed one-line
-  height, so the four state Chips sit on the same baseline in each row of
-  the 2 x 2 (round 2 B7); a period with no inflow reads "No new case in
+  height, so the state Chips sit on the same baseline across the row
+  (round 2 B7); a period with no inflow reads "No new case in
   30 d", never an empty gap.
 - **Top cases** under each open column: the three highest-priority cases
   (title on one line with ellipsis and its full text in the tooltip, priority
@@ -425,7 +434,8 @@ then the existing AI assessment and facts grid unchanged.
 ### 7.4 Command center widget `cases`
 
 UX decision Q1: in the default layout right after Act now, as a compact
-full-width row (one line at 1440, two at 1080): the four state Chips with
+full-width row (one line at 1440, two at 1080): the state Chips (every
+state of `CASE_STATES`, counted by the list API since #857) with
 their exact counts on one segmented bar (the state colours of 7.0), then
 "5 overdue" and "2 accepted risks expire in 14 days", each a link to the
 filtered list. Not configured (no tech stack and no OpenAEV): one dismissible
@@ -488,6 +498,22 @@ profile tool, acting for the person the turn or run acts for. Tests:
    duplicates the list; drag would bypass owner, evidence and expiry).
 3. Case page: Issues first, always; assets and history in the right column
    at >= 1440, under the issues below it.
+
+## 9bis. The loop: cases opened from signals, updated on events, closed on proof (#857)
+
+The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile and scope gate (`dev-docs/ctem-scope-gate.md`) -> case. Rules in `services/ctem_case_loop.py`, no model call.
+
+**Model (migration `c857ctemcaseloop1`, additive).** A case carries `trigger_path` (the path of the signal that opened it; `new_vulnerability` for a case from the two readers), `risk_scenario_ids`, `severity` (P1 to P3), `sla_due_at`, `sla_breached_at` (set once), `tickets` (`[{integration, key, url, status, at}]`, written by CTEM-19), `validations` (`[{provider, kind, ref, result, at, mitigation_only, note}]`, newest last, 50 kept), `validation_plan` and `resolution_kind` (`not_exposed`, `mitigated`, `fixed`, `accepted_risk`). New state `mitigated_watching`; new remediation kinds `close_exposure`, `decommission`, `rotate_credential`, `restore_control`, `supplier_action`, `restore_coverage`; new member source `signal`. Existing cases read as path `new_vulnerability` with no origin signal. The list and case reads (`GET /api/v1/ctem-cases`, `GET /api/v1/ctem-cases/{id}`, `list_ctem_cases`, `get_ctem_case`) return these fields as stored, the same for every viewer: ids, enums, dates and references, never a source issue's content.
+
+**Opening.** A signal the scope gate leaves `confirmed` with outcome `case` opens the case of its fix in the same transaction (`ctem_scope_gate_store.evaluate_after_record`), or joins the open case with the same key: one case per remediation, every origin signal a `signal` member. Key: a software subject on a vulnerability path is `upgrade:-/<product>@latest` (the reader's key, so both meet); any other is `<kind>:<subject kind>/<subject ref>`, the kind from the trigger path. Severity, SLA (`sla_hours` of the decision record, else P1 24 h, P2 72 h, P3 30 days) and risk scenarios come from the decision record; a joining signal keeps the most urgent severity and the earliest SLA. The signal moves to `case_opened`. Paths `proven_exploitable` and `mitigation_regression` open with a validation plan.
+
+**Proof.** `POST /api/v1/ctem-cases/{id}/validations` (any caller who sees the case) records a validation reference and sets the validation plan. `passed` or `not_exposed` resolves (`fixed` or `not_exposed`); with `mitigation_only` it goes to `mitigated_watching` and the re-test stays on; `failed` reopens a resolved or watched case to `needs_attention`; `pending` only records. A case with a validation plan resolves only on a passing newest reference (the PATCH route refuses with 422) and never on absence at source in a recompute. A case with no plan keeps the accepted proof of its kind as evidence (ticket done, re-scan, directory check). Accepted risk keeps its 90-day ceiling.
+
+**Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
+
+**Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id; filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
+
+**Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
 
 ## 10. Slices
 

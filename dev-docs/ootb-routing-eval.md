@@ -4,7 +4,7 @@ How a simple question reaches the agent that answers it on a fresh platform, and
 
 ## The path
 
-1. The surface asks the intent catalog for `global.assistant`: OpenCTI with `vertical=cti`, OpenAEV with `vertical=aev`, OpenCRQ with `vertical=grc`; XTM One's own chat uses the General Assistant (the CTEM Assistant in XTM One mode, `services/provisioning.py`).
+1. The surface asks the intent catalog for `global.assistant`: OpenCTI with `vertical=cti`, OpenAEV with `vertical=aev`, OpenCRQ with `vertical=crq`; XTM One's own chat uses the General Assistant (the CTEM Assistant in XTM One mode, `services/provisioning.py`).
 2. The catalog (`api/v1/intents.py::get_intent_catalog`) returns the vertical and universal bindings sorted by effective priority, descending; the first is the default entry agent.
 3. The entry agent answers, or hands over (`transfer`, `delegate`, `consult`) through the seeded `handover_type_slugs` of `backend/app/agents/builtin_agents.py`. Each hop is one more model turn.
 

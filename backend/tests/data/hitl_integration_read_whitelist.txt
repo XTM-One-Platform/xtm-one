@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1963 tools across 114 providers; 52 held back by hand.
+# 1965 tools across 114 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -364,6 +364,7 @@ defender:get_defender_file_stats
 defender:get_defender_incident
 defender:get_defender_intel_profile
 defender:get_defender_ip_stats
+defender:get_defender_live_response_result
 defender:get_defender_machine
 defender:get_defender_machine_action
 defender:get_defender_machine_logged_on_users
@@ -380,6 +381,7 @@ defender:list_defender_detection_rules
 defender:list_defender_incidents
 defender:list_defender_indicators
 defender:list_defender_intel_profiles
+defender:list_defender_live_response_library
 defender:list_defender_machine_actions
 defender:list_defender_machine_vulnerabilities
 defender:list_defender_machines

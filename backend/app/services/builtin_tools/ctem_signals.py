@@ -118,10 +118,11 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     recorded_via="tool",
                     recorded_by=str(scope),
                 )
-                from app.services import ctem_scope_gate_store
+                from app.services import ctem_case_loop, ctem_scope_gate_store
 
-                await ctem_scope_gate_store.evaluate_after_record(db, row, created=created)
+                pending = await ctem_scope_gate_store.evaluate_after_record(db, row, created=created)
                 await db.commit()
+                await ctem_case_loop.publish_pending(pending)
                 await publish_signal_update(db, row)
                 return _dump({"created": created, "signal": signals.to_dict(row)})
         except signals.SignalError as exc:

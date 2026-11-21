@@ -7,7 +7,7 @@
  * answer. A stage the signal's state cannot tell yet is "not reached", never
  * guessed.
  */
-import type { CtemSignal, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import { CTEM_SIGNAL_STATES, type CtemSignal, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 
 export const LOOP_STAGES = [
   { key: "signal", label: "Signal received" },
@@ -74,9 +74,24 @@ export function loopParam(kind: "signal" | "case", id: string): string {
   return `${kind}:${id}`;
 }
 
+/** The `?loop=` value of the signal list, in one state or every state (CTEM-01-UI). */
+export function signalsParam(state: CtemSignalState | null): string {
+  return `signals:${state ?? "all"}`;
+}
+
+type LoopTarget =
+  | { kind: "signal" | "case"; id: string }
+  | { kind: "signals"; state: CtemSignalState | null };
+
 /** The object a `?loop=` value names, or null when it names none. */
-export function parseLoopParam(value: string | null): { kind: "signal" | "case"; id: string } | null {
+export function parseLoopParam(value: string | null): LoopTarget | null {
   if (!value) return null;
+  const list = /^signals:([a-z_]+)$/.exec(value);
+  if (list) {
+    if (list[1] === "all") return { kind: "signals", state: null };
+    const state = CTEM_SIGNAL_STATES.find((s) => s === list[1]);
+    return state ? { kind: "signals", state } : null;
+  }
   const match = /^(signal|case):([0-9a-fA-F-]{36})$/.exec(value);
   return match ? { kind: match[1] as "signal" | "case", id: match[2] } : null;
 }

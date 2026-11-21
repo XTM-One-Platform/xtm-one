@@ -2801,6 +2801,8 @@ def build_tools(
             },
             source=src,
             priority=0,
+            # "run" reads as a write to the name classifier; KQL hunting has no mutating command.
+            read_only=True,
         ),
         # ── 3. Threat Intelligence (Defender TI) ──────────────────────────
         ToolDefinition(

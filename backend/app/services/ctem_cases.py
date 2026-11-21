@@ -32,8 +32,9 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from app.models.ctem_case import CASE_STATES
+from app.models.ctem_case import CASE_STATES, RESOLUTION_KINDS
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -183,6 +184,8 @@ class CaseSnapshot:
     state: str
     pinned_issues: list[str] = field(default_factory=list)
     members: dict[str, bool] = field(default_factory=dict)
+    #: A case with a validation plan never resolves on absence at source (#857).
+    validation_plan: bool = False
 
 
 @dataclass
@@ -264,7 +267,7 @@ def plan_recompute(
         after.update({m: True for m in plan.add + plan.reopen})
         after.update({m: False for m in plan.resolve})
         any_open = any(after.values())
-        if after and not any_open and case.state in ("needs_attention", "in_progress"):
+        if after and not any_open and case.state in ("needs_attention", "in_progress") and not case.validation_plan:
             plan.new_state = "resolved"
             plan.evidence = CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":
@@ -291,6 +294,20 @@ def check_owner(state: str, owner_user_id: object | None) -> None:
         raise CaseRuleError("an accepted risk needs an owner")
 
 
+#: Validation results that prove the exposure gone (or never there).
+PASSING_RESULTS = ("passed", "not_exposed")
+
+
+def latest_validation(validations: Iterable[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """The newest validation reference of a case (the list is kept oldest first), ``None`` when none."""
+    items = [v for v in (validations or []) if isinstance(v, dict)]
+    return items[-1] if items else None
+
+
+def passing(validation: dict[str, Any] | None) -> bool:
+    return validation is not None and validation.get("result") in PASSING_RESULTS
+
+
 def check_transition(
     *,
     current: str,
@@ -302,15 +319,22 @@ def check_transition(
     accepted_until: datetime | None = None,
     now: datetime,
     max_acceptance: timedelta = DEFAULT_MAX_ACCEPTANCE,
+    validation_plan: bool = False,
+    validations: Iterable[dict[str, Any]] | None = None,
+    resolution_kind: str | None = None,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
-    ``actor_kind`` is ``user``, ``agent`` or ``system``.
+    ``actor_kind`` is ``user``, ``agent`` or ``system``. A case with a
+    validation plan resolves, or goes to ``mitigated_watching``, only when its
+    newest validation reference passed (#857): free-text evidence is not proof.
     """
     if target not in CASE_STATES:
         raise CaseRuleError(f"unknown state {target!r}")
     if target == current:
         raise CaseRuleError(f"the case is already {target}")
+    if resolution_kind is not None and resolution_kind not in RESOLUTION_KINDS:
+        raise CaseRuleError(f"unknown resolution kind {resolution_kind!r}")
     reason = (reason or "").strip()
     evidence = (evidence or "").strip()
     accepted_until = as_utc(accepted_until)
@@ -318,6 +342,11 @@ def check_transition(
         raise CaseRuleError("a case in progress needs an owner")
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
+    proven = passing(latest_validation(validations))
+    if target in ("resolved", "mitigated_watching") and validation_plan and not proven:
+        raise CaseRuleError("this case has a validation plan: it closes only on a passing validation reference")
+    if target == "mitigated_watching" and not proven:
+        raise CaseRuleError("mitigated, watching needs a passing validation reference of the mitigation")
     if target == "accepted_risk":
         if actor_kind != "user":
             raise CaseRuleError("only a person accepts risk")
@@ -333,7 +362,7 @@ def check_transition(
             raise CaseRuleError(f"the expiry date is at most {max_acceptance.days} days away")
     if (
         target == "needs_attention"
-        and current in ("resolved", "accepted_risk")
+        and current in ("resolved", "accepted_risk", "mitigated_watching")
         and actor_kind == "agent"
         and not reason
     ):
