@@ -44,6 +44,7 @@ import {
   Zap,
 } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
+import { WorkItemActivity } from "@/components/work-items/WorkItemActivity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyIconButton } from "@/components/ui/copy-icon-button";
@@ -449,8 +450,10 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
   // An item waiting for the reader leads with its decision; the run notes
   // below it are history, folded until asked for.
   const deciding = !scheduled && waitsForAnswer(item);
+  // A bare #N and a commit SHA link to the one repository the item's PRs live in.
+  const repos = [...new Set(pullRequestsOf(item.payload).map((pr) => pr.repo))];
   const description = item.description ? (
-    <ChatMarkdown content={item.description} className="chat-markdown content-base" remoteImages={false} />
+    <WorkItemActivity description={item.description} runs={item.note_runs} repo={repos.length === 1 ? repos[0] : null} />
   ) : (
     <p className="text-default-secondary">{t_i18n("No description.")}</p>
   );

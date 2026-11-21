@@ -28,6 +28,9 @@ was read from, so one read tells a fleet orchestrator everything the seeded
   The one SAFE fix: :func:`apply_safe_fixes` releases it with the platform's own
   sweep (``work_item.release_ended_run_claims``), scoped to those runs.
 * ``past_due``, ``blocked_without_blocker``: open items nothing will move.
+* ``decision_card_not_readable``: an open item waiting for a person whose ask
+  is missing, incomplete or holds ids and timestamps
+  (:func:`app.services.work_item_ask_backfill.card_unreadable`, #776).
 * ``wait_cycle``: blocked items waiting on each other, through ``blocked_on`` or a
   pull request a review item gates (:mod:`app.services.work_item_wait_cycles`, #606).
 * ``blocked_chain_stalled``: a chain of blocked items waiting on each other, every
@@ -88,6 +91,7 @@ FINDING_FIX: dict[str, str] = {
     "orphaned_claim": FIX_AUTO,
     "past_due": FIX_OWNER,
     "blocked_without_blocker": FIX_OWNER,
+    "decision_card_not_readable": FIX_OWNER,
     "wait_cycle": FIX_OWNER,
     "blocked_chain_stalled": FIX_OWNER,
     "disabled_owner": FIX_OWNER,
@@ -105,6 +109,10 @@ FINDING_ADVICE: dict[str, str] = {
     "orphaned_claim": "Released by the platform's claim sweep: the item goes back to its owner's inbox.",
     "past_due": "Move the due date or hand the item to someone who can finish it.",
     "blocked_without_blocker": "Name what the item waits for (blocked_on, blocked_on_refs or a reason) or reopen it.",
+    "decision_card_not_readable": (
+        "Rewrite the item's ask for its reader: a plain question, 2 to 4 context lines, 2 options or more; "
+        "ids and timestamps go in blocked_reason."
+    ),
     "wait_cycle": "Block the review on the fix item and let the merge wait on the review, or drop one wait.",
     "blocked_chain_stalled": "Read the chain's first blocker: unblock it, re-point the waits or cancel the chain.",
     "disabled_owner": "Hand the items to an enabled member or cancel them.",
@@ -397,6 +405,18 @@ async def _work_item_findings(
     ]
     if bare:
         out.append(_finding("blocked_without_blocker", f"{len(bare)} blocked item(s) name no blocker", bare))
+    from app.services.work_item_ask_backfill import card_unreadable
+
+    waiting = (await db.execute(select(WorkItem.id, WorkItem.ask).where(scope, WorkItem.needs_human.is_(True)))).all()
+    unreadable = [wid for wid, ask in waiting if card_unreadable(ask)]
+    if unreadable:
+        out.append(
+            _finding(
+                "decision_card_not_readable",
+                f"{len(unreadable)} item(s) wait for a person on a card they cannot read",
+                unreadable,
+            )
+        )
     out += await _wait_graph_findings(db, scope, now)
     return out
 

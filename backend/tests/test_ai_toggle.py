@@ -242,6 +242,9 @@ def test_the_ai_gate_is_read_at_entry_only_never_mid_execution():
         # A new fleet's first documentation (#10316): asked once at creation,
         # before the background generation is scheduled; never mid-generation.
         "services/fleet_doc_on_create.py",
+        # The once-per-build rewrite of unreadable decision cards (#776): asked
+        # once at the build's first boot, before any item is read or model called.
+        "services/work_item_ask_backfill.py",
     }
     root = Path(ai_state.__file__).parent.parent
     callers = set()

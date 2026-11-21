@@ -1774,8 +1774,13 @@ async def create_work_item(
     dedupe_by: str | None = None,
     fleet_impact: Mapping[str, Any] | None = None,
     writer: CompanyManagedWriter,
+    require_person_ask: bool = False,
 ) -> dict:
     """Create a durable work item in the shared queue.
+
+    *require_person_ask* (an agent's tool write, #776): a ``needs_human``
+    item must carry an ask a person can read as a card (question, context,
+    at least two options), else ``ValueError`` saying what to add.
 
     *blocked_on* names the items this one waits for: each must be an
     item the caller can see, and a non-empty list creates it ``blocked``; the
@@ -1888,6 +1893,10 @@ async def create_work_item(
     from app.services.work_item_ask import normalize_ask
 
     structured_ask = normalize_ask(ask)
+    if require_person_ask and needs_human:
+        from app.services.work_item_ask import refuse_incomplete_person_ask
+
+        refuse_incomplete_person_ask(structured_ask)
     if blockers or refs:
         status = "blocked"
     elif needs_human and status == "open":
@@ -2108,8 +2117,14 @@ async def update_work_item(
     take_over: bool = False,
     attachment_file_ids: Sequence[str] | None = None,
     remove_attachment_file_ids: Sequence[str] | None = None,
+    require_person_ask: bool = False,
 ) -> dict | None:
     """Update a work item's fields.
+
+    *require_person_ask* (an agent's tool write, #776): setting
+    ``needs_human`` true needs an ask a person can read as a card, written
+    in the same call or already stored (question, context, at least two
+    options), else ``ValueError`` saying what to add.
 
     *attachment_file_ids* are files to add to the item's attached files,
     already admitted by ``work_item_files.resolve_attachable_files`` for the
@@ -2262,6 +2277,10 @@ async def update_work_item(
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)
         human = stored_human if needs_human is None else (True if needs_human else None)
+        if require_person_ask and needs_human:
+            from app.services.work_item_ask import refuse_incomplete_person_ask
+
+            refuse_incomplete_person_ask(new_ask if ask is not None else getattr(item, "ask", None))
         landing = status if status is not None and status in WORK_ITEM_STATUSES else item.status
         if (blockers or refs) and landing not in WORK_ITEM_TERMINAL_STATUSES:
             landing = "blocked"
@@ -5446,9 +5465,10 @@ async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int)
     The same population as :func:`work_items_waiting_for_person` (one clause,
     :func:`_waits_for_person_clause`), so the bell, the notice and the
     Operations "Waiting for me" view never disagree. Each row is ``{id, title,
-    question, since}``: *question* is the structured ask's question, else the
-    ``blocked_reason`` (a legacy item). An item leaves the list the moment it
-    is answered, so its bell entry clears with it.
+    question, deadline, since}``: *question* and *deadline* come from the
+    structured ask alone, never from ``blocked_reason``, which agents write for
+    agents (#776); a legacy item without an ask has neither. An item leaves the
+    list the moment it is answered, so its bell entry clears with it.
     """
     from app.core.database import async_session
 
@@ -5460,20 +5480,22 @@ async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int)
     async with async_session() as db:
         rows = (
             await db.execute(
-                select(WorkItem.id, WorkItem.title, WorkItem.ask, WorkItem.blocked_reason, since)
+                select(WorkItem.id, WorkItem.title, WorkItem.ask, since)
                 .where(WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES), _waits_for_person_clause(uid, now))
                 .order_by(since.desc())
                 .limit(limit)
             )
         ).all()
     waiting: list[dict] = []
-    for item_id, title, ask, reason, stamp in rows:
+    for item_id, title, ask, stamp in rows:
         question = ask.get("question") if isinstance(ask, dict) else None
+        deadline = ask.get("deadline") if isinstance(ask, dict) else None
         waiting.append(
             {
                 "id": str(item_id),
                 "title": title,
-                "question": question if isinstance(question, str) and question else (reason or None),
+                "question": question if isinstance(question, str) and question else None,
+                "deadline": deadline if isinstance(deadline, str) and deadline else None,
                 "since": stamp.isoformat() if stamp else now.isoformat(),
             }
         )

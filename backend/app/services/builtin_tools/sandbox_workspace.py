@@ -2983,6 +2983,23 @@ def build_sandbox_workspace_tools(
             # A file marked `integration` under backend-unit's -m "not integration" is collected and runs nothing.
             excluded=affecting.excluded_markers(command.without_defaults()),
         )
+        if selection.deselected:
+            # Name the check that runs a deselected marker (integration -> backend-integration), not "the check".
+            from app.core.config import settings
+
+            try:
+                declared = await commands.checkout_checks(session, record.path, images=set(settings.opensandbox_images))
+            except ChecksError:
+                declared = None  # the generic advice stays: the checks file was read once already
+            if declared is not None:
+                selection.runners = affecting.marker_runners(
+                    (
+                        (spec.name, spec.argv, "/".join(p for p in (record.path, spec.cwd.strip("/")) if p))
+                        for spec in declared.specs.values()
+                    ),
+                    command.cwd,
+                    {m for found in selection.deselected.values() for m in found},
+                )
         if not selection.tests:
             whole = (
                 f"args [{WHOLE_ARG!r}] (the whole suite, bounded)"
