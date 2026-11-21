@@ -30,8 +30,8 @@ this member only. Two pieces live here, so the rule is in code and never in a pr
   (``ceiling_not_set``).
 
 S14b-1 ships the predicate, the exemption and the ledger; S14b-2 reserves on it
-before every model call of the loop and leaves the fleet budget of ``budget.py``,
-which bounds the member's runs until then.
+before every model call of the loop (``module_analyst_ceiling.py``) and takes the
+member out of the fleet caps of ``budget.py`` (``open_cycle``, ``cycles._settle_cycle``).
 """
 
 from __future__ import annotations
