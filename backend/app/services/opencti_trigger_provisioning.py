@@ -199,7 +199,13 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         isinstance(min_epss, bool) or not isinstance(min_epss, int | float) or not 0 <= min_epss <= 1
     ):
         raise ProvisionSpecError("provision.min_epss_score must be a number from 0 to 1")
-    context_fields = _str_list(raw.get("organization_context"), "organization_context")
+    context = raw.get("organization_context")
+    if context is not None and not isinstance(context, str | list):
+        raise ProvisionSpecError(
+            "provision.organization_context must be a list of profile field names, "
+            f'e.g. ["pir_ids"] (any of {list(DERIVABLE_CONTEXT_FIELDS)}): the values come from the profile'
+        )
+    context_fields = _str_list(context, "organization_context")
     not_derivable = [f for f in context_fields if f not in DERIVABLE_CONTEXT_FIELDS]
     if not_derivable:
         raise ProvisionSpecError(
@@ -1027,9 +1033,8 @@ def bound_opencti_integration_id(assignment: Any, agent: Any) -> str | None:
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, str, str] | str:
     """``(gql, integration_id, base_url, secret)`` or the reason it cannot be built."""
-    from app.core.security import configured_secret
     from app.models.integration import Integration
-    from app.services.vault import reveal_json_field
+    from app.services.trigger_provisioning import receiver_secret
 
     integration_id = bound_opencti_integration_id(assignment, agent)
     if not integration_id:
@@ -1039,8 +1044,8 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
         return f"OpenCTI integration {integration_id} not found"
     # The receiver checks X-OpenCTI-Token against this reading, a vault reference resolved (#6080).
     try:
-        extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
-        secret = configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret"))
+        # A platform-managed integration gets its secret generated here (#970).
+        secret = await receiver_secret(integration)
     except Exception as exc:  # unreadable config, unreadable vault secret or unusable secret
         return f"the OpenCTI integration's webhook_secret cannot be read: {type(exc).__name__}"
     if not secret:
