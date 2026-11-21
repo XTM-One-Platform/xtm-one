@@ -409,7 +409,8 @@ test.describe.serial('Agents — CRUD lifecycle', () => {
 
 test.describe.serial('Agents — Observability access (non-admin owner)', () => {
   const OWNER_AGENT_NAME = `E2E Owner Obs Agent ${Date.now()}`;
-  const TRACE_ID = 'e2e-owner-observability-trace';
+  // A trace id is a UUID: TraceDetail renders Page not found for any other segment (#822).
+  const TRACE_ID = '5d1c0a7e-0000-4000-8000-0000000e2e02';
   let ownerUserId = '';
   let ownerAgentId = '';
   let ownerAgentUrl = '';
