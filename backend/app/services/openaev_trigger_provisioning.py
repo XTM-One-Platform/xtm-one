@@ -334,11 +334,10 @@ def bound_integration_id(assignment: Any, agent: Any) -> str | None:
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, str] | str:
     """``(api, integration_id, secret)`` or the reason it cannot be built."""
-    from app.core.security import configured_secret
     from app.integrations.providers.openaev._common import _api, _headers
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
-    from app.services.vault import reveal_json_field
+    from app.services.trigger_provisioning import receiver_secret
 
     integration_id = bound_integration_id(assignment, agent)
     if not integration_id:
@@ -348,8 +347,8 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, s
         return f"OpenAEV integration {integration_id} not found"
     # The receiver checks X-OpenAEV-Token against this reading, a vault reference resolved (#6080).
     try:
-        extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
-        secret = configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret"))
+        # A platform-managed integration gets its secret generated here (#970).
+        secret = await receiver_secret(integration)
     except Exception as exc:  # unreadable config, unreadable vault secret or unusable secret
         return f"the OpenAEV integration's webhook_secret cannot be read: {type(exc).__name__}"
     if not secret:

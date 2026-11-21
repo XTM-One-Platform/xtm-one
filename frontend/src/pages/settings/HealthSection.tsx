@@ -39,13 +39,13 @@ import {
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { useToast } from "@/components/ui/toast";
 import { useAgents } from "@/hooks/api/useAgentApi";
-import { useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
+import { useHealthAnalysis, useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { defaultHealthName, healthRefusalCodeKey } from "@/lib/health";
 import { cn } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
-import type { HealthAnalysisSettings, HealthBudgetCaps, HealthSettings } from "@/types";
+import type { HealthAnalysisSettings, HealthAnalysisSpend, HealthBudgetCaps, HealthSettings } from "@/types";
 
 import { BlockTitle, type BlockProps } from "./health-block";
 import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
@@ -420,7 +420,43 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
             );
           })}
         </SettingsFieldGrid>
+        <AnalysisSpendLines />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Today's and this month's analysis spend against the ceilings (#961): here, next to the ceilings,
+ * never on the Health dashboard. Stored rows, no model call.
+ */
+function AnalysisSpendLines() {
+  const { t_i18n } = useFormatter();
+  const { count: n, money: usd } = useNumberFormat("USD");
+  const { data } = useHealthAnalysis();
+  if (!data) return null;
+  const line = (label: string, spend: HealthAnalysisSpend, tokens: number | null, cost: string | null) => (
+    <div className="min-w-0 space-y-0.5">
+      <p className="content-compact text-default-secondary">{label}</p>
+      <p className="content-base font-medium tabular-nums text-default-primary">
+        {tokens === null
+          ? t_i18n("Tokens: {tokens}, no ceiling", { tokens: n(spend.tokens) })
+          : t_i18n("Tokens: {tokens} of {ceiling}", { tokens: n(spend.tokens), ceiling: n(tokens) })}
+      </p>
+      <p className="content-compact tabular-nums text-default-secondary">
+        {cost === null
+          ? t_i18n("Cost: {cost}, no ceiling", { cost: usd(Number(spend.cost_usd)) })
+          : t_i18n("Cost: {cost} of {ceiling}", { cost: usd(Number(spend.cost_usd)), ceiling: usd(Number(cost)) })}
+      </p>
+    </div>
+  );
+  return (
+    <div
+      className="grid grid-cols-1 gap-4 border-t border-elevation-subtle-soft pt-3 sm:grid-cols-2"
+      data-testid="health.analysis-spend"
+    >
+      {line(t_i18n("Today"), data.day, data.ceilings.day_tokens, data.ceilings.day_cost_usd)}
+      {line(t_i18n("This month"), data.month, data.ceilings.month_tokens, data.ceilings.month_cost_usd)}
     </div>
   );
 }
