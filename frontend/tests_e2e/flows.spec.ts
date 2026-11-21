@@ -54,7 +54,8 @@ test.describe.serial('Flows — builder create/save/run lifecycle', () => {
     await page.goto('/flows/library');
     await page.getByRole('button', { name: /New flow/ }).click();
 
-    await expect(page).toHaveURL(/\/flows\/[0-9a-f-]{36}\/builder/);
+    // The builder lives under its menu entry: /flows/library/<id> (#797 S4).
+    await expect(page).toHaveURL(/\/flows\/library\/[0-9a-f-]{36}(?:[?#]|$)/);
     builderUrl = page.url();
 
     // Rename the fresh "Untitled flow" so cleanup and later assertions can
