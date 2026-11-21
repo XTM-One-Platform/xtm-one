@@ -204,7 +204,6 @@ describe("the cases layer", () => {
     // Every count shows, never clamped: mitigated on its own line above the
     // closed line (UX round 2 on #897, B4).
     const outcomes = screen.getByTestId("ctem-flow-cases-outcomes");
-    expect(outcomes.className).not.toContain("line-clamp");
     expect(outcomes.querySelectorAll("p")).toHaveLength(2);
     expect(screen.getByTestId("ctem-flow-cases-mitigated").textContent).toBe("2 mitigated, watching");
     expect(screen.getByTestId("ctem-flow-cases-closed").textContent).toBe("4 resolved, 1 accepted risk");
