@@ -3964,6 +3964,8 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                         Integration.id,
                         Integration.provider,
                         Integration.extra_config_enc,
+                        # _shown_platform_url reads it once this session is closed.
+                        Integration.auth_type,
                     )
                 )
                 .where(Integration.id == integration_id)
@@ -4571,6 +4573,8 @@ async def receive_assignment_webhook(
                         Integration.id,
                         Integration.provider,
                         Integration.extra_config_enc,
+                        # _shown_platform_url reads it once this session is closed.
+                        Integration.auth_type,
                     )
                 )
                 .where(Integration.id == integration_id)
