@@ -404,7 +404,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading from get_opencrq_cve_exploitation. in_progress needs an owner; resolved needs evidence "
+                "reading of the triage step. in_progress needs an owner; resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
             ),
@@ -420,7 +420,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "note": {"type": "string"},
                     "exploitation": {
                         "type": "array",
-                        "description": "Per OpenCRQ asset: techniques in attack order, exposure, reading. Replaces the stored one.",
+                        "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces the stored one.",
                         "items": {
                             "type": "object",
                             "properties": {
