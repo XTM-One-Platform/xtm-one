@@ -75,6 +75,7 @@ const PLATFORM_EVENT_LABELS = {
   "ctem_case.reopened": "CTEM case reopened",
   "ctem_case.resolved": "CTEM case resolved",
   "ctem_case.sla_breached": "CTEM case past its SLA",
+  "ctem_case.validation_finished": "CTEM case validation finished",
   "platform.default_model_route.changed": "Default model route changed",
   "timer.due": "Timer due",
 } as const;

@@ -21,6 +21,12 @@ crown jewels, priority and counts of a case are read at display time from the
 viewer's own source read (``services/ctem_cases_view.py``), so each viewer
 sees exactly what the source products show them, and an issue they cannot see
 is a "Restricted" row.
+
+One exception, bounded (#936): ``exploitation`` keeps the OpenCRQ reading the
+triage step wrote (techniques, exposure class, reading, and the OpenCRQ asset
+name and scenario id). The view serves the asset name and scenario id only to
+a viewer who reads OpenCRQ; anyone else gets the techniques and a
+"Restricted" asset.
 """
 
 import uuid
@@ -129,6 +135,10 @@ class CtemCase(Base):
     #: True: the case resolves only on a passing validation reference.
     validation_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     resolution_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    #: How the CVE would be exploited on the scenario's assets (CTEM-24, #936), written by the
+    #: triage step from OpenCRQ: ``[{risk_scenario_id, asset, exposure, techniques, reading, at}]``,
+    #: one entry per supporting asset, replaced whole by each write.
+    exploitation: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -161,6 +171,7 @@ class CtemCaseEvent(Base):
     #: created | state | owner | due | issue_added | issue_closed | issue_reopened | merge | split | note
     #: | retargeted (a folded upgrade target moved, CTEM-11)
     #: | signal | validation | ticket | sla_breached (#857)
+    #: | exploitation (the OpenCRQ reading written by triage, #936)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.
     issue: Mapped[str | None] = mapped_column(String(220), nullable=True)

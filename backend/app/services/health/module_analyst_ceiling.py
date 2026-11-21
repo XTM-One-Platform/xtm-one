@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 REFUSED_STOP_REASON: Final = "budget_exhausted"
 #: The output cap reserved when a call names none.
 DEFAULT_OUTPUT_CAP: Final = 4096
+#: The most output one call of the loop may ask for. The loop asks for the model's whole
+#: allowance (64,000 tokens and more on current models), which alone would pass the
+#: per-cycle cap and refuse the first call; the call is sent with this cap instead, so
+#: what is reserved is what the provider may bill.
+MAX_CALL_OUTPUT: Final = 8192
 #: Characters per token of the estimate: low on purpose, so the reservation is a worst case.
 _CHARS_PER_TOKEN: Final = 2
 REFUSED_NO_PRICE: Final = "no_price"
@@ -179,7 +184,9 @@ class ModuleAnalystCeilingLLM:
     async def _reserve(self, messages: list[Any], tools: list[Any] | None, kwargs: dict[str, Any]) -> tuple | None:
         """``(now, tokens, cost)`` once reserved; ``None`` with :attr:`refusal` set when refused."""
         model = kwargs.get("model") or self._model or getattr(self._inner, "default_model", None)
-        out_cap = kwargs.get("max_tokens") or DEFAULT_OUTPUT_CAP
+        out_cap = min(int(kwargs.get("max_tokens") or DEFAULT_OUTPUT_CAP), MAX_CALL_OUTPUT)
+        # The provider is called with the cap reserved, never more (``kwargs`` is the call's own).
+        kwargs["max_tokens"] = out_cap
         tokens = estimate_input_tokens(messages, tools) + int(out_cap)
         now = self._clock()
         async with self._session() as db:

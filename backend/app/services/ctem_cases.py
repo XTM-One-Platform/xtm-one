@@ -72,8 +72,10 @@ class SourceIssue:
     first_seen_at: datetime | None = None
     #: The version the organization profile declares for the matched product (CTEM-11).
     installed_version: str | None = None
-    #: Set when the declared version is outside every affected range: the reason; no case opens.
+    #: Set when OpenCTI relates no vulnerability to the declared version: the reason; no case opens.
     not_affected: str | None = None
+    #: What OpenCTI could not tell ("version not known to OpenCTI", "fixed version unknown"), else ``None``.
+    version_note: str | None = None
 
     @property
     def member_id(self) -> str:
@@ -144,7 +146,7 @@ class Grouping:
     groups: dict[str, list[SourceIssue]] = field(default_factory=dict)
     remediations: dict[str, Remediation] = field(default_factory=dict)
     no_known_fix: list[SourceIssue] = field(default_factory=list)
-    #: Issues whose declared version is outside every affected range (CTEM-11): listed, never a case.
+    #: Issues OpenCTI does not relate to the declared version (CTEM-11): listed, never a case.
     not_affected: list[SourceIssue] = field(default_factory=list)
 
 
@@ -177,7 +179,7 @@ def group_issues(all_issues: Iterable[SourceIssue]) -> Grouping:
 
     An issue is placed once per key it answers; duplicates of the same
     ``source:external_id`` under one key are kept once. An issue whose declared
-    version is outside its affected ranges goes to ``not_affected`` (CTEM-11).
+    version OpenCTI does not relate to the vulnerability goes to ``not_affected`` (CTEM-11).
     """
     out = Grouping()
     issues: list[SourceIssue] = []

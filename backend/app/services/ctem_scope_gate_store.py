@@ -3,9 +3,15 @@
 """CTEM reconcile and scope gate, the I/O side (#847).
 
 Reads what :func:`app.services.ctem_scope_gate.decide` needs (the
-organization profile, the other signals on the same subject, the OpenCRQ
-risk scenarios when an administrator's connection can read them), runs it
-and writes ``state`` and ``decision`` on the signal. No model call.
+organization profile, the other signals on the same subject the recorder
+may read, the OpenCRQ risk scenarios the recorder's own connection reads),
+runs it and writes ``state`` and ``decision`` on the signal. No model call.
+
+Segregation (#933): a signal is decided with its recorder's rights. Its
+OpenCRQ scenarios are read with the recorder's connection (a ``system``
+signal, which only administrators read: the evaluating administrator's), and
+its related signals are those the recorder may read under the signal API's
+rule. Nothing read by another identity is stored in a user's signal.
 
 When it runs: after a signal is first recorded (API, agent tool, listener),
 and on demand (``POST /api/v1/ctem-signals/{id}/evaluate`` and
@@ -54,8 +60,27 @@ def facts_of(row: CtemSignal) -> gate.SignalFacts:
     )
 
 
+async def recorder_reads_all(db: AsyncSession, recorded_by: str | None) -> bool:
+    """Whether the recorder of a signal reads every signal: ``system`` (read by administrators) or an administrator."""
+    from app.models.user import User
+    from app.services.ctem_signals import SYSTEM_ACTOR
+
+    if not recorded_by or recorded_by == SYSTEM_ACTOR:
+        return True
+    try:
+        user = await db.get(User, uuid.UUID(str(recorded_by)))
+    except (ValueError, TypeError):
+        return False
+    return bool(getattr(user, "is_admin", False))
+
+
 async def related_signals(db: AsyncSession, row: CtemSignal) -> list[gate.RelatedSignal]:
-    """The organization's other signals on the same subject (any recorder, any path)."""
+    """The other signals on the same subject that the recorder of *row* may read (#933).
+
+    The signal API's rule: an administrator (and a ``system`` signal, which
+    only administrators read) sees every signal of the organization, anyone
+    else only the signals recorded for them.
+    """
     statement = (
         select(CtemSignal)
         .where(
@@ -66,6 +91,8 @@ async def related_signals(db: AsyncSession, row: CtemSignal) -> list[gate.Relate
         )
         .limit(100)
     )
+    if not await recorder_reads_all(db, row.recorded_by):
+        statement = statement.where(CtemSignal.recorded_by == row.recorded_by)
     others = (await db.execute(statement)).scalars().all()
     return [
         gate.RelatedSignal(
@@ -94,14 +121,30 @@ def _scenario_criticality(scenario: dict[str, Any]) -> str:
     return "low"
 
 
+def scenario_reader(row: CtemSignal, evaluator_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Whose OpenCRQ connection reads the risk scenarios of *row* (#933): its recorder's own.
+
+    A ``system`` signal (read by administrators only) uses the evaluating
+    administrator's; a recorder id that is no user reads nothing.
+    """
+    from app.services.ctem_signals import SYSTEM_ACTOR
+
+    if not row.recorded_by or row.recorded_by == SYSTEM_ACTOR:
+        return evaluator_id
+    try:
+        return uuid.UUID(str(row.recorded_by))
+    except (ValueError, TypeError):
+        return None
+
+
 async def read_scenarios(db: AsyncSession, *, user_id: uuid.UUID | None) -> gate.ScenarioIndex:
-    """The risk scenarios holding each supporting asset, read with an administrator's OpenCRQ connection.
+    """The risk scenarios holding each supporting asset, read with *user_id*'s own OpenCRQ connection.
 
     Never raises: a missing connection or a failed read answers an index
     with ``connected`` false and the reason, which the decision names.
     """
     if user_id is None:
-        return gate.ScenarioIndex(note="OpenCRQ not read: an administrator re-evaluates to read risk scenarios")
+        return gate.ScenarioIndex(note="OpenCRQ not read: re-evaluate the signal to read its recorder's risk scenarios")
     try:
         from app.integrations.providers.opencrq._common import _resolve_tenant, _trpc
         from app.services.organization_context_opencrq import _opencrq_connection
@@ -224,12 +267,27 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
     return pending
 
 
+async def evaluate_one(
+    db: AsyncSession, row: CtemSignal, *, evaluator_id: uuid.UUID | None, now: datetime | None = None
+) -> gate.Decision | None:
+    """Decide *row* again with its recorder's OpenCRQ read (:func:`scenario_reader`). The caller commits."""
+    if row.state not in GATED_STATES:
+        return None
+    scenarios = await read_scenarios(db, user_id=scenario_reader(row, evaluator_id))
+    return await evaluate(db, row, scenarios=scenarios, now=now)
+
+
 async def evaluate_open(
     db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID | None, now: datetime | None = None
 ) -> dict[str, int]:
-    """Every gated signal of the organization decided again; counts by state after. The caller commits."""
+    """Every gated signal of the organization decided again; counts by state after. The caller commits.
+
+    *user_id* is the evaluating administrator. Each signal is decided with its
+    recorder's OpenCRQ read, read once per recorder (#933): an administrator's
+    read never lands in another user's signal.
+    """
     profile = await _profile(db, organization_id)
-    scenarios = await read_scenarios(db, user_id=user_id)
+    by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
     rows = (
         (
             await db.execute(
@@ -244,6 +302,9 @@ async def evaluate_open(
     )
     counts: dict[str, int] = {}
     for row in rows:
-        await evaluate(db, row, profile=profile, scenarios=scenarios, now=now)
+        reader = scenario_reader(row, user_id)
+        if reader not in by_reader:
+            by_reader[reader] = await read_scenarios(db, user_id=reader)
+        await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=now)
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts

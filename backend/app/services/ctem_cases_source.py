@@ -44,7 +44,6 @@ from app.services import ctem_cases_store as store
 from app.services import ctem_fixed_version as fixed_versions
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
-    _OCTI_STACK_SOFTWARE,
     _STACK_SOFTWARE_CAP,
     _fg,
     _profile_tech_stack,
@@ -59,11 +58,30 @@ logger = logging.getLogger(__name__)
 OCTI_ISSUE_CAP = 2000
 #: Most CVE findings read from OpenAEV.
 AEV_FINDING_CAP = 2000
-#: The connected enrichment provider whose NVD 2.0 records give the affected ranges (CTEM-11).
-ENRICHMENT_PROVIDER = "vulncheck"
-#: Most CVE records one recompute reads from it (the rest keep the other sources).
-ENRICHMENT_CVE_CAP = 100
 _PAGE = 500
+
+# The stack's Software observables with their version (CTEM-11, #946): the
+# declared version of a stack entry is the Software node of that version.
+_OCTI_STACK_SOFTWARE = """
+query CtemCaseStackSoftware($filters: FilterGroup, $first: Int) {
+  stixCyberObservables(types: ["Software"], filters: $filters, first: $first) {
+    edges { node { id ... on Software { name vendor version cpe } } }
+  }
+}
+"""
+
+# The Software versions OpenCTI says remediate each vulnerability (CTEM-11, #946):
+# the fixed version is read from OpenCTI, never computed from ranges here.
+_OCTI_SOFTWARE_REMEDIATES = """
+query CtemCaseSoftwareRemediates($to: [String], $first: Int) {
+  stixCoreRelationships(toId: $to, relationship_type: ["remediates"], fromTypes: ["Software"], first: $first) {
+    edges { node {
+      from { ... on Software { id name vendor version cpe } }
+      to { ... on Vulnerability { id } }
+    } }
+  }
+}
+"""
 
 _OCTI_STACK_VULNS = """
 query CtemCaseStackVulns($from: [String], $first: Int, $after: ID) {
@@ -151,7 +169,7 @@ def opencti_issues(
     stack: list[dict[str, str]],
     relations: list[dict[str, Any]],
     remediations: list[dict[str, Any]],
-    provider_ranges: dict[str, list[fixed_versions.AffectedRange]] | None = None,
+    fixes: list[dict[str, Any]] | None = None,
 ) -> list[rules.SourceIssue]:
     """Build the OpenCTI issues from the raw nodes (pure: the reader feeds it).
 
@@ -159,20 +177,31 @@ def opencti_issues(
     vendor are the stack entry's, so the key folds to what the profile lists.
     A vulnerability with a Course of Action takes it (R1, first by name).
 
-    The fixed version (CTEM-11) comes from, in order, OpenCTI's affected
-    ranges (hook, empty until OpenCTI carries them), a course of action that
-    is a plain upgrade, the ranges a connected enrichment provider gave in
-    *provider_ranges* (keyed ``<VULNERABILITY NAME>|<stack label, lower case>``), else
-    it stays unknown. With the stack entry's declared version, an issue outside
-    every known range is marked not affected.
+    The version knowledge is OpenCTI's (CTEM-11, #946), never computed here:
+
+    - the fixed version is the smallest version of a Software of the product
+      that ``remediates`` the vulnerability (*fixes*), above the declared
+      version; else the version a course of action names when it is a plain
+      upgrade; else it stays unknown (``fixed version unknown``);
+    - with a declared version whose Software node exists, a vulnerability that
+      node has no ``has`` to is not affected; when no Software of that version
+      exists the issue is kept and says ``version not known to OpenCTI``.
     """
-    provider_ranges = provider_ranges or {}
     entry_by_label = {e["label"]: e for e in stack}
     product_of: dict[str, dict[str, str]] = {}
+    declared_ids: dict[str, set[str]] = {}
     for node in software:
         label = _stack_matches(node, stack)
-        if label and node.get("id"):
-            product_of[node["id"]] = entry_by_label[label]
+        if not label or not node.get("id"):
+            continue
+        entry = entry_by_label[label]
+        product_of[node["id"]] = entry
+        declared = (entry.get("version") or "").strip()
+        if declared and (
+            fixed_versions.same_version(node.get("version"), declared)
+            or (entry.get("cpe") and (node.get("cpe") or "").strip().lower() == entry["cpe"].lower())
+        ):
+            declared_ids.setdefault(label, set()).add(node["id"])
     coa_of: dict[str, tuple[str, str]] = {}
     for rel in remediations:
         coa = rel.get("from") or {}
@@ -184,32 +213,54 @@ def opencti_issues(
         current = coa_of.get(vuln)
         if current is None or (name or coa_id) < (current[1] or current[0]):
             coa_of[vuln] = (coa_id, name)
-    out: list[rules.SourceIssue] = []
-    seen: set[tuple[str, str]] = set()
+    fixed_of: dict[tuple[str, str], list[str]] = {}
+    for rel in fixes or []:
+        node = rel.get("from") or {}
+        vuln = (rel.get("to") or {}).get("id")
+        label = _stack_matches(node, stack)
+        if vuln and label and (node.get("version") or "").strip():
+            fixed_of.setdefault((vuln, label), []).append(node["version"].strip())
+    holders: dict[tuple[str, str], set[str]] = {}
+    vuln_of: dict[str, dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
     for rel in relations:
-        sw_id = (rel.get("from") or {}).get("id")
+        sw_id = (rel.get("from") or {}).get("id") or ""
         vuln = rel.get("to") or {}
-        entry = product_of.get(sw_id or "")
-        if entry is None or not vuln.get("id"):
+        held = product_of.get(sw_id)
+        if held is None or not vuln.get("id"):
             continue
-        pair = (vuln["id"], entry["label"])
-        if pair in seen:
-            continue
-        seen.add(pair)
-        name = (vuln.get("name") or "").strip() or vuln["id"]
-        coa = coa_of.get(vuln["id"])
+        pair = (vuln["id"], held["label"])
+        if pair not in holders:
+            holders[pair] = set()
+            order.append(pair)
+            vuln_of[vuln["id"]] = vuln
+        holders[pair].add(sw_id)
+    out: list[rules.SourceIssue] = []
+    for vuln_id, label in order:
+        vuln, entry = vuln_of[vuln_id], entry_by_label[label]
+        name = (vuln.get("name") or "").strip() or vuln_id
+        coa = coa_of.get(vuln_id)
         installed = (entry.get("version") or "").strip() or None
-        resolution = fixed_versions.resolve(
-            installed=installed,
-            opencti=fixed_versions.opencti_ranges(vuln),
-            course_of_action_version=fixed_versions.version_from_course_of_action(coa[1] if coa else None),
-            provider=provider_ranges.get(f"{name.upper()}|{entry['label'].lower()}", ()),
-        )
+        not_affected: str | None = None
+        notes: list[str] = []
+        if installed:
+            on_declared = declared_ids.get(label, set())
+            if not on_declared:
+                notes.append(f"{fixed_versions.VERSION_NOT_KNOWN}: {installed}")
+            elif not holders[(vuln_id, label)] & on_declared:
+                not_affected = (
+                    f"{fixed_versions.NOT_AFFECTED_PREFIX} {installed} has no 'has' relation to {name} in OpenCTI"
+                )
+        fixed = fixed_versions.smallest_fix_above(fixed_of.get((vuln_id, label), ()), installed)
+        if fixed is None:
+            fixed = fixed_versions.version_from_course_of_action(coa[1] if coa else None)
+        if fixed is None and not not_affected:
+            notes.append(fixed_versions.FIXED_VERSION_UNKNOWN)
         out.append(
             rules.SourceIssue(
                 source="opencti",
                 # The same CVE on two products is two keys, so two memberships.
-                external_id=vuln["id"],
+                external_id=vuln_id,
                 name=name[:300],
                 cve=name if name.upper().startswith("CVE-") else None,
                 product=entry["product"],
@@ -220,9 +271,10 @@ def opencti_issues(
                 epss=_float(vuln.get("x_opencti_epss_score")),
                 kev=bool(vuln.get("x_opencti_cisa_kev")),
                 first_seen_at=_when(vuln.get("created_at")),
-                fixed_version=resolution.fixed_version,
+                fixed_version=fixed,
                 installed_version=installed,
-                not_affected=resolution.not_affected,
+                not_affected=not_affected,
+                version_note="; ".join(notes) or None,
             )
         )
     return out
@@ -258,69 +310,13 @@ def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
     return out
 
 
-async def _enrichment_key(db: AsyncSession, user_id: str) -> str | None:
-    """The API key of the company-managed enrichment provider *user_id* may use, else ``None``.
-
-    The provider serves NVD 2.0 CVE records (CTEM-11 slice 2); same row choice
-    as the posture's ``_user_creds`` (company-managed, visible to the user).
-    """
-    from sqlalchemy import select
-
-    from app.api.v1.helpers import integration_visible_filter
-    from app.models.integration import Integration
-    from app.services.integration_tools import _get_token
-
-    row = (
-        (
-            await db.execute(
-                select(Integration)
-                .where(
-                    Integration.provider == ENRICHMENT_PROVIDER,
-                    # access_restricted: honoured - a restricted row serves its grantees only.
-                    Integration.is_company_managed.is_(True),
-                    await integration_visible_filter(db, user_id),
-                )
-                .order_by(Integration.created_at)
-                .limit(1)
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if row is None:
-        return None
-    token = await _get_token(db, str(row.id), ENRICHMENT_PROVIDER, user_id=user_id)
-    return (token or "").strip() or None
-
-
-async def provider_ranges_for(
-    api_key: str, stack: list[dict[str, str]], cves: list[str]
-) -> dict[str, list[fixed_versions.AffectedRange]]:
-    """The affected ranges the enrichment provider serves, keyed as ``opencti_issues`` reads them.
-
-    One NVD 2.0 record per CVE (at most ``ENRICHMENT_CVE_CAP``), parsed per
-    stack entry: ``<CVE>|<stack label, lower case>``. A provider that answers
-    nothing leaves the fixed version to the other sources.
-    """
-    from app.integrations.providers.vulncheck import nvd2_records
-
-    records = await nvd2_records(api_key, cves, cap=ENRICHMENT_CVE_CAP)
-    out: dict[str, list[fixed_versions.AffectedRange]] = {}
-    for cve, record in records.items():
-        for entry in stack:
-            ranges = fixed_versions.ranges_from_nvd2(record, vendor=entry.get("vendor") or "", product=entry["product"])
-            if ranges:
-                out[f"{cve.upper()}|{entry['label'].lower()}"] = ranges
-    return out
-
-
 async def _read_opencti(
     client: httpx.AsyncClient,
     base_url: str,
     headers: dict[str, str],
     stack: list[dict[str, str]],
-    enrichment_key: str | None = None,
 ) -> list[rules.SourceIssue] | None:
+    """The open OpenCTI issues of *stack*, read with the caller's own *headers* (never a system token)."""
     cpes = sorted({e["cpe"] for e in stack if e["cpe"]})
     names = sorted({e["product"] for e in stack})
     filters = [{"key": ["name"], "values": names}]
@@ -360,30 +356,26 @@ async def _read_opencti(
     relations = relations[:OCTI_ISSUE_CAP]
     vuln_ids = sorted({(r.get("to") or {}).get("id") for r in relations if (r.get("to") or {}).get("id")})
     remediations: list[dict[str, Any]] = []
+    fixes: list[dict[str, Any]] = []
     for start in range(0, len(vuln_ids), _PAGE):
-        data, err = await _graphql(
-            client, base_url, headers, _OCTI_REMEDIATIONS, {"to": vuln_ids[start : start + _PAGE], "first": _PAGE * 2}
-        )
+        batch = {"to": vuln_ids[start : start + _PAGE], "first": _PAGE * 2}
+        data, err = await _graphql(client, base_url, headers, _OCTI_REMEDIATIONS, batch)
         if err:  # no course of action is a known state: R2 still answers
             logger.info("CTEM cases: OpenCTI courses of action unavailable: %s", err)
-            break
-        remediations.extend(
-            (e or {}).get("node") or {} for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
-        )
-    ranges: dict[str, list[fixed_versions.AffectedRange]] = {}
-    if enrichment_key:
-        cves = sorted(
-            {
-                name.upper()
-                for r in relations
-                if (name := ((r.get("to") or {}).get("name") or "").strip()).upper().startswith("CVE-")
-            }
-        )
-        try:
-            ranges = await provider_ranges_for(enrichment_key, stack, cves)
-        except Exception as exc:  # the provider is an extra source: its outage never drops the OpenCTI read
-            logger.info("CTEM cases: enrichment provider ranges unavailable: %s", format_exception_message(exc))
-    return opencti_issues(software, stack, relations, remediations, ranges)
+        else:
+            remediations.extend(
+                (e or {}).get("node") or {}
+                for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
+            )
+        data, err = await _graphql(client, base_url, headers, _OCTI_SOFTWARE_REMEDIATES, batch)
+        if err:  # no remediating Software is a known state: the fixed version stays unknown
+            logger.info("CTEM cases: OpenCTI remediating software unavailable: %s", err)
+        else:
+            fixes.extend(
+                (e or {}).get("node") or {}
+                for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
+            )
+    return opencti_issues(software, stack, relations, remediations, fixes)
 
 
 async def _read_openaev(
@@ -510,13 +502,8 @@ async def read_open_issues(
     if octi and stack:
         base_url, headers = octi
         try:
-            enrichment_key = await _enrichment_key(db, user_id)
-        except Exception as exc:  # no provider is a known state: the fixed version comes from the other sources
-            logger.info("CTEM cases: enrichment provider key unavailable: %s", format_exception_message(exc))
-            enrichment_key = None
-        try:
             async with httpx.AsyncClient(timeout=30) as client:
-                found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack, enrichment_key)
+                found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack)
         except Exception as exc:
             logger.warning("CTEM cases: OpenCTI read failed: %s", format_exception_message(exc))
             found = None
@@ -591,6 +578,7 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     members = await store.member_ids(db, organization_id=primary.id, vertical=vertical) if primary else []
     read = await read_open_issues(db, user_id, vertical, members=members)
     view = ViewerView(missing=list(read.missing), complete=read.complete)
+    view.opencrq = await _reads_opencrq(db, user_id)
     for issue in read.closed:
         view.issues[issue.member_id] = issue
     for issue in read.issues:
@@ -601,6 +589,16 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
             view.issues[issue.member_id] = issue
             view.open_ids.add(issue.member_id)
     return view
+
+
+async def _reads_opencrq(db: AsyncSession, user_id: str) -> bool:
+    """Whether *user_id* reads OpenCRQ with their own credentials (#936): the gate on the
+    OpenCRQ asset names and scenario ids of a case's exploitation reading."""
+    try:
+        return await _user_creds(db, user_id, "opencrq") is not None
+    except Exception as exc:  # unreadable is not readable: the names stay restricted
+        logger.info("CTEM cases: OpenCRQ access unreadable for %s: %s", user_id, format_exception_message(exc))
+        return False
 
 
 async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str) -> list[rules.SourceIssue]:
@@ -690,5 +688,11 @@ async def recompute_for_user(
         {"issue": i.member_id, "name": i.name, "product": i.product, "reason": i.not_affected}
         for i in read.issues
         if i.not_affected
+    ][:50]
+    # What OpenCTI could not tell about a member's versions (#946), never guessed.
+    answer["version_notes"] = [
+        {"issue": i.member_id, "name": i.name, "product": i.product, "note": i.version_note}
+        for i in read.issues
+        if i.version_note
     ][:50]
     return answer

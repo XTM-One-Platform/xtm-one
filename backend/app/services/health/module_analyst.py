@@ -200,6 +200,11 @@ async def _module_registrations(db: AsyncSession, excluded: Iterable[uuid.UUID])
     return [(row.id, str(row.platform_identifier)) for row in rows if row.id not in skip]
 
 
+async def active_registrations(db: AsyncSession, provider: str, excluded: Iterable[uuid.UUID] = ()) -> list[uuid.UUID]:
+    """The active registrations of *provider* the analyst may investigate ("Investigate now", section 12.7)."""
+    return [rid for rid, identifier in await _module_registrations(db, excluded) if identifier == provider]
+
+
 async def _finding_set_hashes(db: AsyncSession) -> dict[str, str]:
     """The open finding set hash per registration id (as text), registrations with an open finding only."""
     from app.models.health_check import STATUS_OPEN, HealthCheckFinding
