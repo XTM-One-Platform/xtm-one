@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -849,6 +849,86 @@ describe("the work item detail", () => {
     openDialog(item({ description: "![pixel](//tracker.example.test/p.png)" }));
     expect(screen.getByTestId("work-item-detail").querySelector("img")).toBeNull();
     expect(screen.getByText("pixel")).toBeTruthy();
+  });
+
+  it("shows stamped notes as an activity timeline over the brief, ids as chips (#776)", () => {
+    const run = "8f240eba-1111-4222-8333-944445555666";
+    openDialog(
+      item({
+        description: `2026-11-20 23:22Z (run ${run}): **Pushed** head b6ce1323be6d239a33100a2b6f20a1918298aad3 (run 8f240eba...)\n\nRead the 120 pages.`,
+        note_runs: { [run]: { agent: { id: "a1", name: "Developer" }, accessible: true } },
+      }),
+    );
+    const notes = screen.getAllByTestId("work-item-note");
+    expect(notes).toHaveLength(1);
+    expect(screen.getByTestId("work-item-note-author").textContent).toBe("Developer");
+    // The run is a link named by its first 8 characters, never the uuid inline.
+    expect(notes[0].querySelector(`a[href="/runs/${run}"]`)?.textContent).toContain("8f240eba");
+    const body = screen.getByTestId("work-item-note-body");
+    expect(body.textContent).not.toContain(run);
+    expect(body.textContent).not.toContain("(run");
+    expect(body.querySelector("strong")?.textContent).toBe("Pushed");
+    expect(screen.getByTestId("work-item-id-chip").textContent).toBe("b6ce1323");
+    expect(screen.getByTestId("work-item-brief").textContent).toContain("Read the 120 pages.");
+  });
+
+  it("folds a long note by height, block Markdown included, and unfolds it (#776, UX B1)", () => {
+    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}\n\nA second paragraph.\n\nRead the brief.` }));
+    const body = screen.getByTestId("work-item-note-body");
+    // A height cap on the wrapper, never -webkit-line-clamp: the text sits in block children.
+    expect(body.className).not.toContain("line-clamp");
+    // overflow-clip, never overflow-hidden: a clip box cannot be scrolled by a focus (UX round 3 B1).
+    expect(body.className).toContain("overflow-clip");
+    expect(body.className).not.toContain("overflow-hidden");
+    expect(body.getAttribute("data-folded")).toBe("true");
+    expect(screen.getByTestId("work-item-note-fade")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(body.getAttribute("data-folded")).toBeNull();
+    expect(body.className).not.toContain("overflow-clip");
+    expect(screen.queryByTestId("work-item-note-fade")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.getAttribute("data-folded")).toBe("true");
+  });
+
+  it("opens a folded note when keyboard focus enters it, so focus never lands in hidden text (#776, UX round 2 B1)", () => {
+    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
+    // The link sits in the note's own paragraph, past the fold: the oldest note keeps its
+    // first paragraph only (splitDescription), a second paragraph would be the brief.
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}See [the run log](https://example.com/log) below the fold.\n\nRead the brief.` }));
+    const body = screen.getByTestId("work-item-note-body");
+    expect(body.getAttribute("data-folded")).toBe("true");
+    const link = within(body).getByRole("link", { name: /the run log/ });
+    const intoView = vi.fn();
+    link.scrollIntoView = intoView;
+    const frames = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    // The browser's focus scroll of the folded box, which the handler undoes
+    // (jsdom has no layout: an own writable scrollTop stands in for it).
+    Object.defineProperty(body, "scrollTop", { configurable: true, writable: true, value: 405 });
+    act(() => link.focus());
+    frames.mockRestore();
+    expect(body.getAttribute("data-folded")).toBeNull();
+    expect(body.className).not.toContain("overflow-clip");
+    expect(body.scrollTop).toBe(0);
+    // The focused link is brought into the dialog's visible area once the note opens (UX round 3 B1).
+    expect(intoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+    // Folding again by keyboard leaves the body at its first lines.
+    body.scrollTop = 405;
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.getAttribute("data-folded")).toBe("true");
+    expect(body.scrollTop).toBe(0);
+  });
+
+  it("renders no script or iframe a description carries", () => {
+    openDialog(item({ description: 'x <script>window.__pwned = 1</script> <iframe src="https://e.test"></iframe> [a](javascript:alert(1))' }));
+    const detail = screen.getByTestId("work-item-detail");
+    expect(detail.querySelector("script")).toBeNull();
+    expect(detail.querySelector("iframe")).toBeNull();
+    expect(detail.querySelector('a[href^="javascript"]')).toBeNull();
   });
 
   it("offers no action to a reader who may not change the item", () => {
