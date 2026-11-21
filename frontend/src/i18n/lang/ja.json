@@ -19946,5 +19946,10 @@
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, other {SLA を {shown} 日超過}}",
   "P1 case opened by the loop: {sla}": "ループが開いた P1 ケース: {sla}",
   "P1 case opened by the loop": "ループが開いた P1 ケース",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, other {# 件 緩和済み・監視中}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, other {# 件 緩和済み・監視中}}",
+  "How it would be exploited": "想定される悪用方法",
+  "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "悪用の読み取りはまだありません。リスクシナリオに影響を受ける資産がある場合、トリアージが OpenCRQ から書き込みます。",
+  "Restricted asset": "制限された資産",
+  "Techniques in attack order": "攻撃順のテクニック",
+  "Recorded how it would be exploited": "想定される悪用方法を記録しました"
 }
