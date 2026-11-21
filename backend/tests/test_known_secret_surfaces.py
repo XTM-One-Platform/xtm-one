@@ -194,7 +194,9 @@ def test_a_new_external_thread_binds_its_scope_once_the_conversation_exists():
 
 def test_a_reviewers_answer_to_a_paused_run_is_never_restored():
     source = _source("app/services/assignment_engine.py")
-    assert 'content=f"Human response: {defuse_secret_markers(run.human_input_response)}"' in source
+    # The answer reaches the tool result through run_answer_text, defused first (#842).
+    assert "content=run_answer_text(" in source
+    assert "defuse_secret_markers(run.human_input_response)," in source
 
 
 async def test_a_failing_mcp_tool_call_is_logged_inside_its_scope(monkeypatch):

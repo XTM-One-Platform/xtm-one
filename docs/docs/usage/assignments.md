@@ -46,6 +46,8 @@ The page has four tabs:
 
 The `Parameters` card holds the run settings: `Execution timeout`, `Max iterations`, `Retry on failure` with its `Max retries`, `Human in the loop` (let the agent pause and ask you when it is unsure), `Dry run`, the knowledge bases the assignment reads and writes, the runners it may drive for computer use (when runners are enabled), `AI-generated label` on outgoing messages, a bell `Notification` when a run completes, and whether its results appear in the dashboard digest. A setting left on `Inherit` follows the agent.
 
+When `Human in the loop` is on, a paused run shows its question, what the agent found and, when it gives them, numbered options with the one it recommends and links to its sources. Answer with an option's letter or name to choose it, or write your own answer.
+
 ## Prompts and gates
 
 The `Prompt & Bindings` tab holds up to three steps, run in this order:
