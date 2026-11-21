@@ -95,6 +95,17 @@ const EVENT_LABEL: Record<string, string> = {
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
 
+/** The evidence of a history row; the not-affected sentence the platform stores is re-rendered in the locale (#928). */
+function CaseEvidence({ evidence }: { evidence: string }) {
+  const { t_i18n } = useFormatter();
+  const version = notAffectedVersion(evidence);
+  return (
+    <span className="text-default-secondary">
+      {version ? t_i18n("Not affected: version {version} is outside the affected ranges", { version }) : evidence}
+    </span>
+  );
+}
+
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -442,11 +453,7 @@ export default function CtemCaseDetail() {
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
                 {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && (
-                  <span className="text-default-secondary">
-                    {notAffectedVersion(e.evidence) ? t_i18n("Not affected: version {version} is outside the affected ranges", { version: notAffectedVersion(e.evidence) }) : e.evidence}
-                  </span>
-                )}
+                {e.evidence && <CaseEvidence evidence={e.evidence} />}
                 {e.at && (
                   <span className="ml-auto whitespace-nowrap text-default-secondary">
                     {intl.formatDate(e.at, { dateStyle: "medium", timeStyle: "short" })}
