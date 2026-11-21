@@ -53,6 +53,14 @@ def blob_key(workspace_id: uuid.UUID, sha256: str) -> str:
     return f"{OBJECT_PREFIX}{workspace_id}/{sha256}"
 
 
+def commit_statement_timeout_ms() -> int:
+    """The statement timeout of one workspace commit transaction, in ms; 0 keeps the pool default."""
+    from app.core.config import settings
+
+    seconds = int(getattr(settings, "sandbox_workspace_commit_statement_timeout_secs", 0) or 0)
+    return 0 if seconds <= 0 else min(seconds * 1000, 2_147_483_647)
+
+
 class WorkspaceAccessError(PermissionError):
     """The scope's person is not the workspace's: it is never opened for them."""
 
@@ -571,6 +579,14 @@ class WorkspaceStore(_BaseStore):
         removals = list(removals)
         now = datetime.now(UTC)
         async with self._sessions() as db:
+            timeout_ms = commit_statement_timeout_ms()
+            if timeout_ms:
+                # A large change set, or a commit waiting on another one's row
+                # lock, outlives the pool's 30 s default: this transaction alone
+                # gets the longer bound (SET LOCAL, gone at its commit).
+                from sqlalchemy import text
+
+                await db.execute(text("SELECT set_config('statement_timeout', :ms, true)"), {"ms": str(timeout_ms)})
             locked = (
                 await db.execute(select(W.id).where(W.id == workspace_id).with_for_update())
             ).scalar_one_or_none()
