@@ -12,18 +12,15 @@ import { describe, it, expect } from "vitest";
  * Agentic Flow map's views (`/flows/map/schedule`) moved to path segments.
  * This gate fails when source writes one of them as a query again: a fleet
  * link carrying `?view=`, `?ops=` or `?mode=`, a map link carrying `?view=`,
- * or a link to the former `/flows?tab=`. The redirect shims that read the old
- * links (`lib/fleet-operations.ts`, `lib/map-view.ts`) and the tests are
- * exempt.
+ * or a link to the former `/flows?tab=`. The tests are exempt.
  *
  * S3b: any page. Tools (`/tools/custom`) and Video Studio (`/videos/media`)
  * moved too; no code reads or writes `?tab=` / `?view=` outside the files of
- * `QUERY_ALLOWED`, each with its reason (a redirect shim, or a list filter).
+ * `QUERY_ALLOWED`, each with its reason (a list filter). #797: no redirect
+ * shim is left, so none is allowed.
  */
 
 const SRC = path.resolve(__dirname, "../src");
-
-const SHIMS = new Set(["lib/fleet-operations.ts", "lib/map-view.ts"]);
 
 const FORBIDDEN: { name: string; pattern: RegExp }[] = [
   { name: "fleet tab as a query", pattern: /\/flows\/fleets\/[^`"'\s]*\?(?:[^`"'\s]*&)?(?:view|ops|mode)=/ },
@@ -33,11 +30,6 @@ const FORBIDDEN: { name: string; pattern: RegExp }[] = [
 
 /** Files allowed to read or write `?tab=` / `?view=`, each with its reason. */
 const QUERY_ALLOWED: Record<string, string> = {
-  "lib/fleet-operations.ts": "redirect shim: legacy fleet ?view= / ?ops= / ?mode= links",
-  "lib/map-view.ts": "redirect shim: legacy map ?view= links",
-  "pages/flows/MapTab.tsx": "redirect shim: takes ?view= out of a legacy map link",
-  "pages/CustomTools.tsx": "redirect shim: legacy ?tab=custom / ?tab=approvals links",
-  "pages/VideoStudio.tsx": "redirect shim: legacy ?tab=media / recordings / clips / profiles links",
   "pages/operations/WorkItemsTab.tsx": "list filter: the Stale / Waiting / Scheduled segment of the work items list",
 };
 
@@ -65,7 +57,6 @@ describe("path routes gate (#10203)", () => {
     const hits: string[] = [];
     for (const file of await sourceFiles(SRC)) {
       const rel = path.relative(SRC, file).split(path.sep).join("/");
-      if (SHIMS.has(rel)) continue;
       const lines = (await readFile(file, "utf8")).split("\n");
       lines.forEach((line, i) => {
         for (const { name, pattern } of FORBIDDEN) {
@@ -76,7 +67,7 @@ describe("path routes gate (#10203)", () => {
     expect(hits).toEqual([]);
   });
 
-  it("reads or writes ?tab= / ?view= only in a redirect shim or a list filter", async () => {
+  it("reads or writes ?tab= / ?view= only in a list filter", async () => {
     const hits: string[] = [];
     for (const file of await sourceFiles(SRC)) {
       const rel = path.relative(SRC, file).split(path.sep).join("/");
