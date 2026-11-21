@@ -110,6 +110,7 @@ export function useActivityStream() {
       // the viewer's visibility.
       if (parsed?.type === "ctem_signal_update") {
         qc.invalidateQueries({ queryKey: ["ctem-signals", "recent"] });
+        qc.invalidateQueries({ queryKey: ["ctem-signals", "list"] });
         if (parsed.signal_id) qc.invalidateQueries({ queryKey: ["ctem-signals", "signal", parsed.signal_id] });
         return;
       }

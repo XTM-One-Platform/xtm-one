@@ -92,9 +92,9 @@ import { LifecycleHeader } from "./ctem/LifecycleHeader";
 import { ActivityFeed } from "./ctem/ActivityFeed";
 import { ActivityRow } from "./ctem/ActivityRow";
 import { deterministicActivity, feedCapacity, mergeActivity, signalActivity } from "./ctem/activity-feed";
-import { useRecentCtemSignals } from "@/hooks/api/useCtemSignalsApi";
+import { useRecentCtemSignals, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { LOOP_PARAM, LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
-import { loopParam } from "./ctem/loop/loop-stages";
+import { loopParam, signalsParam } from "./ctem/loop/loop-stages";
 import { CoverageMatrixCard } from "./ctem/CoverageMatrixCard";
 import { ExposureStatsCard } from "./ctem/ExposureStatsCard";
 import { ValueBandCard } from "./ctem/ValueBandCard";
@@ -590,6 +590,20 @@ export default function CtemCommandCenter({
       setSearchParams(next);
     },
     [searchParams, setSearchParams],
+  );
+  // CTEM-01-UI: the signals counter of the lifecycle card opens the signal
+  // list of the loop trace, filtered on the state clicked.
+  const openSignalList = useCallback(
+    (state: CtemSignalState | null) => {
+      const next = new URLSearchParams(searchParams);
+      next.set(LOOP_PARAM, signalsParam(state));
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams],
+  );
+  const signalCounter = useMemo(
+    () => (recentSignals ? { counts: recentSignals.counts, onOpen: openSignalList } : null),
+    [recentSignals, openSignalList],
   );
   // Done for you (C2 V3): every deterministic event, its axis keeps the period's.
   const timelineEvents = useMemo(() => deterministicActivity(posture, registrations, 50), [posture, registrations]);
@@ -1752,6 +1766,7 @@ export default function CtemCommandCenter({
           target: postureTarget,
         } : null}
         refreshing={postureRefreshing}
+        signals={signalCounter}
       />
     ),
     // ── Stats and coverage (C2 V5, #11547 S2d): weekly heat map, delta bars, findings with their trend
