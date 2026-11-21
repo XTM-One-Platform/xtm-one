@@ -115,7 +115,57 @@ def register(
                 for g in groups:
                     lines.append(f"  {g.get('name', 'Unnamed')} (source: {g.get('source', 'N/A')})")
 
+            lines.extend(await _approval_lines(client, policy_id))
             return "\n".join(lines)
+
+    async def _approval_lines(client: Any, policy_id: int) -> list[str]:
+        """The approval workflow of a policy: the latest version's state and the approver tiers.
+
+        The policy object carries only ``approvedAt``; who approves and whether a
+        newer version waits for approval live in the policy versions and the
+        approval configuration. A read that fails is named, never dropped.
+        """
+        out = ["\nApproval workflow:"]
+        versions, verr = await _common._paginated_fetch(
+            client, f"{base_url}/policies/{policy_id}/policy-versions", headers, {}
+        )
+        if verr:
+            out.append(f"  Versions: not readable ({verr[:160]})")
+        else:
+            waiting = [v for v in versions if v.get("policyVersionStatus") == "NEEDS_APPROVAL"]
+            unpublished = [v for v in versions if v.get("policyVersionStatus") == "APPROVED" and not v.get("current")]
+            latest = max(versions, key=lambda v: v.get("id") or 0, default=None)
+            if latest is not None:
+                out.append(
+                    f"  Latest version: {latest.get('version', '?')}.{latest.get('subVersion', '0')} "
+                    f"(ID: {latest.get('id')}) status {latest.get('policyVersionStatus', 'N/A')}, "
+                    f"current: {latest.get('current', False)}, approved: {latest.get('approvedAt') or 'not yet'}, "
+                    f"updated: {latest.get('updatedAt', 'N/A')}"
+                )
+            out.append(f"  Versions awaiting approval: {len(waiting)}; approved but not published: {len(unpublished)}")
+        resp, cerr = await _common.safe_request(  # type: ignore[attr-defined]  # patched here by the tests
+            client,
+            "get",
+            f"{base_url}/policies/{policy_id}/approval-configuration",
+            _PROVIDER,
+            "get policy approval configuration",
+            headers=headers,
+        )
+        if cerr or resp is None:
+            out.append(f"  Approvers: not readable ({(cerr or 'no response')[:160]})")
+            return out
+        tiers = (resp.json() or {}).get("reviewGroups") or []
+        if not tiers:
+            out.append("  Approvers: no approval tier configured")
+        for tier in sorted(tiers, key=lambda t: t.get("tier") or 0):
+            approvers = (
+                ", ".join(f"{_full_name(a)} <{a.get('email', '?')}>" for a in tier.get("approvers") or []) or "none"
+            )
+            out.append(
+                f"  Tier {tier.get('tier', '?')} {tier.get('name', 'Unnamed')}: "
+                f"{tier.get('consensusRule', '?')} of {approvers}, {tier.get('timeline', '?')} day(s)"
+            )
+        return out
 
     async def list_drata_policy_versions(policy_id: int) -> str:
         """List all versions of a specific policy."""
@@ -138,7 +188,9 @@ def register(
                     f"Type: {v.get('type', 'N/A')} | "
                     f"Current: {v.get('current', False)} | "
                     f"Owner: {owner_name} | "
-                    f"Published: {v.get('publishedAt', 'N/A')}"
+                    f"Published: {v.get('publishedAt', 'N/A')} | "
+                    f"Approved: {v.get('approvedAt') or 'not yet'} | "
+                    f"Updated: {v.get('updatedAt', 'N/A')}"
                 ]
                 desc = v.get("description", "")
                 if desc:
@@ -298,7 +350,10 @@ def register(
         ),
         ToolDefinition(
             name="get_drata_policy",
-            description="Get a specific Drata policy by ID with linked controls and assigned groups.",
+            description=(
+                "Get a specific Drata policy by ID with linked controls, assigned groups and its "
+                "approval workflow: the latest version's status and the approver tiers."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -311,7 +366,7 @@ def register(
         ),
         ToolDefinition(
             name="list_drata_policy_versions",
-            description="List all versions of a specific Drata policy.",
+            description="List all versions of a specific Drata policy with their status and approval date.",
             input_schema={
                 "type": "object",
                 "properties": {
