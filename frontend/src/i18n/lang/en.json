@@ -19985,7 +19985,7 @@
   "Hide done and cancelled": "Hide done and cancelled",
   "Show done and cancelled": "Show done and cancelled",
   "{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}": "{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}",
-  "The first {count} items are drawn: narrow the filters to see the rest.": "The first {count} items are drawn: narrow the filters to see the rest.",
+  "Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.": "Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.",
   "Clear focus": "Clear focus",
   "No dependency to draw": "No dependency to draw",
   "None of the items these filters match waits for another item, a pull request, a deployment or a person.": "None of the items these filters match waits for another item, a pull request, a deployment or a person.",

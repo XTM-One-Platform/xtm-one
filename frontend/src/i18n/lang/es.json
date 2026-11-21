@@ -19985,7 +19985,7 @@
   "Hide done and cancelled": "Ocultar terminados y cancelados",
   "Show done and cancelled": "Mostrar terminados y cancelados",
   "{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}": "{count, plural, one {# elemento sin dependencia, en la vista de lista} other {# elementos sin dependencia, en la vista de lista}}",
-  "The first {count} items are drawn: narrow the filters to see the rest.": "Se dibujan los primeros {count} elementos: acote los filtros para ver el resto.",
+  "Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.": "Solo se {count, plural, one {dibuja el primer elemento} other {dibujan los primeros # elementos}}: acote los filtros para ver el resto.",
   "Clear focus": "Quitar el foco",
   "No dependency to draw": "Ninguna dependencia que dibujar",
   "None of the items these filters match waits for another item, a pull request, a deployment or a person.": "Ninguno de los elementos de estos filtros espera otro elemento, una pull request, un despliegue o una persona.",

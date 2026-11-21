@@ -48,7 +48,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useColorMode } from "@/hooks/useColorMode";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
-import { cn, formatCompactNumber } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/work-item-context";
 import { criticalLeaves, focusChains, shownGraph } from "@/lib/work-item-graph";
 import type {
@@ -60,6 +60,9 @@ import type {
   WorkItemPriority,
   WorkItemStatus,
 } from "@/types";
+
+/** The most nodes GET /work-items/graph draws; past it the answer is truncated. */
+const GRAPH_NODE_CAP = 500;
 
 /** The list's status badge tokens (WorkItemsTab STATUS_BADGE). */
 const STATUS_TONE: Record<WorkItemStatus, string> = {
@@ -146,7 +149,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
       data-focus={data.focus}
       data-critical={data.critical || undefined}
       className={cn(
-        "flex h-full w-full flex-col gap-1 rounded-md border border-elevation-subtle border-s-4 bg-elevation-default px-2.5 py-2 text-start shadow-sm",
+        "flex h-full w-full flex-col gap-1 rounded-md border border-elevation-subtle border-s-4 bg-elevation-default px-2.5 py-2 text-start",
         STATUS_BAR[node.status],
         node.outside_filter && "border-dashed",
         data.critical && "border-feedback-error-primary",
@@ -186,7 +189,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
         )}
       </div>
       {node.ask && (
-        <div className="min-w-0 rounded-sm bg-feedback-alert-primary/10 px-1.5 py-1 content-caption text-default-primary" data-testid="work-item-graph-ask">
+        <div className="min-w-0 rounded-sm bg-warning-box px-1.5 py-1 content-caption text-default-primary" data-testid="work-item-graph-ask">
           <p className="truncate" title={node.ask.question}>{node.ask.question}</p>
           <p className="truncate text-default-secondary">
             {node.ask.options.map((option) => `${option.key}. ${option.label}`).join("  ")}
@@ -250,7 +253,7 @@ function PersonNode({ data }: NodeProps<Node<GraphNodeData>>) {
       data-testid="work-item-graph-person"
       data-focus={data.focus}
       className={cn(
-        "flex h-full w-full items-center gap-2 rounded-full border border-feedback-alert-primary bg-feedback-alert-primary/10 px-3",
+        "flex h-full w-full items-center gap-2 rounded-full border border-feedback-alert-primary bg-warning-box px-3",
         focusClass(data.focus),
         BUTTON_ROLE_FOCUS_RING,
       )}
@@ -402,7 +405,7 @@ export function WorkItemGraphView({
         )}
         {graph.truncated && (
           <span className="text-feedback-warning-tertiary" data-testid="work-item-graph-truncated">
-            {t_i18n("The first {count} items are drawn: narrow the filters to see the rest.", { count: formatCompactNumber(500) })}
+            {t_i18n("Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.", { count: GRAPH_NODE_CAP })}
           </span>
         )}
         {selected && (

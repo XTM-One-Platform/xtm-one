@@ -21,11 +21,11 @@ interface ViewToggleProps {
 }
 
 /** Labels are catalog keys. @i18n-keys */
-const OPTIONS: { key: ViewMode; label: string; icon: React.ElementType }[] = [
+const OPTIONS = [
   { key: "grid", label: "Grid view", icon: LayoutGrid },
   { key: "list", label: "List view", icon: List },
   { key: "graph", label: "Graph view", icon: Network },
-];
+] as const;
 
 const DEFAULT_MODES: readonly ViewMode[] = ["grid", "list"];
 
