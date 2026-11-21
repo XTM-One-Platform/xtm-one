@@ -155,7 +155,9 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
   // A new row starts with an empty name; the save drops a row whose name stays empty.
   const addStatusRow = () => set({ status_map: { ...sync.status_map, "": "done" } });
   // ServiceNow: the record type is one of the three tables the sync writes to; a
-  // table stored before that rule (or through the API) is shown invalid inline.
+  // table stored before that rule (or through the API) is shown invalid inline,
+  // named in the trigger and in the error (#923 UX round 4 B1). No Clear control:
+  // an empty value is the default, and the trigger keeps the column width (B2).
   const serviceNow = provider === "servicenow";
   const recordTypeRefused = !isSupportedRecordType(provider, sync.record_type);
 
@@ -206,7 +208,7 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
           }
           error={
             recordTypeRefused
-              ? t_i18n("The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.")
+              ? t_i18n("The table {value} has no ticketing sync. Pick incident, change_request or problem.", { value: sync.record_type.trim() })
               : undefined
           }
           info={info("record_type")}
@@ -219,9 +221,12 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
               aria-invalid={recordTypeRefused || undefined}
               searchable="auto"
               sort={false}
-              clearable
               placeholder={t_i18n("Default: {value}", { value: defaults.record_type })}
-              options={SERVICENOW_RECORD_TYPES.map((value) => ({ value, label: value, description: t_i18n(SERVICENOW_RECORD_TYPE_MEANINGS[value]) }))}
+              options={[
+                ...SERVICENOW_RECORD_TYPES.map((value) => ({ value, label: value, description: t_i18n(SERVICENOW_RECORD_TYPE_MEANINGS[value]) })),
+                // The stored refused table stays visible in the trigger, never pickable again.
+                ...(recordTypeRefused ? [{ value: sync.record_type, label: sync.record_type, disabled: true }] : []),
+              ]}
               value={sync.record_type}
               onValueChange={(value) => set({ record_type: value })}
             />

@@ -20017,7 +20017,7 @@
   "Restricted asset": "Restricted asset",
   "Techniques in attack order": "Techniques in attack order",
   "Recorded how it would be exploited": "Recorded how it would be exploited",
-  "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.": "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.",
+  "The table {value} has no ticketing sync. Pick incident, change_request or problem.": "The table {value} has no ticketing sync. Pick incident, change_request or problem.",
   "Break-fix: restore something that is broken.": "Break-fix: restore something that is broken.",
   "Planned change: a fix rolled out under change control.": "Planned change: a fix rolled out under change control.",
   "Root cause: the cause behind repeated incidents.": "Root cause: the cause behind repeated incidents."

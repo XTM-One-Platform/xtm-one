@@ -42,6 +42,15 @@ describe("OrganizationTicketingSync form standard", () => {
     expect(SOURCE).toMatch(/aria-invalid=\{recordTypeRefused \|\| undefined\}/);
   });
 
+  it("names the refused table in the error and keeps it in the trigger as a disabled option", () => {
+    expect(SOURCE).toMatch(/t_i18n\("The table \{value\} has no ticketing sync\. Pick incident, change_request or problem\.", \{ value: sync\.record_type\.trim\(\) \}\)/);
+    expect(SOURCE).toMatch(/recordTypeRefused \? \[\{ value: sync\.record_type, label: sync\.record_type, disabled: true \}\]/);
+  });
+
+  it("keeps the record type select at the column width: no Clear control outside the trigger", () => {
+    expect(SOURCE).not.toMatch(/\bclearable\b/);
+  });
+
   it("explains the status mapping with an info bubble", () => {
     expect(SOURCE).toMatch(/<InfoTip content=\{[\s\S]*?info\("status_map"\)/);
   });
