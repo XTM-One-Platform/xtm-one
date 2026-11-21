@@ -175,13 +175,16 @@ function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
 }
 
 /**
- * The secondary line of an Issues cell (UX round 3 B1 on #931): one line, cut with an ellipsis,
- * the full sentence in the tooltip, so every row keeps the two-line height at
+ * The secondary line of an Issues cell (UX round 3 B1 and round 4 B1 on #931): one line, cut
+ * with an ellipsis, the full sentence in the tooltip, so every row keeps the two-line height at
  * 1080 and 1728 (Design standards s.3). The shared TruncatedText draws the design-system
- * tooltip only when the line is cut; the 10 rem cap gives the auto-layout cell a width (13.ak).
+ * tooltip only when the line is cut. The cap gives the auto-layout cell a width (13.ak) and
+ * follows the table's own container: 9 rem below 72 rem, so the Fixed version and State
+ * columns hold about 168 px each and the table fits a 1080 screen without a sideways scroll;
+ * 18 rem from 72 rem, so the sentence reads whole on a wide screen when it fits.
  */
 function IssueCaption({ text }: { text: string }) {
-  return <TruncatedText text={text} className="max-w-[10rem] content-compact text-default-secondary" />;
+  return <TruncatedText text={text} className="max-w-[9rem] @6xl:max-w-[18rem] content-compact text-default-secondary" />;
 }
 
 export default function CtemCaseDetail() {
