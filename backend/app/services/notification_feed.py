@@ -175,41 +175,20 @@ def present_run(run: Any) -> NotificationItem | None:
     )
 
 
-def waiting_deadline_text(deadline: object) -> str | None:
-    """``Answer by Fri 21 Nov, 09:00 UTC`` for an ask deadline; ``None`` when absent or unreadable."""
-    if not isinstance(deadline, str) or not deadline.strip():
-        return None
-    try:
-        when = datetime.fromisoformat(deadline.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=UTC)
-    when = when.astimezone(UTC)
-    return f"Answer by {when:%a} {when.day} {when:%b}, {when:%H:%M} UTC"
-
-
 def present_waiting_work_item(item: dict[str, Any]) -> NotificationItem | None:
-    """A work item waiting for the person as a bell entry, the item open in
-    Operations (where the decision card answers it).
-
-    The entry says what the decision card says, nothing else (#776): the ask's
-    question as the title (``Decision needed: <title>`` without one) and its
-    deadline as the summary. ``blocked_reason`` is never shown here.
-    """
+    """A work item waiting for the person as a bell entry: its question, the
+    item open in Tasks > Work Items (where the decision card answers it)."""
     item_id = item.get("id")
     if not _is_uuid(item_id):
         return None
-    question = summary_preview(item.get("question"))
-    title = question or f"Decision needed: {item.get('title') or 'work item'}"
     return NotificationItem(
         id=f"{WORK_ITEM_WAITING_PREFIX}{item_id}",
         kind="work_item_waiting",
         created_at=str(item.get("since") or ""),
-        route=f"/operations/work-items?item={item_id}",
-        title=title,
-        subtitle="Waiting for your decision",
-        summary=waiting_deadline_text(item.get("deadline")),
+        route=f"/tasks/work-items/{item_id}",
+        title=str(item.get("title") or "Work item"),
+        subtitle="Work item",
+        summary=summary_preview(item.get("question")) or None,
     )
 
 
