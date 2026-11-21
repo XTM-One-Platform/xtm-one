@@ -48,8 +48,8 @@ One row per `(organization_id, recorded_by, dedupe_key)`.
 | `observed_at`, `first_seen_at`, `last_seen_at`, `seen_count` | The latest sighting, the first, the latest time seen, how many sightings |
 | `evidence` | JSON, at most 8,000 characters: the facts and a `link` |
 | `dedupe_key` | Default `<path>:<provider>:<external id>`, else `<path>:<subject kind>:<lower-cased ref>`, hashed past 200 characters; a caller may set its own |
-| `state` | `new` (written here), then `confirmed`, `to_validate`, `discarded`, `watchlist` (reconcile and scope gate), `case_opened` (cases from signals; a check constraint requires `case_id`) |
-| `decision` | JSON written by the reconcile and scope gate: inputs, outcome, reason |
+| `state` | `new` (written here), then `confirmed`, `to_validate`, `discarded`, `watchlist` (reconcile and scope gate, `ctem-scope-gate.md`), `case_opened` (cases from signals; a check constraint requires `case_id`) |
+| `decision` | JSON written by the reconcile and scope gate: inputs, outcome, reason (`ctem-scope-gate.md` section 6) |
 | `case_id` | The case the signal opened or joined (FK to `ctem_cases`, set null on delete) |
 | `recorded_via`, `recorded_by` | `api`, `tool` or `listener`; the user id, or `system` for a listener |
 

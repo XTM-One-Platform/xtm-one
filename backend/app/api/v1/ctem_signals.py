@@ -19,11 +19,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
 from app.models.user import User
+from app.services import ctem_scope_gate_store as scope_gate
 from app.services import ctem_signals as signals
 from app.services.organizations import get_primary
 
@@ -140,8 +141,40 @@ async def record_ctem_signal(
         )
     except signals.SignalError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await scope_gate.evaluate_after_record(db, row, created=created)
     await db.commit()
     return {"created": created, "signal": signals.to_dict(row)}
+
+
+@router.post("/evaluate")
+async def evaluate_ctem_signals(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Run the reconcile and scope gate again on every open signal (after a policy change); counts by state."""
+    _require_xtm_one()
+    counts = await scope_gate.evaluate_open(db, organization_id=await _organization_id(db), user_id=admin.id)
+    await db.commit()
+    return {"evaluated": sum(counts.values()), "counts": counts}
+
+
+@router.post("/{signal_id}/evaluate")
+async def evaluate_ctem_signal(
+    signal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Run the reconcile and scope gate again on one signal, OpenCRQ risk scenarios read for it; 409 once it opened a case."""
+    _require_xtm_one()
+    row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such signal")
+    scenarios = await scope_gate.read_scenarios(db, user_id=admin.id)
+    decision = await scope_gate.evaluate(db, row, scenarios=scenarios)
+    if decision is None:
+        raise HTTPException(status_code=409, detail="This signal opened a case: the case step owns it now")
+    await db.commit()
+    return signals.to_dict(row)
 
 
 @router.get("/{signal_id}")

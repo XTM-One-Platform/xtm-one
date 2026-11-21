@@ -1,0 +1,474 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""CTEM reconcile and scope gate (#847): the two gates between a signal and a case.
+
+Pure rules, no I/O and no model call: :func:`decide` takes a signal, the
+other signals on the same subject, the organization profile and, when
+OpenCRQ was read, the risk scenarios that hold each supporting asset, and
+answers one :class:`Decision`. ``services/ctem_scope_gate_store.py`` reads
+those inputs and writes the decision on the signal. The design, the
+severity formula and the decision record are ``dev-docs/ctem-scope-gate.md``.
+
+1. **Reconcile** ("does the signal survive the cross-check?"): the subject
+   is resolved to profile assets, asset groups, crown jewels or tech stack
+   products on stable keys (hostname, IP, URL host, cloud id, external id);
+   the lenses that saw the same subject are counted. A verdict that
+   contradicts it (``not_exposed``, ``not_affected``, ``false_positive``,
+   ``fixed``) or a policy exclusion discards it; a subject nothing resolves
+   is ``to_validate``; else it is confirmed and goes to the scope gate.
+2. **Scope gate** ("does it land where it matters?"): the subject's
+   criticality is the highest of its assets, the crown jewels they run and
+   the risk scenarios that hold them; at or above
+   ``scope_min_criticality`` the outcome is ``case`` (state ``confirmed``,
+   the case step opens it), below it ``watchlist`` with the threshold named.
+   The policy thresholds (CVSS, EPSS, KEV, internet exposure, crown jewel
+   criticality, accepted risks, a required risk scenario) route to the
+   watchlist with their reason.
+3. **Severity** P1 to P3 = scope criticality points + lens confidence
+   points (section 4 of the dev-doc), with its SLA from the policy.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Any
+
+from app.services.organization_context import AssetEntry, OrganizationProfile
+
+#: Version of the decision record; a reader keys on it.
+DECISION_VERSION = 1
+#: Outcomes, and the signal state each one writes.
+OUTCOME_STATE: dict[str, str] = {
+    "case": "confirmed",
+    "watchlist": "watchlist",
+    "to_validate": "to_validate",
+    "discarded": "discarded",
+}
+#: The scope scale (the crown-jewel criticality of the profile), lowest first.
+CRITICALITY_ORDER: tuple[str, ...] = ("low", "medium", "high", "critical")
+#: Profile asset criticality (OpenAEV's scale) read on the scope scale.
+ASSET_TO_SCOPE: dict[str, str] = {"low": "low", "medium": "medium", "high": "high", "very_high": "critical"}
+#: Points of the severity formula.
+CRITICALITY_POINTS: dict[str, int] = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+CONFIDENCE_POINTS: dict[str, int] = {"low": 0, "medium": 1, "high": 2}
+#: A verdict in a signal's evidence that says the exposure is not there.
+CONTRADICTING_VERDICTS: frozenset[str] = frozenset({"not_exposed", "not_affected", "false_positive", "fixed"})
+#: A verdict that proves it (a test reached it).
+PROVING_VERDICTS: frozenset[str] = frozenset({"exposed", "exploitable", "proven"})
+#: The paths whose signal is a proof by itself.
+PROVING_PATHS: frozenset[str] = frozenset({"proven_exploitable", "mitigation_regression"})
+#: The criticality a risk scenario gives an asset it holds when OpenCRQ names none.
+SCENARIO_DEFAULT_CRITICALITY = "high"
+
+_CVE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class SignalFacts:
+    """What the gate reads of the signal being decided."""
+
+    trigger_path: str
+    lens: str
+    subject_kind: str
+    subject_ref: str
+    source_provider: str = ""
+    source_external_id: str | None = None
+    subject_label: str | None = None
+    evidence: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RelatedSignal:
+    """Another signal of the organization on the same subject (any recorder)."""
+
+    id: str
+    lens: str
+    source_provider: str
+    verdict: str = ""
+
+
+@dataclass(frozen=True)
+class RiskScenarioRef:
+    """A risk scenario that holds a supporting asset (read from OpenCRQ)."""
+
+    id: str
+    name: str
+    criticality: str = SCENARIO_DEFAULT_CRITICALITY
+
+
+@dataclass
+class ScenarioIndex:
+    """Risk scenarios by supporting asset id and by lower-cased asset name.
+
+    ``connected`` says whether OpenCRQ was read for this decision; ``note``
+    says why not when it was not (the decision record names it).
+    """
+
+    connected: bool = False
+    note: str = "OpenCRQ not read"
+    by_asset_id: dict[str, list[RiskScenarioRef]] = field(default_factory=dict)
+    by_asset_name: dict[str, list[RiskScenarioRef]] = field(default_factory=dict)
+
+    def for_keys(self, asset_ids: list[str], names: list[str]) -> list[RiskScenarioRef]:
+        found: dict[str, RiskScenarioRef] = {}
+        for key in asset_ids:
+            for ref in self.by_asset_id.get(key, []):
+                found.setdefault(ref.id, ref)
+        for name in names:
+            for ref in self.by_asset_name.get(name, []):
+                found.setdefault(ref.id, ref)
+        return list(found.values())
+
+
+@dataclass
+class Decision:
+    """The outcome of both gates, with the record stored on the signal."""
+
+    outcome: str
+    reason: str
+    severity: str | None
+    record: dict[str, Any]
+
+    @property
+    def state(self) -> str:
+        return OUTCOME_STATE[self.outcome]
+
+
+# ── keys ───────────────────────────────────────────────────────────────
+
+
+def stable_key(value: object) -> str:
+    """A hostname, IP, URL or name reduced to the key two lenses share.
+
+    ``https://Shop.Example.com:443/login`` and ``shop.example.com.`` give
+    ``shop.example.com``; a cloud id or external id is only lower-cased.
+    """
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if "://" in text:
+        text = text.split("://", 1)[1]
+        text = text.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+        text = text.rsplit("@", 1)[-1]
+        if text.count(":") == 1:
+            text = text.split(":", 1)[0]
+    return text.rstrip(".")
+
+
+def _rank(criticality: str) -> int:
+    return CRITICALITY_ORDER.index(criticality) if criticality in CRITICALITY_ORDER else -1
+
+
+def _highest(values: list[str]) -> str:
+    known = [v for v in values if v in CRITICALITY_ORDER]
+    return max(known, key=_rank) if known else ""
+
+
+def _evidence_list(evidence: dict[str, Any], *names: str) -> list[str]:
+    out: list[str] = []
+    for name in names:
+        value = evidence.get(name)
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, list):
+            out.extend(str(v).strip() for v in value if str(v or "").strip())
+    return out
+
+
+def _float(value: object) -> float | None:
+    try:
+        return None if value is None or value == "" else float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _verdict(evidence: dict[str, Any]) -> str:
+    return str(evidence.get("verdict") or "").strip().lower()
+
+
+# ── reconcile ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class Resolution:
+    """What the subject resolved to in the profile."""
+
+    assets: list[AssetEntry] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
+    crown_jewels: list[str] = field(default_factory=list)
+    products: list[str] = field(default_factory=list)
+    keys: list[str] = field(default_factory=list)
+
+    @property
+    def resolved(self) -> bool:
+        return bool(self.assets or self.groups or self.crown_jewels or self.products)
+
+
+def _product_matches(product: str, ref: str) -> bool:
+    """A tech stack product named in a software reference (a name, or a CPE's product part)."""
+    p, r = product.strip().lower(), ref.strip().lower()
+    if not p or not r:
+        return False
+    if r.startswith("cpe:"):
+        parts = r.split(":")
+        r = parts[4] if len(parts) > 4 else r
+    return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
+
+
+def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
+    """Resolve the subject (and the assets its evidence names) to the profile."""
+    out = Resolution()
+    keys = [stable_key(facts.subject_ref), stable_key(facts.source_external_id)]
+    keys += [stable_key(v) for v in _evidence_list(facts.evidence, "assets", "asset", "hostnames", "urls", "ips")]
+    keys = [k for k in dict.fromkeys(keys) if k]
+    out.keys = keys
+    wanted = set(keys)
+    for asset in profile.assets_exposure:
+        if {stable_key(asset.name), stable_key(asset.external_id)} & wanted - {""}:
+            out.assets.append(asset)
+    for group in profile.asset_groups:
+        if {stable_key(group.name), stable_key(group.external_id)} & wanted - {""}:
+            out.groups.append(group.name)
+    for jewel in profile.crown_jewels:
+        if {stable_key(jewel.name), stable_key(jewel.opencrq_asset_id)} & wanted - {""}:
+            out.crown_jewels.append(jewel.name)
+    software = _evidence_list(facts.evidence, "software", "products", "cpe")
+    if facts.subject_kind == "software":
+        software.insert(0, facts.subject_ref)
+    for entry in profile.tech_stack:
+        if any(
+            _product_matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software
+        ):
+            out.products.append(entry.product)
+    if out.products:
+        names = {p.lower() for p in out.products}
+        for asset in profile.assets_exposure:
+            if asset not in out.assets and names & {t.lower() for t in asset.tech_stack}:
+                out.assets.append(asset)
+    return out
+
+
+def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, list[str], bool]:
+    lenses = sorted({facts.lens, *(r.lens for r in related if r.verdict not in CONTRADICTING_VERDICTS)})
+    proven = (
+        facts.trigger_path in PROVING_PATHS
+        or _verdict(facts.evidence) in PROVING_VERDICTS
+        or any(r.verdict in PROVING_VERDICTS for r in related)
+        or bool(facts.evidence.get("kev"))
+    )
+    if proven or len(lenses) >= 3:
+        return "high", lenses, proven
+    return ("medium" if len(lenses) == 2 else "low"), lenses, proven
+
+
+# ── scope gate ─────────────────────────────────────────────────────────
+
+
+def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
+    """``(name, criticality)`` of the crown jewels the resolved assets and groups run."""
+    names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
+    names |= {g.lower() for g in resolution.groups}
+    named = {n.lower() for n in resolution.crown_jewels}
+    out: list[tuple[str, str]] = []
+    for jewel in profile.crown_jewels:
+        if jewel.name.lower() in named or names & {n.lower() for n in jewel.asset_names}:
+            out.append((jewel.name, jewel.criticality))
+    return out
+
+
+def _cve_ids(facts: SignalFacts) -> list[str]:
+    found = _CVE.findall(
+        " ".join([facts.subject_ref, facts.subject_label or "", *_evidence_list(facts.evidence, "cve", "cves")])
+    )
+    return list(dict.fromkeys(c.upper() for c in found))
+
+
+def _accepted(
+    profile: OrganizationProfile, facts: SignalFacts, resolution: Resolution, today: date
+) -> dict[str, Any] | None:
+    subjects = {facts.subject_ref.strip().lower(), *(c.lower() for c in _cve_ids(facts))}
+    subjects |= {p.lower() for p in resolution.products}
+    places = {a.name.lower() for a in resolution.assets} | {g.lower() for g in resolution.groups}
+    places |= {a.group.lower() for a in resolution.assets if a.group}
+    for risk in profile.prioritization_policy.accepted_risks:
+        if risk.expires_on < today or risk.subject.strip().lower() not in subjects:
+            continue
+        if risk.scope and risk.scope.strip().lower() not in places:
+            continue
+        return {
+            "subject": risk.subject,
+            "scope": risk.scope,
+            "owner": risk.owner,
+            "expires_on": risk.expires_on.isoformat(),
+        }
+    return None
+
+
+def _excluded(profile: OrganizationProfile, resolution: Resolution) -> dict[str, Any] | None:
+    products = {p.lower() for p in resolution.products}
+    groups = {g.lower() for g in resolution.groups} | {a.group.lower() for a in resolution.assets if a.group}
+    tags = {t.lower() for a in resolution.assets for t in a.tags}
+    for rule in profile.prioritization_policy.exclusions:
+        value = rule.value.strip().lower()
+        pool = {"product": products, "asset_group": groups, "tag": tags}[rule.kind]
+        if value in pool:
+            return {"kind": rule.kind, "value": rule.value, "reason": rule.reason}
+    return None
+
+
+def severity_of(criticality: str, confidence: str) -> str:
+    """P1 at 5 points or more, P2 at 4, P3 below (dev-doc section 4)."""
+    points = CRITICALITY_POINTS.get(criticality, 1) + CONFIDENCE_POINTS.get(confidence, 0)
+    return "P1" if points >= 5 else "P2" if points == 4 else "P3"
+
+
+def decide(
+    profile: OrganizationProfile,
+    facts: SignalFacts,
+    *,
+    related: list[RelatedSignal] | None = None,
+    scenarios: ScenarioIndex | None = None,
+    today: date,
+) -> Decision:
+    """Both gates on one signal; the record lists every input it read."""
+    related = list(related or [])
+    scenarios = scenarios or ScenarioIndex()
+    policy = profile.prioritization_policy
+    resolution = resolve(profile, facts)
+    confidence, lenses, proven = _confidence(facts, related)
+    contradicted = [r.id for r in related if r.verdict in CONTRADICTING_VERDICTS]
+    if _verdict(facts.evidence) in CONTRADICTING_VERDICTS:
+        contradicted.insert(0, "this signal")
+    record: dict[str, Any] = {
+        "version": DECISION_VERSION,
+        "inputs": {
+            "trigger_path": facts.trigger_path,
+            "lens": facts.lens,
+            "subject": {"kind": facts.subject_kind, "ref": facts.subject_ref},
+            "source_provider": facts.source_provider,
+            "verdict": _verdict(facts.evidence) or None,
+            "cves": _cve_ids(facts),
+            "related_signals": [
+                {"id": r.id, "lens": r.lens, "provider": r.source_provider, "verdict": r.verdict or None}
+                for r in related
+            ],
+        },
+        "reconcile": {
+            "keys": resolution.keys,
+            "assets": [a.name for a in resolution.assets],
+            "asset_groups": resolution.groups,
+            "crown_jewels_named": resolution.crown_jewels,
+            "tech_stack": resolution.products,
+            "lenses": lenses,
+            "confidence": confidence,
+            "proven": proven,
+            "contradicted_by": contradicted,
+        },
+        "scope": None,
+        "policy_checks": [],
+        "severity": None,
+        "sla_hours": None,
+    }
+
+    def done(outcome: str, reason: str, severity: str | None = None) -> Decision:
+        record["outcome"], record["state"], record["reason"] = outcome, OUTCOME_STATE[outcome], reason
+        return Decision(outcome=outcome, reason=reason, severity=severity, record=record)
+
+    if contradicted:
+        return done("discarded", f"contradicted by {', '.join(contradicted)}")
+    exclusion = _excluded(profile, resolution)
+    if exclusion:
+        record["policy_checks"].append({"rule": "exclusion", **exclusion, "passed": False})
+        return done("discarded", f"excluded by the policy ({exclusion['kind']} {exclusion['value']})")
+    if not resolution.resolved:
+        return done("to_validate", "subject not resolved to an asset, a crown jewel or the tech stack")
+
+    # Scope criticality: assets, their crown jewels, the risk scenarios holding them.
+    sources: list[dict[str, str]] = []
+    for asset in resolution.assets:
+        if asset.criticality in ASSET_TO_SCOPE:
+            sources.append({"from": "asset", "name": asset.name, "criticality": ASSET_TO_SCOPE[asset.criticality]})
+    jewels = _jewels_of(profile, resolution)
+    sources += [{"from": "crown_jewel", "name": n, "criticality": c} for n, c in jewels]
+    jewel_ids = [
+        j.opencrq_asset_id for j in profile.crown_jewels if j.name in {n for n, _ in jewels} and j.opencrq_asset_id
+    ]
+    asset_ids = [a.external_id for a in resolution.assets if a.source == "opencrq" and a.external_id] + jewel_ids
+    held = scenarios.for_keys(asset_ids, [a.name.lower() for a in resolution.assets]) if scenarios.connected else []
+    sources += [{"from": "risk_scenario", "name": s.name, "criticality": s.criticality} for s in held]
+    criticality = _highest([s["criticality"] for s in sources])
+    threshold = policy.scope_min_criticality
+    record["scope"] = {
+        "criticality": criticality or None,
+        "sources": sources,
+        "threshold": threshold,
+        "require_risk_scenario": policy.require_risk_scenario,
+        "opencrq": {"connected": scenarios.connected, "note": "" if scenarios.connected else scenarios.note},
+        "risk_scenarios": [{"id": s.id, "name": s.name} for s in held],
+    }
+    checks: list[dict[str, Any]] = record["policy_checks"]
+
+    accepted = _accepted(profile, facts, resolution, today)
+    if accepted:
+        checks.append({"rule": "accepted_risk", **accepted, "passed": False})
+        return done("watchlist", f"accepted risk owned by {accepted['owner']} until {accepted['expires_on']}")
+
+    # CVE-bearing signals: the score thresholds of the policy.
+    kev = bool(facts.evidence.get("kev"))
+    cvss, epss = _float(facts.evidence.get("cvss")), _float(facts.evidence.get("epss"))
+    if record["inputs"]["cves"] or facts.subject_kind == "vulnerability":
+        if kev and policy.kev_always_in:
+            checks.append({"rule": "kev_always_in", "value": True, "passed": True})
+        else:
+            for rule, value, minimum in (("cvss_min", cvss, policy.cvss_min), ("epss_min", epss, policy.epss_min)):
+                if minimum is None:
+                    continue
+                if value is None:
+                    checks.append(
+                        {"rule": rule, "value": None, "threshold": minimum, "passed": True, "note": "not scored"}
+                    )
+                    continue
+                passed = value >= minimum
+                checks.append({"rule": rule, "value": value, "threshold": minimum, "passed": passed})
+                if not passed:
+                    return done("watchlist", f"{rule.split('_')[0].upper()} {value} below the policy minimum {minimum}")
+    if policy.internet_exposure_required:
+        facing = any(a.internet_facing == "yes" for a in resolution.assets) or facts.lens == "outside"
+        checks.append({"rule": "internet_exposure_required", "value": facing, "passed": facing})
+        if not facing:
+            return done("watchlist", "no internet-facing asset, and the policy requires internet exposure")
+    if policy.min_crown_jewel_criticality:
+        best = _highest([c for _, c in jewels])
+        passed = _rank(best) >= _rank(policy.min_crown_jewel_criticality)
+        checks.append(
+            {
+                "rule": "min_crown_jewel_criticality",
+                "value": best or None,
+                "threshold": policy.min_crown_jewel_criticality,
+                "passed": passed,
+            }
+        )
+        if not passed:
+            return done("watchlist", f"no crown jewel at or above {policy.min_crown_jewel_criticality}")
+    if policy.require_risk_scenario:
+        passed = bool(held)
+        checks.append({"rule": "require_risk_scenario", "value": len(held), "passed": passed})
+        if not passed:
+            why = (
+                "no risk scenario holds the subject"
+                if scenarios.connected
+                else f"a risk scenario is required ({scenarios.note})"
+            )
+            return done("watchlist", why)
+    if not criticality:
+        return done("watchlist", f"criticality unknown, below the scope threshold {threshold}")
+    if _rank(criticality) < _rank(threshold):
+        return done("watchlist", f"criticality {criticality} below the scope threshold {threshold}")
+    severity = severity_of(criticality, confidence)
+    record["severity"] = severity
+    record["sla_hours"] = getattr(policy.sla_hours, severity.lower())
+    return done(
+        "case", f"in scope: criticality {criticality} at or above {threshold}, {confidence} confidence", severity
+    )
