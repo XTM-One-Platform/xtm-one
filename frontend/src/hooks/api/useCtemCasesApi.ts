@@ -99,10 +99,27 @@ interface CtemCaseEvent {
   evidence: string | null;
 }
 
+/**
+ * How the CVE would be exploited on one supporting asset of the risk scenario
+ * (CTEM-24, #936), read from OpenCRQ by the triage step. `asset` is
+ * "Restricted" and `risk_scenario_id` null for a viewer who does not read OpenCRQ.
+ */
+export interface CtemCaseExploitation {
+  asset: string;
+  risk_scenario_id: string | null;
+  exposure: "internet_facing" | "internal" | "unknown";
+  /** ATT&CK technique ids in attack order. */
+  techniques: string[];
+  reading: string;
+  at: string | null;
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
+  /** Absent on an API older than #936. */
+  exploitation?: CtemCaseExploitation[];
 }
 
 export interface CtemCaseList {
@@ -132,8 +149,6 @@ export interface CtemCaseBulkResult {
 export interface CtemRecomputeResult {
   applied: boolean;
   missing?: string[];
-  /** Issues kept out of every case: the declared tech stack version is outside their ranges (CTEM-11). */
-  not_affected?: number;
   [key: string]: unknown;
 }
 
