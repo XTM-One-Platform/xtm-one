@@ -4,7 +4,7 @@
 // Asserted on roles, text and test ids (src/no-class-name-assertions.test.ts).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { HealthSection } from "@/pages/settings/HealthSection";
@@ -136,6 +136,60 @@ describe("HealthSection read view", () => {
     expect(within(screen.getByTestId("settings.health.group.alerts")).getByTestId("settings.health.alert-emails")).toBeInTheDocument();
     // The section title is the tab's; the first block no longer repeats it as a header.
     expect(screen.queryByRole("heading", { name: "Platform Health" })).toBeNull();
+  });
+
+  it("moves the bar's current entry with the scroll, over the four groups (UX r1 B1)", async () => {
+    // The bar observes the groups it jumps to: drawn before the settings load, it observed the
+    // pets section alone and "Status and scope" stayed current whatever the reader scrolled to.
+    const observers: { callback: IntersectionObserverCallback; targets: Element[] }[] = [];
+    class ScrollObserver {
+      readonly targets: Element[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        observers.push({ callback, targets: this.targets });
+      }
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", ScrollObserver);
+    try {
+      renderSection();
+      await screen.findByTestId("health.analysis");
+      const observer = observers.find((o) => o.targets.length > 1);
+      if (!observer) throw new Error("the bar observes no section");
+      expect(observer.targets.map((el) => el.id)).toEqual([
+        "health-settings-status",
+        "health-settings-spend",
+        "health-settings-checks",
+        "health-settings-alerts",
+        "health-settings-pets",
+      ]);
+      const bar = screen.getByRole("navigation", { name: "On this page" });
+      const current = () => within(bar).getByRole("link", { current: "location" }).textContent;
+      expect(current()).toBe("Status and scope");
+      for (const [id, title] of [
+        ["health-settings-spend", "Spend limits"],
+        ["health-settings-checks", "Health checks"],
+        ["health-settings-alerts", "Alerts"],
+        ["health-settings-status", "Status and scope"],
+      ]) {
+        const target = document.getElementById(id);
+        act(() => {
+          observer.callback(
+            [{ target, isIntersecting: true, boundingClientRect: { top: 150 } } as unknown as IntersectionObserverEntry],
+            observer as unknown as IntersectionObserver,
+          );
+        });
+        expect(current()).toBe(title);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("shows the alert emails block, off by default", async () => {

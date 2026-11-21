@@ -523,7 +523,10 @@ export function HealthSection() {
           )}
         </div>
       </div>
-      <SectionIndex entries={entries} orientation="horizontal" />
+      {/* Mounted with the groups (#798 UX r1 B1): the index collects its targets once, on mount,
+          so a bar drawn before the settings load would observe the pets section alone and its
+          current entry would never follow the scroll. */}
+      {shown && <SectionIndex entries={entries} orientation="horizontal" />}
       {shown &&
         GROUPS.map((group) => (
           <section
