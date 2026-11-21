@@ -4584,6 +4584,11 @@ async def run_agent_chat(
 
             if offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=user_id, agent_id=str(agent.id)))
+            # The CTEM signal tools (#826): the CTEM agents that see a trigger first.
+            from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
+
+            if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+                composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
             # The onboarding interview of the profile (#11224): an
             # administrator's turn only, the profile API being admin-only.
             if _caller_admin:

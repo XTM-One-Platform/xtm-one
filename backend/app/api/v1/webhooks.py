@@ -199,6 +199,7 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
+from app.services import ctem_signal_listeners
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services import github_token_installations
 from app.services.assignment_engine import (
@@ -3352,6 +3353,9 @@ async def receive_provider_webhook(provider: str, request: Request) -> dict:
             "headers": _safe_webhook_headers(request),
             "method": request.method,
         }
+        # A change in exposure the CTEM loop listens to, whether or not the
+        # event reaches an assignment (#826).
+        await ctem_signal_listeners.note_event(provider, event_key, payload)
 
         installation_id = _event_installation_id(provider, payload)
         if (
@@ -4008,6 +4012,8 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            # A change in exposure the CTEM loop listens to (#826).
+            await ctem_signal_listeners.note_event(provider, event_key, payload)
 
             # ── 5. Find agents bound to this integration ───────────────────
             agents = await _agents_bound_to_integration(
@@ -4621,6 +4627,9 @@ async def receive_assignment_webhook(
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            # A change in exposure the CTEM loop listens to (#826): a provisioned
+            # OpenCTI trigger delivers here; the signal is recorded once per object.
+            await ctem_signal_listeners.note_event(provider, event_key, payload)
 
             # ── 6. Resolve the specific assignment ────────────────────────────
             wf_result = await db.execute(

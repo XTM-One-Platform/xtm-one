@@ -6124,6 +6124,11 @@ async def execute_assignment_run(
 
             if run.user_id and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=str(run.user_id), agent_id=str(agent.id)))
+            # --- CTEM signal tools (#826): the CTEM agents that see a trigger first ---
+            from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
+
+            if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+                composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
 
             # --- Organization profile write group (opt-in, administrators only, #11594) ---
             # The run acts as ``effective_user_id``; the group is wired only
