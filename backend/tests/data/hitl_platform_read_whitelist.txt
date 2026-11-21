@@ -123,11 +123,14 @@ opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
 opencti:get_opencti_top_related
 opencti:list_opencti_capabilities
+opencti:list_opencti_connector_states
 opencti:list_opencti_drafts
 opencti:list_opencti_entities
+opencti:list_opencti_feed_states
 opencti:list_opencti_labels
 opencti:list_opencti_markings
 opencti:list_opencti_observables
+opencti:list_opencti_playbook_states
 opencti:list_opencti_relationships
 opencti:list_opencti_subtypes
 opencti:query_opencti_activity
