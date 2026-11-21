@@ -739,13 +739,14 @@ async def _ensure_trigger(
     return created
 
 
-#: The notifier body of a PIR playbook delivery. The digest OpenCTI sends for a
-#: playbook carries the flagged entity (``data[0].instance``, its PIR information
+#: The notifier body of a PIR playbook delivery. A playbook digest has no trigger
+#: (``notification``); each item names the playbook node (``notification_id``)
+#: and carries the flagged entity (``data[0].instance``, its PIR information
 #: in the OpenCTI extension) and the in-pir event's message; the message enters
 #: the id so a second PIR, a new score or a re-entry is a new change, and a
 #: redelivery of the same one is dropped by the receiver.
 PIR_WEBHOOK_TEMPLATE = (
-    '{"notification_id": "<%= notification.id %>:<%= data[0].instance.id %>:'
+    '{"notification_id": "<%= data[0].notification_id %>:<%= data[0].instance.id %>:'
     '<%= data[0].type %>:<%= data[0].message %>", '
     '"type": "<%= data[0].type %>", "message": "<%= data[0].message %>", '
     '"xtm_source": "pir_playbook", '
