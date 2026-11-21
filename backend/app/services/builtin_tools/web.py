@@ -741,8 +741,8 @@ def build_browser_tool(
             # judge a screen on: said in the line that outlives the pixels.
             summary_line += (
                 f" This capture may be blank: one colour covers over {BLANK_DOMINANT_SHARE:.0%} of it and it holds "
-                "no saturated colour. Check the page has painted (wait, scroll, or capture the viewport) before "
-                "relying on it."
+                "no saturated colour and almost no text or line. Check the page has painted (wait, scroll, or "
+                "capture the viewport) before relying on it."
             )
         # Persist whenever there is a DB session AND something to scope the
         # file by: an owner (``user_id``) OR a conversation / assignment run.
