@@ -91,6 +91,7 @@ from app.api.v1.integration_catalog import (
     missing_required_extra_fields,
     missing_required_extra_fields_message,
     newly_missing_required_extra_fields,
+    normalize_typed_extra_fields,
     platform_base_url,
     registration_editable_extra_fields,
     supported_auth_types,
@@ -2092,7 +2093,10 @@ async def create_integration(
     # ── Auto-fill from admin OAuth defaults when user doesn't supply creds ──
     effective_client_id = body.client_id
     effective_client_secret = body.client_secret
-    effective_extra = body.extra_config
+    # A domain list sent as a JSON list is stored one entry per line, as the form stores it.
+    effective_extra = (
+        normalize_typed_extra_fields(body.provider, body.extra_config) if body.extra_config else body.extra_config
+    )
     uses_admin_oauth_credentials = False
 
     # The one rule, shared with the agent builder's create_integration.
@@ -2854,7 +2858,9 @@ async def update_integration(
     if typed_credential_untested(integration.auth_type, api_key=body.api_key, client_secret=body.client_secret):
         integration.connection_test_status = CONNECTION_TEST_UNTESTED
     if body.extra_config is not None:
-        new_extra = await merged_extra_config(db, integration, body.extra_config)
+        new_extra = await merged_extra_config(
+            db, integration, normalize_typed_extra_fields(integration.provider, body.extra_config)
+        )
         _refuse_newly_missing_required_extra(integration, new_extra)
         if invalid := invalid_extra_fields(integration.provider, body.extra_config):
             raise HTTPException(status_code=422, detail=" ".join(invalid))

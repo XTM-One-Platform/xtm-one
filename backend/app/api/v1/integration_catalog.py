@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
@@ -239,8 +240,8 @@ def invalid_extra_fields(provider: str, extra: dict | None) -> list[str]:
     """The problems of *extra*'s typed values for *provider*, one sentence each.
 
     Read from the catalog's ``extra_field_inputs``: a ``domains`` field holds
-    domain names only (a leading ``@`` and a trailing dot are tolerated, as the
-    provider reads them), an ``integer`` field a whole number within its
+    domain names only, as text (one per line) or a JSON list (a leading ``@``
+    and a trailing dot are tolerated, as the provider reads them), an ``integer`` field a whole number within its
     ``minimum`` and ``maximum``. A blank value is not judged: the default
     applies. The create and update routes answer 422 with these sentences.
     """
@@ -250,15 +251,18 @@ def invalid_extra_fields(provider: str, extra: dict | None) -> list[str]:
     problems: list[str] = []
     for key, spec in specs.items():
         raw = values.get(key)
-        text = "" if raw is None else str(raw).strip()
+        # A domain list may arrive as a JSON list; it is judged entry by entry,
+        # never as the text of the list.
+        listed = _listed_entries(raw)
+        text = "\n".join(listed) if listed is not None else ("" if raw is None else str(raw).strip())
         if not text:
             continue
+        if listed is not None and spec.get("kind") != "domains":
+            problems.append(f"'{key}' takes one value, not a list.")
+            continue
         if spec.get("kind") == "domains":
-            bad = [
-                item
-                for item in re.split(r"[\s,;]+", text)
-                if item and not _DOMAIN_NAME.match(item.lower().lstrip("@").rstrip("."))
-            ]
+            entries = listed if listed is not None else re.split(r"[\s,;]+", text)
+            bad = [item for item in entries if item and not _DOMAIN_NAME.match(item.lower().lstrip("@").rstrip("."))]
             if bad:
                 problems.append(f"'{key}' holds values that are not domain names: {', '.join(bad[:5])}.")
         elif spec.get("kind") == "integer":
@@ -270,6 +274,30 @@ def invalid_extra_fields(provider: str, extra: dict | None) -> list[str]:
             if number is None or (low is not None and number < low) or (high is not None and number > high):
                 problems.append(f"'{key}' is a whole number from {low} to {high}.")
     return problems
+
+
+def _listed_entries(value: object) -> list[str] | None:
+    """The trimmed, non-empty entries of a JSON list value; ``None`` when *value* is no list."""
+    if not isinstance(value, (list, tuple)):
+        return None
+    return [str(item).strip() for item in value if item is not None and str(item).strip()]
+
+
+def normalize_typed_extra_fields(provider: str, extra: dict[str, Any]) -> dict[str, Any]:
+    """*extra* with each ``domains`` field given as a JSON list stored as text.
+
+    The form stores a domain list one entry per line and reads it back that
+    way; a list an API or tool caller sends is stored in the same form, so the
+    form shows its entries and every reader sees one shape. Other values are
+    left as given; a dict without such a list is returned as is.
+    """
+    entry: Any = PROVIDER_CATALOG.get(provider) or {}
+    specs: dict[str, dict[str, Any]] = entry.get("extra_field_inputs") or {}
+    normalized: dict[str, Any] = {}
+    for key, value in extra.items():
+        listed = _listed_entries(value) if (specs.get(key) or {}).get("kind") == "domains" else None
+        normalized[key] = "\n".join(listed) if listed is not None else value
+    return normalized if normalized != extra else extra
 
 
 def newly_missing_required_extra_fields(

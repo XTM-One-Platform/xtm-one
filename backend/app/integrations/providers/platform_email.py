@@ -11,14 +11,18 @@ configured, and only an administrator creates it, company-managed
 
 Its configuration (``extra_config``) holds the guards:
 
-* ``allowed_domains``: the recipient domains, one per line; an address outside
-  them is refused, and an empty list refuses every recipient.
+* ``allowed_domains``: the recipient domains, one per line (a JSON list reads
+  the same); an address outside them is refused, and an empty list refuses
+  every recipient.
 * ``daily_limit``: the emails one agent may send in a UTC day (default 50).
 
 Every send, refused by the SMTP server or accepted, writes one audit log entry
 (entity ``platform_email``) naming the agent, the recipients and the subject;
-the daily limit is counted from those entries. ``send_email`` asks for approval
-on every call (``always_ask``).
+the daily limit is counted from those entries. ``send_email`` declares
+``always_ask``: for an agent set to ask, every call pauses whatever the
+whitelist or a standing approval says; an agent not set to ask, or approvals
+suspended for the platform (``tool_approvals_enabled`` off), pauses nothing
+(``hitl_whitelist.build_approval_gate``).
 """
 
 from __future__ import annotations
@@ -53,6 +57,20 @@ _ADDRESS = re.compile(r"^[^@\s,;<>\"]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)$")
 _TOKEN_SEPARATOR = "||"  # noqa: S105 - a field separator, not a secret
 
 
+def domain_entries(value: Any) -> list[str]:
+    """The entries of a stored domain list, trimmed, empty ones dropped.
+
+    The form stores one domain per line; an API or tool caller may send a JSON
+    list instead (``["example.com"]``). Both read the same, so a list is never
+    stringified into one entry that matches no address.
+    """
+    if isinstance(value, (list, tuple, set, frozenset)):
+        items = [str(item) for item in value if item is not None]
+    else:
+        items = re.split(r"[\s,;]+", "" if value is None else str(value))
+    return [item.strip() for item in items if item and item.strip()]
+
+
 def platform_email_token(extra: dict[str, Any] | None) -> str:
     """The compound credential the builder reads: ``domains||limit``.
 
@@ -60,7 +78,7 @@ def platform_email_token(extra: dict[str, Any] | None) -> str:
     travel to the tool builder in this token (the MITRE ATT&CK shape).
     """
     extra = extra if isinstance(extra, dict) else {}
-    domains = str(extra.get("allowed_domains") or "").strip()
+    domains = "\n".join(domain_entries(extra.get("allowed_domains")))
     limit = str(extra.get("daily_limit") or "").strip()
     return f"{domains}{_TOKEN_SEPARATOR}{limit}"
 
@@ -304,7 +322,7 @@ def build_tools(
                 "layout: to, cc, bcc (comma-separated), reply_to, a subject and a Markdown body; attach "
                 "files of this conversation with attachment_file_ids (20 MB together). Only the recipient "
                 "domains the integration allows are accepted, within a daily limit per agent; every send "
-                "asks for approval and is audited."
+                "is audited and asks for approval where tool approvals are in use."
             ),
             input_schema={
                 "type": "object",

@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.integration_catalog import PROVIDER_CATALOG, invalid_extra_fields
+from app.api.v1.integration_catalog import PROVIDER_CATALOG, invalid_extra_fields, normalize_typed_extra_fields
 from app.api.v1.integrations import _require_catalog_creation_rules
 from app.integrations.connectivity import ProbeContext
 from app.integrations.providers import platform_email
@@ -129,6 +129,113 @@ def test_the_token_round_trips_domains_and_limit():
     assert parse_token(platform_email_token({})) == (frozenset(), platform_email.DEFAULT_DAILY_LIMIT)
     assert parse_token("a.com||99999")[1] == platform_email.MAX_DAILY_LIMIT
     assert parse_token("__dummy__") == (frozenset(), platform_email.DEFAULT_DAILY_LIMIT)
+
+
+def test_a_json_list_of_domains_reads_like_the_text_form() -> None:
+    """Retest of #761: a list saved through the API refused every address of its domain."""
+    listed = parse_token(
+        platform_email_token({"allowed_domains": ["filigran.io", " @Test.org. ", ""], "daily_limit": "5"})
+    )
+    assert listed == (frozenset({"filigran.io", "test.org"}), 5)
+    assert listed == parse_token(
+        platform_email_token({"allowed_domains": "filigran.io\n@Test.org.", "daily_limit": "5"})
+    )
+    assert refused_addresses(["ceo-office@filigran.io"], listed[0]) == []
+
+
+async def test_a_send_to_a_listed_domain_goes_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent = _Sent()
+    _, executor = _tool(
+        platform_email_token({"allowed_domains": ["filigran.io"], "daily_limit": 5}), sent, monkeypatch=monkeypatch
+    )
+    content = await _call(executor, to="ceo-office@filigran.io", subject="Hello", body="Hi")
+    assert content.startswith("Email sent to 1 recipient"), content
+    assert len(sent.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("extra", "problems"),
+    [
+        ({"allowed_domains": ["filigran.io", "example.com"]}, 0),
+        ({"allowed_domains": []}, 0),
+        ({"allowed_domains": ["bob@example.com", "filigran.io"]}, 1),
+        ({"daily_limit": [5]}, 1),
+    ],
+)
+def test_a_list_value_is_judged_entry_by_entry(extra: dict[str, Any], problems: int) -> None:
+    assert len(invalid_extra_fields("platform_email", extra)) == problems
+
+
+def test_a_domain_list_is_stored_one_entry_per_line() -> None:
+    stored = normalize_typed_extra_fields(
+        "platform_email", {"allowed_domains": ["filigran.io", " example.com "], "daily_limit": "5"}
+    )
+    assert stored == {"allowed_domains": "filigran.io\nexample.com", "daily_limit": "5"}
+    text = {"allowed_domains": "filigran.io", "daily_limit": "5"}
+    assert normalize_typed_extra_fields("platform_email", text) is text
+    assert normalize_typed_extra_fields("rss", {"feed_urls": ["a"]}) == {"feed_urls": ["a"]}
+
+
+def _gated_send(
+    monkeypatch: pytest.MonkeyPatch, *, hitl_enabled: bool, platform_on: bool = True, whitelisted: bool = False
+) -> tuple[Any, ToolCall]:
+    """The approval gate a run installs around the platform email tool."""
+    from app.services import hitl_whitelist
+    from app.tools.base import CompositeToolExecutor
+
+    defs, executor = _tool("filigran.io||5", _Sent(), monkeypatch=monkeypatch)
+    composite = CompositeToolExecutor()
+    composite.add_tools(defs, executor)
+
+    from app.tools.approval import OUTCOME_APPROVALS_DISABLED
+
+    async def _kill(*_a: Any, **_k: Any) -> str | None:
+        return None if platform_on else OUTCOME_APPROVALS_DISABLED
+
+    async def _empty(*_a: Any, **_k: Any) -> frozenset[str]:
+        return frozenset()
+
+    async def _whitelist(_db: Any, *, reach: Any = None) -> frozenset[str]:
+        return frozenset({"send_email"}) if whitelisted else frozenset()
+
+    async def _no_exceptions(*_a: Any, **_k: Any) -> dict[str, str]:
+        return {}
+
+    # The kill switch is read on both paths: alone for an agent that does not
+    # ask, through the suppression resolver for one that asks.
+    monkeypatch.setattr(hitl_whitelist, "resolve_platform_kill_switch", _kill)
+    monkeypatch.setattr(hitl_whitelist, "resolve_gate_suppression", _kill)
+    monkeypatch.setattr(hitl_whitelist, "resolve_whitelist", _whitelist)
+    monkeypatch.setattr(hitl_whitelist, "resolve_vetoed", _empty)
+    monkeypatch.setattr(hitl_whitelist, "resolve_exempt_sources", _empty)
+    monkeypatch.setattr("app.services.tool_approval_service.list_active_exceptions", _no_exceptions)
+    db: Any = object()
+    gate = asyncio.run(hitl_whitelist.build_approval_gate(db, composite, user_id="u1", hitl_enabled=hitl_enabled))
+    call = ToolCall(id="s1", name="send_email", arguments={"to": "a@filigran.io", "subject": "s", "body": "b"})
+    return gate, call
+
+
+@pytest.mark.parametrize("whitelisted", [False, True], ids=["not-whitelisted", "whitelisted"])
+def test_a_send_pauses_for_an_agent_that_asks_whatever_the_whitelist(
+    monkeypatch: pytest.MonkeyPatch, whitelisted: bool
+) -> None:
+    """Retest of #761: the approval clause holds for an agent set to ask."""
+    from app.tools.base import HumanInputRequestedError
+
+    gate, call = _gated_send(monkeypatch, hitl_enabled=True, whitelisted=whitelisted)
+    with pytest.raises(HumanInputRequestedError):
+        gate(call)
+
+
+@pytest.mark.parametrize(
+    ("hitl_enabled", "platform_on"), [(False, True), (True, False)], ids=["agent-does-not-ask", "approvals-suspended"]
+)
+def test_a_send_runs_where_approvals_are_not_in_use(
+    monkeypatch: pytest.MonkeyPatch, hitl_enabled: bool, platform_on: bool
+) -> None:
+    """Approval is opt-in and the platform switch is absolute (``build_approval_gate``), always_ask included."""
+    gate, call = _gated_send(monkeypatch, hitl_enabled=hitl_enabled, platform_on=platform_on)
+    assert gate(call) is None
 
 
 def test_refused_addresses_are_exact_domain_matches():

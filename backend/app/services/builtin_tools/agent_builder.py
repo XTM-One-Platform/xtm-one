@@ -12238,6 +12238,12 @@ def build_agent_builder_tool(
 
             if missing := missing_required_extra_fields(provider, extra_obj):
                 return f"Integration not created - {missing_required_extra_fields_message(provider, missing)}"
+            # The REST create's typed-value rule (a domain list, a bounded number).
+            from app.api.v1.integration_catalog import invalid_extra_fields, normalize_typed_extra_fields
+
+            if invalid := invalid_extra_fields(provider, extra_obj):
+                return f"Integration not created - {' '.join(invalid)}"
+            extra_obj = normalize_typed_extra_fields(provider, extra_obj)
         if problem := secret_fields_problem(
             {"client_secret": client_secret, "api_key": api_key},
             {"client_id": client_id, "extra_config": extra_obj},
@@ -12591,10 +12597,13 @@ def build_agent_builder_tool(
             if extra_obj is not None:
                 from fastapi import HTTPException
 
+                from app.api.v1.integration_catalog import normalize_typed_extra_fields
                 from app.api.v1.integrations import merged_extra_config
 
                 try:
-                    new_extra = await merged_extra_config(_db, integ, extra_obj)
+                    new_extra = await merged_extra_config(
+                        _db, integ, normalize_typed_extra_fields(integ.provider, extra_obj)
+                    )
                 except HTTPException as exc:
                     return f"Integration not updated - {exc.detail}"
                 # The REST update's rule (#9898): a write that would leave a
@@ -12603,6 +12612,11 @@ def build_agent_builder_tool(
 
                 if problem := required_extra_refusal(integ, new_extra):
                     return f"Integration not updated - {problem}"
+                # The REST update's typed-value rule (a domain list, a bounded number).
+                from app.api.v1.integration_catalog import invalid_extra_fields
+
+                if invalid := invalid_extra_fields(integ.provider, extra_obj):
+                    return f"Integration not updated - {' '.join(invalid)}"
             # Blank strings mean "leave unchanged" here.
             repoints = (new_extra is not None and new_extra != stored_extra) or any(
                 value and value != getattr(integ, field)
