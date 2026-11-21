@@ -501,7 +501,13 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
   reopened once (Redis `SET NX` on `health:alert:<finding id>`, 7 days), then the
   digest once per UTC day (mark `alert:digest` in `health_schedule_marks`). Nothing
   is sent with SMTP unset or no recipient; a failed send never fails the pass.
-- Removed from the UI: cron editors, durations, dry run, name. Kept as constants or env.
+- Layout (S13, `pages/settings/HealthSection.tsx` `GROUPS`): one section, a horizontal
+  `SectionIndex` ("On this page") jumping to four groups, anchors `#health-settings-<key>`:
+  status (enable and name, scope), spend (budget, analysis), checks (schedule, signals,
+  module thresholds, durations, dry run), alerts (alert emails), then the companion pets.
+  A block names itself; a group adds no second header. Pinned by `HealthSection.test.tsx`.
+  The schedule, durations, dry-run and name blocks stay (the S0 plan to drop them was not
+  applied: they are admin settings the fleet reads).
 
 ## 8. Health page
 
@@ -514,6 +520,35 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 - History: 7, 30, 90 days.
 - Access: an admin sees all; an agent manager sees the findings of what they manage
   (`cycle_access` rule).
+
+### 8.1 Access matrix (S13, pinned by `backend/tests/test_health_role_mode_matrix_postgres.py`)
+
+The same in Copilot, XTM One and `ai_disabled`; only the module cards of an administrator
+follow the mode (section 1.1). A group manager does not manage its members' agents: it
+reads Platform Health as a plain user unless it owns or is shared an agent.
+
+| `GET /api/v1/health...` | Administrator | Group manager, agent owner, plain user |
+|---|---|---|
+| `/name`, `/me/opt-out`, `/pets` | 200 | 200 |
+| `/overview`, `/findings` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
+| `/history` | 200 | 200, empty |
+| `/improvements`, `/cycles`, `/signals` without a target | 200 | 404 (one managed target only, `?agent_id=` or `?target_type=&target_id=`) |
+| `/settings`, `/budget`, `/schedules`, `/analysis`, `/me/companion`, `/me/activity` | 200 | 403 |
+
+`POST /analysis/{module}/run` is refused `ai_disabled` (403, `detail.code`) while AI is off.
+
+### 8.2 Link guard (S13, pinned by `frontend/src/lib/health-link-guard.test.ts`)
+
+Visible <=> openable on the frontend: `/health` and `/settings` are `AdminRoute`s, so every
+Health surface that links there is drawn for administrators only, either by its own
+`isAdmin` gate (companion, profile companion card, Dashboard critical findings notice) or
+because only an administrator page renders it (Overview, Signals, analysis panel, the
+Settings blocks). The surfaces open to everyone (agent improvement row, flow panel,
+improvements inbox, cycles list, profile opt-out) link only to the target's own page
+(`/agents/<id>`, `/flows/<id>/builder`, `/assignments/<id>`), which has no route guard and
+checks access itself. The guard lists every Health file with its audience: a new file fails
+until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
+its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).
 
 ## 9. Platform email (SMTP) integration
 

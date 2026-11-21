@@ -26,6 +26,7 @@ import { Check, Compass, Gauge, Pencil, Power, Radar, Sparkles } from "lucide-re
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SECTION_BAR_ANCHOR_CLASS, SectionIndex } from "@/components/ui/section-index";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -41,7 +42,8 @@ import { useAgents } from "@/hooks/api/useAgentApi";
 import { useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
-import { defaultHealthName } from "@/lib/health";
+import { defaultHealthName, healthRefusalCodeKey } from "@/lib/health";
+import { cn } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSettings, HealthBudgetCaps, HealthSettings } from "@/types";
 
@@ -118,7 +120,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
     <div>
       <BlockTitle
         icon={Power}
-        title={t_i18n("Platform Health")}
+        title={t_i18n("Status")}
         hint={t_i18n("While it is off, Platform Health reads nothing and starts no work.")}
       />
       <div className="space-y-4 rounded-sm bg-elevation-default p-3.5">
@@ -277,6 +279,11 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
   const { count: n, money: usd } = useNumberFormat("USD");
   const fieldId = useId();
   const { data: budget } = useHealthBudget();
+  const healthName = useHealthName();
+  // The refusal read by its code in the reader's language (#794: the server's English line showed
+  // untranslated in fr); the server's message only for a code this build does not know.
+  const refusalKey = healthRefusalCodeKey(budget?.refusal);
+  const refusalText = refusalKey ? t_i18n(refusalKey, { name: healthName }) : budget?.refusal_message;
   const setCap = (key: keyof HealthBudgetCaps, raw: string) => {
     const value = raw.trim() === "" ? null : TOKEN_CAPS.has(key) ? Number(raw) : raw.trim();
     onChange({ ...draft, budget: { ...draft.budget, [key]: value } });
@@ -328,7 +335,7 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
               tokens: n(budget.used.tokens),
               cost: usd(Number(budget.used.cost_usd)),
             })}
-            {budget.refusal_message && <span className="ml-1 text-feedback-warning-primary">{budget.refusal_message}</span>}
+            {budget.refusal && refusalText && <span className="ml-1 text-feedback-warning-primary">{refusalText}</span>}
           </div>
         )}
       </div>
@@ -418,22 +425,35 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
   );
 }
 
-/** The blocks of the page, in order. Later levels append theirs here. */
-const BLOCKS: ((props: BlockProps) => React.JSX.Element | null)[] = [
-  EnableBlock,
-  ScopeBlock,
-  BudgetBlock,
-  AnalysisBlock,
-  // Level 8 (#8261): schedule, signal thresholds, durations, dry-run.
-  ScheduleBlock,
-  SignalsBlock,
-  // #101 S10c: the OpenCTI and OpenAEV check thresholds (XTM One modes only).
-  ModuleThresholdsBlock,
+type Block = (props: BlockProps) => React.JSX.Element | null;
+
+/** The English title of each entry of the section bar, the companion pets last. @i18n-keys */
+const GROUP_TITLES = {
+  status: "Status and scope",
+  spend: "Spend limits",
+  checks: "Health checks",
+  alerts: "Alerts",
+  pets: "Companion pets",
+} as const;
+
+type GroupKey = Exclude<keyof typeof GROUP_TITLES, "pets">;
+
+/**
+ * The blocks of the section in four groups (#101 S13, one compact section): what it is and
+ * watches, what it may spend, what it checks and when, whom it tells. The bar above jumps to
+ * each group; a block names itself, the group adds no second header.
+ */
+const GROUPS: readonly { key: GroupKey; blocks: readonly Block[] }[] = [
+  { key: "status", blocks: [EnableBlock, ScopeBlock] },
+  { key: "spend", blocks: [BudgetBlock, AnalysisBlock] },
+  // Level 8 (#8261) schedule, signals, durations and dry-run; #101 S10c module thresholds.
+  { key: "checks", blocks: [ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
   // #101 S12b: the alert emails, off by default.
-  AlertEmailsBlock,
-  DurationsBlock,
-  DryRunBlock,
+  { key: "alerts", blocks: [AlertEmailsBlock] },
 ];
+
+/** The anchor of a group: readable in a shared link (#health-settings-alerts), one section per page. */
+const anchor = (key: string) => `health-settings-${key}`;
 
 export function HealthSection() {
   const { t_i18n } = useFormatter();
@@ -444,6 +464,7 @@ export function HealthSection() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const editing = draft !== null;
   const shown = draft ?? stored;
+  const entries = (Object.keys(GROUP_TITLES) as (keyof typeof GROUP_TITLES)[]).map((key) => ({ id: anchor(key), title: GROUP_TITLES[key] }));
   const valid =
     !!draft &&
     CAP_KEYS.every((key) => capValid(key, draft.budget[key])) &&
@@ -502,10 +523,28 @@ export function HealthSection() {
           )}
         </div>
       </div>
+      {/* Mounted with the groups (#798 UX r1 B1): the index collects its targets once, on mount,
+          so a bar drawn before the settings load would observe the pets section alone and its
+          current entry would never follow the scroll. */}
+      {shown && <SectionIndex entries={entries} orientation="horizontal" />}
       {shown &&
-        BLOCKS.map((Block, index) => <Block key={index} draft={shown} editing={editing} onChange={setDraft} />)}
+        GROUPS.map((group) => (
+          <section
+            key={group.key}
+            id={anchor(group.key)}
+            aria-label={t_i18n(GROUP_TITLES[group.key])}
+            className={cn("space-y-5", SECTION_BAR_ANCHOR_CLASS)}
+            data-testid={`settings.health.group.${group.key}`}
+          >
+            {group.blocks.map((Block, index) => (
+              <Block key={index} draft={shown} editing={editing} onChange={setDraft} />
+            ))}
+          </section>
+        ))}
       {/* Saved by its own actions, not by the draft above. */}
-      <HealthPetLibrary />
+      <section id={anchor("pets")} aria-label={t_i18n(GROUP_TITLES.pets)} className={SECTION_BAR_ANCHOR_CLASS}>
+        <HealthPetLibrary />
+      </section>
     </div>
   );
 }
