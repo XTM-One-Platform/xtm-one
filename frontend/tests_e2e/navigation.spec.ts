@@ -184,10 +184,10 @@ test.describe('Smoke — Navigation', () => {
   });
 
   test('should navigate to the Users page', async ({ page }) => {
-    await page.goto('/users-and-groups/users');
-    await expect(page).toHaveURL('/users-and-groups/users');
+    await page.goto('/users-and-groups');
+    await expect(page).toHaveURL('/users-and-groups');
     // A page of the Users and groups family (#9301 N3b): the family's h1, then
-    // one tab row whose Groups tab opens /groups under the same header. The
+    // one tab row whose Groups tab opens /users-and-groups/groups under the same header. The
     // DetailTabs trigger wraps a router Link but carries the tab role.
     await expect(page.getByRole('heading', { name: 'Users and groups', level: 1 })).toBeVisible();
     await page.getByRole('tab', { name: 'Groups', exact: true }).click();
