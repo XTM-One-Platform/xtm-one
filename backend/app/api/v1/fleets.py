@@ -124,6 +124,7 @@ from app.api.v1.schemas.fleet import (
     FleetGraphNode,
     FleetGraphResponse,
     FleetHealthResponse,
+    FleetHealthStartsResponse,
     FleetHierarchyNode,
     FleetInstructionsPositionRequest,
     FleetLivePrerequisite,
@@ -191,6 +192,7 @@ from app.services.fleet_doc_on_create import (
 from app.services.fleet_flow import build_fleet_flow
 from app.services.fleet_runs import fleet_cost
 from app.services.fleet_views import (
+    HealthFleetStarts,
     build_fleet_graph,
     build_fleet_health,
     case_runs,
@@ -311,6 +313,19 @@ async def _host_workspace(db: AsyncSession, user: User, workspace_id: str, *, co
     return workspace
 
 
+def _health_starts(starts: HealthFleetStarts | None) -> FleetHealthStartsResponse | None:
+    """The Platform Health fleet's starts line (#974); ``None`` on every other fleet."""
+    if starts is None:
+        return None
+    return FleetHealthStartsResponse(
+        events=starts.events,
+        schedules=starts.schedules,
+        next_run_at=_iso(starts.next_run_at),
+        modules=list(starts.modules),
+        settings_route=starts.settings_route,
+    )
+
+
 async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group_ids: list[str] | None = None):
     if user_group_ids is None:
         user_group_ids = await get_user_group_ids(db, user.id)
@@ -405,6 +420,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
                 fleet_paused=facts[f.id].automations.fleet_paused,
             ),
             last_run_at=_iso(facts[f.id].last_run_at),
+            health_starts=_health_starts(facts[f.id].health_starts),
             created_at=f.created_at.isoformat() if f.created_at else "",
             updated_at=f.updated_at.isoformat() if f.updated_at else "",
         )

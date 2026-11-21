@@ -19,15 +19,18 @@ from app.models.agent import Agent
 from app.models.fleet import Fleet
 from app.services.fleet_views import (
     HEALTH_FLEET_AUTOMATION,
+    HEALTH_SETTINGS_ROUTE,
     AutomationCounts,
     automation_counts,
     fleet_automation_counts,
     fleet_automation_state,
     health_fleet_counts,
+    health_fleet_starts,
     opt_in_state,
 )
 from app.services.fleets import ensure_fleet_health_check
 from app.services.health.read_only import HEALTH_FLEET_SLUG
+from app.services.health.settings import HealthSettings
 
 
 def _health_fleet() -> Fleet:
@@ -94,6 +97,29 @@ def test_other_fleets_keep_the_assignment_count() -> None:
     on: list[tuple[str | None, bool, str, bool, str | None]] = [("desk", False, "Daily triage", True, None)]
     assert opt_in_state(automation_counts(on, builtin_fleet=False)) == "on"
     assert opt_in_state(AutomationCounts()) == "not_set_up"
+
+
+def test_the_starts_line_reads_the_settings_schedules_and_signals() -> None:
+    from datetime import UTC, datetime
+
+    now = datetime(2026, 11, 21, 20, 0, tzinfo=UTC)
+    starts = health_fleet_starts(HealthSettings(), xtm_one=True, registered=["opencti", "openaev", "opencti"], now=now)
+    assert starts.events is True
+    assert starts.schedules == 4
+    # Memory Steward daily at 02:00 UTC is the soonest.
+    assert starts.next_run_at == datetime(2026, 11, 22, 2, 0, tzinfo=UTC)
+    assert starts.modules == ("xtm_one", "openaev", "opencti")
+    assert starts.settings_route == HEALTH_SETTINGS_ROUTE
+
+
+def test_schedules_off_and_copilot_mode() -> None:
+    settings = HealthSettings()
+    for key in ("memory", "quality", "flows", "digest"):
+        setattr(settings.schedules, f"{key}_enabled", False)
+    for key in ("feedback", "failure", "cost", "model_change"):
+        setattr(settings.signals, f"{key}_enabled", False)
+    starts = health_fleet_starts(settings, xtm_one=False, registered=["opencti"])
+    assert (starts.events, starts.schedules, starts.next_run_at, starts.modules) == (False, 0, None, ())
 
 
 @pytest.mark.asyncio

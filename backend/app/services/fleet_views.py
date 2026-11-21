@@ -816,6 +816,86 @@ async def platform_health_counts(db: AsyncSession) -> AutomationCounts:
     return health_fleet_counts(health_enabled() and await health_active(db))
 
 
+#: The Settings schedules of Platform Health (#974), in the Settings page's order.
+HEALTH_SCHEDULE_KEYS: tuple[str, ...] = ("memory", "quality", "flows", "digest")
+#: The signals that start an investigation of Platform Health (``HealthSignalSettings``).
+HEALTH_SIGNAL_KEYS: tuple[str, ...] = ("feedback", "failure", "cost", "model_change")
+#: Where an administrator switches and schedules Platform Health (the frontend's ``HEALTH_SETTINGS_PATH``).
+HEALTH_SETTINGS_ROUTE = "/settings/automations/health"
+#: The core module Platform Health always covers on an XTM One platform.
+HEALTH_CORE_MODULE = "xtm_one"
+
+
+@dataclass(frozen=True)
+class HealthFleetStarts:
+    """What starts the Platform Health fleet and what it covers (#974): the
+    Settings schedules and signals, never its ``manual`` assignments."""
+
+    #: A signal pass is on: an investigation starts on an event.
+    events: bool = False
+    #: The schedules switched on in Settings > Platform Health.
+    schedules: int = 0
+    #: The soonest next start of those schedules; ``None`` when none is on.
+    next_run_at: datetime | None = None
+    #: The modules it covers: XTM One and every active registered module, XTM One modes only.
+    modules: tuple[str, ...] = ()
+    settings_route: str = HEALTH_SETTINGS_ROUTE
+
+
+def health_fleet_starts(
+    health_settings: object, *, xtm_one: bool, registered: Iterable[str] = (), now: datetime | None = None
+) -> HealthFleetStarts:
+    """Pure: the starts line and modules of the Platform Health fleet from its settings (#974)."""
+    from zoneinfo import ZoneInfo
+
+    from app.core.utils import next_cron_run
+
+    schedules = getattr(health_settings, "schedules", None)
+    signals = getattr(health_settings, "signals", None)
+    on = [key for key in HEALTH_SCHEDULE_KEYS if schedules is not None and getattr(schedules, f"{key}_enabled", False)]
+    tz = None
+    if schedules is not None:
+        try:
+            tz = ZoneInfo(str(getattr(schedules, "timezone", "UTC") or "UTC"))
+        except (KeyError, ValueError):
+            tz = None
+    base = now or datetime.now(UTC)
+    upcoming = [run for key in on if (run := next_cron_run(getattr(schedules, key, None), base, tz=tz)) is not None]
+    events = signals is not None and any(getattr(signals, f"{key}_enabled", False) for key in HEALTH_SIGNAL_KEYS)
+    modules: tuple[str, ...] = ()
+    if xtm_one:
+        modules = (HEALTH_CORE_MODULE, *sorted({m for m in registered if m and m != HEALTH_CORE_MODULE}))
+    return HealthFleetStarts(
+        events=events, schedules=len(on), next_run_at=min(upcoming) if upcoming else None, modules=modules
+    )
+
+
+async def platform_health_starts(db: AsyncSession) -> HealthFleetStarts:
+    """:func:`health_fleet_starts` read from Settings > Platform Health and the module registrations."""
+    from app.core.config import settings as app_settings
+    from app.models.platform_registration import PlatformRegistration
+    from app.services.health.module_analyst import MODULE_PROVIDERS
+    from app.services.health.settings import load_health_settings
+
+    xtm_one = bool(app_settings.is_xtm_one)
+    registered: list[str] = []
+    if xtm_one:
+        registered = [
+            str(identifier)
+            for (identifier,) in (
+                await db.execute(
+                    select(PlatformRegistration.platform_identifier)
+                    .where(
+                        PlatformRegistration.platform_identifier.in_(MODULE_PROVIDERS),
+                        PlatformRegistration.status == "active",
+                    )
+                    .distinct()
+                )
+            ).all()
+        ]
+    return health_fleet_starts(await load_health_settings(db), xtm_one=xtm_one, registered=registered)
+
+
 async def fleet_automation_counts(db: AsyncSession, fleet: Fleet) -> AutomationCounts:
     """The opt-in state of *fleet*'s home members' automations, one query, no run.
 
@@ -991,6 +1071,8 @@ class FleetCardFacts:
     automations: AutomationCounts = field(default_factory=AutomationCounts)
     #: The newest run of a home member the caller may see; ``None`` = never run.
     last_run_at: datetime | None = None
+    #: The Platform Health fleet only (#974): its Settings schedules, signals and modules.
+    health_starts: HealthFleetStarts | None = None
 
 
 async def fleet_card_facts(
@@ -1011,7 +1093,9 @@ async def fleet_card_facts(
     if not fleets:
         return {}
     by_id = {f.id: f for f in fleets}
-    health = await platform_health_counts(db) if any(is_health_fleet(f) for f in fleets) else None
+    has_health = any(is_health_fleet(f) for f in fleets)
+    health = await platform_health_counts(db) if has_health else None
+    health_starts = await platform_health_starts(db) if has_health else None
     homes: dict[uuid.UUID, set[uuid.UUID]] = {f.id: set() for f in fleets}
     for fleet_id, agent_id in (
         await db.execute(
@@ -1025,7 +1109,12 @@ async def fleet_card_facts(
         homes[fleet_id].add(agent_id)
     agent_ids = sorted({a for members in homes.values() for a in members})
     if not agent_ids:
-        return {fid: FleetCardFacts() for fid in by_id}
+        return {
+            fid: FleetCardFacts(automations=health, health_starts=health_starts)
+            if health is not None and is_health_fleet(fleet)
+            else FleetCardFacts()
+            for fid, fleet in by_id.items()
+        }
     rows_by_agent: dict[uuid.UUID, list[tuple[str | None, bool, str, bool, str | None]]] = {}
     for agent_id, slug, builtin, name, on, reason in (
         await db.execute(
@@ -1062,7 +1151,11 @@ async def fleet_card_facts(
                 builtin_fleet=bool(getattr(fleet, "is_builtin", False)),
             )
         runs = [last_by_agent[aid] for aid in members if last_by_agent.get(aid) is not None]
-        out[fid] = FleetCardFacts(automations=counts, last_run_at=max(runs) if runs else None)
+        out[fid] = FleetCardFacts(
+            automations=counts,
+            last_run_at=max(runs) if runs else None,
+            health_starts=health_starts if is_health_fleet(fleet) else None,
+        )
     return out
 
 

@@ -64,9 +64,9 @@ import { Tip } from "@/components/ui/tooltip";
 import { useFleetControl, type Fleet } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
 import type { RoiSummaryItem } from "@/hooks/api/useRoiReportApi";
-import { moduleDisplayName, type FleetStarts } from "@/lib/fleet-card-facts";
+import { cardStartsAndModules, moduleDisplayName, type FleetStarts } from "@/lib/fleet-card-facts";
 import { ROI_COLUMN_HEADERS } from "@/lib/roi-summary";
-import { isEntityShared, timeAgo } from "@/lib/utils";
+import { isEntityShared, timeAgo, timeUntil } from "@/lib/utils";
 
 import { autonomyStatusLabel, effectiveAutonomyLevel } from "./fleet-autonomy";
 import { fleetControlState } from "./fleet-control";
@@ -170,7 +170,7 @@ export function FleetListCard({
   userId,
   selected,
   onToggle,
-  modules,
+  modules: memberModules,
   starts,
   canControl,
   roi,
@@ -197,7 +197,14 @@ export function FleetListCard({
   // The About chip's words (#10457): the level only where it gates an action, never an untrue status.
   const levelLabel = autonomyStatusLabel(level, fleet.gated_action_count, fleet.instructions_position, t_i18n);
   const state = fleetControlState(fleet.automations);
-  const startsLine = useStartsLine(starts);
+  // The Platform Health fleet starts from its Settings schedules and signals, never its manual assignments (#974).
+  const healthStarts = fleet.health_starts ?? null;
+  // Its modules are the ones Platform Health covers (XTM One modes; none in Copilot mode), not its members' bindings.
+  const { starts: shownStarts, modules } = cardStartsAndModules(healthStarts, starts, memberModules);
+  const startsBase = useStartsLine(shownStarts);
+  const startsLine = healthStarts?.next_run_at
+    ? t_i18n("{starts}, next {time}", { starts: startsBase, time: timeUntil(healthStarts.next_run_at, locale) })
+    : startsBase;
   const names = modules.map((m) => moduleDisplayName(m));
   const shownModules = modules.slice(0, modules.length > LOGOS_SHOWN ? LOGOS_SHOWN - 1 : LOGOS_SHOWN);
   const hiddenNames = names.slice(shownModules.length);
@@ -298,6 +305,16 @@ export function FleetListCard({
               <span className="col-span-2 flex min-w-0 items-center gap-1.5" data-testid="fleet-card-starts">
                 <Zap className="h-3 w-3 shrink-0" aria-hidden />
                 <span className="truncate" title={startsLine}>{startsLine}</span>
+                {healthStarts && (
+                  // Its schedules live in Settings > Platform Health, the one place they change (#974).
+                  <Link
+                    to={healthStarts.settings_route}
+                    className="relative z-10 shrink-0 rounded-sm text-accent underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                    data-testid="fleet-card-health-settings"
+                  >
+                    {t_i18n("Platform Health settings")}
+                  </Link>
+                )}
               </span>
               {/* Its own full-width line on every card (UX r1 B1/B2 of #10462): "<position>, by instruction" and the fr
                   status do not fit half a card; the same rows on every card keep the heights equal. */}
@@ -330,7 +347,8 @@ export function FleetListCard({
               aria-label={modules.length ? t_i18n("Modules: {names}", { names: names.join(", ") }) : undefined}
             >
               {modules.length === 0 ? (
-                <span className="content-compact text-default-secondary">{t_i18n("No modules")}</span>
+                // Copilot mode: Platform Health covers no module, so its line stays empty (the row keeps the card heights equal).
+                healthStarts ? null : <span className="content-compact text-default-secondary">{t_i18n("No modules")}</span>
               ) : (
                 <>
                   {shownModules.map((provider, index) => (
@@ -374,7 +392,7 @@ export function FleetListCard({
             </div>
           </CardContent>
       </Card>
-      {canControl && (
+      {canControl && !healthStarts && (
         <div className="absolute bottom-3 right-4 z-10">
           <FleetCardAction fleet={fleet} fleetName={fleet.name} />
         </div>

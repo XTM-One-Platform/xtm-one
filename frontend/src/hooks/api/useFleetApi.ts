@@ -82,8 +82,24 @@ export interface Fleet {
   automations?: FleetAutomations | null;
   /** The newest run of a home member the reader may see; `null` = never run. */
   last_run_at?: string | null;
+  /** The Platform Health fleet only (#974): what starts it and what it covers, from its Settings. */
+  health_starts?: FleetHealthStarts | null;
   created_at: string;
   updated_at: string;
+}
+
+/** What starts the Platform Health fleet (`FleetHealthStartsResponse`, #974): Settings schedules and signals. */
+export interface FleetHealthStarts {
+  /** A signal pass is on: an investigation starts on an event. */
+  events: boolean;
+  /** The schedules switched on in Settings > Platform Health. */
+  schedules: number;
+  /** The soonest next start of those schedules; `null` when none is on. */
+  next_run_at: string | null;
+  /** The modules it covers, XTM One modes only; empty in Copilot mode. */
+  modules: string[];
+  /** Where an administrator switches and schedules it. */
+  settings_route: string;
 }
 
 /** Where a forked fleet came from, as recorded at fork time (`fleets.forked_from`). */

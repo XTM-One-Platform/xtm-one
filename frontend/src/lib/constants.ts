@@ -323,6 +323,8 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   openaev: "OpenAEV",
   opencti: "OpenCTI",
   opencrq: "OpenCRQ",
+  // The core, a module Platform Health covers on an XTM One platform (#974).
+  xtm_one: "XTM One",
   xtm_hub: "XTM Hub",
   intune: "Microsoft Intune",
   sentinel: "Microsoft Sentinel",
@@ -775,6 +777,7 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   openaev: "/logos/openaev.svg",
   opencti: "/logos/opencti.svg",
   opencrq: "/logos/opencrq.svg",
+  xtm_one: "/logos/xtm_one.svg",
   xtm_hub: "/logos/xtm_hub.svg",
   intune: "/logos/intune.svg",
   sentinel: "/logos/sentinel.svg",
