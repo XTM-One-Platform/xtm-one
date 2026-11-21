@@ -8,8 +8,9 @@ import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { renderWithProviders } from "@/testing/providers";
 import { eventStatus, mergeActivity, signalActivity, type ActivityEvent } from "../activity-feed";
 import { ActivityFeed } from "../ActivityFeed";
-import { currentStage, LOOP_STAGES, parseLoopParam, signalLoop } from "./loop-stages";
+import { currentStage, LOOP_STAGES, parseLoopParam, signalLoop, signalsParam } from "./loop-stages";
 import { DecisionReason, decisionSentence } from "./DecisionReason";
+import { SignalCounter } from "./SignalCounter";
 
 const ID = "11111111-2222-3333-4444-555555555555";
 const t = (id: string) => id;
@@ -66,6 +67,29 @@ describe("parseLoopParam", () => {
     expect(parseLoopParam(`case:${ID}`)).toEqual({ kind: "case", id: ID });
     expect(parseLoopParam("signal:../x")).toBeNull();
     expect(parseLoopParam(null)).toBeNull();
+  });
+
+  // CTEM-01-UI: the signals counter opens the signal list, filtered by state.
+  it("reads the signal list in one state or every state, and refuses an unknown state", () => {
+    expect(parseLoopParam(signalsParam("watchlist"))).toEqual({ kind: "signals", state: "watchlist" });
+    expect(parseLoopParam(signalsParam(null))).toEqual({ kind: "signals", state: null });
+    expect(parseLoopParam("signals:bogus")).toBeNull();
+  });
+});
+
+describe("SignalCounter", () => {
+  it("shows every state with its count, zeros included, and opens the state clicked", () => {
+    const onOpen = vi.fn();
+    renderWithProviders(<SignalCounter counts={{ new: 2, to_validate: 1, watchlist: 0, discarded: 3, case_opened: 0, confirmed: 1 }} onOpen={onOpen} />);
+    const counter = screen.getByTestId("ctem-signal-counter");
+    expect(counter.querySelectorAll("[data-state]")).toHaveLength(5);
+    expect(counter.querySelector('[data-state="watchlist"]')?.textContent).toContain("0");
+    fireEvent.click(counter.querySelector('[data-state="to_validate"]') as Element);
+    expect(onOpen).toHaveBeenCalledWith("to_validate");
+    fireEvent.click(screen.getByRole("button", { name: "Open all signals" }));
+    expect(onOpen).toHaveBeenLastCalledWith(null);
+    // All counts every state, confirmed included.
+    expect(screen.getByRole("button", { name: "Open all signals" }).textContent).toContain("7");
   });
 });
 

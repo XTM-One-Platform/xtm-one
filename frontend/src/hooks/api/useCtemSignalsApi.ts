@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, notFoundIsOrdinary } from "@/lib/api";
 import { ctemCasesPollInterval, ctemCasesRetry } from "./useCtemCasesApi";
 
-const CTEM_SIGNAL_STATES = ["new", "confirmed", "to_validate", "discarded", "watchlist", "case_opened"] as const;
+export const CTEM_SIGNAL_STATES = ["new", "confirmed", "to_validate", "discarded", "watchlist", "case_opened"] as const;
 export type CtemSignalState = (typeof CTEM_SIGNAL_STATES)[number];
 type CtemLens = "inside" | "outside" | "world";
 
@@ -78,6 +78,23 @@ export function useRecentCtemSignals(limit = 6) {
     // The stream frame is the accelerator; the slow poll stays the floor and
     // stops after a refused read (#11999), as the cases sections do.
     refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
+    throwOnError: false,
+  });
+}
+
+/**
+ * One page of signals in one state (or every state), for the signal list of
+ * the loop trace (CTEM-01-UI). Same stream key family as the recent read, so a
+ * recorded signal joins the open list without a reload.
+ */
+export function useCtemSignalList(state: CtemSignalState | null, limit = 50, enabled = true) {
+  const query = state ? `&state=${state}` : "";
+  return useQuery<CtemSignalList>({
+    queryKey: ["ctem-signals", "list", state ?? "all", limit],
+    queryFn: () => api.get(`/ctem-signals?limit=${limit}${query}`),
+    enabled,
+    retry: ctemCasesRetry,
+    refetchInterval: (q) => ctemCasesPollInterval(q.state.status, q.state.error),
     throwOnError: false,
   });
 }
