@@ -66,12 +66,15 @@ def test_a_row_without_a_valid_id_is_not_shown():
     assert feed.present_waiting_work_item(_waiting(id="nope")) is None
 
 
-def test_a_waiting_item_stays_unread_until_answered():
+def test_a_waiting_item_stays_unread_until_answered_or_opened() -> None:
     item = feed.present_waiting_work_item(_waiting())
-    assert feed.is_unread(item, read_at=None, dismissed={item.id})
+    assert item is not None
     from datetime import UTC, datetime
 
+    # "Mark all read" never reads a decision still waiting.
     assert feed.is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set())
+    # #901: the recipient who opened or dismissed the entry has read it.
+    assert not feed.is_unread(item, read_at=None, dismissed={item.id})
 
 
 def _patch_sources(monkeypatch, waiting_rows, calls):

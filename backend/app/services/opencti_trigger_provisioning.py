@@ -173,6 +173,14 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
     entity_types = _str_list(raw.get("entity_types"), "entity_types")
     labels = _str_list(raw.get("labels"), "labels")
     from_types = _str_list(raw.get("from_types"), "from_types")
+    # CTEM-08: the target side of a relationship, the relationship type, a CVSS floor.
+    to_types = _str_list(raw.get("to_types"), "to_types")
+    relationship_types = _str_list(raw.get("relationship_types"), "relationship_types")
+    min_cvss = raw.get("min_cvss")
+    if min_cvss is not None and (
+        isinstance(min_cvss, bool) or not isinstance(min_cvss, int | float) or not 0 <= min_cvss <= 10
+    ):
+        raise ProvisionSpecError("provision.min_cvss must be a number from 0 to 10")
     cisa_kev = raw.get("cisa_kev")
     if cisa_kev is not None and not isinstance(cisa_kev, bool):
         raise ProvisionSpecError("provision.cisa_kev must be true or false")
@@ -204,12 +212,15 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         and min_score is None
         and not context_fields
         and not from_types
+        and not to_types
+        and not relationship_types
+        and min_cvss is None
         and cisa_kev is None
         and min_epss is None
     ):
         raise ProvisionSpecError(
-            "provision needs at least one of entity_types, labels, min_score, from_types, cisa_kev, "
-            "min_epss_score or organization_context: "
+            "provision needs at least one of entity_types, labels, min_score, from_types, to_types, "
+            "relationship_types, min_cvss, cisa_kev, min_epss_score or organization_context: "
             "a trigger on every change of the platform is never provisioned"
         )
     fleet = str(raw.get("fleet") or "").strip() or "Fleet"
@@ -221,6 +232,9 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "labels": labels,
         "min_score": min_score,
         "from_types": from_types,
+        "to_types": to_types,
+        "relationship_types": relationship_types,
+        "min_cvss": float(min_cvss) if min_cvss is not None else None,
         "cisa_kev": cisa_kev,
         "min_epss_score": float(min_epss) if min_epss is not None else None,
         "event_types": event_types,
@@ -376,6 +390,19 @@ def trigger_filters(
         # A relationship or sighting whose source is of these types (stix-testers
         # ``testRelationFromTypes``: ``sighting_of_ref`` for a sighting).
         filters.append({"key": ["fromTypes"], "values": spec["from_types"], "operator": "eq", "mode": "or"})
+    if spec.get("to_types"):
+        # A relationship whose target is of these types (``testRelationToTypes``:
+        # ``target_type`` of the relationship, parent types included).
+        filters.append({"key": ["toTypes"], "values": spec["to_types"], "operator": "eq", "mode": "or"})
+    if spec.get("relationship_types"):
+        # The relationship type (``has``, ``targets``...): OpenCTI's internal type of
+        # a relationship is its relationship type, so ``entity_type`` matches it.
+        filters.append({"key": ["entity_type"], "values": spec["relationship_types"], "operator": "eq", "mode": "or"})
+    if spec.get("min_cvss") is not None:
+        # Read on the delivered object (``testCvssScore``): a Vulnerability, never a relationship.
+        filters.append(
+            {"key": ["x_opencti_cvss_base_score"], "values": [str(spec["min_cvss"])], "operator": "gte", "mode": "or"}
+        )
     # KEV and EPSS are alternatives ("KEV or EPSS jump"): one OR group.
     vuln_signals: list[dict[str, Any]] = []
     if spec.get("cisa_kev") is not None:

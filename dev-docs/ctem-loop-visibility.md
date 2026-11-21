@@ -138,17 +138,31 @@ No polling page and no new channel: the loop rides the activity stream
 - **Channels**: a signal recorded by a user goes to `activity:<recorder id>`;
   a listener's signal (recorder `system`) goes to the personal channel of each
   administrator of the organization, the only people who can read it.
-  A case frame goes to the personal channel of each user of the organization
-  holding the XTM One mode; the re-read decides what each sees. Never
+  A case frame goes to the personal channel of each active user; the re-read
+  decides what each sees (a case of no visible member is a 404). Never
   `activity:company` for loop frames.
 - **Client**: `useActivityStream` routes the two types narrowly (as it does
-  for `flow_run_update`): it invalidates `["ctem-signals"]`, `["ctem-signal",
-  id]`, `["ctem-cases"]`, `["ctem-case", id]` and nothing else, so a busy
-  pipeline does not refresh every query of the page.
+  for `flow_run_update`): a signal frame invalidates the `["ctem-signals"]`
+  recent, list and one-signal keys; a case frame invalidates
+  `["ctem-cases", "list"]`, `["ctem-cases", "case", id]` and
+  `["ctem-signals", "case", id]` (the "Opened by" card) and nothing else, so
+  a busy pipeline does not refresh every query of the page.
 - **Writers**: `services/ctem_signals.record_signal` (and the decision and
   case writers after it) publish after the commit, best effort with a 2 s
   timeout like `scheduled_work_items`; a publish failure never fails the
-  write. Target: a recorded signal shows in Live activity within 2 s.
+  write. Target: a recorded signal shows in Live activity within 2 s. The case
+  writers of `services/ctem_case_loop.py` collect one frame per case open,
+  signal join, validation and SLA breach on their `PendingEvents` and
+  `publish_pending` sends them after the caller's commit (a rolled-back
+  signal drops its frames with its events).
+- **Case screens** (CTEM-03-UI): the case page shows "Opened by" (the case's
+  signals from `GET /ctem-signals?case_id=`, each with lens, path, the gate's
+  reason and a link to its trace) and history rows for a signal join, a
+  validation with its result and proof reference, and an SLA breach; the
+  Cases board and the case header show the severity chip, the SLA countdown
+  (ticking each minute) and the reopened (last validation failed) and
+  escalated (SLA breached) marks; Act now lists up to two open P1 cases first,
+  as "Do first", with the SLA left as the reason.
 
 ## 6. No-inflation budget
 

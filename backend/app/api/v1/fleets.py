@@ -1383,7 +1383,8 @@ async def apply_fleet_autonomy_endpoint(
 
     Raising the level, pinning an action to run alone or removing an
     "Always wait" pin lets an action run with less approval: administrators
-    only (403). A built-in fleet takes the level only (its pins are refused).
+    only (403). A built-in fleet takes its pins too (#916, CTEM-34): they are
+    the customer's, the seed never writes them, so they survive an upgrade.
     On a custom fleet it turns the computed catalog on. One audit row
     ``autonomy_level_change`` with the level and pins before and after.
     """
@@ -1403,7 +1404,7 @@ async def apply_fleet_autonomy_endpoint(
     if pins_lower_approval(previous_pins, new_pins) and not user.is_admin:
         raise HTTPException(status_code=403, detail=PIN_RUN_REFUSAL)
     fleet.autonomy_level = new_level
-    if not fleet.is_builtin:
+    if not fleet.is_builtin or body.pins is not None:
         fleet.approval_pins = new_pins
     await log_audit(
         db,

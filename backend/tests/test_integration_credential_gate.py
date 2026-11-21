@@ -246,6 +246,9 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
     # a token minted for that administrator.
     "_get_token": {
         "services/ctem_metrics_collector.py",
+        # CTEM-11 slice 2: the company-managed VulnCheck key the reading user may use
+        # (integration_visible_filter), for the NVD 2.0 ranges of the case reader.
+        "services/ctem_cases_source.py",
         # OpenCRQ job-run events: polled for the assignment's acting user (#8991 S2d).
         "services/event_poller.py",
         "services/investigation_queriers.py",

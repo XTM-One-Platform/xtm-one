@@ -73,9 +73,10 @@ def test_the_triage_analyst_counts_cve_assessed():
 def test_the_assignments_are_on_the_orchestrator() -> None:
     assert all(a in BUILTIN_ASSIGNMENTS for a in CTEM_F2_ASSIGNMENTS)
     by_name = {a["name"]: a for a in CTEM_F2_ASSIGNMENTS}
-    # The four of the spec, plus the case loop (#891).
+    # The four of the spec, plus the case loop (#891) and software we run (CTEM-08).
     assert set(by_name) == {
         "New KEV or EPSS jump",
+        "Vulnerability on software we run",
         "Vulnerability sighted",
         "Daily backlog pass",
         "Re-test due",
@@ -107,3 +108,17 @@ def test_sighting_trigger_filters_on_the_sighted_type():
     keys = {f["key"][0]: f for f in json.loads(prov.trigger_filters(spec, []))["filters"]}
     assert keys["entity_type"]["values"] == ["stix-sighting-relationship"]
     assert keys["fromTypes"]["values"] == ["Vulnerability"]
+
+
+def test_software_we_run_trigger_filters_has_to_a_vulnerability_and_reads_the_profile():
+    a = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability on software we run")
+    assert a["trigger_config"]["runs_in_profile"] == "source"
+    spec = prov.read_provision_spec(a["trigger_config"])
+    filters = json.loads(prov.trigger_filters(spec, []))
+    keys = {f["key"][0]: f["values"] for f in filters["filters"]}
+    assert keys == {
+        "entity_type": ["has"],
+        "fromTypes": ["Infrastructure", "Software", "System"],
+        "toTypes": ["Vulnerability"],
+    }
+    assert filters["filterGroups"] == []
