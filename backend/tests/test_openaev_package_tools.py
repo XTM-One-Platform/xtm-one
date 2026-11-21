@@ -727,6 +727,65 @@ async def test_security_platform_output_uses_security_platform_id_label(monkeypa
     assert "security_platform_id: sp1" in created.content
 
 
+async def test_asset_update_keeps_the_fields_it_does_not_change(monkeypatch):
+    # OpenAEV's PUT /api/endpoints/{id} replaces the whole endpoint: the tool
+    # reads it first and sends every field back, only the asked ones changed.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    current = {
+        "asset_id": "e1",
+        "asset_name": "shop.example.com",
+        "asset_external_reference": "dns-enum:shop.example.com",
+        "asset_hostname": "shop.example.com",
+        "asset_ips": ["10.0.0.5"],
+        "asset_tags": ["t1", {"tag_id": "t2"}],
+        "asset_category": "HOST",
+        "endpoint_platform": "Linux",
+        "asset_type": "Endpoint",
+    }
+    fake = _RecordingApi(current)
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {
+            "action": "update",
+            "asset_id": "e1",
+            "category": "web_application",
+            "subcategory": "website",
+            "url": "https://shop.example.com",
+        },
+    )
+    assert not result.is_error, result.content
+    assert [c["method"] for c in fake.calls] == ["get", "put"]
+    sent = fake.last_json()
+    assert sent["asset_category"] == "WEB_APPLICATION"
+    assert sent["asset_subcategory"] == "WEBSITE"
+    assert sent["asset_url"] == "https://shop.example.com"
+    assert sent["asset_external_reference"] == "dns-enum:shop.example.com"
+    assert sent["asset_ips"] == ["10.0.0.5"]
+    assert sent["asset_hostname"] == "shop.example.com"
+    assert sent["asset_tags"] == ["t1", "t2"]
+    assert sent["endpoint_platform"] == "Linux"
+    assert "asset_type" not in sent and "asset_id" not in sent
+
+
+async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi({})
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "name": "x"},
+    )
+    assert "nothing updated" in result.content
+    assert [c["method"] for c in fake.calls] == ["get"]
+
+
 async def test_empty_update_bodies_are_rejected():
     # Representative coverage of the empty-update guard across the domain
     # modules: an update with only the entity id must return a friendly message
