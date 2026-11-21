@@ -36,6 +36,7 @@ import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { InfoLabel } from "@/components/ui/info-tip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { useSetFleetGatePins, type FleetAutonomyGate, type FleetAutonomyLevel, type FleetGatePin } from "@/hooks/api/useFleetApi";
@@ -96,7 +97,7 @@ function GatePinSelect({
   return (
     <Select value={current} onValueChange={(value) => void change(value)} disabled={save.isPending}>
       <SelectTrigger
-        className="w-fit min-w-[180px]"
+        className="w-fit min-w-[160px] whitespace-nowrap"
         aria-label={t_i18n("Approval setting of {action}", { action: name })}
         data-testid={`about-autonomy-pin-${gate.key}`}
       >
@@ -144,7 +145,8 @@ export function FleetAutonomyCatalog({
           {t_i18n("What waits for a person at each level of human approval. The highlighted column is this fleet's level.")}
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse content-compact">
+          {/* The Action column keeps 320 px at the 1080 minimum; the setting column scrolls inside this wrapper (UX round 1 B1 on #934). */}
+          <table className={cn("w-full border-collapse content-compact", editable ? "min-w-[880px]" : "min-w-[640px]")}>
             <caption className="sr-only">{t_i18n("Approval gates by level of human approval")}</caption>
             <thead>
               <tr className="border-b border-[var(--border-elevation-subtle-soft)]">
@@ -177,26 +179,29 @@ export function FleetAutonomyCatalog({
             </thead>
             <tbody>
               {catalog.map((gate) => {
-                const effect = ctemGateEffect(gate.key);
+                const effect = ctemGateEffect(gate);
                 return (
                   <tr key={gate.key} className="border-b border-[var(--border-elevation-subtle-soft)] last:border-0">
-                    <th scope="row" className="max-w-[360px] py-2 pr-3 text-left font-normal">
+                    <th scope="row" className="min-w-[320px] max-w-[400px] py-2 pr-3 text-left font-normal">
                       <span className="flex items-start gap-2">
                         <FleetGateMark gate={gate} />
                         <span className="min-w-0">
                           <span className="block font-semibold">{gateActionLabel(gate, t_i18n)}</span>
-                          <span className="block text-default-secondary">{t_i18n(IMPACT_LABELS[gate.impact])}</span>
+                          <span className="block text-default-secondary">
+                            {t_i18n(IMPACT_LABELS[gate.impact])}
+                            {effect && (
+                              <span data-testid={`about-autonomy-default-${gate.key}`}>
+                                {" · "}
+                                {ctemGateWaitsByDefault(gate) ? t_i18n("Out of the box: waits") : t_i18n("Out of the box: runs alone")}
+                              </span>
+                            )}
+                          </span>
                           {effect && (
-                            <span className="block text-default-secondary" data-testid={`about-autonomy-effect-${gate.key}`}>
-                              {t_i18n(effect)}
-                            </span>
-                          )}
-                          {effect && (
-                            <span className="block text-default-secondary" data-testid={`about-autonomy-default-${gate.key}`}>
-                              {ctemGateWaitsByDefault(gate)
-                                ? t_i18n("Out of the box: waits for a person")
-                                : t_i18n("Out of the box: runs alone, recorded as passed automatically")}
-                            </span>
+                            <InfoLabel content={<div className="max-w-xs content-compact">{t_i18n(effect)}</div>} className="block">
+                              <span className="block truncate text-default-secondary" data-testid={`about-autonomy-effect-${gate.key}`}>
+                                {t_i18n(effect)}
+                              </span>
+                            </InfoLabel>
                           )}
                         </span>
                       </span>

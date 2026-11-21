@@ -90,15 +90,29 @@ describe("FleetAutonomyCatalog", () => {
       },
     ];
     renderWithProviders(<FleetAutonomyCatalog catalog={ctem} level="low" />);
-    expect(screen.getByTestId("about-autonomy-default-ctem.mobilize")).toHaveTextContent("Out of the box: waits for a person");
-    expect(screen.getByTestId("about-autonomy-default-ctem.remediation.decision")).toHaveTextContent(
-      "Out of the box: runs alone, recorded as passed automatically",
-    );
+    expect(screen.getByTestId("about-autonomy-default-ctem.mobilize")).toHaveTextContent("Out of the box: waits");
+    expect(screen.getByTestId("about-autonomy-default-ctem.remediation.decision")).toHaveTextContent("Out of the box: runs alone");
     expect(screen.getByTestId("about-autonomy-effect-ctem.remediation.decision")).toHaveTextContent("decided by policy");
+    expect(screen.getByTestId("about-autonomy-effect-ctem.mobilize")).toHaveTextContent("tickets");
     // A gate outside the CTEM catalog carries neither line.
     cleanup();
     renderWithProviders(<FleetAutonomyCatalog catalog={catalog} level="medium" />);
     expect(screen.queryByTestId("about-autonomy-default-ticket.create")).toBeNull();
+  });
+
+  it("gives the supplier Mobilize its own effect, not the tickets one (UX round 1 B2 on #934)", () => {
+    const supplier: FleetAutonomyGate = {
+      key: "ctem.mobilize",
+      action: "Mobilize: carry out an action on a supplier (contact, control, clause, monitoring)",
+      module: "platform",
+      impact: "destructive",
+      gated: true,
+      by_level: { full_gates: true, medium: true, low: true, autonomous: false },
+    };
+    renderWithProviders(<FleetAutonomyCatalog catalog={[supplier]} level="low" />);
+    const effect = screen.getByTestId("about-autonomy-effect-ctem.mobilize");
+    expect(effect).toHaveTextContent("action on the supplier");
+    expect(effect).not.toHaveTextContent("tickets");
   });
 
   it("has no setting column for a reader who does not manage the fleet", () => {

@@ -113,22 +113,31 @@ const DECLARED_GATE_ACTIONS = [
 ] as const;
 
 /**
- * One line per CTEM loop gate (#916, CTEM-34): what happens when it runs
- * alone, so a person sees the effect of a pin before the click. @i18n-keys
+ * One line per CTEM loop gate action (#916, CTEM-34): what happens when it
+ * runs alone, so a person sees the effect of a pin before the click. Keyed
+ * by the declared action, not the gate key: two actions share `ctem.mobilize`
+ * (the case's tickets, and the third-party fleet's supplier action), and each
+ * says only what it does (UX round 1 B2 on #934). @i18n-keys
  */
 const CTEM_GATE_EFFECTS: Readonly<Record<string, string>> = {
-  "ctem.validation.non_readonly": "When it runs alone, OpenAEV tests that are not read-only start without a person.",
-  "ctem.analyst_review": "When it runs alone, the fleet requests the coverage without an analyst's review.",
-  "ctem.remediation.decision": "When it runs alone, the recommended option is applied and logged as decided by policy.",
-  "ctem.mobilize": "One decision per case: the tickets, the owners' notices and the prepared change go out together.",
-  "ctem.production_change": "When it runs alone, the fleet applies a change on production through an integration.",
-  "ctem.accept_risk": "When it runs alone, a residual risk beyond the policy cap is accepted without a person.",
-  "ctem.close_without_retest": "When it runs alone, a case closes on the proof that fits the fix, without a re-test.",
+  "Validate: run an OpenAEV test that is not read-only":
+    "When it runs alone, OpenAEV tests that are not read-only start without a person.",
+  "Review: an analyst checks the threat package": "When it runs alone, the fleet requests the coverage without an analyst's review.",
+  "Decide: choose the remediation option": "When it runs alone, the recommended option is applied and logged as decided by policy.",
+  "Mobilize: create the tickets, notify the owners, hand over the prepared change":
+    "When it runs alone, the tickets, the owners' notices and the prepared change of a case go out without a person.",
+  "Mobilize: carry out an action on a supplier (contact, control, clause, monitoring)":
+    "When it runs alone, the fleet carries out the action on the supplier without a person.",
+  "Apply a change on production through an integration":
+    "When it runs alone, the fleet applies a change on production through an integration.",
+  "Accept a residual risk beyond the policy cap": "When it runs alone, a residual risk beyond the policy cap is accepted without a person.",
+  "Close a case without a passing re-test": "When it runs alone, a case closes on the proof that fits the fix, without a re-test.",
 } as const;
 
-/** The one-line effect of a CTEM loop gate; `null` for any other gate. */
-export function ctemGateEffect(key: string): string | null {
-  return CTEM_GATE_EFFECTS[key] ?? null;
+/** The one-line effect of a CTEM loop gate, read from its action; `null` for any other gate. */
+export function ctemGateEffect(gate: Pick<FleetAutonomyGate, "key" | "action">): string | null {
+  if (!gate.key.startsWith("ctem.")) return null;
+  return CTEM_GATE_EFFECTS[gate.action] ?? null;
 }
 
 /**
