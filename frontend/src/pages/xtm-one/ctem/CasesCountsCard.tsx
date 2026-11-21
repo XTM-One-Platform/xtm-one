@@ -35,6 +35,7 @@ import { profileFieldHref } from "@/lib/organization-profile-tabs";
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
   needs_attention: "bg-feedback-alert-primary",
   in_progress: "bg-feedback-info-primary",
+  mitigated_watching: "bg-feedback-success-tertiary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
 };
@@ -132,7 +133,9 @@ export function CasesCountsCard({ configured, onConnectOpenAev }: CasesCountsCar
                   <Link
                     to={casesListHref({ state })}
                     aria-label={count === undefined ? label : t_i18n("{state}: {count, plural, one {# case} other {# cases}}", { count, state: label })}
-                    className={cn("inline-flex items-center gap-1.5 rounded-sm", BUTTON_ROLE_FOCUS_RING)}
+                    // A block-level flex row: an inline-flex link would sit on the <li>'s text baseline, which
+                    // follows its first item, so a chip with a leading icon rose above its siblings.
+                    className={cn("flex items-center gap-1.5 rounded-sm", BUTTON_ROLE_FOCUS_RING)}
                     data-testid={`ctem-cases-count-${state}`}
                   >
                     <CaseStateChip state={state} />

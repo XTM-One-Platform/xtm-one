@@ -494,7 +494,57 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     for issue in read.issues:
         view.issues[issue.member_id] = issue
         view.open_ids.add(issue.member_id)
+    if primary is not None:
+        for issue in await _signal_members(db, organization_id=primary.id, user_id=user_id):
+            view.issues[issue.member_id] = issue
+            view.open_ids.add(issue.member_id)
     return view
+
+
+async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str) -> list[rules.SourceIssue]:
+    """The signals attached to cases that *user_id* may read (#857), as case members.
+
+    The signal API's own rule: an administrator reads every signal of the
+    organization, anyone else the signals recorded for them. A case opened from
+    a signal the viewer may not read stays absent, as a source issue they cannot
+    see does.
+    """
+    from sqlalchemy import String, cast, select
+
+    from app.models.ctem_case import CtemCaseIssue
+    from app.models.ctem_signal import CtemSignal
+    from app.models.user import User
+
+    try:
+        viewer = await db.get(User, uuid.UUID(str(user_id)))
+    except (ValueError, TypeError):
+        viewer = None
+    statement = (
+        select(CtemSignal)
+        .join(
+            CtemCaseIssue,
+            (CtemCaseIssue.source == "signal") & (CtemCaseIssue.external_id == cast(CtemSignal.id, String)),
+        )
+        .where(CtemSignal.organization_id == organization_id)
+    )
+    if not getattr(viewer, "is_admin", False):
+        statement = statement.where(CtemSignal.recorded_by == str(user_id))
+    rows = (await db.execute(statement)).scalars().all()
+    return [
+        rules.SourceIssue(
+            source="signal",
+            external_id=str(s.id),
+            name=(s.subject_label or s.subject_ref or s.trigger_path)[:300],
+            assets=(s.subject_ref,) if s.subject_kind == "asset" else (),
+            crown_jewels=tuple(
+                str(j.get("name"))
+                for j in ((s.decision or {}).get("scope") or {}).get("sources") or []
+                if isinstance(j, dict) and j.get("from") == "crown_jewel" and j.get("name")
+            ),
+            first_seen_at=s.first_seen_at,
+        )
+        for s in rows
+    ]
 
 
 async def recompute_for_user(

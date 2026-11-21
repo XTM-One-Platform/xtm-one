@@ -94,7 +94,9 @@ async def apply_recompute(
             keys=list(c.keys or []),
             state=c.state,
             pinned_issues=list(c.pinned_issues or []),
-            members={f"{r.source}:{r.external_id}": r.open for r in members[c.id]},
+            # A signal member is not a source issue: recompute never adds, reopens or closes it.
+            members={f"{r.source}:{r.external_id}": r.open for r in members[c.id] if r.source != "signal"},
+            validation_plan=bool(getattr(c, "validation_plan", False)),
         )
         for c in cases
     ]
@@ -225,6 +227,8 @@ async def update_case(
             evidence=evidence,
             accepted_until=accepted_until,
             now=now,
+            validation_plan=bool(getattr(case, "validation_plan", False)),
+            validations=getattr(case, "validations", None),
         )
     if new_owner != case.owner_user_id:
         db.add(

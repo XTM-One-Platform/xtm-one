@@ -25,6 +25,7 @@ is a "Restricted" row.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -41,12 +42,34 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
-#: The four states of a case, in board order.
-CASE_STATES: tuple[str, ...] = ("needs_attention", "in_progress", "resolved", "accepted_risk")
-#: What the fix is.
-REMEDIATION_KINDS: tuple[str, ...] = ("upgrade", "patch", "config", "course_of_action", "manual")
+#: The states of a case, in board order. ``mitigated_watching``: the exposure is
+#: mitigated and proven so, the permanent fix is not in yet; the re-test stays on (#857).
+CASE_STATES: tuple[str, ...] = ("needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk")
+#: The states a case is still worked in (an SLA runs, a new signal joins it).
+OPEN_STATES: tuple[str, ...] = ("needs_attention", "in_progress")
+#: What the fix is. The last six are the fixes of the paths that carry no CVE (#857).
+REMEDIATION_KINDS: tuple[str, ...] = (
+    "upgrade",
+    "patch",
+    "config",
+    "course_of_action",
+    "manual",
+    "close_exposure",
+    "decommission",
+    "rotate_credential",
+    "restore_control",
+    "supplier_action",
+    "restore_coverage",
+)
 CASE_PRIORITIES: tuple[str, ...] = ("critical", "high", "medium", "low")
-ISSUE_SOURCES: tuple[str, ...] = ("opencti", "openaev")
+#: ``signal``: a CTEM signal attached to the case (``external_id`` is its id).
+ISSUE_SOURCES: tuple[str, ...] = ("opencti", "openaev", "signal")
+#: How a resolved case was closed.
+RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk")
+#: Severity from the scope gate (P1 most urgent).
+CASE_SEVERITIES: tuple[str, ...] = ("P1", "P2", "P3")
+#: What a validation reference says.
+VALIDATION_RESULTS: tuple[str, ...] = ("passed", "not_exposed", "failed", "pending")
 
 
 def _now() -> datetime:
@@ -57,7 +80,7 @@ class CtemCase(Base):
     __tablename__ = "ctem_cases"
     __table_args__ = (
         CheckConstraint(
-            "state IN ('needs_attention', 'in_progress', 'resolved', 'accepted_risk')",
+            "state IN ('needs_attention', 'in_progress', 'mitigated_watching', 'resolved', 'accepted_risk')",
             name="ck_ctem_cases_state_valid",
         ),
         CheckConstraint(
@@ -90,6 +113,22 @@ class CtemCase(Base):
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     accepted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # -- The loop (#857): where the case came from, how urgent, how it is proven.
+    #: The trigger path of the signal that opened it (``new_vulnerability`` for a reader case).
+    trigger_path: Mapped[str] = mapped_column(String(30), nullable=False, default="new_vulnerability")
+    #: OpenCRQ risk scenario ids the scope gate found holding the subject.
+    risk_scenario_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    severity: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Set once, when the SLA was first found breached (the escalation is raised once).
+    sla_breached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: ``[{integration, key, url, status, at}]``.
+    tickets: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    #: ``[{provider, kind, ref, result, at, mitigation_only, note}]``, newest last.
+    validations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    #: True: the case resolves only on a passing validation reference.
+    validation_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    resolution_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -120,6 +159,7 @@ class CtemCaseEvent(Base):
     #: A user id, an agent id, or ``system``.
     actor: Mapped[str] = mapped_column(String(64), nullable=False)
     #: created | state | owner | due | issue_added | issue_closed | issue_reopened | merge | split | note
+    #: | signal | validation | ticket | sla_breached (#857)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.
     issue: Mapped[str | None] = mapped_column(String(220), nullable=True)

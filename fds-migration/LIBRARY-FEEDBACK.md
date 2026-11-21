@@ -233,6 +233,13 @@ closes this gap needs a different one (`StatusChip`, `Tag`), and XTM One's local
 `Badge` now collides with a library export, which is a rename waiting to happen
 on whichever side moves first. `Chip` still takes `label: string`.
 
+CTEM cases (UX round 1 of #857): a fifth case state, "mitigated, watching",
+needs a colour of its own beside "resolved" (`low`, success). None of the six
+severities is free and meaning-true (`high` and `critical` read as danger), so
+the state keeps `low` and is told apart by a DS `Icon` (`eye`) passed as the Chip's
+`startIcon` and the `feedback-success-tertiary` token on its bar segment. A status chip
+with a `mitigated` or `watching` tone would remove the icon.
+
 ### F07 — `Navbar` has no section-heading slot · minor
 
 The nav has labelled sections ("Resources") above groups of items.
