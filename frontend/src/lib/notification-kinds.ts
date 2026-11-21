@@ -4,32 +4,39 @@
  * What the bell and the companion inbox share about a notification kind, so
  * the two surfaces cannot disagree (`services/notification_feed.py`).
  */
-import type { NotificationItem, NotificationKind } from "@/types";
+import type { NotificationItem } from "@/types";
 
 type Translate = (text: string, values?: Record<string, string | number>) => string;
 
 /**
- * Kinds unread until answered (`UNREAD_UNTIL_ANSWERED_KINDS` on the server):
- * "Mark all read" leaves them unread, so it is not offered for them alone.
- * Opening or dismissing one entry reads it (#901), see `readsOnOpen`.
+ * A decision still waiting for its answer (a run, a flow or a work item; the
+ * server's `UNREAD_UNTIL_ANSWERED_KINDS` sets `awaiting_answer`): pinned and
+ * unread until answered, whatever was opened, dismissed or marked read (#991).
  */
-export const UNREAD_UNTIL_ANSWERED: ReadonlySet<NotificationKind> = new Set<NotificationKind>(["hitl", "work_item_waiting"]);
-
-/**
- * Whether opening an entry marks it read: every unread entry, a pinned one
- * included, even when its target can no longer be opened (#901). The bell and
- * the companion inbox both call it, so the two cannot drift.
- */
-export function readsOnOpen(item: Pick<NotificationItem, "unread">): boolean {
-  return item.unread;
+export function isWaitingDecision(item: Pick<NotificationItem, "awaiting_answer">): boolean {
+  return item.awaiting_answer === true;
 }
 
 /**
- * Whether the bell badge takes the alert style: an approval still unread, never
- * the mere presence of an approval entry already read (#901).
+ * Whether opening an entry marks it read: every unread entry but a decision
+ * still waiting, which stays unread until answered (#991). The bell and the
+ * companion inbox both call it, so the two cannot drift.
  */
-export function hasUnreadApproval(items: ReadonlyArray<Pick<NotificationItem, "kind" | "unread">>): boolean {
-  return items.some((item) => item.unread && item.kind === "hitl");
+export function readsOnOpen(item: Pick<NotificationItem, "unread" | "awaiting_answer">): boolean {
+  return item.unread && !isWaitingDecision(item);
+}
+
+/** Whether "Mark all read" has anything to read: an unread entry that is not a waiting decision. */
+export function canMarkAllRead(items: ReadonlyArray<Pick<NotificationItem, "unread" | "awaiting_answer">>): boolean {
+  return items.some((item) => readsOnOpen(item));
+}
+
+/**
+ * Whether the bell badge takes the alert style: any decision still waiting
+ * (a run, a flow or a work item), never an entry already answered (#991).
+ */
+export function hasUnreadApproval(items: ReadonlyArray<Pick<NotificationItem, "unread" | "awaiting_answer">>): boolean {
+  return items.some((item) => item.unread && isWaitingDecision(item));
 }
 
 /**

@@ -12591,8 +12591,10 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a `hitl` item waits on. */
+  /** The run a `hitl` item waits on, or the flow run a `flow_hitl` item asks from. */
   run_id: string | null;
+  /** A decision still waiting: unread until answered, never read by opening it (#991). */
+  awaiting_answer?: boolean;
   unread: boolean;
 }
 

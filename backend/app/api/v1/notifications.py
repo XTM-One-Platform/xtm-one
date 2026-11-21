@@ -47,6 +47,8 @@ class NotificationItemResponse(BaseModel):
     summary: str | None = None
     critical: bool = False
     run_id: str | None = None
+    #: A decision still waiting: unread until answered, no read on open (#991).
+    awaiting_answer: bool = False
     unread: bool
 
 
