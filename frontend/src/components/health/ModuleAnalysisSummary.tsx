@@ -32,7 +32,7 @@ import { HEALTH_MODULE_LABELS } from "@/lib/health-modules";
 import type { HealthAnalysisOverview, HealthModule, HealthModuleAnalysis } from "@/types";
 
 /** What each refusal or failure reason means to an administrator. @i18n-keys */
-export const ANALYSIS_REASON_LABELS = {
+const ANALYSIS_REASON_LABELS = {
   disabled: "Analysis is off.",
   ai_off: "AI is off on this platform.",
   ceiling_not_set: "Ceiling not set: a cleared ceiling refuses every analysis.",
@@ -42,7 +42,7 @@ export const ANALYSIS_REASON_LABELS = {
   model_error: "The model call failed. It is tried again tomorrow, or now with Analyse now.",
 } as const;
 
-export function analysisReasonLabel(reason: string | null, t: (key: string) => string): string {
+function analysisReasonLabel(reason: string | null, t: (key: string) => string): string {
   return t((ANALYSIS_REASON_LABELS as Record<string, string>)[reason ?? ""] ?? ANALYSIS_REASON_LABELS.model_error);
 }
 
