@@ -116,7 +116,9 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
     });
 
   return (
-    <div className="space-y-2" data-testid={`health-investigation-${module}`}>
+    // Fills the card footer: a status wrapping to two lines grows this block, never moves the divider;
+    // only the action row is pinned to the bottom (UX round 3 B1 on #953).
+    <div className="flex flex-1 flex-col gap-2" data-testid={`health-investigation-${module}`}>
       <p className="content-compact font-medium text-default-secondary">{t_i18n("Last investigation")}</p>
       {investigation ? (
         <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
@@ -130,22 +132,24 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
         // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
         <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>
       )}
-      <AiDisabledTip>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          disabled={aiOff || investigate.isPending}
-          aria-busy={investigate.isPending || undefined}
-          aria-label={t_i18n("Investigate {module} now", { module: label })}
-          onClick={run}
-          data-testid={`health-investigate-${module}`}
-        >
-          {investigate.isPending && <Spinner size="sm" tone="inherit" />}
-          {!investigate.isPending && <Icon name="sparkles" size={16} aria-hidden />}
-          {t_i18n("Investigate now")}
-        </Button>
-      </AiDisabledTip>
+      <div className="mt-auto">
+        <AiDisabledTip>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={aiOff || investigate.isPending}
+            aria-busy={investigate.isPending || undefined}
+            aria-label={t_i18n("Investigate {module} now", { module: label })}
+            onClick={run}
+            data-testid={`health-investigate-${module}`}
+          >
+            {investigate.isPending && <Spinner size="sm" tone="inherit" />}
+            {!investigate.isPending && <Icon name="sparkles" size={16} aria-hidden />}
+            {t_i18n("Investigate now")}
+          </Button>
+        </AiDisabledTip>
+      </div>
     </div>
   );
 }
