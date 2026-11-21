@@ -739,6 +739,7 @@ ce:
   - frontend/src/pages/integration-detail/openrouter
   - frontend/src/pages/integration-detail/supabase
   - frontend/src/pages/integrations
+  - frontend/src/pages/xtm-one/ctem/loop  # the CTEM loop trace and decision reason (dev-docs/ctem-loop-visibility.md)
   - frontend/src/testing
 except:
   # The tool contract, provider-agnostic: every integration provider and the

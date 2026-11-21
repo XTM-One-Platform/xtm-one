@@ -430,7 +430,10 @@ async def _work_item_findings(
                 WorkItem.owner_agent_id,
                 WorkItem.ask,
                 WorkItem.payload,
-            ).where(scope, WorkItem.status == "blocked")
+            )
+            # A scheduled one-off blocked or missed is released by its own reschedule
+            # and cancel actions, outside the black-or-white rule (#862).
+            .where(scope, WorkItem.status == "blocked", WorkItem.action_mode.is_(None))
         )
     ).all()
     waited = {safe_uuid(str(b)) for row in blocked for b in (row[1] or [])} - {None}

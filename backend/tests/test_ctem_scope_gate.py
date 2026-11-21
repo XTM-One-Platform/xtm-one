@@ -192,6 +192,27 @@ def test_risk_scenarios_add_criticality_and_can_be_required():
     assert db.outcome == "case"
 
 
+def test_every_outcome_carries_a_reason_code_the_frontend_translates():
+    # #851 UX round 2 B4: the loop UI reads reason_code and reason_params, never the English line.
+    related = [gate.RelatedSignal(id="s9", lens="inside", source_provider="openaev", verdict="not_exposed")]
+    cases = {
+        "in_scope": gate.decide(_profile(), _facts(), today=TODAY),
+        "below_scope_threshold": gate.decide(_profile(), _facts(ref="printer-3"), today=TODAY),
+        "subject_unresolved": gate.decide(_profile(), _facts(ref="unknown.example.net"), today=TODAY),
+        "contradicted_by_signals": gate.decide(_profile(), _facts(), related=related, today=TODAY),
+        "contradicted_by_evidence": gate.decide(_profile(), _facts(verdict="false_positive"), today=TODAY),
+        "internet_exposure_required": gate.decide(
+            _profile(internet_exposure_required=True), _facts(lens="inside", ref="db-1"), today=TODAY
+        ),
+        "risk_scenario_unreadable": gate.decide(_profile(require_risk_scenario=True), _facts(), today=TODAY),
+    }
+    for code, decision in cases.items():
+        assert decision.record["reason_code"] == code, decision.reason
+        assert isinstance(decision.record["reason_params"], dict)
+    assert cases["below_scope_threshold"].record["reason_params"] == {"criticality": "low", "threshold": "high"}
+    assert cases["contradicted_by_signals"].record["reason_params"] == {"count": 1}
+
+
 def test_the_decision_record_lists_every_input():
     decision = gate.decide(_profile(cvss_min=7.0), _facts(cvss=9.0), today=TODAY)
     record = decision.record

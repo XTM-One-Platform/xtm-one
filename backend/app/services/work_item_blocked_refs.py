@@ -174,8 +174,9 @@ WHY_FIELDS_MESSAGE = (
 )
 
 ASK_REQUIRED_MESSAGE = (
-    "needs_human needs an ask card: ask {question, options: [{key, label, effect?}] (at least 2), "
-    "recommendation: the key of one option}; the person decides from it and the answer reopens the item"
+    "needs_human needs an ask card, written in the same call: ask {question, context (2 to 4 lines), "
+    "options: [{key, label, effect?}] (at least 2), recommendation: the key of one option}; the person "
+    "decides from it and the answer reopens the item"
 )
 
 #: The fewest options an ask card offers: a decision is a choice.
@@ -2113,6 +2114,79 @@ async def check_item_workflow_runs(item_id: uuid.UUID | str) -> dict[str, Any]:
 def schedule_workflow_run_check(item_id: uuid.UUID | str) -> None:
     """Run :func:`check_item_workflow_runs` in the background (a write must not wait on the code host)."""
     _spawn(check_item_workflow_runs(item_id))
+
+
+#: The reference kinds :func:`check_item_reference_states` reads at the write.
+WRITE_CHECKED_KINDS = ("pull_request", "issue")
+
+
+def names_reference_state(refs: object) -> bool:
+    """Whether *refs* (normalised ``blocked_on_refs``) waits for a pull request or an issue. Pure."""
+    items = refs if isinstance(refs, list) else []
+    return any(isinstance(r, dict) and r.get("kind") in WRITE_CHECKED_KINDS for r in items)
+
+
+async def check_item_reference_states(item_id: uuid.UUID | str) -> dict[str, Any]:
+    """Read the open ``pull_request`` and ``issue`` references of one item once, at the write that blocks it.
+
+    A pull request merged or an issue closed before the write sends no delivery
+    any more: without this read the item waits for the polling pass (minutes).
+    Same reader, credential and apply as the polling fallback; a deployment
+    reference has its own check (:func:`check_item_deployment`), a workflow run
+    its own (:func:`check_item_workflow_runs`). ``{"read": r, "released": n,
+    "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import reference_state_readers
+
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
+    readers = reference_state_readers()
+    if not readers:
+        return counts
+    try:
+        item_uuid = uuid.UUID(str(item_id))
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(WorkItem.user_id, WorkItem.status, WorkItem.blocked_on_refs).where(WorkItem.id == item_uuid)
+                )
+            ).one_or_none()
+            if row is None or row[0] is None or row[1] != "blocked":
+                return counts
+            waiting = [r for r in open_refs(row[2]) if r.get("kind") in WRITE_CHECKED_KINDS]
+            tokens: dict[str, str | None] = {}
+            for provider in readers if waiting else ():
+                tokens[provider] = await reference_token(db, provider, row[0])
+        for ref in waiting[:HINT_MAX_READS]:
+            kind = read_kind(ref)
+            if kind is None:
+                continue
+            for provider, reader in readers.items():
+                token = tokens.get(provider)
+                if not token:
+                    continue
+                counts["read"] += 1
+                try:
+                    event = await reader(str(ref["repo"]), kind, int(ref["number"]), token)
+                except Exception as exc:
+                    logger.info("Reference %s of work item %s not read at the write: %s", ref_label(ref), item_id, exc)
+                    continue
+                if event is None or event.kind == "dequeued":
+                    # Still open (or out of a merge queue, which the poller reports): the
+                    # deliveries and the polling pass go on as before.
+                    continue
+                outcome = await _apply_to_item(item_uuid, event, datetime.now(UTC))
+                if outcome:
+                    counts[outcome] = counts.get(outcome, 0) + 1
+                break
+    except Exception as exc:
+        logger.warning("Reference check of work item %s failed: %s", item_id, format_exception_message(exc))
+    return counts
+
+
+def schedule_reference_state_check(item_id: uuid.UUID | str) -> None:
+    """Run :func:`check_item_reference_states` in the background (a write must not wait on the code host)."""
+    _spawn(check_item_reference_states(item_id))
 
 
 # -- The polling fallback --------------------------------------------------------

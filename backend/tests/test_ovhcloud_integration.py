@@ -33,6 +33,8 @@ WRITE_TOOLS = {
     "start_ovhcloud_cloud_instance",
     "stop_ovhcloud_cloud_instance",
     "reboot_ovhcloud_vps",
+    "block_ovhcloud_ip",
+    "unblock_ovhcloud_ip",
 }
 
 

@@ -15,13 +15,18 @@ and audit surface of an AWS account:
     over the last 90 days of management events
   - AWS STS: caller-identity for account/principal context
 
-Tool categories (14 tools):
+Tool categories (16 tools):
   - Account: get caller identity (account ID, principal ARN)
   - GuardDuty: list detectors, list findings, get finding(s), severity
     statistics, archive findings, unarchive findings
   - Security Hub: posture summary, get findings, get one finding, list
     insights, get insight results, update findings workflow
   - CloudTrail: look up audit events
+  - EC2 containment: isolate an instance behind an empty security group and
+    release it (both approval-gated on every call; needs ec2:DescribeInstances,
+    ec2:DescribeSecurityGroups, ec2:CreateSecurityGroup, ec2:CreateTags,
+    ec2:RevokeSecurityGroupEgress, ec2:ModifyInstanceAttribute,
+    ec2:DeleteSecurityGroup)
 
 Authentication is **AWS IAM credentials** (an access key). The integration
 stores an Access Key ID + Secret Access Key + region; the compound
@@ -46,8 +51,11 @@ import contextlib
 import json as _json
 import logging
 import math
+import re
+import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -71,6 +79,22 @@ _DEFAULT_REGION = "us-east-1"
 _DEFAULT_TIMEOUT = 30
 
 _CLOUDTRAIL_TARGET_PREFIX = "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101"
+
+# EC2 query API (XML answers from AWS, trusted; ElementTree resolves no
+# external entity). The isolation group records the replaced groups here.
+_EC2_API_VERSION = "2016-11-15"
+_EC2_INSTANCE_ID = re.compile(r"^i-[0-9a-f]{8,17}$")
+_ISOLATION_TAG = "xtm-one:isolated-from-groups"
+# EC2 accepts only these characters in a security group description, 255 at most.
+_SG_DESCRIPTION_UNSUPPORTED = re.compile(r"[^a-zA-Z0-9 ._\-:/()#,@\[\]+=&;{}!$*]")
+_SG_DESCRIPTION_MAX = 255
+
+
+def _sg_description(text: str) -> str:
+    """Fit free text to the EC2 security group description charset, cut without an ellipsis."""
+    cleaned = " ".join(_SG_DESCRIPTION_UNSUPPORTED.sub(" ", text).split())
+    return cleaned[:_SG_DESCRIPTION_MAX].rstrip()
+
 
 # Security Hub ASFF workflow statuses accepted by BatchUpdateFindings.
 _WORKFLOW_STATUSES = ("NEW", "NOTIFIED", "RESOLVED", "SUPPRESSED")
@@ -1123,6 +1147,153 @@ def build_tools(
         return out
 
     # ══════════════════════════════════════════════════════════════════════
+    # 4. EC2 NETWORK CONTAINMENT (approval-gated, reversible)
+    # ══════════════════════════════════════════════════════════════════════
+
+    async def _ec2(action: str, params: dict[str, str]) -> tuple[ET.Element | None, str | None]:
+        """EC2 query-protocol call; the XML answer's root, namespaces kept."""
+        if not access_key_id or not secret_access_key:
+            return None, _AUTH_ERROR
+        form = {"Action": action, "Version": _EC2_API_VERSION, **params}
+        resp, err = await _signed_request(
+            method="POST",
+            service="ec2",
+            region=region,
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
+            path="/",
+            raw_body=urlencode(form).encode("utf-8"),
+            content_type="application/x-www-form-urlencoded",
+            action=f"EC2 {action}",
+        )
+        if err:
+            return None, err
+        try:
+            # AWS answers (trusted); stdlib ElementTree resolves no external entity.
+            return ET.fromstring(resp.content or b"<empty/>"), None  # noqa: S314
+        except ET.ParseError:
+            return None, f"Error: {_PROVIDER} returned a non-XML response for EC2 {action}."
+
+    async def _instance_network(instance_id: str) -> tuple[dict[str, Any] | None, str | None]:
+        root, err = await _ec2("DescribeInstances", {"InstanceId.1": instance_id})
+        if err:
+            return None, err
+        item = root.find(".//{*}instancesSet/{*}item")
+        if item is None:
+            return None, f"Error: EC2 instance {instance_id} was not found in region {region}."
+        enis = item.findall("./{*}networkInterfaceSet/{*}item")
+        groups = [g.findtext("{*}groupId") or "" for g in item.findall("./{*}groupSet/{*}item")]
+        return {
+            "vpc_id": item.findtext("{*}vpcId") or "",
+            "enis": len(enis),
+            "groups": [g for g in groups if g],
+        }, None
+
+    async def isolate_aws_ec2_instance(instance_id: str, reason: str) -> str:
+        """Cut an EC2 instance off the network with an empty security group.
+
+        The isolation group has no inbound rule and its default outbound rule
+        is revoked; it replaces every group of the instance, and the replaced
+        group ids are kept in its tags for release_aws_ec2_instance_isolation.
+        Established connections tracked by a replaced group can outlive it.
+        """
+        iid = (instance_id or "").strip()
+        if not _EC2_INSTANCE_ID.match(iid):
+            return "Error: instance_id is an EC2 instance id, e.g. i-0123456789abcdef0."
+        if not (reason or "").strip():
+            return "Error: reason is required (it is written on the isolation group)."
+        network, err = await _instance_network(iid)
+        if err:
+            return err
+        if not network["vpc_id"]:
+            return f"Error: EC2 instance {iid} is not in a VPC; it cannot be isolated by security group."
+        if network["enis"] > 1:
+            return (
+                f"Error: EC2 instance {iid} has {network['enis']} network interfaces; "
+                "isolate it at its subnet network ACL or by hand."
+            )
+        if any(g for g in network["groups"] if g.startswith("sg-")) and len(network["groups"]) == 1:
+            tagged, _ = await _ec2(
+                "DescribeSecurityGroups",
+                {"GroupId.1": network["groups"][0], "Filter.1.Name": "tag-key", "Filter.1.Value.1": _ISOLATION_TAG},
+            )
+            if tagged is not None and tagged.find(".//{*}securityGroupInfo/{*}item") is not None:
+                return f"EC2 instance {iid} is already isolated (group {network['groups'][0]})."
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        created, err = await _ec2(
+            "CreateSecurityGroup",
+            {
+                "GroupName": f"xtm-isolation-{iid}-{stamp}",
+                "GroupDescription": _sg_description(f"Isolation of {iid}: {reason}"),
+                "VpcId": network["vpc_id"],
+                "TagSpecification.1.ResourceType": "security-group",
+                "TagSpecification.1.Tag.1.Key": _ISOLATION_TAG,
+                "TagSpecification.1.Tag.1.Value": ",".join(network["groups"]) or "none",
+                "TagSpecification.1.Tag.2.Key": "xtm-one:isolated-instance",
+                "TagSpecification.1.Tag.2.Value": iid,
+            },
+        )
+        if err:
+            return err
+        group_id = created.findtext(".//{*}groupId") or ""
+        if not group_id:
+            return "Error: EC2 CreateSecurityGroup returned no group id."
+        _, err = await _ec2(
+            "RevokeSecurityGroupEgress",
+            {
+                "GroupId": group_id,
+                "IpPermissions.1.IpProtocol": "-1",
+                "IpPermissions.1.IpRanges.1.CidrIp": "0.0.0.0/0",
+            },
+        )
+        if err:
+            return f"{err}\nThe isolation group {group_id} was created but still allows outbound traffic; it was NOT applied."
+        _, err = await _ec2("ModifyInstanceAttribute", {"InstanceId": iid, "GroupId.1": group_id})
+        if err:
+            return f"{err}\nThe isolation group {group_id} was created but NOT applied to {iid}."
+        return (
+            f"EC2 instance {iid} isolated: its security groups "
+            f"({', '.join(network['groups']) or 'none'}) were replaced by {group_id}, "
+            "which allows no traffic in or out. Connections already tracked may "
+            "persist until they close. Undo: release_aws_ec2_instance_isolation."
+            f"\nReason: {reason.strip()}"
+        )
+
+    async def release_aws_ec2_instance_isolation(instance_id: str) -> str:
+        """Give an isolated EC2 instance back the security groups it had."""
+        iid = (instance_id or "").strip()
+        if not _EC2_INSTANCE_ID.match(iid):
+            return "Error: instance_id is an EC2 instance id, e.g. i-0123456789abcdef0."
+        network, err = await _instance_network(iid)
+        if err:
+            return err
+        if len(network["groups"]) != 1:
+            return f"EC2 instance {iid} is not isolated by this integration (it has {len(network['groups'])} groups)."
+        group_id = network["groups"][0]
+        described, err = await _ec2("DescribeSecurityGroups", {"GroupId.1": group_id})
+        if err:
+            return err
+        original = ""
+        for tag in described.findall(".//{*}securityGroupInfo/{*}item/{*}tagSet/{*}item"):
+            if tag.findtext("{*}key") == _ISOLATION_TAG:
+                original = tag.findtext("{*}value") or ""
+        groups = [g for g in original.split(",") if g.startswith("sg-")]
+        if not groups:
+            return f"EC2 instance {iid} is not isolated by this integration (group {group_id} carries no record)."
+        params = {"InstanceId": iid}
+        params.update({f"GroupId.{i}": g for i, g in enumerate(groups, start=1)})
+        _, err = await _ec2("ModifyInstanceAttribute", params)
+        if err:
+            return err
+        _, cleanup_err = await _ec2("DeleteSecurityGroup", {"GroupId": group_id})
+        cleanup = (
+            f" The isolation group {group_id} could not be deleted: {cleanup_err}"
+            if cleanup_err
+            else f" Isolation group {group_id} deleted."
+        )
+        return f"EC2 instance {iid} released: security groups {', '.join(groups)} restored.{cleanup}"
+
+    # ══════════════════════════════════════════════════════════════════════
     # REGISTER ALL TOOLS
     # ══════════════════════════════════════════════════════════════════════
 
@@ -1144,6 +1315,8 @@ def build_tools(
         "update_securityhub_findings_workflow", update_securityhub_findings_workflow
     )
     executor.register("lookup_cloudtrail_events", lookup_cloudtrail_events)
+    executor.register("isolate_aws_ec2_instance", isolate_aws_ec2_instance)
+    executor.register("release_aws_ec2_instance_isolation", release_aws_ec2_instance_isolation)
 
     src = "integration:aws_security"
     _str = {"type": "string"}
@@ -1539,5 +1712,38 @@ def build_tools(
             },
             source=src,
             priority=1,
+        ),
+        # ── 4. EC2 network containment ────────────────────────────────────
+        ToolDefinition(
+            name="isolate_aws_ec2_instance",
+            description=(
+                "Isolate an EC2 instance: an empty security group replaces its groups "
+                "(each call asks a person). Undo: release_aws_ec2_instance_isolation."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "instance_id": {"type": "string", "description": "EC2 instance id (i-...)"},
+                    "reason": {"type": "string", "description": "Reason (required)"},
+                },
+                "required": ["instance_id", "reason"],
+            },
+            source=src,
+            priority=3,
+            always_ask=True,
+        ),
+        ToolDefinition(
+            name="release_aws_ec2_instance_isolation",
+            description="Release an EC2 instance isolated by isolate_aws_ec2_instance: its security groups are restored.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "instance_id": {"type": "string", "description": "EC2 instance id (i-...)"},
+                },
+                "required": ["instance_id"],
+            },
+            source=src,
+            priority=3,
+            always_ask=True,
         ),
     ]

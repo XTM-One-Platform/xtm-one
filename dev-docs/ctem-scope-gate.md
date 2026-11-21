@@ -120,9 +120,18 @@ Stored as `decision` on the signal (version 1), with the state:
   "outcome": "case | watchlist | to_validate | discarded",
   "state": "confirmed | watchlist | to_validate | discarded",
   "reason": "one line",
+  "reason_code": "in_scope | below_scope_threshold | criticality_unknown | no_risk_scenario | risk_scenario_unreadable | crown_jewel_below_policy | internet_exposure_required | score_below_policy | accepted_risk | excluded_by_policy | subject_unresolved | contradicted_by_signals | contradicted_by_evidence",
+  "reason_params": {"criticality", "threshold", "confidence", "minimum", "score", "value", "owner", "until", "kind", "count"},
   "decided_at": "ISO-8601"
 }
 ```
+
+`reason` is the English line agents and logs read. The UI never draws it: it
+translates `reason_code` with `reason_params` (one code per outcome branch of
+`decide`, sentences in `frontend/src/pages/xtm-one/ctem/loop/DecisionReason.tsx`
+and the four catalogs), and lists `reconcile`, `scope` and `policy_checks` as
+the labelled inputs of the loop trace. A new branch adds its code, its
+sentence and a case in `test_every_outcome_carries_a_reason_code_the_frontend_translates`.
 
 `scope` is `null` when the gate stopped at reconcile. The case step opens a
 case for a signal in state `confirmed` whose decision outcome is `case`, and
