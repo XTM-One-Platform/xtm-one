@@ -129,12 +129,12 @@ Three more rules keep the selection precise (gap family
   files of a backend checkout failed 21 times on FileNotFoundError in 590 s).
 
 A wording-only change of a Python file (:func:`wording_words`: its code
-tokens equal on both sides, strings, comments and docstrings aside) names
-neither its definitions nor its module path: the words it replaced select
-the tests pinning the former or new text, and a note names the files. A
-product rename in error texts and docstrings of 17 modules selected 55 test
-files through the edited functions and module paths, about 60 minutes of
-run for no code change.
+tokens equal on both sides, comments and docstrings aside; any other string
+is code) names neither its definitions nor its module path: the distinctive
+words it replaced select the tests pinning the former or new text, and a
+note names the files. A product rename in docstrings and comments of 17
+modules selected 55 test files through the edited functions and module
+paths, about 60 minutes of run for no code change.
 
 Generic on purpose: no tool, repository or framework name is known here
 (invariant 18); a test file is recognised by its name only.
@@ -423,38 +423,73 @@ def _touched(path: str, text: str, lines: set[int], literals: set[str], defined:
 
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
-#: Token types whose text is wording, never code: a change confined to them changes no behaviour a name reaches.
-_WORDING_TOKENS = frozenset(
-    {tokenize.STRING, tokenize.COMMENT, tokenize.NL, getattr(tokenize, "FSTRING_MIDDLE", tokenize.STRING)}
-)
+#: Tokens that never carry behaviour between two code tokens: comments and blank lines.
+_TRIVIA = frozenset({tokenize.COMMENT, tokenize.NL})
+#: Tokens a statement starts after: a string run between one of them and the end of the statement is a docstring.
+_STATEMENT_START = frozenset({tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENCODING})
+
+
+def _docstrings(tokens: list[tokenize.TokenInfo]) -> set[int]:
+    """Indexes of the STRING tokens of *tokens* that form a statement alone (a docstring or a bare string).
+
+    Any other string (an argument, a constant, a dict key, a format string, an
+    f-string part) is a value the code acts on: its change is a code change.
+    """
+    out: set[int] = set()
+    i = 0
+    while i < len(tokens):
+        if tokens[i].type != tokenize.STRING:
+            i += 1
+            continue
+        run = [i]
+        j = i + 1
+        while j < len(tokens) and (tokens[j].type in _TRIVIA or tokens[j].type == tokenize.STRING):
+            if tokens[j].type == tokenize.STRING:
+                run.append(j)
+            j += 1
+        k = i - 1
+        while k >= 0 and tokens[k].type in _TRIVIA:
+            k -= 1
+        starts = k < 0 or tokens[k].type in _STATEMENT_START
+        ends = j >= len(tokens) or tokens[j].type in (tokenize.NEWLINE, tokenize.ENDMARKER)
+        if starts and ends:
+            out.update(run)
+        i = j
+    return out
 
 
 def _python_tokens(text: str) -> tuple[list[tuple[int, str]], list[str]] | None:
-    """The code tokens of *text* (type, text) and the text of its wording tokens; ``None`` when it does not tokenize."""
-    code: list[tuple[int, str]] = []
-    wording: list[str] = []
+    """The code tokens of *text* (type, text) and the text of its comments and docstrings; ``None`` when it does not tokenize."""
     try:
-        for token in tokenize.generate_tokens(io.StringIO(text).readline):
-            if token.type in _WORDING_TOKENS:
-                if token.type != tokenize.NL:
-                    wording.append(token.string)
-            else:
-                code.append((token.type, token.string))
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     except (tokenize.TokenError, SyntaxError, IndentationError):
         return None
+    docs = _docstrings(tokens)
+    code: list[tuple[int, str]] = []
+    wording: list[str] = []
+    for n, token in enumerate(tokens):
+        if token.type == tokenize.NL:
+            continue
+        if token.type == tokenize.COMMENT or n in docs:
+            wording.append(token.string)
+        else:
+            code.append((token.type, token.string))
     return code, wording
 
 
 def wording_words(path: str, old_text: str, new_text: str) -> set[str] | None:
     """The words a wording-only change of a Python file replaces, or ``None`` when the change touches code.
 
-    Wording-only: the code tokens of both sides are equal (strings, comments and
-    docstrings aside) and their text differs. The answer is the words removed or
-    added inside them (a word diff), kept when distinctive (:func:`_kept`): a
-    test pinning the former message names them, a test merely importing the
-    module does not. A rename of a product in error texts and docstrings across
-    17 modules selected 55 test files through the edited definitions and module
-    paths, about 60 minutes of run for no code change.
+    Wording-only: the code tokens of both sides are equal (comments and
+    docstrings aside) and their text differs. Every other string literal (a
+    status value, a key, a regex, a message, an f-string) is code: a test
+    asserting the new value imports the module, so its change keeps the
+    definition and module selection. The answer is the words removed or added
+    in the comments and docstrings (a word diff), kept when distinctive
+    (:func:`_kept`); no distinctive word left means ``None``, the code path,
+    never an empty selection. A rename of a product in docstrings and comments
+    across 17 modules selected 55 test files through the edited definitions and
+    module paths, about 60 minutes of run for no code change.
     """
     if not path.endswith(".py") or old_text == new_text:
         return None
@@ -469,7 +504,8 @@ def wording_words(path: str, old_text: str, new_text: str) -> set[str] | None:
         if tag != "equal":
             words.update(before[i1:i2])
             words.update(after[j1:j2])
-    return {w for w in words if _kept(w)}
+    kept = {w for w in words if _kept(w)}
+    return kept or None
 
 
 def python_module(path: str, base: str) -> str:
@@ -508,8 +544,8 @@ def changed_identifiers(
     JSON-schema keyword (``description``, ``properties``) or a short plain dict
     key (``sources``) is set aside as generic, never searched.
 
-    A wording-only change of a Python file (:func:`wording_words`: strings,
-    comments and docstrings alone) names neither its definitions nor its module
+    A wording-only change of a Python file (:func:`wording_words`: comments
+    and docstrings alone) names neither its definitions nor its module
     path: the words it replaced are the answer, also added to *wording* when
     given, so they select the tests pinning that text and no test importing the
     module for another reason.
@@ -848,7 +884,7 @@ async def affected_tests(
     generic: set[str] = set()
     quoted: dict[str, set[str]] = {}
     definitions: set[str] = set()
-    #: Changed Python file -> the words of a wording-only change (strings, comments, docstrings alone).
+    #: Changed Python file -> the words of a wording-only change (comments and docstrings alone).
     worded: dict[str, set[str]] = {}
 
     async def one(repo_path: str, mark: str) -> set[str]:
@@ -899,7 +935,7 @@ async def affected_tests(
     wording_only = sorted(p for p in worded if not is_test_file(p))
     if wording_only:
         out.notes.append(
-            f"{len(wording_only)} changed file(s) change wording only (strings, comments, docstrings): "
+            f"{len(wording_only)} changed file(s) change wording only (comments, docstrings): "
             + ", ".join(wording_only[:NAMED_IN_NOTE])
             + (f", +{len(wording_only) - NAMED_IN_NOTE} more" if len(wording_only) > NAMED_IN_NOTE else "")
             + "; only the tests naming a replaced word are selected, never by their definitions or module path."

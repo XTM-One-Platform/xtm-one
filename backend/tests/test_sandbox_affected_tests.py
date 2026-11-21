@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from app.services.sandbox_workspace import affected, commands
 from app.services.sandbox_workspace.checkout import build_record, changes_since
 from app.services.sandbox_workspace.checks import ReportSummary
@@ -328,7 +330,7 @@ WORDING_BEFORE = b'''"""Budget guard of the Concierge."""
 def check_budget(spent, cap):
     # The Concierge stops here.
     if spent > cap:
-        raise ValueError(f"Concierge budget spent: {spent}")
+        raise ValueError(f"budget spent: {spent}")
     return cap - spent
 '''
 
@@ -338,7 +340,7 @@ WORDING_AFTER = b'''"""Budget guard of Platform Health."""
 def check_budget(spent, cap):
     # Platform Health stops here.
     if spent > cap:
-        raise ValueError(f"Platform Health budget spent: {spent}")
+        raise ValueError(f"budget spent: {spent}")
     return cap - spent
 '''
 
@@ -358,6 +360,31 @@ def test_a_wording_only_change_names_the_replaced_words_not_its_definitions_or_m
     assert "check_budget" in affected.changed_identifiers("backend/app/budget.py", WORDING_BEFORE, code, base="backend")
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        # A string value the code acts on is code, however short or plain.
+        ('STATUS = "open"\n', 'STATUS = "closed"\n'),
+        ('def f(x):\n    return x == "pending_review"\n', 'def f(x):\n    return x == "awaiting_review"\n'),
+        ('import re\nPAT = re.compile(r"^[a-z]+$")\n', 'import re\nPAT = re.compile(r"^[a-z0-9]+$")\n'),
+        ('def f():\n    raise ValueError("Concierge budget")\n', 'def f():\n    raise ValueError("Platform budget")\n'),
+        ('def f(n):\n    return f"Concierge {n}"\n', 'def f(n):\n    return f"Platform {n}"\n'),
+        ('def f(d):\n    return d.get("sources")\n', 'def f(d):\n    return d.get("sources", "none")\n'),
+        # A docstring change whose replaced words are all too short to select by keeps the code path.
+        ('def f():\n    """the open path."""\n    return 1\n', 'def f():\n    """the shut path."""\n    return 1\n'),
+    ],
+)
+def test_a_string_value_or_an_unselectable_docstring_change_is_not_wording_only(old: str, new: str) -> None:
+    assert affected.wording_words("svc.py", old, new) is None
+    assert affected.changed_identifiers("backend/app/svc.py", old.encode(), new.encode(), base="backend")
+
+
+def test_a_docstring_after_a_comment_or_in_a_class_is_wording() -> None:
+    old = '# head\nclass Guard:\n    # note\n    """Concierge guard."""\n\n    LIMIT = "cap"\n'
+    new = '# head\nclass Guard:\n    # note\n    """Platform guard."""\n\n    LIMIT = "cap"\n'
+    assert affected.wording_words("svc.py", old, new) == {"Concierge", "Platform"}
+
+
 async def test_a_wording_only_change_selects_the_test_pinning_the_text_not_the_tests_importing_the_module() -> None:
     workspace = _workspace()
     tree = [
@@ -366,7 +393,7 @@ async def test_a_wording_only_change_selects_the_test_pinning_the_text_not_the_t
             "backend/tests/test_budget.py",
             b"from app.budget import check_budget\n\ndef test_it():\n    assert check_budget(1, 2) == 1\n",
         ),
-        ("backend/tests/test_budget_message.py", b"def test_msg(err):\n    assert 'Concierge budget' in str(err)\n"),
+        ("backend/tests/test_budget_doc.py", b"def test_doc(doc):\n    assert 'Concierge' in doc\n"),
     ]
     record = build_record(
         provider="github", repository="o/r", ref="main", commit="c" * 40, path="co", sub_paths=[], files=tree
@@ -379,7 +406,7 @@ async def test_a_wording_only_change_selects_the_test_pinning_the_text_not_the_t
         return dict(tree).get(repo_path, "not checked out")
 
     selection = await affected.affected_tests(workspace, record, changes, cwd="co/backend", read_base=read_base)
-    assert list(selection.tests) == ["tests/test_budget_message.py"]
+    assert list(selection.tests) == ["tests/test_budget_doc.py"]
     assert not selection.scoped
     assert any("change wording only" in n and "backend/app/budget.py" in n for n in selection.notes)
 
