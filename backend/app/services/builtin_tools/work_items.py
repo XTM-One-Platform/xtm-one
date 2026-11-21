@@ -597,11 +597,11 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
     "blocked_reason": {
         "type": "string",
         "description": (
-            "What it waits for, who releases it, since when. Blocked needs this, blocked_on, "
-            "blocked_on_refs or needs_human."
+            "Context, never the blocker: blocked needs an owner and blocked_on, blocked_on_refs or "
+            "needs_human with ask."
         ),
     },
-    "needs_human": {"type": "boolean", "description": "Blocked on a person's decision."},
+    "needs_human": {"type": "boolean", "description": "Blocked on a person's decision; needs ask."},
     "recipient": {
         "type": "string",
         "description": "needs_human: who decides (user id or email); default: run's person, agent owner, admins",
@@ -675,7 +675,8 @@ def _blocked_why_lines(item: dict) -> list[str]:
     why = item.get("blocked_why") or {}
     if why.get("missing"):
         lines.append(
-            "  - BLOCKED WITH NO REASON: set blocked_on, blocked_on_refs, blocked_reason or needs_human."
+            "  - BLOCKED WITH NO REAL BLOCKER: set blocked_on, blocked_on_refs, or needs_human with an ask "
+            "card, and an owner; or reopen it with not_before."
         )
     return lines
 
@@ -843,7 +844,7 @@ def _blocked_on_line(blockers: list) -> str:
     return (
         f"  - blocked on {len(blockers)} work item(s): {', '.join(str(b) for b in blockers)}. "
         "It goes back to open by itself once every one of them is done; a cancelled one "
-        "keeps it blocked."
+        "hands it back to its owner."
     )
 
 
@@ -1076,6 +1077,10 @@ def build_work_item_tools(
         blockers, blockers_err = await _full_blocker_ids(blocked_on)
         if blockers_err:
             return blockers_err
+        if not resolved_owner and agent_id and (blockers or refs or needs_human or status == "blocked"):
+            # A blocked item always has an owner that resumes it (#762): left
+            # empty, it stays in the calling agent's own backlog, as promised.
+            resolved_owner = agent_id
         try:
             item = await create_work_item(
                 user_id=acting_user_id,
