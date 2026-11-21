@@ -81,8 +81,6 @@ const PICKUP_ICONS: Record<WorkItemPickupState, ElementType> = {
   in_progress: CircleDashed,
   blocked: Ban,
   blocked_on_items: Link2,
-  waiting_for_refs: Link2,
-  waiting_for_person: User,
   waiting_for_ci: GitPullRequest,
   unassigned: AlertTriangle,
   automatic: Zap,
@@ -95,16 +93,28 @@ const PICKUP_ICONS: Record<WorkItemPickupState, ElementType> = {
 export function WorkItemAgent({ agent, className }: { agent: WorkItemAgentRef; className?: string }) {
   const { t_i18n } = useFormatter();
   if (!agent.accessible || !agent.id) {
+    const why = t_i18n("This agent is not shared with you: you can see the work item, not the agent.");
+    // The label is cut in a narrow column: the tooltip names the agent in full
+    // on its first line, then says why it cannot be opened.
     return (
       <Tip
-        content={t_i18n("This agent is not shared with you: you can see the work item, not the agent.")}
+        content={
+          agent.name ? (
+            <span className="flex flex-col gap-0.5">
+              <span className="font-medium">{agent.name}</span>
+              <span>{why}</span>
+            </span>
+          ) : (
+            why
+          )
+        }
         wrap
         wrapClassName="inline-flex min-w-0 max-w-full"
       >
         <span className={cn("inline-flex min-w-0 items-center gap-1 italic text-default-secondary", className)}>
           <Lock className="h-3 w-3 shrink-0" />
           <span className="truncate" data-testid="work-item-agent-hidden-label">
-            {t_i18n("an agent you cannot open")}
+            {agent.name ?? t_i18n("an agent you cannot open")}
           </span>
         </span>
       </Tip>
@@ -277,21 +287,6 @@ function shortPullRequestRef(pr: { repo: string; number: number }): string {
 }
 
 const PULL_REQUEST_STATE_ICONS = { open: GitPullRequest, merged: GitMerge, closed: GitPullRequestClosed } as const;
-
-/** The icon of a reference a blocked item waits for, by kind. */
-const REF_ICONS: Record<WorkItemBlockedRef["kind"], ElementType> = {
-  pull_request: GitPullRequest,
-  issue: CircleDot,
-  deployment: GitMerge,
-  workflow_run: Workflow,
-};
-/** The kind of a reference, the prefix of its accessible name. Read by `t_i18n(REF_KIND_LABELS[kind])`. @i18n-keys */
-const REF_KIND_LABELS = {
-  pull_request: "Pull request",
-  issue: "Issue",
-  deployment: "Deployment",
-  workflow_run: "Workflow run",
-} as const satisfies Record<WorkItemBlockedRef["kind"], string>;
 /** Read by `t_i18n(PULL_REQUEST_STATE_TIPS[state])`. @i18n-keys */
 const PULL_REQUEST_STATE_TIPS = {
   open: "Open pull request",
@@ -403,17 +398,8 @@ export function WorkItemBlockedWhy({
         // does) and only it truncates: `#N`, the part that tells the references
         // apart, always stays whole.
         const repoText = nowrap ? ref.repo.split("/").pop() || ref.repo : ref.repo;
-        const Icon = REF_ICONS[ref.kind] ?? GitPullRequest;
-        const kind = t_i18n(REF_KIND_LABELS[ref.kind] ?? REF_KIND_LABELS.pull_request);
-        // The part that tells references apart, never truncated: #N, @sha or the workflow.
-        const tail =
-          ref.kind === "workflow_run"
-            ? `: ${ref.workflow ?? ""}`
-            : ref.number != null
-              ? `#${ref.number}`
-              : ref.sha
-                ? `@${ref.sha.slice(0, 7)}`
-                : "";
+        const Icon = ref.kind === "issue" ? CircleDot : GitPullRequest;
+        const kind = ref.kind === "issue" ? t_i18n("Issue") : t_i18n("Pull request");
         return (
           <span
             key={`${ref.kind}:${label}`}
@@ -429,7 +415,7 @@ export function WorkItemBlockedWhy({
             <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
             <span className="inline-flex items-center">
               <span className="truncate">{repoText}</span>
-              <span className="shrink-0">{tail}</span>
+              <span className="shrink-0">#{ref.number}</span>
             </span>
           </span>
         );
