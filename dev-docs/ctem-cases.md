@@ -133,8 +133,18 @@ source that answers wins (`services/ctem_fixed_version.py`, pure):
    is the named version.
 3. Ranges a connected enrichment provider served, in the NVD 2.0 shape
    (`configurations[].nodes[].cpeMatch[]`, `ranges_from_nvd2`), passed to
-   `opencti_issues(provider_ranges=...)`. The provider read in the reader is
-   the next slice; the parser and the hook are in place.
+   `opencti_issues(provider_ranges=...)`. The reader reads them itself
+   (`ctem_cases_source._read_opencti`, slice 2): when a company-managed
+   VulnCheck integration is visible to the reading user
+   (`ENRICHMENT_PROVIDER`, `_enrichment_key`), the CVE names of the
+   vulnerabilities on the stack are looked up with
+   `vulncheck.nvd2_records` (enriched `vulncheck-nvd2` index first, the
+   community `nist-nvd2` index when the key is not licensed for it, 8 reads at
+   a time, at most `ENRICHMENT_CVE_CAP` = 100 CVEs per recompute) and parsed
+   per stack entry (`provider_ranges_for`, keyed `<CVE>|<stack label>`). No
+   integration, an unreadable key, a provider outage or a CVE past the cap
+   leave the fixed version to the other sources: the OpenCTI read is never
+   dropped for it.
 4. Nothing: "fixed version unknown", the key stays `@latest`.
 
 A tech stack entry takes an optional `version` (the version the organization
