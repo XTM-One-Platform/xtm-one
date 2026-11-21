@@ -20014,5 +20014,6 @@
   "Re-test passed on {date}": "{date} に再テストに合格",
   "Not reproduced": "再現なし",
   "Reproduced": "再現あり",
-  "Not re-tested yet": "未再テスト"
+  "Not re-tested yet": "未再テスト",
+  "Quick filters": "クイックフィルター"
 }
