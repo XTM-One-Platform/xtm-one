@@ -48,6 +48,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useFormatter } from "@/i18n";
 import { formatTimeAgoLine } from "@/lib/relative-time";
 import { useCtemCases, type CtemCaseState } from "@/hooks/api/useCtemCasesApi";
+import { useRecentCtemSignals, type CtemSignalList } from "@/hooks/api/useCtemSignalsApi";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
 import type { CtemFunnel, CtemFunnelLayer } from "@/types";
@@ -106,7 +107,6 @@ const LIVE_FILL = ["bg-accent/25", "bg-accent/40", "bg-accent/60", "bg-accent/75
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
   needs_attention: "bg-feedback-alert-primary",
   in_progress: "bg-feedback-info-primary",
-  mitigated_watching: "bg-feedback-success-tertiary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
 };
@@ -716,7 +716,41 @@ export function PrioritizationFunnelWithCases({
       }
     : undefined;
   return (
-    <PrioritizationFunnel variant="stage" funnel={withCasesLayer(funnel, cases)} openctiUrl={openctiUrl} caseStates={caseStates} readAt={readAt} />
+    <div className="space-y-3">
+      <PrioritizationFunnel variant="stage" funnel={withCasesLayer(funnel, cases)} openctiUrl={openctiUrl} caseStates={caseStates} readAt={readAt} />
+      <SignalGateCounts />
+    </div>
+  );
+}
+
+/**
+ * The two gates of the loop as numbers (#874, "10 flagged, 3 real"): signals
+ * in, confirmed by reconcile, in scope, cases. Read from the counts by state of
+ * `GET /ctem-signals` (the recent read, refreshed by `ctem_signal_update`), so it
+ * moves live. A signal still waiting for reconcile counts in "in" only.
+ */
+export function signalGateCounts(counts: CtemSignalList["counts"]) {
+  const c = (state: keyof CtemSignalList["counts"]) => counts[state] ?? 0;
+  const cases = c("case_opened");
+  const inScope = cases + c("confirmed");
+  const confirmed = inScope + c("watchlist");
+  const total = confirmed + c("new") + c("to_validate") + c("discarded");
+  return { total, confirmed, inScope, cases, watchlist: c("watchlist") };
+}
+
+function SignalGateCounts() {
+  const { t_i18n } = useFormatter();
+  const { data, isError } = useRecentCtemSignals(1);
+  // Never an invented 0: no line until the signals API answers, none on a refused read.
+  if (!data || isError) return null;
+  const gate = signalGateCounts(data.counts);
+  if (gate.total === 0) return null;
+  return (
+    <p className="content-compact text-default-secondary tabular-nums" data-testid="ctem-funnel-gate-counts">
+      {/* UX r1 B1 on #875: the card already counts open cases; this line names its
+          scope (signals) so its "opened a case" never reads as a second case total. */}
+      {t_i18n("Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist", gate)}
+    </p>
   );
 }
 
