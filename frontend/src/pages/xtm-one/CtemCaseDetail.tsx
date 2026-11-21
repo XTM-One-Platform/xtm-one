@@ -181,10 +181,11 @@ function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
  * tooltip only when the line is cut. The cap gives the auto-layout cell a width (13.ak) and
  * follows the table's own container: 9 rem below 72 rem, so the Fixed version and State
  * columns hold about 168 px each and the table fits a 1080 screen without a sideways scroll;
- * 18 rem from 72 rem, so the sentence reads whole on a wide screen when it fits.
+ * 24 rem (384 px) from 72 rem, about the content width of each column at 1728, so a caption
+ * that fits its cell reads whole (UX round 5 B1: 18 rem cut a 371 px caption in a 375 px cell).
  */
 function IssueCaption({ text }: { text: string }) {
-  return <TruncatedText text={text} className="max-w-[9rem] @6xl:max-w-[18rem] content-compact text-default-secondary" />;
+  return <TruncatedText text={text} className="max-w-[9rem] @6xl:max-w-[24rem] content-compact text-default-secondary" />;
 }
 
 export default function CtemCaseDetail() {
