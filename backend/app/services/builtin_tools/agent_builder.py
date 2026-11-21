@@ -13519,8 +13519,7 @@ def build_agent_builder_tool(
                         "description": (
                             "Optional custom human-in-the-loop prompt override. "
                             "Leave empty (or pass the literal 'none') to use the "
-                            "platform default. Teach request_human_input with options "
-                            "and a recommendation."
+                            "platform default."
                         ),
                         "default": "",
                     },
@@ -14429,8 +14428,7 @@ def build_agent_builder_tool(
                     "human_in_the_loop_prompt": {
                         "type": "string",
                         "description": (
-                            "Custom HITL instruction prompt (request_human_input with "
-                            "options and a recommendation). 'none'/'clear' "
+                            "Custom HITL instruction prompt. 'none'/'clear' "
                             "resets to the default."
                         ),
                         "default": "",
@@ -14737,8 +14735,7 @@ def build_agent_builder_tool(
                     "human_in_the_loop_prompt": {
                         "type": "string",
                         "description": (
-                            "Custom human-in-the-loop prompt override (request_human_input "
-                            "with options and a recommendation). Pass "
+                            "Custom human-in-the-loop prompt override. Pass "
                             "'none' to reset to the platform default."
                         ),
                         "default": "",
