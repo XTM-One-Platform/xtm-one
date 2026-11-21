@@ -53,7 +53,7 @@ function IdChip({ value }: { value: string }) {
         onClick={copy}
         aria-label={t_i18n("Copy {value}", { value })}
         data-testid="work-item-id-chip"
-        className="mx-0.5 inline-flex items-center rounded-sm bg-elevation-hover px-1 font-mono-plex text-[12px] text-default-secondary align-baseline hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+        className="mx-0.5 inline-flex items-center rounded-sm bg-elevation-hover px-1 font-mono-plex content-compact text-default-secondary align-baseline hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
       >
         {value.length > 8 ? value.slice(0, 8) : value}
       </button>
@@ -88,6 +88,7 @@ function NoteEntry({
   const { t_i18n, intl } = useFormatter();
   const long = isLongNote(note.body);
   const [open, setOpen] = useState(false);
+  const folded = long && !open;
   const when = intl.formatDate(note.at, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const author = run?.agent?.name ?? (note.runId ? t_i18n("An agent run") : t_i18n("The platform"));
   return (
@@ -109,15 +110,29 @@ function NoteEntry({
             <IdChip value={note.runId} />
           ))}
       </div>
-      <div className={cn("pt-1", long && !open && "line-clamp-6")} data-testid="work-item-note-body">
+      {/* A height cap, not line-clamp: the body is block Markdown (div > p), which
+          -webkit-line-clamp on a wrapper does not cut (UX round 1, B1). About 6
+          lines of content-base (line height 1.75em), faded at the bottom. */}
+      <div
+        className={cn("relative pt-1", folded && "max-h-[10.5em] overflow-hidden")}
+        data-testid="work-item-note-body"
+        data-folded={folded ? "true" : undefined}
+      >
         <NoteMarkdown text={note.body} repo={repo} />
+        {folded && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--bg-elevation-default)] to-transparent"
+            data-testid="work-item-note-fade"
+            aria-hidden
+          />
+        )}
       </div>
       {long && (
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="mt-1 rounded-sm content-caption text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+          className="mt-1 rounded-sm content-compact text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
         >
           {open ? t_i18n("Show less") : t_i18n("Show more")}
         </button>

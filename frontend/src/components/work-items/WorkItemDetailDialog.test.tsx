@@ -830,6 +830,23 @@ describe("the work item detail", () => {
     expect(screen.getByTestId("work-item-brief").textContent).toContain("Read the 120 pages.");
   });
 
+  it("folds a long note by height, block Markdown included, and unfolds it (#776, UX B1)", () => {
+    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}\n\nA second paragraph.\n\nRead the brief.` }));
+    const body = screen.getByTestId("work-item-note-body");
+    // A height cap on the wrapper, never -webkit-line-clamp: the text sits in block children.
+    expect(body.className).not.toContain("line-clamp");
+    expect(body.className).toContain("overflow-hidden");
+    expect(body.getAttribute("data-folded")).toBe("true");
+    expect(screen.getByTestId("work-item-note-fade")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(body.getAttribute("data-folded")).toBeNull();
+    expect(body.className).not.toContain("overflow-hidden");
+    expect(screen.queryByTestId("work-item-note-fade")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.getAttribute("data-folded")).toBe("true");
+  });
+
   it("renders no script or iframe a description carries", () => {
     openDialog(item({ description: 'x <script>window.__pwned = 1</script> <iframe src="https://e.test"></iframe> [a](javascript:alert(1))' }));
     const detail = screen.getByTestId("work-item-detail");
