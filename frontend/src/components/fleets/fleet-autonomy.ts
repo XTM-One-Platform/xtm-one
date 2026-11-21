@@ -116,7 +116,7 @@ const DECLARED_GATE_ACTIONS = [
  * One line per CTEM loop gate (#916, CTEM-34): what happens when it runs
  * alone, so a person sees the effect of a pin before the click. @i18n-keys
  */
-const CTEM_GATE_EFFECTS: Record<string, string> = {
+const CTEM_GATE_EFFECTS: Readonly<Record<string, string>> = {
   "ctem.validation.non_readonly": "When it runs alone, OpenAEV tests that are not read-only start without a person.",
   "ctem.analyst_review": "When it runs alone, the fleet requests the coverage without an analyst's review.",
   "ctem.remediation.decision": "When it runs alone, the recommended option is applied and logged as decided by policy.",
@@ -124,7 +124,7 @@ const CTEM_GATE_EFFECTS: Record<string, string> = {
   "ctem.production_change": "When it runs alone, the fleet applies a change on production through an integration.",
   "ctem.accept_risk": "When it runs alone, a residual risk beyond the policy cap is accepted without a person.",
   "ctem.close_without_retest": "When it runs alone, a case closes on the proof that fits the fix, without a re-test.",
-};
+} as const;
 
 /** The one-line effect of a CTEM loop gate; `null` for any other gate. */
 export function ctemGateEffect(key: string): string | null {
