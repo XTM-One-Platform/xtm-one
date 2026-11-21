@@ -32,6 +32,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.models.ctem_case import CASE_STATES, RESOLUTION_KINDS
 
@@ -297,14 +298,14 @@ def check_owner(state: str, owner_user_id: object | None) -> None:
 PASSING_RESULTS = ("passed", "not_exposed")
 
 
-def latest_validation(validations: Iterable[dict] | None) -> dict | None:
+def latest_validation(validations: Iterable[dict[str, Any]] | None) -> dict[str, Any] | None:
     """The newest validation reference of a case (the list is kept oldest first), ``None`` when none."""
     items = [v for v in (validations or []) if isinstance(v, dict)]
     return items[-1] if items else None
 
 
-def passing(validation: dict | None) -> bool:
-    return bool(validation) and validation.get("result") in PASSING_RESULTS
+def passing(validation: dict[str, Any] | None) -> bool:
+    return validation is not None and validation.get("result") in PASSING_RESULTS
 
 
 def check_transition(
@@ -319,7 +320,7 @@ def check_transition(
     now: datetime,
     max_acceptance: timedelta = DEFAULT_MAX_ACCEPTANCE,
     validation_plan: bool = False,
-    validations: Iterable[dict] | None = None,
+    validations: Iterable[dict[str, Any]] | None = None,
     resolution_kind: str | None = None,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.

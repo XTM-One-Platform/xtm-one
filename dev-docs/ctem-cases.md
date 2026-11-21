@@ -489,6 +489,22 @@ profile tool, acting for the person the turn or run acts for. Tests:
 3. Case page: Issues first, always; assets and history in the right column
    at >= 1440, under the issues below it.
 
+## 9bis. The loop: cases opened from signals, updated on events, closed on proof (#857)
+
+The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile and scope gate (`dev-docs/ctem-scope-gate.md`) -> case. Rules in `services/ctem_case_loop.py`, no model call.
+
+**Model (migration `c857ctemcaseloop1`, additive).** A case carries `trigger_path` (the path of the signal that opened it; `new_vulnerability` for a case from the two readers), `risk_scenario_ids`, `severity` (P1 to P3), `sla_due_at`, `sla_breached_at` (set once), `tickets` (`[{integration, key, url, status, at}]`, written by CTEM-19), `validations` (`[{provider, kind, ref, result, at, mitigation_only, note}]`, newest last, 50 kept), `validation_plan` and `resolution_kind` (`not_exposed`, `mitigated`, `fixed`, `accepted_risk`). New state `mitigated_watching`; new remediation kinds `close_exposure`, `decommission`, `rotate_credential`, `restore_control`, `supplier_action`, `restore_coverage`; new member source `signal`. Existing cases read as path `new_vulnerability` with no origin signal.
+
+**Opening.** A signal the scope gate leaves `confirmed` with outcome `case` opens the case of its fix in the same transaction (`ctem_scope_gate_store.evaluate_after_record`), or joins the open case with the same key: one case per remediation, every origin signal a `signal` member. Key: a software subject on a vulnerability path is `upgrade:-/<product>@latest` (the reader's key, so both meet); any other is `<kind>:<subject kind>/<subject ref>`, the kind from the trigger path. Severity, SLA (`sla_hours` of the decision record, else P1 24 h, P2 72 h, P3 30 days) and risk scenarios come from the decision record; a joining signal keeps the most urgent severity and the earliest SLA. The signal moves to `case_opened`. Paths `proven_exploitable` and `mitigation_regression` open with a validation plan.
+
+**Proof.** `POST /api/v1/ctem-cases/{id}/validations` (any caller who sees the case) records a validation reference and sets the validation plan. `passed` or `not_exposed` resolves (`fixed` or `not_exposed`); with `mitigation_only` it goes to `mitigated_watching` and the re-test stays on; `failed` reopens a resolved or watched case to `needs_attention`; `pending` only records. A case with a validation plan resolves only on a passing newest reference (the PATCH route refuses with 422) and never on absence at source in a recompute. A case with no plan keeps the accepted proof of its kind as evidence (ticket done, re-scan, directory check). Accepted risk keeps its 90-day ceiling.
+
+**Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here) and escalates every open case past its SLA once.
+
+**Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id; filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
+
+**Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
+
 ## 10. Slices
 
 | Slice | Content | Gate |

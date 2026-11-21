@@ -246,7 +246,8 @@ async def open_from_signal(
             case.severity = severity
         if hours:
             due = now + timedelta(hours=hours)
-            if case.sla_due_at is None or rules.as_utc(case.sla_due_at) > due:
+            current = rules.as_utc(case.sla_due_at)
+            if current is None or current > due:
                 case.sla_due_at = due
         case.risk_scenario_ids = sorted(set(case.risk_scenario_ids or []) | set(scenarios))
     db.add(CtemCaseIssue(case_id=case.id, source=SIGNAL_SOURCE, external_id=str(signal.id), open=True))
@@ -259,7 +260,15 @@ async def open_from_signal(
     return case
 
 
-def _transition(case: CtemCase, target: str, at: datetime, *, reason: str | None = None, evidence: str | None = None, actor: str = rules.SYSTEM_ACTOR) -> CtemCaseEvent:
+def _transition(
+    case: CtemCase,
+    target: str,
+    at: datetime,
+    *,
+    reason: str | None = None,
+    evidence: str | None = None,
+    actor: str = rules.SYSTEM_ACTOR,
+) -> CtemCaseEvent:
     row = _event(case.id, actor, "state", at, from_value=case.state, to_value=target, reason=reason, evidence=evidence)
     case.state = target
     case.state_since = at
@@ -295,12 +304,13 @@ async def record_validation(
     if not (provider or "").strip() or not (ref or "").strip():
         raise rules.CaseRuleError("a validation reference needs its provider and its id")
     now = now or datetime.now(UTC)
-    entry = {
+    at = now.isoformat()
+    entry: dict[str, Any] = {
         "provider": provider.strip()[:40],
         "kind": (kind or "validation").strip()[:40],
         "ref": ref.strip()[:300],
         "result": result,
-        "at": now.isoformat(),
+        "at": at,
         "mitigation_only": bool(mitigation_only),
         "note": (note or "").strip()[:500] or None,
     }
@@ -317,12 +327,14 @@ async def record_validation(
             db.add(_transition(case, "resolved", now, evidence=evidence, actor=actor))
             case.resolution_kind = "not_exposed" if result == "not_exposed" else "fixed"
             if events is not None:
-                events.add(CASE_RESOLVED, case_data(case, validation=entry), _event_id(CASE_RESOLVED, case, entry["at"]))
+                events.add(
+                    CASE_RESOLVED, case_data(case, validation=entry), _event_id(CASE_RESOLVED, case, at)
+                )
     elif result == "failed" and case.state in ("resolved", "mitigated_watching"):
         db.add(_transition(case, "needs_attention", now, reason=f"re-test failed: {evidence}", actor=actor))
         case.resolution_kind = None
         if events is not None:
-            events.add(CASE_REOPENED, case_data(case, validation=entry), _event_id(CASE_REOPENED, case, entry["at"]))
+            events.add(CASE_REOPENED, case_data(case, validation=entry), _event_id(CASE_REOPENED, case, at))
     return case
 
 

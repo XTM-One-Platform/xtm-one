@@ -22,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import ctem_case_loop as case_loop
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
 from app.models.user import User
+from app.services import ctem_case_loop as case_loop
 from app.services import ctem_scope_gate_store as scope_gate
 from app.services import ctem_signals as signals
 from app.services.organizations import get_primary

@@ -25,6 +25,7 @@ is a "Restricted" row.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -122,9 +123,9 @@ class CtemCase(Base):
     #: Set once, when the SLA was first found breached (the escalation is raised once).
     sla_breached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: ``[{integration, key, url, status, at}]``.
-    tickets: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    tickets: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     #: ``[{provider, kind, ref, result, at, mitigation_only, note}]``, newest last.
-    validations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    validations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     #: True: the case resolves only on a passing validation reference.
     validation_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     resolution_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)

@@ -451,8 +451,7 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     },
     "ctem_case.sla_breached": {
         "description": (
-            "An open CTEM case passed its SLA (once per case): escalate. Payload: the case fields. "
-            "Platform-wide."
+            "An open CTEM case passed its SLA (once per case): escalate. Payload: the case fields. Platform-wide."
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },

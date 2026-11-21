@@ -117,9 +117,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     recorded_via="tool",
                     recorded_by=str(scope),
                 )
-                from app.services import ctem_scope_gate_store
-
-                from app.services import ctem_case_loop
+                from app.services import ctem_case_loop, ctem_scope_gate_store
 
                 pending = await ctem_scope_gate_store.evaluate_after_record(db, row, created=created)
                 await db.commit()
