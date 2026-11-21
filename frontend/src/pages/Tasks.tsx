@@ -14,13 +14,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 import { Icon } from "@filigran/design-system";
-import { useLocation } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { useFormatter } from "@/i18n";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import WorkItemsTab from "@/pages/operations/WorkItemsTab";
 import WorkspacesTab, { NewWorkspaceButton } from "@/pages/operations/WorkspacesTab";
 import Value from "@/pages/Value";
+import RouteNotFound from "@/pages/RouteNotFound";
+import { isValueTab } from "@/lib/roi-value";
 import { TASKS_TABS, tasksTabOf, tasksTabSearch } from "@/pages/operations/tabs";
 
 /**
@@ -34,6 +36,11 @@ export default function Tasks() {
   const { t_i18n } = useFormatter();
   const { pathname } = useLocation();
   const tab = tasksTabOf(pathname);
+  const { tab: valueSegment } = useParams<{ tab?: string }>();
+
+  // An unknown Value table (`/tasks/value/by-agent`) is not found before the
+  // Tasks header and tab row render: one full-page rendering, no redirect (#797).
+  if (tab === "value" && !isValueTab(valueSegment)) return <RouteNotFound />;
 
   return (
     <div className="space-y-6">

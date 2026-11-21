@@ -45,8 +45,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { workItemsPath } from "@/lib/task-routes";
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { isKnownMapView, mapViewPath, readMapView, type MapView } from "@/lib/map-view";
-import RouteNotFound from "@/pages/RouteNotFound";
+import { mapViewPath, readMapView, type MapView } from "@/lib/map-view";
 import { Radio } from "lucide-react";
 import { ScheduleView } from "@/components/ui/schedule-view";
 import { AgentFocusPicker } from "@/components/ui/agent-focus-picker";
@@ -672,9 +671,6 @@ export default function MapTab() {
     onOpenAgent: (id) => navigate(`/agents/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
     onOpenRun: (id) => navigate(`/runs/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
   });
-
-  // An unknown view segment is not found: no redirect (#797).
-  if (!isKnownMapView(mapView)) return <RouteNotFound />;
 
   return (
     <div className="space-y-6">

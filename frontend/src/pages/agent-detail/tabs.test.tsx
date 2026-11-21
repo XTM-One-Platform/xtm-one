@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { agentDetailTabs } from "./tabs";
+import { agentDetailTabs, isAgentTab } from "./tabs";
 
 describe("agent page tabs", () => {
   it("are at most the eleven tabs, in order, with no Scheduled tab", () => {
@@ -59,6 +59,15 @@ describe("agent page tabs", () => {
       "delegations",
       "activity",
     ]);
+  });
+
+  it("answer not found for an unknown tab segment, the former budget included (#797)", () => {
+    expect(isAgentTab(undefined)).toBe(true);
+    expect(isAgentTab("value")).toBe(true);
+    expect(isAgentTab("evaluation")).toBe(true);
+    expect(isAgentTab("budget")).toBe(false);
+    expect(isAgentTab("garbage")).toBe(false);
+    expect(isAgentTab("constructor")).toBe(false);
   });
 
   it("show an administrator no Evaluation tab while evaluation is off", () => {

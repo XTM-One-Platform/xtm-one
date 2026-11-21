@@ -42,7 +42,9 @@ import { useMemo, useState } from "react";
 import RouteNotFound from "@/pages/RouteNotFound";
 import { Workflow, LayoutGrid } from "lucide-react";
 import { useFormatter } from "@/i18n";
+import { useParams } from "react-router-dom";
 import { useFeatureFlagResolved } from "@/hooks/useFeatureFlag";
+import { isKnownMapView } from "@/lib/map-view";
 import { useTabParam } from "@/hooks/useTabParam";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { ListPageHeader } from "@/components/ui/list-page-header";
@@ -72,13 +74,16 @@ export default function Flows() {
     [flowBuilderEnabled],
   );
   const [rawTab] = useTabParam<FlowTab>(DEFAULT_TAB);
+  const { mapView } = useParams<{ mapView?: string }>();
   // A state, not a ref: the tab renders into the slot once it is mounted.
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
 
   // `useTabParam` returns the raw `:tab` path segment unvalidated: a segment that
   // names no tab (a former `/flows/schedule` included, or `/flows/library` while
   // the builder is hidden) is not found, never redirected (#797).
-  const known = tabs.some((t) => t.key === rawTab);
+  // An unknown map view (`/flows/map/garbage`) is decided here too, before the
+  // page header and tab row render: one full-page rendering of not found.
+  const known = tabs.some((t) => t.key === rawTab) && (rawTab !== "map" || isKnownMapView(mapView));
   const tab: FlowTab = known ? rawTab : DEFAULT_TAB;
 
   /* Only while genuinely in flight. If `/auth/config` failed outright the flag

@@ -75,7 +75,8 @@ import { EvaluationTab } from "./agent-detail/EvaluationTab";
 import { VersioningTab } from "./agent-detail/VersioningTab";
 import { ObservabilityTab } from "./agent-detail/ObservabilityTab";
 import { FeedbackTab } from "./agent-detail/FeedbackTab";
-import { agentDetailTabs, type AgentTab } from "./agent-detail/tabs";
+import { agentDetailTabs, isAgentTab, type AgentTab } from "./agent-detail/tabs";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { AgentSuccessorDialog } from "./agent-detail/AgentSuccessorDialog";
 import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 
@@ -90,7 +91,7 @@ export default function AgentDetail() {
   const agenticEnabled = useAgenticAIEnabled();
   const { t_i18n } = useFormatter();
   useTick(REFETCH_INTERVAL_SLOW); // keep relative timestamps fresh
-  const { id, section } = useParams<{ id: string; tab?: string; section?: string }>();
+  const { id, tab: tabSegment, section } = useParams<{ id: string; tab?: string; section?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -124,6 +125,9 @@ export default function AgentDetail() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [duplicateGateOpen, setDuplicateGateOpen] = useState(false);
 
+  // A `:tab` segment that names no agent tab (the former `budget` included) is
+  // not found, before the agent header renders: no redirect (#797).
+  if (!isAgentTab(tabSegment)) return <RouteNotFound />;
   if (isLoading) return <DetailPageSkeleton backTo={backTo} backLabel={backLabel} tabs={6} descriptionLines={1} actions={3} />;
   if (!agent) return (
     <NotFoundState

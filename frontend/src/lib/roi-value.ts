@@ -98,6 +98,11 @@ export function parseValueTab(value: string | undefined): ValueTab {
   return value && (VALUE_TAB_KEYS as readonly string[]).includes(value) ? (value as ValueTab) : VALUE_TAB_KEYS[0];
 }
 
+/** Whether a `/tasks/value/:tab?` segment names a table (none is the default); an unknown or retired one is not found (#797). */
+export function isValueTab(value: string | undefined): boolean {
+  return value === undefined || (VALUE_TAB_KEYS as readonly string[]).includes(value);
+}
+
 export interface ValueRow {
   kind: "fleet" | "agent" | "unit";
   id: string;

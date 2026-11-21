@@ -48,6 +48,30 @@ export type AgentTab =
   | "feedback"
   | "activity";
 
+const AGENT_TAB_KEYS: readonly AgentTab[] = [
+  "overview",
+  "config",
+  "value",
+  "versioning",
+  "memory",
+  "chats",
+  "delegations",
+  "evaluation",
+  "observability",
+  "feedback",
+  "activity",
+];
+
+/**
+ * Whether a `:tab` path segment names an agent tab (none is Overview). An
+ * unknown one, the former `budget` included, is not found: no redirect (#797).
+ * A known tab the viewer may not see keeps the page, so a flag still resolving
+ * never flashes a not-found.
+ */
+export function isAgentTab(segment: string | undefined): boolean {
+  return segment === undefined || (AGENT_TAB_KEYS as readonly string[]).includes(segment);
+}
+
 interface AgentTabAccess {
   canManageMemory: boolean;
   canViewChats: boolean;
