@@ -39,10 +39,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * or ask closes the dialog (*onAnswered*, #774).
  */
 import { useId, useState } from "react";
-import { CalendarClock, ExternalLink, MessageSquareReply, Send, Sparkles } from "lucide-react";
-import { Textarea } from "@filigran/design-system";
+import { CalendarClock, MessageSquareReply, Send, Sparkles } from "lucide-react";
+import { Icon, Textarea } from "@filigran/design-system";
 
-import MarkdownText from "@/components/custom-dashboard/charts/MarkdownText";
+import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DisclosureSummary } from "@/components/ui/disclosure";
@@ -139,7 +139,7 @@ export function WorkItemDecisionCard({
             <li key={link.url}>
               <Button asChild size="sm" variant="outline" className="gap-1">
                 <a href={link.url} target="_blank" rel="noopener noreferrer" data-testid="work-item-decision-link">
-                  <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <Icon name="external-link" size={16} className="shrink-0" aria-hidden />
                   {link.label}
                 </a>
               </Button>
@@ -149,16 +149,17 @@ export function WorkItemDecisionCard({
       )}
       {context.length > 0 && (
         <div data-testid="work-item-decision-context">
-          <MarkdownText
-            text={context.join("\n\n")}
-            className="content-compact text-default-secondary [&_p]:my-1"
+          <ChatMarkdown
+            content={context.join("\n\n")}
+            className="chat-markdown content-compact text-default-secondary"
+            remoteImages={false}
           />
         </div>
       )}
       {fallback && (
         <div className="space-y-1" data-testid="work-item-decision-fallback">
           {!ask?.question && brief && (
-            <MarkdownText text={brief} className="content-compact text-default-secondary [&_p]:my-1" />
+            <ChatMarkdown content={brief} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />
           )}
           <p className="content-compact font-medium text-default-primary" data-testid="work-item-decision-incomplete">
             {t_i18n("This card is incomplete: its agent is asked to rewrite it.")}
