@@ -13066,7 +13066,7 @@
   "Delayed run at {when}": "Ejecución diferida el {when}",
   "Next run in the trigger's time zone, then in UTC": "Próxima ejecución en la zona horaria del disparador y luego en UTC",
   "Blocked on other items": "Bloqueado por otros elementos",
-  "It waits for the items below and goes back to the queue by itself once every one of them is done. A cancelled one keeps it blocked.": "Espera a los elementos de abajo y vuelve solo a la cola cuando todos están terminados. Uno cancelado lo mantiene bloqueado.",
+  "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.": "Espera a los elementos de abajo y vuelve solo a la cola cuando todos están terminados o uno se cancela.",
   "Blocked on {count, plural, one {# item} other {# items}}": "Bloqueado por {count, plural, one {# elemento} other {# elementos}}",
   "Waits for {count, plural, one {# item} other {# items}}": "Espera a {count, plural, one {# elemento} other {# elementos}}",
   "a work item you cannot open": "un elemento de trabajo que no puede abrir",
