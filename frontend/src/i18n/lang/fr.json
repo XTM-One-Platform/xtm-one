@@ -20000,5 +20000,8 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "Pas encore de lecture d’exploitation : le tri l’écrit depuis OpenCRQ quand un scénario de risque contient un actif concerné.",
   "Restricted asset": "Actif restreint",
   "Techniques in attack order": "Techniques dans l’ordre de l’attaque",
-  "Recorded how it would be exploited": "A enregistré comment elle serait exploitée"
+  "Recorded how it would be exploited": "A enregistré comment elle serait exploitée",
+  "{starts}, next {time}": "{starts}, prochain {time}",
+  "Platform Health is off in Settings": "Platform Health est désactivé dans les Paramètres",
+  "Platform Health switched on in Settings": "Platform Health activé dans les Paramètres"
 }

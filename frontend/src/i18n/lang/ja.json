@@ -20000,5 +20000,8 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "悪用の読み取りはまだありません。リスクシナリオに影響を受ける資産がある場合、トリアージが OpenCRQ から書き込みます。",
   "Restricted asset": "制限された資産",
   "Techniques in attack order": "攻撃順のテクニック",
-  "Recorded how it would be exploited": "想定される悪用方法を記録しました"
+  "Recorded how it would be exploited": "想定される悪用方法を記録しました",
+  "{starts}, next {time}": "{starts}、次回 {time}",
+  "Platform Health is off in Settings": "設定で Platform Health がオフです",
+  "Platform Health switched on in Settings": "設定で Platform Health がオン"
 }
