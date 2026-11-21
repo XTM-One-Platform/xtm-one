@@ -878,11 +878,17 @@ def _same_worker_memory_on_every_machine(monkeypatch):
     Without a container limit, the room of a render is the host's memory less
     the preview reserve (``render_process.launch_room``), a hard floor of
     8 GiB: on a 7.7 GiB CI runner every render a test starts would be refused
-    before it ran, on a larger machine never. The tests of a worker's size set
-    their own; every other one runs on a 32 GiB host.
+    before it ran, on a larger machine never. The container's own limit is
+    hidden the same way: a suite run inside a container (a 4 GiB sandbox) reads
+    no cgroup memory limit, so its renders are not refused either. The tests of
+    a worker's size set their own; every other one runs on a 32 GiB host with
+    no container limit.
     """
     from app.services.video_studio import resources
 
+    missing = "/nonexistent/xtm-one-tests/memory"
+    monkeypatch.setattr(resources, "_CGROUP_V2_MEMORY_MAX", missing)
+    monkeypatch.setattr(resources, "_CGROUP_V1_MEMORY_LIMIT", missing)
     monkeypatch.setattr(resources, "host_memory", lambda: 32 << 30)
 
 
