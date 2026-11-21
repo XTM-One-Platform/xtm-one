@@ -1050,7 +1050,33 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   or System to Vulnerability, whatever KEV or EPSS. The OpenCTI signal
   listener records the source in the signal's `evidence.software`, so the
   scope gate resolves the signal to that product. The PIR score thresholds
-  of the same item wait for OpenCTI to emit an event at PIR flag time.
+  of the same item build on the PIR playbook mode below (CTEM-05).
+- PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
+  `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
+  playbook instead of a live trigger. OpenCTI flags an entity in a PIR
+  through its internal `in-pir` relationship and writes the entity's
+  `pir_information` without a stream event, so a live trigger with a
+  `pir_score` filter never sees the flag. The playbook entry built for it,
+  "Listen PIR events" (`PLAYBOOK_DATA_STREAM_PIR`), listens to the profile
+  PIRs (enter and score change, `pir_score` gte `pir_min_score`), then
+  "Send to notifier" posts to the same Generic webhook notifier and
+  receiver, delivered to the integration's own OpenCTI user only (the
+  notifier component checks that user's access to the entity, markings
+  and organisations included). Same naming, state block, recheck and
+  removal as a trigger; any drift (a node edited, the playbook stopped)
+  rebuilds the playbook; switching mode deletes the other object. The
+  delivery records a signal on the path the entity type gives
+  (`relevant_threat`, `new_vulnerability`) with `evidence.pir`
+  `[{pir_id, score_at_delivery}]`: ids and score only, the criteria and
+  the causing relationship stay in OpenCTI. Read in a lab on OpenCTI
+  master (21 Nov 2026): an entity entering a PIR is delivered once (type
+  create); a repeated flag with the same score is not delivered; each
+  score change is delivered once (type update) but carries the score
+  before the change, because OpenCTI renders the entity before rewriting
+  its PIR information. The delivery key therefore includes the delivered
+  PIR information, and the fleet reads the live score from OpenCTI
+  before acting. Leaving a PIR is not delivered (the delete toggle stays
+  off).
 
 ### 8.2 Event enrichment
 
