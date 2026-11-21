@@ -123,6 +123,11 @@ from .ctem_signals import (
     build_ctem_signal_tools,
     offers_ctem_signal_tools,
 )
+from .learned_skill import (
+    LEARNED_LESSON_TOOL,
+    build_learned_lesson_tool,
+    offers_learned_lesson_tool,
+)
 from .custom_dashboard import (
     build_custom_dashboard_tools,
 )
@@ -456,6 +461,8 @@ __all__ = [
     "build_computer_use_tools",
     "build_ctem_case_tools",
     "build_ctem_signal_tools",
+    "build_learned_lesson_tool",
+    "LEARNED_LESSON_TOOL",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
     "build_document_vision_tools",
@@ -555,6 +562,7 @@ __all__ = [
     "offered_handover_types",
     "offers_ctem_case_tools",
     "offers_ctem_signal_tools",
+    "offers_learned_lesson_tool",
     "offers_organization_context_write",
     "offers_organization_proposals",
     "offers_user_admin",
