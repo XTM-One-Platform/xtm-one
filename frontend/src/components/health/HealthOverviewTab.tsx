@@ -36,6 +36,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { HealthAnalysisPanel } from "@/components/health/HealthAnalysisPanel";
+import { ANALYST_MODULES, AnalystRecommendationBlock, ModuleInvestigationLine } from "@/components/health/ModuleAnalystParts";
 import {
   useDismissHealthFindings,
   useHealthFindings,
@@ -72,6 +73,14 @@ const SEVERITY_BADGE: Record<HealthSeverity, "destructive" | "warning" | "second
   warning: "warning",
   info: "secondary",
 };
+
+/** Where a finding comes from: a deterministic check or the Module Analyst (#101 S14c). @i18n-keys */
+const SOURCE_LABELS = {
+  checks: "Checks",
+  agentic: "Agentic",
+} as const;
+
+const sourceOf = (finding: HealthFinding): keyof typeof SOURCE_LABELS => (finding.agentic ? "agentic" : "checks");
 
 const HISTORY_WINDOWS = [7, 30, 90] as const;
 type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
@@ -245,6 +254,7 @@ function FindingDetail({
           <p className="content-base text-default-primary">{checkRecommendation(finding.check_id, finding.recommendation, t_i18n)}</p>
         </div>
       ) : null}
+      {finding.analyst_recommendation ? <AnalystRecommendationBlock recommendation={finding.analyst_recommendation} /> : null}
       {lines.length ? (
         <div className="space-y-1">
           <h4 className="content-compact font-medium text-default-secondary">{t_i18n("Evidence")}</h4>
@@ -429,7 +439,17 @@ export function HealthOverviewTab() {
       {
         key: "finding",
         header: "Finding",
-        cell: (finding) => <CellText text={findingTitle(finding, t_i18n)} />,
+        cell: (finding) =>
+          finding.agentic ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <Badge variant="outline" className="shrink-0 whitespace-nowrap" data-testid="health-finding-agentic">
+                {t_i18n(SOURCE_LABELS.agentic)}
+              </Badge>
+              <CellText text={findingTitle(finding, t_i18n)} />
+            </span>
+          ) : (
+            <CellText text={findingTitle(finding, t_i18n)} />
+          ),
         sortValue: (finding) => findingTitle(finding, t_i18n),
         csv: (finding) => findingTitle(finding, t_i18n),
       },
@@ -485,6 +505,17 @@ export function HealthOverviewTab() {
           .map((value) => ({ value, label: categoryLabel(value, t_i18n) }))
           .sort((a, b) => a.label.localeCompare(b.label)),
       },
+      // Checks or Module Analyst (section 12.7): offered once the view holds an agentic finding.
+      ...(rows.some((finding) => finding.agentic)
+        ? [
+            {
+              key: "source",
+              label: "Source",
+              values: (finding: HealthFinding) => [sourceOf(finding)],
+              options: Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
+            },
+          ]
+        : []),
     ],
     [t_i18n, modules, rows],
   );
@@ -577,6 +608,12 @@ export function HealthOverviewTab() {
             value={String(card.score)}
             subtitle={moduleCardSubtitle(card, t_i18n)}
             iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
+            footer={
+              // The Module Analyst's last cycle and "Investigate now": administrators, analysed modules (section 12.7).
+              overview.data?.scope === "all" && ANALYST_MODULES.includes(card.module) ? (
+                <ModuleInvestigationLine module={card.module} investigation={card.last_investigation} />
+              ) : undefined
+            }
           />
         ))}
       </div>
