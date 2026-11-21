@@ -278,10 +278,30 @@ async def _routing_rewriter(db: Any) -> Rewriter | None:
     return rewrite
 
 
+def _lease_key(release: dict[str, Any]) -> str:
+    return f"{LEASE_PREFIX}{release.get('version') or ''}:{release.get('git_sha') or ''}"
+
+
+#: The builds whose pass ran in this process: the scheduler tick asks no more of them.
+_done: set[str] = set()
+
+
+async def _lease_held(release: dict[str, Any]) -> bool:
+    """Whether a process already ran (or runs) the pass of this build; ``False`` when unread."""
+    from app.core.redis import redis_client
+
+    try:
+        redis = await redis_client()
+        return bool(await redis.exists(_lease_key(release)))
+    except Exception as exc:
+        logger.debug("Decision card backfill lease not read: %s", format_exception_message(exc))
+        return False
+
+
 async def _take_lease(release: dict[str, Any]) -> bool:
     from app.core.redis import redis_client
 
-    key = f"{LEASE_PREFIX}{release.get('version') or ''}:{release.get('git_sha') or ''}"
+    key = _lease_key(release)
     try:
         redis = await redis_client()
         return bool(await redis.set(key, "1", nx=True, ex=LEASE_SECONDS))
@@ -298,16 +318,24 @@ async def on_release_deployed(release: dict[str, Any], *, rewriter: Rewriter | N
 
         if not release.get("version"):
             return None
+        if _lease_key(release) in _done or await _lease_held(release):
+            _done.add(_lease_key(release))
+            return None
         async with async_session() as db:
-            if await agentic_refusal(db) is not None:
+            refusal = await agentic_refusal(db)
+            if refusal is not None:
+                # Not taken: the scheduler tick asks again (:func:`schedule_if_due`).
+                logger.warning("Decision card backfill deferred: agentic AI may not run (%s).", refusal)
                 return None
             if rewriter is None:
                 rewriter = await _routing_rewriter(db)
             if rewriter is None:
-                logger.info("Decision card backfill skipped: no routing model is set.")
+                logger.warning("Decision card backfill deferred: no routing model is set.")
                 return None
             if not await _take_lease(release):
+                _done.add(_lease_key(release))
                 return None
+            _done.add(_lease_key(release))
             report = await backfill_readable_asks(db, rewriter)
             await db.commit()
         label = str(release.get("release") or release.get("version"))
@@ -340,6 +368,21 @@ def schedule_readable_ask_backfill(release: dict[str, Any]) -> None:
     task.add_done_callback(_tasks.discard)
 
 
+def schedule_if_due(release: dict[str, Any]) -> None:
+    """The scheduler tick's retry of the running build's pass (#806).
+
+    The boot call (``record_running_build``) runs before the licence and the AI
+    switch are read, so its refusal used to end the build's only chance. The
+    lease is taken only once the gates pass: until then each tick asks again,
+    and once a process ran the pass nothing more is read.
+    """
+    if not release.get("version") or _lease_key(release) in _done:
+        return
+    if any(not task.done() for task in _tasks):
+        return
+    schedule_readable_ask_backfill(release)
+
+
 __all__ = [
     "BackfillReport",
     "Rewrite",
@@ -349,5 +392,6 @@ __all__ = [
     "on_release_deployed",
     "parse_answer",
     "rewrite_item",
+    "schedule_if_due",
     "schedule_readable_ask_backfill",
 ]
