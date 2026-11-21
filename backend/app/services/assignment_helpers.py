@@ -1030,9 +1030,13 @@ async def _build_system_message(
     that skips it sends the literal placeholders to the LLM with nothing in
     the log. The engine warns right after this call.
     """
+    from app.services.builtin_customer_layer import persona_with_customer_notes
     from app.services.variable_resolver import substitute_variables
 
-    _persona_text = substitute_variables(agent.persona, variables or {})
+    # A built-in's organization notes follow its seeded persona (#914).
+    _persona_text = substitute_variables(
+        persona_with_customer_notes(agent, agent.persona), variables or {}
+    )
     system_parts = [_persona_text]
     # *organization_summary* (``organization_context_injection``, #11533)
     # opens the prompt; the engine passes "" when the cascade resolves off or

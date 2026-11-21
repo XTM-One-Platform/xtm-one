@@ -183,6 +183,8 @@ class TechStackEntry(BaseModel):
     product: str = Field(min_length=1, max_length=200)
     vendor: str = Field(default="", max_length=200)
     cpe: str = Field(default="", max_length=300)
+    #: The version the organization runs, optional (CTEM-11): cases then name the version to reach.
+    version: str = Field(default="", max_length=100)
 
 
 class AiSystem(BaseModel):
@@ -798,6 +800,8 @@ async def scoped_tracked_blocks(db: AsyncSession, scope: dict | None) -> list[st
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
+    An empty tech stack version (CTEM-11) is left out the same way.
+
     The always-on block and every reader that dumped the whole profile keep
     their exact text for a profile that never filled the new parts.
     """
@@ -805,6 +809,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for jewel in dumped.get("crown_jewels") or []:
         if not jewel.get("asset_names"):
             jewel.pop("asset_names", None)
+    for entry in dumped.get("tech_stack") or []:
+        if not entry.get("version"):
+            entry.pop("version", None)
     return dumped
 
 

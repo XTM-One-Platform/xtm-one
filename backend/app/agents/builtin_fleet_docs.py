@@ -86,6 +86,7 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
+        "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the tech stack or the profile assets, checked before any model call.\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
         "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
@@ -400,18 +401,62 @@ _OPENAEV_LAUNCH_TOOLS = [
     {"name": "manage_openaev_simulation", "when": {"action": ["status"], "status": ["RUNNING"]}},
     {"name": "manage_openaev_atomic_testing", "when": {"action": ["launch", "relaunch"]}},
 ]
-_GATE_TICKET = {
-    "key": "ticket.create",
-    "action": "Create a remediation ticket",
-    "module": "platform",
-    "approver": "Fleet manager",
-    "impact": "low",
-    "tools": [
-        {"name": "create_jira_issue"},
-        {"name": "create_servicenow_incident"},
-        {"name": "create_servicenow_change"},
-    ],
-}
+_TICKET_TOOLS = [
+    {"name": "create_jira_issue"},
+    {"name": "create_servicenow_incident"},
+    {"name": "create_servicenow_change"},
+]
+
+#: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
+#: once and seeded on every CTEM loop fleet. Out of the box (the seeded Low
+#: level) exactly one gate waits: ``ctem.mobilize``, the only ``destructive``
+#: one; every other gate runs and the case records it as passed automatically.
+#: Full human gates makes each of them wait, Full autonomous none, and a pin
+#: (``Fleet.approval_pins``, writable on a built-in fleet, never written by the
+#: seed) moves one gate either way and survives a seed upgrade. The former
+#: tool gates map onto these keys: the OpenAEV launches are
+#: ``ctem.validation.non_readonly``, the remediation tickets and a supplier
+#: action are ``ctem.mobilize``.
+CTEM_GATE_KEYS: tuple[str, ...] = (
+    "ctem.validation.non_readonly",
+    "ctem.analyst_review",
+    "ctem.remediation.decision",
+    "ctem.mobilize",
+    "ctem.production_change",
+    "ctem.accept_risk",
+    "ctem.close_without_retest",
+)
+CTEM_MOBILIZE_GATE = "ctem.mobilize"
+
+
+def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: str) -> list[dict[str, Any]]:
+    """The CTEM loop gate catalog of one fleet, in loop order (:data:`CTEM_GATE_KEYS`)."""
+
+    def gate(key: str, action: str, module: str, impact: str, tools: list | None = None) -> dict[str, Any]:
+        out: dict[str, Any] = {"key": key, "action": action, "module": module, "approver": "Fleet manager"}
+        out["impact"] = impact
+        if tools:
+            out["tools"] = [dict(t) for t in tools]
+        return out
+
+    return [
+        gate(
+            "ctem.validation.non_readonly",
+            "Validate: run an OpenAEV test that is not read-only",
+            "openaev",
+            "high",
+            _OPENAEV_LAUNCH_TOOLS if launch_tools else None,
+        ),
+        gate("ctem.analyst_review", "Review: an analyst checks the threat package", "opencti", "low"),
+        gate("ctem.remediation.decision", "Decide: choose the remediation option", "platform", "high"),
+        gate(CTEM_MOBILIZE_GATE, mobilize_action, "platform", "destructive", _TICKET_TOOLS if mobilize_tools else None),
+        gate("ctem.production_change", "Apply a change on production through an integration", "platform", "high"),
+        gate("ctem.accept_risk", "Accept a residual risk beyond the policy cap", "platform", "high"),
+        gate("ctem.close_without_retest", "Close a case without a passing re-test", "platform", "high"),
+    ]
+
+
+_MOBILIZE_ACTION = "Mobilize: create the tickets, notify the owners, hand over the prepared change"
 
 CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
     "purpose_line": "Turn a published threat into an approved, verified plan in days.",
@@ -455,17 +500,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {"title": "Mobilization", "detail": "The top three actions, detections drafted and the ticket.", "gate": True},
         {"title": "Re-test", "detail": "The scenario runs again and closes the case."},
     ],
-    "gates": [
-        {
-            "key": "openaev.scenario.launch",
-            "action": "Launch an OpenAEV scenario",
-            "module": "openaev",
-            "approver": "Fleet manager",
-            "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
-        },
-        _GATE_TICKET,
-    ],
+    "gates": _ctem_gates(launch_tools=True, mobilize_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "openaev", "objects": ["Scenarios (after approval)"]},
         {"module": "opencrq", "objects": ["Loss estimates"]},
@@ -503,6 +538,12 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"module": "opencti", "name": "New KEV or EPSS jump", "filter": "A vulnerability is created or updated"},
         {
             "module": "opencti",
+            "name": "Vulnerability on software we run",
+            "filter": "Software, an infrastructure or a system in the profile has a vulnerability",
+            "detail": "Kept only when the source is in the tech stack or the profile assets",
+        },
+        {
+            "module": "opencti",
             "name": "Vulnerability sighted",
             "filter": "A sighting of a vulnerability, at a higher priority",
         },
@@ -532,17 +573,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"title": "Ticket", "detail": "The remediation ticket is drafted.", "gate": True},
         {"title": "Re-test", "detail": "A re-validation closes the case."},
     ],
-    "gates": [
-        {
-            "key": "openaev.validation.launch",
-            "action": "Validate exploitability in OpenAEV",
-            "module": "openaev",
-            "approver": "Fleet manager",
-            "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
-        },
-        _GATE_TICKET,
-    ],
+    "gates": _ctem_gates(launch_tools=True, mobilize_tools=True, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "openaev", "objects": ["Validations (after approval)"]},
         {"module": "opencrq", "objects": ["Finding scores"]},
@@ -555,6 +586,12 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "basis": "One run per matching vulnerability event",
             "runs_min": 5,
             "runs_max": 60,
+        },
+        {
+            "trigger": "Vulnerability on software we run",
+            "basis": "One run per vulnerability on software in the profile",
+            "runs_min": 0,
+            "runs_max": 40,
         },
         {"trigger": "Vulnerability sighted", "basis": "One run per sighting", "runs_min": 0, "runs_max": 20},
         {"trigger": "Daily backlog pass", "basis": "One run a day", "runs_min": 28, "runs_max": 31},
@@ -591,16 +628,7 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
         },
         {"title": "Exposure", "detail": "Priced in OpenCRQ, fixes drafted and tracked to closure."},
     ],
-    "gates": [
-        {
-            "key": "openaev.ai_test.launch",
-            "action": "Run a test against an AI system",
-            "module": "openaev",
-            "approver": "Fleet manager",
-            "impact": _LAUNCH_IMPACT,
-            "tools": _OPENAEV_LAUNCH_TOOLS,
-        },
-    ],
+    "gates": _ctem_gates(launch_tools=True, mobilize_tools=False, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
         {"module": "opencti", "objects": ["Drafts of ATLAS entities"]},
         {"module": "openaev", "objects": ["AI tests (after approval)"]},
@@ -675,15 +703,11 @@ CTEM_THIRD_PARTY_RISK_STRUCTURED: dict[str, Any] = {
             "gate": True,
         },
     ],
-    "gates": [
-        {
-            "key": "supplier.action",
-            "action": "Any proposed action on a supplier",
-            "module": "platform",
-            "approver": "Fleet manager",
-            "impact": "destructive",
-        },
-    ],
+    "gates": _ctem_gates(
+        launch_tools=False,
+        mobilize_tools=False,
+        mobilize_action="Mobilize: carry out an action on a supplier (contact, control, clause, monitoring)",
+    ),
     "objects": [
         {"module": "platform", "objects": ["Supplier-exposure cases", "Awareness cases", "Approval work items"]},
     ],

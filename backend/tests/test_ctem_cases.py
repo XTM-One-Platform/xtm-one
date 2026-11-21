@@ -112,7 +112,17 @@ def test_recompute_adds_members_and_never_sets_owner_or_state():
     assert plan.case_id == "c1" and plan.new_state is None
     assert plan.add == ["opencti:v2"] and plan.reopen == [] and plan.resolve == []
     # A plan carries membership and system transitions only: nothing for owner, due date or notes.
-    assert set(vars(plan)) == {"case_id", "remediation", "add", "reopen", "resolve", "new_state", "reason", "evidence"}
+    assert set(vars(plan)) == {
+        "case_id",
+        "remediation",
+        "add",
+        "reopen",
+        "resolve",
+        "new_state",
+        "reason",
+        "evidence",
+        "add_keys",
+    }
 
 
 def test_a_narrower_view_never_closes_or_shrinks_a_case():

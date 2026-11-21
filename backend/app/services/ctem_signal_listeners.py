@@ -105,6 +105,14 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     for key in ("x_opencti_cvss_base_score", "x_opencti_epss_score", "x_opencti_cisa_kev", "source_ref"):
         if data.get(key) not in (None, ""):
             evidence[key.removeprefix("x_opencti_")] = data[key]
+    if kind.startswith("relationship:"):
+        # CTEM-08: the software or asset the relationship starts from, so the scope
+        # gate resolves the signal to the tech stack product it names.
+        from app.services.ctem_trigger_rules import source_name
+
+        source = source_name(payload)
+        if source:
+            evidence["software"] = [source]
     meta = payload.get("_opencti_event")
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]

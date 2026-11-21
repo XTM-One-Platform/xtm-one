@@ -1031,6 +1031,7 @@ async def _profile_tech_stack(db: AsyncSession | None) -> list[dict[str, str]]:
                 "product": product,
                 "vendor": vendor,
                 "cpe": entry.cpe.strip(),
+                "version": entry.version.strip(),
                 "label": f"{vendor} {product}" if vendor and not product.lower().startswith(vendor.lower()) else product,
             }
         )
