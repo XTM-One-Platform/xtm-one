@@ -183,16 +183,21 @@ function SignalListBody({ state, onState, onOpen }: {
 }) {
   const { t_i18n, intl } = useFormatter();
   const { count: formatCount, exactCount } = useNumberFormat();
-  const { data, isLoading } = useCtemSignalList(state);
-  const counts = data?.counts ?? {};
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(state);
+  const first = data?.pages[0];
+  const counts = first?.counts ?? {};
+  const total = first?.total ?? 0;
   const all = CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
   const filters: { key: CtemSignalState | null; label: string; count: number }[] = [
     { key: null, label: t_i18n("All"), count: all },
     ...CTEM_SIGNAL_STATES.map((s) => ({ key: s, label: t_i18n(SIGNAL_STATE_LABEL[s]), count: counts[s] ?? 0 })),
   ];
-  const signals = data?.signals ?? [];
+  const signals = data?.pages.flatMap((page) => page.signals) ?? [];
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid="ctem-signal-list">
+      {/* The filters and the "n of N" count stay in view: the list below is the
+          only scroller (#877 UX round 1 B2). */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
       <div role="group" aria-label={t_i18n("Filter by state")} className="flex flex-wrap gap-1.5">
         {filters.map((f) => (
           <button
@@ -213,12 +218,18 @@ function SignalListBody({ state, onState, onOpen }: {
           </button>
         ))}
       </div>
+      {total > 0 && (
+        <span className="ml-auto shrink-0 content-caption text-default-secondary tabular-nums" data-testid="ctem-signal-shown">
+          {t_i18n("Showing {shown} of {total}", { shown: formatCount(signals.length), total: formatCount(total) })}
+        </span>
+      )}
+      </div>
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : signals.length === 0 ? (
         <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
       ) : (
-        <ul className="flex flex-col">
+        <ul className="flex max-h-[min(55vh,32rem)] flex-col overflow-y-auto" data-testid="ctem-signal-rows">
           {signals.map((s) => (
             <li key={s.id}>
               <button
@@ -239,12 +250,20 @@ function SignalListBody({ state, onState, onOpen }: {
               </button>
             </li>
           ))}
+          {hasNextPage && (
+            <li>
+              <button
+                type="button"
+                onClick={() => void fetchNextPage()}
+                disabled={isFetchingNextPage}
+                data-testid="ctem-signal-load-more"
+                className={cn("w-full rounded-sm px-2 py-1.5 text-left content-compact text-accent hover:bg-elevation-hover disabled:text-default-secondary", BUTTON_ROLE_FOCUS_RING)}
+              >
+                {isFetchingNextPage ? t_i18n("Loading...") : t_i18n("Load more")}
+              </button>
+            </li>
+          )}
         </ul>
-      )}
-      {data && data.total > signals.length && (
-        <p className="content-caption text-default-secondary">
-          {t_i18n("Showing {shown} of {total}", { shown: signals.length, total: data.total })}
-        </p>
       )}
     </div>
   );

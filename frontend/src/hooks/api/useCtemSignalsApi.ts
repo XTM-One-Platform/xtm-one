@@ -6,7 +6,7 @@
  * `ctem_signal_update` (dev-docs/ctem-loop-visibility.md section 5) invalidates
  * the `["ctem-signals"]` keys, so a recorded signal shows without a reload.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api, notFoundIsOrdinary } from "@/lib/api";
 import { ctemCasesPollInterval, ctemCasesRetry } from "./useCtemCasesApi";
 
@@ -83,15 +83,21 @@ export function useRecentCtemSignals(limit = 6) {
 }
 
 /**
- * One page of signals in one state (or every state), for the signal list of
- * the loop trace (CTEM-01-UI). Same stream key family as the recent read, so a
+ * The signals in one state (or every state), a page of 50 at a time through
+ * `offset`, for the signal list of the loop trace (CTEM-01-UI; #877 UX round 1
+ * B2: every signal reachable). Same stream key family as the recent read, so a
  * recorded signal joins the open list without a reload.
  */
 export function useCtemSignalList(state: CtemSignalState | null, limit = 50, enabled = true) {
   const query = state ? `&state=${state}` : "";
-  return useQuery<CtemSignalList>({
+  return useInfiniteQuery({
     queryKey: ["ctem-signals", "list", state ?? "all", limit],
-    queryFn: () => api.get(`/ctem-signals?limit=${limit}${query}`),
+    queryFn: ({ pageParam }): Promise<CtemSignalList> => api.get(`/ctem-signals?limit=${limit}&offset=${pageParam}${query}`),
+    initialPageParam: 0,
+    getNextPageParam: (last: CtemSignalList, pages: CtemSignalList[]) => {
+      const loaded = pages.reduce((sum, page) => sum + page.signals.length, 0);
+      return last.signals.length > 0 && loaded < last.total ? loaded : undefined;
+    },
     enabled,
     retry: ctemCasesRetry,
     refetchInterval: (q) => ctemCasesPollInterval(q.state.status, q.state.error),

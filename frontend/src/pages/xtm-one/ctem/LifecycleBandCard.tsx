@@ -403,8 +403,10 @@ export function LifecycleBandCard({
               <Icon name="building-2" size={16} /> {t_i18n("Inner ring: In your context (qualitative)")}
             </span>
           </Tip>
+          {/* Wide card: at the right end of the ring key row. Narrower: a line of
+              its own on the card's left edge, never pushed right (#877 UX round 1 B3). */}
           {signals && (
-            <span className="ml-auto min-w-0">
+            <span className="min-w-0 basis-full @5xl:ml-auto @5xl:basis-auto">
               <SignalCounter counts={signals.counts} onOpen={signals.onOpen} />
             </span>
           )}
