@@ -28,6 +28,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import redis_client
+from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_cases as rules
@@ -145,7 +146,7 @@ async def list_ctem_cases(
         # list, never a 404 the stage pages would show as a failed read.
         return {
             "vertical": vertical,
-            "counts": {s: 0 for s in ("needs_attention", "in_progress", "resolved", "accepted_risk")},
+            "counts": {s: 0 for s in CASE_STATES},
             "cases": [],
             "details_unavailable": [],
         }
@@ -162,7 +163,7 @@ async def list_ctem_cases(
     )
     return {
         "vertical": vertical,
-        "counts": {s: counts.get(s, 0) for s in ("needs_attention", "in_progress", "resolved", "accepted_risk")},
+        "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
         "details_unavailable": view.missing,
     }

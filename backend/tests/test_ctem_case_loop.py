@@ -305,3 +305,18 @@ def test_every_case_event_is_registered_and_platform_wide():
 
     for name in loop.CASE_EVENTS:
         assert name in PLATFORM_EVENTS and name in PLATFORM_WIDE_EVENTS
+
+
+def test_every_case_state_is_counted_by_the_list_route_and_the_tool():
+    """A new state reaches the counts, the route filter and the tool enum (UX round 1, B1)."""
+    import inspect
+    from typing import get_args
+
+    from app.api.v1 import ctem_cases as api
+    from app.models.ctem_case import CASE_STATES
+    from app.services.builtin_tools import ctem_cases as tool
+
+    assert set(get_args(api.CaseState)) == set(CASE_STATES)
+    assert tool._STATES == CASE_STATES
+    source = inspect.getsource(api)
+    assert '"needs_attention", "in_progress", "resolved"' not in source

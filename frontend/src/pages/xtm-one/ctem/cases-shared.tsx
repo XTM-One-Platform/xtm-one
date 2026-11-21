@@ -5,7 +5,7 @@
  * section 7.0): one DS Chip severity per state and per priority, owners as the
  * DS Avatar, "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Chip } from "@filigran/design-system";
+import { Avatar, Chip, Icon } from "@filigran/design-system";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -14,7 +14,13 @@ import { formatList } from "@/lib/format-list";
 
 type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
 
-/** One colour per state, everywhere (7.0): alert, info, success, neutral. */
+/**
+ * One colour per state, everywhere (7.0): alert, info, success, neutral. The DS
+ * Chip has six severities and no free one that means "mitigated" (high and
+ * critical read as danger; LIBRARY-FEEDBACK F06), so mitigated, watching keeps
+ * the success family and is told apart from resolved by its DS eye icon and its
+ * own segment token (UX round 1 of #857, B3).
+ */
 const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
   needs_attention: "medium",
   in_progress: "info",
@@ -49,9 +55,20 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 /** Higher first: the sort value of a priority. */
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
+/** The DS icon a state carries beside its Chip, where its colour alone is shared. */
+export const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
+
 export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();
-  return <Chip label={t_i18n(CASE_STATE_LABEL[state])} severity={CASE_STATE_SEVERITY[state]} className="shrink-0" />;
+  const chip = <Chip label={t_i18n(CASE_STATE_LABEL[state])} severity={CASE_STATE_SEVERITY[state]} className="shrink-0" />;
+  const icon = CASE_STATE_ICON[state];
+  if (!icon) return chip;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1" data-testid={`ctem-case-state-${state}`}>
+      <Icon name={icon} size={16} className="shrink-0 text-feedback-success-primary" aria-hidden />
+      {chip}
+    </span>
+  );
 }
 
 export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {

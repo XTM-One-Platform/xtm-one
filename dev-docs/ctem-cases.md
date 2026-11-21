@@ -206,8 +206,11 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 - **One colour per state, everywhere** (board, list badge, case page, widget),
   through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
-  needs attention `medium` (alert), in progress `info`, resolved `low`
-  (success), accepted risk `neutral`. AI purple is never used on Cases (it is
+  needs attention `medium` (alert), in progress `info`, mitigated, watching
+  `low` with the DS `eye` icon beside the Chip and the
+  `feedback-success-tertiary` segment on every counts bar (#857, UX round 1
+  B3: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
+  `feedback-success-primary` segment), accepted risk `neutral`. AI purple is never used on Cases (it is
   the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
@@ -278,7 +281,10 @@ then the existing AI assessment and facts grid unchanged.
 
 - **Flow strip** (UX decision Q2: a flow strip, not a Kanban; a Kanban
   duplicates the list and drag would bypass the owner, evidence and expiry
-  rules): four state columns, each a header with the state Chip, the exact
+  rules): one column per case state (five since #857), on one row from xl
+  (`BOARD_GRID`, held equal to the state count by
+  `tests_unit/ctem-cases-board-grid.test.ts`), stacked below, never an
+  orphan column; each a header with the state Chip, the exact
   count and, for the two open states, the ageing bar with its legend and the
   overdue line.
 - **Transitions** of the period ("+14 started", "+22 resolved", "+3 risk
@@ -286,11 +292,13 @@ then the existing AI assessment and facts grid unchanged.
   each transition is the first line of the column it flows into ("+14 started
   in 30 d" heads In progress, "+3 risk accepted in 30 d" heads Accepted
   risk); at >= 1440 the arrows between the open columns repeat the two flows
-  of the main path, and at 1080 to 1439 the strip is 2 x 2 with no arrows.
+  of the main path; from 1280 the five columns share one row, below it they
+  stack in one column (#857 UX round 1 B2: the 2 x 2 left Accepted risk
+  alone on a row).
   Every column carries that inflow line, Needs
   attention included ("+18 new in 30 d, +2 reopened"), at a fixed one-line
-  height, so the four state Chips sit on the same baseline in each row of
-  the 2 x 2 (round 2 B7); a period with no inflow reads "No new case in
+  height, so the state Chips sit on the same baseline across the row
+  (round 2 B7); a period with no inflow reads "No new case in
   30 d", never an empty gap.
 - **Top cases** under each open column: the three highest-priority cases
   (title on one line with ellipsis and its full text in the tooltip, priority
@@ -425,7 +433,8 @@ then the existing AI assessment and facts grid unchanged.
 ### 7.4 Command center widget `cases`
 
 UX decision Q1: in the default layout right after Act now, as a compact
-full-width row (one line at 1440, two at 1080): the four state Chips with
+full-width row (one line at 1440, two at 1080): the state Chips (every
+state of `CASE_STATES`, counted by the list API since #857) with
 their exact counts on one segmented bar (the state colours of 7.0), then
 "5 overdue" and "2 accepted risks expire in 14 days", each a link to the
 filtered list. Not configured (no tech stack and no OpenAEV): one dismissible

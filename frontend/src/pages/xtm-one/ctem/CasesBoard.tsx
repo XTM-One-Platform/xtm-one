@@ -2,7 +2,7 @@
 
 /**
  * The Cases board, signature viz of the Mobilization stage page
- * (dev-docs/ctem-cases.md section 7.1, S5c of #11545): a flow strip of the four
+ * (dev-docs/ctem-cases.md section 7.1, S5c of #11545): a flow strip of the five
  * case states, never a Kanban (drag would bypass the owner, evidence and expiry
  * rules). Each open column carries its exact count, the ageing bar (one blue
  * ramp, section 7.0), the overdue line and its three highest-priority cases.
@@ -21,7 +21,7 @@ import { CTEM_CASE_STATES, useCtemCases, type CtemCaseState, type CtemCaseSummar
 import { useFormatter } from "@/i18n";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { cn } from "@/lib/utils";
-import { BOARD_COLUMN_SURFACE, DAY, OVERDUE_TEXT, ageBands, daysSince, topCases } from "./cases-board";
+import { BOARD_COLUMN_SURFACE, BOARD_GRID, DAY, OVERDUE_TEXT, ageBands, daysSince, topCases } from "./cases-board";
 import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip, useCasesEmptyLabel } from "./cases-shared";
 
 const PERIODS = ["7", "30", "90"] as const;
@@ -197,7 +197,7 @@ export function CasesBoard() {
             {empty.label}
           </p>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <div className={cn("grid gap-3", BOARD_GRID)} data-columns={CTEM_CASE_STATES.length}>
             {CTEM_CASE_STATES.map((state) => {
               const list = byState[state];
               const open = state === "needs_attention" || state === "in_progress";
