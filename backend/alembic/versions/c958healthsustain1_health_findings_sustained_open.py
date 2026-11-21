@@ -36,7 +36,7 @@ _SNAPSHOTS = "platform_health_snapshots"
 _STATUS_CK = "ck_health_check_findings_status_valid"
 
 
-def _columns(conn, table: str) -> set[str]:
+def _columns(conn: sa.engine.Connection, table: str) -> set[str]:
     rows = conn.execute(
         sa.text(
             "SELECT column_name FROM information_schema.columns "

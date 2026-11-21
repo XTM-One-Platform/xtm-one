@@ -122,8 +122,7 @@ def in_startup_grace(now: datetime, *, started_at: datetime | None = None) -> bo
 def apply_grace(results: Sequence[CheckResult], in_grace: Callable[[CheckResult], bool]) -> list[CheckResult]:
     """*results* with every failing ``availability`` result *in_grace* says is in a restart marked ``in_grace``."""
     return [
-        replace(r, in_grace=True) if r.failing and r.category == "availability" and in_grace(r) else r
-        for r in results
+        replace(r, in_grace=True) if r.failing and r.category == "availability" and in_grace(r) else r for r in results
     ]
 
 
