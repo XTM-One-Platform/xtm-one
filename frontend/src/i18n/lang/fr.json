@@ -19933,7 +19933,7 @@
   "Not affected": "Non concerné",
   "Version {version} is outside the affected ranges": "La version {version} est hors des plages concernées",
   "Not affected: version {version} is outside the affected ranges": "Non concerné : la version {version} est hors des plages concernées",
-  "Fixed version unknown: no source names the version that fixes these issues. Declare the version you run in Settings > Organization > Tech stack, or connect an enrichment provider.": "Version corrigée inconnue : aucune source ne nomme la version qui corrige ces problèmes. Déclarez la version utilisée dans Paramètres > Organisation > Pile technologique, ou connectez un fournisseur d'enrichissement.",
+  "Fixed version unknown: no source names the version that fixes these issues. Declare the version you run in Settings > Organization > Tech stack, or connect an enrichment provider.": "Version corrigée inconnue : aucune source ne nomme la version qui corrige ces problèmes. Déclarez la version utilisée dans Paramètres > Organisation > Pile technique, ou connectez un fournisseur d'enrichissement.",
   "{count, plural, one {# issue is not affected by the version you run.} other {# issues are not affected by the version you run.}}": "{count, plural, one {# problème n'est pas concerné par la version utilisée.} other {# problèmes ne sont pas concernés par la version utilisée.}}",
   "Opened by": "Ouvert par",
   "The signals of this case could not be read.": "Les signaux de ce dossier n'ont pas pu être lus.",
