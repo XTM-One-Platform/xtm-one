@@ -52,6 +52,7 @@ const sections: NavSection[] = [
 const railState = { rail: false };
 const branding: { emblem: string | null } = { emblem: "/emblem.svg" };
 const viewer = { isAdmin: true };
+const mode = { xtmOne: true };
 let registrations: unknown[] = [];
 let hubRegistration: { status: string; hub_url: string | null; default_hub_url: string } = {
   status: "unregistered",
@@ -67,7 +68,7 @@ vi.mock("./nav-model", async (importOriginal) => {
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: viewer.isAdmin }) }));
 vi.mock("@/hooks/usePlatformConfig", () => ({
   usePlatformConfig: () => ({ features: { ai_adoption: true } }),
-  useIsXtmOne: () => true,
+  useIsXtmOne: () => mode.xtmOne,
   usePlatformName: () => "XTM One",
   usePlatformLogoUrl: () => "/logo.png",
   usePlatformEmblemUrl: () => branding.emblem,
@@ -134,6 +135,7 @@ beforeEach(() => {
   hubRegistration = { status: "unregistered", hub_url: null, default_hub_url: "https://hub.default.example.test" };
   railState.rail = false;
   viewer.isAdmin = true;
+  mode.xtmOne = true;
   branding.emblem = "/emblem.svg";
   lockState.aiReason = null;
   localStorage.clear();
@@ -254,6 +256,39 @@ describe("Sidebar", () => {
     expect(logos[0]).toMatch(/opencti/);
     expect(logos[1]).toMatch(/openaev/);
     expect(logos[2]).toMatch(/xtm-hub/);
+  });
+
+  it("draws OpenCRQ's own wordmark on its row, never its glyph and a typed name", () => {
+    // Sam, 21 Nov 2026: the OpenCRQ row was a white glyph and plain text while
+    // every other row is the product's full-colour wordmark.
+    registrations = [
+      { id: "r6", platform_identifier: "opencrq", platform_title: "OpenCRQ", platform_url: "https://crq.example.test/", healthy: true },
+    ];
+    renderSidebar();
+    const rows = switcherRows().map((row) => row.closest("[role=menuitem]") ?? row);
+    const crq = rows.find((row) => row.querySelector("img")?.getAttribute("src")?.includes("opencrq"));
+    expect(crq).toBeDefined();
+    // The wordmark is the row's only image, with no visible name typed beside it.
+    expect(crq?.querySelectorAll("img")).toHaveLength(1);
+    expect(crq?.querySelector(".content-base")).toBeNull();
+  });
+
+  it("has no product switcher in Copilot mode: the logo alone, a link home", () => {
+    // Sam, 21 Nov 2026: the suite switcher is XTM One's; Copilot shows its
+    // platform logo linking home, with no chevron and no menu.
+    mode.xtmOne = false;
+    renderSidebar("/observability/traces");
+    expect(screen.queryByRole("button", { name: "Switch product" })).not.toBeInTheDocument();
+    expect(homeImage()).toBe("/logo.png");
+    fireEvent.click(screen.getByRole("link", { name: "XTM One home" }));
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
+  it("draws the mark alone in the collapsed rail in Copilot mode too", () => {
+    mode.xtmOne = false;
+    railState.rail = true;
+    renderSidebar();
+    expect(homeImage()).toBe("/emblem.svg");
   });
 
   it("goes home from the switcher's logo through the router, without a page load", () => {
