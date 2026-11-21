@@ -117,7 +117,7 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
     async with _scratch("cc_seed") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        assert await fleet_seed.seed_health_fleet(db) == 5
+        assert await fleet_seed.seed_health_fleet(db) == 6
         assert await fleet_seed.seed_health_fleet(db) == 0
         agents, assignments, fleets, members, workspaces = await _fleet_counts(db)
 
@@ -125,6 +125,7 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
         ("experimenter", True, True),
         ("flow_lab", True, True),
         ("memory_steward", True, True),
+        ("module_analyst", True, True),
         ("orchestrator", True, True),
         ("quality_analyst", True, True),
     ]
@@ -133,7 +134,7 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
     assert [(f.is_company_managed, f.is_builtin, f.slug, f.orchestrator_agent_id) for f in fleets] == [
         (True, True, "platform-health", next(a.id for a in agents if a.health_role == "orchestrator"))
     ]
-    assert members == 5
+    assert members == 6
     assert [w.is_company_managed for w in workspaces] == [True]
 
 
