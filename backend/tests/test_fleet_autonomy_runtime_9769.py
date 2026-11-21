@@ -75,21 +75,21 @@ def test_an_unknown_level_reads_as_full_human_gates():
 
 
 def test_a_simulation_launch_pauses_until_autonomous_and_a_read_never_does():
-    gates = [g for slug in _CTEM for g in _gates(slug) if g.get("key") == "openaev.scenario.launch"]
-    assert gates, "the threat response fleet declares the scenario launch gate"
+    gates = [g for g in _gates("ctem-threat-response") if g.get("key") == "ctem.validation.non_readonly"]
+    assert gates, "the threat response fleet declares the validation gate"
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        # A launch is destructive (#10005): it still waits at Low, the seeded level.
-        assert _paused(gate, _LAUNCH) is (level != "autonomous")
+        # A validation is high impact (#916, CTEM-34): it runs from Low, the seeded level.
+        assert _paused(gate, _LAUNCH) is (level in ("full_gates", "medium"))
         assert _paused(gate, _READ) is False
 
 
-def test_a_ticket_waits_only_at_full_human_gates():
-    gates = [g for slug in _CTEM for g in _gates(slug) if g.get("key") == "ticket.create"][:1]
+def test_a_ticket_waits_for_the_mobilize_decision_until_full_autonomous():
+    gates = [g for g in _gates("ctem-vuln-prioritization") if g.get("key") == "ctem.mobilize"]
     assert gates
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        assert _paused(gate, _TICKET) is (level == "full_gates")
+        assert _paused(gate, _TICKET) is (level != "autonomous")
 
 
 def test_an_approved_call_runs_and_the_inner_gate_still_applies():
