@@ -199,6 +199,8 @@ AGENT_COPY_SKIP_FIELDS: Mapping[str, str] = MappingProxyType(
         "hide_activity_from_non_admins": (
             "An administrator's switch on a company-managed agent (#11624); a personal copy never hides its activity."
         ),
+        "customer_notes": "The customer layer of a built-in on this instance (#914); a copy edits its own persona.",
+        "customer_fields": "Seed bookkeeping of a built-in's customer layer (#914); a copy is never seeded.",
         "shared_group_ids": "Sharing grants are re-granted deliberately, never inherited.",
         "shared_group_permissions": "Paired with shared_group_ids.",
         "shared_user_ids": "Sharing grants are re-granted deliberately, never inherited.",
@@ -437,6 +439,8 @@ AGENT_BUNDLE_SKIP_FIELDS: Mapping[str, str] = MappingProxyType(
         "is_company_managed": "An imported agent is always personal.",
         "is_sandbox": "An imported agent is an ordinary agent, never a sandbox copy (#8255).",
         "hide_activity_from_non_admins": "An administrator's switch on this instance (#11624), never imported.",
+        "customer_notes": "The customer layer of a built-in on this instance (#914), never imported.",
+        "customer_fields": "Seed bookkeeping of a built-in on this instance (#914), never imported.",
         "shared_group_ids": "Sharing grants name groups of the source instance.",
         "shared_group_permissions": "Paired with shared_group_ids.",
         "shared_user_ids": "Sharing grants name users of the source instance.",
@@ -801,6 +805,8 @@ AGENT_CATALOG_CLONE_SKIP_FIELDS: Mapping[str, str] = MappingProxyType(
         "is_company_managed": "A catalog install is always personal.",
         "is_sandbox": "A catalog install is an ordinary agent, never a sandbox copy (#8255).",
         "hide_activity_from_non_admins": "An administrator's switch on this instance (#11624), never installed.",
+        "customer_notes": "The customer layer of a built-in on this instance (#914), never installed.",
+        "customer_fields": "Seed bookkeeping of a built-in on this instance (#914), never installed.",
         "shared_group_ids": "The publisher's sharing grants are never inherited.",
         "shared_group_permissions": "Paired with shared_group_ids.",
         "shared_user_ids": "The publisher's sharing grants are never inherited.",
