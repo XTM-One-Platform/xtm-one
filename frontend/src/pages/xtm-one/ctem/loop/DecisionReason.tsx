@@ -41,7 +41,7 @@ const SIGNAL_STATE_SEVERITY: Record<CtemSignalState, ChipSeverity> = {
  * ICU params. A backend item that adds a code adds its sentence here and in
  * the four catalogs. @i18n-keys
  */
-const REASON_SENTENCE: Record<string, string> = {
+const REASON_SENTENCE = {
   subject_unresolved: "Not resolved to an asset, a crown jewel or the tech stack",
   contradicted_by_evidence: "Contradicted by the verdict of its own source",
   contradicted_by_signals: "Contradicted by {count, plural, one {# other signal} other {# other signals}}",
@@ -55,7 +55,8 @@ const REASON_SENTENCE: Record<string, string> = {
   criticality_unknown: "Criticality unknown, below the scope threshold {threshold}",
   below_scope_threshold: "Criticality {criticality} below the scope threshold {threshold}",
   in_scope: "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
-};
+} as const;
+const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 
 /** The level words a record carries (criticality, threshold, confidence), translated before they fill a sentence. */
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
@@ -74,7 +75,7 @@ function SignalStateChip({ state }: { state: CtemSignalState }) {
 /** The sentence of a decision record, or the waiting and unknown-code wordings. */
 export function decisionSentence(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): string {
   if (!decision || (!decision.reason_code && !decision.outcome)) return t_i18n("Waiting for reconcile");
-  const sentence = decision.reason_code ? REASON_SENTENCE[decision.reason_code] : undefined;
+  const sentence = decision.reason_code ? REASON_SENTENCES[decision.reason_code] : undefined;
   if (!sentence) return t_i18n("Reason not available in this version");
   const params: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(decision.reason_params ?? {})) {
