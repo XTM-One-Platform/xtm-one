@@ -76,14 +76,14 @@ def _activity(activity_type="notification", **metadata):
         ),
         (_activity("assignment_continuation_refused"), "continuation_refused", "/assignments"),
         (
-            _activity(notification_source="llm_analytics_refresh", dashboard_path="/analytics?range=7d"),
+            _activity(notification_source="llm_analytics_refresh", dashboard_path="/observability?range=7d"),
             "analytics_refresh",
-            "/analytics?range=7d",
+            "/observability?range=7d",
         ),
         (
             _activity(notification_source="llm_analytics_refresh", dashboard_path="https://evil.example"),
             "analytics_refresh",
-            "/analytics",
+            "/observability",
         ),
         (
             _activity(notification_source="flow_hitl", flow_id=UUID_A, flow_run_id=UUID_B),

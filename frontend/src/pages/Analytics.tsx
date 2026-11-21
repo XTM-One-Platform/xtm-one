@@ -295,7 +295,7 @@ export default function Analytics() {
           Outcomes row flattened into it. A group manager sees Model usage
           alone: the page's own title, no tab row. */}
       <NavFamilyHeader
-        to={tab === "outcomes" ? "/analytics/outcomes" : "/analytics"}
+        to={tab === "outcomes" ? "/observability/outcomes" : "/observability"}
         title="Model usage"
         infoLabel={t_i18n("About analytics")}
         info={managerScope

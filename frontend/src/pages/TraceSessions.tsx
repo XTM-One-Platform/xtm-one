@@ -335,7 +335,7 @@ export default function TraceSessions() {
         const response = await api.get<LLMTraceListResponse>(`/traces?${params.toString()}`);
         const firstTrace = response.items[0];
         if (!firstTrace) return;
-        navigate(`/traces/${firstTrace.id}?session_id=${conversationId}`);
+        navigate(`/observability/traces/${firstTrace.id}?session_id=${conversationId}`);
       } catch (error) {
         toast({
           title: t_i18n("Failed to open session"),
@@ -417,7 +417,7 @@ export default function TraceSessions() {
     <div className="space-y-6">
       {/* The Observability family header (#9301 N3): its h1 and one tab row. */}
       <NavFamilyHeader
-        to="/trace-sessions"
+        to="/observability/sessions"
         title="Trace Sessions"
         infoLabel={t_i18n("About sessions")}
         info={t_i18n("Browse conversation-level session aggregates across LLM traces.")}

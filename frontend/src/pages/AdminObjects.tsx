@@ -75,7 +75,7 @@ const OBJECT_TYPE_CONFIG: Record<PlatformObjectType, { label: string; icon: Reac
   flow: { label: "Flow", icon: Workflow, route: "/flows/:id/builder" },
   dataset: { label: "Dataset", icon: Database, route: "/evaluations/datasets/:id" },
   evaluation: { label: "Evaluation", icon: FlaskConical, route: "/evaluations/:id" },
-  variable: { label: "Variable", icon: Braces, route: "/variables/:id" },
+  variable: { label: "Variable", icon: Braces, route: "/connections/variables/:id" },
   // Channel bots are configured on one Settings tab, which scrolls to this one.
   channel_bot: { label: "Channel Bot", icon: Radio, route: "/settings/integrations/channels?bot=:id" },
   assignment: { label: "Assignment", icon: ClipboardList, route: "/assignments/:id" },

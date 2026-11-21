@@ -85,7 +85,7 @@ export function OwnerDeactivatedNotice({ entity, ownerId, description, reactivat
           {ownerId && (
             <Tip content={reactivateHint}>
               <Button asChild variant="outline" size="sm" className="h-7 gap-1.5 content-compact">
-                <Link to={`/users/${ownerId}`}>
+                <Link to={`/users-and-groups/users/${ownerId}`}>
                   <UserRound className="h-3 w-3" />
                   {t_i18n("Open the owner's account")}
                 </Link>

@@ -362,7 +362,7 @@ def test_the_ai_lock_states_are_read_back_and_logged_only_when_switched_on():
     seeded, skipped = switched["seed_ai_lock_states"]("t", base, "peer")
     assert skipped == {}
     assert seeded["platform AI off"] == {"id": "ai-disabled", "url": f"{base}/"}
-    assert seeded["group with AI off"] == {"id": "g1", "url": f"{base}/groups/g1"}
+    assert seeded["group with AI off"] == {"id": "g1", "url": f"{base}/users-and-groups/groups/g1"}
     assert seeded["signed-in session (peer, group AI off)"]["url"] == f"{base}/login#token=peer-token"
     assert ("PUT", "/settings/platform", "t", {"ai_enabled": False}) in calls
     assert ("PUT", "/groups/g1", "t", {"ai_enabled": False}) in calls
@@ -746,7 +746,7 @@ def test_the_lab_seeds_a_non_admin_user_with_two_factor_enrolled_and_never_logs_
     ns = _lab_namespace("seed_mfa_user", "totp_code", "_created", "MFA_EMAIL", "MFA_PASSWORD", "MFA_NAME", api=api)
     ns.update(base64=__import__("base64"), hmac=__import__("hmac"), hashlib=__import__("hashlib"),
               struct=__import__("struct"), time=__import__("time"))
-    assert ns["seed_mfa_user"]("admin-token", base) == {"two-factor user": {"id": "u1", "url": f"{base}/users/u1"}}
+    assert ns["seed_mfa_user"]("admin-token", base) == {"two-factor user": {"id": "u1", "url": f"{base}/users-and-groups/users/u1"}}
     assert [(c[0], c[1], c[2]) for c in calls] == [
         ("POST", "/users", "admin-token"),
         ("POST", "/auth/login", None),
@@ -1719,7 +1719,7 @@ def test_the_roi_fleet_seed_declares_a_unit_and_records_counted_runs_inside_the_
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_roi_fleet"])
     for part in ("'seed_roi_fleet.py'", "sys.executable", "env=seed_script_env()", "/roi/declarations?subject_type=fleet",
-                 "'per_run'", "'/assignments'", "stderr_summary(process.stderr)", "'ROI fleet'", "/analytics/outcomes"):
+                 "'per_run'", "'/assignments'", "stderr_summary(process.stderr)", "'ROI fleet'", "/observability/outcomes"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_roi_fleet(token, base, ids['fleet'])" in seed and "skipped['ROI fleet']" in seed
@@ -1943,7 +1943,7 @@ def test_the_analytics_seed_fills_every_breakdown_past_one_page_and_aggregates()
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_analytics_traces"])
     for part in ("'seed_analytics_traces.py'", "sys.executable", "env=seed_script_env()", "'/users'", "'/groups'",
-                 "/members", "stderr_summary(process.stderr)", "'analytics traces'", "/analytics"):
+                 "/members", "stderr_summary(process.stderr)", "'analytics traces'", "/observability"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_analytics_traces(token, base)" in seed and "skipped['analytics traces']" in seed
@@ -2002,7 +2002,7 @@ def test_the_trace_sessions_seed_fills_two_pages_that_sort_on_every_column():
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_trace_sessions"])
     for part in ("'seed_trace_sessions.py'", "sys.executable", "env=seed_script_env()", "analytics_ids.json",
-                 "stderr_summary(process.stderr)", "'trace sessions'", "/trace-sessions"):
+                 "stderr_summary(process.stderr)", "'trace sessions'", "/observability/sessions"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_trace_sessions(base, peer_id)" in seed and "skipped['trace sessions']" in seed
@@ -3471,9 +3471,9 @@ def test_the_lab_serves_an_openapi_spec_listing_every_auth_kind_and_seeds_an_int
 def test_the_seeded_routes_are_routes_of_the_frontend():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
     for route in ("/runs/:id", "/fleets/:fleetId", "/tools/:id", "/templates/:id", "/investigation-packs/:id",
-                  "/relays/:id",
+                  "/connections/relays/:id",
                   "/evaluations/datasets/:id", "/evaluations/:evaluationId/compare", "/evaluations/:id", "/ctem/:stage",
-                  "/tasks/workspaces/:workspaceId", "/tasks/work-items/:itemId", "/tasks/value", "/users/:id",
+                  "/tasks/workspaces/:workspaceId", "/tasks/work-items/:itemId", "/tasks/value", "/users-and-groups/users/:id",
                   "/operations/shared-state", "/videos/:id",
                   "/integrations/:id/:tab?"):
         assert f'path="{route}' in app, route

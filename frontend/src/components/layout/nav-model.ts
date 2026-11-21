@@ -326,11 +326,11 @@ export const NAV_SECTIONS: NavSection[] = [
              routed through: infrastructure, never AI-locked. A reader with the
              two flags off sees the plain row Browser profiles. */
           {
-            ...leaf("/browser-profiles", Cable, "Connections"),
+            ...leaf("/connections", Cable, "Connections"),
             family: [
-              { to: "/browser-profiles", icon: KeyRound, label: "Browser profiles" },
-              { to: "/variables", icon: Braces, label: "Variables", visible: (f) => f.customVariables },
-              { to: "/relays", icon: Network, label: "Relays", visible: (f) => f.relays },
+              { to: "/connections", icon: KeyRound, label: "Browser profiles" },
+              { to: "/connections/variables", icon: Braces, label: "Variables", visible: (f) => f.customVariables },
+              { to: "/connections/relays", icon: Network, label: "Relays", visible: (f) => f.relays },
             ],
           },
         ],
@@ -355,13 +355,13 @@ export const NAV_SECTIONS: NavSection[] = [
          the row is that one page, named after it (r3 A1). Traces, Sessions and
          Outcomes stay administrators'. */
       {
-        ...leaf("/analytics", Gauge, "Observability"),
+        ...leaf("/observability", Gauge, "Observability"),
         groupManagers: true,
         family: [
-          { to: "/analytics", icon: BarChart3, label: "Model usage", groupManagers: true },
-          { to: "/analytics/outcomes", icon: Target, label: "Outcomes" },
-          { to: "/traces", icon: Scan, label: "Traces" },
-          { to: "/trace-sessions", icon: Activity, label: "Sessions" },
+          { to: "/observability", icon: BarChart3, label: "Model usage", groupManagers: true },
+          { to: "/observability/outcomes", icon: Target, label: "Outcomes" },
+          { to: "/observability/traces", icon: Scan, label: "Traces" },
+          { to: "/observability/sessions", icon: Activity, label: "Sessions" },
         ],
       },
       /* Sprout, not TrendingUp: that one is the Value tab's, and no two rows share an icon. */
@@ -370,12 +370,14 @@ export const NAV_SECTIONS: NavSection[] = [
       /* Platform Health (#101 S1): a translated label, never the administrator's name. */
       aiLeaf("/health", Compass, "Platform Health", (f) => f.health),
       /* One family row (#9301 N3b): one subject, two pages, routes and route
-         guards unchanged (/users behind AdminRoute, /groups not; r2 A5). */
+         guards unchanged (Users behind AdminRoute, Groups not; r2 A5). The
+         Users list is the bare entry, a user and the groups under their tab
+         (#797 S2). */
       {
-        ...leaf("/users", Users, "Users and groups"),
+        ...leaf("/users-and-groups", Users, "Users and groups"),
         family: [
-          { to: "/users", icon: User, label: "Users" },
-          { to: "/groups", icon: Users, label: "Groups" },
+          { to: "/users-and-groups", icon: User, label: "Users" },
+          { to: "/users-and-groups/groups", icon: Users, label: "Groups" },
         ],
       },
       /* Database, not Boxes: the cube is the Fleets row's (N2d). */

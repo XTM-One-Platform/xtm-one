@@ -13,13 +13,13 @@ export default defineCommands([
     title: "Create a group",
     icon: Plus,
     when: ["isAdmin"],
-    navigate: "/groups/new",
+    navigate: "/users-and-groups/groups/new",
   },
   {
     id: "groups.list",
     category: "Groups",
     title: "Browse groups",
     icon: Users,
-    navigate: "/groups",
+    navigate: "/users-and-groups/groups",
   },
 ]);

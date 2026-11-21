@@ -20,21 +20,21 @@ function parse(path: string) {
 
 test("scopes the explorer to an assignment", () => {
   assert.deepEqual(parse(assignmentTracesPath("5d1c")), {
-    pathname: "/traces",
+    pathname: "/observability/traces",
     params: [[ASSIGNMENT_TRACE_PARAM, "5d1c"]],
   });
 });
 
 test("scopes the explorer to one run", () => {
   assert.deepEqual(parse(assignmentRunTracesPath("9f2e")), {
-    pathname: "/traces",
+    pathname: "/observability/traces",
     params: [[ASSIGNMENT_RUN_TRACE_PARAM, "9f2e"]],
   });
 });
 
 test("an id never breaks out of its query value", () => {
   assert.deepEqual(parse(assignmentTracesPath("a&status=error#x")), {
-    pathname: "/traces",
+    pathname: "/observability/traces",
     params: [[ASSIGNMENT_TRACE_PARAM, "a&status=error#x"]],
   });
 });

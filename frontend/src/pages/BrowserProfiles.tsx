@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Browser profiles - `/browser-profiles`, in Tools & Integrations.
+ * Browser profiles - `/connections`, in Tools & Integrations.
  *
  * A profile is a web application and its sign-in, kept by the platform: the
  * URL, write-only credentials, an optional TOTP secret, the saved session. The
@@ -91,7 +91,7 @@ export default function BrowserProfiles() {
       {/* The Connections family header (#9301 N3b): its h1, the page's help
           in the "i" (#10215), and one tab row of the connection pages. */}
       <NavFamilyHeader
-        to="/browser-profiles"
+        to="/connections"
         title="Browser profiles"
         infoLabel={t_i18n("About browser profiles")}
         info={t_i18n(

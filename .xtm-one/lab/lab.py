@@ -1959,7 +1959,7 @@ SEEDS: list[tuple[str, str, object]] = [
         "name": f"{SEED_NAME} template", "description": "Seeded by the lab.",
     }))),
     ("investigation pack", "/investigation-packs/{id}", _builtin_pack),
-    ("relay group", "/relays/{id}", lambda token, _: _created(api("POST", "/relays/groups", token, {
+    ("relay group", "/connections/relays/{id}", lambda token, _: _created(api("POST", "/relays/groups", token, {
         "name": f"{SEED_NAME} relay group", "description": "Seeded by the lab.",
     }))),
     ("dataset", "/evaluations/datasets/{id}", lambda token, _: _created(api("POST", "/datasets", token, {
@@ -2068,7 +2068,7 @@ def seed_peer(token: str, base: str) -> tuple[dict[str, dict[str, str]], dict[st
         admin = _created(api("GET", "/auth/me", token))
     except Exception as exc:  # noqa: BLE001 - the seed never stops the lab
         return seeded, {"peer user": str(exc)[:200]}
-    seeded["peer user"] = {"id": peer, "url": f"{base}/users/{peer}"}
+    seeded["peer user"] = {"id": peer, "url": f"{base}/users-and-groups/users/{peer}"}
     seeded["signed-in session (peer)"] = {"id": PEER_EMAIL, "url": signed_in_url(base, peer_token)}
     log_session("signed-in session (peer)", seeded["signed-in session (peer)"])
     rows: list[tuple[str, str, object]] = [
@@ -2154,7 +2154,7 @@ def seed_mfa_user(token: str, base: str) -> dict[str, dict[str, str]]:
     row = api("GET", f"/users/{user}", token)
     if not isinstance(row, dict) or row.get("mfa_enabled") is not True:
         raise RuntimeError("GET /users/{id} does not answer mfa_enabled true after the enrollment")
-    return {"two-factor user": {"id": user, "url": f"{base}/users/{user}"}}
+    return {"two-factor user": {"id": user, "url": f"{base}/users-and-groups/users/{user}"}}
 
 
 #: The lab's account nobody's assistant can change a fleet for: its General Assistant override carries no
@@ -3356,11 +3356,11 @@ def seed_relay_requests(token: str, group: str, base: str) -> dict[str, dict[str
     total = page.get("total") if isinstance(page, dict) else None
     if total != written["requests"]:
         raise RuntimeError(f"GET /relays/groups/{group}/requests answers total {total}, {written['requests']} written")
-    url = f"{base}/relays/{group}/activity"
+    url = f"{base}/connections/relays/{group}/activity"
     log(f"seeded relay requests: {url}")
     return {
         "relay group activity": {"id": group, "url": url},
-        "relay with a long name": {"id": written["relays"][0], "url": f"{base}/relays/{group}"},
+        "relay with a long name": {"id": written["relays"][0], "url": f"{base}/connections/relays/{group}"},
     }
 
 
@@ -3606,7 +3606,7 @@ def seed_roi_fleet(token: str, base: str, fleet: str) -> dict[str, dict[str, str
     ``PUT /roi/declarations?subject_type=fleet`` declares the unit; a lab assignment of the fleet's
     orchestrator carries the runs, and ``seed_roi_fleet.py`` writes their ``roi_run_records`` rows
     with the fleet through the backend's own models (no API writes one). ``GET /roi?window=30d`` then
-    answers the fleet in ``fleets``. Logged as ``seeded ROI fleet: <base>/analytics/outcomes``. May
+    answers the fleet in ``fleets``. Logged as ``seeded ROI fleet: <base>/observability/outcomes``. May
     raise: the caller logs and skips.
     """
     orchestrator = LAB_AGENTS.get("Orchestrator")
@@ -3629,7 +3629,7 @@ def seed_roi_fleet(token: str, base: str, fleet: str) -> dict[str, dict[str, str
     if process.returncode != 0:
         raise RuntimeError(f"seed_roi_fleet.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
     json.loads(out.read_text())
-    return {"ROI fleet": {"id": fleet, "url": f"{base}/analytics/outcomes"}}
+    return {"ROI fleet": {"id": fleet, "url": f"{base}/observability/outcomes"}}
 
 
 def seed_roi_under_k(token: str, base: str, peer: str) -> dict[str, dict[str, str]]:
@@ -3821,13 +3821,13 @@ def seed_group_manager(token: str, base: str, peer: str) -> dict[str, dict[str, 
     """The group "Lab managed group" with the peer (*peer*) as its manager and member (#9734).
 
     So the peer's /analytics renders the group-manager view and its subtitle names the group, with
-    no hand-made group during a review. Logged as ``seeded group manager (peer): <base>/groups/<id>``.
+    no hand-made group during a review. Logged as ``seeded group manager (peer): <base>/users-and-groups/groups/<id>``.
     May raise: the caller logs and skips.
     """
     group = _created(api("POST", "/groups", token, {"name": LAB_MANAGED_GROUP}))
     api("POST", f"/groups/{group}/members", token, {"user_ids": [peer]})
     api("POST", f"/groups/{group}/managers", token, {"user_ids": [peer]})
-    return {"group manager (peer)": {"id": group, "url": f"{base}/groups/{group}"}}
+    return {"group manager (peer)": {"id": group, "url": f"{base}/users-and-groups/groups/{group}"}}
 
 
 #: The LLM Analytics seed: agents, users and groups past one page (10) of every breakdown table.
@@ -3844,7 +3844,7 @@ def seed_analytics_traces(token: str, base: str) -> dict[str, dict[str, str]]:
     Twenty lab agents, fifteen users spread over three groups (created through the API), then
     ``seed_analytics_traces.py`` writes the traces and runs the platform's daily-stats backfill
     through the backend's own models: no API writes an ``llm_traces`` row. Logged as
-    ``seeded analytics traces: <base>/analytics``. May raise: the caller logs and skips.
+    ``seeded analytics traces: <base>/observability``. May raise: the caller logs and skips.
     """
     agents = [_seed_agent(token, f"analytics agent {n:02d}") for n in range(1, ANALYTICS_AGENTS + 1)]
     users = [
@@ -3869,7 +3869,7 @@ def seed_analytics_traces(token: str, base: str) -> dict[str, dict[str, str]]:
             f"seed_analytics_traces.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
         )
     counts = json.loads(out.read_text())
-    return {"analytics traces": {"id": str(counts["traces"]), "url": f"{base}/analytics"}}
+    return {"analytics traces": {"id": str(counts["traces"]), "url": f"{base}/observability"}}
 
 
 #: The production-shaped membership ``LAB_FIGURES_SCALE=large`` gives one analytics user (#87): as many groups as
@@ -3894,7 +3894,7 @@ def seed_analytics_wide_member(token: str, base: str) -> dict[str, dict[str, str
     Creates the groups of :func:`analytics_wide_group_names` through ``POST /groups`` and adds
     :data:`ANALYTICS_WIDE_MEMBER_EMAIL` (seeded by :func:`seed_analytics_traces`, read from
     ``analytics_ids.json``) to each. Read back: ``GET /traces/analytics/cost-by-user`` names that user with at
-    least that many ``group_names``. Logged ``seeded analytics wide member (<n> groups): <base>/analytics?
+    least that many ``group_names``. Logged ``seeded analytics wide member (<n> groups): <base>/observability?
     breakdown=users``. May raise: the caller logs and skips.
     """
     ids = json.loads((ROOT / "analytics_ids.json").read_text())
@@ -3909,7 +3909,7 @@ def seed_analytics_wide_member(token: str, base: str) -> dict[str, dict[str, str
     held = len(row.get("group_names") or []) if row else 0
     if held < len(names):
         raise RuntimeError(f"GET /traces/analytics/cost-by-user names {ANALYTICS_WIDE_MEMBER_EMAIL} in {held} groups")
-    url = f"{base}/analytics?breakdown=users"
+    url = f"{base}/observability?breakdown=users"
     log(f"seeded analytics wide member ({held} groups): {url}")
     return {"analytics wide member": {"id": user, "url": url}}
 
@@ -4014,7 +4014,7 @@ def seed_trace_sessions(base: str, peer_id: str | None) -> dict[str, dict[str, s
     writes an ``llm_traces`` row, so ``seed_trace_sessions.py`` writes the conversations, the traces
     (each with a ``conversation_id``) and their spans through the backend's own models, with its
     interpreter and environment; one session belongs to the peer when it was seeded. Logged
-    ``seeded trace sessions: <base>/trace-sessions``. May raise: the caller logs and skips.
+    ``seeded trace sessions: <base>/observability/sessions``. May raise: the caller logs and skips.
     """
     ids = ROOT / "analytics_ids.json"
     out = ROOT / "trace_sessions.json"
@@ -4028,7 +4028,7 @@ def seed_trace_sessions(base: str, peer_id: str | None) -> dict[str, dict[str, s
             f"seed_trace_sessions.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
         )
     counts = json.loads(out.read_text())
-    return {"trace sessions": {"id": str(counts["sessions"]), "url": f"{base}/trace-sessions"}}
+    return {"trace sessions": {"id": str(counts["sessions"]), "url": f"{base}/observability/sessions"}}
 
 
 def seed_operations(token: str, agent: str, base: str) -> dict[str, dict[str, str]]:
@@ -8098,7 +8098,7 @@ def seed_ai_lock_states(
             me = api("GET", "/auth/me", peer_token)
             if not isinstance(me, dict) or not me.get("ai_disabled_by_group"):
                 raise RuntimeError("the peer's /auth/me does not answer ai_disabled_by_group true")
-            seeded["group with AI off"] = {"id": group, "url": f"{base}/groups/{group}"}
+            seeded["group with AI off"] = {"id": group, "url": f"{base}/users-and-groups/groups/{group}"}
             seeded["signed-in session (peer, group AI off)"] = {
                 "id": PEER_EMAIL, "url": signed_in_url(base, peer_token),
             }

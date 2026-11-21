@@ -18,7 +18,7 @@
  * line is N1's, unchanged. N2c adds `/agents-hub`, the Agents group's hub
  * (open to everyone, no lock: its cards carry their own), and moves `/fleets`
  * to its own route. #797: no former address redirects (tested below).
- * N3 lists `/analytics/outcomes`, a tab of Analytics until then, as a page
+ * N3 lists `/observability/outcomes`, a tab of Analytics until then, as a page
  * of the Observability family (administrators, as its tab was).
  */
 
@@ -102,14 +102,14 @@ const REACHABILITY: readonly Reach[] = [
   { to: "/mcp-servers", roles: EVERYONE, lock: "ai", guard: "none" },
   { to: "/tools", roles: EVERYONE, guard: "none" },
   { to: "/integrations", roles: EVERYONE, guard: "none" },
-  { to: "/browser-profiles", roles: EVERYONE, guard: "none" },
-  { to: "/variables", roles: EVERYONE, gate: "customVariables", guard: "none" },
-  { to: "/relays", roles: EVERYONE, gate: "relays", guard: "none" },
-  { to: "/analytics", roles: ADMIN_AND_GROUP_MANAGERS, guard: "AnalyticsRoute" },
+  { to: "/connections", roles: EVERYONE, guard: "none" },
+  { to: "/connections/variables", roles: EVERYONE, gate: "customVariables", guard: "none" },
+  { to: "/connections/relays", roles: EVERYONE, gate: "relays", guard: "none" },
+  { to: "/observability", roles: ADMIN_AND_GROUP_MANAGERS, guard: "AnalyticsRoute" },
   // The page reads Model usage for a group manager whatever the URL says.
-  { to: "/analytics/outcomes", roles: ADMIN, guard: "AnalyticsRoute" },
-  { to: "/traces", roles: ADMIN, guard: "AdminRoute" },
-  { to: "/trace-sessions", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/observability/outcomes", roles: ADMIN, guard: "AnalyticsRoute" },
+  { to: "/observability/traces", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/observability/sessions", roles: ADMIN, guard: "AdminRoute" },
   { to: "/ai-adoption", roles: ADMIN, gate: "aiAdoption", lock: "ai", guard: "AdminRoute" },
   { to: "/evaluations", roles: ADMIN, gate: "evaluation", lock: "ai", guard: "AdminRoute" },
   { to: "/health", roles: ADMIN, gate: "health", lock: "ai", guard: "AdminRoute" },
@@ -117,8 +117,8 @@ const REACHABILITY: readonly Reach[] = [
   // (#9301 UX r1 A4, r2 A5). Intents are XTM One mode only (#445): the route
   // sits behind XtmOneRoute, which is a mode guard, not a role guard.
   { to: "/intents", roles: ADMIN, lock: "ai", guard: "none", xtmOneOnly: true },
-  { to: "/users", roles: ADMIN, guard: "AdminRoute" },
-  { to: "/groups", roles: ADMIN, guard: "none" },
+  { to: "/users-and-groups", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/users-and-groups/groups", roles: ADMIN, guard: "none" },
   { to: "/objects", roles: ADMIN, guard: "AdminRoute" },
   { to: "/logs", roles: ADMIN, guard: "AdminRoute" },
   { to: "/settings", roles: ADMIN, guard: "AdminRoute" },
@@ -195,7 +195,7 @@ test("the pages named by the program are pinned: Tasks, Fleets, Create an agent,
   assert.deepEqual(find("/tasks"), { to: "/tasks", roles: EVERYONE, guard: "none" });
   assert.deepEqual(find("/fleets"), { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" });
   assert.deepEqual(find("/agents/new"), { to: "/agents/new", roles: EVERYONE, lock: "ai", guard: "none" });
-  assert.deepEqual(find("/analytics")?.roles, ADMIN_AND_GROUP_MANAGERS);
+  assert.deepEqual(find("/observability")?.roles, ADMIN_AND_GROUP_MANAGERS);
 });
 
 /** Each `<Route ...>` of `App.tsx` with its path and the text up to the next one. */
@@ -237,7 +237,7 @@ test("every destination is a route of App.tsx, behind the guard the table record
 test("no route redirects or aliases a former address; an unknown one is not found (#797)", () => {
   const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
   const routes = appRoutes();
-  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*"]) {
+  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?"]) {
     assert.equal(routes.find((route) => route.path === retired), undefined, `${retired} is not a route`);
   }
   // The only redirects left are access guards (home, or the login page): never one page aliasing another.

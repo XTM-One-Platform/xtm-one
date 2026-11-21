@@ -28,6 +28,6 @@ export default defineCommands([
     keywords: ["proxy", "on-premises", "egress"],
     icon: Network,
     when: ["relaysEnabled"],
-    navigate: "/relays",
+    navigate: "/connections/relays",
   },
 ]);

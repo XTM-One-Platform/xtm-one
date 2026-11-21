@@ -794,7 +794,7 @@ function RunOverviewCard({ run }: { run: AssignmentRunDetail }) {
         </div>
         {run.llm_trace_id && isAdmin ? (
           <Link
-            to={`/traces/${run.llm_trace_id}`}
+            to={`/observability/traces/${run.llm_trace_id}`}
             className="mt-2 flex items-center gap-2 rounded-sm border border-elevation-subtle-soft bg-elevation-hover px-3 py-2.5 content-base transition-colors hover:border-accent/30 hover:bg-accent/5"
           >
             <Scan className="h-4 w-4 text-accent" />

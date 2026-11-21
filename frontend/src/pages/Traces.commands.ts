@@ -26,7 +26,7 @@ export default defineCommands([
     title: "Browse traces",
     icon: Scan,
     when: ["isAdmin"],
-    navigate: "/traces",
+    navigate: "/observability/traces",
   },
   {
     id: "observability.sessions",
@@ -34,7 +34,7 @@ export default defineCommands([
     title: "Browse trace sessions",
     icon: Activity,
     when: ["isAdmin"],
-    navigate: "/trace-sessions",
+    navigate: "/observability/sessions",
   },
   {
     id: "observability.analytics",
@@ -43,6 +43,6 @@ export default defineCommands([
     keywords: ["cost", "tokens", "usage"],
     icon: BarChart3,
     when: ["isAdmin"],
-    navigate: "/analytics",
+    navigate: "/observability",
   },
 ]);

@@ -429,7 +429,7 @@ export interface DataTableProps<T> {
   onStateChange?: (state: DataTableState) => void;
   /**
    * Controlled state: the caller owns search, filters, sort, page and page size
-   * (a page whose URL keys predate the table, such as `/traces`), and each change
+   * (a page whose URL keys predate the table, such as `/observability/traces`), and each change
    * reaches it through `onStateChange` only. Omitted = the table keeps its state.
    */
   state?: DataTableState;

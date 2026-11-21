@@ -102,7 +102,7 @@ Columns: **S** search, **F** filters, **O** sort, **P** pagination, **E** empty 
 | `/agents` (list view) | `pages/Agents.tsx` | 100 | ~ | ~ | y | - | y | y | - | - | y | - | server | 4 |
 | `/flows/library` (list view) | `pages/flows/LibraryTab.tsx` | 100 | y | y | y | y | y | y | y | - | y | y | client | T2 E (v2 toolbar, list and grid) |
 | `/custom-tools` | `pages/CustomTools.tsx` | 100 | y | y | y | y | y | y | y | - | y | y | client | T2 E (v2 toolbar on the built-in and custom tables, list and grid) |
-| `/variables` | `pages/Variables.tsx` | 100 | y | y | y | y | y | y | y | - | y | y | client | T2 E (v2 toolbar, list and grid) |
+| `/connections/variables` | `pages/Variables.tsx` | 100 | y | y | y | y | y | y | y | - | y | y | client | T2 E (v2 toolbar, list and grid) |
 | `/prompts` | `pages/Prompts.tsx` | 100 | y | y | y | y | y | y | - | - | y | y | client | T2 E (v2 toolbar, list and grid) |
 | `/skills` | `pages/Skills.tsx` | 100 | y | y | y | y | y | y | y | - | y | y | client | T2 E (v2 toolbar, list and grid) |
 | `/mcp-servers` | `pages/MCPServers.tsx` | 10 | y | y | y | y | y | y | - | - | y | y | client | T2 E (v2 toolbar, list and grid) |
@@ -115,11 +115,11 @@ Columns: **S** search, **F** filters, **O** sort, **P** pagination, **E** empty 
 
 | Route | Component | Volume | S | F | O | P | E | L | R | B | A | U | Mode | Slice |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `/traces` | `pages/Traces.tsx` | 10k+ | y | y | y | y (cursor) | y | y | y | - | y | y | server, DataTable controlled by the page's URL keys (done 3b); dates, sources, groups, agents, models and failure causes in the table's one Filters pill (`filtersInPill`, #12070), so the list is the page's last block and fits the window at 1080 | 3 |
-| `/trace-sessions` | `pages/TraceSessions.tsx` | 10k+ | y | y | y | y (cursor) | y | y | y | - | y | y | server, DataTable controlled by the page's URL keys (done 3b); dates, sources, groups, agents and models in the table's one Filters pill (`filtersInPill`, #12070) | 3 |
+| `/observability/traces` | `pages/Traces.tsx` | 10k+ | y | y | y | y (cursor) | y | y | y | - | y | y | server, DataTable controlled by the page's URL keys (done 3b); dates, sources, groups, agents, models and failure causes in the table's one Filters pill (`filtersInPill`, #12070), so the list is the page's last block and fits the window at 1080 | 3 |
+| `/observability/sessions` | `pages/TraceSessions.tsx` | 10k+ | y | y | y | y (cursor) | y | y | y | - | y | y | server, DataTable controlled by the page's URL keys (done 3b); dates, sources, groups, agents and models in the table's one Filters pill (`filtersInPill`, #12070) | 3 |
 | `/intents` | `pages/Intents.tsx` (intents; verticals panel) | 100 | y | y (platform, usage; verticals: `noFilters` reason) | y | y | y | y | y | - | y (edit, add binding; verticals: rename, delete) | y (`in_`, `iv_`) | client: `GET /intents` returns the bounded list whole; a row opens its bindings in a dialog (done 3c) | 3c (done) |
-| `/analytics` breakdowns | `pages/analytics/BreakdownCard.tsx` | 100 | y | y (agents: status; users: groups; groups and models: `noFilters` reason) | y | y | y | y | y | - | - | y (`ba_`, `bu_`, `bg_`, `bm_`) | client | 3a (done); T2 v2 (#10977): Columns on every column but the name, page size and columns per user (`analytics-breakdown-<kind>`), agents and users on two-line rows (name, then owner or email) |
-| `/analytics` top errors | `pages/analytics/ErrorsCard.tsx` | 100 | y | y (agent, model) | y | y | y | y | y | - | - | y (`te_`) | client | 3a (done); T2 v2 (#10977): Columns, per-user page size and columns (`analytics-top-errors`) |
+| `/observability` breakdowns | `pages/analytics/BreakdownCard.tsx` | 100 | y | y (agents: status; users: groups; groups and models: `noFilters` reason) | y | y | y | y | y | - | - | y (`ba_`, `bu_`, `bg_`, `bm_`) | client | 3a (done); T2 v2 (#10977): Columns on every column but the name, page size and columns per user (`analytics-breakdown-<kind>`), agents and users on two-line rows (name, then owner or email) |
+| `/observability` top errors | `pages/analytics/ErrorsCard.tsx` | 100 | y | y (agent, model) | y | y | y | y | y | - | - | y (`te_`) | client | 3a (done); T2 v2 (#10977): Columns, per-user page size and columns (`analytics-top-errors`) |
 | `/agents/:id/observability` | `pages/agent-detail/ObservabilityTab.tsx` (3 tables) | 100 | y | y (recent traces: status, model; comments: rating, server) | y (traces, models; comments ordered newest first by the API) | y | y | y | y | - | - | y (`rt_`, `mb_`, `fc_`) | client (traces, models), server (comments) | 3a (done); T2 v2 (#10977): Columns on the three tables, per-user page size and columns (`agent-observability-*`) |
 
 ### Agents, assignments and memory: slice 4
@@ -220,9 +220,9 @@ These lists hold their own `<Pagination>`, `<ListControlBar>` or `SearchInput` o
 | `/public/prompts` | `pages/public/PublicPrompts.tsx` | 100 | - | y | - | server | 4 |
 | `/public/skills` | `pages/public/PublicSkills.tsx` | 100 | - | y | - | server | 4 |
 | `/evaluations/datasets/:id` entries | `pages/DatasetDetail.tsx` | 1k | - | y (client pages) | - | server | 5 |
-| `/relays` | `pages/Relays.tsx` | 10 | y | - | - | client | 7 |
+| `/connections/relays` | `pages/Relays.tsx` | 10 | y | - | - | client | 7 |
 | `/templates` | `pages/Templates.tsx` | 100 | y | - | - | client | 7 |
-| `/browser-profiles` | `pages/BrowserProfiles.tsx` | 10 | y | - | y | client | 7 |
+| `/connections` | `pages/BrowserProfiles.tsx` | 10 | y | - | y | client | 7 |
 | `/operations/task-history` | `pages/TaskHistory.tsx`: migrated in slice 8f on `DataTable` server mode, controlled state in the URL (`q`, `page`, `sort`, `dir`, `size`; the old `filter=<status>` still reads as one status), storage key `operations-executions` (25 rows); columns Run, Status, Type, Agent, Started, Duration, the last four sorted by the server (`sort` newest, oldest, status, status_desc, agent, agent_desc, longest, shortest on both feeds); the multi-select Status pill with counts is the `toolbar` slot, run type, view, ROI review and Fleet + Agent (with the bulk cancel) the Filters pill; the grid view keeps the Operations run cards; selection skips flow runs (`disabledReason`) | 10k+ | y | y | y | server | 8 (done) |
 
 Routes are the screen the component renders on; the owning slice confirms the exact path.

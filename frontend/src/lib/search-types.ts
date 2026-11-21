@@ -50,8 +50,8 @@ export const SEARCH_TYPE_VIEW: Record<SearchType, SearchTypeView> = {
   integration: { plural: "Integrations", singular: "Integration", icon: "link-2", href: by("/integrations") },
   mcp_server: { plural: "MCP servers", singular: "MCP server", icon: "server", href: by("/mcp-servers") },
   custom_tool: { plural: "Custom tools", singular: "Custom tool", icon: "wrench", href: by("/tools") },
-  user: { plural: "Users", singular: "User", icon: "users", href: by("/users") },
-  group: { plural: "Groups", singular: "Group", icon: "users", href: by("/groups") },
+  user: { plural: "Users", singular: "User", icon: "users", href: by("/users-and-groups/users") },
+  group: { plural: "Groups", singular: "Group", icon: "users", href: by("/users-and-groups/groups") },
 };
 
 /** The results page of `q`, optionally on one type's tab. */

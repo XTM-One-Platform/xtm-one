@@ -74,7 +74,7 @@ test.describe('LLM Analytics layout', () => {
   for (const width of [1024, 1440]) {
     test(`a year of daily bars scrolls inside its card, not the page, at ${width} px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/analytics?period=1y');
+      await page.goto('/observability?period=1y');
       await expect(page.getByText('Usage over time')).toBeVisible();
       await page.getByRole('group', { name: 'Interval' }).getByRole('button', { name: 'Day' }).click();
 
@@ -99,7 +99,7 @@ test.describe('LLM Analytics layout', () => {
   for (const width of [1024, 1440, 1920]) {
     test(`hovering the last bar of a month never changes the scroller at ${width} px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/analytics?period=30d');
+      await page.goto('/observability?period=30d');
       await expect(page.getByText('Usage over time')).toBeVisible();
       await page.getByRole('group', { name: 'Interval' }).getByRole('button', { name: 'Day' }).click();
 
@@ -154,7 +154,7 @@ test.describe('LLM Analytics layout', () => {
   for (const width of [1024, 1440]) {
     test(`a year of daily bars keeps its Y axis in view and opens on the latest bars at ${width} px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/analytics?period=1y');
+      await page.goto('/observability?period=1y');
       await expect(page.getByText('Usage over time')).toBeVisible();
       const interval = page.getByRole('group', { name: 'Interval' });
       await interval.getByRole('button', { name: 'Day' }).click();
@@ -192,7 +192,7 @@ test.describe('LLM Analytics layout', () => {
   for (const width of [1024, 1440]) {
     test(`the first Daily median figure is not cut by the scroller at ${width} px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/analytics?period=1y');
+      await page.goto('/observability?period=1y');
       await expect(page.getByText('Usage over time')).toBeVisible();
       await page.getByRole('button', { name: 'Daily median' }).click();
 
@@ -211,7 +211,7 @@ test.describe('LLM Analytics layout', () => {
   // A month at 1024 px never widens the page (Cost breakdown, Latency).
   test('a month of daily bars never widens the page at 1024 px', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
-    await page.goto('/analytics?period=30d');
+    await page.goto('/observability?period=30d');
     await expect(page.getByText('Usage over time')).toBeVisible();
     await page.getByRole('group', { name: 'Interval' }).getByRole('button', { name: 'Day' }).click();
     await expect(page.getByTestId('usage-over-time-scroller').locator('.recharts-bar-rectangle').last()).toBeAttached();

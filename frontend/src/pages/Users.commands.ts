@@ -14,7 +14,7 @@ export default defineCommands([
     keywords: ["new", "account", "invitation"],
     icon: UserPlus,
     when: ["isAdmin"],
-    navigate: "/users/new",
+    navigate: "/users-and-groups/users/new",
   },
   {
     id: "users.list",
@@ -22,6 +22,6 @@ export default defineCommands([
     title: "Browse users",
     icon: User,
     when: ["isAdmin"],
-    navigate: "/users",
+    navigate: "/users-and-groups",
   },
 ]);
