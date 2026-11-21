@@ -6635,6 +6635,8 @@ export type WorkItemPickupState =
   | "in_progress"
   | "blocked"
   | "blocked_on_items"
+  | "waiting_for_refs"
+  | "waiting_for_person"
   | "waiting_for_ci"
   | "unassigned"
   | "automatic"
@@ -6710,16 +6712,20 @@ export interface WorkItemFleetImpactRef {
 }
 
 /**
- * `work_item_blocked_refs._normalize_ref`: a pull request or issue a blocked
- * item waits for. `state` is set once the code host said it merged or
- * closed; the item goes back to the queue when every one is satisfied.
+ * `work_item_blocked_refs.normalize_blocked_on_refs`: a pull request, issue,
+ * deployment or workflow run a blocked item waits for. `state` is set once it
+ * is satisfied (merged or closed, deployed, succeeded); the item goes back to
+ * the queue when every one is. A deployment names its pull request (`number`)
+ * or its commit (`sha`); a workflow run names its `workflow`, no number.
  */
 export interface WorkItemBlockedRef {
   repo: string;
-  kind: "pull_request" | "issue";
-  number: number;
-  release_on: "merged" | "closed" | "merged_or_closed";
-  state?: "merged" | "closed" | null;
+  kind: "pull_request" | "issue" | "deployment" | "workflow_run";
+  number?: number | null;
+  sha?: string | null;
+  workflow?: string | null;
+  release_on: "merged" | "closed" | "merged_or_closed" | "deployed" | "succeeded";
+  state?: "merged" | "closed" | "deployed" | "succeeded" | null;
   at?: string | null;
 }
 

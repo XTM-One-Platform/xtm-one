@@ -524,6 +524,22 @@ describe("Work Items blocked rows", () => {
     }
   });
 
+  it("lists the blocker items of a row that also waits for a person's decision", () => {
+    const item = withContext("h", "Waits on a person and an item", [blockerRef("b8", "Ship the migration", "in_progress")], {
+      needs_human: true,
+    });
+    item.context = { ...item.context!, pickup: { ...item.context!.pickup, state: "waiting_for_person" } };
+    ITEMS = [item];
+    try {
+      renderTab();
+      const blockers = within(rowOf("Waits on a person and an item")).getByTestId("work-item-blockers");
+      expect(blockers.querySelectorAll("a")).toHaveLength(1);
+      expect(blockers.textContent).toContain("Ship the migration");
+    } finally {
+      ITEMS = MIXED;
+    }
+  });
+
   // Every fact is in the hover card: one term per fact, what a blocked row
   // waits for first, names whole. The row shows what it waits for on its
   // second line and the owner in the meta column; the updated cell is its own
