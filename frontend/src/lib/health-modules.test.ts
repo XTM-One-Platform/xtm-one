@@ -130,4 +130,9 @@ describe("Platform Health labels (UX round 1 B2 on #634)", () => {
     expect(evidenceLabel("window_hours", (key) => key)).toBe("Window (hours)");
     expect(evidenceLabel("some_value", (key) => key)).toBe("Some value");
   });
+
+  it("titles a Module Analyst finding by its slug, never 'Agentic.' (UX round 1 B2 on #953)", () => {
+    expect(checkTitle("opencti.agentic.stalled_connector", (key) => key)).toBe("Stalled connector");
+    expect(checkTitle("openaev.agentic.injector_down", (key) => key)).toBe("Injector down");
+  });
 });

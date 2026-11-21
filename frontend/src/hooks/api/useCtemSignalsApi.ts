@@ -6,7 +6,7 @@
  * `ctem_signal_update` (dev-docs/ctem-loop-visibility.md section 5) invalidates
  * the `["ctem-signals"]` keys, so a recorded signal shows without a reload.
  */
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, notFoundIsOrdinary } from "@/lib/api";
 import { ctemCasesPollInterval, ctemCasesRetry } from "./useCtemCasesApi";
 
@@ -117,6 +117,44 @@ export function useCtemCaseSignals(caseId: string | undefined) {
     enabled: Boolean(caseId),
     retry: ctemCasesRetry,
     throwOnError: false,
+  });
+}
+
+/** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */
+export interface CtemSignalPath {
+  id: string;
+  label: string;
+  default_lens: CtemLens;
+  /** An integration listener records signals on this path. */
+  listener: boolean;
+  counts: Partial<Record<CtemSignalState, number>>;
+  total: number;
+  /** A listener feeds it or it holds a signal; otherwise it reads "Not configured", never 0. */
+  configured: boolean;
+}
+
+/** The 12 trigger paths with their counts, for the Discovery stage's signals card. */
+export function useCtemSignalPaths() {
+  return useQuery<{ paths: CtemSignalPath[] }>({
+    queryKey: ["ctem-signals", "paths"],
+    queryFn: () => api.get("/ctem-signals/paths"),
+    retry: ctemCasesRetry,
+    refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
+    throwOnError: false,
+  });
+}
+
+/**
+ * "Propose to raise the scope" on a watchlisted signal (CTEM-30): stores an
+ * organization context proposal an administrator accepts in Settings >
+ * Organization. Nothing changes in the profile until then; never a gate.
+ */
+export function useProposeSignalScope() {
+  const qc = useQueryClient();
+  return useMutation<{ proposal_id: string; status: string; field: string; value: string }, Error, string>({
+    mutationFn: (id) => api.post(`/ctem-signals/${encodeURIComponent(id)}/propose-scope`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
   });
 }
 

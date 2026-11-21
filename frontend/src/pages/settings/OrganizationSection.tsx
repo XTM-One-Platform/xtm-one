@@ -40,6 +40,7 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
+  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -84,12 +85,14 @@ import {
   SIZE_BANDS,
   TICKETING_PROJECT_ELEMENT,
   formatAmount,
+  isSupportedRecordType,
   fromForm,
   toForm,
   unreadablePlatform,
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
 import { OrganizationUsedBy } from "./OrganizationUsedBy";
+import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
 import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
@@ -97,6 +100,7 @@ import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
+import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -610,6 +614,13 @@ export function OrganizationSection() {
     }
     setInvalidField(null);
     if (scoreInvalid) return;
+    // A ServiceNow table the CTEM case sync cannot write to is shown inline on the Record type
+    // field (#923 UX round 3 B1): nothing is sent, the field is focused, never a toast.
+    if (form.ticketing.sync && !isSupportedRecordType(ticketingIntegration?.provider ?? "", form.ticketing.sync.record_type)) {
+      goToTab(tabOfField("ticketing"));
+      setFocusTarget(`${fieldId}-ticketing-sync-record-type`);
+      return;
+    }
     // The exposure rows the API would refuse are marked on their row, nothing is sent (UX B3).
     if (exposureIssues(form).length > 0) {
       setCheckExposure(true);
@@ -865,6 +876,18 @@ export function OrganizationSection() {
       firstSort: "asc",
       csv: ({ value }) => value.cpe,
     },
+    {
+      // The version the organization runs (CTEM-11, #928): a case then names the version to reach.
+      key: "version",
+      header: "Version (optional)",
+      hideable: true,
+      width: readWidth(180),
+      cell: ({ value }) => readCell(value.version ?? ""),
+      interactive: true,
+      sortValue: sortable<TechRow>(({ value }) => (value.version ?? "").toLowerCase()),
+      firstSort: "asc",
+      csv: ({ value }) => value.version ?? "",
+    },
   ];
   const techFilters: DataTableFilter<TechRow>[] = [
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
@@ -974,10 +997,13 @@ export function OrganizationSection() {
       },
     },
   ];
+  // Edit mode: the CPE input takes what is left, so the fixed columns give it 100 px more at 1080,
+  // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
   const techEdit: ListEditColumn<Tech>[] = [
-    { key: "product", header: "Product", width: readWidth(240), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
+    { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
   ];
   const aiEdit: ListEditColumn<AiSystem>[] = [
     { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
@@ -1019,12 +1045,12 @@ export function OrganizationSection() {
     tech_stack: {
       title: "Paste products",
       example: "Jira, Atlassian",
-      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)" },
+      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)", version: "Version (optional)" },
       spec: {
-        fields: ["product", "vendor", "cpe"],
-        empty: { product: "", vendor: "", cpe: "" },
+        fields: ["product", "vendor", "cpe", "version"],
+        empty: { product: "", vendor: "", cpe: "", version: "" },
         name: "product",
-        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
+        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
         identity: LIST_RULES.tech_stack.identity,
       } as PasteSpec<Tech>,
     },
@@ -1751,6 +1777,22 @@ export function OrganizationSection() {
               </SettingsField>
             </SettingsFieldGrid>
             )}
+            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
+            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
+              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
+              <p className="content-compact text-default-secondary">
+                {current.ticketing.integration
+                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
+              </p>
+              <OrganizationTicketingSync
+                idPrefix={`${fieldId}-ticketing-sync`}
+                sync={current.ticketing.sync}
+                provider={ticketingIntegration?.provider ?? ""}
+                editing={editing}
+                onChange={(sync) => update({ ticketing: { ...current.ticketing, sync } })}
+              />
+            </div>
           </SettingsCard>
           </div>
           )}
@@ -1884,7 +1926,7 @@ export function OrganizationSection() {
                 {listEditAction("tech_stack")}
                 {pasteAction("tech_stack")}
                 {listOpen("tech_stack") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "" })}>
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("tech_stack", { product: "", vendor: "", cpe: "", version: "" })}>
                     <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a product")}
                   </Button>
                 )}
@@ -1895,7 +1937,7 @@ export function OrganizationSection() {
             {listEditor("tech_stack", {
               columns: techEdit,
               filters: [{ key: "vendor", label: "Vendor", values: (v: Tech) => [v.vendor.trim()] }],
-              searchFields: (v) => [v.product, v.vendor, v.cpe],
+              searchFields: (v) => [v.product, v.vendor, v.cpe, v.version],
               rowLabel: (v) => v.product,
               storageKey: "settings-organization-tech-stack",
               rowTestId: "settings.organization.tech-row",
@@ -1977,6 +2019,8 @@ export function OrganizationSection() {
           {tab === "exposure" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.exposure)} className="space-y-4" data-testid="settings.organization.panel-exposure">
             {missingIn("exposure")}
+            {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
+            <OrganizationProposalsCard />
             {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
           </div>
           )}

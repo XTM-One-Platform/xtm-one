@@ -124,6 +124,7 @@ from app.api.v1.schemas.fleet import (
     FleetGraphNode,
     FleetGraphResponse,
     FleetHealthResponse,
+    FleetHealthStartsResponse,
     FleetHierarchyNode,
     FleetInstructionsPositionRequest,
     FleetLivePrerequisite,
@@ -191,6 +192,7 @@ from app.services.fleet_doc_on_create import (
 from app.services.fleet_flow import build_fleet_flow
 from app.services.fleet_runs import fleet_cost
 from app.services.fleet_views import (
+    HealthFleetStarts,
     build_fleet_graph,
     build_fleet_health,
     case_runs,
@@ -253,13 +255,17 @@ def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None
 
 
 def _lock_fixes_on_health_fleet(fleet: Fleet, lines: list[Any]) -> None:
-    """Nobody fixes a prerequisite of Platform Health from its page, administrators included.
+    """Nobody fixes a prerequisite of Platform Health from its page, but its Settings switch.
 
     Sets ``can_fix`` false on every live line of the health fleet, so the About
     page offers no Fix it link and no Fix with AI (#101 S1b, UX r2 B1 on #464).
+    The ``platform_health_off`` line keeps ``can_fix`` as computed (an
+    administrator opens Settings > Platform Health), UX r2 B3 on #980.
     """
     if is_health_fleet(fleet):
         for line in lines:
+            if getattr(line, "reason_code", "") == "platform_health_off":
+                continue
             line.can_fix = False
 
 
@@ -309,6 +315,20 @@ async def _host_workspace(db: AsyncSession, user: User, workspace_id: str, *, co
     except FleetActionRefusedError as exc:
         raise _refused(exc) from None
     return workspace
+
+
+def _health_starts(starts: HealthFleetStarts | None) -> FleetHealthStartsResponse | None:
+    """The Platform Health fleet's starts line (#974); ``None`` on every other fleet."""
+    if starts is None:
+        return None
+    return FleetHealthStartsResponse(
+        events=starts.events,
+        schedules=starts.schedules,
+        next_run_at=_iso(starts.next_run_at),
+        modules=list(starts.modules),
+        settings_route=starts.settings_route,
+        active=starts.active,
+    )
 
 
 async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group_ids: list[str] | None = None):
@@ -405,6 +425,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
                 fleet_paused=facts[f.id].automations.fleet_paused,
             ),
             last_run_at=_iso(facts[f.id].last_run_at),
+            health_starts=_health_starts(facts[f.id].health_starts),
             created_at=f.created_at.isoformat() if f.created_at else "",
             updated_at=f.updated_at.isoformat() if f.updated_at else "",
         )

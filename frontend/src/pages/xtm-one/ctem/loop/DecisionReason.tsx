@@ -106,7 +106,7 @@ const POLICY_RULE_LABEL = {
 const POLICY_RULE_LABELS: Readonly<Record<string, string>> = POLICY_RULE_LABEL;
 
 /** A level word is translated; a number (a CVSS or EPSS minimum) passes through as it is. */
-function levelLabel(value: unknown, t_i18n: Translate): string | number {
+export function levelLabel(value: unknown, t_i18n: Translate): string | number {
   if (typeof value === "number") return value;
   if (typeof value !== "string" || !value) return "";
   return LEVEL_LABEL[value] ? t_i18n(LEVEL_LABEL[value]) : value;

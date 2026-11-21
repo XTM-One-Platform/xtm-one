@@ -45,6 +45,17 @@ except the loop trace), what the user sees there, and the item that feeds it.
 | 9 | Re-test | Case page history, Done for you (outcomes lane) | "Re-test passed" or "Re-test failed, reopened" with the run link | CTEM-03, CTEM-14, CTEM-15 |
 | 10 | Close and feed back | Cases board (Resolved), Governance and Risk, loop trace | The resolution kind (not exposed, mitigated, fixed, accepted risk) and its proof; what was fed back (scope, inventory, PIRs) | CTEM-03, CTEM-30 measures |
 
+Loop measures (stage 10, Governance and Risk, card "Loop measures"):
+`GET /ctem-cases/measures` (`services/ctem_loop_measures.py`) gives the median
+hours from signal to case (the earliest origin signal's `observed_at` to the
+case's `created` event), case to first `validation` event, case to decision
+(the first `state` event to `in_progress` or `accepted_risk`; CTEM-17's
+decision record replaces it), case to passing re-test (the first `validation`
+event `passed` or `not_exposed`), and the share of resolved cases whose newest
+validation passes (closed on proof). Only the cases the reader sees, and only
+the signals the reader may read, are measured; a step no case reached reads
+"No case yet", never 0.
+
 Gates (Loop document naming): gate A (tests approved) shows on stage 6, gate B
 (remediation decision) on stage 7, gate C (production change) on stage 8.
 Each gate in the loop trace is drawn passed, waiting or stopped, with who and

@@ -434,6 +434,19 @@ async def list_cases(
     return [(c, members[c.id]) for c in cases]
 
 
+async def events_of(db: AsyncSession, case_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[CtemCaseEvent]]:
+    """The history of several cases, oldest first (the loop measures, CTEM-30 #937)."""
+    out: dict[uuid.UUID, list[CtemCaseEvent]] = {cid: [] for cid in case_ids}
+    if not case_ids:
+        return out
+    rows = await db.execute(
+        select(CtemCaseEvent).where(CtemCaseEvent.case_id.in_(case_ids)).order_by(CtemCaseEvent.at.asc())
+    )
+    for row in rows.scalars():
+        out.setdefault(row.case_id, []).append(row)
+    return out
+
+
 async def get_case(
     db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID
 ) -> tuple[CtemCase, list[CtemCaseIssue], list[CtemCaseEvent]] | None:

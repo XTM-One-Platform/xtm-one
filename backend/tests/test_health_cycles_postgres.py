@@ -129,8 +129,8 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
         ("orchestrator", True, True),
         ("quality_analyst", True, True),
     ]
-    # The fleet's own assignments, plus the weekly fleet health check every orchestrator gets (#11700).
-    assert assignments == len(fleet_seed.FLEET_ASSIGNMENTS) + 1
+    # The fleet's own assignments only: the health fleet gets no weekly fleet health check (#974).
+    assert assignments == len(fleet_seed.FLEET_ASSIGNMENTS)
     assert [(f.is_company_managed, f.is_builtin, f.slug, f.orchestrator_agent_id) for f in fleets] == [
         (True, True, "platform-health", next(a.id for a in agents if a.health_role == "orchestrator"))
     ]

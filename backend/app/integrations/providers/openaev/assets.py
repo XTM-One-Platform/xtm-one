@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -20,6 +21,46 @@ from ._common import _api, _search_body, _validate_filter_group, json_answer
 logger = logging.getLogger(__name__)
 
 _SOURCE = "integration:openaev"
+
+#: The fields of OpenAEV's EndpointInput, as an endpoint read answers them.
+#: PUT /api/endpoints/{id} copies every one of them onto the endpoint, so an
+#: update sends them all back (read, merge, write) or clears the ones left out.
+_ENDPOINT_INPUT_FIELDS = (
+    "asset_name",
+    "asset_description",
+    "asset_external_reference",
+    "asset_tags",
+    "endpoint_platform",
+    "endpoint_arch",
+    "asset_ips",
+    "asset_hostname",
+    "asset_url",
+    "asset_mac_addresses",
+    "endpoint_is_eol",
+    "asset_category",
+    "asset_subcategory",
+    "asset_criticality",
+    "asset_internet_facing",
+    "asset_cloud_provider",
+    "asset_cloud_native_type",
+    "asset_cloud_region",
+    "asset_linked_person",
+    "asset_metadata",
+)
+
+
+def _endpoint_input(current: dict[str, Any]) -> dict[str, Any]:
+    """The update body that keeps *current* (an endpoint read) as it is."""
+    body = {k: current[k] for k in _ENDPOINT_INPUT_FIELDS if k in current}
+    tags = body.get("asset_tags")
+    if isinstance(tags, list):
+        # Tags read back as ids, or as objects on some builds.
+        body["asset_tags"] = [
+            t.get("tag_id") if isinstance(t, dict) else t
+            for t in tags
+            if (t.get("tag_id") if isinstance(t, dict) else t)
+        ]
+    return body
 
 
 def register(
@@ -35,36 +76,71 @@ def register(
         platform: str = "",
         arch: str = "",
         tags: list[str] | None = None,
+        url: str = "",
+        category: str = "",
+        subcategory: str = "",
+        criticality: str = "",
+        internet_facing: bool | None = None,
+        external_reference: str = "",
     ) -> str:
         action = (action or "").strip().lower()
         if not asset_id:
             return "asset_id (endpoint_id) is required."
 
         if action == "update":
-            body: dict = {}
+            changes: dict[str, Any] = {}
             if name:
-                body["asset_name"] = name
+                changes["asset_name"] = name
             if description:
-                body["asset_description"] = description
+                changes["asset_description"] = description
             if tags is not None:
-                body["asset_tags"] = tags
+                changes["asset_tags"] = tags
             if hostname:
-                body["asset_hostname"] = hostname
+                changes["asset_hostname"] = hostname
             if ips is not None:
-                body["asset_ips"] = ips
+                changes["asset_ips"] = ips
             if platform:
-                body["endpoint_platform"] = platform
+                changes["endpoint_platform"] = platform
             if arch:
-                body["endpoint_arch"] = arch
-            if not body:
+                changes["endpoint_arch"] = arch
+            if url:
+                changes["asset_url"] = url
+            if category:
+                changes["asset_category"] = category.strip().upper()
+            if subcategory:
+                changes["asset_subcategory"] = subcategory.strip().upper()
+            if criticality:
+                changes["asset_criticality"] = criticality.strip().upper()
+            if internet_facing is not None:
+                changes["asset_internet_facing"] = internet_facing
+            if external_reference:
+                changes["asset_external_reference"] = external_reference
+            if not changes:
                 return "Provide at least one field to update."
+            # OpenAEV's PUT replaces the whole endpoint (fields left out are
+            # cleared, tags replaced): read it, then send it back with only
+            # the requested fields changed.
+            resp, err = await _api(
+                base_url,
+                headers,
+                "get",
+                f"/api/endpoints/{asset_id}",
+                "read endpoint",
+            )
+            if err:
+                return err
+            current = resp.json() if resp is not None else None
+            if not isinstance(current, dict) or not current:
+                return f"Endpoint '{asset_id}' not found: nothing updated."
+            body = _endpoint_input(current)
+            body.update(changes)
             _, err = await _api(
                 base_url, headers, "put", f"/api/endpoints/{asset_id}",
                 "update endpoint", json=body,
             )
             if err:
                 return err
-            return f"Updated endpoint {asset_id}."
+            return f"Updated endpoint {asset_id}: {', '.join(sorted(changes))}."
 
         if action == "delete":
             _, err = await _api(
@@ -317,8 +393,8 @@ def register(
             name="manage_openaev_asset",
             description=(
                 "Update or delete an OpenAEV asset (endpoint). Actions: 'update' "
-                "(asset_id + any of name, description, tags, hostname, ips, platform "
-                "[Windows/Linux/MacOS], arch [x86_64/arm64]) and 'delete' (asset_id). "
+                "(asset_id + any of the fields; the others are kept) and 'delete' "
+                "(asset_id). "
                 "Endpoints are normally created by deploying an agent; use "
                 "search_openaev_assets / get_openaev_asset to read."
             ),
@@ -333,7 +409,20 @@ def register(
                     "ips": {"type": "array", "items": {"type": "string"}},
                     "platform": {"type": "string", "description": "Windows/Linux/MacOS."},
                     "arch": {"type": "string", "description": "x86_64/arm64."},
-                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tag ids; replaces the asset's tags.",
+                    },
+                    "url": {"type": "string"},
+                    "category": {
+                        "type": "string",
+                        "description": "HOST, WEB_APPLICATION, CLOUD_RESOURCE...",
+                    },
+                    "subcategory": {"type": "string", "description": "WEBSITE, SERVER..."},
+                    "criticality": {"type": "string", "description": "LOW, MEDIUM, HIGH, VERY_HIGH."},
+                    "internet_facing": {"type": "boolean"},
+                    "external_reference": {"type": "string"},
                 },
                 "required": ["action", "asset_id"],
             },
