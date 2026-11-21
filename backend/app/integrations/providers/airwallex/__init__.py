@@ -9,10 +9,9 @@ account (legal entity) or one organisation key reaching several accounts
 (``login_as`` at sign-in, ``on_behalf_of`` per call), and exports the
 financial reports as files.
 
-Money-moving tools (beneficiary, transfer, conversion, card freeze) exist but
-are built only when the integration's money-movement switch is on, which it
-is not by default; they ask a person on every call, and a read-only binding
-withholds them anyway.
+The write tools (beneficiaries, transfers, FX quotes and conversions, cards
+and cardholders, payment links, billing invoices) are always built and ask a
+person on every call; a read-only binding withholds them.
 
 ``_client.py``: credential, environments, bearer and pacing. ``_tools.py``:
 the operation table and masking. ``webhooks.py``: event types and the
@@ -28,7 +27,6 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 from ._client import (
     DEFAULT_ENVIRONMENT,
     ENVIRONMENTS,
-    MONEY_MOVEMENT_ENABLED,
     PROVIDER,
     AirwallexClient,
     build_airwallex_token,
@@ -42,7 +40,6 @@ __all__ = [
     "DEFAULT_ENVIRONMENT",
     "ENVIRONMENTS",
     "EVENT_TYPES",
-    "MONEY_MOVEMENT_ENABLED",
     "SIGNATURE_HEADER",
     "TIMESTAMP_HEADER",
     "build_airwallex_token",
@@ -64,12 +61,13 @@ async def validate_connection(token: str) -> tuple[bool, str]:
     resp, err = await AirwallexClient(creds).request("GET", "/api/v1/account", "read the account")
     if err or resp is None:
         return False, (err or "No answer").removeprefix("Error: ")
-    info = resp.data if isinstance(resp.data, dict) else {}
-    details = info.get("account_details") if isinstance(info.get("account_details"), dict) else {}
-    business = details.get("business_details") if isinstance(details.get("business_details"), dict) else {}
+    info: dict[str, Any] = resp.data if isinstance(resp.data, dict) else {}
+    raw_details = info.get("account_details")
+    details: dict[str, Any] = raw_details if isinstance(raw_details, dict) else {}
+    raw_business = details.get("business_details")
+    business: dict[str, Any] = raw_business if isinstance(raw_business, dict) else {}
     name = business.get("business_name") or info.get("nickname") or info.get("id") or "unknown"
-    money = "money movement on" if creds.money_movement else "read only"
-    return True, f"{PROVIDER} ({creds.environment}) is connected to account {name} ({money})"
+    return True, f"{PROVIDER} ({creds.environment}) is connected to account {name}"
 
 
 def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> list[ToolDefinition]:

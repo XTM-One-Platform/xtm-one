@@ -29,6 +29,8 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
+from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
+from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -56,6 +58,14 @@ _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "payload.code_repo_id": "The code repository the event names, when it carries one",
     "payload.code_repo_name": "The code repository name, when the event carries one",
     "payload.team_id": "The responsible team, when the event carries one",
+}
+#: The filter keys of every Airwallex webhook event (the Event object it delivers).
+_AIRWALLEX_FILTER_KEYS: dict[str, str] = {
+    "name": "The Airwallex event type (payout.transfer.paid, deposit.settled...)",
+    "account_id": "The Airwallex account (entity) the event belongs to",
+    "data.object.currency": "The currency of the object, when it carries one",
+    "data.object.amount": "The amount of the object, when it carries one",
+    "data.object.status": "The status of the object the event is about",
 }
 #: The label of each Wordsmith event type in the trigger picker.
 _WORDSMITH_EVENT_LABELS: dict[str, str] = {
@@ -4740,6 +4750,90 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "issues:write and the other :write scopes",
                     "description": "Optional: triage, configuration and the destructive tools (each asks a person)",
+                },
+            ],
+        },
+    },
+    "airwallex": {
+        "name": "Airwallex",
+        "description": (
+            "Airwallex global business accounts, one integration per account or entity: balances and "
+            "balance history, financial transactions, global accounts, deposits, transfers, beneficiaries, "
+            "FX rates and conversions, cards and card transactions, invoices, payment intents, "
+            "settlements, payment links and financial reports, with webhook triggers. Write tools "
+            "(beneficiaries, transfers, FX quotes and conversions, cards and cardholders, payment links, "
+            "billing invoices) ask a person on every call. Bank and card numbers are masked."
+        ),
+        "logo": "/logos/airwallex.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["finance"],
+        "supports_assignment_webhooks": True,
+        "available_events": [
+            {
+                "event": AIRWALLEX_TRIGGER_EVENTS[event],
+                "label": label,
+                # One description for every event (the label names it), so the
+                # trigger picker reads it in the viewer's language.
+                "description": (
+                    "Triggers on this Airwallex webhook event. Add a webhook for it in Airwallex "
+                    "(Settings > Developer > Webhooks) pointing to the webhook URL shown below."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _AIRWALLEX_FILTER_KEYS,
+            }
+            for event, label in AIRWALLEX_EVENT_TYPES.items()
+        ],
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "environment": "Airwallex environment",
+            "client_id": "Client ID",
+            "login_as": "Account ID to sign in as (organisation keys only)",
+            "webhook_secret": "Webhook secret (x-signature)",
+        },
+        "extra_field_options": {
+            "environment": [
+                {"value": "production", "label": "Production - api.airwallex.com"},
+                {"value": "demo", "label": "Sandbox - api-demo.airwallex.com"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Airwallex API key",
+            "url": "https://www.airwallex.com/docs/developer-tools/api/manage-api-keys",
+            "steps": [
+                "In Airwallex, as an account admin, open Settings > Developer > API keys and create an API key (or a restricted key with the permissions below).",
+                "Paste the Client ID in the 'Client ID' field and the API key in the 'API key' field, and pick the environment.",
+                "One integration per Airwallex account (legal entity). An organisation key reaching several accounts: set 'Account ID to sign in as', or let the tools pass on_behalf_of per call.",
+                "Every write tool (transfer, beneficiary, conversion, card, payment link, invoice) asks a person before it runs; bind the integration read-only to withhold them from an agent.",
+                "Optional, for webhook triggers: in Settings > Developer > Webhooks, add a webhook pointing to the webhook URL shown below, subscribe to the events and paste its secret in 'Webhook secret (x-signature)'.",
+                "Click 'Test Connection': it signs in and reads the account.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Balances, Wallet, Global accounts: view",
+                    "description": "Read balances, balance history, financial transactions and global accounts",
+                },
+                {
+                    "scope": "Payouts, Transfers, Beneficiaries: view",
+                    "description": "Read transfers and beneficiaries",
+                },
+                {
+                    "scope": "FX: view",
+                    "description": "Read rates, quotes and conversions",
+                },
+                {
+                    "scope": "Issuing: view",
+                    "description": "Read cards, cardholders and card transactions",
+                },
+                {
+                    "scope": "Billing, Payments, Reports: view",
+                    "description": "Read invoices, payment intents, settlements and generate financial reports",
+                },
+                {
+                    "scope": "Payouts, FX, Issuing: edit",
+                    "description": "The write tools: each asks a person before it runs",
                 },
             ],
         },
@@ -9657,6 +9751,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "intel471": "__dummy__||__dummy__",
     # Aikido's token is region||client_id||client_secret.
     "aikido": "eu||__dummy__||__dummy__",
+    # Airwallex's token is environment||client_id||login_as||api_key.
+    "airwallex": "production||__dummy__||||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)

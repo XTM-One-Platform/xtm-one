@@ -10,10 +10,11 @@ financial reports, exported as a file of the run. Every answer masks bank
 account numbers, IBANs and card numbers to their last four characters and
 never answers a secret.
 
-Writes move money or change a payee, so they are built only when the
-integration's money-movement switch is on (off by default), are named with a
+Writes (beneficiaries, transfers, FX quotes and conversions, cards and
+cardholders, payment links, billing invoices) are always built, named with a
 write verb so a read-only binding withholds them, ask a person on every call
-(``always_ask``) and carry an idempotency ``request_id``. Sensitive card
+(``always_ask``: the money-movement guardrail is a call-time approval) and
+carry an idempotency ``request_id`` where Airwallex takes one. Sensitive card
 details (full PAN, CVV) are never exposed: the operation is not in the table.
 """
 
@@ -160,9 +161,19 @@ class Operation:
     #: A write's fixed body fields, merged over the arguments.
     fixed_body: dict[str, Any] = field(default_factory=dict)
     essential: bool = False
+    #: The family of a write (beneficiaries, transfers, fx, cards, payments, billing).
+    group: str = ""
 
 
-def _get(name: str, summary: str, path: str, *, query=None, required=(), essential=False) -> Operation:
+def _get(
+    name: str,
+    summary: str,
+    path: str,
+    *,
+    query: dict[str, dict[str, Any]] | None = None,
+    required: tuple[str, ...] = (),
+    essential: bool = False,
+) -> Operation:
     path_params = tuple(part[1:-1] for part in path.split("/") if part.startswith("{"))
     return Operation(
         name=name,
@@ -179,7 +190,12 @@ def _get(name: str, summary: str, path: str, *, query=None, required=(), essenti
 _ID = "/{id}"
 
 READ_OPERATIONS: tuple[Operation, ...] = (
-    _get("get_airwallex_account", "Account details: legal entity, status, business details", "/api/v1/account", essential=True),
+    _get(
+        "get_airwallex_account",
+        "Account details: legal entity, status, business details",
+        "/api/v1/account",
+        essential=True,
+    ),
     _get("get_airwallex_wallet_info", "Wallet information of the account", "/api/v1/account/wallet_info"),
     _get(
         "list_airwallex_connected_accounts",
@@ -401,30 +417,95 @@ READ_OPERATIONS: tuple[Operation, ...] = (
         query=_PAGE_NUM,
     ),
     _get("get_airwallex_financial_report", "One financial report's status", "/api/v1/finance/financial_reports" + _ID),
+    _get(
+        "list_airwallex_payment_links",
+        "Payment links (when Payments is enabled)",
+        "/api/v1/pa/payment_links",
+        query={
+            "active": _p({"type": "boolean"}, "Active links only"),
+            "reusable": _p({"type": "boolean"}, "Reusable links only"),
+            **_CREATED,
+            **_PAGE_NUM,
+        },
+    ),
+    _get("get_airwallex_payment_link", "One payment link", "/api/v1/pa/payment_links" + _ID),
     _get("list_airwallex_webhooks", "Webhooks configured on the account", "/api/v1/webhooks", query=_CURSOR),
 )
 
 _REQUEST_ID = _p(_STR, "Idempotency key; a new UUID is used when omitted. Reuse it to retry safely")
+_OBJ = {"type": "object"}
+_BENEFICIARY = {
+    "beneficiary": _p(_OBJ, "The beneficiary as the API takes it (entity_type, bank_details, address...)"),
+    "transfer_methods": _p({"type": "array", "items": _STR}, "LOCAL and/or SWIFT"),
+    "nickname": _p(_STR, "Nickname"),
+}
 
-WRITE_OPERATIONS: tuple[Operation, ...] = (
-    Operation(
-        name="create_airwallex_beneficiary",
-        summary="Create a beneficiary (payee)",
+
+def _write(
+    name: str,
+    summary: str,
+    path: str,
+    *,
+    body: dict[str, dict[str, Any]] | None = None,
+    required: tuple[str, ...] = (),
+    fixed_body: dict[str, Any] | None = None,
+    group: str,
+) -> Operation:
+    path_params = tuple(part[1:-1] for part in path.split("/") if part.startswith("{"))
+    return Operation(
+        name=name,
+        summary=summary,
         method="POST",
-        path="/api/v1/beneficiaries/create",
-        body={
-            "beneficiary": _p({"type": "object"}, "The beneficiary as the API takes it (entity_type, bank_details...)"),
-            "transfer_methods": _p({"type": "array", "items": _STR}, "LOCAL and/or SWIFT"),
-            "nickname": _p(_STR, "Nickname"),
-        },
-        required=("beneficiary", "transfer_methods"),
+        path=path,
+        path_params=path_params,
+        body=dict(body or {}),
+        required=path_params + required,
         write=True,
+        fixed_body=dict(fixed_body or {}),
+        group=group,
+    )
+
+
+#: Every write: built always, asks a person on every call (always_ask), named
+#: with a write verb so a read-only binding withholds it. ``group`` names the
+#: family in the tool description (beneficiaries, transfers, fx, cards...).
+WRITE_OPERATIONS: tuple[Operation, ...] = (
+    _write(
+        "create_airwallex_beneficiary",
+        "Create a beneficiary (payee)",
+        "/api/v1/beneficiaries/create",
+        body=_BENEFICIARY,
+        required=("beneficiary", "transfer_methods"),
+        group="beneficiaries",
     ),
+    _write(
+        "update_airwallex_beneficiary",
+        "Update a beneficiary's bank details or nickname",
+        "/api/v1/beneficiaries/{id}/update",
+        body=_BENEFICIARY,
+        required=("beneficiary", "transfer_methods"),
+        group="beneficiaries",
+    ),
+    # Checks the details and saves nothing: a read of the beneficiaries group.
     Operation(
-        name="create_airwallex_transfer",
-        summary="Create a transfer (payout) to a beneficiary",
+        name="validate_airwallex_beneficiary",
+        summary="Validate beneficiary details without saving them",
         method="POST",
-        path="/api/v1/transfers/create",
+        path="/api/v1/beneficiaries/validate",
+        body=_BENEFICIARY,
+        required=("beneficiary", "transfer_methods"),
+        group="beneficiaries",
+    ),
+    _write(
+        "delete_airwallex_beneficiary",
+        "Delete a beneficiary",
+        "/api/v1/beneficiaries/{id}/delete",
+        group="beneficiaries",
+    ),
+    _write(
+        "create_airwallex_transfer",
+        "Create a transfer (payout) to a beneficiary",
+        "/api/v1/transfers/create",
         body={
             "beneficiary_id": _p(_STR, "Existing beneficiary id"),
             "transfer_currency": _p(_STR, "Currency the beneficiary receives"),
@@ -433,18 +514,43 @@ WRITE_OPERATIONS: tuple[Operation, ...] = (
             "source_amount": _p({"type": "number"}, "Amount debited"),
             "transfer_method": _p(_STR, "LOCAL or SWIFT"),
             "transfer_date": _p(_STR, "YYYY-MM-DD"),
+            "quote_id": _p(_STR, "A quote to lock the rate"),
             "reason": _p(_STR, "Transfer reason code"),
             "reference": _p(_STR, "Reference shown to the beneficiary"),
             "request_id": _REQUEST_ID,
         },
         required=("beneficiary_id", "transfer_currency", "reason", "reference"),
-        write=True,
+        group="transfers",
     ),
-    Operation(
-        name="create_airwallex_conversion",
-        summary="Book an FX conversion between two wallet currencies",
-        method="POST",
-        path="/api/v1/fx/conversions/create",
+    _write(
+        "cancel_airwallex_transfer",
+        "Cancel a transfer not yet sent",
+        "/api/v1/transfers/{id}/cancel",
+        group="transfers",
+    ),
+    _write(
+        "create_airwallex_fx_quote",
+        "Lock an FX quote for a currency pair",
+        "/api/v1/fx/quotes/create",
+        body={
+            "buy_currency": _p(_STR, "Currency bought"),
+            "sell_currency": _p(_STR, "Currency sold"),
+            "buy_amount": _p({"type": "number"}, "Amount bought (give this or sell_amount)"),
+            "sell_amount": _p({"type": "number"}, "Amount sold"),
+            "validity": {
+                "type": "string",
+                "enum": ["MIN_1", "MIN_15", "MIN_30", "HR_1", "HR_4", "HR_8", "HR_24"],
+                "description": "How long the rate holds",
+            },
+            "conversion_date": _p(_STR, "YYYY-MM-DD"),
+        },
+        required=("buy_currency", "sell_currency", "validity"),
+        group="fx",
+    ),
+    _write(
+        "create_airwallex_conversion",
+        "Book an FX conversion between two wallet currencies",
+        "/api/v1/fx/conversions/create",
         body={
             "buy_currency": _p(_STR, "Currency bought"),
             "sell_currency": _p(_STR, "Currency sold"),
@@ -455,34 +561,111 @@ WRITE_OPERATIONS: tuple[Operation, ...] = (
             "request_id": _REQUEST_ID,
         },
         required=("buy_currency", "sell_currency"),
-        write=True,
+        group="fx",
     ),
-    Operation(
-        name="freeze_airwallex_card",
-        summary="Freeze a card (status INACTIVE)",
-        method="POST",
-        path="/api/v1/issuing/cards/{id}/update",
-        path_params=("id",),
-        required=("id",),
-        write=True,
+    _write(
+        "freeze_airwallex_card",
+        "Freeze a card (status INACTIVE)",
+        "/api/v1/issuing/cards/{id}/update",
         fixed_body={"card_status": "INACTIVE"},
+        group="cards",
     ),
-    Operation(
-        name="unfreeze_airwallex_card",
-        summary="Unfreeze a card (status ACTIVE)",
-        method="POST",
-        path="/api/v1/issuing/cards/{id}/update",
-        path_params=("id",),
-        required=("id",),
-        write=True,
+    _write(
+        "unfreeze_airwallex_card",
+        "Unfreeze a card (status ACTIVE)",
+        "/api/v1/issuing/cards/{id}/update",
         fixed_body={"card_status": "ACTIVE"},
+        group="cards",
+    ),
+    _write(
+        "update_airwallex_card",
+        "Update a card's nickname or authorization controls (limits, merchant rules)",
+        "/api/v1/issuing/cards/{id}/update",
+        body={
+            "nick_name": _p(_STR, "Nickname"),
+            "authorization_controls": _p(_OBJ, "Limits and allowed merchants, as the API takes them"),
+        },
+        group="cards",
+    ),
+    _write(
+        "create_airwallex_cardholder",
+        "Create a cardholder",
+        "/api/v1/issuing/cardholders/create",
+        body={
+            "type": _p(_STR, "INDIVIDUAL or DELEGATE"),
+            "email": _p(_STR, "Email"),
+            "individual": _p(_OBJ, "Name, date of birth, address, as the API takes them"),
+            "mobile_number": _p(_STR, "Mobile number"),
+            "postal_address": _p(_OBJ, "Postal address"),
+        },
+        required=("type", "email", "individual"),
+        group="cards",
+    ),
+    _write(
+        "update_airwallex_cardholder",
+        "Update a cardholder",
+        "/api/v1/issuing/cardholders/{id}/update",
+        body={
+            "individual": _p(_OBJ, "Name, address, as the API takes them"),
+            "mobile_number": _p(_STR, "Mobile number"),
+            "postal_address": _p(_OBJ, "Postal address"),
+        },
+        group="cards",
+    ),
+    _write(
+        "create_airwallex_payment_link",
+        "Create a payment link a customer pays",
+        "/api/v1/pa/payment_links/create",
+        body={
+            "title": _p(_STR, "Title the payer sees"),
+            "reusable": _p({"type": "boolean"}, "Reusable by several payers"),
+            "amount": _p({"type": "number"}, "Amount (fixed-amount link)"),
+            "currency": _p(_STR, "Currency"),
+            "description": _p(_STR, "Description"),
+            "reference": _p(_STR, "Your reference"),
+            "expires_at": _p(_STR, "Expiry (ISO 8601)"),
+        },
+        required=("title", "reusable"),
+        group="payments",
+    ),
+    _write(
+        "deactivate_airwallex_payment_link",
+        "Deactivate a payment link",
+        "/api/v1/pa/payment_links/{id}/deactivate",
+        group="payments",
+    ),
+    _write(
+        "create_airwallex_invoice",
+        "Create a draft billing invoice",
+        "/api/v1/billing/invoices/create",
+        body={
+            "billing_customer_id": _p(_STR, "Billing customer id"),
+            "currency": _p(_STR, "Currency"),
+            "due_date": _p(_STR, "YYYY-MM-DD"),
+            "memo": _p(_STR, "Memo"),
+            "request_id": _REQUEST_ID,
+        },
+        required=("billing_customer_id", "currency"),
+        group="billing",
+    ),
+    _write(
+        "finalize_airwallex_invoice",
+        "Finalize a draft billing invoice",
+        "/api/v1/billing/invoices/{id}/finalize",
+        group="billing",
+    ),
+    _write(
+        "void_airwallex_invoice",
+        "Void a billing invoice",
+        "/api/v1/billing/invoices/{id}/void",
+        group="billing",
     ),
 )
 
 
-def operations(*, money_movement: bool = False) -> tuple[Operation, ...]:
-    """The operations built for an integration: reads, plus writes when money movement is on."""
-    return READ_OPERATIONS + (WRITE_OPERATIONS if money_movement else ())
+def operations() -> tuple[Operation, ...]:
+    """Every operation: the reads, then the writes (each asks a person)."""
+    return READ_OPERATIONS + WRITE_OPERATIONS
 
 
 # --- tools -------------------------------------------------------------------------------
@@ -502,7 +685,11 @@ def _schema(op: Operation) -> dict[str, Any]:
 def _description(op: Operation) -> str:
     text = f"{op.summary} (Airwallex {op.method} {op.path})."
     if op.write:
-        text += " Moves money or changes a payee: asks a person on every call; idempotent on request_id."
+        text += f" Write ({op.group}): asks a person on every call."
+        if "request_id" in op.body:
+            text += " Idempotent on request_id."
+    elif op.group:
+        text += f" Read ({op.group}): saves nothing."
     elif op.query:
         text += " Amounts come with their currency."
     return text
@@ -536,9 +723,7 @@ def _make_handler(client: AirwallexClient, op: Operation) -> Callable[..., Await
             payload.update(op.fixed_body)
             if "request_id" in op.body and not payload.get("request_id"):
                 payload["request_id"] = str(uuid.uuid4())
-        resp, err = await client.request(
-            op.method, path, action, params=query, body=payload, on_behalf_of=on_behalf_of
-        )
+        resp, err = await client.request(op.method, path, action, params=query, body=payload, on_behalf_of=on_behalf_of)
         if err or resp is None:
             return err or f"Error: {PROVIDER} answered nothing while trying to {action}."
         title = f"{PROVIDER}: {op.summary}{_page_note(resp.data)}"
@@ -725,7 +910,7 @@ def build_operation_tools(
 ) -> list[ToolDefinition]:
     """A tool per operation of the table, plus the report export, handlers registered."""
     tools: list[ToolDefinition] = []
-    for op in operations(money_movement=client.creds.money_movement):
+    for op in operations():
         executor.register(op.name, _make_handler(client, op))
         tools.append(
             ToolDefinition(

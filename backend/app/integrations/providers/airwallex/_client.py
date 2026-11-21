@@ -24,7 +24,7 @@ credential and a 429 is retried after its ``Retry-After`` by
 ``request_id`` instead.
 
 The dispatcher (``integration_tools._get_token``) hands the builder the
-compound ``environment||client_id||login_as||money_movement||api_key``, the
+compound ``environment||client_id||login_as||api_key``, the
 key last and parsed greedily so a key holding ``||`` still round-trips.
 """
 
@@ -59,9 +59,6 @@ ENVIRONMENTS: dict[str, str] = {
 }
 DEFAULT_ENVIRONMENT = "production"
 
-#: The value of the money-movement switch that builds the write tools.
-MONEY_MOVEMENT_ENABLED = "enabled"
-
 _TIMEOUT = 60
 #: Airwallex documents a per-account limit well above an agent's pace; a
 #: bucket of 10 calls a second (burst 20, 5 in flight) keeps a report loop
@@ -81,7 +78,6 @@ class AirwallexCredentials:
     client_id: str
     api_key: str
     login_as: str = ""
-    money_movement: bool = False
 
     @property
     def host(self) -> str:
@@ -111,7 +107,6 @@ def build_airwallex_token(
     api_key: str,
     *,
     login_as: str = "",
-    money_movement: bool = False,
 ) -> str:
     """The compound token, the one shape ``_get_token`` and the tests build."""
     return "||".join(
@@ -119,21 +114,19 @@ def build_airwallex_token(
             normalize_environment(environment),
             (client_id or "").strip(),
             (login_as or "").strip(),
-            MONEY_MOVEMENT_ENABLED if money_movement else "disabled",
             (api_key or "").strip(),
         )
     )
 
 
 def parse_airwallex_token(token: str) -> AirwallexCredentials:
-    """Split ``environment||client_id||login_as||money_movement||api_key``."""
-    environment, client_id, login_as, money, api_key = parse_compound_token(token or "", 5, greedy_last=True)
+    """Split ``environment||client_id||login_as||api_key``."""
+    environment, client_id, login_as, api_key = parse_compound_token(token or "", 4, greedy_last=True)
     return AirwallexCredentials(
         environment=normalize_environment(environment),
         client_id=client_id.strip(),
         api_key=api_key.strip(),
         login_as=login_as.strip(),
-        money_movement=money.strip().lower() == MONEY_MOVEMENT_ENABLED,
     )
 
 
@@ -141,7 +134,7 @@ def token_from_config(secret: str | None, extra: dict[str, Any] | None) -> str:
     """The compound token from what the integration stores.
 
     The API key is the API key column; the environment, the client id, the
-    account to log in as and the money-movement switch live in extra_config.
+    account to log in as live in extra_config.
     Shared by ``_get_token`` and Test Connection.
     """
     values = extra if isinstance(extra, dict) else {}
@@ -155,7 +148,6 @@ def token_from_config(secret: str | None, extra: dict[str, Any] | None) -> str:
         _text("client_id"),
         secret or "",
         login_as=_text("login_as"),
-        money_movement=_text("money_movement").lower() == MONEY_MOVEMENT_ENABLED,
     )
 
 

@@ -116,7 +116,7 @@ def trigger_event(airwallex_event: str) -> str:
 TRIGGER_EVENTS: dict[str, str] = {event: trigger_event(event) for event in EVENT_TYPES}
 
 
-def is_delivery(get_header: Callable[[str], str | None], payload: Any) -> bool:
+def is_delivery(get_header: Callable[[str], Any], payload: Any) -> bool:
     """Whether a request is an Airwallex delivery: ``x-timestamp`` and an Event object."""
     if not isinstance(payload, dict) or not get_header(TIMESTAMP_HEADER):
         return False

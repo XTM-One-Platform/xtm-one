@@ -49,6 +49,7 @@ from app.integrations.http import format_http_error, format_network_error
 from app.integrations.providers.abusech import build_tools as abusech_tools
 from app.integrations.providers.abuseipdb import build_tools as abuseipdb_tools
 from app.integrations.providers.aikido import build_tools as aikido_tools
+from app.integrations.providers.airwallex import build_tools as airwallex_tools
 from app.integrations.providers.anomali import build_tools as anomali_tools
 from app.integrations.providers.anthropic import build_tools as anthropic_tools
 from app.integrations.providers.anyrun import build_tools as anyrun_tools
@@ -1043,6 +1044,7 @@ PROVIDER_TOOLS = {
     "aws_security": aws_security_tools,
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
+    "airwallex": airwallex_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1109,6 +1111,7 @@ CHANNEL_BOT_TOOLS = {
 _PERSIST_FILE_PROVIDERS = frozenset(
     {
         "aikido",
+        "airwallex",
         "anyrun",
         "ashby",
         "bluesky",
@@ -2927,6 +2930,28 @@ async def _get_token(
                 )
         aikido_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return aikido_token_from_config(aikido_secret, aikido_extra)
+
+    # --- Airwallex (client id + API key exchanged for a 30-minute bearer) ---
+    # The API key is the API key column; the environment, the client id, the
+    # account to log in as live in extra_config.
+    # The provider gets ``environment||client_id||login_as||api_key``.
+    if provider == "airwallex":
+        from app.integrations.providers.airwallex import (
+            token_from_config as airwallex_token_from_config,
+        )
+
+        airwallex_extra = {}
+        if integ.extra_config_enc:
+            try:
+                airwallex_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (airwallex): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return airwallex_token_from_config(airwallex_secret, airwallex_extra)
 
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
