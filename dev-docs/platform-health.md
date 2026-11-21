@@ -531,6 +531,19 @@ reads Platform Health as a plain user unless it owns or is shared an agent.
 
 `POST /analysis/{module}/run` is refused `ai_disabled` (403, `detail.code`) while AI is off.
 
+### 8.2 Link guard (S13, pinned by `frontend/src/lib/health-link-guard.test.ts`)
+
+Visible <=> openable on the frontend: `/health` and `/settings` are `AdminRoute`s, so every
+Health surface that links there is drawn for administrators only, either by its own
+`isAdmin` gate (companion, profile companion card, Dashboard critical findings notice) or
+because only an administrator page renders it (Overview, Signals, analysis panel, the
+Settings blocks). The surfaces open to everyone (agent improvement row, flow panel,
+improvements inbox, cycles list, profile opt-out) link only to the target's own page
+(`/agents/<id>`, `/flows/<id>/builder`, `/assignments/<id>`), which has no route guard and
+checks access itself. The guard lists every Health file with its audience: a new file fails
+until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
+its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).
+
 ## 9. Platform email (SMTP) integration
 
 - Built-in company-managed integration "Platform email (SMTP)", present only when
