@@ -86,9 +86,10 @@ def test_the_new_agents_are_seeded_once():
     assert all(slugs.count(a["slug"]) == 1 for a in CTEM_FLEET_AGENTS)
 
 
-def test_the_three_spec_assignments_live_on_the_orchestrator():
+def test_the_spec_assignments_live_on_the_orchestrator() -> None:
     assignments = _f1_assignments()
-    assert set(assignments) == {"New relevant threat", "Weekly threat sweep", "Re-test due"}
+    # The three of the spec, plus the case loop (#891).
+    assert set(assignments) == {"New relevant threat", "Weekly threat sweep", "Re-test due", "Case opened or reopened"}
     assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "0 7 * * 1"}
     assert assignments["Re-test due"]["trigger_type"] == "work_item"
     assert assignments["Re-test due"]["trigger_config"] == {"correlation_prefix": "ctem:f1:retest:"}

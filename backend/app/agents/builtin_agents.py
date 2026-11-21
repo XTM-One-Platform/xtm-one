@@ -24,6 +24,7 @@ own credentials are resolved at runtime.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.agents.ctem_ai_security import AI_SECURITY_AGENTS, AI_SECURITY_ASSIGNMENTS
 from app.agents.ctem_third_party_risk import THIRD_PARTY_RISK_AGENTS, THIRD_PARTY_RISK_ASSIGNMENTS
@@ -2126,7 +2127,8 @@ BUILTIN_AGENTS: list[dict] = [
         "handover_agent_slugs": [],
         "handover_type_slugs": {},
         "builtin_tool_ids": [],
-        "integration_template_bindings": ["opencti", "opencrq"],
+        # OpenAEV for the findings and assets a CVE already has there (#891).
+        "integration_template_bindings": ["opencti", "openaev", "opencrq"],
     },
 ]
 
@@ -2245,7 +2247,8 @@ CTEM_FLEET_AGENTS: list[dict] = [
             "opencti-detection-rule-converter": "consult",
             "aev-detection-rules-generator": "consult",
         },
-        "integration_template_bindings": ["opencti", "openaev"],
+        # OpenCRQ for the treatment plans and scenarios a case's actions touch (#891).
+        "integration_template_bindings": ["opencti", "openaev", "opencrq"],
     },
 ]
 
@@ -2689,11 +2692,11 @@ _CTEM_F2_TRIAGE_PROMPT = (
     "A vulnerability signal arrived from OpenCTI (the event is in the trigger "
     "payload: the Vulnerability or the sighting of one). Run the fleet loop on "
     "it: read the organization context, hand the CVE to the Vulnerability "
-    "Triage Analyst, close it not applicable with the reason when nothing the "
-    "organization runs is affected, else record the ranked finding in "
-    "ctem:f2:state and propose the validation (work item "
-    "`ctem:f2:validate:` followed by the CVE id, needs_human with an ask card: "
-    "the question, approve and reject options, your recommendation). {priority}"
+    "Triage Analyst, stop with the reason when nothing the organization runs "
+    "is affected, else record it with record_ctem_signal (trigger_path "
+    "new_vulnerability, the CVE and the matched assets as subject, the OpenCTI "
+    "id as source). The scope gate opens or joins its case, and the case "
+    "event runs the loop: do not start it here. {priority}"
 )
 CTEM_F2_ASSIGNMENTS: list[dict] = [
     {
@@ -2743,11 +2746,11 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         "trigger_type": "schedule",
         "trigger_config": {"cron": "0 6 * * *"},
         "prompt": (
-            "Daily backlog pass. Read ctem:f2:state and the organization context, "
-            "re-read EPSS, KEV and sightings of every open finding in OpenCTI, "
-            "re-rank them, close those no longer applicable with the reason, and "
-            "move each to its next step (validation, quantification, ticket, "
-            "re-test). Answer with the ranked list: which CVEs to fix first."
+            "Daily backlog pass. List the open CTEM cases with list_ctem_cases and "
+            "read the organization context, re-read EPSS, KEV and sightings of their "
+            "CVEs in OpenCTI, re-rank them, note on each case its next step "
+            "(validation, quantification, ticket, re-test) and move it there. Answer "
+            "with the ranked list: which cases to fix first."
         ),
     },
     {
@@ -2757,15 +2760,64 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         "trigger_type": "work_item",
         "trigger_config": {"correlation_prefix": "ctem:f2:retest:"},
         "prompt": (
-            "A re-test is due (the work item names the CVE). Re-run the validation "
-            "recorded in ctem:f2:state for it (launching it needs the approval the "
-            "work item carries). Exploitation fails: close the finding as fixed "
-            "and re-tested and record the OpenCRQ expected-loss delta. It still "
-            "succeeds: reopen the remediation with the result."
+            "A re-test is due (the work item key is `ctem:f2:retest:` followed by the "
+            "case_id). Read the case with get_ctem_case and re-run the validation its "
+            "validations list names (launching it needs the approval the work item "
+            "carries). Write the result on the case with record_ctem_case_validation "
+            "(kind retest): passed resolves the case, failed reopens it. Record the "
+            "OpenCRQ expected-loss delta in a case note."
         ),
     },
 ]
 BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
+
+# ── CTEM loop fleets run on cases (#891, dev-docs/ctem-fleets.md s.4.0) ──
+# The case is the record: ``ctem_case.opened`` starts one run per case (the event
+# is raised once, at creation; a later signal joins the case without a new
+# event), ``ctem_case.reopened`` restarts the same case's loop, and
+# ``ctem_case.sla_breached`` escalates it. Path routing: the vulnerability
+# fleet takes the vulnerability and exposure paths, the threat fleet the
+# threat and supply-chain ones, so a case starts exactly one fleet run.
+CTEM_THREAT_CASE_PATHS: tuple[str, ...] = ("relevant_threat", "credential_leak", "third_party_event")
+_CASE_EVENT_NAMES: tuple[str, ...] = ("ctem_case.opened", "ctem_case.reopened", "ctem_case.sla_breached")
+
+
+def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **common,
+        "name": "Case opened or reopened",
+        "description": (
+            "Runs the fleet loop on a CTEM case: opened from an in-scope signal, "
+            "reopened by a failed re-test, or past its SLA."
+        ),
+        "trigger_type": "platform_event",
+        "trigger_config": {
+            "event": list(_CASE_EVENT_NAMES),
+            "filter": {"trigger_path": paths_filter},
+            "scope": "all",
+        },
+        "prompt": (
+            "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
+            "severity, sla_due_at). The case is the record of this loop: read it first with "
+            "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
+            f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
+            "it owned by you when no open item has that key; when one is open, add a note "
+            "to it and stop, never a second loop), set the case in_progress, run your loop "
+            "and write every result on the case: the validation with "
+            "record_ctem_case_validation, the ticket with record_ctem_case_ticket, notes "
+            "with update_ctem_case. On ctem_case.sla_breached: add a note to that work item "
+            "and to the case naming the breach and the next step, and raise its priority. "
+            "Never keep an open item only in shared state. End with the case id, its state "
+            "and the next step."
+        ),
+    }
+
+
+CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
+    _CTEM_F2_COMMON, fleet_key="ctem:f2", paths_filter={"not_in": list(CTEM_THREAT_CASE_PATHS)}
+)
+CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
+BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 
 # ── CTEM fleet F1 assignments (dev-docs/ctem-fleets.md s.4.1, issue #9114) ──
 _F1_ORCHESTRATOR = "ctem-threat-response-orchestrator"
@@ -2803,11 +2855,12 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             },
         },
         "prompt": (
-            "OpenCTI created the entity in the trigger below. Open or continue "
-            "its threat response case (state ctem:f1:state, key by its STIX "
-            "id) and run the loop of your instructions: relevance first; "
-            "stop with the reason when it is not relevant. End with the "
-            "threat response brief."
+            "OpenCTI created the entity in the trigger below. Score its relevance "
+            "first and stop with the reason when it is not relevant. When it is, "
+            "record it with record_ctem_signal (trigger_path relevant_threat, its "
+            "STIX id as source): the scope gate opens or joins its case, and the "
+            "case event runs the loop. End with the relevance verdict and the "
+            "signal id."
         ),
     },
     {
@@ -2822,10 +2875,11 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {"cron": "0 7 * * 1"},
         "prompt": (
             "Weekly sweep: list the intrusion sets, campaigns and reports "
-            "created in OpenCTI in the last 7 days. Skip those already open in "
-            "ctem:f1:state. Ask the Threat Relevance Analyst to score the "
-            "rest in one batch, and run the loop for each relevant one. End "
-            "with a short summary: threats reviewed, relevant, cases opened."
+            "created in OpenCTI in the last 7 days. Skip those an open CTEM case "
+            "(list_ctem_cases) or an open ctem:f1 work item already covers. "
+            "Ask the Threat Relevance Analyst to score the rest in one batch, and record each relevant one with "
+            "record_ctem_signal (trigger_path relevant_threat). End with a short "
+            "summary: threats reviewed, relevant, signals recorded."
         ),
     },
     {
@@ -2838,14 +2892,21 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_type": "work_item",
         "trigger_config": {"correlation_prefix": "ctem:f1:retest:"},
         "prompt": (
-            "A re-test is due for the case in the work item below. Propose the "
-            "re-run of its validated scenario as a needs_human work item with an "
-            "ask card (approve or reject, your recommendation), read "
-            "the result once it ran, ask the Risk Quantifier for the loss "
-            "after, update ctem:f1:state and close the case with the delta."
+            "A re-test is due for the case in the work item below (key `ctem:f1:retest:` "
+            "followed by the case_id). Propose the re-run of its validated scenario as a "
+            "needs_human work item with an ask card (approve or reject, your "
+            "recommendation), read the result once it ran, write it on the case with "
+            "record_ctem_case_validation (kind retest): passed resolves the case, failed "
+            "reopens it. Ask the Risk Quantifier for the loss after and note the delta on "
+            "the case; bump the counters in ctem:f1:state."
         ),
     },
 ]
+
+CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
+    _F1_RUN, fleet_key="ctem:f1", paths_filter={"in": list(CTEM_THREAT_CASE_PATHS)}
+)
+CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
 
 BUILTIN_ASSIGNMENTS.extend(CTEM_F1_ASSIGNMENTS)
 

@@ -53,7 +53,9 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     "triggers": (
         "- **New relevant threat**: an OpenCTI creation of an Intrusion Set, a Campaign or a Report.\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
-        "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario."
+        "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
+        "- **Case opened or reopened**: a CTEM case on a threat, credential leak or third-party path is "
+        "opened, reopened by a failed re-test, or past its SLA; the case is the record of the loop."
     ),
     "flow": (
         "1. Relevance: below the threshold the case closes as not relevant, with the reason.\n"
@@ -86,7 +88,9 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
-        "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure."
+        "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
+        "- **Case opened or reopened**: a CTEM case on any other path is opened, reopened by a failed "
+        "re-test, or past its SLA; the case is the record of the loop."
     ),
     "flow": (
         "1. Asset match from the organization context: no matching asset closes the case, with the reason.\n"
@@ -430,6 +434,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "filter": "A fix is ready to be re-tested",
             "detail": "Opened by the remediation owner once the fix is deployed",
         },
+        {
+            "module": "platform",
+            "name": "Case opened or reopened",
+            "filter": "A threat, credential leak or third-party CTEM case opens, reopens or breaches its SLA",
+            "detail": "One loop per case",
+        },
     ],
     "steps": [
         {
@@ -482,6 +492,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         },
         {"trigger": "Weekly threat sweep", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
+        {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
     ],
 }
 
@@ -506,6 +517,12 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "name": "Re-test due",
             "filter": "A fix is ready to be re-validated",
             "detail": "Opened by the remediation owner once the fix is deployed",
+        },
+        {
+            "module": "platform",
+            "name": "Case opened or reopened",
+            "filter": "A CTEM case on any other path opens, reopens or breaches its SLA",
+            "detail": "One loop per case",
         },
     ],
     "steps": [
@@ -542,6 +559,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"trigger": "Vulnerability sighted", "basis": "One run per sighting", "runs_min": 0, "runs_max": 20},
         {"trigger": "Daily backlog pass", "basis": "One run a day", "runs_min": 28, "runs_max": 31},
         {"trigger": "Re-test due", "basis": "One run per fix re-validated", "runs_min": 0, "runs_max": 15},
+        {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 40},
     ],
 }
 

@@ -156,6 +156,26 @@ Common rules:
   work item with `needs_human: true` (approval). Read and draft actions do not.
 - Work-item keys `ctem:<fleet>:<object id>`; shared-state key per fleet
   `ctem:<fleet>:state` (open cases, last refresh, counters for ROI).
+- **The loop fleets run on cases (#891).** F1 (threat response) and F2
+  (vulnerability prioritization) start a loop from a CTEM case: their "Case
+  opened or reopened" automation (platform_event, scope all, seeded off) hears
+  `ctem_case.opened`, `ctem_case.reopened` and `ctem_case.sla_breached`,
+  routed by the case's `trigger_path` so exactly one fleet runs a case: F1
+  takes `relevant_threat`, `credential_leak` and `third_party_event`, F2 every
+  other path. The run owns one work item `ctem:<fleet>:case:<case id>` (an open
+  one gets a note, never a second loop), writes owner, state, validation
+  (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the
+  case, and closes on proof: a passing re-test resolves the case. Re-test items
+  are keyed `ctem:<fleet>:retest:<case id>`. The event listeners record a
+  signal (`record_ctem_signal`) instead of starting a loop; the scope gate
+  opens or joins the case. `ctem:f1:state` and `ctem:f2:state` keep counters
+  only; migration `c891ctemfleetcase1` dropped their open and closed lists
+  with a dated note. The dropped open items are discarded: no fleet pass
+  re-records them (the F2 daily pass re-ranks existing cases, the F1 weekly
+  sweep covers the last 7 days); one reaches a case again only on a new
+  signal, and the note lists their identifiers (first 50) so an operator can
+  record a signal by hand. Gates are unchanged. Tests:
+  `tests/test_ctem_fleets_on_cases.py`.
 - **Bounded shared state (#10789).** Every seeded persona that keeps a list in
   shared state states its bound: a closed case leaves the open list and only
   bumps the counters, a history or closed list is appended with `keep_last`

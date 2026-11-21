@@ -11,10 +11,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""CTEM Cases tools (#11545, slice S2): list, read, create and update cases from an agent.
+"""CTEM Cases tools (#11545, slice S2; #891): list, read, create and update cases from an agent.
 
-Offered to the built-in CTEM Remediation Coordinator and Mobilization Analyst
-only (``dev-docs/ctem-cases.md`` section 8), in XTM One mode, as the person
+Offered to the built-in CTEM agents that work a case (``dev-docs/ctem-cases.md``
+section 8): the two loop orchestrators, the Remediation Coordinator and the
+Mobilization Analyst, in XTM One mode, as the person
 the turn or run acts for. The rules are ``services/ctem_cases.py``'s, the
 writes ``services/ctem_cases_store.py``'s: an agent never accepts risk,
 resolves only with evidence, and every write is a case event with the agent
@@ -35,10 +36,25 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
 
-CTEM_CASE_TOOL_NAMES: tuple[str, ...] = ("list_ctem_cases", "get_ctem_case", "create_ctem_case", "update_ctem_case")
+CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
+    "list_ctem_cases",
+    "get_ctem_case",
+    "create_ctem_case",
+    "update_ctem_case",
+    "record_ctem_case_validation",
+    "record_ctem_case_ticket",
+)
 _SOURCE = "builtin:ctem_cases"
-#: The built-in agents that carry the tools (design section 8).
-CTEM_CASE_AGENT_SLUGS: frozenset[str] = frozenset({"ctem-remediation-coordinator", "ctem-mobilization-analyst"})
+#: The built-in agents that carry the tools (design section 8): the two loop
+#: orchestrators run a case from ``ctem_case.opened`` to its proof (#891).
+CTEM_CASE_AGENT_SLUGS: frozenset[str] = frozenset(
+    {
+        "ctem-vuln-prioritization-orchestrator",
+        "ctem-threat-response-orchestrator",
+        "ctem-remediation-coordinator",
+        "ctem-mobilization-analyst",
+    }
+)
 #: Every case state, read from the model so a new state reaches the counts and the enum (#857).
 _STATES: tuple[str, ...] = CASE_STATES
 #: History events one ``get_ctem_case`` answer carries.
@@ -247,11 +263,88 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case update failed", exc_info=True)
             return "Error: the case could not be changed right now. Say so; nothing was changed."
 
+    async def _validation(
+        case_id: str,
+        provider: str = "",
+        ref: str = "",
+        result: str = "",
+        kind: str = "retest",
+        mitigation_only: bool = False,
+        note: str = "",
+    ) -> str:
+        from app.core.database import async_session
+        from app.services import ctem_case_loop as case_loop
+        from app.services import ctem_cases as rules
+
+        wanted = _uuid(case_id)
+        if wanted is None:
+            return "case_id must be the id list_ctem_cases answers."
+        pending = case_loop.PendingEvents()
+        try:
+            async with async_session() as db:
+                org_id, vertical = await _context(db)
+                if org_id is None or scope is None:
+                    return f"No case {case_id}."
+                shown = await _shown(db, wanted, org_id, vertical)
+                if shown is None:
+                    return f"No case {case_id}."
+                await case_loop.record_validation(
+                    db,
+                    shown[0],
+                    provider=provider,
+                    kind=kind,
+                    ref=ref,
+                    result=result,
+                    mitigation_only=bool(mitigation_only),
+                    note=note or None,
+                    actor=agent_id,
+                    events=pending,
+                )
+                await db.commit()
+                await case_loop.publish_pending(pending)
+                refreshed = await _shown(db, wanted, org_id, vertical)
+                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+        except rules.CaseRuleError as exc:
+            return f"Refused: {exc}. Nothing was changed."
+        except Exception:
+            logger.warning("CTEM case validation failed", exc_info=True)
+            return "Error: the validation could not be recorded right now. Say so; nothing was changed."
+
+    async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
+        from app.core.database import async_session
+        from app.services import ctem_case_loop as case_loop
+        from app.services import ctem_cases as rules
+
+        wanted = _uuid(case_id)
+        if wanted is None:
+            return "case_id must be the id list_ctem_cases answers."
+        try:
+            async with async_session() as db:
+                org_id, vertical = await _context(db)
+                if org_id is None or scope is None:
+                    return f"No case {case_id}."
+                shown = await _shown(db, wanted, org_id, vertical)
+                if shown is None:
+                    return f"No case {case_id}."
+                case_loop.record_ticket(
+                    db, shown[0], integration=integration, key=key, url=url or None, status=status, actor=agent_id
+                )
+                await db.commit()
+                refreshed = await _shown(db, wanted, org_id, vertical)
+                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+        except rules.CaseRuleError as exc:
+            return f"Refused: {exc}. Nothing was changed."
+        except Exception:
+            logger.warning("CTEM case ticket failed", exc_info=True)
+            return "Error: the ticket reference could not be recorded right now. Say so; nothing was changed."
+
     executor = CallableToolExecutor()
     executor.register("list_ctem_cases", _list)
     executor.register("get_ctem_case", _get)
     executor.register("create_ctem_case", _create)
     executor.register("update_ctem_case", _update)
+    executor.register("record_ctem_case_validation", _validation)
+    executor.register("record_ctem_case_ticket", _ticket)
     state_enum = {"type": "string", "enum": list(_STATES)}
     definitions = [
         ToolDefinition(
@@ -322,6 +415,50 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "note": {"type": "string"},
                 },
                 "required": ["case_id"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="record_ctem_case_validation",
+            description=(
+                "Write a validation or re-test result on a CTEM case: the validation module's simulation, "
+                "scenario or test id and its result. passed or not_exposed resolves the case (mitigation_only: "
+                "mitigated, watching, the re-test stays on); failed reopens a resolved case; pending only records."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "case_id": {"type": "string"},
+                    "provider": {
+                        "type": "string",
+                        "description": "The integration the test ran on, by its provider key.",
+                    },
+                    "ref": {"type": "string", "description": "The run, simulation or scenario id."},
+                    "result": {"type": "string", "enum": ["passed", "not_exposed", "failed", "pending"]},
+                    "kind": {"type": "string", "description": "validation or retest (default retest)."},
+                    "mitigation_only": {"type": "boolean"},
+                    "note": {"type": "string"},
+                },
+                "required": ["case_id", "provider", "ref", "result"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="record_ctem_case_ticket",
+            description=(
+                "Write or update the reference of a remediation ticket on a CTEM case (integration, key, "
+                "url, status). One entry per ticket; never changes the case state."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "case_id": {"type": "string"},
+                    "integration": {"type": "string", "description": "The ticketing integration, by its provider key."},
+                    "key": {"type": "string", "description": "The ticket key or number."},
+                    "url": {"type": "string"},
+                    "status": {"type": "string", "enum": ["open", "in_progress", "done", "cancelled"]},
+                },
+                "required": ["case_id", "integration", "key"],
             },
             source=_SOURCE,
         ),
