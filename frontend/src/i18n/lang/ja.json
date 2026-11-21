@@ -14847,6 +14847,7 @@
   "Your memories and conversations with opted-in agents may be read.": "オプトインされたエージェントとのメモリと会話が読み取られる場合があります。",
   "While it is off, Platform Health reads nothing and starts no work.": "オフの間、Platform Health は何も読み取らず、作業も開始しません。",
   "Enable Platform Health": "Platform Health を有効にする",
+  "Runs the health checks and their schedules.": "ヘルスチェックとそのスケジュールを実行します。",
   "Supervision scope": "監視範囲",
   "What Platform Health observes. It reads the content of an agent or a flow only when its managers opted it in, and never the memories and conversations of a user who opted out.": "Platform Health が監視する対象です。エージェントやフローの内容は、管理者がオプトインした場合にのみ読み取り、オプトアウトしたユーザーのメモリと会話は決して読み取りません。",
   "Supervise": "監視対象",
@@ -19784,7 +19785,10 @@
   "Critical findings at once": "重大な検出事項を即時送信",
   "Daily digest": "日次ダイジェスト",
   "Press Enter or a comma after each address.": "各アドレスの後に Enter キーまたはカンマを押します。",
-  "What the daily digest lists.": "日次ダイジェストに含める内容。",
   "One email per new critical finding.": "新しい重大な検出事項ごとに1通のメール。",
+  "The digest lists every open finding.": "ダイジェストにはすべての未解決の検出事項を含めます。",
+  "The digest lists warning and critical findings.": "ダイジェストには警告と重大な検出事項を含めます。",
+  "The digest lists critical findings only.": "ダイジェストには重大な検出事項のみを含めます。",
+  "Emails the recipients below about health findings.": "以下の受信者にヘルスの検出事項をメールで送信します。",
   "One email a day with the open findings.": "未解決の検出事項を含むメールを1日1通。"
 }

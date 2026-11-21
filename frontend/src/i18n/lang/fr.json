@@ -14847,6 +14847,7 @@
   "Your memories and conversations with opted-in agents may be read.": "Vos mémoires et conversations avec les agents inscrits peuvent être lues.",
   "While it is off, Platform Health reads nothing and starts no work.": "Tant qu'il est désactivé, Platform Health ne lit rien et ne lance aucun travail.",
   "Enable Platform Health": "Activer Platform Health",
+  "Runs the health checks and their schedules.": "Exécute les contrôles de santé et leurs planifications.",
   "Supervision scope": "Périmètre de supervision",
   "What Platform Health observes. It reads the content of an agent or a flow only when its managers opted it in, and never the memories and conversations of a user who opted out.": "Ce que Platform Health observe. Il ne lit le contenu d'un agent ou d'un flow que si ses gestionnaires l'ont inscrit, et jamais les mémoires et conversations d'un utilisateur qui s'est désinscrit.",
   "Supervise": "Superviser",
@@ -19784,7 +19785,10 @@
   "Critical findings at once": "Constats critiques immédiatement",
   "Daily digest": "Résumé quotidien",
   "Press Enter or a comma after each address.": "Appuyez sur Entrée ou une virgule après chaque adresse.",
-  "What the daily digest lists.": "Ce que liste le résumé quotidien.",
   "One email per new critical finding.": "Un e-mail par nouveau constat critique.",
+  "The digest lists every open finding.": "Le résumé liste tous les constats ouverts.",
+  "The digest lists warning and critical findings.": "Le résumé liste les constats d'avertissement et critiques.",
+  "The digest lists critical findings only.": "Le résumé liste uniquement les constats critiques.",
+  "Emails the recipients below about health findings.": "Envoie aux destinataires ci-dessous les constats de santé.",
   "One email a day with the open findings.": "Un e-mail par jour avec les constats ouverts."
 }
