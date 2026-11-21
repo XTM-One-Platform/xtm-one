@@ -103,7 +103,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
           </Button>
         </div>
         {open && (
-          <ul id="fleet-capability-slots-rows" className="divide-y divide-elevation-subtle">
+          <ul id="fleet-capability-slots-rows">
             {data.members.map((member) => (
               <MemberSlots key={member.member_id} fleetId={fleet.id} member={member} />
             ))}
@@ -118,7 +118,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
 function MemberSlots({ fleetId, member }: { fleetId: string; member: FleetMemberSlots }) {
   const { t_i18n } = useFormatter();
   return (
-    <li aria-label={member.name} className="grid gap-2 py-2 first:pt-0 last:pb-0 md:grid-cols-[220px_minmax(0,1fr)]">
+    <li aria-label={member.name} className="grid gap-2 border-t border-elevation-subtle py-2 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[220px_minmax(0,1fr)]">
       <div className="min-w-0">
         <Link to={`/agents/${member.agent_id}`} className="block truncate content-compact font-medium hover:underline">
           {member.name || t_i18n("Unknown agent")}
