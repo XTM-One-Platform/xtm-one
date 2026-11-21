@@ -73,3 +73,23 @@ class HealthAnalysisSpend(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=func.now(), onupdate=_now
     )
+
+
+class HealthModuleAnalystSpend(Base):
+    """The Module Analyst's own ceiling ledger (#101 S14b, dev-docs section 12.5).
+
+    Same shape as ``health_analysis_spend``, one row per UTC day and month; apart so the
+    two ceilings never share a count. Not the agentic quota, not the fleet budget.
+    """
+
+    __tablename__ = "health_module_analyst_spend"
+
+    #: ``D:YYYY-MM-DD`` or ``M:YYYY-MM`` (UTC).
+    period: Mapped[str] = mapped_column(String(12), primary_key=True)
+    reserved_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    reserved_cost_usd: Mapped[Decimal] = mapped_column(_COST, nullable=False, default=0, server_default="0")
+    spent_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    spent_cost_usd: Mapped[Decimal] = mapped_column(_COST, nullable=False, default=0, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, server_default=func.now(), onupdate=_now
+    )
