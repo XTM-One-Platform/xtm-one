@@ -20116,6 +20116,7 @@
   "Not reproduced": "No reproducido",
   "Reproduced": "Reproducido",
   "Not re-tested yet": "Aún sin nueva prueba",
+  "Quick filters": "Filtros rápidos",
   "PIR score minimum: threat activity": "Puntuación PIR mínima: actividad de amenazas",
   "0 to 100. A vulnerability flagged in a PIR starts a fleet run at or above this score. Default: 70.": "De 0 a 100. Una vulnerabilidad señalada en un PIR inicia una ejecución de la flota con esta puntuación o más. Predeterminado: 70.",
   "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at or above this score. Default: 75.": "De 0 a 100. Un intrusion set, una campaña o un malware señalado en un PIR inicia una ejecución de la flota con esta puntuación o más. Predeterminado: 75.",
