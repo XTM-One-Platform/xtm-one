@@ -193,7 +193,7 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Module Analyst",
         description="Investigates each registered module read-only and attaches recommendations to its findings.",
         icon="Radar",
-        builtin_tool_ids=(IMPROVEMENTS_GROUP,),
+        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
     ),
 )
 

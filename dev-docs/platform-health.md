@@ -796,7 +796,12 @@ decision written here).
   (`is_module_analyst_run`), the ceiling ledger.
 - Built-in tools of the health group for the member: `list_module_findings`,
   `record_finding_recommendation`, `record_agentic_finding`; the module reads are the
-  registration integration's own read tools behind the allow-list.
+  registration integration's own read tools behind the allow-list. The first two ship in
+  the `health_modules` group (`builtin_tools/health_modules.py`, S14a-2b): health only,
+  agent keyed, wired in XTM One mode only; `list_module_findings` reads for the Module
+  Analyst or an administrator, `record_finding_recommendation` writes for the Module
+  Analyst alone, inside one of its cycles and on a finding of the registration that cycle
+  investigates (one row per finding and cycle, a second call revises it).
 - The orchestrator does not delegate to the analyst; it starts only from its own
   triggers.
 

@@ -473,8 +473,9 @@ def add_health_quality_tools(
     booked on.
     """
     from .health_experiments import EXPERIMENTS_GROUP_ID, build_health_experiment_tools
+    from .health_modules import MODULES_GROUP_ID, build_health_module_tools, module_tools_offered
 
-    if not any(gid in builtin_tool_ids for gid in (DIAGNOSIS_GROUP_ID, EXPERIMENTS_GROUP_ID)):
+    if not any(gid in builtin_tool_ids for gid in (DIAGNOSIS_GROUP_ID, EXPERIMENTS_GROUP_ID, MODULES_GROUP_ID)):
         return
     if not health_tools_offered():
         return
@@ -482,6 +483,8 @@ def add_health_quality_tools(
         composite.add_tools(*build_health_diagnosis_tools(user_id, run_id=run_id, agent_id=agent_id))
     if EXPERIMENTS_GROUP_ID in builtin_tool_ids:
         composite.add_tools(*build_health_experiment_tools(user_id, run_id=run_id, agent_id=agent_id))
+    if MODULES_GROUP_ID in builtin_tool_ids and module_tools_offered():
+        composite.add_tools(*build_health_module_tools(user_id, run_id=run_id, agent_id=agent_id))
 
 
 def build_group(

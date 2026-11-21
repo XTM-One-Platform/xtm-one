@@ -283,6 +283,10 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     from app.services.builtin_tools import build_flow_lab_tools
 
     catalog["flow_lab"] = _extract(build_flow_lab_tools("")[0])
+    # Module Analyst (#101 S14a-2b): same, one session per call.
+    from app.services.builtin_tools.health_modules import build_health_module_tools
+
+    catalog["health_modules"] = _extract(build_health_module_tools("")[0])
 
     # Fleets (#7030): every call opens its own session and loads the caller.
     from app.services.builtin_tools import build_fleet_tools
