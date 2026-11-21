@@ -35,7 +35,7 @@ import {
 } from "@/hooks/api/useCtemCasesApi";
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
-import { caseActivity } from "@/lib/ctem-case-activity";
+import { CASE_RUN_LINE, caseActivity, caseRunLine } from "@/lib/ctem-case-activity";
 import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
@@ -448,7 +448,7 @@ export default function CtemCaseDetail() {
                       aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
                       className="hover:underline"
                     >
-                      {t_i18n("Ran a fleet step on this case")}
+                      {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
                     </Link>
                     {outcome && (
                       <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">

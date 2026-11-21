@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import type { CtemCaseEvent, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { caseActivity } from "./ctem-case-activity";
+import { CASE_RUN_LINE, caseActivity, caseRunLine } from "./ctem-case-activity";
 
 const event = (at: string | null, kind = "state"): CtemCaseEvent => ({ at, actor: "system", kind, issue: null }) as CtemCaseEvent;
 const run = (id: string, at: string): CtemCaseRun => ({
@@ -30,5 +30,21 @@ describe("caseActivity (#915)", () => {
 
   it("shows the history alone when no run is read", () => {
     expect(caseActivity([event("2026-11-21T10:00:00Z")], undefined)).toHaveLength(1);
+  });
+});
+
+describe("caseRunLine (UX round 1 on #920, B1)", () => {
+  it("words a queued run as queued", () => {
+    expect(CASE_RUN_LINE[caseRunLine("pending")]).toBe("Fleet step queued on this case");
+  });
+
+  it("words a running run in the present", () => {
+    expect(CASE_RUN_LINE[caseRunLine("running")]).toBe("Running a fleet step on this case");
+  });
+
+  it("words an ended run in the past, whatever its outcome", () => {
+    for (const outcome of ["succeeded", "failed", "interrupted", "cancelled", null] as const) {
+      expect(CASE_RUN_LINE[caseRunLine(outcome)]).toBe("Ran a fleet step on this case");
+    }
   });
 });

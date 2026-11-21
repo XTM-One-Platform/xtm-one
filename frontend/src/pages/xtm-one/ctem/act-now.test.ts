@@ -8,7 +8,7 @@ import { Zap } from "lucide-react";
 import en from "@/i18n/lang/en.json";
 import {
   ACT_NOW_COLLAPSED, ACT_NOW_MAX, ASK_AGENT_ROW_ID, actNowAskAiPrompt, actNowFleetWork, actNowGroup, actNowGroupCounts, actNowIsGeneric, actNowOffersAskAi,
-  actNowPriorityLabel, actNowQueue, type ActNowRow,
+  actNowPriorityLabel, actNowQueue, actNowShowsPriority, type ActNowRow,
 } from "./act-now";
 
 const t = (text: string, values: Record<string, string> = {}) =>
@@ -102,6 +102,13 @@ describe("actNowQueue", () => {
     expect(actNowPriorityLabel(row("a", 80))).toBe("medium");
     expect(actNowPriorityLabel(row("a", 50))).toBe("low");
     expect(actNowPriorityLabel(row("a", 50, { priorityLabel: "high" }))).toBe("high");
+  });
+
+  it("shows no priority label on a fleet working row, a label on every other row (UX round 1 on #920, B2)", () => {
+    expect(actNowShowsPriority(row("f", 60, { source: "fleet" }))).toBe(false);
+    for (const source of ["work_item", "approval", "module", "setup"] as const) {
+      expect(actNowShowsPriority(row("x", 60, { source }))).toBe(true);
+    }
   });
 
   it("merges the facts of one stage that quote the same figure into one phrase (#11213)", () => {

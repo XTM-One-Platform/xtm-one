@@ -19931,6 +19931,8 @@
   "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist",
   "Back to Case": "Back to Case",
   "Ran a fleet step on this case": "Ran a fleet step on this case",
+  "Fleet step queued on this case": "Fleet step queued on this case",
+  "Running a fleet step on this case": "Running a fleet step on this case",
   "Fleet working": "Fleet working",
   "{fleet} is working on {case}": "{fleet} is working on {case}",
   "Run queued, it starts shortly": "Run queued, it starts shortly",

@@ -43,7 +43,7 @@ import { GenericContextNotice } from "./GenericContextNotice";
 import { RecommendedActionsEmpty } from "./RecommendedActionsEmpty";
 import {
   ACT_NOW_COLLAPSED, ACT_NOW_GROUP_FILLS, ACT_NOW_GROUP_LABELS, ACT_NOW_PRIORITY, actNowAskAiPrompt, actNowGroup, actNowGroupCounts,
-  actNowIsGeneric, actNowOffersAskAi, actNowPriorityLabel, actNowQueue,
+  actNowIsGeneric, actNowOffersAskAi, actNowPriorityLabel, actNowQueue, actNowShowsPriority,
   type ActNowRow,
 } from "./act-now";
 
@@ -124,9 +124,17 @@ function ActNowRowButton({
           </span>
         )}
       </span>
-      <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)}>
-        {t_i18n(prio.label)}
-      </span>
+      {/* A fleet row keeps the slot empty (an invisible twin) so the chevrons
+          stay aligned with the rows that carry a priority (UX round 1 on #920, B2). */}
+      {actNowShowsPriority(row) ? (
+        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)} data-testid="ctem-act-now-priority">
+          {t_i18n(prio.label)}
+        </span>
+      ) : (
+        <span aria-hidden className="invisible shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold" data-testid="ctem-act-now-priority-slot">
+          {t_i18n(prio.label)}
+        </span>
+      )}
       <ChevronRight className="h-4 w-4 shrink-0 text-default-secondary" aria-hidden />
     </button>
   );

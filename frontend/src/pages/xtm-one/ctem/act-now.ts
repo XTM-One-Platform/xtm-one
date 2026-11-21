@@ -121,6 +121,12 @@ function titleKey(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.\s]+$/, "");
 }
 
+/** Whether a row shows a priority label: a fleet at work is not a task for
+ *  the reader, so its row carries none (UX round 1 on #920, B2). */
+export function actNowShowsPriority(row: ActNowRow): boolean {
+  return row.source !== "fleet";
+}
+
 /** The priority band a row shows as its small label. */
 export function actNowPriorityLabel(row: ActNowRow): "high" | "medium" | "low" {
   if (row.priorityLabel === "high" || row.priorityLabel === "medium" || row.priorityLabel === "low") return row.priorityLabel;

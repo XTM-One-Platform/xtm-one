@@ -7,6 +7,25 @@
  * reads `GET /ctem-cases/{id}` (`history`) and `GET /fleets/case-runs/{id}`.
  */
 import type { CtemCaseEvent, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
+import type { TimelineOutcome } from "@/lib/ctem-fleet-timeline";
+
+/**
+ * The line of a run on the case History, worded by what is true of the run:
+ * queued, running, or ended (UX round 1 on #920, B1: a run that has not run
+ * never reads "Ran"). @i18n-keys
+ */
+export const CASE_RUN_LINE = {
+  queued: "Fleet step queued on this case",
+  running: "Running a fleet step on this case",
+  ended: "Ran a fleet step on this case",
+} as const;
+
+/** Which line of `CASE_RUN_LINE` a run with this badge reads. */
+export function caseRunLine(outcome: TimelineOutcome | null): keyof typeof CASE_RUN_LINE {
+  if (outcome === "pending") return "queued";
+  if (outcome === "running") return "running";
+  return "ended";
+}
 
 export type CaseActivityItem =
   | { kind: "event"; key: string; at: string | null; event: CtemCaseEvent }
