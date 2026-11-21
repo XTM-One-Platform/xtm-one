@@ -5865,15 +5865,29 @@ async def execute_assignment_run(
 
                 hitl_executor = CallableToolExecutor()
 
-                async def _request_human_input(question: str, context: str = "") -> str:
+                async def _request_human_input(
+                    question: str,
+                    context: str = "",
+                    options: list[dict[str, Any]] | None = None,
+                    recommendation: str = "",
+                    deadline: str = "",
+                    links: list[dict[str, Any]] | None = None,
+                ) -> str:
                     """Ask the user for input / a decision. Pauses the assignment."""
-                    full_question = question
-                    if context:
-                        full_question = f"{question}\n\nContext: {context}"
+                    from app.services.decision_ask import normalize_run_ask, run_question_text
+
+                    try:
+                        ask = normalize_run_ask(question, context, options, recommendation, deadline, links)
+                    except ValueError as exc:
+                        # Refused before the pause: the agent rewrites the ask in the same turn.
+                        return (
+                            f"Error: nothing was asked. {exc}. In request_human_input, ids, codes the person "
+                            "must not type and technical details go in context; ask again now."
+                        )
                     # This exception propagates up through the agentic loop
                     # The tool_call_id is set by the agent loop's exception handler
                     raise HumanInputRequestedError(
-                        question=full_question,
+                        question=run_question_text(ask),
                         tool_call_id="",  # will be set by the loop
                         conversation=[],  # will be set by the loop
                     )
@@ -5882,22 +5896,52 @@ async def execute_assignment_run(
                 hitl_def = ToolDefinition(
                     name="request_human_input",
                     description=(
-                        "Pause the assignment and ask the user a question. Use this when you need "
-                        "a human decision, approval, clarification, or additional context before "
-                        "proceeding. Provide a clear, actionable question. The assignment will pause "
-                        "until the user responds, then resume with their answer."
+                        "Pause the assignment and ask a person a decision, approval or clarification. "
+                        "Give a one-sentence question in plain words (no ids, keys or timestamps), "
+                        "options with the one you recommend, and links to the sources. The run resumes "
+                        "with the option chosen or the person's own words."
                     ),
                     input_schema={
                         "type": "object",
                         "properties": {
                             "question": {
                                 "type": "string",
-                                "description": "The question to ask the user. Be specific and provide options when possible.",
+                                "description": "The decision in one sentence, in the reader's words.",
                             },
                             "context": {
                                 "type": "string",
-                                "description": "Optional additional context: what you've found, what the options are, and why you need input.",
+                                "description": "What you found and why you ask, shown under the question.",
                                 "default": "",
+                            },
+                            "options": {
+                                "type": "array",
+                                "description": "Up to 6 answers. effect: what choosing it does.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "key": {"type": "string"},
+                                        "label": {"type": "string"},
+                                        "effect": {"type": "string"},
+                                    },
+                                    "required": ["key", "label"],
+                                },
+                            },
+                            "recommendation": {
+                                "type": "string",
+                                "description": "The key of the option you recommend.",
+                            },
+                            "deadline": {
+                                "type": "string",
+                                "description": "When the answer is needed, ISO-8601.",
+                            },
+                            "links": {
+                                "type": "array",
+                                "description": "Sources to open before deciding.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"label": {"type": "string"}, "url": {"type": "string"}},
+                                    "required": ["url"],
+                                },
                             },
                         },
                         "required": ["question"],
@@ -7469,21 +7513,29 @@ async def execute_assignment_run(
                     # Find the pending request_human_input tool call id from the
                     # last assistant message.
                     hitl_tc_id = "hitl"
+                    hitl_args: dict[str, Any] = {}
                     for m in reversed(run.messages):
                         if m.get("tool_calls"):
                             for tc in m["tool_calls"]:
                                 if tc.get("name") == "request_human_input":
                                     hitl_tc_id = tc["id"]
+                                    hitl_args = tc.get("arguments") or {}
                                     break
                             break
 
                     from app.core.redaction import defuse_secret_markers
+                    from app.services.decision_ask import run_answer_text
 
                     messages.append(
                         ChatMessage(
                             role="tool",
                             # What a person wrote: a marker in it is never restored.
-                            content=f"Human response: {defuse_secret_markers(run.human_input_response)}",
+                            # The options are the paused call's own arguments: a reply naming
+                            # one (its key or label) resumes as that option, any other is free text.
+                            content=run_answer_text(
+                                hitl_args if isinstance(hitl_args, dict) else {},
+                                defuse_secret_markers(run.human_input_response),
+                            ),
                             tool_call_id=hitl_tc_id,
                             name="request_human_input",
                         )
