@@ -23,7 +23,16 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 
 ## Settings > Automations > Platform Health
 
-| Section | What it sets |
+The settings are one section. A bar at its top (**On this page**) jumps to its four groups, each with a link that can be shared (`#health-settings-status`, `#health-settings-spend`, `#health-settings-checks`, `#health-settings-alerts`), then to the companion pets:
+
+| Group | Blocks |
+|---|---|
+| Status and scope | Status (enable, name), scope |
+| Spend limits | Budget, analysis |
+| Health checks | Schedule, signals, module thresholds, durations, dry-run |
+| Alerts | Alert emails |
+
+| Block | What it sets |
 |---|---|
 | Enable, name, scope, budget | Whether Platform Health works, the name the entry points and refusals use, which agents and flows it supervises among those their managers enrolled (all of them, or a list), and its budget per cycle and per month, in tokens and in dollars. |
 | Analysis | Whether the routing model explains the findings, and its hard ceilings per day and per month, in tokens and in dollars (see [Analysis](#analysis)). |

@@ -501,7 +501,13 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
   reopened once (Redis `SET NX` on `health:alert:<finding id>`, 7 days), then the
   digest once per UTC day (mark `alert:digest` in `health_schedule_marks`). Nothing
   is sent with SMTP unset or no recipient; a failed send never fails the pass.
-- Removed from the UI: cron editors, durations, dry run, name. Kept as constants or env.
+- Layout (S13, `pages/settings/HealthSection.tsx` `GROUPS`): one section, a horizontal
+  `SectionIndex` ("On this page") jumping to four groups, anchors `#health-settings-<key>`:
+  status (enable and name, scope), spend (budget, analysis), checks (schedule, signals,
+  module thresholds, durations, dry run), alerts (alert emails), then the companion pets.
+  A block names itself; a group adds no second header. Pinned by `HealthSection.test.tsx`.
+  The schedule, durations, dry-run and name blocks stay (the S0 plan to drop them was not
+  applied: they are admin settings the fleet reads).
 
 ## 8. Health page
 
