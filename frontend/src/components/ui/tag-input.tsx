@@ -223,7 +223,8 @@ export function TagInput({
             className={cn(
               "inline-flex items-center gap-0.5 rounded-sm border px-2 py-0.5 content-compact leading-4 font-medium",
               invalidTags?.includes(tag)
-                ? "bg-feedback-error-primary/10 border-feedback-error-primary text-feedback-error-primary"
+                ? // Default text on the error tint, 4.5:1 in both themes (skill 13bis.6); the error tone stays on the border.
+                  "bg-feedback-error-primary/10 border-feedback-error-primary text-default-primary"
                 : "bg-accent/10 border-accent/20 text-accent",
             )}
           >

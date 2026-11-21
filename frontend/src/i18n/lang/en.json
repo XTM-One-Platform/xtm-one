@@ -14847,6 +14847,7 @@
   "Your memories and conversations with opted-in agents may be read.": "Your memories and conversations with opted-in agents may be read.",
   "While it is off, Platform Health reads nothing and starts no work.": "While it is off, Platform Health reads nothing and starts no work.",
   "Enable Platform Health": "Enable Platform Health",
+  "Runs the health checks and their schedules.": "Runs the health checks and their schedules.",
   "Supervision scope": "Supervision scope",
   "What Platform Health observes. It reads the content of an agent or a flow only when its managers opted it in, and never the memories and conversations of a user who opted out.": "What Platform Health observes. It reads the content of an agent or a flow only when its managers opted it in, and never the memories and conversations of a user who opted out.",
   "Supervise": "Supervise",
@@ -19784,7 +19785,10 @@
   "Critical findings at once": "Critical findings at once",
   "Daily digest": "Daily digest",
   "Press Enter or a comma after each address.": "Press Enter or a comma after each address.",
-  "What the daily digest lists.": "What the daily digest lists.",
   "One email per new critical finding.": "One email per new critical finding.",
+  "The digest lists every open finding.": "The digest lists every open finding.",
+  "The digest lists warning and critical findings.": "The digest lists warning and critical findings.",
+  "The digest lists critical findings only.": "The digest lists critical findings only.",
+  "Emails the recipients below about health findings.": "Emails the recipients below about health findings.",
   "One email a day with the open findings.": "One email a day with the open findings."
 }

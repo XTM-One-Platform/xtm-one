@@ -45,6 +45,12 @@ describe("AlertEmailsBlock", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Add at least one recipient, or turn the alert emails off.");
   });
 
+  it("describes the switch and the selected severity under each field", () => {
+    renderWithProviders(<AlertEmailsBlock draft={withAlerts({ ...off, enabled: true, recipients: ["soc@example.com"] })} editing onChange={() => {}} />);
+    expect(screen.getByRole("switch", { name: "Send alert emails" })).toHaveAccessibleDescription("Emails the recipients below about health findings.");
+    expect(screen.getByTestId("settings.health.alert-emails")).toHaveTextContent("The digest lists warning and critical findings.");
+  });
+
   it("names the address the server would refuse", () => {
     renderWithProviders(<AlertEmailsBlock draft={withAlerts({ ...off, enabled: true, recipients: ["soc@example.com", "nobody"] })} editing onChange={() => {}} />);
     expect(screen.getByRole("textbox", { name: "Recipients" })).toHaveAttribute("aria-invalid", "true");

@@ -142,6 +142,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
         <SettingsSwitchField
           id={`${fieldId}-enabled`}
           label={t_i18n("Enable Platform Health")}
+          helper={t_i18n("Runs the health checks and their schedules.")}
           info={t_i18n("On: Platform Health watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
           checked={draft.enabled}
           onCheckedChange={(enabled) => onChange({ ...draft, enabled })}

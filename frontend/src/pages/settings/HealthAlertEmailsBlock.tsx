@@ -47,6 +47,13 @@ const SEVERITY_LABELS = {
 
 const SEVERITIES = Object.keys(SEVERITY_LABELS) as HealthAlertEmailSettings["min_severity"][];
 
+/** What the selected minimum severity means, shown under the select. @i18n-keys */
+const SEVERITY_MEANINGS = {
+  critical: "The digest lists critical findings only.",
+  warning: "The digest lists warning and critical findings.",
+  info: "The digest lists every open finding.",
+} as const;
+
 /** The server's rule (`_valid_recipient`): one `@`, a local part, a dotted domain, no space. */
 function isRecipient(value: string): boolean {
   const at = value.indexOf("@");
@@ -120,6 +127,7 @@ export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
             <SettingsSwitchField
               id={`${fieldId}-enabled`}
               label={t_i18n("Send alert emails")}
+              helper={t_i18n("Emails the recipients below about health findings.")}
               info={info.enabled}
               checked={alerts.enabled}
               onCheckedChange={(enabled) => set({ enabled })}
@@ -146,7 +154,7 @@ export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
                     onChange={(recipients) => set({ recipients })}
                   />
                 </SettingsField>
-                <SettingsField id={severityId} className="max-w-xs" label={t_i18n("Minimum severity")} info={info.severity} helper={t_i18n("What the daily digest lists.")}>
+                <SettingsField id={severityId} className="max-w-xs" label={t_i18n("Minimum severity")} info={info.severity} helper={t_i18n(SEVERITY_MEANINGS[alerts.min_severity])}>
                   <Select value={alerts.min_severity} onValueChange={(value) => set({ min_severity: value as HealthAlertEmailSettings["min_severity"] })}>
                     <SelectTrigger id={severityId} aria-labelledby={settingsFieldLabelId(severityId)} aria-describedby={settingsFieldHintId(severityId)}>
                       <SelectValue />
