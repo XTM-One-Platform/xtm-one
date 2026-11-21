@@ -91,7 +91,42 @@ async def test_inject_status_past_the_read_size_says_it_was_cut(monkeypatch):
     assert len(json.dumps(data)) > JSON_READ_CHARS
     monkeypatch.setattr(injects, "_api", _Api(data))
     content = await _run("manage_openaev_inject", {"action": "status", "scope": "global", "inject_id": "i1"})
-    assert re.search(r"\[truncated, \d+ more characters\]$", content)
+    assert re.search(r"\[truncated, \d+ more characters: read on with offset=\d+\]$", content)
+
+
+async def test_inject_status_reads_on_by_offset_to_the_whole_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cut status trace is read on by offset windows that join back to the whole JSON."""
+    from app.integrations.providers.openaev import injects
+
+    data = _trace(400)
+    whole = json.dumps(data)
+    monkeypatch.setattr(injects, "_api", _Api(data))
+    parts: list[str] = []
+    offset = 0
+    for _ in range(10):
+        content = await _run(
+            "manage_openaev_inject", {"action": "status", "scope": "global", "inject_id": "i1", "offset": offset}
+        )
+        if offset:
+            header, _, content = content.partition("\n")
+            assert header.startswith(f"[characters {offset} to ")
+        match = re.search(r" \.\.\. \[truncated, \d+ more characters: read on with offset=(\d+)\]$", content)
+        if not match:
+            parts.append(content)
+            break
+        parts.append(content[: match.start()])
+        offset = int(match.group(1))
+    assert "".join(parts) == whole
+
+
+async def test_inject_get_offset_past_the_end_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.providers.openaev import injects
+
+    monkeypatch.setattr(injects, "_api", _Api({"inject_id": "i1"}))
+    content = await _run(
+        "manage_openaev_inject", {"action": "get", "scope": "global", "inject_id": "i1", "offset": 99999}
+    )
+    assert "past the end" in content
 
 
 @pytest.mark.parametrize(
