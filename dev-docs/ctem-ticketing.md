@@ -1,0 +1,39 @@
+# CTEM ticketing sync
+
+A CTEM case lives in the organization's own case management system (Jira, ServiceNow, any provider that implements the contract below) without leaving XTM One. Code: `backend/app/services/ctem_ticketing.py`. Cases: `dev-docs/ctem-cases.md`.
+
+## 1. Settings
+
+The system is the ticketing target of the organization context (`OrganizationProfile.ticketing`): `integration` (the integration id), `project` (Jira project key, or the ServiceNow assignment group), and `sync` (`TicketingSync`), read at every sync so a change applies to the next one with no restart.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `create_on` | `mobilize_p1_p2` | A case gets its ticket when it passes Mobilize and is P1 or P2; `mobilize_p1`; `manual` (by hand per case). |
+| `record_type` | Jira `Task`, ServiceNow `incident` | The Jira issue type, or the ServiceNow table. |
+| `labels` | `[]` | Labels (Jira) or the category (ServiceNow, first label); `xtm-ctem` is always added. |
+| `priority_map` | Jira P1 Highest, P2 High, P3 Medium; ServiceNow urgency 1, 2, 3 | Case severity to the system's priority value. |
+| `status_map` | `{}` | The system's status name to a case ticket status, read before the default categories. |
+| `done_starts_retest` | `true` | A ticket moved to done asks the case's re-test; the case closes on the re-test, never on the ticket. |
+| `on_reopen` | `reopen` | A case reopened by a failed re-test reopens its ticket, or (`linked`) opens a new ticket that names the old one. |
+| `due_date_from_sla` | `true` | The case SLA date becomes the ticket due date. |
+
+## 2. Contract
+
+`TicketingAdapter`: `find(correlation)`, `create(draft)`, `update(key, draft, status)`, `comment(key, text)`, `read_status(key)`, each raising `TicketingError(message, fix)`. A new provider adds one class to `ADAPTERS` (keyed by the integration's provider) built on its provider's HTTP helpers, and a row here.
+
+| Provider | Correlation | Status read | Inbound |
+|---|---|---|---|
+| Jira | label `xtm-ctem-<16 hex>` | `statusCategory` (new, indeterminate, done) | status events of `services/jira_events.py` |
+| ServiceNow | `correlation_id` | `state` (1 New, 2 In Progress, 3 On Hold, 6 Resolved, 7 Closed, 8 Canceled) | polled by the case sweep (no outbound webhook needed) |
+
+## 3. Case side
+
+- One ticket per case by default, stored in `case.tickets` through `ctem_case_loop.record_ticket`; a split case may hold several.
+- Idempotent: `ensure_ticket` reads the managed ticket on the case, then the system by correlation, and creates only when both are empty. A replayed `ctem_case.opened`, a retried run or a lost case write never creates a second ticket.
+- Each managed ticket carries `sync`: `state` (`linked`, `in_sync`, `out_of_date`, `error`), `since`, `provider`, `correlation`, `external_status`, and for the last two states `error` and `fix` (the one action that fixes it). A read that fails keeps the `since` of the running out-of-date.
+- A resolved case moves its ticket to done, an accepted risk to cancelled, a reopened case reopens it (or opens a linked one).
+- No ticketing declared: `adapter_for` answers `No ticketing connected` and the case links to the settings; never an error.
+
+## 4. Gates
+
+Creating and updating tickets is a step of the Mobilization role, behind the fleet's gate catalog (`ticket.create`, `ticket.update`) and the case's one Mobilize decision: with the fleet on autonomous, tickets are created with no decision.

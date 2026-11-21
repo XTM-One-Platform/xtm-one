@@ -1,0 +1,670 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""Two-way ticketing sync for CTEM cases (#917): one contract, any case management system.
+
+A CTEM case lives in the organization's own case management system without
+leaving XTM One. The system is the one the organization context declares
+(``OrganizationProfile.ticketing``: integration id, project, and the sync
+settings :class:`~app.services.organization_context.TicketingSync`).
+
+- :class:`TicketingAdapter` is the contract every provider implements:
+  ``find`` (by correlation), ``create``, ``update``, ``comment``,
+  ``read_status``. Jira (:class:`JiraAdapter`) and ServiceNow
+  (:class:`ServiceNowAdapter`) ship here on their providers' HTTP helpers; a
+  new provider registers one class in :data:`ADAPTERS`.
+- :func:`ensure_ticket` is idempotent: a case carries one correlation key
+  (:func:`correlation_of`), written on the ticket (Jira label, ServiceNow
+  ``correlation_id``). A replayed ``ctem_case.opened``, a retried run or a
+  second fleet read finds the ticket again instead of creating a second one.
+- :func:`map_status` turns the system's status into a case ticket status
+  (``open``, ``in_progress``, ``done``, ``cancelled``), the customer's
+  ``status_map`` first, then the system's own categories.
+- Every write lands on ``case.tickets`` through
+  :func:`app.services.ctem_case_loop.record_ticket` with its sync record
+  (``linked``, ``in_sync``, ``out_of_date`` since when, ``error`` with the
+  reason and the one action that fixes it).
+
+No model call. Design: ``dev-docs/ctem-ticketing.md``.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, ClassVar, Protocol
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.ctem_case import CtemCase
+from app.services import ctem_case_loop as case_loop
+
+logger = logging.getLogger(__name__)
+
+#: The correlation prefix written on every ticket the sync creates.
+CORRELATION_PREFIX = "xtm-ctem-"
+#: What the case shows when no ticketing is declared (never an error).
+NOT_CONNECTED = "No ticketing connected"
+#: The settings page a case links to when no ticketing is declared or a sync failed.
+SETTINGS_PATH = "/settings/organization-context#ticketing"
+#: Program defaults (doc 34 section 5), overridden by ``TicketingSync.priority_map``.
+DEFAULT_JIRA_PRIORITY = {"P1": "Highest", "P2": "High", "P3": "Medium"}
+DEFAULT_SERVICENOW_URGENCY = {"P1": "1", "P2": "2", "P3": "3"}
+
+
+class TicketingError(Exception):
+    """A sync step the system refused; ``fix`` names the one action that fixes it."""
+
+    def __init__(self, message: str, fix: str = "check the ticketing integration in Settings"):
+        super().__init__(message)
+        self.fix = fix
+
+
+@dataclass(frozen=True)
+class TicketDraft:
+    """What a ticket carries, built from the case and the settings (:func:`draft_of`)."""
+
+    title: str
+    description: str
+    correlation: str
+    priority: str = ""
+    due_date: str = ""
+    labels: tuple[str, ...] = ()
+    record_type: str = ""
+    link: str = ""
+
+
+@dataclass(frozen=True)
+class RemoteTicket:
+    """A ticket as the system reports it."""
+
+    key: str
+    url: str
+    status: str
+    #: The system's own status name, kept for the case display.
+    external_status: str = ""
+
+
+class TicketingAdapter(Protocol):
+    """The contract of a ticketing provider (``dev-docs/ctem-ticketing.md`` section 2)."""
+
+    provider: ClassVar[str]
+
+    async def find(self, correlation: str) -> RemoteTicket | None: ...
+
+    async def create(self, draft: TicketDraft) -> RemoteTicket: ...
+
+    async def update(self, key: str, draft: TicketDraft, *, status: str | None = None) -> RemoteTicket: ...
+
+    async def comment(self, key: str, text: str) -> None: ...
+
+    async def read_status(self, key: str) -> RemoteTicket: ...
+
+
+# --- Pure rules ---------------------------------------------------------------
+
+
+def correlation_of(case: CtemCase) -> str:
+    """The case's stable correlation key, the same on every run and replay."""
+    return f"{CORRELATION_PREFIX}{uuid.UUID(str(case.id)).hex[:16]}"
+
+
+def should_create(case: CtemCase, sync: Any) -> bool:
+    """Whether the sync opens a ticket by itself for *case* once it passes Mobilize."""
+    create_on = getattr(sync, "create_on", "mobilize_p1_p2")
+    if create_on == "manual":
+        return False
+    wanted = ("P1",) if create_on == "mobilize_p1" else ("P1", "P2")
+    return (case.severity or "") in wanted
+
+
+#: Status categories each system reports, in order: the first name that matches wins.
+_CATEGORY_STATUS: tuple[tuple[str, str], ...] = (
+    ("cancel", "cancelled"),
+    ("won't do", "cancelled"),
+    ("reject", "cancelled"),
+    ("done", "done"),
+    ("resolved", "done"),
+    ("closed", "done"),
+    ("complete", "done"),
+    ("progress", "in_progress"),
+    ("hold", "in_progress"),
+    ("review", "in_progress"),
+)
+#: Jira status category keys (``statusCategory.key``).
+_JIRA_CATEGORY = {"new": "open", "indeterminate": "in_progress", "done": "done"}
+#: ServiceNow incident and change state numbers.
+_SERVICENOW_STATE = {"1": "open", "2": "in_progress", "3": "in_progress", "6": "done", "7": "done", "8": "cancelled"}
+
+
+def map_status(name: str, *, status_map: dict[str, str] | None = None, category: str = "") -> str:
+    """The case ticket status of a system status *name* (customer map, then category, then the name)."""
+    raw = (name or "").strip()
+    for key, value in (status_map or {}).items():
+        if key.strip().lower() == raw.lower() and value in case_loop.TICKET_STATUSES:
+            return value
+    if category in _JIRA_CATEGORY:
+        return _JIRA_CATEGORY[category]
+    if raw in _SERVICENOW_STATE:
+        return _SERVICENOW_STATE[raw]
+    lowered = raw.lower()
+    for needle, status in _CATEGORY_STATUS:
+        if needle in lowered:
+            return status
+    return "open"
+
+
+def draft_of(case: CtemCase, sync: Any, *, base_url: str = "", provider: str = "jira") -> TicketDraft:
+    """The ticket of *case*: mapped title, description, priority, due date, labels and the link back."""
+    link = f"{base_url.rstrip('/')}/xtm-one/ctem/cases/{case.id}" if base_url else ""
+    severity = case.severity or ""
+    custom = dict(getattr(sync, "priority_map", {}) or {})
+    defaults = DEFAULT_SERVICENOW_URGENCY if provider == "servicenow" else DEFAULT_JIRA_PRIORITY
+    priority = custom.get(severity) or defaults.get(severity, "")
+    due = ""
+    if getattr(sync, "due_date_from_sla", True) and case.sla_due_at is not None:
+        due = case.sla_due_at.date().isoformat()
+    lines = [
+        f"CTEM case: {case.title}",
+        f"Fix: {case.remediation_kind}" + (f" to {case.fixed_version}" if case.fixed_version else ""),
+        f"Severity: {severity or 'not set'}",
+        f"Trigger: {case.trigger_path}",
+    ]
+    if due:
+        lines.append(f"Due (SLA): {due}")
+    if link:
+        lines.append(f"Case and loop trace: {link}")
+    lines.append(f"Correlation: {correlation_of(case)} (keep it: XTM One finds this ticket by it)")
+    labels = tuple(dict.fromkeys([*(getattr(sync, "labels", []) or []), "xtm-ctem"]))
+    return TicketDraft(
+        title=f"[{severity}] {case.title}"[:250] if severity else case.title[:250],
+        description="\n".join(lines),
+        correlation=correlation_of(case),
+        priority=priority,
+        due_date=due,
+        labels=labels,
+        record_type=getattr(sync, "record_type", "") or "",
+        link=link,
+    )
+
+
+def target_status(case: CtemCase) -> str | None:
+    """The ticket status a case state asks for, or ``None`` when the ticket leads."""
+    if case.state == "resolved":
+        return "done"
+    if case.state == "accepted_risk":
+        return "cancelled"
+    return None
+
+
+def managed_ticket(case: CtemCase) -> dict[str, Any] | None:
+    """The ticket the sync manages on *case* (the newest one carrying a sync record)."""
+    for ticket in reversed(list(case.tickets or [])):
+        if isinstance(ticket, dict) and ticket.get("sync"):
+            return ticket
+    return None
+
+
+def _sync_record(state: str, now: datetime, adapter: Any, correlation: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "state": state,
+        "since": now.isoformat(),
+        "provider": getattr(adapter, "provider", ""),
+        "correlation": correlation,
+        **extra,
+    }
+
+
+# --- Sync steps (the caller commits) ------------------------------------------
+
+
+@dataclass
+class SyncOutcome:
+    """What one sync step did."""
+
+    created: bool = False
+    updated: bool = False
+    retest_requested: bool = False
+    error: str = ""
+    notes: list[str] = field(default_factory=list)
+
+
+async def ensure_ticket(
+    db: AsyncSession,
+    case: CtemCase,
+    adapter: TicketingAdapter,
+    sync: Any,
+    *,
+    integration: str,
+    base_url: str = "",
+    now: datetime | None = None,
+) -> SyncOutcome:
+    """Give *case* its ticket, once: the managed ticket, else one found by correlation, else a new one."""
+    now = now or datetime.now(UTC)
+    outcome = SyncOutcome()
+    if managed_ticket(case) is not None:
+        outcome.notes.append("already linked")
+        return outcome
+    draft = draft_of(case, sync, base_url=base_url, provider=adapter.provider)
+    try:
+        remote = await adapter.find(draft.correlation)
+        if remote is None:
+            remote = await adapter.create(draft)
+            outcome.created = True
+    except TicketingError as exc:
+        outcome.error = str(exc)
+        logger.warning("CTEM ticket for case %s not created: %s", case.id, exc)
+        return outcome
+    case_loop.record_ticket(
+        db,
+        case,
+        integration=integration,
+        key=remote.key,
+        url=remote.url or None,
+        status=remote.status,
+        now=now,
+        sync=_sync_record("in_sync", now, adapter, draft.correlation, external_status=remote.external_status),
+    )
+    return outcome
+
+
+async def push_case_state(
+    db: AsyncSession,
+    case: CtemCase,
+    adapter: TicketingAdapter,
+    sync: Any,
+    *,
+    base_url: str = "",
+    now: datetime | None = None,
+) -> SyncOutcome:
+    """Carry a case change to its ticket: fields, and the status the case state asks for."""
+    now = now or datetime.now(UTC)
+    outcome = SyncOutcome()
+    ticket = managed_ticket(case)
+    if ticket is None:
+        return outcome
+    wanted = target_status(case)
+    reopen = case.state in case_loop.OPEN_STATES and ticket.get("status") in ("done", "cancelled")
+    correlation = (ticket.get("sync") or {}).get("correlation") or correlation_of(case)
+    draft = draft_of(case, sync, base_url=base_url, provider=adapter.provider)
+    try:
+        if reopen and getattr(sync, "on_reopen", "reopen") == "linked":
+            linked = await adapter.create(draft)
+            await adapter.comment(linked.key, f"Reopened from {ticket.get('key')}: the re-test failed.")
+            case_loop.record_ticket(
+                db,
+                case,
+                integration=str(ticket.get("integration")),
+                key=linked.key,
+                url=linked.url or None,
+                status=linked.status,
+                now=now,
+                sync=_sync_record("in_sync", now, adapter, correlation, external_status=linked.external_status),
+            )
+            outcome.created = True
+            return outcome
+        remote = await adapter.update(str(ticket["key"]), draft, status="open" if reopen else wanted)
+    except TicketingError as exc:
+        _mark(db, case, ticket, adapter, "error", now, error=str(exc), fix=exc.fix)
+        outcome.error = str(exc)
+        return outcome
+    case_loop.record_ticket(
+        db,
+        case,
+        integration=str(ticket.get("integration")),
+        key=str(ticket["key"]),
+        url=remote.url or ticket.get("url"),
+        status=remote.status,
+        now=now,
+        sync=_sync_record("in_sync", now, adapter, correlation, external_status=remote.external_status),
+    )
+    outcome.updated = True
+    return outcome
+
+
+async def pull_ticket_status(
+    db: AsyncSession,
+    case: CtemCase,
+    adapter: TicketingAdapter,
+    sync: Any,
+    *,
+    remote: RemoteTicket | None = None,
+    now: datetime | None = None,
+) -> SyncOutcome:
+    """Read the ticket's status (or take the one an inbound event carried) onto the case.
+
+    A ticket that reaches ``done`` while the case is still worked asks for the
+    re-test (``retest_requested``) when ``done_starts_retest``: the case closes
+    on the re-test, never on the ticket.
+    """
+    now = now or datetime.now(UTC)
+    outcome = SyncOutcome()
+    ticket = managed_ticket(case)
+    if ticket is None:
+        return outcome
+    correlation = (ticket.get("sync") or {}).get("correlation") or correlation_of(case)
+    try:
+        remote = remote or await adapter.read_status(str(ticket["key"]))
+    except TicketingError as exc:
+        _mark(db, case, ticket, adapter, "out_of_date", now, error=str(exc), fix=exc.fix, keep_since=True)
+        outcome.error = str(exc)
+        return outcome
+    before = ticket.get("status")
+    case_loop.record_ticket(
+        db,
+        case,
+        integration=str(ticket.get("integration")),
+        key=str(ticket["key"]),
+        url=remote.url or ticket.get("url"),
+        status=remote.status,
+        now=now,
+        sync=_sync_record("in_sync", now, adapter, correlation, external_status=remote.external_status),
+    )
+    outcome.updated = before != remote.status
+    if (
+        outcome.updated
+        and remote.status == "done"
+        and case.state in case_loop.OPEN_STATES
+        and getattr(sync, "done_starts_retest", True)
+    ):
+        outcome.retest_requested = True
+    return outcome
+
+
+def _mark(
+    db: AsyncSession,
+    case: CtemCase,
+    ticket: dict[str, Any],
+    adapter: Any,
+    state: str,
+    now: datetime,
+    *,
+    error: str = "",
+    fix: str = "",
+    keep_since: bool = False,
+) -> None:
+    """Write a sync state that is not ``in_sync`` (the since of a running out-of-date is kept)."""
+    previous = dict(ticket.get("sync") or {})
+    since = previous.get("since") if keep_since and previous.get("state") == state else now.isoformat()
+    record = {
+        **previous,
+        "state": state,
+        "since": since or now.isoformat(),
+        "provider": getattr(adapter, "provider", previous.get("provider", "")),
+        "error": error[:300],
+        "fix": fix[:200],
+    }
+    case_loop.record_ticket(
+        db,
+        case,
+        integration=str(ticket.get("integration")),
+        key=str(ticket["key"]),
+        url=ticket.get("url"),
+        status=str(ticket.get("status") or "open"),
+        now=now,
+        sync=record,
+    )
+
+
+# --- Adapters ----------------------------------------------------------------
+
+
+class JiraAdapter:
+    """Jira Cloud on the provider's REST v3 helpers (``integrations/providers/jira/_common.py``)."""
+
+    provider: ClassVar[str] = "jira"
+
+    def __init__(self, base: str, headers: dict[str, str], project: str, *, status_map: dict[str, str] | None = None):
+        self.base = base
+        self.headers = headers
+        self.project = project
+        self.status_map = status_map or {}
+
+    def _browse(self, key: str) -> str:
+        return f"{self.base}/browse/{key}" if key else ""
+
+    async def _call(self, method: str, path: str, action: str, **kwargs: Any) -> Any:
+        from app.integrations.providers.jira._common import api3, jira_request
+
+        resp, err = await jira_request(method, f"{api3(self.base)}/{path}", action, headers=self.headers, **kwargs)
+        if err or resp is None:
+            raise TicketingError(err or f"Jira did not answer to {action}", fix="reconnect the Jira integration")
+        return resp.json() if resp.content else {}
+
+    def _remote(self, issue: dict[str, Any]) -> RemoteTicket:
+        status = ((issue.get("fields") or {}).get("status")) or {}
+        name = str(status.get("name") or "")
+        category = str((status.get("statusCategory") or {}).get("key") or "")
+        key = str(issue.get("key") or "")
+        return RemoteTicket(
+            key=key,
+            url=self._browse(key),
+            status=map_status(name, status_map=self.status_map, category=category),
+            external_status=name,
+        )
+
+    async def find(self, correlation: str) -> RemoteTicket | None:
+        body = {"jql": f'labels = "{correlation}"', "fields": ["status"], "maxResults": 1}
+        data = await self._call("post", "search/jql", "find the CTEM ticket", json=body)
+        issues = data.get("issues") or []
+        return self._remote(issues[0]) if issues else None
+
+    async def create(self, draft: TicketDraft) -> RemoteTicket:
+        from app.integrations.providers.jira._common import text_to_adf
+
+        fields: dict[str, Any] = {
+            "project": {"key": self.project},
+            "summary": draft.title,
+            "issuetype": {"name": draft.record_type or "Task"},
+            "description": text_to_adf(draft.description),
+            "labels": [*draft.labels, draft.correlation],
+        }
+        if draft.priority:
+            fields["priority"] = {"name": draft.priority}
+        if draft.due_date:
+            fields["duedate"] = draft.due_date
+        created = await self._call(
+            "post", "issue", f"create the CTEM ticket in {self.project}", json={"fields": fields}
+        )
+        key = str(created.get("key") or "")
+        if not key:
+            raise TicketingError("Jira created no issue key")
+        return RemoteTicket(key=key, url=self._browse(key), status="open", external_status="")
+
+    async def update(self, key: str, draft: TicketDraft, *, status: str | None = None) -> RemoteTicket:
+        fields: dict[str, Any] = {"summary": draft.title}
+        if draft.priority:
+            fields["priority"] = {"name": draft.priority}
+        if draft.due_date:
+            fields["duedate"] = draft.due_date
+        await self._call("put", f"issue/{key}", f"update {key}", json={"fields": fields})
+        if status:
+            await self._transition(key, status)
+        return await self.read_status(key)
+
+    async def _transition(self, key: str, status: str) -> None:
+        data = await self._call("get", f"issue/{key}/transitions", f"read the transitions of {key}")
+        for transition in data.get("transitions") or []:
+            to = transition.get("to") or {}
+            mapped = map_status(
+                str(to.get("name") or ""),
+                status_map=self.status_map,
+                category=str((to.get("statusCategory") or {}).get("key") or ""),
+            )
+            if mapped == status:
+                await self._call(
+                    "post", f"issue/{key}/transitions", f"move {key}", json={"transition": {"id": transition["id"]}}
+                )
+                return
+        raise TicketingError(
+            f"no Jira transition of {key} leads to {status}",
+            fix="map a Jira status to this case status in the ticketing sync settings",
+        )
+
+    async def comment(self, key: str, text: str) -> None:
+        from app.integrations.providers.jira._common import text_to_adf
+
+        await self._call("post", f"issue/{key}/comment", f"comment on {key}", json={"body": text_to_adf(text)})
+
+    async def read_status(self, key: str) -> RemoteTicket:
+        data = await self._call("get", f"issue/{key}", f"read {key}", params={"fields": "status"})
+        return self._remote(data)
+
+
+class ServiceNowAdapter:
+    """ServiceNow on the Table API helpers (``integrations/providers/servicenow/_common.py``)."""
+
+    provider: ClassVar[str] = "servicenow"
+    #: The case ticket status to the incident or change ``state`` written.
+    _STATE_OF = {"open": "1", "in_progress": "2", "done": "6", "cancelled": "8"}
+
+    def __init__(
+        self,
+        base: str,
+        headers: dict[str, str],
+        table: str = "incident",
+        *,
+        group: str = "",
+        status_map: dict[str, str] | None = None,
+    ):
+        self.base = base
+        self.headers = headers
+        self.table = table or "incident"
+        self.group = group
+        self.status_map = status_map or {}
+
+    async def _call(self, method: str, url: str, action: str, **kwargs: Any) -> Any:
+        from app.integrations.providers.servicenow._common import result_of, sn_request
+
+        resp, err = await sn_request(method, url, action, headers=self.headers, **kwargs)
+        if err or resp is None:
+            raise TicketingError(
+                err or f"ServiceNow did not answer to {action}", fix="check the ServiceNow credentials"
+            )
+        return result_of(resp)
+
+    def _remote(self, rec: dict[str, Any]) -> RemoteTicket:
+        from app.integrations.providers.servicenow._common import record_url
+
+        state = str(rec.get("state") or "")
+        sys_id = str(rec.get("sys_id") or "")
+        return RemoteTicket(
+            key=str(rec.get("number") or sys_id),
+            url=record_url(self.base, self.table, sys_id),
+            status=map_status(state, status_map=self.status_map),
+            external_status=state,
+        )
+
+    def _url(self, sys_id: str = "") -> str:
+        from app.integrations.providers.servicenow._common import table_url
+
+        return table_url(self.base, self.table, sys_id)
+
+    async def _row(self, query: str, action: str) -> dict[str, Any] | None:
+        rows = await self._call(
+            "get",
+            self._url(),
+            action,
+            params={"sysparm_query": query, "sysparm_limit": 1, "sysparm_fields": "sys_id,number,state"},
+        )
+        return rows[0] if isinstance(rows, list) and rows else None
+
+    async def find(self, correlation: str) -> RemoteTicket | None:
+        row = await self._row(f"correlation_id={correlation}", "find the CTEM ticket")
+        return self._remote(row) if row else None
+
+    def _body(self, draft: TicketDraft) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "short_description": draft.title[:160],
+            "description": draft.description,
+            "correlation_id": draft.correlation,
+            "correlation_display": "XTM One CTEM",
+        }
+        if draft.priority:
+            body["urgency"] = draft.priority
+        if draft.due_date:
+            body["due_date"] = f"{draft.due_date} 23:59:59"
+        if self.group:
+            body["assignment_group"] = self.group
+        if draft.labels:
+            body["category"] = draft.labels[0]
+        return body
+
+    async def create(self, draft: TicketDraft) -> RemoteTicket:
+        rec = await self._call("post", self._url(), "create the CTEM ticket", json=self._body(draft))
+        if not isinstance(rec, dict) or not rec.get("sys_id"):
+            raise TicketingError("ServiceNow created no record")
+        return self._remote(rec)
+
+    async def _sys_id(self, key: str) -> str:
+        row = await self._row(f"number={key}", f"resolve {key}")
+        if not row:
+            raise TicketingError(f"ServiceNow has no {self.table} {key}", fix="relink the case to an existing record")
+        return str(row["sys_id"])
+
+    async def update(self, key: str, draft: TicketDraft, *, status: str | None = None) -> RemoteTicket:
+        body = self._body(draft)
+        body.pop("correlation_id", None)
+        if status:
+            body["state"] = self._STATE_OF[status]
+        rec = await self._call("patch", self._url(await self._sys_id(key)), f"update {key}", json=body)
+        return self._remote(rec if isinstance(rec, dict) else {"number": key})
+
+    async def comment(self, key: str, text: str) -> None:
+        await self._call("patch", self._url(await self._sys_id(key)), f"note on {key}", json={"work_notes": text})
+
+    async def read_status(self, key: str) -> RemoteTicket:
+        row = await self._row(f"number={key}", f"read {key}")
+        if not row:
+            raise TicketingError(f"ServiceNow has no {self.table} {key}", fix="relink the case to an existing record")
+        return self._remote(row)
+
+
+#: The providers the sync knows, by integration provider key. A new ticketing
+#: provider adds its adapter here and documents it in dev-docs/ctem-ticketing.md.
+ADAPTERS: dict[str, type] = {"jira": JiraAdapter, "servicenow": ServiceNowAdapter}
+
+
+async def adapter_for(db: AsyncSession, profile: Any) -> TicketingAdapter | str:
+    """The adapter of the declared ticketing target, or the reason there is none (shown on the case)."""
+    from app.models.integration import Integration
+    from app.services.integration_tools import _get_token
+
+    target = getattr(profile, "ticketing", None)
+    integration_id = (getattr(target, "integration", "") or "").strip()
+    project = (getattr(target, "project", "") or "").strip()
+    if not integration_id:
+        return NOT_CONNECTED
+    try:
+        integration = await db.get(Integration, uuid.UUID(integration_id))
+    except ValueError:
+        return f"the ticketing target {integration_id!r} is not an integration id"
+    if integration is None:
+        return "the declared ticketing integration no longer exists"
+    if integration.provider not in ADAPTERS:
+        return f"{integration.provider} has no ticketing sync yet"
+    sync = target.sync
+    owner = str(integration.user_id) if integration.user_id else None
+    token = await _get_token(db, integration_id, integration.provider, user_id=owner, integ=integration)
+    if not token:
+        return "no credential could be resolved for the ticketing integration"
+    if integration.provider == "jira":
+        from app.integrations.providers.jira._common import jira_headers, parse_jira_token
+
+        base, access = parse_jira_token(token)
+        if not base or not access:
+            return "the Jira integration has no site or token"
+        return JiraAdapter(base, jira_headers(access), project, status_map=dict(sync.status_map))
+    from app.integrations.providers.servicenow._common import build_servicenow_headers, parse_servicenow_token
+
+    base, user, password = parse_servicenow_token(token)
+    if not base:
+        return "the ServiceNow integration has no instance URL"
+    return ServiceNowAdapter(
+        base,
+        build_servicenow_headers(user, password),
+        sync.record_type or "incident",
+        group=project,
+        status_map=dict(sync.status_map),
+    )

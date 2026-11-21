@@ -350,6 +350,8 @@ async def record_validation(
 
 #: What a ticket reference's status may say, mapped from the ITSM's own workflow by the writer.
 TICKET_STATUSES: tuple[str, ...] = ("open", "in_progress", "done", "cancelled")
+#: Where a synced ticket stands against its case (#917): written by ``services/ctem_ticketing.py``.
+TICKET_SYNC_STATES: tuple[str, ...] = ("linked", "in_sync", "out_of_date", "error")
 
 
 def record_ticket(
@@ -362,12 +364,17 @@ def record_ticket(
     status: str = "open",
     actor: str = rules.SYSTEM_ACTOR,
     now: datetime | None = None,
+    sync: dict[str, Any] | None = None,
 ) -> CtemCase:
     """Write or update a ticket reference on *case* (#891); never moves the case state.
 
     One entry per ``(integration, key)``: a second write of the same ticket
     updates its status and url in place, so a rerun never lists a ticket twice.
     The case closes on proof (a validation reference), not on a ticket. The caller commits.
+
+    *sync* (#917) is the sync record of a ticket the sync layer manages:
+    ``{state, since, error, fix, provider, correlation, external_status}``; it
+    replaces the stored one and alone never raises a ``ticket`` event.
     """
     integration = (integration or "").strip()[:80]
     key = (key or "").strip()[:120]
@@ -383,12 +390,24 @@ def record_ticket(
         "status": status,
         "at": now.isoformat(),
     }
+    if sync is not None:
+        state = sync.get("state")
+        if state not in TICKET_SYNC_STATES:
+            raise rules.CaseRuleError(f"unknown ticket sync state {state!r}: one of {', '.join(TICKET_SYNC_STATES)}")
+        entry["sync"] = {k: v for k, v in sync.items() if v not in (None, "")}
     tickets = [dict(t) for t in (case.tickets or [])]
     previous = next((t for t in tickets if (t.get("integration"), t.get("key")) == (integration, key)), None)
     if previous is not None:
-        if previous.get("status") == status and (entry["url"] in (None, previous.get("url"))):
+        same_status = previous.get("status") == status and (entry["url"] in (None, previous.get("url")))
+        if "sync" not in entry and previous.get("sync"):
+            entry["sync"] = previous["sync"]
+        if same_status and entry.get("sync") == previous.get("sync"):
             return case
         entry["url"] = entry["url"] or previous.get("url")
+        if same_status:
+            entry["at"] = previous.get("at", entry["at"])
+            case.tickets = [entry if t is previous else t for t in tickets][-20:]
+            return case
         tickets = [entry if t is previous else t for t in tickets]
     else:
         tickets.append(entry)
