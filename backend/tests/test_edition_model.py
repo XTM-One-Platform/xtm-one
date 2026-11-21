@@ -477,7 +477,7 @@ async def test_config_serves_the_light_wordmark_until_an_operator_sets_a_logo(mo
 
     bundled = await _config(monkeypatch, validated=True, has_ee=False, branding=Branding(name="XTM One"))
     assert (bundled.platform_logo, bundled.platform_logo_light) == ("/xtp-one.svg", "/xtp-one-light.svg")
-    assert (bundled.platform_emblem, bundled.platform_emblem_light) == ("/xtm-one-emblem.svg", "/xtm-one-emblem.svg")
+    assert (bundled.platform_emblem, bundled.platform_emblem_light) == ("/xtm-one-emblem.svg", "/xtm-one-emblem-light.svg")
 
     own = await _config(
         monkeypatch, validated=True, has_ee=False,

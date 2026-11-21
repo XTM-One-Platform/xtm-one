@@ -335,7 +335,8 @@ const SUITE_WORDMARKS: Record<SuiteProduct, { dark: string; light: string }> = {
  * the emblem's one purple: #A47AF0 (purple-300, the Figma emblem colour) on
  * dark, #651FE5 (the `.light` --color-filigran-ia-primary, purple-500) on
  * light. An exception for product logos and switchers only (Sam, 21 Nov 2026,
- * #964): every other surface keeps the bundled public/ files.
+ * #964). Every other surface draws the bundled public/ files, the Figma
+ * lockup (wordmark #F2F2F3 dark, #18191B light).
  */
 const XTM_ONE_HEADER = {
   logo: { dark: xtmOneWordmark, light: xtmOneWordmarkLight },
