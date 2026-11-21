@@ -1711,9 +1711,7 @@ def build_tools(
             {"Comment": comment, "Sha1": sha1},
         )
 
-    async def run_defender_live_response_script(
-        machine_id: str, script_name: str, comment: str, args: str = ""
-    ) -> str:
+    async def run_defender_live_response_script(machine_id: str, script_name: str, comment: str, args: str = "") -> str:
         """Run a Live Response library script on a device (approval-gated).
 
         Only a script already uploaded to the tenant's Live Response library
@@ -1765,10 +1763,7 @@ def build_tools(
 
         def _fmt(f: dict) -> str:
             params = " (takes parameters)" if f.get("hasParameters") else ""
-            return (
-                f"  {f.get('fileName', '?')}{params}: "
-                f"{_trunc(f.get('description'), 160)}"
-            )
+            return f"  {f.get('fileName', '?')}{params}: {_trunc(f.get('description'), 160)}"
 
         return format_entity_list(files, _fmt, noun="library script")
 
@@ -1776,10 +1771,7 @@ def build_tools(
         """The exit code, output and errors of a Live Response script run."""
         aid = (action_id or "").strip()
         if not aid:
-            return (
-                "Error: action_id is required (the id "
-                "run_defender_live_response_script returned)."
-            )
+            return "Error: action_id is required (the id run_defender_live_response_script returned)."
         access_token = await _mde_token()
         if not access_token:
             return _AUTH_ERROR
@@ -1802,10 +1794,7 @@ def build_tools(
             status = action.get("status") or "unknown"
             device = action.get("computerDnsName") or action.get("machineId") or "the device"
             if status in ("Pending", "InProgress"):
-                return (
-                    f"The Live Response run on {device} is not finished (status: "
-                    f"{status}). Ask again later."
-                )
+                return f"The Live Response run on {device} is not finished (status: {status}). Ask again later."
             if status != "Succeeded":
                 return f"The Live Response run on {device} ended with status {status}: no output."
             link_resp, err = await safe_request(
@@ -2536,15 +2525,9 @@ def build_tools(
         "unrestrict_defender_app_execution", unrestrict_defender_app_execution
     )
     executor.register("stop_and_quarantine_file", stop_and_quarantine_file)
-    executor.register(
-        "run_defender_live_response_script", run_defender_live_response_script
-    )
-    executor.register(
-        "list_defender_live_response_library", list_defender_live_response_library
-    )
-    executor.register(
-        "get_defender_live_response_result", get_defender_live_response_result
-    )
+    executor.register("run_defender_live_response_script", run_defender_live_response_script)
+    executor.register("list_defender_live_response_library", list_defender_live_response_library)
+    executor.register("get_defender_live_response_result", get_defender_live_response_result)
     executor.register("list_defender_machine_actions", list_defender_machine_actions)
     executor.register("get_defender_machine_action", get_defender_machine_action)
     executor.register(
