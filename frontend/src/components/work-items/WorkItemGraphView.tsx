@@ -34,18 +34,23 @@ import {
   MiniMap,
   Position,
   ReactFlow,
+  useReactFlow,
+  useStore,
   type Edge,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
 import dagre from "dagre";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon, Spinner } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { InfoTip } from "@/components/ui/info-tip";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useColorMode } from "@/hooks/useColorMode";
+import { useFitToViewport } from "@/hooks/useFitToViewport";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
@@ -119,6 +124,20 @@ type GraphNodeData = {
 
 const HIDDEN_HANDLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0 } as const;
 
+/** The canvas's own fit padding, on mount and after a resize. */
+const FIT_VIEW_OPTIONS = { padding: 0.12 } as const;
+
+/**
+ * A node's keyboard side of a button: Tab reaches it, Enter and Space select it.
+ * The pointer side is the canvas's `onNodeClick` (UX r1 B1 on #979): a node wrapper
+ * React Flow draws without a click handler gets `pointer-events: none`, so a click
+ * on the node's own element never arrived; with both, one click would select twice.
+ */
+function nodeKeyProps(onActivate: () => void) {
+  const { role, tabIndex, onKeyDown } = buttonRoleProps(onActivate);
+  return { role, tabIndex, onKeyDown };
+}
+
 function focusClass(focus: FocusState): string {
   if (focus === "dim") return "opacity-30";
   if (focus === "selected") return "ring-2 ring-focus";
@@ -141,7 +160,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
   const priority = node.priority ? PRIORITY_LABELS[node.priority as WorkItemPriority] : null;
   return (
     <div
-      {...buttonRoleProps(() => data.onSelect(node.id))}
+      {...nodeKeyProps(() => data.onSelect(node.id))}
       aria-label={t_i18n("Work item {title}, {status}", { title: node.title, status: t_i18n(status) })}
       aria-pressed={data.focus === "selected"}
       data-testid="work-item-graph-node"
@@ -160,9 +179,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
       <Handles />
       <div className="flex min-w-0 items-center gap-1.5">
         {node.is_program_root && <Icon name="network" size={16} className="shrink-0 text-accent" aria-hidden />}
-        <span className="min-w-0 flex-1 truncate content-compact font-medium text-default-primary" title={node.title}>
-          {node.title}
-        </span>
+        <TruncatedText text={node.title} className="flex-1 content-compact font-medium text-default-primary" />
         {data.onOpen && (
           <button
             type="button"
@@ -182,18 +199,19 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
         <Badge variant="secondary" className={cn("content-caption", STATUS_TONE[node.status])}>{t_i18n(status)}</Badge>
         {priority && <Badge variant="secondary" className="content-caption">{t_i18n(priority)}</Badge>}
         {node.owner_agent?.name && (
-          <span className="flex min-w-0 items-center gap-1 content-caption text-default-secondary" title={node.owner_agent.name}>
+          <span className="flex min-w-0 items-center gap-1 content-caption text-default-secondary">
             <Icon name="bot" size={16} className="shrink-0" aria-hidden />
-            <span className="truncate">{node.owner_agent.name}</span>
+            <TruncatedText text={node.owner_agent.name} />
           </span>
         )}
       </div>
       {node.ask && (
         <div className="min-w-0 rounded-sm bg-warning-box px-1.5 py-1 content-caption text-default-primary" data-testid="work-item-graph-ask">
-          <p className="truncate" title={node.ask.question}>{node.ask.question}</p>
-          <p className="truncate text-default-secondary">
-            {node.ask.options.map((option) => `${option.key}. ${option.label}`).join("  ")}
-          </p>
+          <TruncatedText text={node.ask.question} />
+          <TruncatedText
+            text={node.ask.options.map((option) => `${option.key}. ${option.label}`).join("  ")}
+            className="text-default-secondary"
+          />
         </div>
       )}
       {data.critical && <span className="sr-only">{t_i18n("Only a person can release it")}</span>}
@@ -208,7 +226,7 @@ function RefNode({ data }: NodeProps<Node<GraphNodeData>>) {
   const state = t_i18n(REF_STATE_LABELS[node.state ?? "pending"] ?? REF_STATE_LABELS.pending);
   return (
     <div
-      {...buttonRoleProps(() => data.onSelect(node.id))}
+      {...nodeKeyProps(() => data.onSelect(node.id))}
       aria-label={`${kind} ${node.label}, ${state}`}
       data-testid="work-item-graph-ref"
       data-focus={data.focus}
@@ -235,8 +253,9 @@ function RefNode({ data }: NodeProps<Node<GraphNodeData>>) {
           </a>
         )}
       </span>
-      <span className="truncate content-compact text-default-primary" title={node.label}>
-        {node.label} <span className={node.satisfied ? "text-feedback-success-primary" : "text-default-secondary"}>{state}</span>
+      <span className="flex min-w-0 items-center gap-1 content-compact">
+        <TruncatedText text={node.label} className="text-default-primary" />
+        <span className={cn("shrink-0", node.satisfied ? "text-feedback-success-primary" : "text-default-secondary")}>{state}</span>
       </span>
     </div>
   );
@@ -248,7 +267,7 @@ function PersonNode({ data }: NodeProps<Node<GraphNodeData>>) {
   const name = node.is_you ? t_i18n("You") : node.name || t_i18n("A person");
   return (
     <div
-      {...buttonRoleProps(() => data.onSelect(node.id))}
+      {...nodeKeyProps(() => data.onSelect(node.id))}
       aria-label={t_i18n("Waits for {name}", { name })}
       data-testid="work-item-graph-person"
       data-focus={data.focus}
@@ -260,7 +279,7 @@ function PersonNode({ data }: NodeProps<Node<GraphNodeData>>) {
     >
       <Handles />
       <Icon name="users" size={16} className="shrink-0 text-feedback-warning-tertiary" aria-hidden />
-      <span className="min-w-0 truncate content-compact text-default-primary">{name}</span>
+      <TruncatedText text={name} className="content-compact text-default-primary" />
     </div>
   );
 }
@@ -313,6 +332,8 @@ export function WorkItemGraphView({
   const colorMode = useColorMode();
   const [showDone, setShowDone] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  // A second select of the selected node clears the focus.
+  const selectNode = (id: string) => setSelected((current) => (current === id ? null : id));
 
   const shown = useMemo(() => (graph ? shownGraph(graph, { showDone }) : null), [graph, showDone]);
   const positions = useMemo(() => (shown ? layout(shown.nodes, shown.edges) : new Map()), [shown]);
@@ -343,7 +364,7 @@ export function WorkItemGraphView({
           focus,
           critical: critical.has(node.id),
           onOpen: node.kind === "item" ? onOpenItem : undefined,
-          onSelect: (id: string) => setSelected((current) => (current === id ? null : id)),
+          onSelect: selectNode,
         },
         draggable: false,
         connectable: false,
@@ -377,83 +398,146 @@ export function WorkItemGraphView({
     });
   }, [shown, chains]);
 
-  if (isLoading || !graph || !shown) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center" role="status" aria-label={t_i18n("Loading...")}>
-        <Spinner size="sm" />
-      </div>
-    );
-  }
-
+  const loading = isLoading || !graph || !shown;
   return (
-    <div className="flex flex-col gap-2" data-testid="work-item-graph">
-      <div className="flex flex-wrap items-center gap-2 content-compact text-default-secondary">
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-pressed={showDone}
-          onClick={() => setShowDone((value) => !value)}
-          data-testid="work-item-graph-show-done"
-        >
-          <Icon name={showDone ? "eye-off" : "eye"} size={16} aria-hidden />
-          {showDone ? t_i18n("Hide done and cancelled") : t_i18n("Show done and cancelled")}
-        </Button>
-        {shown.isolated > 0 && (
-          <span data-testid="work-item-graph-isolated">
-            {t_i18n("{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}", { count: shown.isolated })}
-          </span>
-        )}
-        {graph.truncated && (
-          <span className="text-feedback-warning-tertiary" data-testid="work-item-graph-truncated">
-            {t_i18n("Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.", { count: GRAPH_NODE_CAP })}
-          </span>
-        )}
-        {selected && (
-          <Button variant="ghost" size="sm" className="ms-auto" onClick={() => setSelected(null)} data-testid="work-item-graph-clear-focus">
-            <Icon name="x" size={16} aria-hidden /> {t_i18n("Clear focus")}
-          </Button>
-        )}
-      </div>
-      {shown.nodes.length === 0 ? (
-        <EmptyState
-          icon={NetworkIcon}
-          title={t_i18n("No dependency to draw")}
-          description={t_i18n("None of the items these filters match waits for another item, a pull request, a deployment or a person.")}
-        />
-      ) : (
-        <div
-          className="h-[calc(100dvh-16rem)] min-h-96 w-full overflow-hidden rounded-md border border-elevation-subtle"
-          role="group"
-          aria-label={t_i18n("Graph of {nodes, plural, one {# node} other {# nodes}} and {edges, plural, one {# link} other {# links}}", { nodes: shown.nodes.length, edges: shown.edges.length })}
-        >
-          <ReactFlow
-            colorMode={colorMode}
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={NODE_TYPES}
-            fitView
-            fitViewOptions={{ padding: 0.12 }}
-            minZoom={0.1}
-            maxZoom={2}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            onPaneClick={() => setSelected(null)}
-            proOptions={{ hideAttribution: true }}
-            style={{ background: "transparent" }}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--flow-grid)" />
-            <Controls showInteractive={false} position="bottom-left" />
-            <MiniMap pannable zoomable position="bottom-right" />
-          </ReactFlow>
+    <GraphFrame
+      testId={loading ? undefined : "work-item-graph"}
+      label={
+        shown && !loading
+          ? t_i18n("Graph of {nodes, plural, one {# node} other {# nodes}} and {edges, plural, one {# link} other {# links}}", { nodes: shown.nodes.length, edges: shown.edges.length })
+          : undefined
+      }
+    >
+      {isLoading || !graph || !shown ? (
+        <div className="flex h-full items-center justify-center" role="status" aria-label={t_i18n("Loading...")}>
+          {/* A full-surface loader (design standards s.0bis(5), UX r1 A2 on #979). */}
+          <Spinner size="xl" />
         </div>
+      ) : (
+        <>
+          {/* The canvas controls sit in a bar inside the canvas frame, never in a row between
+              the toolbar and the canvas or under it (UX r1 B2 and B3 on #979). */}
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start gap-2" data-testid="work-item-graph-bar">
+            <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-2 rounded-sm border border-elevation-subtle bg-elevation-default px-1.5 py-1 content-compact text-default-secondary">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={showDone}
+                onClick={() => setShowDone((value) => !value)}
+                data-testid="work-item-graph-show-done"
+              >
+                <Icon name={showDone ? "eye-off" : "eye"} size={16} aria-hidden />
+                {showDone ? t_i18n("Hide done and cancelled") : t_i18n("Show done and cancelled")}
+              </Button>
+              {shown.isolated > 0 && (
+                <span data-testid="work-item-graph-isolated">
+                  {t_i18n("{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}", { count: shown.isolated })}
+                </span>
+              )}
+              {graph.truncated && (
+                <span className="text-feedback-warning-tertiary" data-testid="work-item-graph-truncated">
+                  {t_i18n("Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.", { count: GRAPH_NODE_CAP })}
+                </span>
+              )}
+              <InfoTip
+                label={t_i18n("Legend")}
+                content={
+                  <ul className="space-y-1" data-testid="work-item-graph-legend">
+                    <li>{t_i18n("Arrow: waits for")}</li>
+                    <li>{t_i18n("Dashed line: program and its items")}</li>
+                    <li>{t_i18n("Dashed border: outside the filters")}</li>
+                    <li>{t_i18n("Red border: only a person can release it")}</li>
+                  </ul>
+                }
+              />
+            </div>
+            {selected && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="pointer-events-auto ms-auto"
+                onClick={() => setSelected(null)}
+                data-testid="work-item-graph-clear-focus"
+              >
+                <Icon name="x" size={16} aria-hidden /> {t_i18n("Clear focus")}
+              </Button>
+            )}
+          </div>
+          {shown.nodes.length === 0 ? (
+            <div className="flex h-full items-center justify-center pt-12">
+              <EmptyState
+                icon={NetworkIcon}
+                title={t_i18n("No dependency to draw")}
+                description={t_i18n("None of the items these filters match waits for another item, a pull request, a deployment or a person.")}
+              />
+            </div>
+          ) : (
+            <ReactFlow
+              colorMode={colorMode}
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={NODE_TYPES}
+              fitView
+              fitViewOptions={FIT_VIEW_OPTIONS}
+              minZoom={0.1}
+              maxZoom={2}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable={false}
+              // The pointer side of a node (UX r1 B1 on #979): with a click handler React Flow
+              // gives the node wrapper pointer events, so a click selects it (focus mode) and
+              // its open button and cut-text tooltips are reachable with the mouse.
+              onNodeClick={(_, node) => selectNode(node.id)}
+              onPaneClick={() => setSelected(null)}
+              proOptions={{ hideAttribution: true }}
+              style={{ background: "transparent" }}
+            >
+              <FitOnResize />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--flow-grid)" />
+              <Controls showInteractive={false} position="bottom-left" />
+              <MiniMap pannable zoomable position="bottom-right" />
+            </ReactFlow>
+          )}
+        </>
       )}
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 content-caption text-default-secondary" aria-label={t_i18n("Legend")}>
-        <li>{t_i18n("Arrow: waits for")}</li>
-        <li>{t_i18n("Dashed line: program and its items")}</li>
-        <li>{t_i18n("Dashed border: outside the filters")}</li>
-        <li className="text-feedback-error-primary">{t_i18n("Red border: only a person can release it")}</li>
-      </ul>
+    </GraphFrame>
+  );
+}
+
+/**
+ * The canvas frame: the page's last block, as tall as the window has room for
+ * (`useFitToViewport`, the bound the list and grid views take), so the page never
+ * scrolls in Graph view (UX r1 B2 on #979). Before the first measure, or outside the
+ * app's page, the former cap.
+ */
+function GraphFrame({ testId, label, children }: { testId?: string; label?: string; children: React.ReactNode }) {
+  const [frame, setFrame] = useState<HTMLDivElement | null>(null);
+  const room = useFitToViewport(frame);
+  return (
+    <div
+      ref={setFrame}
+      data-testid={testId}
+      data-scroll-fit={room === undefined ? "capped" : room === null ? "page" : "viewport"}
+      style={typeof room === "number" ? { height: room } : undefined}
+      className={cn(
+        "relative w-full overflow-hidden rounded-md border border-elevation-subtle",
+        typeof room !== "number" && "h-[calc(100dvh-16rem)] min-h-96",
+      )}
+      role={label ? "group" : undefined}
+      aria-label={label}
+    >
+      {children}
     </div>
   );
+}
+
+/** Fits the graph again when the canvas changes size (UX r1 A1 on #979): `fitView` alone runs on mount. */
+function FitOnResize() {
+  const { fitView } = useReactFlow();
+  const width = useStore((state) => state.width);
+  const height = useStore((state) => state.height);
+  useEffect(() => {
+    if (width > 0 && height > 0) void fitView(FIT_VIEW_OPTIONS);
+  }, [width, height, fitView]);
+  return null;
 }

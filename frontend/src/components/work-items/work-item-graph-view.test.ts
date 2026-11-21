@@ -1,0 +1,35 @@
+/**
+ * The Graph view of Work Items (#968), UX round 1 on #979 - `yarn test`.
+ *
+ * B1: React Flow gives a node wrapper `pointer-events: none` when the canvas has no
+ * node click handler and elements are not selectable, so a mouse click never reached
+ * the node (focus mode) nor its open button. The canvas carries `onNodeClick`, and a
+ * node's own element keeps the keyboard side only (no second click handler).
+ * B4: the view switch draws the graph glyph through the design system's `<Icon>`.
+ */
+import { test } from "vitest";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// vitest runs from frontend/ (CI and `yarn test`).
+const VIEW = readFileSync(join(process.cwd(), "src", "components", "work-items", "WorkItemGraphView.tsx"), "utf8");
+const TOGGLE = readFileSync(join(process.cwd(), "src", "components", "ui", "view-toggle.tsx"), "utf8");
+
+test("the canvas selects a node on a mouse click (UX r1 B1 on #979)", () => {
+  assert.match(VIEW, /onNodeClick=\{\(_, node\) => selectNode\(node\.id\)\}/);
+});
+
+test("a node's own element takes the keyboard only, never a second click handler", () => {
+  assert.equal(/\{\.\.\.buttonRoleProps\(/.test(VIEW), false);
+  assert.ok((VIEW.match(/\{\.\.\.nodeKeyProps\(/g) ?? []).length === 3, "item, ref and person nodes");
+});
+
+test("the canvas fits the graph again after a resize (UX r1 A1 on #979)", () => {
+  assert.match(VIEW, /<FitOnResize \/>/);
+});
+
+test("the graph glyph of the view switch is the design system's Icon (UX r1 B4 on #979)", () => {
+  assert.equal(/from "lucide-react"[^\n]*Network|\bNetwork\b,/.test(TOGGLE), false);
+  assert.match(TOGGLE, /<Icon name="network"/);
+});

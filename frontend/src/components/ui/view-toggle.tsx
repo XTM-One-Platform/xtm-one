@@ -6,7 +6,8 @@
  * VisibilityFilter / TagFilter. Pair it with `useViewMode()`, which persists
  * the choice.
  */
-import { LayoutGrid, List, Network } from "lucide-react";
+import { LayoutGrid, List } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { cn } from "@/lib/utils";
 import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
@@ -27,10 +28,15 @@ const LABELS = {
   graph: "Graph view",
 } as const satisfies Record<ViewMode, string>;
 
+/** The graph view's glyph, through the design system's `<Icon>` (no new lucide import; UX r1 B4 on #979). */
+function GraphGlyph({ className }: { className?: string }) {
+  return <Icon name="network" size={16} className={className} aria-hidden />;
+}
+
 const OPTIONS: readonly { key: ViewMode; icon: React.ElementType }[] = [
   { key: "grid", icon: LayoutGrid },
   { key: "list", icon: List },
-  { key: "graph", icon: Network },
+  { key: "graph", icon: GraphGlyph },
 ];
 
 const DEFAULT_MODES: readonly ViewMode[] = ["grid", "list"];
