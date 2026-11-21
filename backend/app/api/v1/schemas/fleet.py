@@ -910,6 +910,10 @@ class FleetApprovalGatesResponse(BaseModel):
     existing_approvals: list[dict] = Field(default_factory=list)
     #: Whether the reader may write the catalog (a manager of a custom fleet).
     editable: bool = False
+    #: Gates a person added to a built-in fleet (#916, CTEM-34), kept across seed upgrades.
+    customer_gates: list[dict[str, object]] = Field(default_factory=list)
+    #: Whether the reader may add gates to a built-in fleet (its manager): ``PUT approval-gates`` writes them.
+    customer_gates_editable: bool = False
     #: The fleet's level and the gates it acts on (#10153): declared + computed,
     #: each with ``source``, ``pin``, ``tools``, ``gated`` and ``by_level``
     #: (``fleet_autonomy.gate_catalog``), so the cursor previews every step.

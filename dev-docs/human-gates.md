@@ -28,38 +28,24 @@ message carries resolves (section 9, I.7).
 | 4 | Flow Ask-user node | `flow_runner._exec_ask_user` (title, question) | park `{kind: human, question, released, response, responded_by}` in `FlowRun.state.waiting` | `POST /flows/runs/{id}/respond`, `response` text | flow builder run panel | `flow_hitl` (activity row) |
 | 5 | Work-item decision | `needs_human` + `ask` (`work_item_ask.py`) | `work_items.ask` {question, context, options, recommendation, deadline}; recipient in `waits_for_user_id` (`work_item_recipient.py`) | `POST /work-items/{id}/answer`, `{option, text}` | `WorkItemDecisionCard` in the work item dialog; Tasks > Work Items "Waiting for me" (`/tasks/work-items`) | `work_item_waiting` |
 
-CTEM loop gates (#916, CTEM-34) are a decision source, not a sixth gate: the
-`ctem.*` keys of a CTEM fleet's approval catalog (`dev-docs/ctem-fleets.md`
-section 11) wait through gate 2 (their tools: the OpenAEV launches, the
-ticket tools) or gate 5 (a `needs_human` work item with an ask), with the
-gate key as the decision's source. No CTEM-specific card, endpoint, table,
-bell kind or channel message; the G2 migration carries them like any other.
-
-Fleet gates are sources of decisions 2 and 5, never a gate of their own: a
-fleet's approval gate catalog (`dev-docs/ctem-fleets.md` section 11) decides at
-its autonomy level and pins which gated actions wait, and a waiting one is a
-tool approval (2) or a work-item decision (5) carrying the gate key. The CTEM
-loop gates (`ctem.validation.non_readonly`, `ctem.analyst_review`,
-`ctem.remediation.decision`, `ctem.mobilize`, `ctem.production_change`,
-`ctem.accept_risk`, `ctem.close_without_retest`; #916, CTEM-34) follow it: no
-CTEM-specific card, endpoint, table, bell kind or channel message. Out of the
-box one of them waits, `ctem.mobilize`, one decision per case; the G2
-migration backfills them like any other.
+Fleet gates are a source of decisions 2 and 5, never a gate of their own: a
+gate of a fleet's approval catalog (`dev-docs/ctem-fleets.md` section 11) that
+waits at the fleet's autonomy level and pins pauses its tools through gate 2,
+or asks through gate 5 (a `needs_human` work item with an ask) when it has no
+tool, with the gate key as the decision's source. The CTEM loop fleets (#916,
+CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
+`ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,
+`ctem.production_change`, `ctem.accept_risk`, `ctem.close_without_retest`);
+out of the box only `ctem.mobilize` waits, one decision per case. A built-in
+fleet takes pins and added gates in its customer layer, kept across seed
+upgrades. No CTEM-specific card, endpoint, table, bell kind or channel
+message; the G2 migration backfills them like any other.
 
 Adjacent gates, in scope for the card (B) but not for the router at first:
 chat inline approvals (`request_approval`, general chat pause), runner
 shell-command approvals (`RunnerApprovalCard`, `RunnersSection`), and run
 action requests (`access_requests.py`, bell `run_action_request`: someone who
 cannot answer a paused run asks its owner).
-
-Fleet gates are a source of these decisions, not a sixth gate: a gate of a
-fleet's approval catalog that waits at the fleet's autonomy level and pins
-pauses its tools through gate 2, or asks through gate 5 when it has no tool.
-The CTEM loop fleets (#916, CTEM-34; `dev-docs/ctem-fleets.md` section 11)
-declare one key per loop stage (`ctem.validation.non_readonly` to
-`ctem.close_without_retest`); out of the box only `ctem.mobilize` waits, one
-decision per case. The gate key is the decision's source: no CTEM-specific
-card, endpoint, table, bell kind or channel message.
 
 What diverges, read on main:
 
@@ -110,7 +96,7 @@ Per source:
 
 | Source | Change |
 |---|---|
-| `request_human_input` | Gains `options`, `recommendation`, `deadline`, `links`. `question` alone, or with `context`, still works (backwards compatible: the old call writes a free-text decision). The readability guard refuses an unreadable question with the same message as a work item, so the agent retries in the same turn. The context is stored apart, never concatenated into the question any more; `human_input_question` keeps the joined text for legacy readers until the last slice. |
+| `request_human_input` | Gains `options`, `recommendation`, `deadline`, `links`. `question` alone, or with `context`, still works (backwards compatible: the old call writes a free-text decision). The readability guard refuses an unreadable question with the same message as a work item, so the agent retries in the same turn. The context is stored apart, never concatenated into the question any more; `human_input_question` keeps the joined text for legacy readers until the last slice. Shipped in S1: the ask (question, context, options) is the paused call's own arguments in the run's messages, the `decisions` row of S2 stores it apart; the resume reads a reply that is an option's key or label as that option (`Human chose option B (Support)`), any other reply as free text; an action code (`M-1A2B3C4D`) passes the guard, since the person types it back; an option effect that opens with "Recommended" is refused (the card marks the recommendation itself, J.1). |
 | HITL prompt | `DEFAULT_HITL_PROMPT`, the agent and assignment overrides and the `agent_builder` tool texts teach the options form in one sentence each; no prompt grows by more than one sentence (no system prompt inflation). |
 | Per-tool approval | Rendered as a decision whose options are Approve (`approve`), Approve always (`approve_always`, only where standing approvals are allowed today) and Reject (`reject`). Fingerprints, standing approvals and batch decisions are unchanged: the router turns the chosen option into today's `decisions` payload. |
 | Irreversible consent | Becomes an explicit option (`kind: consent`, label "Approve this irreversible action", effect naming the action). Choosing it writes the same `APPROVE <code>` entry in `human_input_history`, so `hitl_consent.py` stays the server-side check, unchanged. A typed `APPROVE <code>` reply keeps working. |
@@ -464,6 +450,37 @@ it emits matches a route of the frontend router (the `App.tsx` route list the
 lab seed tests already read), and an e2e opens the deep link of each bell kind
 and each channel card on the lab and checks no "Page not found". A route moved
 later fails that test, not a person.
+
+### J. Card and drawer layout
+
+**J.1 Decision card.** Every option is a full-width tile of the same width
+(one grid column, `w-full` button): the label in bold on line 1, its effect
+on line 2, the whole tile one button (keyboard and screen reader: the effect
+is the button's description). The recommended tile is accented and carries a
+small "Recommended" pill; there is no separate column. An effect is clamped
+to 3 lines; "Show more" shows under the tile, outside the button, only when
+the clamp actually cuts the text (measured on the rendered span and followed
+on resize, never a character count). A leading "Recommended:" an agent wrote
+into an effect is dropped at render; the ask guard refuses it (S1). With options, free text folds behind
+"Answer differently"; without options it stays open. The header holds the
+question, who asks (the owner agent, named when the reader may see it), the
+sources (`ask.links`) and the deadline. After the answer, every surface and
+channel card shows the decided state (who, which option, when, section I).
+One component; S3 generalises it to `DecisionCard` for the other surfaces.
+
+**J.2 Work item drawer.** Title, status, priority, owner, due and what it
+waits for come first, in words. The stamped notes are an "Activity" timeline
+with each long note folded, the brief under it. A release explanation is one
+sentence per kind of reference, never one per reference (each reference stays
+a chip under "Waits for"); the pull request sentence says "merged" or
+"closed" when every pull request waits for that event, "merged or closed"
+only when they differ.
+
+Test: unit tests assert one tile per option, every tile `w-full` in a single
+column, one pill, the prefix dropped, the clamp and its toggle outside the
+button, the folded free text, and the pull request sentence per `release_on`;
+the UX Director reviews the lab at drawer width and full page, light and dark,
+with 2, 3 and 5 options and long and short effects.
 
 ## 10. H. Slices
 
