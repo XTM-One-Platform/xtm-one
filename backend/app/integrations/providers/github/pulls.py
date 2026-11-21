@@ -259,6 +259,49 @@ async def _pr_node_id(
     return node_id, None
 
 
+#: Review decisions under which GitHub auto-merge is refused: the pull request still waits for a
+#: reviewer, and an auto-merge enabled now lets GitHub (or its merge queue) land it the moment the
+#: checks pass, with no tool reading the review again (an admin bypass even skips the rule).
+_AUTOMERGE_BLOCKING_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
+
+_REVIEW_DECISION_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){"
+    "pullRequest(number:$number){reviewDecision}}}"
+)
+
+
+async def _automerge_review_refusal(
+    client: httpx.AsyncClient, owner: str, name: str, number: int, headers: dict[str, str]
+) -> str | None:
+    """The refusal when PR *number* still waits for an approving review, else ``None``.
+
+    ``reviewDecision`` is ``None`` when the base requires no review: auto-merge then
+    stays allowed. An unreadable decision is refused too: the doubt never enables a merge.
+    """
+    data, err = await _common.gh_graphql(
+        client,
+        headers,
+        _REVIEW_DECISION_QUERY,
+        {"owner": owner, "name": name, "number": number},
+        action=f"read the review decision of PR #{number} before enabling auto-merge",
+    )
+    if err or not isinstance(data, dict):
+        return (
+            f"Error: auto-merge not enabled on PR #{number}, nothing was written: its review decision "
+            f"could not be read ({err or 'no data'})."
+        )
+    pull = (data.get("repository") or {}).get("pullRequest") or {}
+    decision = pull.get("reviewDecision") if isinstance(pull, dict) else None
+    if decision not in _AUTOMERGE_BLOCKING_DECISIONS:
+        return None
+    return (
+        f"Error: auto-merge not enabled on PR #{number}, nothing was written: its review decision is "
+        f"{decision}. Auto-merge would let GitHub merge it as soon as the checks pass, before the review "
+        "the repository asks for (an admin bypass skips the review rule). Wait for an approving review, "
+        "then merge with merge_github_pr."
+    )
+
+
 def register(
     headers: dict[str, str],
     executor: CallableToolExecutor,
@@ -1750,6 +1793,10 @@ def register(
                 refusal = await review_loop.review_loop_refusal(client, owner, name, number, headers, verb)
                 if refusal:
                     return refusal
+            if action == "enable_automerge":
+                refusal = await _automerge_review_refusal(client, owner, name, number, headers)
+                if refusal:
+                    return refusal
             node_id, e = await _pr_node_id(client, owner, name, number, headers)
             if e:
                 return e
@@ -2145,7 +2192,8 @@ def register(
                 "toggles draft; update_branch merges the base branch into the PR branch (refused on a conflict, it merges "
                 "line by line on the server and lands when no hunk overlaps, else names the hunks and the "
                 "merge_github_branch call that resolves them); enable_automerge auto-merges "
-                "once all requirements pass (merge_method=merge|squash|rebase); disable_automerge cancels it; "
+                "once all requirements pass (merge_method=merge|squash|rebase; refused while the PR waits for an "
+                "approving review); disable_automerge cancels it; "
                 "dequeue takes it out of its merge queue (nothing written when it is not queued)."
             ),
             input_schema={

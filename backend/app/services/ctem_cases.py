@@ -30,11 +30,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.models.ctem_case import CASE_STATES, RESOLUTION_KINDS
+from app.services.ctem_fixed_version import smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -69,6 +70,10 @@ class SourceIssue:
     assets: tuple[str, ...] = ()
     crown_jewels: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
+    #: The version the organization profile declares for the matched product (CTEM-11).
+    installed_version: str | None = None
+    #: Set when the declared version is outside every affected range: the reason; no case opens.
+    not_affected: str | None = None
 
     @property
     def member_id(self) -> str:
@@ -102,7 +107,13 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
     """R1 or R2 for one issue read alone; ``None`` when its data names no fix."""
     if issue.course_of_action_id:
         name = (issue.course_of_action_name or "").strip() or issue.course_of_action_id
-        return Remediation(key=f"coa:{_norm(issue.course_of_action_id)}", kind="course_of_action", title=name)
+        return Remediation(
+            key=f"coa:{_norm(issue.course_of_action_id)}",
+            kind="course_of_action",
+            title=name,
+            # A course of action that is a plain upgrade names its version (CTEM-11).
+            fixed_version=(issue.fixed_version or "").strip() or None,
+        )
     if issue.product and issue.product.strip():
         label = _product_label(issue.vendor, issue.product)
         vendor = _norm(issue.vendor) or "-"
@@ -133,16 +144,49 @@ class Grouping:
     groups: dict[str, list[SourceIssue]] = field(default_factory=dict)
     remediations: dict[str, Remediation] = field(default_factory=dict)
     no_known_fix: list[SourceIssue] = field(default_factory=list)
+    #: Issues whose declared version is outside every affected range (CTEM-11): listed, never a case.
+    not_affected: list[SourceIssue] = field(default_factory=list)
 
 
-def group_issues(issues: Iterable[SourceIssue]) -> Grouping:
+def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
+    """One target per product when the profile declares its installed version (CTEM-11).
+
+    The upgrade members of one product whose installed version is declared
+    take the smallest version that fixes every one of them, so they share one
+    key. Without a declared version nothing changes.
+    """
+    targets: dict[tuple[str, str], list[str]] = {}
+    for issue in issues:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not issue.installed_version:
+            continue
+        if issue.fixed_version:
+            targets.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(issue.fixed_version.strip())
+    target = {k: smallest_fixing_every(v) for k, v in targets.items()}
+    out: list[SourceIssue] = []
+    for issue in issues:
+        key = (_norm(issue.vendor), _norm(issue.product))
+        fixed = target.get(key)
+        if fixed and issue.installed_version and issue.fixed_version and not issue.course_of_action_id:
+            issue = replace(issue, fixed_version=fixed)
+        out.append(issue)
+    return out
+
+
+def group_issues(all_issues: Iterable[SourceIssue]) -> Grouping:
     """Group open issues by remediation key (R1, R2, then R3 for OpenAEV CVE findings, R4).
 
     An issue is placed once per key it answers; duplicates of the same
-    ``source:external_id`` under one key are kept once.
+    ``source:external_id`` under one key are kept once. An issue whose declared
+    version is outside its affected ranges goes to ``not_affected`` (CTEM-11).
     """
-    issues = list(issues)
     out = Grouping()
+    issues: list[SourceIssue] = []
+    for issue in all_issues:
+        if issue.not_affected:
+            out.not_affected.append(issue)
+        else:
+            issues.append(issue)
+    issues = _fold_upgrades(issues)
     cve_keys: dict[str, set[str]] = {}
     pending_aev: list[SourceIssue] = []
 
@@ -204,6 +248,38 @@ class CasePlan:
     new_state: str | None = None  # a system transition, else ``None``
     reason: str | None = None
     evidence: str | None = None
+    #: Keys an existing case takes over: a folded upgrade target that moved (CTEM-11).
+    add_keys: list[str] = field(default_factory=list)
+
+
+def _upgrade_prefix(key: str) -> str | None:
+    """``upgrade:<vendor>/<product>@`` for an upgrade key, else ``None``."""
+    if not key.startswith("upgrade:") or "@" not in key:
+        return None
+    return key.rsplit("@", 1)[0] + "@"
+
+
+def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) -> CaseSnapshot | None:
+    """The existing case of the same product that already holds members of an unowned upgrade key.
+
+    The folded target of a product (section 4.2bis) moves when a member with a
+    higher fix appears, when the member that set it is patched, or the first
+    time a version is declared on an ``@latest`` case. The case that holds
+    those members keeps them and takes the new key, so no second case opens.
+    """
+    prefix = _upgrade_prefix(key)
+    if prefix is None:
+        return None
+    ids = {m.member_id for m in members}
+    best: CaseSnapshot | None = None
+    best_count = 0
+    for case in cases:
+        if not any(k.startswith(prefix) for k in case.keys):
+            continue
+        count = len(ids & set(case.members))
+        if count > best_count:
+            best, best_count = case, count
+    return best
 
 
 def plan_recompute(
@@ -236,12 +312,20 @@ def plan_recompute(
 
     seen_open: dict[str, set[str]] = {case.id: set() for case in cases}
     for issue in issues:
-        if issue.member_id in pinned:
+        if issue.member_id in pinned and not issue.not_affected:
             seen_open[pinned[issue.member_id]].add(issue.member_id)
 
     plans: list[CasePlan] = []
+    taken_keys: dict[str, list[str]] = {}
+    retarget: dict[str, Remediation] = {}
     for key, members in grouping.groups.items():
         owner = key_owner.get(key)
+        if owner is None:
+            owner = _holder_of(key, members, cases)
+            if owner is not None:
+                key_owner[key] = owner
+                taken_keys.setdefault(owner.id, []).append(key)
+                retarget[owner.id] = grouping.remediations[key]
         if owner is None:
             plans.append(
                 CasePlan(
@@ -254,7 +338,7 @@ def plan_recompute(
         seen_open[owner.id].update(m.member_id for m in members)
 
     for case in cases:
-        plan = CasePlan(case_id=case.id, remediation=None)
+        plan = CasePlan(case_id=case.id, remediation=retarget.get(case.id), add_keys=taken_keys.get(case.id, []))
         for member_id in sorted(seen_open[case.id]):
             if member_id not in case.members:
                 plan.add.append(member_id)
