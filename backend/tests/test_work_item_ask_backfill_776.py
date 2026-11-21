@@ -63,6 +63,8 @@ def test_a_complete_plain_card_is_readable() -> None:
         },
         {"question": GOOD["question"], "options": GOOD["options"]},  # no context
         {"question": GOOD["question"], "context": GOOD["context"], "options": GOOD["options"][:1]},
+        # No recommendation: refuse_needs_human_without_ask would refuse it (#762).
+        {k: v for k, v in GOOD.items() if k != "recommendation"},
     ],
 )
 def test_missing_incomplete_or_technical_cards_are_not_readable(ask: object) -> None:
@@ -116,6 +118,7 @@ async def test_a_readable_structured_ask_is_kept_and_only_gets_its_context() -> 
         {},  # the model says the item does not say
         {**GOOD, "question": "Reply to msg 1795175038574?"},  # still technical: refused by the validator
         {"question": GOOD["question"], "context": GOOD["context"], "options": GOOD["options"][:1]},
+        {k: v for k, v in GOOD.items() if k != "recommendation"},  # #762: no recommendation
     ],
 )
 @pytest.mark.asyncio
@@ -126,6 +129,16 @@ async def test_a_rewrite_that_is_not_confident_is_not_stored(answer: object) -> 
 def test_the_item_prompt_is_bounded() -> None:
     prompt = backfill.item_prompt(_item(description="x" * 50_000, blocked_reason="y" * 50_000))
     assert len(prompt) < 6_000
+
+
+@pytest.mark.asyncio
+async def test_a_backfilled_card_passes_the_needs_human_refusal() -> None:
+    """#762 x #776: a card the pass stores keeps the item's needs_human writable."""
+    from app.services.work_item_blocked_refs import refuse_needs_human_without_ask
+
+    rewrite = await backfill.rewrite_item(_item(), _rewriter(GOOD))
+    assert rewrite is not None
+    refuse_needs_human_without_ask(True, rewrite.ask)
 
 
 # ── The pass: selection, idempotence, report ─────────────────────────────────
