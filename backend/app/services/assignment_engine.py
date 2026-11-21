@@ -6181,6 +6181,17 @@ async def execute_assignment_run(
 
             if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
+            # --- Learned skill (#914): a built-in agent records durable lessons ---
+            from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
+
+            if offers_learned_lesson_tool(is_builtin=agent.is_builtin):
+                composite.add_tools(
+                    *build_learned_lesson_tool(
+                        agent_id=str(agent.id),
+                        user_id=str(run.user_id) if run.user_id else None,
+                        run_id=str(run.id),
+                    )
+                )
 
             # --- Organization profile write group (opt-in, administrators only, #11594) ---
             # The run acts as ``effective_user_id``; the group is wired only

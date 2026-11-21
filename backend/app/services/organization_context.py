@@ -394,6 +394,11 @@ class PrioritizationPolicy(BaseModel):
     require_risk_scenario: bool = False
     #: CTEM scope gate (#847): the time to fix a case of each severity, in hours (the case's ``sla_due_at``).
     sla_hours: SeveritySla = Field(default_factory=SeveritySla)
+    #: CTEM trigger rules (CTEM-08): the PIR score (0 to 100) an OpenCTI entity flagged in a profile PIR
+    #: must reach before a fleet run starts on it: a vulnerability, and threat activity (an intrusion
+    #: set, a campaign, a malware...). Read live from OpenCTI at delivery, never the delivered score.
+    pir_min_score_vulnerability: int = Field(default=70, ge=0, le=100)
+    pir_min_score_threat: int = Field(default=75, ge=0, le=100)
 
 
 #: The values the settings page proposes for a first policy (never applied unless saved).

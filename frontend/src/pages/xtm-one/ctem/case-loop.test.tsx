@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/testing/providers";
 import { actNowP1Cases } from "./act-now";
-import { CaseUrgencyChip, caseLoopMarks, slaCountdown } from "./case-loop";
+import type { CtemCaseIssue } from "@/hooks/api/useCtemCasesApi";
+import { CaseUrgencyChip, RetestChip, caseLoopMarks, hasRetestData, retestRank, slaCountdown } from "./case-loop";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
 
@@ -32,13 +33,53 @@ describe("caseLoopMarks", () => {
   const failed = [{ provider: "openaev", kind: "retest", ref: "r1", result: "failed" as const, at: "x" }];
   const passed = [{ provider: "openaev", kind: "retest", ref: "r1", result: "passed" as const, at: "x" }];
   it("marks an open case whose last validation failed as reopened", () => {
-    expect(caseLoopMarks({ state: "needs_attention", validations: failed, sla_breached_at: null })).toEqual({ reopened: true, escalated: false });
+    expect(caseLoopMarks({ state: "needs_attention", validations: failed, sla_breached_at: null })).toMatchObject({ reopened: true, escalated: false, closedOnRetest: false });
   });
   it("marks an open case past its SLA as escalated", () => {
-    expect(caseLoopMarks({ state: "in_progress", validations: passed, sla_breached_at: "x" })).toEqual({ reopened: false, escalated: true });
+    expect(caseLoopMarks({ state: "in_progress", validations: passed, sla_breached_at: "x" })).toMatchObject({ reopened: false, escalated: true, closedOnRetest: false });
   });
-  it("marks nothing on a resolved case", () => {
-    expect(caseLoopMarks({ state: "resolved", validations: failed, sla_breached_at: "x" })).toEqual({ reopened: false, escalated: false });
+  it("marks nothing on a resolved case whose last validation is not a passing re-test", () => {
+    expect(caseLoopMarks({ state: "resolved", validations: failed, sla_breached_at: "x" })).toEqual({
+      reopened: false,
+      escalated: false,
+      closedOnRetest: false,
+      closedAt: null,
+      closedProvider: null,
+    });
+    const scan = [{ provider: "openaev", kind: "validation", ref: "s1", result: "passed" as const, at: "x" }];
+    expect(caseLoopMarks({ state: "resolved", validations: scan, sla_breached_at: null }).closedOnRetest).toBe(false);
+    expect(caseLoopMarks({ state: "resolved", validations: [], sla_breached_at: null }).closedOnRetest).toBe(false);
+  });
+  it("marks a resolved case closed by a passing re-test, naming the product and the time, never the run reference", () => {
+    const marks = caseLoopMarks({ state: "resolved", validations: passed, sla_breached_at: null });
+    expect(marks).toMatchObject({ closedOnRetest: true, closedAt: "x", closedProvider: "OpenAEV" });
+    expect(JSON.stringify(marks)).not.toContain("r1");
+  });
+});
+
+describe("re-test of a member", () => {
+  const member = (extra: Partial<CtemCaseIssue>): CtemCaseIssue => ({ source: "openaev", external_id: "f1", open: true, ...extra }) as CtemCaseIssue;
+  it("has no column data when no member carries the lifecycle", () => {
+    expect(hasRetestData([member({}), member({ source: "opencti" } as Partial<CtemCaseIssue>)])).toBe(false);
+    expect(hasRetestData([member({}), member({ retest_status: "open" })])).toBe(true);
+    expect(hasRetestData([member({ retest_pending: true })])).toBe(true);
+  });
+  it("sorts by lifecycle order, members with no lifecycle last", () => {
+    const ranks = [
+      member({ retest_status: "resolved" }),
+      member({ retest_pending: true }),
+      member({ retest_status: "open", last_tested_at: "2026-11-20T14:05:00Z" }),
+      member({}),
+      member({ retest_status: "not_reproduced" }),
+      member({ retest_status: "open" }),
+    ].map(retestRank);
+    expect(ranks).toEqual([4, 0, 1, 99, 3, 2]);
+  });
+  it("draws one chip per state and nothing without a lifecycle", () => {
+    renderWithProviders(<RetestChip issue={member({ retest_status: "open", last_tested_at: "2026-11-20T14:05:00Z" })} />);
+    expect(screen.getByText("Reproduced")).toBeInTheDocument();
+    const empty = renderWithProviders(<RetestChip issue={member({})} />);
+    expect(empty.container.textContent).toBe("");
   });
 });
 

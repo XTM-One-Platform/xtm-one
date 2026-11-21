@@ -2052,10 +2052,48 @@ def _not_owned_detail(owner_run: uuid.UUID | None) -> str:
             "the a2a.delegation.completed event starts collect it."
         )
     return (
-        "This run may not continue that task: it was started by another "
-        "caller. Do not resend work already delegated; a new delegation is "
-        "only for work nobody sent."
+        "No task this run may continue has that id. Pass the full task id the "
+        "first call returned (a shortened id is resolved only when it is "
+        "unique among your own tasks). If it was passed whole, another caller "
+        "started that task. Do not resend work already delegated; a new "
+        "delegation is only for work nobody sent."
     )
+
+
+# The shortest continue_task_id read as a prefix (#978): the 8 characters an
+# agent keeps from an id it was shown. Shorter matches too much to be meant.
+_TASK_ID_PREFIX_MIN = 8
+
+
+async def _resolve_owned_prefix(db: Any, integration: Any, target: Any, calling: Any, task_id: str) -> str | None:
+    """The one task id *task_id* is a prefix of, among the caller's own, or ``None``.
+
+    Read only after the exact ownership check failed (#978): a shortened id of
+    the caller's own task is resolved instead of refused as another caller's.
+    Scoped by ``_scoped_to_caller`` exactly like ``_may_continue``, so it never
+    matches what another agent, user or run owns. Too short, ambiguous or
+    unreadable gives ``None`` and the refusal stands.
+    """
+    if len(task_id) < _TASK_ID_PREFIX_MIN:
+        return None
+    from sqlalchemy import select
+
+    from app.models.a2a import A2ADelegation
+
+    stmt = select(A2ADelegation.partner_task_id).where(
+        A2ADelegation.integration_id == integration.id,
+        A2ADelegation.partner_task_id.startswith(task_id, autoescape=True),
+    )
+    target_id = getattr(target, "id", None)
+    if target_id is not None:
+        stmt = stmt.where(A2ADelegation.target_id == target_id)
+    stmt = _scoped_to_caller(stmt, calling).distinct().limit(2)
+    try:
+        matches = [m for m in (await db.execute(stmt)).scalars().all() if isinstance(m, str) and m]
+    except Exception:
+        logger.debug("a2a.client: task id prefix %s not resolved", task_id, exc_info=True)
+        return None
+    return matches[0] if len(matches) == 1 else None
 
 
 async def _may_continue(db, integration, target, calling, task_id: str) -> bool:
@@ -2181,6 +2219,12 @@ async def delegate(
         continuation_owned = await _may_continue(
             db, integration, target, calling, continue_task_id
         )
+        if not continuation_owned:
+            # #978: a unique prefix of the caller's own task id names it.
+            resolved = await _resolve_owned_prefix(db, integration, target, calling, continue_task_id)
+            if resolved is not None:
+                continue_task_id = resolved
+                continuation_owned = True
         if continuation_owned:
             owned_task_id = continue_task_id
             if not message:
