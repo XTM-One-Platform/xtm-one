@@ -47,7 +47,7 @@ CORRELATION_PREFIX = "xtm-ctem-"
 #: What the case shows when no ticketing is declared (never an error).
 NOT_CONNECTED = "No ticketing connected"
 #: The settings page a case links to when no ticketing is declared or a sync failed.
-SETTINGS_PATH = "/settings/organization-context#ticketing"
+SETTINGS_PATH = "/settings/organization?card=ticketing"
 #: Program defaults (doc 34 section 5), overridden by ``TicketingSync.priority_map``.
 DEFAULT_JIRA_PRIORITY = {"P1": "Highest", "P2": "High", "P3": "Medium"}
 DEFAULT_SERVICENOW_URGENCY = {"P1": "1", "P2": "2", "P3": "3"}

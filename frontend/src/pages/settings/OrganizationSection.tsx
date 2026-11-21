@@ -40,6 +40,7 @@ import {
   type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
+  SettingsGroupTitle,
   SettingsSaveBar,
   settingsFieldHintId,
   settingsFieldLabelId,
@@ -90,6 +91,7 @@ import {
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
 import { OrganizationUsedBy } from "./OrganizationUsedBy";
+import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
 import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
@@ -1751,6 +1753,22 @@ export function OrganizationSection() {
               </SettingsField>
             </SettingsFieldGrid>
             )}
+            {/* How CTEM cases sync with the target (#917): part of the profile form, read by the next sync. */}
+            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4" data-testid="settings.organization.ticketing-sync-group">
+              <SettingsGroupTitle icon={RefreshCw}>{t_i18n("CTEM case sync")}</SettingsGroupTitle>
+              <p className="content-compact text-default-secondary">
+                {current.ticketing.integration
+                  ? t_i18n("How CTEM cases open, update and close their tickets. A change applies to the next sync.")
+                  : t_i18n("No ticketing connected: cases stay in XTM One. Set the ticketing integration above to sync them.")}
+              </p>
+              <OrganizationTicketingSync
+                idPrefix={`${fieldId}-ticketing-sync`}
+                sync={current.ticketing.sync}
+                provider={ticketingIntegration?.provider ?? ""}
+                editing={editing}
+                onChange={(sync) => update({ ticketing: { ...current.ticketing, sync } })}
+              />
+            </div>
           </SettingsCard>
           </div>
           )}
