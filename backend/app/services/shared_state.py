@@ -1249,14 +1249,29 @@ def _patch_item(
     return out
 
 
-def unset_archive(value: dict, update: dict | None, *, source_key: str, at: str) -> list[dict]:
+#: Fields that identify an item on their own, kept in an unset archive's
+#: ``match`` whatever the patch matched on (a bulk unset matched on a status).
+_UNSET_ARCHIVE_IDENTITY_FIELDS = ("id", "key", "slug")
+
+
+def unset_archive(
+    value: dict,
+    update: dict | None,
+    *,
+    source_key: str,
+    at: str,
+    item_key: str | None = None,
+) -> list[dict]:
     """The archive objects an ``update``'s ``unset`` would remove from *value*.
 
     One object per matched item that holds at least one of the unset fields:
     ``{source_key, list, match, archived_at, fields}``, ``match`` being the
-    item's values of the patch's match fields (its identity) and ``fields``
-    the values the unset drops. The caller appends them to an archive key
-    before it writes the update, so a field leaves the live list only once
+    item's values of the patch's match fields plus its own identity (the
+    retention's *item_key*, ``id``, ``key`` or ``slug`` when it holds them),
+    so an item unset by a bulk match such as ``{"state": "done"}`` is still
+    found in the archive by its key, and ``fields`` the values the unset
+    drops. The caller appends them to an archive key before it writes the
+    update, so a field leaves the live list only once
     its text is stored elsewhere. Nothing to unset answers an empty list.
     """
     archived: list[dict] = []
@@ -1276,6 +1291,9 @@ def unset_archive(value: dict, update: dict | None, *, source_key: str, at: str)
                 if not removed:
                     continue
                 identity = {f: item[f] for m in matches for f in m if f in item}
+                for f in (item_key, *_UNSET_ARCHIVE_IDENTITY_FIELDS):
+                    if f and f in item and f not in identity:
+                        identity[f] = item[f]
                 archived.append(
                     {
                         "source_key": source_key,
