@@ -778,6 +778,8 @@ export function TriggerCard({
                 const integId = cfg.integration_id;
                 const provInfo = catalog?.find((c) => c.provider === prov);
                 const evtInfo = provInfo?.available_events?.find((e) => e.event === evt);
+                // A trigger with no single event that selects several: each one is named.
+                const listed = evt ? [] : (Array.isArray(cfg.events) ? cfg.events : []).filter((e) => typeof e === "string" && e.trim() !== "");
                 const boundInteg = allIntegrations?.find((i) => i.id === integId);
                 return (
                   <>
@@ -797,6 +799,25 @@ export function TriggerCard({
                           <p className="text-[13px] text-default-secondary leading-none">{t_i18n("Event")}</p>
                           <p className="content-base font-semibold mt-1">{evtInfo?.label ? t_text(evtInfo.label) : evt}</p>
                           {evtInfo?.description && <p className="content-compact text-default-secondary mt-0.5 leading-relaxed">{t_text(evtInfo.description)}</p>}
+                        </div>
+                      </div>
+                    )}
+                    {listed.length > 0 && (
+                      <div className="flex items-start gap-3 rounded-sm bg-elevation-hover px-4 py-3.5">
+                        <div className="mt-0.5 shrink-0 text-feedback-warning-primary"><Zap className="h-[18px] w-[18px]" /></div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] text-default-secondary leading-none">{t_i18n("Events")}</p>
+                          <ul className="mt-1 space-y-1">
+                            {listed.map((e) => {
+                              const info = provInfo?.available_events?.find((a) => a.event === e);
+                              return (
+                                <li key={e}>
+                                  <p className="content-base font-semibold">{info?.label ? t_text(info.label) : e}</p>
+                                  {info?.description && <p className="content-compact text-default-secondary mt-0.5 leading-relaxed">{t_text(info.description)}</p>}
+                                </li>
+                              );
+                            })}
+                          </ul>
                         </div>
                       </div>
                     )}

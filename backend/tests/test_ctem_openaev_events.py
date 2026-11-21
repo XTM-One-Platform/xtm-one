@@ -21,6 +21,7 @@ from app.agents.builtin_agents import (
     CTEM_F2_OPENAEV_ASSIGNMENT,
     CTEM_OPENAEV_LOOP_EVENTS,
 )
+from app.models.assignment import marked_exact
 from app.services import ctem_openaev_events as aev
 from app.services import ctem_signal_listeners as listeners
 from app.services import openaev_trigger_provisioning as prov
@@ -174,6 +175,9 @@ def test_the_listen_only_assignment_provisions_and_never_runs() -> None:
     config = CTEM_F2_OPENAEV_ASSIGNMENT["trigger_config"]
     assert set(prov.read_provision_spec(config)["events"]) == set(CTEM_OPENAEV_LOOP_EVENTS)
     assert set(CTEM_OPENAEV_LOOP_EVENTS) <= set(prov.EVENTS)
+    # Seeded from scratch: exact matching, and its selection names every event it listens to.
+    assert marked_exact(config)
+    assert config["events"] == list(CTEM_OPENAEV_LOOP_EVENTS) and "event" not in config
     assert set(aev.CASE_EVENT_KEYS) <= set(CTEM_OPENAEV_LOOP_EVENTS)
     for event in CTEM_OPENAEV_LOOP_EVENTS:
         assert payload_filter_reason(_delivery(event, "SIMULATION", "x"), config["filter"]) is not None
