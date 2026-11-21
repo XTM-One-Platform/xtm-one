@@ -118,6 +118,11 @@ from .ctem_cases import (
     build_ctem_case_tools,
     offers_ctem_case_tools,
 )
+from .ctem_signals import (
+    CTEM_SIGNAL_TOOL_NAMES,
+    build_ctem_signal_tools,
+    offers_ctem_signal_tools,
+)
 from .custom_dashboard import (
     build_custom_dashboard_tools,
 )
@@ -421,6 +426,7 @@ __all__ = [
     "AGENT_KEYED_BUILTIN_TOOL_IDS",
     "CONVERSATION_WORKSET_TTL",
     "CTEM_CASE_TOOL_NAMES",
+    "CTEM_SIGNAL_TOOL_NAMES",
     "DOCX_CONTENT_TYPE",
     "FLOW_LAB_READ_TOOLS",
     "MAX_CATALOG_DESCRIPTION_CHARS",
@@ -449,6 +455,7 @@ __all__ = [
     "build_code_interpreter_tool",
     "build_computer_use_tools",
     "build_ctem_case_tools",
+    "build_ctem_signal_tools",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
     "build_document_vision_tools",
@@ -547,6 +554,7 @@ __all__ = [
     "normalize_visited_agents",
     "offered_handover_types",
     "offers_ctem_case_tools",
+    "offers_ctem_signal_tools",
     "offers_organization_context_write",
     "offers_organization_proposals",
     "offers_user_admin",
