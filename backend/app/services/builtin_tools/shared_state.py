@@ -1591,11 +1591,13 @@ def build_shared_state_tools(
             )
         try:
             source = await get_state(user_id=acting_user_id, key=_ns(key), reader=writer)
+            retention = (source or {}).get("retention") or {}
             archived = unset_archive(
                 (source or {}).get("value") or {},
                 update,
                 source_key=key,
                 at=datetime.now(UTC).isoformat(),
+                item_key=retention.get("item_key") if isinstance(retention, dict) else None,
             )
         except ValueError as exc:
             return f"Error: {exc}"

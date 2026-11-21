@@ -1129,6 +1129,39 @@ def test_unset_archive_lists_the_removed_values_with_the_item_identity():
     ]
 
 
+def test_unset_archive_keeps_the_item_key_on_a_bulk_match():
+    value = {
+        "entries": [
+            {"key": "w-1", "deploy": "DEPLOYED", "detail": "retest A"},
+            {"key": "w-2", "deploy": "DEPLOYED", "detail": "retest B"},
+            {"key": "w-3", "deploy": "WATCH", "detail": "retest C"},
+        ]
+    }
+    archived = unset_archive(
+        value,
+        {"entries": {"match": {"deploy": "DEPLOYED"}, "unset": ["detail"]}},
+        source_key="src",
+        at="t",
+    )
+    assert [a["match"] for a in archived] == [
+        {"deploy": "DEPLOYED", "key": "w-1"},
+        {"deploy": "DEPLOYED", "key": "w-2"},
+    ]
+    assert [a["fields"] for a in archived] == [{"detail": "retest A"}, {"detail": "retest B"}]
+
+
+def test_unset_archive_keeps_the_retention_item_key():
+    value = {"rows": [{"ref": "r-9", "state": "done", "note": "N"}]}
+    archived = unset_archive(
+        value,
+        {"rows": {"match": {"state": "done"}, "unset": ["note"]}},
+        source_key="src",
+        at="t",
+        item_key="ref",
+    )
+    assert archived[0]["match"] == {"state": "done", "ref": "r-9"}
+
+
 def test_unset_archive_is_empty_without_unset_or_list():
     no_unset = {"e": {"match": {"key": "a"}, "set": {"y": 1}}}
     assert unset_archive({"e": [{"key": "a", "x": 1}]}, no_unset, source_key="s", at="t") == []
