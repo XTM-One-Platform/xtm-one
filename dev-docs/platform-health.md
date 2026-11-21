@@ -751,20 +751,32 @@ How, so the exception cannot leak:
 
 ### 12.6 Default ceiling
 
-The default is set from a measured cost per module per cycle, as section 6 did, in the
-S14b lab measurement (`lab-live`, live model, one registered OpenCTI and one OpenAEV, a
-cycle on a module with open findings and one on a module with none), written here with
-the billed tokens and dollars before S14 ships on by default.
+The default is set from a measured cost per module per cycle, as section 6 did.
 
-Provisional figure until then, from the S9b blend (6.7 USD per million tokens) and the
-shape of the loop (system and tool definitions cached, about 12 read calls of at most
-4,000 characters of result each, 2.2 characters per token): about 45,000 input and 5,000
-output tokens per cycle, 50,000 tokens, 0.34 USD. Per-cycle cap 80,000 tokens. With 3
-modules and at most 3 cycles a module a day (daily plus two change-triggered at the 2
-hour debounce in a bad day): 9 x 50,000 = 450,000 tokens, 3.0 USD a day. Provisional
-defaults: **500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**
-(a month does not run at the bad-day rate every day). The measurement replaces these
-numbers; if it lands more than 30 % away, the defaults move with it in the S14b PR.
+**Measured (S14b-3, 21 Nov 2026).** Lab `lab-ootb-live` (live model through the LLM
+proxy, one OpenCTI registered through the real path, one OpenAEV and one OpenCRQ seeded
+registrations, no open module finding), three daily cycles, one per module, on main with
+the per-call output cap of `module_analyst_ceiling.py` (`MAX_CALL_OUTPUT`, 8,192 tokens
+reserved and sent to the provider, #935). Per run: 21,427 to 21,534 input and 1,038 to
+1,161 output tokens, 22 to 23 s; the ledger day row reads 67,804 tokens and 0.32488 USD
+for the three runs, so about **22,600 tokens and 0.108 USD per module per cycle with no
+open finding**. The first pass of the measurement found that reserving the loop's whole
+output allowance put the first call over the 80,000 per-cycle cap (every run stopped
+`budget_exhausted` with 0 tokens); #935 fixed it before these figures were taken.
+
+A cycle on a module with open findings reads more (the findings and the module state that
+explains them) and is not measured in the lab, which had none to open; it is bounded by
+the per-cycle cap and measured at the production retest of S14 (section 12.9 (g)).
+
+Defaults, kept from the provisional estimate: per-cycle cap **80,000 tokens**,
+**500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**. Why they stay:
+the quiet case (3 modules, one daily cycle each) costs about 68,000 tokens and 0.33 USD a
+day, 10 USD a month, well under them; the bad day (3 modules, 3 cycles each, cycles with
+findings costing up to twice the quiet one, about 45,000 tokens) is 9 x 45,000 = 405,000
+tokens and about 2 USD, under the daily ceiling with headroom for a cycle that reaches its
+cap. Lowering the defaults to the quiet figure would stop the analyst on the day it is
+needed. The production retest replaces the findings estimate; if a cycle with findings
+lands over 55,000 tokens on average, the daily default moves with it.
 
 Model: the platform routing model, as section 6, unless the measurement shows it cannot
 hold the loop (then the platform default model, priced in the same ledger, and the
