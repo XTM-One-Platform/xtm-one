@@ -57,9 +57,15 @@ MODULE_PROVIDERS: Final[tuple[str, ...]] = ("opencti", "openaev", "opencrq")
 #: entry must classify as a read (``tool_classification.infer_tool_type``):
 #: ``tests/test_health_module_analyst.py`` fails on one that does not.
 MODULE_ANALYST_TOOLS: Final[dict[str, tuple[str, ...]]] = {
-    # Connectors, feeds, playbooks and tasks are read through the read tools S14a-2
-    # adds: today's OpenCTI tools reach them only through ``manage_*`` actions.
-    "opencti": ("get_opencti_platform_version",),
+    # Connectors, feeds and playbooks through the read-only state tools of
+    # ``providers/opencti/health_reads.py`` (S14a-2b-3): the ``manage_*`` tools
+    # reach the same objects but classify as writes.
+    "opencti": (
+        "get_opencti_platform_version",
+        "list_opencti_connector_states",
+        "list_opencti_feed_states",
+        "list_opencti_playbook_states",
+    ),
     "openaev": ("query_openaev_connectors",),
     "opencrq": (
         "get_opencrq_platform_version",

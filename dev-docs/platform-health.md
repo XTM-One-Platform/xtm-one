@@ -804,7 +804,12 @@ decision written here).
   `change_min_interval_minutes`, 120, 15 to 1,440; `excluded_registration_ids`).
 - Built-in tools of the health group for the member: `list_module_findings`,
   `record_finding_recommendation`, `record_agentic_finding`; the module reads are the
-  registration integration's own read tools behind the allow-list. The first two ship in
+  registration integration's own read tools behind the allow-list. On OpenCTI the
+  `manage_*` tools that reach connectors, feeds and playbooks classify as writes, so three
+  read-only state tools serve the analyst (`providers/opencti/health_reads.py`, S14a-2b-3):
+  `list_opencti_connector_states` (active flag, type, last update, queued messages),
+  `list_opencti_feed_states` (RSS, CSV, JSON, TAXII: running flag, last execution) and
+  `list_opencti_playbook_states` (running flag, queued messages). The first two ship in
   the `health_modules` group (`builtin_tools/health_modules.py`, S14a-2b): health only,
   agent keyed, wired in XTM One mode only; `list_module_findings` reads for the Module
   Analyst or an administrator, `record_finding_recommendation` writes for the Module
