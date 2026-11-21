@@ -30,13 +30,14 @@ import {
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
+  type CtemCaseVisibleIssue,
 } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
-import { keyVersion, notAffectedVersion, notAffectedVersions } from "./ctem/case-version";
+import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -114,13 +115,27 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
 
-/** The evidence of a history row; the not-affected sentence the platform stores is re-rendered in the locale (#928). */
-function CaseEvidence({ evidence }: { evidence: string }) {
+/**
+ * The fixed version of one issue and where OpenCTI's knowledge came from (CTEM-11, #946; shown by #928):
+ * the remediating Software, else the course of action, else "unknown"; a declared version OpenCTI
+ * holds no Software of is named, never guessed.
+ */
+function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
   const { t_i18n } = useFormatter();
-  const version = notAffectedVersion(evidence);
+  if (issue.not_affected || issue.source !== "opencti") return null;
+  const unknownDeclared = issue.declared_version_known === false && issue.installed_version;
   return (
-    <span className="text-default-secondary">
-      {version ? t_i18n("Not affected: version {version} is outside the affected ranges", { version }) : evidence}
+    <span className="flex flex-col" data-testid="ctem-case-issue-version">
+      <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
+      {issue.fixed_version && issue.fixed_by && (
+        <span className="content-compact text-default-secondary">{t_i18n("Matched on Software {software}", { software: issue.fixed_by })}</span>
+      )}
+      {issue.fixed_version && !issue.fixed_by && issue.course_of_action_name && (
+        <span className="content-compact text-default-secondary">{t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })}</span>
+      )}
+      {unknownDeclared && (
+        <span className="content-compact text-default-secondary">{t_i18n("Version {version} not known to OpenCTI", { version: issue.installed_version })}</span>
+      )}
     </span>
   );
 }
@@ -158,9 +173,8 @@ export default function CtemCaseDetail() {
     () => (kase?.issues ?? []).map((issue, i) => ({ key: isRestrictedIssue(issue) ? `restricted-${i}` : `${issue.source}:${issue.external_id}`, issue })),
     [kase],
   );
-  // Members closed because the version the organization runs is outside their ranges (CTEM-11, #928).
-  const notAffected = useMemo(() => notAffectedVersions(kase?.history ?? []), [kase]);
-  const notAffectedOf = (r: IssueRow) => (isRestrictedIssue(r.issue) || r.issue.open ? undefined : notAffected.get(r.key));
+  // Members OpenCTI relates to none of the declared versions (CTEM-11, #946; shown by #928), from the viewer's own read.
+  const notAffectedOf = (r: IssueRow) => (isRestrictedIssue(r.issue) || r.issue.open || !r.issue.not_affected ? undefined : r.issue.installed_version || undefined);
 
   if (isNotFoundError(error)) {
     return (
@@ -292,6 +306,15 @@ export default function CtemCaseDetail() {
       hideable: true,
     },
     {
+      key: "version",
+      header: "Fixed version",
+      cell: (r) => (isRestrictedIssue(r.issue) ? null : <IssueVersion issue={r.issue} />),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.fixed_version ?? "~")),
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.fixed_version ?? "")),
+      hideBelow: "2xl",
+      hideable: true,
+    },
+    {
       key: "state",
       header: "State",
       cell: (r) => {
@@ -301,7 +324,7 @@ export default function CtemCaseDetail() {
         return version ? (
           <span className="flex flex-col" data-testid="ctem-case-not-affected">
             <span>{t_i18n("Not affected")}</span>
-            <span className="content-compact text-default-secondary">{t_i18n("Version {version} is outside the affected ranges", { version })}</span>
+            <span className="content-compact text-default-secondary">{t_i18n("OpenCTI relates no vulnerability to version {version}", { version })}</span>
           </span>
         ) : (
           t_i18n("Closed")
@@ -406,7 +429,7 @@ export default function CtemCaseDetail() {
 
       {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
         <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {t_i18n("Fixed version unknown: no source names the version that fixes these issues. Declare the version you run in Settings > Organization > Tech stack, or connect an enrichment provider.")}
+          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version. Declare the version you run in Settings > Organization > Tech stack.")}
         </p>
       )}
 

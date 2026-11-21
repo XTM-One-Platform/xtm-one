@@ -64,7 +64,7 @@ interface CtemCaseValidation {
 }
 
 /** A member issue the caller sees. */
-interface CtemCaseVisibleIssue {
+export interface CtemCaseVisibleIssue {
   restricted?: false;
   source: string;
   external_id: string;
@@ -78,6 +78,17 @@ interface CtemCaseVisibleIssue {
   crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
+  /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
+  installed_version?: string | null;
+  fixed_version?: string | null;
+  /** The OpenCTI Software ("name version") that remediates the vulnerability, when it gave the fix. */
+  fixed_by?: string | null;
+  /** The course of action that named the fix, when no remediating Software did. */
+  course_of_action_name?: string | null;
+  /** OpenCTI relates no vulnerability to the declared version: no case opens for it. */
+  not_affected?: boolean;
+  /** With a declared version: whether OpenCTI holds a Software of it; null when none is declared. */
+  declared_version_known?: boolean | null;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -149,7 +160,7 @@ export interface CtemCaseBulkResult {
 export interface CtemRecomputeResult {
   applied: boolean;
   missing?: string[];
-  /** Issues kept out of every case: the declared tech stack version is outside their ranges (CTEM-11). */
+  /** Issues kept out of every case: OpenCTI relates them to none of the declared tech stack versions (CTEM-11). */
   not_affected?: number;
   [key: string]: unknown;
 }

@@ -245,10 +245,38 @@ def test_a_course_of_action_is_the_fallback_and_nothing_known_is_unknown():
     assert remediation is not None and remediation.kind == "course_of_action" and remediation.fixed_version == "9.0.95"
 
 
+def test_the_case_view_carries_the_version_fields_of_the_viewers_own_read():
+    from types import SimpleNamespace
+
+    from app.services import ctem_cases_view as view_mod
+
+    issue = next(i for i in source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [], FIXES) if i.external_id == "v1")
+    row = SimpleNamespace(source="opencti", external_id="v1", open=True)
+    shown = view_mod._visible_issue(row, issue)
+    assert shown["installed_version"] == "9.0.90" and shown["fixed_version"] == "9.0.98"
+    assert shown["fixed_by"] == "tomcat 9.0.98" and shown["course_of_action_name"] is None
+    assert shown["not_affected"] is False and shown["declared_version_known"] is True
+    # A member the viewer cannot read now carries none of it.
+    assert "fixed_version" not in view_mod._visible_issue(row, None)
+
+
 def test_a_remediating_software_wins_over_a_course_of_action():
     remediations = [{"from": {"standard_id": "course-of-action--1", "name": "Upgrade to 9.1.0"}, "to": {"id": "v1"}}]
     issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS[:1], remediations, FIXES)
     assert issues[0].fixed_version == "9.0.98"
+
+
+def test_each_issue_names_where_its_fixed_version_came_from():
+    # The case page shows the remediating Software, or the course of action, never a guess (#928).
+    remediations = [{"from": {"standard_id": "course-of-action--1", "name": "Upgrade to 9.0.95"}, "to": {"id": "v3"}}]
+    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, remediations, FIXES)
+    by_id = {i.external_id: i for i in issues}
+    assert by_id["v1"].fixed_by == "tomcat 9.0.98" and by_id["v2"].fixed_by == "tomcat 9.0.99"
+    assert by_id["v1"].declared_version_known is True
+    unknown = source.opencti_issues(SOFTWARE, _stack("10.1.0"), RELATIONS, remediations, [])
+    v3 = next(i for i in unknown if i.external_id == "v3")
+    assert v3.fixed_version == "9.0.95" and v3.fixed_by is None and v3.declared_version_known is False
+    assert all(i.declared_version_known is None for i in source.opencti_issues(SOFTWARE, _stack(), RELATIONS, [], []))
 
 
 def test_the_declared_version_matches_on_the_cpe_too():
@@ -325,7 +353,7 @@ async def test_a_restricted_user_gets_only_what_opencti_lets_them_read(monkeypat
     assert {i.external_id for i in issues} == {"v1", "v3"}
     v1 = next(i for i in issues if i.external_id == "v1")
     # sw-98 is hidden from this user, so the fix they can read is 9.0.99, never the hidden 9.0.98.
-    assert v1.fixed_version == "9.0.99"
+    assert v1.fixed_version == "9.0.99" and v1.fixed_by == "tomcat 9.0.99"
 
 
 @pytest.mark.asyncio

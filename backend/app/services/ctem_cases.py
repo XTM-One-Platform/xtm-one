@@ -76,6 +76,10 @@ class SourceIssue:
     not_affected: str | None = None
     #: What OpenCTI could not tell ("version not known to OpenCTI", "fixed version unknown"), else ``None``.
     version_note: str | None = None
+    #: The OpenCTI Software ("<name> <version>") whose ``remediates`` gave ``fixed_version`` (#928), else ``None``.
+    fixed_by: str | None = None
+    #: With a declared version: whether OpenCTI holds a Software of it (#928); ``None`` when none is declared.
+    declared_version_known: bool | None = None
 
     @property
     def member_id(self) -> str:

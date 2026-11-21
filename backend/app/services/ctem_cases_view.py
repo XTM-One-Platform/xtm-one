@@ -238,6 +238,13 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
         "crown_jewels": list(issue.crown_jewels),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
+        # The version knowledge of this viewer's own OpenCTI read (CTEM-11, #946; shown by #928).
+        "installed_version": issue.installed_version,
+        "fixed_version": issue.fixed_version,
+        "fixed_by": issue.fixed_by,
+        "course_of_action_name": issue.course_of_action_name if issue.fixed_version and not issue.fixed_by else None,
+        "not_affected": bool(issue.not_affected),
+        "declared_version_known": issue.declared_version_known,
     }
 
 
