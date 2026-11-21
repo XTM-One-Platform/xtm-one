@@ -19949,6 +19949,7 @@
   "Due date from the SLA": "SLA から期限を設定",
   "When a case gets its ticket in the ticketing system.": "ケースがチケット管理システムでチケットを得るタイミング。",
   "The Jira issue type or the ServiceNow table. Empty: {value}.": "Jira の課題タイプまたは ServiceNow のテーブル。空欄: {value}。",
+  "The ServiceNow table each ticket is created in. Empty: {value}.": "各チケットを作成する ServiceNow テーブル。空の場合: {value}。",
   "Priority for {severity} cases": "{severity} ケースの優先度",
   "Empty: {value}.": "空欄: {value}。",
   "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.": "チケットのステータス名をケースのチケットステータスに対応付けます。最初に参照され、対応のない名前はシステムの分類に従います。",
@@ -20015,5 +20016,9 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "悪用の読み取りはまだありません。リスクシナリオに影響を受ける資産がある場合、トリアージが OpenCRQ から書き込みます。",
   "Restricted asset": "制限された資産",
   "Techniques in attack order": "攻撃順のテクニック",
-  "Recorded how it would be exploited": "想定される悪用方法を記録しました"
+  "Recorded how it would be exploited": "想定される悪用方法を記録しました",
+  "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.": "CTEM ケース同期が書き込めるのは incident、change_request、problem テーブルのみです。いずれかを選択してください。",
+  "Break-fix: restore something that is broken.": "障害対応: 壊れたものを復旧します。",
+  "Planned change: a fix rolled out under change control.": "計画変更: 変更管理のもとで展開する修正です。",
+  "Root cause: the cause behind repeated incidents.": "根本原因: 繰り返し発生するインシデントの原因です。"
 }
