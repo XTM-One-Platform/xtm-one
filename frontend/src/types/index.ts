@@ -6521,8 +6521,6 @@ export interface WorkItem {
   blocked_reason?: string | null;
   /** Blocked on a person's decision. */
   needs_human?: boolean;
-  /** The person a needs_human item waits for when not its user (#11893); null otherwise. */
-  waits_for_user_id?: string | null;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
@@ -12593,8 +12591,10 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a `hitl` item waits on. */
+  /** The run a `hitl` item waits on, or the flow run a `flow_hitl` item asks from. */
   run_id: string | null;
+  /** A decision still waiting: unread until answered, never read by opening it (#991). */
+  awaiting_answer?: boolean;
   unread: boolean;
 }
 
@@ -16407,6 +16407,49 @@ export interface HealthModuleCard {
   info: number;
   /** The score a week ago; null when no score was written that day. */
   previous_score: number | null;
+  /** OpenCTI, OpenAEV, OpenCRQ for an administrator: the Module Analyst's last cycle, null when none (#101 S14c). */
+  last_investigation?: HealthLastInvestigation | null;
+}
+
+/** The Module Analyst's latest cycle on one of a module's registrations (dev-docs/platform-health.md section 12.7). */
+export interface HealthLastInvestigation {
+  cycle_id: string;
+  registration_id: string;
+  status: "open" | "completed" | "budget_reached" | "failed" | "cancelled";
+  trigger: "schedule" | "signal" | "on_demand";
+  opened_at: string;
+  closed_at: string | null;
+}
+
+/** What "Investigate now" did on one registration: started, or the refusal code of `start_cycle`. */
+interface HealthModuleInvestigationStart {
+  registration_id: string;
+  cycle_id: string | null;
+  run_id: string | null;
+  refusal: string | null;
+  open_cycle_id?: string | null;
+}
+
+export interface HealthModuleInvestigation {
+  module: HealthModule;
+  items: HealthModuleInvestigationStart[];
+}
+
+/** One read the Module Analyst made to back a recommendation. */
+interface HealthAnalystEvidence {
+  tool?: string;
+  object_ids?: string[];
+  values?: Record<string, unknown>;
+  read_at?: string;
+}
+
+/** The Module Analyst's newest recommendation on a finding (section 12.7). */
+export interface HealthAnalystRecommendation {
+  text: string;
+  confidence: "high" | "medium" | "low";
+  evidence: HealthAnalystEvidence[];
+  cycle_id: string;
+  created_at: string;
 }
 
 /** The latest analysis of one module; `status` is null when it was never analysed. */
@@ -16463,6 +16506,10 @@ export interface HealthFinding {
   resolved_at: string | null;
   dismissal: { reason: string; by_name?: string; at?: string; until?: string | null } | null;
   can_dismiss: boolean;
+  /** Discovered by the Module Analyst (check id `<module>.agentic.<slug>`), not by a deterministic check. */
+  agentic?: boolean;
+  /** The Module Analyst's newest recommendation on this finding, null when none. */
+  analyst_recommendation?: HealthAnalystRecommendation | null;
 }
 
 export interface HealthFindingList {
