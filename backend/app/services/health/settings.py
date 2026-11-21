@@ -219,8 +219,8 @@ class HealthModuleAnalystSettings(BaseModel):
     The ceilings are its own (section 12.5), outside the agentic quota: tokens and
     dollars per UTC day and month on the ``health_module_analyst_spend`` ledger, and
     a token cap per cycle. A ceiling an administrator clears (``None``) refuses every
-    model call (``ceiling_not_set``). The defaults are the provisional figures of
-    section 12.6 until the S14b lab measurement replaces them.
+    model call (``ceiling_not_set``). The defaults are those of section 12.6, kept
+    after the S14b-3 lab measurement (about 22,600 tokens per module per quiet cycle).
     """
 
     model_config = ConfigDict(extra="forbid")
