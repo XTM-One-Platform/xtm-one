@@ -8370,9 +8370,13 @@ async def execute_assignment_run(
                 and loop_result.content
                 and not answer_cut_by_budget(loop_result)
             ):
-                from app.services.structured_output import emit_repaired_json
+                from app.services.structured_output import (
+                    emit_repaired_json_in_thread,
+                )
 
-                _repaired_json = emit_repaired_json(
+                # In a thread: repairing a large answer is CPU-bound and would
+                # block the worker's event loop (and its health probe).
+                _repaired_json = await emit_repaired_json_in_thread(
                     loop_result.content,
                     agent.output_schema,
                     log_context=f"assignment {assignment.id}",

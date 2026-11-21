@@ -8395,9 +8395,13 @@ async def run_agent_chat(
             # short is delivered as it came, ending with the budget message:
             # repairing it would re-serialize a partial payload as a complete one.
             if response.content and not answer_cut_by_budget(response):
-                from app.services.structured_output import deliver_json_answer
+                from app.services.structured_output import (
+                    deliver_json_answer_in_thread,
+                )
 
-                response.content = deliver_json_answer(
+                # In a thread: repairing a large answer is CPU-bound and would
+                # block the worker's event loop (and its health probe).
+                response.content = await deliver_json_answer_in_thread(
                     response.content,
                     _effective_output_format,
                     _effective_output_schema,
