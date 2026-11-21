@@ -102,6 +102,16 @@ VALID_EVENT_TYPES = ("create", "update", "delete")
 #: matched through ``objects`` (a container holding them) or ``toId`` (a
 #: relationship pointing at them): live stix filtering has no ``regardingOf``.
 DERIVABLE_CONTEXT_FIELDS = ("pir_ids", "regions", "sector")
+#: ``provision.mode``: a live knowledge trigger (default), or (CTEM-05) an OpenCTI
+#: playbook "Listen PIR events" then "Send to notifier". OpenCTI flags an entity
+#: in a PIR through its internal ``in-pir`` relationship, which a live trigger
+#: never sees; the playbook entry is the consumer OpenCTI built for it.
+TRIGGER_MODE = "trigger"
+PIR_PLAYBOOK_MODE = "pir_playbook"
+PROVISION_MODES = (TRIGGER_MODE, PIR_PLAYBOOK_MODE)
+#: OpenCTI's playbook components (``modules/playbook/components``).
+PIR_ENTRY_COMPONENT = "PLAYBOOK_DATA_STREAM_PIR"
+NOTIFIER_COMPONENT = "PLAYBOOK_NOTIFIER_COMPONENT"
 #: ``provision.organizations`` values besides a list of relationships.
 PRIMARY_SCOPE = "primary"
 TRACKED_SCOPE = "tracked"
@@ -199,6 +209,13 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
     pir_min_score = raw.get("pir_min_score", 1)
     if isinstance(pir_min_score, bool) or not isinstance(pir_min_score, int) or not 0 <= pir_min_score <= 100:
         raise ProvisionSpecError("provision.pir_min_score must be an integer from 0 to 100")
+    mode = raw.get("mode") or TRIGGER_MODE
+    if mode not in PROVISION_MODES:
+        raise ProvisionSpecError(f"provision.mode: use one of {list(PROVISION_MODES)}")
+    if mode == PIR_PLAYBOOK_MODE and "pir_ids" not in context_fields:
+        raise ProvisionSpecError(
+            "provision.mode pir_playbook listens to the profile PIRs: organization_context must name pir_ids"
+        )
     organizations = _organizations_scope(raw.get("organizations"))
     if organizations != PRIMARY_SCOPE and context_fields:
         raise ProvisionSpecError(
@@ -240,6 +257,7 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "event_types": event_types,
         "organization_context": context_fields,
         "pir_min_score": pir_min_score,
+        "mode": mode,
         "organizations": organizations,
         # Filled from the tracked organizations by :func:`with_tracked_organizations`.
         "organization_refs": [],
@@ -342,13 +360,13 @@ def receiver_url(base_url: str, integration_id: str, assignment_id: str) -> str:
     return f"{base_url.rstrip('/')}/api/hooks/integrations/{integration_id}/assignments/{assignment_id}"
 
 
-def notifier_configuration(url: str, secret: str) -> str:
+def notifier_configuration(url: str, secret: str, *, template: str = WEBHOOK_TEMPLATE) -> str:
     """The Generic webhook ``notifier_configuration`` (OpenCTI's JSON string)."""
     return json.dumps(
         {
             "url": url,
             "verb": "POST",
-            "template": WEBHOOK_TEMPLATE,
+            "template": template,
             "params": [],
             "headers": [
                 {"attribute": "Content-Type", "value": "application/json"},
@@ -721,6 +739,164 @@ async def _ensure_trigger(
     return created
 
 
+#: The notifier body of a PIR playbook delivery. A playbook digest has no trigger
+#: (``notification``); each item names the playbook node (``notification_id``)
+#: and carries the flagged entity (``data[0].instance``, its PIR information
+#: in the OpenCTI extension) and the in-pir event's message. Two score changes
+#: carry the same message ("Update 2 elements ... internal-relationship", read in
+#: the lab), so the entity's PIR information (score and score date) enters the id
+#: too: each change is new, a redelivery of the same one is dropped by the receiver.
+#: OpenCTI master renders the entity as loaded when the in-pir relationship is
+#: patched, before its own PIR information is rewritten: on an update the score
+#: delivered is the one before the change (lab, 21 Nov 2026). The signal records it
+#: as the score at delivery; the fleet reads the live score from OpenCTI.
+PIR_WEBHOOK_TEMPLATE = (
+    '{"notification_id": "<%= data[0].notification_id %>:<%= data[0].instance.id %>:'
+    "<%= data[0].type %>:<%= data[0].message %>:"
+    "<%= JSON.stringify((data[0].instance.extensions || {})"
+    "['extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba'] || {}).pir_information) %>\", "
+    '"type": "<%= data[0].type %>", "message": "<%= data[0].message %>", '
+    '"xtm_source": "pir_playbook", '
+    '"data": <%- JSON.stringify(data[0].instance) %>}'
+)
+
+
+def pir_playbook_nodes(
+    spec: dict[str, Any], notifier_id: str, member_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The two node configurations of a PIR playbook: (Listen PIR events, Send to notifier).
+
+    The entry listens to the profile PIRs (``inPirFilters`` items are
+    ``{"value": id}``, as OpenCTI's listener reads them) on an entity entering a
+    PIR (``create``) and on an update of a flagged entity or of its in-pir
+    relationship, a score change included (``update``); ``filters`` keeps the
+    entities whose score in those PIRs is at least ``pir_min_score`` (the string
+    form OpenCTI stores). The notifier delivers to the integration's own OpenCTI
+    user only: OpenCTI filters each delivery by what that user may read.
+    """
+    pir_ids = sorted(spec.get("pir_ids") or [])
+    score_filter = {
+        "mode": "and",
+        "filters": [
+            {"key": ["pir_score"], "values": [str(spec.get("pir_min_score", 1))], "operator": "gte", "mode": "or"}
+        ],
+        "filterGroups": [],
+    }
+    entry = {
+        "inPirFilters": [{"value": pid} for pid in pir_ids],
+        "create": True,
+        "update": True,
+        "delete": False,
+        "create_rel": False,
+        "filters": json.dumps(score_filter, sort_keys=True),
+    }
+    notify = {"notifiers": [notifier_id], "authorized_members": [{"value": member_id}]}
+    return entry, notify
+
+
+def _node_configs(definition: Any) -> dict[str, Any]:
+    """``component_id -> parsed configuration`` of a stored ``playbook_definition``."""
+    try:
+        parsed = json.loads(definition) if isinstance(definition, str) else definition
+    except ValueError:
+        return {}
+    out: dict[str, Any] = {}
+    for node in (parsed or {}).get("nodes") or []:
+        raw = node.get("configuration")
+        try:
+            out[str(node.get("component_id"))] = json.loads(raw) if isinstance(raw, str) else raw
+        except ValueError:
+            out[str(node.get("component_id"))] = None
+    return out
+
+
+async def _own_user_id(gql: Gql) -> str:
+    data, err = await gql("query XtmMe { me { id } }", None)
+    if err:
+        raise RuntimeError(err)
+    user_id = (data.get("me") or {}).get("id")
+    if not user_id:
+        raise RuntimeError("OpenCTI returned no id for the integration's user")
+    return str(user_id)
+
+
+async def _ensure_pir_playbook(
+    gql: Gql, playbook_id: str | None, name: str, entry: dict[str, Any], notify: dict[str, Any]
+) -> str:
+    """One running playbook *name* holding exactly *entry* then *notify*; rebuilt on any drift."""
+    playbook_id = playbook_id or await _find_by_name(gql, "playbooks", name)
+    if playbook_id:
+        data, err = await gql(
+            "query XtmPlaybook($id: String!) { playbook(id: $id) { id name playbook_running playbook_definition } }",
+            {"id": playbook_id},
+        )
+        if err:
+            raise RuntimeError(err)
+        current = data.get("playbook")
+        if current:
+            configs = _node_configs(current.get("playbook_definition"))
+            if (
+                current.get("name") == name
+                and current.get("playbook_running")
+                and configs == {PIR_ENTRY_COMPONENT: entry, NOTIFIER_COMPONENT: notify}
+            ):
+                return playbook_id
+            # Edited in OpenCTI: rebuilt, never patched node by node.
+            await _delete(gql, "playbookDelete", playbook_id)
+    data, err = await gql(
+        "mutation XtmPlaybookAdd($input: PlaybookAddInput!) { playbookAdd(input: $input) { id } }",
+        {"input": {"name": name, "description": "Provisioned by XTM One for an assignment; edits are reverted."}},
+    )
+    if err:
+        raise RuntimeError(err)
+    created = (data.get("playbookAdd") or {}).get("id")
+    if not created:
+        raise RuntimeError("OpenCTI returned no playbook id")
+    node_add = (
+        "mutation XtmNodeAdd($id: ID!, $input: PlaybookAddNodeInput!) { playbookAddNode(id: $id, input: $input) }"
+    )
+    data, err = await gql(
+        node_add,
+        {
+            "id": created,
+            "input": {
+                "name": "Listen PIR events",
+                "component_id": PIR_ENTRY_COMPONENT,
+                "position": {"x": 0, "y": 0},
+                "configuration": json.dumps(entry, sort_keys=True),
+            },
+        },
+    )
+    if err:
+        raise RuntimeError(err)
+    entry_id = str(data.get("playbookAddNode") or "")
+    if not entry_id:
+        raise RuntimeError("OpenCTI returned no node id for the PIR entry")
+    _, err = await gql(
+        node_add,
+        {
+            "id": created,
+            "input": {
+                "name": "Send to XTM One",
+                "component_id": NOTIFIER_COMPONENT,
+                "position": {"x": 0, "y": 150},
+                "configuration": json.dumps(notify, sort_keys=True),
+                "parentNodeId": entry_id,
+                "parentPortId": "out",
+            },
+        },
+    )
+    if err:
+        raise RuntimeError(err)
+    _, err = await gql(
+        "mutation XtmPlaybookRun($id: ID!, $input: [EditInput!]!) { playbookFieldPatch(id: $id, input: $input) { id } }",
+        {"id": created, "input": [{"key": "playbook_running", "value": ["true"]}]},
+    )
+    if err:
+        raise RuntimeError(err)
+    return str(created)
+
+
 async def _delete(gql: Gql, field: str, object_id: str) -> None:
     _, err = await gql(f"mutation XtmDelete($id: ID!) {{ {field}(id: $id) }}", {"id": object_id})
     if err and "not found" not in err.lower():
@@ -766,9 +942,30 @@ async def reconcile(
                     "error": f"tracked organizations' sectors not found in OpenCTI: {missing_org_sectors}",
                     "checked_at": stamp,
                 }
+        if spec.get("mode") == PIR_PLAYBOOK_MODE:
+            config = notifier_configuration(url, secret, template=PIR_WEBHOOK_TEMPLATE)
+            notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), name, config)
+            if state.get("trigger_id"):
+                # The assignment moved from a live trigger to the PIR playbook.
+                await _delete(gql, "triggerKnowledgeDelete", state["trigger_id"])
+            entry, notify = pir_playbook_nodes(spec, notifier_id, await _own_user_id(gql))
+            playbook_id = await _ensure_pir_playbook(gql, state.get("playbook_id"), name, entry, notify)
+            return {
+                "status": "provisioned",
+                "error": None,
+                "name": name,
+                "mode": PIR_PLAYBOOK_MODE,
+                "notifier_id": notifier_id,
+                "playbook_id": playbook_id,
+                "fingerprint": fingerprint(name, json.dumps([entry, notify], sort_keys=True), url),
+                "checked_at": stamp,
+            }
         config = notifier_configuration(url, secret)
         filters = trigger_filters(spec, label_ids, country_ids + sector_ids, organization_ids)
         notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), name, config)
+        if state.get("playbook_id"):
+            # The assignment moved from the PIR playbook back to a live trigger.
+            await _delete(gql, "playbookDelete", state["playbook_id"])
         trigger_id = await _ensure_trigger(
             gql, state.get("trigger_id"), name, filters, spec["event_types"], notifier_id
         )
@@ -789,10 +986,12 @@ async def reconcile(
 
 
 async def remove(gql: Gql, state: dict[str, Any]) -> str | None:
-    """Delete the provisioned trigger then notifier; the error text, ``None`` when done."""
+    """Delete the provisioned trigger or playbook, then notifier; the error text, ``None`` when done."""
     try:
         if state.get("trigger_id"):
             await _delete(gql, "triggerKnowledgeDelete", state["trigger_id"])
+        if state.get("playbook_id"):
+            await _delete(gql, "playbookDelete", state["playbook_id"])
         if state.get("notifier_id"):
             await _delete(gql, "notifierDelete", state["notifier_id"])
     except Exception as exc:
@@ -957,7 +1156,9 @@ async def deprovision(db: Any, assignment: Any) -> None:
 
     config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
     state = config.get(STATE_KEY)
-    if not isinstance(state, dict) or not (state.get("trigger_id") or state.get("notifier_id")):
+    if not isinstance(state, dict) or not (
+        state.get("trigger_id") or state.get("notifier_id") or state.get("playbook_id")
+    ):
         return
     try:
         agent = await db.get(Agent, assignment.agent_id)
