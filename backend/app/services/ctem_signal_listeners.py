@@ -113,10 +113,35 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
         source = source_name(payload)
         if source:
             evidence["software"] = [source]
+    pirs = _pir_matches(data, payload)
+    if pirs:
+        evidence["pir"] = pirs
     meta = payload.get("_opencti_event")
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
     return {"external_id": external_id or None, "ref": ref, "label": label, "evidence": evidence}
+
+
+def _pir_matches(data: Mapping[str, Any], payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """CTEM-05: the PIRs an OpenCTI entity is flagged in, as ``[{pir_id, score}]``.
+
+    Read from ``pir_information`` in the entity's OpenCTI extension, which a
+    delivery of the provisioned PIR playbook carries (``xtm_source``
+    ``pir_playbook``). Ids and score only: the matched criteria and the causing
+    relationship stay in OpenCTI, under its own rights model.
+    """
+    if payload.get("xtm_source") != "pir_playbook":
+        return []
+    extensions = data.get("extensions")
+    found: list[dict[str, Any]] = []
+    for ext in (extensions.values() if isinstance(extensions, dict) else []):
+        info = ext.get("pir_information") if isinstance(ext, dict) else None
+        for item in info if isinstance(info, list) else []:
+            pir_id = _text(item.get("pir_id")) if isinstance(item, dict) else ""
+            score = item.get("pir_score") if isinstance(item, dict) else None
+            if pir_id and isinstance(score, int | float) and not isinstance(score, bool):
+                found.append({"pir_id": pir_id, "score": score})
+    return sorted(found, key=lambda p: p["pir_id"])
 
 
 #: Where an Aikido delivery may carry the issue (the body nests it, or not).
