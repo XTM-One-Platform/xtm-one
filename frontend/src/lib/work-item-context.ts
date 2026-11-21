@@ -96,7 +96,7 @@ export const PICKUP_EXPLANATIONS = {
   finished: "Nothing acts on a finished item. Put it back in the queue to have it done again.",
   in_progress: "{agent} claimed it and is working on it. If nothing moves, put it back in the queue.",
   blocked: "Nothing picks up a blocked item until someone puts it back in the queue.",
-  blocked_on_items: "It waits for the items below and goes back to the queue by itself once every one of them is done. A cancelled one keeps it blocked.",
+  blocked_on_items: "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.",
   waiting_for_ci:
     "{count, plural, one {The CI of its pull request is running: when it completes, the platform hands the item to {agent} at once.} other {The CI of its # pull requests is running: when they complete, the platform hands the item to {agent} at once.}}",
   unassigned: "No owner agent is set, so nothing routes it to anyone. Complete it yourself, or ask an agent to take it over.",
@@ -231,12 +231,12 @@ export function unfinishedBlockers(item: Pick<WorkItem, "context">): WorkItemBlo
   return (item.context?.blocked_on ?? []).filter((b) => !b.status || !TERMINAL_STATUSES.has(b.status));
 }
 
-/** The items it waits for that were cancelled: the platform then keeps it blocked for good. */
+/** The items it waits for that were cancelled: the platform hands it back to its owner (a legacy row may still show it). */
 export function cancelledBlockers(item: Pick<WorkItem, "context">): WorkItemBlockerRef[] {
   return (item.context?.blocked_on ?? []).filter((b) => b.status === "cancelled");
 }
 
-/** Whether an item it waits for was cancelled: the platform then keeps it blocked for good. */
+/** Whether an item it waits for was cancelled: the platform hands it back to its owner (a legacy row may still show it). */
 function hasCancelledBlocker(item: Pick<WorkItem, "context">): boolean {
   return cancelledBlockers(item).length > 0;
 }

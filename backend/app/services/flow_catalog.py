@@ -597,9 +597,12 @@ WORK_ITEM_PRIORITY_OPTIONS: tuple[dict[str, str], ...] = (
     {"value": "urgent", "label": "Urgent"},
 )
 
+# Blocked is not offered (#762): a blocked item needs a blocker the platform
+# releases or a person's decision card, which a text field cannot carry.
 WORK_ITEM_STATUS_OPTIONS: tuple[dict[str, str], ...] = tuple(
     {"value": status, "label": status.replace("_", " ").capitalize()}
     for status in WORK_ITEM_STATUSES
+    if status != "blocked"
 )
 
 # What an export node publishes: the stored file and how to fetch it.

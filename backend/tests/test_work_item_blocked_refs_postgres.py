@@ -26,6 +26,7 @@ from app.services import work_item as wi_service
 from app.services.company_managed_writes import person_writer
 from app.services.work_item_pull_requests import handle_pull_request_event
 from tests.scratch_database import ALL_TABLES, scratch_database
+from tests.work_item_owner import add_owner, owner_of
 
 pytestmark = pytest.mark.integration
 
@@ -49,6 +50,7 @@ async def _member(sessions) -> User:
     async with sessions() as db:
         db.add(user)
         await db.commit()
+    await add_owner(sessions, user.id)
     return user
 
 
@@ -57,6 +59,7 @@ async def _blocked(user: User, title: str, **ref) -> dict:
         user_id=str(user.id),
         title=title,
         description="the brief",
+        owner_agent_id=owner_of(user.id),
         blocked_on_refs=[{"repo": REPO, **ref}],
         writer=WRITER,
     )
@@ -199,9 +202,16 @@ async def test_a_blocked_status_needs_a_why_and_leaving_blocked_clears_it():
             await wi_service.create_work_item(
                 user_id=str(user.id), title="No why", status="blocked", writer=WRITER
             )
-        item = await wi_service.create_work_item(user_id=str(user.id), title="Plain", writer=WRITER)
-        with pytest.raises(ValueError, match="blocked_reason"):
+        item = await wi_service.create_work_item(
+            user_id=str(user.id), title="Plain", owner_agent_id=owner_of(user.id), writer=WRITER
+        )
+        with pytest.raises(ValueError, match="blocked_reason is context, never the blocker"):
             await wi_service.update_work_item(item["id"], user_id=str(user.id), status="blocked", writer=WRITER)
+        # A reason alone is no blocker (#762).
+        with pytest.raises(ValueError, match="no blocker the platform releases"):
+            await wi_service.update_work_item(
+                item["id"], user_id=str(user.id), status="blocked", blocked_reason="the UX verdict", writer=WRITER
+            )
         assert (await _get(user, item))["status"] == "open"
 
         blocked = await wi_service.update_work_item(
@@ -209,11 +219,12 @@ async def test_a_blocked_status_needs_a_why_and_leaving_blocked_clears_it():
             user_id=str(user.id),
             status="blocked",
             blocked_reason="the UX verdict, released by the UX Director",
+            blocked_on_refs=[{"repo": REPO, "kind": "pull_request", "number": 7, "release_on": "merged"}],
             writer=WRITER,
         )
-        assert blocked["blocked_why"] == {
-            "text": "Waits for: the UX verdict, released by the UX Director",
-            "missing": False,
-        }
+        assert blocked is not None
+        why = blocked["blocked_why"]
+        assert why["missing"] is False and why["text"].startswith("Waits for: ")
+        assert why["text"].endswith("; the UX verdict, released by the UX Director")
         reopened = await wi_service.update_work_item(item["id"], user_id=str(user.id), status="open", writer=WRITER)
         assert reopened["blocked_reason"] is None and reopened["blocked_why"] is None

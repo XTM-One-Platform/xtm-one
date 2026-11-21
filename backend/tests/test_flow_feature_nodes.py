@@ -192,7 +192,7 @@ async def test_a_note_goes_through_the_service_with_the_flows_writer(monkeypatch
 @pytest.mark.parametrize(
     ("operation", "status", "service", "expected_status"),
     [
-        ("status", "blocked", "update_work_item", "blocked"),
+        ("status", "in_progress", "update_work_item", "in_progress"),
         ("status", "cancelled", "complete_work_item", "cancelled"),
         ("complete", "", "complete_work_item", "done"),
         ("complete", "cancelled", "complete_work_item", "cancelled"),
@@ -222,8 +222,13 @@ async def test_an_ending_status_completes_the_item(monkeypatch, operation, statu
         ({"work_item_id": "not-an-id", "operation": "note", "text": "x"}, "The work item id is not a work item id."),
         ({"work_item_id": str(uuid.UUID(int=1)), "operation": "note", "text": "  "}, "The note is empty."),
         ({"work_item_id": str(uuid.UUID(int=1)), "operation": "status", "status": "lost"}, None),
+        (
+            {"work_item_id": str(uuid.UUID(int=1)), "operation": "status", "status": "blocked", "text": "waits"},
+            "A flow cannot set a work item blocked: leave it open with a later not_before, or create the wait "
+            "with blocked_on. Nothing was written.",
+        ),
     ],
-    ids=["bad-id", "empty-note", "unknown-status"],
+    ids=["bad-id", "empty-note", "unknown-status", "blocked-black-or-white"],
 )
 async def test_an_invalid_update_is_refused_before_the_service(monkeypatch, config, message):
     update = _Spy({"id": "w1", "status": "open"})
@@ -235,6 +240,14 @@ async def test_an_invalid_update_is_refused_before_the_service(monkeypatch, conf
     if message is not None:
         assert result.error == message
     assert update.calls == []
+
+
+def test_the_update_node_does_not_offer_blocked():
+    from app.services.flow_catalog import WORK_ITEM_STATUS_OPTIONS
+
+    offered = {o["value"] for o in WORK_ITEM_STATUS_OPTIONS}
+    assert "blocked" not in offered
+    assert {"open", "in_progress", "done", "cancelled"} <= offered
 
 
 @pytest.mark.asyncio

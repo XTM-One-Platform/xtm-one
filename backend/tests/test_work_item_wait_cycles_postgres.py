@@ -26,6 +26,7 @@ from app.services import work_item as wi_service
 from app.services import work_item_wait_cycles as cycles
 from app.services.company_managed_writes import person_writer
 from tests.scratch_database import ALL_TABLES, scratch_database
+from tests.work_item_owner import add_owner, owner_of
 
 pytestmark = pytest.mark.integration
 
@@ -44,10 +45,12 @@ async def _member(sessions) -> User:
     async with sessions() as db:
         db.add(user)
         await db.commit()
+    await add_owner(sessions, user.id)
     return user
 
 
 async def _create(user: User, title: str, **kwargs) -> dict:
+    kwargs.setdefault("owner_agent_id", owner_of(user.id))
     return await wi_service.create_work_item(user_id=str(user.id), title=title, writer=WRITER, **kwargs)
 
 

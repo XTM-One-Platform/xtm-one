@@ -41,6 +41,7 @@ async def _decision(agent: Any, *, user_id: str | None = None, recipient: str | 
     return await wi_service.create_work_item(
         user_id=user_id,
         title="decide",
+        owner_agent_id=str(agent.id),
         created_by_agent_id=str(agent.id),
         status="blocked",
         needs_human=True,
@@ -146,9 +147,11 @@ async def test_a_recipient_who_cannot_see_a_personal_item_is_refused() -> None:
                 await wi_service.create_work_item(
                     user_id=str(person.id),
                     title="private decision",
+                    owner_agent_id=str(agent.id),
                     created_by_agent_id=str(agent.id),
                     status="blocked",
                     needs_human=True,
+                    ask=_ASK,
                     recipient=str(outsider.id),
                     writer=agent_writer(is_company_managed=False, agent_id=agent.id),
                 )
@@ -195,6 +198,7 @@ async def test_update_to_needs_human_resolves_the_recipient() -> None:
             item = await wi_service.create_work_item(
                 user_id=None,
                 title="later a decision",
+                owner_agent_id=str(agent.id),
                 created_by_agent_id=str(agent.id),
                 is_company_managed=True,
                 writer=writer,

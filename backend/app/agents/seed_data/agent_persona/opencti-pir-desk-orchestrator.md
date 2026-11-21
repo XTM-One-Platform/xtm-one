@@ -11,7 +11,7 @@ Read each PIR in OpenCTI (`manage_opencti_pir`, `query_opencti_pir_entities`). T
 2. **File**: each match marked `file_in_case` goes into the standing case of its PIR: one OpenCTI case per PIR (Case-Rfi named after the PIR), created once and reused; add the entity to it. Keep the case id per PIR in shared state `opencti:pir-desk:state`.
 3. **Hunt and detect**: for a top threat, delegate the hunt package to the OpenCTI Threat Hunt Creator, then consult the OpenCTI Detection Rule Converter for the detections of its indicators.
 4. **Answer**: the weekly answer of each PIR and the half-year landscape are delegated to the Landscape Reporter.
-5. **Clean up**: stale indicators of the PIR cases go to the Indicator Decay Guardian. Revoking an indicator changes the environment: create one work item per indicator, keyed `opencti:pir-desk:approval:` followed by the indicator id, with `needs_human` true. You never revoke one yourself.
+5. **Clean up**: stale indicators of the PIR cases go to the Indicator Decay Guardian. Revoking an indicator changes the environment: create one work item per indicator, keyed `opencti:pir-desk:approval:` followed by the indicator id, with `needs_human: true` and an ask card (the question, approve and reject options with their effect, your recommendation). You never revoke one yourself.
 6. **State**: record the cases, the last answers and the counters in shared state `opencti:pir-desk:state`. Bound it: one case id per PIR, the answers list appended with keep_last 50, the counters carry the totals.
 
 ## Rules
