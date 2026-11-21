@@ -3,8 +3,9 @@
 """OpenAEV atomic testing + payload management tools.
 
 * ``manage_openaev_atomic_testing`` - one-off inject tests: search/get/create/
-  update/delete and launch/relaunch/duplicate (``AtomicTestingApi``). Launch
-  and relaunch EXECUTE against the targeted assets.
+  update/delete and launch/relaunch/stop/duplicate (``AtomicTestingApi``).
+  Launch and relaunch EXECUTE against the targeted assets; stop ends a
+  running test (``POST /api/atomic-testings/{id}/stop``).
 * ``manage_openaev_payload`` - payload management gaps: list/get/update/delete/
   duplicate/upsert (``PayloadApi``). Payload creation with injector-contract
   polling stays in the core ``create_openaev_payload`` tool.
@@ -518,18 +519,34 @@ def register(
             return recurrence_answer(inject_id, recurrence, recurrence_start, recurrence_end)
 
         if action in ("stop", "cancel", "abort"):
+            if not inject_id:
+                return f"inject_id is required for action '{action}'."
+            _, err = await _api(
+                base_url,
+                headers,
+                "post",
+                f"/api/atomic-testings/{inject_id}/stop",
+                "stop atomic test",
+            )
+            if err:
+                # OpenAEV answers 400 with its reason when the test is not
+                # running (queuing, executing or pending); an instance older
+                # than the stop route answers 404/405.
+                return (
+                    f"{err}\nOnly a queuing, executing or pending atomic test can be "
+                    "stopped. On an OpenAEV without the stop route, 'delete' the "
+                    "test to keep a job not yet fetched from running."
+                )
             return (
-                f"OpenAEV has no '{action}' for an atomic test: no API route stops "
-                "one execution (cancel exists for a whole simulation only). To keep "
-                "a queued job from running, 'delete' the test before an agent or "
-                "injector fetches it; an execution already picked up keeps running "
-                "and must be stopped on the executing side. 'relaunch' does not "
-                "stop the running execution either."
+                f"Stopped atomic test {inject_id}: the agent jobs not picked up yet "
+                "are withdrawn and the test ends in ERROR with a trace naming who "
+                "stopped it. A command an agent already started is NOT interrupted "
+                "on the endpoint."
             )
 
         return (
             f"Unknown action '{action}'. Valid actions: list, get, create, update, "
-            "delete, launch, relaunch, duplicate, recurrence."
+            "delete, launch, relaunch, stop, duplicate, recurrence."
         )
 
     async def manage_openaev_payload(
@@ -687,10 +704,10 @@ def register(
                 "relaunch or scheduled run ARCHIVES the previous results and "
                 "creates fresh expectations for all targets, so re-read the "
                 "results afterwards instead of reusing earlier verdicts. "
-                "OpenAEV cannot stop a running atomic test: 'relaunch' runs a "
-                "copy under a NEW inject id and deletes the original, and "
-                "'delete' only keeps a job not yet fetched from running; an "
-                "execution already picked up is never stopped."
+                "'stop' (inject_id) ends a queuing, executing or pending test: "
+                "jobs not yet fetched are withdrawn, a command already started "
+                "is not interrupted. 'relaunch' runs a copy under a NEW inject "
+                "id and deletes the original."
             ),
             input_schema={
                 "type": "object",
@@ -699,7 +716,7 @@ def register(
                         "type": "string",
                         "enum": [
                             "list", "get", "create", "update", "delete", "launch",
-                            "relaunch", "duplicate", "recurrence",
+                            "relaunch", "stop", "duplicate", "recurrence",
                         ],
                     },
                     "inject_id": {"type": "string"},
