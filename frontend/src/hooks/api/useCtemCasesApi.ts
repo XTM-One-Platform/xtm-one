@@ -53,7 +53,7 @@ export interface CtemCaseSummary {
 export type CtemCaseSeverity = "P1" | "P2" | "P3";
 
 /** One validation reference written on a case (OpenAEV run, re-test, provider scan). */
-export interface CtemCaseValidation {
+interface CtemCaseValidation {
   provider: string;
   kind: string;
   ref: string;

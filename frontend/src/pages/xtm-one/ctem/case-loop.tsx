@@ -38,22 +38,24 @@ export function slaCountdown(
   return { late, value: Math.max(minutes, 0), unit: "minute" };
 }
 
-/** The sentence of a countdown. @i18n-keys */
+/** The sentences of a countdown, by side of the SLA and unit. @i18n-keys */
+const SLA_SENTENCES = {
+  left: {
+    minute: "{count, plural, one {{shown} min left} other {{shown} min left}}",
+    hour: "{count, plural, one {{shown} h left} other {{shown} h left}}",
+    day: "{count, plural, one {{shown} day left} other {{shown} days left}}",
+  },
+  late: {
+    minute: "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}",
+    hour: "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}",
+    day: "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
+  },
+} as const;
+
+/** The sentence of a countdown. */
 export function slaSentence(countdown: NonNullable<ReturnType<typeof slaCountdown>>, t_i18n: Translate, locale: string): string {
   const values = { count: countdown.value, shown: formatCount(locale, countdown.value) };
-  const sentences = {
-    left: {
-      minute: "{count, plural, one {{shown} min left} other {{shown} min left}}",
-      hour: "{count, plural, one {{shown} h left} other {{shown} h left}}",
-      day: "{count, plural, one {{shown} day left} other {{shown} days left}}",
-    },
-    late: {
-      minute: "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}",
-      hour: "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}",
-      day: "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
-    },
-  } as const;
-  return t_i18n(sentences[countdown.late ? "late" : "left"][countdown.unit], values);
+  return t_i18n(SLA_SENTENCES[countdown.late ? "late" : "left"][countdown.unit], values);
 }
 
 /** The loop marks of a case: reopened by a failed re-test, escalated past its SLA. */

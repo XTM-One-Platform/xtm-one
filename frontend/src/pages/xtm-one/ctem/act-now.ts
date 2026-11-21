@@ -230,7 +230,7 @@ export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97 } as 
 /** The open P1 cases Act now lists, most urgent SLA first (CTEM-03-UI, #892): a
  *  P1 case opened by the loop is what to do first, above what waits on the
  *  reader. Two at most, so the queue keeps room for the rest. */
-export const ACT_NOW_CASE_MAX = 2;
+const ACT_NOW_CASE_MAX = 2;
 
 export function actNowP1Cases<T extends { state: string; severity?: string | null; sla_due_at?: string | null }>(cases: readonly T[]): T[] {
   return cases

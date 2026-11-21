@@ -58,6 +58,7 @@ export function useActivityStream() {
         presenter_name?: string;
         presentation_id?: string;
         signal_id?: string;
+        case_id?: string;
       } | null = null;
       try {
         parsed = JSON.parse(event.data as string);
