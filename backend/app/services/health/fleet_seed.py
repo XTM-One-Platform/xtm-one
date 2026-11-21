@@ -502,6 +502,12 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
     from app.services.fleets import drop_fleet_health_check
 
     await drop_fleet_health_check(db, orchestrator.id)
+    # Its About page (#974): written at seed and rewritten when the shipped text changes.
+    from app.agents.builtin_fleet_docs import PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED
+    from app.services.fleet_docs import seed_documentation
+
+    await db.flush()
+    await seed_documentation(db, fleet, PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED)
     return fleet
 
 

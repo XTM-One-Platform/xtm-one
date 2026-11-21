@@ -122,6 +122,18 @@ def test_schedules_off_and_copilot_mode() -> None:
     assert (starts.events, starts.schedules, starts.next_run_at, starts.modules) == (False, 0, None, ())
 
 
+def test_the_shipped_documentation_validates_and_names_no_fleet_action() -> None:
+    from app.agents.builtin_fleet_docs import PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED
+    from app.services.fleet_docs import DOC_SECTIONS, clean_sections, clean_structured
+
+    assert set(clean_sections(PLATFORM_HEALTH_DOC)) == set(DOC_SECTIONS)
+    parts = clean_structured(PLATFORM_HEALTH_STRUCTURED)
+    assert parts and len(parts["triggers"]) == 5
+    text = " ".join(PLATFORM_HEALTH_DOC.values()).lower()
+    for phrase in ("switch each automation on", "from the fleet page", "handover", "manual only"):
+        assert phrase not in text
+
+
 @pytest.mark.asyncio
 async def test_the_platform_health_fleet_gets_no_weekly_fleet_health_check() -> None:
     agent = cast(Agent, SimpleNamespace(id=uuid.uuid4(), user_id=None, is_company_managed=True))
