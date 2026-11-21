@@ -111,6 +111,7 @@ The root `AGENTS.md` keeps one line per entry, because every agent session loads
 | `/api/v1/chat/conversations/{id}/export` | `?format=markdown` or `?format=pdf`: the conversation as a document, readable by whoever may read the conversation (`resolve_conversation_for_read`, 404 otherwise); chart blocks written as tables; a PDF counted against the export budget (`enforce_export_rate_limit`) |
 | `/v1` | OpenAI-compatible LLM proxy (API key auth) |
 | `/xtm/auth/jwks`, `/xtm/auth/metadata` | JWKS public keys and metadata for cross-platform JWT verification (public) |
+| `POST /xtm/auth/exchange` | A registered platform's user token (bearer) for an XTM One token addressed to another active registration (`{audience}`), 10 minutes, never cached (`dev-docs/cross-platform-identity.md` step 7) |
 | `/api/auth/oidc/*`, `/api/auth/saml/*` | SSO flows (OIDC + SAML 2.0 with automatic group mapping) |
 | `/api/oauth/callback` | OAuth redirect callback (unified) |
 | `/api/channels/*` | Channel webhooks (Slack, Teams, WhatsApp, Telegram, Discord, Google Chat) |

@@ -202,6 +202,50 @@ class FleetMemberResponse(BaseModel):
     created_at: str
 
 
+class FleetSlotIntegration(BaseModel):
+    """An integration as a capability slot shows it (#914 slice 2)."""
+
+    integration_id: str
+    provider: str
+    #: Empty when the reader cannot see the bound integration.
+    name: str = ""
+
+
+class FleetCapabilitySlot(BaseModel):
+    """One capability a member's role can use, and how it is filled."""
+
+    capability: str
+    label: str
+    #: ``filled`` (bound), ``empty`` (a connected one can be bound) or
+    #: ``unavailable`` (none connected).
+    state: Literal["filled", "empty", "unavailable"]
+    bound: list[FleetSlotIntegration] = Field(default_factory=list)
+    candidates: list[FleetSlotIntegration] = Field(default_factory=list)
+
+
+class FleetMemberSlots(BaseModel):
+    """The capability slots of one home member."""
+
+    member_id: str
+    agent_id: str
+    name: str = ""
+    role_label: str = ""
+    #: Whether the reader may bind or unbind on this member's agent.
+    can_edit: bool = False
+    slots: list[FleetCapabilitySlot] = Field(default_factory=list)
+
+
+class FleetCapabilitySlotsResponse(BaseModel):
+    fleet_id: str
+    members: list[FleetMemberSlots] = Field(default_factory=list)
+
+
+class FleetSlotBind(BaseModel):
+    """Bind one connected integration to a member's slot."""
+
+    integration_id: str = Field(min_length=1, max_length=64)
+
+
 class FleetMemberMove(BaseModel):
     """Move a home member to another fleet in one transaction."""
 
@@ -640,6 +684,28 @@ class FleetRunEntry(BaseModel):
     trigger_type: str | None = None
     trigger_provider: str | None = None
     trigger_event: str | None = None
+    #: The CTEM case the run works on, when a case event started it (#915). An
+    #: id only: the case is read through ``GET /ctem-cases/{id}``, per viewer.
+    case_id: str | None = None
+
+
+class CaseRunEntry(BaseModel):
+    """One run working on a CTEM case (#915), for the case page."""
+
+    id: str
+    agent_id: str
+    agent_name: str | None = None
+    status: str
+    created_at: str
+    completed_at: str | None
+    outcome: str = "other"
+
+
+class CaseRunsResponse(BaseModel):
+    """The runs the caller may see that a CTEM case's events started, oldest first."""
+
+    case_id: str
+    runs: list[CaseRunEntry]
 
 
 class FleetActivityResponse(BaseModel):

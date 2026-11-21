@@ -84,7 +84,11 @@ A built-in agent has two layers (`app.services.builtin_customer_layer`).
 - **What the seed keeps** (`agents.customer_fields`, migration `c914builtincustlayer1`): the customer-layer fields a person set. The seed would otherwise write three of them: the model (`seed_keeps_model` skips it once pinned; clearing every model field hands it back to the release) and the template-bound providers with their read-only set (`SEEDED_DEFAULT_FIELDS`, `seed_keeps_field`: the seeded default stays until a person sets one). Tripwire: `tests/test_builtin_customer_layer.py`.
 - A fork (`dev-docs/fleet-fork.md`) stays the way to change mechanics.
 
-Next slices of #914: capability slots per built-in role, the learned skill per built-in agent, the "Locked by the product" / "Yours" split in the UI. Gate pins and added gates on built-in fleets (CTEM-34) are stored in this layer.
+### Capability slots (#914 slice 2)
+
+Each role label of a fleet member declares the capabilities it can use (`app.services.fleet_capability_slots.ROLE_SLOTS`: Mobilization takes ticketing and notification, Validation EDR/XDR, scanner and EASM, Triage and Relevance vulnerability intelligence and asset inventory, Hunt, Detections and Gap analysis SIEM and EDR/XDR, Discovery scanner, EASM and asset inventory). A capability is a set of catalog `integration_types` (`CAPABILITIES`), never a provider name, so any provider typed that way fills it. `GET /fleets/{id}/capability-slots` answers each home member's slots as `filled`, `empty` (a connected integration the reader sees can be bound) or `unavailable` (none connected); a company-managed agent is offered company-managed integrations only. `POST /fleets/{id}/members/{member_id}/slots/{capability}` with `{integration_id}` binds a connected integration in one click and `DELETE .../slots/{capability}/{integration_id}` unbinds it: both write the member AGENT's `integration_bindings` under the agent's manage rule (company-managed: administrators), never the fleet, so a built-in fleet's write lock does not apply and the seed keeps the binding (customer layer). Licence-gated, no model call, audited on the agent. Tripwire: `tests/test_fleet_capability_slots.py`.
+
+Next slices of #914: the learned skill per built-in agent, the "Locked by the product" / "Yours" split and the slots on the fleet and agent pages (UI, UX gate). Gate pins and added gates on built-in fleets (CTEM-34) are stored in this layer.
 
 ## Built-in knowledge bases (XTM One)
 
