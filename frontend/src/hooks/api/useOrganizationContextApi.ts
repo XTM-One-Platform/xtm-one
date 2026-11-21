@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type { PrioritizationPolicy } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -19,6 +19,8 @@ interface TechStackEntry {
   product: string;
   vendor: string;
   cpe: string;
+  /** The version the organization runs, optional (CTEM-11): absent on a profile saved before it. */
+  version?: string;
 }
 
 interface AiSystem {
@@ -44,8 +46,7 @@ export interface OrganizationProfile {
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
-  /** The ticketing target; `sync` is how CTEM cases sync with it (#917, absent on an older profile: the defaults). */
-  ticketing: { integration: string; project: string; sync?: TicketingSync };
+  ticketing: { integration: string; project: string };
   /** The Exposure Posture score aimed for, 0-100 (#11547 S2e); absent or null: no target. */
   posture_target?: number | null;
   /** The CTEM prioritization rules (#11543); the Governance & Risk page reads its accepted risks. */
