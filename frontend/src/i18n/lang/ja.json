@@ -20003,6 +20003,7 @@
   "Techniques in attack order": "攻撃順のテクニック",
   "Recorded how it would be exploited": "想定される悪用方法を記録しました",
   "{starts}, next {time}": "{starts}、次回 {time}",
+  "{starts}, off in Settings": "{starts}、設定でオフ",
   "Platform Health is off in Settings": "設定で Platform Health がオフです",
   "Platform Health switched on in Settings": "設定で Platform Health がオン",
   "AI summary": "AI 要約",
