@@ -101,7 +101,74 @@ const DECLARED_GATE_ACTIONS = [
   "Validate exploitability in OpenAEV",
   "Run a test against an AI system",
   "Any proposed action on a supplier",
+  // The CTEM loop gate catalog (#916, CTEM-34: `builtin_fleet_docs._ctem_gates`).
+  "Validate: run an OpenAEV test that is not read-only",
+  "Review: an analyst checks the threat package",
+  "Decide: choose the remediation option",
+  "Mobilize: create the tickets, notify the owners, hand over the prepared change",
+  "Mobilize: carry out an action on a supplier (contact, control, clause, monitoring)",
+  "Apply a change on production through an integration",
+  "Accept a residual risk beyond the policy cap",
+  "Close a case without a passing re-test",
 ] as const;
+
+/**
+ * One line per CTEM loop gate (#916, CTEM-34): what happens when it runs
+ * alone, so a person sees the effect of a pin before the click. @i18n-keys
+ */
+const CTEM_GATE_EFFECTS: Record<string, string> = {
+  "ctem.validation.non_readonly": "When it runs alone, OpenAEV tests that are not read-only start without a person.",
+  "ctem.analyst_review": "When it runs alone, the fleet requests the coverage without an analyst's review.",
+  "ctem.remediation.decision": "When it runs alone, the recommended option is applied and logged as decided by policy.",
+  "ctem.mobilize": "One decision per case: the tickets, the owners' notices and the prepared change go out together.",
+  "ctem.production_change": "When it runs alone, the fleet applies a change on production through an integration.",
+  "ctem.accept_risk": "When it runs alone, a residual risk beyond the policy cap is accepted without a person.",
+  "ctem.close_without_retest": "When it runs alone, a case closes on the proof that fits the fix, without a re-test.",
+};
+
+/** The one-line effect of a CTEM loop gate; `null` for any other gate. */
+export function ctemGateEffect(key: string): string | null {
+  return CTEM_GATE_EFFECTS[key] ?? null;
+}
+
+/**
+ * Whether a CTEM loop gate waits out of the box: the seeded level (Low)
+ * gates destructive actions only, so the one destructive gate, Mobilize,
+ * waits and every other runs (`fleet_autonomy.is_gated`). Read from the
+ * gate's impact, never a list of keys, so the backend catalog stays the source.
+ */
+export function ctemGateWaitsByDefault(gate: Pick<FleetAutonomyGate, "impact">): boolean {
+  return gate.impact === "destructive";
+}
+
+/** The per-action settings of a gate, in the order the control lists them (`fleet_autonomy.APPROVAL_PINS`). @i18n-keys */
+export const GATE_PIN_LABELS = {
+  level: "Follows the level",
+  wait: "Always waits",
+  run: "Always runs alone",
+} as const;
+
+/**
+ * The pins after setting `key` to `pin` (`null`: follow the level), the
+ * other gates' pins kept: `PUT /fleets/{id}/autonomy` takes the whole map.
+ */
+export function nextPins(catalog: FleetAutonomyGate[], key: string, pin: "wait" | "run" | null): Record<string, "wait" | "run"> {
+  const out: Record<string, "wait" | "run"> = {};
+  for (const gate of catalog) {
+    if (gate.key !== key && (gate.pin === "wait" || gate.pin === "run")) out[gate.key] = gate.pin;
+  }
+  if (pin) out[key] = pin;
+  return out;
+}
+
+/**
+ * Whether moving a gate's pin from `from` to `to` lets the action run with
+ * less approval: a new "run", or an "Always waits" removed. An administrator
+ * only, as the backend's `pins_lower_approval` (403 otherwise).
+ */
+export function pinLowersApproval(from: "wait" | "run" | null | undefined, to: "wait" | "run" | null): boolean {
+  return (to === "run" && from !== "run") || (from === "wait" && to !== "wait");
+}
 
 /** The display name of an integration provider (`microsoft` reads "Microsoft"). */
 export function integrationName(provider: string): string {

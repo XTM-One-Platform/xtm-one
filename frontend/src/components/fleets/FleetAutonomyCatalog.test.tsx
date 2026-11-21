@@ -69,4 +69,47 @@ describe("FleetAutonomyCatalog", () => {
     expect(screen.getByRole("rowheader")).toHaveTextContent("Create or change content in Slack");
     expect(screen.getByRole("rowheader")).not.toHaveTextContent("_");
   });
+
+  it("marks a CTEM loop gate with its effect and its out-of-the-box default (#916, CTEM-34)", () => {
+    const ctem: FleetAutonomyGate[] = [
+      {
+        key: "ctem.mobilize",
+        action: "Mobilize: create the tickets, notify the owners, hand over the prepared change",
+        module: "platform",
+        impact: "destructive",
+        gated: true,
+        by_level: { full_gates: true, medium: true, low: true, autonomous: false },
+      },
+      {
+        key: "ctem.remediation.decision",
+        action: "Decide: choose the remediation option",
+        module: "platform",
+        impact: "high",
+        gated: false,
+        by_level: { full_gates: true, medium: true, low: false, autonomous: false },
+      },
+    ];
+    renderWithProviders(<FleetAutonomyCatalog catalog={ctem} level="low" />);
+    expect(screen.getByTestId("about-autonomy-default-ctem.mobilize")).toHaveTextContent("Out of the box: waits for a person");
+    expect(screen.getByTestId("about-autonomy-default-ctem.remediation.decision")).toHaveTextContent(
+      "Out of the box: runs alone, recorded as passed automatically",
+    );
+    expect(screen.getByTestId("about-autonomy-effect-ctem.remediation.decision")).toHaveTextContent("decided by policy");
+    // A gate outside the CTEM catalog carries neither line.
+    cleanup();
+    renderWithProviders(<FleetAutonomyCatalog catalog={catalog} level="medium" />);
+    expect(screen.queryByTestId("about-autonomy-default-ticket.create")).toBeNull();
+  });
+
+  it("has no setting column for a reader who does not manage the fleet", () => {
+    renderWithProviders(<FleetAutonomyCatalog catalog={catalog} level="medium" fleetId="f1" canManage={false} />);
+    expect(within(screen.getByRole("table")).getAllByRole("columnheader")).toHaveLength(5);
+    expect(screen.queryByTestId("about-autonomy-pin-ticket.create")).toBeNull();
+  });
+
+  it("adds a setting column with one control per gate for a manager", () => {
+    renderWithProviders(<FleetAutonomyCatalog catalog={catalog} level="medium" fleetId="f1" canManage isAdmin />);
+    expect(within(screen.getByRole("table")).getAllByRole("columnheader")).toHaveLength(6);
+    expect(screen.getByTestId("about-autonomy-pin-ticket.create")).toHaveTextContent("Follows the level");
+  });
 });
