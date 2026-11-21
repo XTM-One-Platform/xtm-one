@@ -2007,6 +2007,7 @@
   "CTEM case resolved": "CTEMケースが解決されました",
   "CTEM case past its SLA": "CTEMケースがSLAを超過しました",
   "CTEM case validation finished": "CTEMケースの検証が完了しました",
+  "CTEM case re-test requested": "CTEMケースの再テストが要求されました",
   "Connected MCP Servers": "接続済み MCP サーバー",
   "Connecting integrations…": "インテグレーションに接続中…",
   "Connecting to server...": "サーバーに接続中...",
