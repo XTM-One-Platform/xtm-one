@@ -108,10 +108,12 @@ describe("ActNowCard", () => {
       { id: "c2", title: "Patch a P2", state: "needs_attention", severity: "P2", sla_due_at: null },
     ];
     card([row("kev", 95)]);
-    expect(sources()).toEqual(["case", "work_item", "module"]);
+    // Since CTEM-30 (#937) a P2 case is listed too, below what waits on the reader.
+    expect(sources()).toEqual(["case", "work_item", "case"]);
     expect(within(items()[0]).getByText("Do first")).toBeTruthy();
     expect(within(items()[0]).getByText("Close the exposure of edge-01")).toBeTruthy();
-    expect(screen.queryByText("Patch a P2")).toBeNull();
+    expect(within(items()[2]).getByText("Patch a P2")).toBeTruthy();
+    expect(within(items()[2]).queryByText("Do first")).toBeNull();
   });
 
   it("shows a case row's own urgency, the P1 chip of the case, never a High band (UX round 2 on #897, B3)", () => {
