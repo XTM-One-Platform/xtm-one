@@ -339,6 +339,52 @@ describe("the work item detail", () => {
       expect(within(button).getByText(label)).toBeTruthy();
     });
 
+    // #834: sources as buttons, Markdown context, recommended option first.
+    it("shows the ask's sources as links, its context as Markdown and the recommended option first", () => {
+      const jira = "https://example.atlassian.net/browse/FIN-798";
+      openDialog(
+        waiting({
+          ask: {
+            ...ask,
+            recommendation: "B",
+            context: "Legal approves with **changes**.\nSee [the review](https://example.com/review).",
+            links: [{ label: "FIN-798", url: jira }],
+          },
+        }),
+        { answer: true },
+      );
+      const card = screen.getByTestId("work-item-decision");
+      const link = within(card).getByTestId("work-item-decision-link") as HTMLAnchorElement;
+      expect(link.textContent).toBe("FIN-798");
+      expect(link.getAttribute("href")).toBe(jira);
+      expect(link.getAttribute("target")).toBe("_blank");
+      const context = within(card).getByTestId("work-item-decision-context");
+      expect(context.querySelector("strong")?.textContent).toBe("changes");
+      expect(context.querySelector("a")?.getAttribute("href")).toBe("https://example.com/review");
+      expect(context.querySelectorAll("p")).toHaveLength(2);
+      const buttons = within(card).getAllByTestId("work-item-decision-option");
+      expect(buttons.map((b) => b.textContent)).toEqual(["Enterprise", "Starter"]);
+      expect(within(card).queryByTestId("work-item-decision-fallback")).toBeNull();
+    });
+
+    it("shows the brief, its links and the incomplete line when the ask is missing, not the bare title", () => {
+      openDialog(
+        waiting({
+          card_fallback: {
+            brief: "The People Team asks Legal to review the payroll request.",
+            links: [{ label: "FIN-798", url: "https://example.atlassian.net/browse/FIN-798" }],
+            missing: ["ask.question"],
+          },
+        }),
+        { answer: true },
+      );
+      const card = screen.getByTestId("work-item-decision");
+      const fallback = within(card).getByTestId("work-item-decision-fallback");
+      expect(fallback.textContent).toContain("The People Team asks Legal to review the payroll request.");
+      expect(within(card).getByTestId("work-item-decision-incomplete").textContent).toContain("This card is incomplete");
+      expect(within(card).getByTestId("work-item-decision-link").textContent).toBe("FIN-798");
+    });
+
     it.each([
       ["409", "409 Conflict: the work item changed since it was read"],
       ["500", "500 Internal Server Error: database unavailable"],

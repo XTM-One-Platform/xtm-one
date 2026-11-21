@@ -27,14 +27,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * under a collapsed "Technical details". A legacy item (no structured `ask`)
  * is headed by its title and takes a free-text answer only.
  *
+ * #834: the ask's sources (`ask.links`: the Jira ticket, the pull request,
+ * the document) are buttons under the question; the context is Markdown
+ * (links clickable, one paragraph per line); the recommended option comes
+ * first. An item whose ask is missing or incomplete shows the server's
+ * `card_fallback` (the first lines of its brief and the links found in it)
+ * and says the card is incomplete, never the bare title alone.
+ *
  * Ask the agent (slice 4, `WorkItemAskAgent`) closes the card; the detail
  * dialog shows it on every other unfinished item too (#9879). A sent answer
  * or ask closes the dialog (*onAnswered*, #774).
  */
 import { useId, useState } from "react";
-import { CalendarClock, MessageSquareReply, Send, Sparkles } from "lucide-react";
+import { CalendarClock, ExternalLink, MessageSquareReply, Send, Sparkles } from "lucide-react";
 import { Textarea } from "@filigran/design-system";
 
+import MarkdownText from "@/components/custom-dashboard/charts/MarkdownText";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DisclosureSummary } from "@/components/ui/disclosure";
@@ -72,8 +80,14 @@ export function WorkItemDecisionCard({
     .map((line) => line.trim())
     .filter(Boolean);
   const technical = item.blocked_reason?.trim() ?? "";
-  const options = ask?.options ?? [];
   const recommended = ask?.recommendation ?? null;
+  // The recommended option first, the others in the agent's order.
+  const options = [...(ask?.options ?? [])].sort(
+    (a, b) => Number(b.key === recommended) - Number(a.key === recommended),
+  );
+  const fallback = item.card_fallback ?? null;
+  const links = ask?.links?.length ? ask.links : (fallback?.links ?? []);
+  const brief = fallback?.brief?.trim() ?? "";
 
   const send = async (option?: WorkItemAskOption) => {
     const words = text.trim();
@@ -119,13 +133,36 @@ export function WorkItemDecisionCard({
       <p id={`${textId}-question`} className="content-base font-medium text-default-primary">
         {question}
       </p>
-      {context.length > 0 && (
-        <div className="space-y-1" data-testid="work-item-decision-context">
-          {context.map((line, index) => (
-            <p key={index} className="content-compact text-default-secondary">
-              {line}
-            </p>
+      {links.length > 0 && (
+        <ul className="flex flex-wrap gap-2" aria-label={t_i18n("Sources")} data-testid="work-item-decision-links">
+          {links.map((link) => (
+            <li key={link.url}>
+              <Button asChild size="sm" variant="outline" className="gap-1">
+                <a href={link.url} target="_blank" rel="noopener noreferrer" data-testid="work-item-decision-link">
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  {link.label}
+                </a>
+              </Button>
+            </li>
           ))}
+        </ul>
+      )}
+      {context.length > 0 && (
+        <div data-testid="work-item-decision-context">
+          <MarkdownText
+            text={context.join("\n\n")}
+            className="content-compact text-default-secondary [&_p]:my-1"
+          />
+        </div>
+      )}
+      {fallback && (
+        <div className="space-y-1" data-testid="work-item-decision-fallback">
+          {!ask?.question && brief && (
+            <MarkdownText text={brief} className="content-compact text-default-secondary [&_p]:my-1" />
+          )}
+          <p className="content-compact font-medium text-default-primary" data-testid="work-item-decision-incomplete">
+            {t_i18n("This card is incomplete: its agent is asked to rewrite it.")}
+          </p>
         </div>
       )}
 
