@@ -15808,7 +15808,6 @@
   "Units of work": "Units of work",
   "Rates by role": "Rates by role",
   "Answer by {date}": "Answer by {date}",
-  "Answer differently": "Answer differently",
   "Answer sent": "Answer sent",
   "The work item is back with its agent, with your answer.": "The work item is back with its agent, with your answer.",
   "Failed to send the answer": "Failed to send the answer",
@@ -19833,8 +19832,6 @@
   "It waits for the changes below and goes back to {agent} by itself once every one of them is released: nothing to do.": "It waits for the changes below and goes back to {agent} by itself once every one of them is released: nothing to do.",
   "It waits for a person's decision and goes back to {agent} by itself once the decision card is answered.": "It waits for a person's decision and goes back to {agent} by itself once the decision card is answered.",
   "A pull request releases it once merged or closed.": "A pull request releases it once merged or closed.",
-  "A pull request releases it once merged.": "A pull request releases it once merged.",
-  "A pull request releases it once closed.": "A pull request releases it once closed.",
   "An issue releases it once closed.": "An issue releases it once closed.",
   "A deployment releases it once the change runs in production.": "A deployment releases it once the change runs in production.",
   "A workflow releases it at its next successful run.": "A workflow releases it at its next successful run.",
@@ -19989,6 +19986,7 @@
   "Escalated: SLA breached": "Escalated: SLA breached",
   "Not exposed": "Not exposed",
   "Reopened: re-test failed": "Reopened: re-test failed",
+  "Closed on passing re-test": "Closed on passing re-test",
   "Escalated": "Escalated",
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, one {{shown} min left} other {{shown} min left}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, one {{shown} h left} other {{shown} h left}}",
@@ -20004,5 +20002,10 @@
   "Restricted asset": "Restricted asset",
   "Techniques in attack order": "Techniques in attack order",
   "Recorded how it would be exploited": "Recorded how it would be exploited",
-  "Asked by {agent}": "Asked by {agent}"
+  "Re-test queued": "Re-test queued",
+  "Re-test passed in {provider} on {date}": "Re-test passed in {provider} on {date}",
+  "Re-test passed on {date}": "Re-test passed on {date}",
+  "Not reproduced": "Not reproduced",
+  "Reproduced": "Reproduced",
+  "Not re-tested yet": "Not re-tested yet"
 }

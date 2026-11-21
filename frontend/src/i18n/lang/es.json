@@ -15808,7 +15808,6 @@
   "Units of work": "Unidades de trabajo",
   "Rates by role": "Tarifas por rol",
   "Answer by {date}": "Responder antes del {date}",
-  "Answer differently": "Responder de otra forma",
   "Answer sent": "Respuesta enviada",
   "The work item is back with its agent, with your answer.": "El elemento de trabajo vuelve a su agente, con tu respuesta.",
   "Failed to send the answer": "No se pudo enviar la respuesta",
@@ -19833,8 +19832,6 @@
   "It waits for the changes below and goes back to {agent} by itself once every one of them is released: nothing to do.": "Espera los cambios de abajo y vuelve solo a {agent} en cuanto cada uno se libera: no hay nada que hacer.",
   "It waits for a person's decision and goes back to {agent} by itself once the decision card is answered.": "Espera la decisión de una persona y vuelve solo a {agent} en cuanto se responde la tarjeta de decisión.",
   "A pull request releases it once merged or closed.": "Una pull request lo libera al fusionarse o cerrarse.",
-  "A pull request releases it once merged.": "Una pull request lo libera una vez fusionada.",
-  "A pull request releases it once closed.": "Una pull request lo libera una vez cerrada.",
   "An issue releases it once closed.": "Una issue lo libera al cerrarse.",
   "A deployment releases it once the change runs in production.": "Un despliegue lo libera en cuanto el cambio se ejecuta en producción.",
   "A workflow releases it at its next successful run.": "Un workflow lo libera en su próxima ejecución correcta.",
@@ -19989,6 +19986,7 @@
   "Escalated: SLA breached": "Escalado: SLA incumplido",
   "Not exposed": "No expuesto",
   "Reopened: re-test failed": "Reabierto: la nueva prueba falló",
+  "Closed on passing re-test": "Cerrado tras una nueva prueba superada",
   "Escalated": "Escalado",
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, one {Queda {shown} min} other {Quedan {shown} min}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, one {Queda {shown} h} other {Quedan {shown} h}}",
@@ -20004,5 +20002,10 @@
   "Restricted asset": "Activo restringido",
   "Techniques in attack order": "Técnicas en el orden del ataque",
   "Recorded how it would be exploited": "Registró cómo se explotaría",
-  "Asked by {agent}": "Preguntado por {agent}"
+  "Re-test queued": "Nueva prueba en cola",
+  "Re-test passed in {provider} on {date}": "Nueva prueba superada en {provider} el {date}",
+  "Re-test passed on {date}": "Nueva prueba superada el {date}",
+  "Not reproduced": "No reproducido",
+  "Reproduced": "Reproducido",
+  "Not re-tested yet": "Aún sin nueva prueba"
 }
