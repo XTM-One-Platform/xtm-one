@@ -387,6 +387,12 @@ export function HealthOverviewTab() {
   const [dismissing, setDismissing] = useState<HealthFinding[]>([]);
   const cards = useMemo(() => overview.data?.modules ?? [], [overview.data]);
   const modules = useMemo(() => cards.map((card) => card.module), [cards]);
+  // Administrators see the analysed modules with their Module Analyst footer, in a row group of their own.
+  const analystCards = useMemo(
+    () => (overview.data?.scope === "all" ? cards.filter((card) => ANALYST_MODULES.includes(card.module)) : []),
+    [cards, overview.data?.scope],
+  );
+  const baseCards = useMemo(() => cards.filter((card) => !analystCards.includes(card)), [cards, analystCards]);
   const lists = { open: openFindings, dismissed: dismissedFindings, resolved: resolvedFindings };
   const findings = lists[view];
   // Tab counts come from each list's server total, never from the rows of a page.
@@ -600,25 +606,26 @@ export function HealthOverviewTab() {
 
   return (
     <div className="space-y-6">
-      {/* items-start: a card with the analyst footer never stretches its row neighbour into an empty band (UX round 1 B3 on #953). */}
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="health-module-cards">
-        {cards.map((card) => (
-          <StatCard
-            key={card.module}
-            icon={HealthGlyph}
-            label={t_i18n(HEALTH_MODULE_LABELS[card.module])}
-            value={String(card.score)}
-            subtitle={moduleCardSubtitle(card, t_i18n)}
-            iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
-            footer={
-              // The Module Analyst's last cycle and "Investigate now": administrators, analysed modules (section 12.7).
-              overview.data?.scope === "all" && ANALYST_MODULES.includes(card.module) ? (
-                <ModuleInvestigationLine module={card.module} investigation={card.last_investigation} />
-              ) : undefined
-            }
-          />
-        ))}
-      </div>
+      {/* Two row groups, each card in a row the same height (UX round 2 B1 on #953, standards s.4): the cards
+          without a footer first, then the analysed modules with their Module Analyst footer (administrators). */}
+      {[baseCards, analystCards].filter((group) => group.length).map((group) => (
+        <div key={group === analystCards ? "analyst" : "base"} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid={group === analystCards ? "health-analyst-module-cards" : "health-module-cards"}>
+          {group.map((card) => (
+            <StatCard
+              key={card.module}
+              icon={HealthGlyph}
+              label={t_i18n(HEALTH_MODULE_LABELS[card.module])}
+              value={String(card.score)}
+              subtitle={moduleCardSubtitle(card, t_i18n)}
+              iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
+              footer={
+                // The Module Analyst's last cycle and "Investigate now": administrators, analysed modules (section 12.7).
+                analystCards.includes(card) ? <ModuleInvestigationLine module={card.module} investigation={card.last_investigation} /> : undefined
+              }
+            />
+          ))}
+        </div>
+      ))}
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
       {/* The analysis layer (#101 S9c): administrators only, after the history, before the findings. */}
       {overview.data?.scope === "all" ? <HealthAnalysisPanel /> : null}

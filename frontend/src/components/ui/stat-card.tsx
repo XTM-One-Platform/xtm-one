@@ -78,8 +78,11 @@ export function StatCard({ icon: Icon, label, value, subtitle, exact, className,
           <p className="content-caption text-default-secondary mt-0.5">{typeof subtitle === "string" ? t_i18n(subtitle) : subtitle}</p>
         </div>
         {footer && !onClick ? (
-          <div className="mt-3 border-t border-elevation-subtle pt-3" data-testid="stat-card-footer">
-            {footer}
+          // mt-auto: in a row of equal-height cards the footers sit on one line (UX round 2 B1 on xtm-one #953).
+          <div className="mt-auto pt-3">
+            <div className="border-t border-elevation-subtle pt-3" data-testid="stat-card-footer">
+              {footer}
+            </div>
           </div>
         ) : null}
       </CardContent>

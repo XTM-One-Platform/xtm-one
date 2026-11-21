@@ -119,7 +119,7 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
     <div className="space-y-2" data-testid={`health-investigation-${module}`}>
       <p className="content-compact font-medium text-default-secondary">{t_i18n("Last investigation")}</p>
       {investigation ? (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
+        <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
           <Badge variant={INVESTIGATION_STATUS_BADGE[investigation.status] ?? "outline"} className="whitespace-nowrap">
             {t_i18n(labelOf(INVESTIGATION_STATUS_LABELS, investigation.status, INVESTIGATION_STATUS_LABELS.failed))}
           </Badge>
@@ -127,7 +127,8 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
           <span>{t_i18n(labelOf(INVESTIGATION_TRIGGER_LABELS, investigation.trigger, INVESTIGATION_TRIGGER_LABELS.schedule))}</span>
         </div>
       ) : (
-        <p className="content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>
+        // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
+        <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>
       )}
       <AiDisabledTip>
         <Button
