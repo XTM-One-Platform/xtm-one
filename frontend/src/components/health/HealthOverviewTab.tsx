@@ -35,10 +35,10 @@ import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/comp
 import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { HealthAnalysisPanel } from "@/components/health/HealthAnalysisPanel";
-import { ANALYST_MODULES, AnalystRecommendationBlock, ModuleInvestigationLine } from "@/components/health/ModuleAnalystParts";
+import { ModuleAnalysisSummary, analysisRowFor } from "@/components/health/ModuleAnalysisSummary";
 import {
   useDismissHealthFindings,
+  useHealthAnalysis,
   useHealthFindings,
   useHealthHistory,
   useHealthOverview,
@@ -73,15 +73,6 @@ const SEVERITY_BADGE: Record<HealthSeverity, "destructive" | "warning" | "second
   warning: "warning",
   info: "secondary",
 };
-
-/** Where a finding comes from: a deterministic check or the Module Analyst (#101 S14c). @i18n-keys */
-const SOURCE_LABELS = {
-  // "Checks" is the checkbox field's key (fr "Coches"): the source has its own words (UX round 1 B1 on #953).
-  checks: "Health checks",
-  agentic: "Agentic",
-} as const;
-
-const sourceOf = (finding: HealthFinding): keyof typeof SOURCE_LABELS => (finding.agentic ? "agentic" : "checks");
 
 const HISTORY_WINDOWS = [7, 30, 90] as const;
 type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
@@ -255,7 +246,6 @@ function FindingDetail({
           <p className="content-base text-default-primary">{checkRecommendation(finding.check_id, finding.recommendation, t_i18n)}</p>
         </div>
       ) : null}
-      {finding.analyst_recommendation ? <AnalystRecommendationBlock recommendation={finding.analyst_recommendation} /> : null}
       {lines.length ? (
         <div className="space-y-1">
           <h4 className="content-compact font-medium text-default-secondary">{t_i18n("Evidence")}</h4>
@@ -375,6 +365,9 @@ const FINDINGS_PAGE = 200;
 export function HealthOverviewTab() {
   const { t_i18n } = useFormatter();
   const overview = useHealthOverview();
+  const isAdmin = overview.data?.scope === "all";
+  // Each module card shows the outcome of its analysis (#961); stored rows, no model call.
+  const analysis = useHealthAnalysis({ enabled: isAdmin });
   // One list per status, each with its own page and its own server total (#634 review P2): a shared page of
   // the three statuses let resolved and dismissed rows push open ones off it once they accumulate.
   const openFindings = useHealthFindings({ status: ["open"], limit: FINDINGS_PAGE });
@@ -387,12 +380,6 @@ export function HealthOverviewTab() {
   const [dismissing, setDismissing] = useState<HealthFinding[]>([]);
   const cards = useMemo(() => overview.data?.modules ?? [], [overview.data]);
   const modules = useMemo(() => cards.map((card) => card.module), [cards]);
-  // Administrators see the analysed modules with their Module Analyst footer, in a row group of their own.
-  const analystCards = useMemo(
-    () => (overview.data?.scope === "all" ? cards.filter((card) => ANALYST_MODULES.includes(card.module)) : []),
-    [cards, overview.data?.scope],
-  );
-  const baseCards = useMemo(() => cards.filter((card) => !analystCards.includes(card)), [cards, analystCards]);
   const lists = { open: openFindings, dismissed: dismissedFindings, resolved: resolvedFindings };
   const findings = lists[view];
   // Tab counts come from each list's server total, never from the rows of a page.
@@ -446,17 +433,7 @@ export function HealthOverviewTab() {
       {
         key: "finding",
         header: "Finding",
-        cell: (finding) =>
-          finding.agentic ? (
-            <span className="flex min-w-0 items-center gap-2">
-              <Badge variant="outline" className="shrink-0 whitespace-nowrap" data-testid="health-finding-agentic">
-                {t_i18n(SOURCE_LABELS.agentic)}
-              </Badge>
-              <CellText text={findingTitle(finding, t_i18n)} />
-            </span>
-          ) : (
-            <CellText text={findingTitle(finding, t_i18n)} />
-          ),
+        cell: (finding) => <CellText text={findingTitle(finding, t_i18n)} />,
         sortValue: (finding) => findingTitle(finding, t_i18n),
         csv: (finding) => findingTitle(finding, t_i18n),
       },
@@ -512,17 +489,6 @@ export function HealthOverviewTab() {
           .map((value) => ({ value, label: categoryLabel(value, t_i18n) }))
           .sort((a, b) => a.label.localeCompare(b.label)),
       },
-      // Checks or Module Analyst (section 12.7): offered once the view holds an agentic finding.
-      ...(rows.some((finding) => finding.agentic)
-        ? [
-            {
-              key: "source",
-              label: "Source",
-              values: (finding: HealthFinding) => [sourceOf(finding)],
-              options: Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
-            },
-          ]
-        : []),
     ],
     [t_i18n, modules, rows],
   );
@@ -606,29 +572,30 @@ export function HealthOverviewTab() {
 
   return (
     <div className="space-y-6">
-      {/* Two row groups, each card in a row the same height (UX round 2 B1 on #953, standards s.4): the cards
-          without a footer first, then the analysed modules with their Module Analyst footer (administrators). */}
-      {[baseCards, analystCards].filter((group) => group.length).map((group) => (
-        <div key={group === analystCards ? "analyst" : "base"} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid={group === analystCards ? "health-analyst-module-cards" : "health-module-cards"}>
-          {group.map((card) => (
-            <StatCard
-              key={card.module}
-              icon={HealthGlyph}
-              label={t_i18n(HEALTH_MODULE_LABELS[card.module])}
-              value={String(card.score)}
-              subtitle={moduleCardSubtitle(card, t_i18n)}
-              iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
-              footer={
-                // The Module Analyst's last cycle and "Investigate now": administrators, analysed modules (section 12.7).
-                analystCards.includes(card) ? <ModuleInvestigationLine module={card.module} investigation={card.last_investigation} /> : undefined
-              }
-            />
-          ))}
-        </div>
-      ))}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="health-module-cards">
+        {cards.map((card) => (
+          <StatCard
+            key={card.module}
+            icon={HealthGlyph}
+            label={t_i18n(HEALTH_MODULE_LABELS[card.module])}
+            value={String(card.score)}
+            subtitle={moduleCardSubtitle(card, t_i18n)}
+            iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
+            footer={
+              // The outcome of the module's analysis (#961): administrators, modules with open findings.
+              // No row to show, no footer: a card never carries an empty divider (UX round 1 B1 on #965).
+              isAdmin && analysisRowFor(card.module, card.critical + card.warning + card.info > 0, analysis.data) ? (
+                <ModuleAnalysisSummary
+                  module={card.module}
+                  hasOpenFindings={card.critical + card.warning + card.info > 0}
+                  overview={analysis.data}
+                />
+              ) : undefined
+            }
+          />
+        ))}
+      </div>
       {overview.data?.scope === "all" ? <ScoreHistory modules={modules} /> : null}
-      {/* The analysis layer (#101 S9c): administrators only, after the history, before the findings. */}
-      {overview.data?.scope === "all" ? <HealthAnalysisPanel /> : null}
       {nothingFound ? (
         <EmptyState
           icon={HealthGlyph}
