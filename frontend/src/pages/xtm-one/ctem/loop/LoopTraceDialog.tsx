@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useCtemSignal, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
-import { formatShortDateTimeIntl } from "@/lib/relative-time";
+import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { DecisionReason, decisionSentence } from "./DecisionReason";
@@ -83,7 +83,7 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
                 {t_i18n(STATUS_LABEL[stage.status])}
                 {stage.at ? ` · ${formatShortDateTimeIntl(intl, stage.at)}` : ""}
                 {/* The stage where the loop stopped names why (#851 UX round 2 B4). */}
-                {stage.status === "stopped" ? ` · ${decisionSentence(signal.decision, t_i18n)}` : ""}
+                {stage.status === "stopped" ? ` · ${decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}` : ""}
               </span>
             </span>
           </li>

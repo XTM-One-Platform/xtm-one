@@ -106,6 +106,43 @@ describe("decisionSentence", () => {
     decisionSentence(below, capture);
     expect(seen[seen.length - 1]).toEqual({ score: "CVSS", value: 5.3, minimum: 7 });
   });
+
+  // #851 UX round 4 B7: the exclusion kind is a word, never the raw identifier.
+  it("translates the kind of a policy exclusion", () => {
+    const excluded = { outcome: "discarded", reason_code: "excluded_by_policy", reason_params: { kind: "asset_group", value: "DMZ" } };
+    const seen: Record<string, string | number>[] = [];
+    const capture = (id: string, values?: Record<string, string | number>) => {
+      if (values) seen.push(values);
+      return id;
+    };
+    expect(decisionSentence(excluded, capture)).toBe("Excluded by the policy ({kind}: {value})");
+    expect(seen[seen.length - 1]).toEqual({ kind: "Asset group", value: "DMZ" });
+    decisionSentence({ ...excluded, reason_params: { kind: "product", value: "Nginx" } }, capture);
+    expect(seen[seen.length - 1]).toEqual({ kind: "Product", value: "Nginx" });
+  });
+
+  // #851 UX round 4 B8: the expiry of an accepted risk goes through the date formatter.
+  it("formats the expiry of an accepted risk", () => {
+    const accepted = { outcome: "watchlist", reason_code: "accepted_risk", reason_params: { owner: "Lab owner", until: "2027-06-30" } };
+    const seen: Record<string, string | number>[] = [];
+    const capture = (id: string, values?: Record<string, string | number>) => {
+      if (values) seen.push(values);
+      return id;
+    };
+    decisionSentence(accepted, capture, (iso) => `day(${iso})`);
+    expect(seen[seen.length - 1]).toEqual({ owner: "Lab owner", until: "day(2027-06-30)" });
+  });
+
+  it("draws the accepted-risk expiry as a formatted day in the component", () => {
+    renderWithProviders(
+      <DecisionReason
+        state="watchlist"
+        decision={{ outcome: "watchlist", reason_code: "accepted_risk", reason_params: { owner: "Lab owner", until: "2027-06-30" } }}
+      />,
+    );
+    expect(screen.queryByText(/2027-06-30/)).toBeNull();
+    expect(screen.getByText(/Accepted risk owned by Lab owner until Jun 30, 2027/)).toBeInTheDocument();
+  });
 });
 
 describe("decided signals in the trace and the row", () => {

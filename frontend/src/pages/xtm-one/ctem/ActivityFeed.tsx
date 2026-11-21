@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useFormatter } from "@/i18n";
-import { formatTimeAgo } from "@/lib/relative-time";
+import { formatDayIntl, formatTimeAgo } from "@/lib/relative-time";
 import { eventStatus, type ActivityEvent } from "./activity-feed";
 import { activityText } from "./activity-text";
 import { ActivityRow } from "./ActivityRow";
@@ -20,7 +20,7 @@ export function ActivityFeed({ events, onOpenSignal }: { events: ActivityEvent[]
   return (
     <ul className="divide-y divide-[var(--border-elevation-subtle)]" aria-label={t_i18n("Recent platform activity")}>
       {events.map((event) => {
-        const { icon, title, detail } = activityText(event, t_i18n);
+        const { icon, title, detail } = activityText(event, t_i18n, (iso) => formatDayIntl(intl, iso));
         const signalId = event.kind === "signal_received" ? event.signalId : null;
         const label = event.kind === "signal_received" ? event.label : "";
         const open = signalId !== null && onOpenSignal ? () => onOpenSignal(signalId) : undefined;

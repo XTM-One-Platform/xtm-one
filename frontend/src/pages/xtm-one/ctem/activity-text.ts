@@ -16,6 +16,8 @@ const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside
 export function activityText(
   event: ActivityEvent,
   t_i18n: (id: string, values?: Record<string, string | number>) => string,
+  /** The product day formatter for a date param of the decision sentence (#851 UX round 4 B8). */
+  formatDay?: (iso: string) => string,
 ): { icon: IconName | LucideIcon; title: string; detail: string } {
   switch (event.kind) {
     case "posture_synced":
@@ -50,7 +52,7 @@ export function activityText(
           t_i18n(event.path),
           t_i18n(LENS_LABEL[event.lens] ?? event.lens),
           t_i18n(SIGNAL_STATE_LABEL[event.state] ?? event.state),
-          decisionSentence(event.decision, t_i18n),
+          decisionSentence(event.decision, t_i18n, formatDay),
         ].join(" · "),
       };
   }

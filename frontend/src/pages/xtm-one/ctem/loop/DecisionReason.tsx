@@ -12,6 +12,7 @@
 import { Chip } from "@filigran/design-system";
 import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
+import { formatDayIntl } from "@/lib/relative-time";
 
 type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
 type Translate = (id: string, values?: Record<string, string | number>) => string;
@@ -62,6 +63,10 @@ const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 const LEVEL_PARAMS = new Set(["criticality", "threshold", "minimum", "confidence"]);
 
+/** The exclusion kinds the gate reads (`reason_params.kind` of excluded_by_policy), in words (#851 UX round 4 B7). @i18n-keys */
+const EXCLUSION_KIND_LABEL = { product: "Product", asset_group: "Asset group", tag: "Tag" } as const;
+const EXCLUSION_KIND_LABELS: Readonly<Record<string, string>> = EXCLUSION_KIND_LABEL;
+
 /** The lens words, as the trace header draws them. @i18n-keys */
 const LENS_LABEL = { inside: "Inside", outside: "Outside", world: "World" } as const;
 const LENS_LABELS: Readonly<Record<string, string>> = LENS_LABEL;
@@ -101,14 +106,25 @@ function SignalStateChip({ state }: { state: CtemSignalState }) {
   return <Chip label={t_i18n(SIGNAL_STATE_LABEL[state] ?? state)} severity={SIGNAL_STATE_SEVERITY[state] ?? "neutral"} className="shrink-0" />;
 }
 
-/** The sentence of a decision record, or the waiting and unknown-code wordings. */
-export function decisionSentence(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): string {
+/**
+ * The sentence of a decision record, or the waiting and unknown-code wordings.
+ * `formatDay` draws a date param (the `until` of an accepted risk) with the
+ * product date formatter (#851 UX round 4 B8); without it the ISO day is kept.
+ */
+export function decisionSentence(
+  decision: CtemDecisionRecord | null | undefined,
+  t_i18n: Translate,
+  formatDay: (iso: string) => string = (iso) => iso,
+): string {
   if (!decision || (!decision.reason_code && !decision.outcome)) return t_i18n("Waiting for reconcile");
   const sentence = decision.reason_code ? REASON_SENTENCES[decision.reason_code] : undefined;
   if (!sentence) return t_i18n("Reason not available in this version");
   const params: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(decision.reason_params ?? {})) {
-    params[key] = LEVEL_PARAMS.has(key) ? levelLabel(value, t_i18n) : value;
+    if (LEVEL_PARAMS.has(key)) params[key] = levelLabel(value, t_i18n);
+    else if (key === "kind" && EXCLUSION_KIND_LABELS[String(value)]) params[key] = t_i18n(EXCLUSION_KIND_LABELS[String(value)]);
+    else if (key === "until" && typeof value === "string" && value) params[key] = formatDay(value);
+    else params[key] = value;
   }
   return t_i18n(sentence, params);
 }
@@ -146,13 +162,13 @@ export function DecisionReason({
   /** The loop trace lists the inputs; a row keeps the chip and the sentence. */
   showInputs?: boolean;
 }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const inputs = showInputs ? decisionInputs(decision, t_i18n) : [];
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
         <SignalStateChip state={state} />
-        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n)}</span>
+        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n, (iso) => formatDayIntl(intl, iso))}</span>
       </div>
       {inputs.length > 0 && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 content-caption" data-testid="ctem-decision-inputs">
