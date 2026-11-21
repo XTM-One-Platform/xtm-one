@@ -1149,13 +1149,17 @@ def build_sandbox_workspace_tools(
                 )
             read = " read before the time budget ran out" if not_reached else ""
             return f"No match for {pattern[:80]!r} in {planned.files_scanned} text file(s){read} under {scope}: nothing was written.{notes}"
-        stats, diffs = replacing.report(planned.changes, display)
         head = (
             f"{planned.replacements} replacement(s) in {len(planned.changes)} file(s) "
             f"of {planned.files_scanned} scanned under {scope}"
         )
         if dry_run:
+            stats, diffs = replacing.report(planned.changes, display)
             return f"Dry run, nothing written: {head}.{notes}\n{stats}\n\n{diffs}"
+        # A write answers each distinct line change once, not one hunk per site: the dry run
+        # (or sandbox_checkout_diff) is where the whole diff is read.
+        stats, _diffs = replacing.report(planned.changes, display)
+        changed = replacing.distinct_changes(planned.changes)
         try:
             plan = await session.put_tree(
                 ((c.path, c.after.encode("utf-8")) for c in planned.changes), operation="edit"
@@ -1177,7 +1181,7 @@ def build_sandbox_workspace_tools(
         outside_note = await _outside_record_note([c.path for c in planned.changes])
         return (
             f"Replaced: {head}, in one write. Workspace {format_size(plan.size_bytes)} of "
-            f"{format_size(session.limits.quota_bytes)}.{outside_note}{notes}\n{stats}\n\n{diffs}"
+            f"{format_size(session.limits.quota_bytes)}.{outside_note}{notes}\n{stats}\n\n{changed}"
         )
 
     async def sandbox_codemod(
@@ -3900,7 +3904,7 @@ def build_sandbox_workspace_tools(
                 "max_replacements or when the time budget runs out (a dry_run answers what it read). Searches "
                 "every text file up to 32 MB, as sandbox_grep; a file left out is named "
                 "with its reason, and matches the replacement leaves unchanged are reported as such. Answers a "
-                "diffstat per file and the bounded diffs; dry_run=true previews."
+                "diffstat per file and each distinct change; dry_run=true: diffs."
             ),
             input_schema={
                 "type": "object",
