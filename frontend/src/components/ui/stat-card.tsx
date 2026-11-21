@@ -80,7 +80,7 @@ export function StatCard({ icon: Icon, label, value, subtitle, exact, className,
         {footer && !onClick ? (
           // The footer takes the remaining height: its divider stays right after the value block, so the
           // dividers of one row share a height, and the footer content pins its own action to the bottom
-          // with mt-auto (UX round 3 B1 on xtm-one #953).
+          // (UX round 3 B1 on xtm-one #953). The value block itself is never pinned to the bottom.
           <div className="flex flex-1 flex-col pt-3">
             <div className="flex flex-1 flex-col border-t border-elevation-subtle pt-3" data-testid="stat-card-footer">
               {footer}
