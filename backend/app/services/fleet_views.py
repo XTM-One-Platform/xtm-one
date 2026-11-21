@@ -791,10 +791,41 @@ def automation_counts(
     )
 
 
-async def fleet_automation_counts(db: AsyncSession, fleet: Fleet) -> AutomationCounts:
-    """The opt-in state of *fleet*'s home members' automations, one query, no run."""
-    from app.models.assignment import Assignment
+#: The one automation the Platform Health fleet counts (#974): Platform Health
+#: itself, switched in Settings > Platform Health, never on the fleet's rows.
+HEALTH_FLEET_AUTOMATION = "Platform Health"
 
+
+def health_fleet_counts(active: bool) -> AutomationCounts:
+    """The automation counts of the Platform Health fleet (#974).
+
+    Its assignments are started by the Settings cycle runner (trigger
+    ``manual``), so counting them would read "Not set up" forever on a fleet
+    nobody may switch. The fleet's state is Platform Health's own: on in
+    Settings reads ``on``, off reads ``paused`` with Platform Health named off.
+    """
+    if active:
+        return AutomationCounts(total=1, enabled=1)
+    return AutomationCounts(total=1, paused=1, off_names=(HEALTH_FLEET_AUTOMATION,))
+
+
+async def platform_health_counts(db: AsyncSession) -> AutomationCounts:
+    """:func:`health_fleet_counts` read from the capability and the Settings switch."""
+    from app.services.health.availability import health_active, health_enabled
+
+    return health_fleet_counts(health_enabled() and await health_active(db))
+
+
+async def fleet_automation_counts(db: AsyncSession, fleet: Fleet) -> AutomationCounts:
+    """The opt-in state of *fleet*'s home members' automations, one query, no run.
+
+    The Platform Health fleet reads Platform Health itself (:func:`health_fleet_counts`).
+    """
+    from app.models.assignment import Assignment
+    from app.services.health.read_only import is_health_fleet
+
+    if is_health_fleet(fleet):
+        return await platform_health_counts(db)
     rows = await fleet_members(db, fleet.id)
     ids = home_member_ids(rows, fleet.orchestrator_agent_id)
     if not ids:
@@ -904,9 +935,13 @@ def switch_on_action(reason: str | None) -> str:
 async def fleet_automation_state(db: AsyncSession, fleet: Fleet) -> FleetAutomationState:
     """The badge of *fleet* (:func:`automation_counts` over the same rows) and
     every counted automation that is off, by agent then assignment name.
-    Reads only. Agent names are the stored ones: the caller filters what it may see."""
+    Reads only. Agent names are the stored ones: the caller filters what it may see.
+    The Platform Health fleet reads Platform Health itself (:func:`health_fleet_counts`)."""
     from app.models.assignment import Assignment
+    from app.services.health.read_only import is_health_fleet
 
+    if is_health_fleet(fleet):
+        return FleetAutomationState(counts=await platform_health_counts(db))
     ids = home_member_ids(await fleet_members(db, fleet.id), fleet.orchestrator_agent_id)
     if not ids:
         return FleetAutomationState(counts=AutomationCounts())
@@ -971,10 +1006,12 @@ async def fleet_card_facts(
     from sqlalchemy import func
 
     from app.models.assignment import Assignment, AssignmentRun
+    from app.services.health.read_only import is_health_fleet
 
     if not fleets:
         return {}
     by_id = {f.id: f for f in fleets}
+    health = await platform_health_counts(db) if any(is_health_fleet(f) for f in fleets) else None
     homes: dict[uuid.UUID, set[uuid.UUID]] = {f.id: set() for f in fleets}
     for fleet_id, agent_id in (
         await db.execute(
@@ -1017,10 +1054,13 @@ async def fleet_card_facts(
     out: dict[uuid.UUID, FleetCardFacts] = {}
     for fid, fleet in by_id.items():
         members = homes[fid]
-        counts = automation_counts(
-            (row for aid in members for row in rows_by_agent.get(aid, [])),
-            builtin_fleet=bool(getattr(fleet, "is_builtin", False)),
-        )
+        if health is not None and is_health_fleet(fleet):
+            counts = health
+        else:
+            counts = automation_counts(
+                (row for aid in members for row in rows_by_agent.get(aid, [])),
+                builtin_fleet=bool(getattr(fleet, "is_builtin", False)),
+            )
         runs = [last_by_agent[aid] for aid in members if last_by_agent.get(aid) is not None]
         out[fid] = FleetCardFacts(automations=counts, last_run_at=max(runs) if runs else None)
     return out

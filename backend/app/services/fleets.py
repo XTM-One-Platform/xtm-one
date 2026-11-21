@@ -1053,9 +1053,15 @@ async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent
     "Not set up" and Enable fleet lists it; an existing one keeps its switch
     and only has its gate re-pointed at *fleet*. A fleet that opted out
     (:func:`fleet_health_check_mode` ``off`` or ``own``) gets none. Idempotent.
+    The Platform Health fleet gets none either (#974): Platform Health checks
+    itself, and the read-only fleet could never switch the check on.
     """
     from app.models.assignment import Assignment
     from app.services.assignment_pause import CREATED_DISABLED_REASON, pause_assignment
+    from app.services.health.read_only import is_health_fleet
+
+    if is_health_fleet(fleet):
+        return False
 
     existing = (
         (

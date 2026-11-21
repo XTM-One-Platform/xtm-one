@@ -496,6 +496,12 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
     ).scalar_one_or_none()
     if member is not None and fleet.orchestrator_agent_id != orchestrator.id:
         await set_orchestrator(db, fleet, orchestrator.id)
+    # No generic weekly fleet health check on this fleet (#974): Platform Health
+    # checks itself, and the copy an earlier boot seeded (born off, never run)
+    # made the read-only fleet read "Not set up" forever.
+    from app.services.fleets import drop_fleet_health_check
+
+    await drop_fleet_health_check(db, orchestrator.id)
     return fleet
 
 

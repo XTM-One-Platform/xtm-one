@@ -1,0 +1,102 @@
+"""The Platform Health fleet reads Platform Health's own state (#974).
+
+Its assignments are started by the Settings cycle runner (trigger ``manual``),
+so the generic automation count read "Not set up" forever on a fleet nobody
+may switch. The fleet's badge now follows Settings > Platform Health; every
+other fleet keeps the assignment count. Unit tests on doubles, no database.
+"""
+
+from __future__ import annotations
+
+import uuid
+from types import SimpleNamespace
+from typing import Any, cast
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.agent import Agent
+from app.models.fleet import Fleet
+from app.services.fleet_views import (
+    HEALTH_FLEET_AUTOMATION,
+    AutomationCounts,
+    automation_counts,
+    fleet_automation_counts,
+    fleet_automation_state,
+    health_fleet_counts,
+    opt_in_state,
+)
+from app.services.fleets import ensure_fleet_health_check
+from app.services.health.read_only import HEALTH_FLEET_SLUG
+
+
+def _health_fleet() -> Fleet:
+    return cast(
+        Fleet,
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            name="Platform Health",
+            slug=HEALTH_FLEET_SLUG,
+            is_builtin=True,
+            orchestrator_agent_id=uuid.uuid4(),
+            health_check=None,
+        ),
+    )
+
+
+class _NoQueryDb:
+    """A session that refuses any query: the health fleet's state never reads its rows."""
+
+    async def execute(self, _stmt: Any) -> Any:  # pragma: no cover - reached only on a regression
+        raise AssertionError("the Platform Health fleet's state must not count its assignments")
+
+    def add(self, _row: Any) -> None:  # pragma: no cover - reached only on a regression
+        raise AssertionError("no weekly fleet health check is seeded on the Platform Health fleet")
+
+
+def _db() -> AsyncSession:
+    return cast(AsyncSession, _NoQueryDb())
+
+
+def test_platform_health_on_reads_on() -> None:
+    counts = health_fleet_counts(True)
+    assert opt_in_state(counts) == "on"
+    assert counts.off_names == ()
+
+
+def test_platform_health_off_reads_paused_naming_platform_health() -> None:
+    counts = health_fleet_counts(False)
+    assert opt_in_state(counts) == "paused"
+    assert counts.off_names == (HEALTH_FLEET_AUTOMATION,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("active", "state"), [(True, "on"), (False, "paused")])
+async def test_every_reader_follows_the_settings_switch(
+    monkeypatch: pytest.MonkeyPatch, active: bool, state: str
+) -> None:
+    async def _active(_db: AsyncSession) -> bool:
+        return active
+
+    monkeypatch.setattr("app.services.health.availability.health_active", _active)
+    fleet = _health_fleet()
+    assert opt_in_state(await fleet_automation_counts(_db(), fleet)) == state
+    assert (await fleet_automation_state(_db(), fleet)).state == state
+
+
+def test_other_fleets_keep_the_assignment_count() -> None:
+    # A built-in fleet with only the weekly check, born off: still "Not set up".
+    off: list[tuple[str | None, bool, str, bool, str | None]] = [
+        ("ctem-desk", True, "Weekly fleet health check", False, "created_disabled")
+    ]
+    assert opt_in_state(automation_counts(off, builtin_fleet=True)) == "not_set_up"
+    # A custom fleet with every assignment on: "On".
+    on: list[tuple[str | None, bool, str, bool, str | None]] = [("desk", False, "Daily triage", True, None)]
+    assert opt_in_state(automation_counts(on, builtin_fleet=False)) == "on"
+    assert opt_in_state(AutomationCounts()) == "not_set_up"
+
+
+@pytest.mark.asyncio
+async def test_the_platform_health_fleet_gets_no_weekly_fleet_health_check() -> None:
+    agent = cast(Agent, SimpleNamespace(id=uuid.uuid4(), user_id=None, is_company_managed=True))
+    assert not await ensure_fleet_health_check(_db(), _health_fleet(), agent)
