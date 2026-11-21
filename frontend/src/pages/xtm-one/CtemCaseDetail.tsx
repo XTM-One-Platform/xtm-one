@@ -9,8 +9,9 @@
  * but that word; a case the caller sees nothing of answers 404.
  */
 import { useMemo, useState, type ComponentProps } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon, Textarea } from "@filigran/design-system";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
@@ -26,18 +27,20 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   isRestrictedIssue,
   useCtemCase,
+  useCtemCaseRuns,
   useSplitCtemCase,
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
-  type CtemCaseVisibleIssue,
 } from "@/hooks/api/useCtemCasesApi";
+import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
+import { CASE_RUN_LINE, caseActivity, caseRunLine } from "@/lib/ctem-case-activity";
+import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
-import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -87,8 +90,6 @@ const EVENT_LABEL: Record<string, string> = {
   created: "Created the case",
   issue_added: "Added an issue",
   issue_closed: "Closed an issue",
-  // The folded upgrade target moved (CTEM-11, #894; shown by #928).
-  retargeted: "Changed the target version",
   state: "Changed the state to",
   owner: "Changed the owner",
   due: "Changed the due date",
@@ -113,32 +114,26 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
   pending: "Pending",
 };
 
-type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
-
 /**
- * The fixed version of one issue and where OpenCTI's knowledge came from (CTEM-11, #946; shown by #928):
- * the remediating Software, else the course of action, else "unknown"; a declared version OpenCTI
- * holds no Software of is named, never guessed.
+ * The badge of a fleet run on the case history, the keys the fleet timeline
+ * uses (one run). @i18n-keys
  */
-function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
-  const { t_i18n } = useFormatter();
-  if (issue.not_affected || issue.source !== "opencti") return null;
-  const unknownDeclared = issue.declared_version_known === false && issue.installed_version;
-  return (
-    <span className="flex flex-col" data-testid="ctem-case-issue-version">
-      <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
-      {issue.fixed_version && issue.fixed_by && (
-        <span className="content-compact text-default-secondary">{t_i18n("Matched on Software {software}", { software: issue.fixed_by })}</span>
-      )}
-      {issue.fixed_version && !issue.fixed_by && issue.course_of_action_name && (
-        <span className="content-compact text-default-secondary">{t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })}</span>
-      )}
-      {unknownDeclared && (
-        <span className="content-compact text-default-secondary">{t_i18n("Version {version} not known to OpenCTI", { version: issue.installed_version })}</span>
-      )}
-    </span>
-  );
-}
+const RUN_OUTCOME_LABELS = {
+  succeeded: "Run outcome: succeeded",
+  failed: "Run outcome: failed",
+  running: "Run outcome: running",
+  pending: "Run outcome: pending",
+  interrupted: "Run outcome: interrupted",
+  cancelled: "Run outcome: cancelled",
+} as const satisfies Record<TimelineOutcome, string>;
+
+const RUN_OUTCOME_VARIANTS: Partial<Record<TimelineOutcome, "success" | "warning" | "destructive" | "secondary">> = {
+  succeeded: "success",
+  failed: "destructive",
+  interrupted: "warning",
+};
+
+type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
 
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
@@ -147,6 +142,9 @@ export default function CtemCaseDetail() {
   const { toast } = useToast();
   const { data: me } = useMe();
   const { data: kase, isLoading, error, isError, refetch } = useCtemCase(id);
+  const agenticLicensed = useAgenticAIEnabled();
+  const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
+  const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -173,8 +171,6 @@ export default function CtemCaseDetail() {
     () => (kase?.issues ?? []).map((issue, i) => ({ key: isRestrictedIssue(issue) ? `restricted-${i}` : `${issue.source}:${issue.external_id}`, issue })),
     [kase],
   );
-  // Members OpenCTI relates to none of the declared versions (CTEM-11, #946; shown by #928), from the viewer's own read.
-  const notAffectedOf = (r: IssueRow) => (isRestrictedIssue(r.issue) || r.issue.open || !r.issue.not_affected ? undefined : r.issue.installed_version || undefined);
 
   if (isNotFoundError(error)) {
     return (
@@ -306,32 +302,11 @@ export default function CtemCaseDetail() {
       hideable: true,
     },
     {
-      key: "version",
-      header: "Fixed version",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : <IssueVersion issue={r.issue} />),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.fixed_version ?? "~")),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.fixed_version ?? "")),
-      hideBelow: "2xl",
-      hideable: true,
-    },
-    {
       key: "state",
       header: "State",
-      cell: (r) => {
-        if (isRestrictedIssue(r.issue)) return null;
-        if (r.issue.open) return t_i18n("Open");
-        const version = notAffectedOf(r);
-        return version ? (
-          <span className="flex flex-col" data-testid="ctem-case-not-affected">
-            <span>{t_i18n("Not affected")}</span>
-            <span className="content-compact text-default-secondary">{t_i18n("OpenCTI relates no vulnerability to version {version}", { version })}</span>
-          </span>
-        ) : (
-          t_i18n("Closed")
-        );
-      },
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? 3 : r.issue.open ? 0 : notAffectedOf(r) ? 2 : 1),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : notAffectedOf(r) ? "not affected" : "closed"),
+      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.open ? t_i18n("Open") : t_i18n("Closed")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? 2 : r.issue.open ? 0 : 1),
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : "closed"),
     },
   ];
 
@@ -427,12 +402,6 @@ export default function CtemCaseDetail() {
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
 
-      {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
-        <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version. Declare the version you run in Settings > Organization > Tech stack.")}
-        </p>
-      )}
-
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
           {t_i18n("{products} did not answer: details of its issues are unavailable.", { products: kase.details_unavailable.join(", ") })}
@@ -499,25 +468,52 @@ export default function CtemCaseDetail() {
         </CardHeader>
         <CardContent>
           <ol className="space-y-3" data-testid="ctem-case-history">
-            {[...kase.history].reverse().map((e, i) => (
-              <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-2 content-base">
+            {activity.map((item) => {
+              if (item.kind === "run") {
+                const run = item.run;
+                const outcome = timelineOutcome(run.outcome, run.status);
+                return (
+                  <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base" data-testid="ctem-case-run">
+                    <span className="font-medium">{run.agent_name ?? t_i18n("Agent")}</span>
+                    <Link
+                      to={`/operations/executions/${run.id}`}
+                      state={{ backTo: `/ctem/cases/${id}`, backLabel: "Back to Case" }}
+                      aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
+                      className="hover:underline"
+                    >
+                      {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
+                    </Link>
+                    {outcome && (
+                      <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">
+                        {t_i18n(RUN_OUTCOME_LABELS[outcome])}
+                      </Badge>
+                    )}
+                    <span className="ml-auto whitespace-nowrap text-default-secondary">
+                      {intl.formatDate(run.created_at, { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                  </li>
+                );
+              }
+              const e = item.event;
+              return (
+              <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base">
                 <span className="font-medium">
                   {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
                 </span>
                 <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
-                {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
                 {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && <CaseEvidence evidence={e.evidence} />}
+                {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (
                   <span className="ml-auto whitespace-nowrap text-default-secondary">
                     {intl.formatDate(e.at, { dateStyle: "medium", timeStyle: "short" })}
                   </span>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ol>
         </CardContent>
       </Card>

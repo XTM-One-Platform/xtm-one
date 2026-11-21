@@ -64,7 +64,7 @@ interface CtemCaseValidation {
 }
 
 /** A member issue the caller sees. */
-export interface CtemCaseVisibleIssue {
+interface CtemCaseVisibleIssue {
   restricted?: false;
   source: string;
   external_id: string;
@@ -78,17 +78,6 @@ export interface CtemCaseVisibleIssue {
   crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
-  /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
-  installed_version?: string | null;
-  fixed_version?: string | null;
-  /** The OpenCTI Software ("name version") that remediates the vulnerability, when it gave the fix. */
-  fixed_by?: string | null;
-  /** The course of action that named the fix, when no remediating Software did. */
-  course_of_action_name?: string | null;
-  /** OpenCTI relates no vulnerability to the declared version: no case opens for it. */
-  not_affected?: boolean;
-  /** With a declared version: whether OpenCTI holds a Software of it; null when none is declared. */
-  declared_version_known?: boolean | null;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -98,7 +87,7 @@ export interface CtemCaseRestrictedIssue {
 
 export type CtemCaseIssue = CtemCaseVisibleIssue | CtemCaseRestrictedIssue;
 
-interface CtemCaseEvent {
+export interface CtemCaseEvent {
   at: string | null;
   actor: string;
   kind: string;
@@ -160,8 +149,6 @@ export interface CtemCaseBulkResult {
 export interface CtemRecomputeResult {
   applied: boolean;
   missing?: string[];
-  /** Issues kept out of every case: OpenCTI relates them to none of the declared tech stack versions (CTEM-11). */
-  not_affected?: number;
   [key: string]: unknown;
 }
 
@@ -213,6 +200,32 @@ export function useCtemCase(id: string | undefined) {
     enabled: Boolean(id),
     // An unknown case, or one the caller sees nothing of (#11613), is a 404
     // the page shows as NotFoundState, never the ErrorBoundary.
+    ...notFoundIsOrdinary,
+  });
+}
+
+/** One fleet run a case event started (`CaseRunEntry`, `GET /fleets/case-runs/{id}`, #915). */
+export interface CtemCaseRun {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  outcome: string;
+}
+
+/**
+ * The fleet runs working on one case, oldest first, the ones the caller may
+ * see. Only with agentic AI licensed (`enabled`): the route is gated like the
+ * other fleet reads. Polled while a run is in flight so steps show live.
+ */
+export function useCtemCaseRuns(id: string | undefined, enabled: boolean) {
+  return useQuery<{ case_id: string; runs: CtemCaseRun[] }>({
+    queryKey: ["ctem-cases", "runs", id],
+    queryFn: () => api.get(`/fleets/case-runs/${id}`),
+    enabled: Boolean(id) && enabled,
+    refetchInterval: (query) => (query.state.data?.runs.some((r) => r.outcome === "active") ? 10_000 : REFETCH_INTERVAL_SLOW),
     ...notFoundIsOrdinary,
   });
 }
