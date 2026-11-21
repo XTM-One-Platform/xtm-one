@@ -60,6 +60,14 @@ _UP_TO_DATE_RE = re.compile(r"no new commits on the base branch|already up[ -]to
 #: and base ("A pull request already exists for owner:branch.").
 _ALREADY_EXISTS_RE = re.compile(r"a pull request already exists", re.IGNORECASE)
 
+#: Statuses a review request is retried on: the gateway set, plus the 404 GitHub
+#: answers for a pull request created a moment before (seen on xtm-one #809, the
+#: same call passing seconds later). The request is idempotent, so a retry can
+#: never add a second request; the budget below bounds a pull request that is
+#: really missing.
+_REVIEW_REQUEST_RETRY_STATUSES = TRANSIENT_RETRY_STATUSES | {404}
+_REVIEW_REQUEST_RETRY_SECONDS = 15.0
+
 #: Pauses (seconds) before each new merge attempt after an answer that leaves
 #: the merge state unknown (gateway 5xx, transport error, "already in
 #: progress"). Two retries, so at most three PUTs and about 20 s of waiting.
@@ -1543,6 +1551,9 @@ def register(
         copilot_aliases = {"copilot", "github-copilot", "copilot-review"}
         resolved = [copilot_bot if r.lower() in copilot_aliases else r for r in reviewers]
         async with egress_client(timeout=30) as client:
+            # A review request is idempotent (requesting a reviewer twice keeps one request),
+            # so a 404 is retried: GitHub answers it for a pull request created a moment
+            # before, until its replicas see it. The budget bounds a genuinely missing one.
             resp, err = await _common.safe_request(
                 client,
                 "post",
@@ -1551,6 +1562,8 @@ def register(
                 f"request reviewers on PR #{number} in {repo}",
                 headers=_json_headers(headers),
                 json={"reviewers": resolved},
+                retry_statuses=_REVIEW_REQUEST_RETRY_STATUSES,
+                max_total_seconds=_REVIEW_REQUEST_RETRY_SECONDS,
             )
             if err:
                 return err
