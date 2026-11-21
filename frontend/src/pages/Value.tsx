@@ -23,7 +23,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * scope and window. Reading it never starts a run nor calls a model.
  */
 import { useMemo } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { Bot, Clock3, Layers, Target, TrendingUp, Workflow } from "lucide-react";
 import { useIntl } from "react-intl";
 import { Area, ComposedChart, CartesianGrid, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -51,7 +52,7 @@ import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useFormatter } from "@/i18n";
 import { outcomeRowPath } from "@/lib/roi-outcomes";
-import { operationsPath, valuePath, workItemsPath } from "@/lib/task-routes";
+import { operationsPath, workItemsPath } from "@/lib/task-routes";
 import {
   VALUE_SCOPE_LABELS,
   VALUE_SCOPE_LINES,
@@ -344,10 +345,8 @@ export default function Value({ embedded = false }: { embedded?: boolean } = {})
       { replace: true },
     );
 
-  // An unknown or retired table (e.g. `/tasks/value/by-agent`) lands on the default one, replacing the entry, never the error frame (#12229).
-  if (rawTab !== tab) {
-    return <Navigate to={valuePath(undefined, searchParams)} replace />;
-  }
+  // An unknown or retired table (e.g. `/tasks/value/by-agent`) is not found: no redirect (#797).
+  if (rawTab !== tab) return <RouteNotFound />;
 
   // #10215 slice c23 (criterion 5): the page's help sentence sits in the title's "i", never as a visible line under the h1.
   const title = embedded ? null : (

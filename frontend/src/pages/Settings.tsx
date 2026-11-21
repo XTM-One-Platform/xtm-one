@@ -75,12 +75,13 @@ import { cn, isFeatureEnabled, modelChoiceValue, modelOptionLabel, parseModelCho
 import { useFormatter } from "@/i18n";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { ListPageHeader } from "@/components/ui/list-page-header";
-import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { SectionNav, type SectionNavItem } from "@/components/ui/section-nav";
+import RouteNotFound from "@/pages/RouteNotFound";
 import {
   automationsSection,
   DEFAULT_SETTINGS_TAB,
-  legacySettingsTarget,
+  isSettingsTab,
   pickSection,
   SETTINGS_TABS,
   settingsSectionPath,
@@ -168,14 +169,12 @@ const USAGE_SECTIONS: readonly SectionNavItem<UsageSection>[] = [
 type AddProviderMode = "reasoning" | "embedding" | "image" | "all";
 
 /**
- * `/settings/:tab?/:section?`: an old tab route (#9173) is redirected to its
- * new place with its query and hash kept, before the page renders.
+ * `/settings/:tab?/:section?`: a segment that is not a section is not found,
+ * a former tab route included (#797: no redirect).
  */
 export default function Settings() {
   const { tab } = useParams<{ tab?: string }>();
-  const { search, hash } = useLocation();
-  const legacy = legacySettingsTarget(tab, search, hash);
-  if (legacy) return <Navigate to={legacy} replace />;
+  if (!isSettingsTab(tab)) return <RouteNotFound />;
   return <SettingsPage />;
 }
 

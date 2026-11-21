@@ -23,8 +23,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * the backend; countdowns refresh on a timer.
  *
  * A view, not a page: the `Schedule` view of the agent-to-agent map
- * (`/flows/map/schedule`, where the former Schedule tab's
- * `/flows/schedule` redirects) and of each fleet page render it. `agentIds`
+ * (`/flows/map/schedule`, the former Schedule tab) and of each fleet page
+ * render it. `agentIds`
  * narrows every part to the agents shown (no value: every agent the caller
  * sees); `agentId` narrows it to one agent (the
  * link of an agent's "Coming up" card), with `onClearAgent` to widen it back.

@@ -19814,5 +19814,9 @@
   "The digest lists warning and critical findings.": "El resumen incluye los hallazgos de advertencia y críticos.",
   "The digest lists critical findings only.": "El resumen solo incluye los hallazgos críticos.",
   "Emails the recipients below about health findings.": "Envía a los destinatarios indicados los hallazgos de salud.",
-  "One email a day with the open findings.": "Un correo al día con los hallazgos abiertos."
+  "One email a day with the open findings.": "Un correo al día con los hallazgos abiertos.",
+  "Page not found": "Página no encontrada",
+  "No page answers this address. The menu on the left lists every page.": "Ninguna página responde a esta dirección. El menú de la izquierda enumera todas las páginas.",
+  "Go to Home": "Ir al inicio",
+  "Back to Home": "Volver al inicio"
 }

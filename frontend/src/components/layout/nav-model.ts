@@ -367,7 +367,7 @@ export const NAV_SECTIONS: NavSection[] = [
       /* Sprout, not TrendingUp: that one is the Value tab's, and no two rows share an icon. */
       aiLeaf("/ai-adoption", Sprout, "AI Adoption", (f) => f.aiAdoption),
       aiLeaf("/evaluations", FlaskConical, "Evaluations", (f) => f.evaluation),
-      /* Platform Health (#101 S1): a translated label, never the administrator's name; `/concierge` redirects here. */
+      /* Platform Health (#101 S1): a translated label, never the administrator's name. */
       aiLeaf("/health", Compass, "Platform Health", (f) => f.health),
       /* One family row (#9301 N3b): one subject, two pages, routes and route
          guards unchanged (/users behind AdminRoute, /groups not; r2 A5). */

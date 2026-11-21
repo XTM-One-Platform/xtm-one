@@ -138,7 +138,6 @@ SPA_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "browser-profiles",
         "catalog",
         "chat",
-        "concierge",
         "ctem",
         "dashboard",
         "dashboards",
