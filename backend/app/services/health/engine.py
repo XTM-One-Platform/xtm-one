@@ -308,7 +308,11 @@ async def dismiss_finding(
 
 
 async def restore_finding(db: AsyncSession, finding_id: str) -> HealthCheckFinding:
-    """Bring a dismissed finding back to the open list (its dismissal cleared); the next pass resolves it if it passes."""
+    """Bring a dismissed finding back to the open list (its dismissal cleared); the next pass resolves it if it passes.
+
+    A restore starts a new open episode (``opened_at`` now, not alerted): the immediate alert
+    waits for the alert window again instead of mailing at once (#958).
+    """
     row = await db.get(HealthCheckFinding, finding_id)
     if row is None:
         raise LookupError("Health finding not found")
@@ -316,6 +320,7 @@ async def restore_finding(db: AsyncSession, finding_id: str) -> HealthCheckFindi
         raise ValueError("Only a dismissed finding can be restored.")
     row.status = STATUS_OPEN
     row.dismissal = None
+    row.opened_at, row.alerted_at = datetime.now(UTC), None
     await db.flush()
     return row
 

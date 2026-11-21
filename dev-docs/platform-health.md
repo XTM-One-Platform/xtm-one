@@ -516,8 +516,10 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
   once per UTC day (mark `alert:digest` in `health_schedule_marks`, unchanged). A
   finding that resolves within the window never mails, so a restart sends nothing
   (#958, with the open-after-two-reads rule and the restart grace of section 3); a
-  reopened finding is a new episode. Nothing is sent with SMTP unset or no recipient; a
-  failed send never fails the pass.
+  reopened finding, or a dismissed one restored, is a new episode. Nothing is sent with
+  the emails off, SMTP unset or no recipient (or immediate off), but the due findings are
+  still stamped `alerted_at` (`stamp_due_alerts`), so turning the emails on later never
+  mails a burst of the findings already open; a failed send never fails the pass.
 - Layout (S13, `pages/settings/HealthSection.tsx` `GROUPS`): one section, a horizontal
   `SectionIndex` ("On this page") jumping to four groups, anchors `#health-settings-<key>`:
   status (enable and name, scope), spend (budget, analysis), checks (schedule, signals,

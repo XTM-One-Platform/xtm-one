@@ -219,7 +219,72 @@ async def test_send_alerts_sends_nothing_when_off_without_recipients_or_without_
     for config, smtp in cases:
         monkeypatch.setattr(alerts, "load_health_settings", loader(config))
         monkeypatch.setattr("app.services.email.is_email_configured", lambda smtp=smtp: smtp)
-        assert await alerts.send_alerts(_db([_finding("f1")]), now=NOW) == {"immediate": 0, "digest": 0}
+        row = _finding("f1")
+        assert await alerts.send_alerts(_db([row]), now=NOW) == {"immediate": 0, "digest": 0}
+        # Stamped without a send: enabling the emails later never mails it.
+        assert row.alerted_at == NOW
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_enabling_the_emails_later_mails_only_what_opens_after(
+    monkeypatch: pytest.MonkeyPatch, sent: list[dict[str, Any]]
+) -> None:
+    async def claim(_key: str) -> bool:
+        return True
+
+    settings = {"config": HealthAlertEmailSettings()}
+
+    async def load(_db: Any) -> HealthSettings:
+        return HealthSettings(alert_emails=settings["config"])
+
+    monkeypatch.setattr(alerts, "load_health_settings", load)
+    monkeypatch.setattr("app.services.email.is_email_configured", lambda: True)
+    already_open = _finding("f1", opened_minutes_ago=60)
+    young = _finding("f2", opened_minutes_ago=5)
+    db = _db([already_open, young])
+    await alerts.send_alerts(db, now=NOW)
+    assert already_open.alerted_at == NOW
+    assert young.alerted_at is None
+    # The administrator turns the emails on: no burst for the finding already open.
+    settings["config"] = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com"])
+    later = NOW + timedelta(minutes=20)
+    assert await alerts.send_immediate_alerts(db, settings["config"], now=later, claim=claim) == 1
+    assert [mail["to"] for mail in sent] == ["ops@example.com"]
+    assert young.alerted_at == later
+
+
+@pytest.mark.asyncio
+async def test_a_restored_finding_starts_a_new_episode_and_waits_for_the_window() -> None:
+    from app.models.health_check import STATUS_DISMISSED, STATUS_OPEN
+    from app.services.health import engine
+
+    row = _finding("f1", opened_minutes_ago=600)
+    row.status, row.dismissal, row.alerted_at = STATUS_DISMISSED, {"reason": "known"}, None
+
+    class _Session:
+        async def get(self, _model: Any, _key: Any) -> Any:
+            return row
+
+        async def flush(self) -> None:
+            return None
+
+    session: Any = _Session()
+    before = datetime.now(UTC)
+    restored = await engine.restore_finding(session, "f1")
+    opened = restored.opened_at
+    assert restored.status == STATUS_OPEN
+    assert restored.alerted_at is None
+    assert opened is not None and opened >= before
+    assert not alerts.alert_due(restored, HealthAlertEmailSettings(), opened + timedelta(minutes=1))
+
+
+@pytest.mark.asyncio
+async def test_immediate_off_stamps_the_due_findings_without_sending(sent: list[dict[str, Any]]) -> None:
+    off = HealthAlertEmailSettings(enabled=True, recipients=["ops@example.com"], immediate=False)
+    row = _finding("f1")
+    assert await alerts.send_immediate_alerts(_db([row]), off, now=NOW) == 0
+    assert row.alerted_at == NOW
     assert sent == []
 
 

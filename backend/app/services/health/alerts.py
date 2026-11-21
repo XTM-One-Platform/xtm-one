@@ -191,17 +191,8 @@ def alert_due(row: HealthCheckFinding, config: HealthAlertEmailSettings, now: da
     return opened is not None and now - opened >= timedelta(minutes=config.alert_after_minutes)
 
 
-async def send_immediate_alerts(
-    db: AsyncSession,
-    config: HealthAlertEmailSettings,
-    *,
-    now: datetime,
-    claim: Callable[[str], Awaitable[bool]] = _claim,
-) -> int:
-    """One email per critical finding open for the alert window and not yet alerted; the number alerted."""
-    if not config.immediate:
-        return 0
-    rows = [
+async def _due_rows(db: AsyncSession, config: HealthAlertEmailSettings, now: datetime) -> list[HealthCheckFinding]:
+    return [
         row
         for row in (
             await db.execute(
@@ -214,6 +205,34 @@ async def send_immediate_alerts(
         ).scalars()
         if alert_due(row, config, now)
     ]
+
+
+async def stamp_due_alerts(db: AsyncSession, config: HealthAlertEmailSettings, *, now: datetime) -> int:
+    """Stamp the due findings as alerted without sending, while the immediate path is skipped.
+
+    Turning the emails on, adding recipients or configuring SMTP later then mails only the
+    findings that open after it, never a burst of every critical finding already open (#958).
+    """
+    rows = await _due_rows(db, config, now)
+    for row in rows:
+        row.alerted_at = now
+    if rows:
+        await db.commit()
+    return len(rows)
+
+
+async def send_immediate_alerts(
+    db: AsyncSession,
+    config: HealthAlertEmailSettings,
+    *,
+    now: datetime,
+    claim: Callable[[str], Awaitable[bool]] = _claim,
+) -> int:
+    """One email per critical finding open for the alert window and not yet alerted; the number alerted."""
+    if not config.immediate:
+        await stamp_due_alerts(db, config, now=now)
+        return 0
+    rows = await _due_rows(db, config, now)
     alerted = 0
     for row in rows:
         row.alerted_at = now
@@ -259,11 +278,16 @@ async def send_daily_digest(db: AsyncSession, config: HealthAlertEmailSettings, 
 
 
 async def send_alerts(db: AsyncSession, *, now: datetime) -> dict[str, int]:
-    """The pass's alert emails: nothing when off, without recipients or without SMTP."""
+    """The pass's alert emails: nothing sent when off, without recipients or without SMTP.
+
+    In that state the due findings are still stamped (``stamp_due_alerts``), so enabling the
+    emails later never mails the findings that were already open.
+    """
     from app.services.email import is_email_configured
 
     config = (await load_health_settings(db)).alert_emails
     if not config.enabled or not config.recipients or not is_email_configured():
+        await stamp_due_alerts(db, config, now=now)
         return {"immediate": 0, "digest": 0}
     immediate = await send_immediate_alerts(db, config, now=now)
     digest = await send_daily_digest(db, config, now=now)
