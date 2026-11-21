@@ -13,28 +13,26 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-import { ClipboardList } from "lucide-react";
+import { Icon } from "@filigran/design-system";
+import { useLocation } from "react-router-dom";
 import { useFormatter } from "@/i18n";
-import { useTabParam } from "@/hooks/useTabParam";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import TaskHistory from "@/pages/TaskHistory";
 import BackgroundTasks from "@/pages/BackgroundTasks";
-import WorkItemsTab from "@/pages/operations/WorkItemsTab";
 import SharedStateTab from "@/pages/operations/SharedStateTab";
 import WorksetsTab from "@/pages/operations/WorksetsTab";
-import WorkspacesTab, { NewWorkspaceButton } from "@/pages/operations/WorkspacesTab";
-import { OPERATIONS_TABS, operationsTabSearch, type OpsTab } from "@/pages/operations/tabs";
+import { OPERATIONS_TABS, operationsTabOf, operationsTabSearch } from "@/pages/operations/tabs";
 
 /**
- * Operations - the single hub for everything that is the underlying work of
- * agents: assignment-run executions, background delegations, durable work
- * items, and the shared cross-run state store. Consolidates what used to be
- * separate History / Background Tasks / Work Items entries.
+ * Operations - what is running or past: assignment-run executions,
+ * background delegations, the shared cross-run state store and the worksets.
+ * What to do and follow (work items, value, workspaces) is Tasks (#775).
  */
 export default function Operations() {
   const { t_i18n } = useFormatter();
-  const [tab] = useTabParam<OpsTab>("executions");
+  const { pathname } = useLocation();
+  const tab = operationsTabOf(pathname);
 
   return (
     <div className="space-y-6">
@@ -42,23 +40,19 @@ export default function Operations() {
       <ListPageHeader
         title={
           <span className="flex items-center gap-2">
-            <ClipboardList className="h-7 w-7 text-accent" /> {t_i18n("Operations")}
+            <Icon name="clipboard-list" size={24} className="text-accent" aria-hidden /> {t_i18n("Operations")}
           </span>
         }
         infoLabel={t_i18n("About operations")}
-        info={t_i18n("Everything your agents are working on - run executions, background delegations, durable work items, the shared state they coordinate through, and the corpora they build to reason over more material than fits in a context.")}
-        // The primary action of the open tab stays in the page header, never in its table toolbar.
-        actions={tab === "workspaces" ? <NewWorkspaceButton /> : undefined}
+        info={t_i18n("What your agents are running and have run: executions, background delegations, the shared state they coordinate through, and the corpora they build to reason over more material than fits in a context.")}
       />
 
       <DetailTabs tabs={OPERATIONS_TABS} active={tab} searchFor={operationsTabSearch} />
 
       {tab === "executions" && <TaskHistory hideHeader />}
       {tab === "background-tasks" && <BackgroundTasks hideHeader />}
-      {tab === "work-items" && <WorkItemsTab />}
-      {tab === "state" && <SharedStateTab />}
+      {tab === "shared-state" && <SharedStateTab />}
       {tab === "worksets" && <WorksetsTab />}
-      {tab === "workspaces" && <WorkspacesTab />}
     </div>
   );
 }

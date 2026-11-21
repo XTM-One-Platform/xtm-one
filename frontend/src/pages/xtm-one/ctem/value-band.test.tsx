@@ -115,7 +115,7 @@ describe("ValueBandCard", () => {
     expect(tile.textContent).toContain("No value recorded yet");
     expect(tile.textContent).toContain("7 agentic runs in the last 30 days");
     expect(tile.textContent).not.toMatch(/\b0 h\b/);
-    expect(screen.getByRole("link", { name: "How value is computed" }).getAttribute("href")).toBe("/value/methodology");
+    expect(screen.getByRole("link", { name: "How value is computed" }).getAttribute("href")).toBe("/tasks/value/methodology");
   });
 
   it("with value recorded names each figure, labels the catalog default rate and links the Value page", () => {
@@ -126,7 +126,7 @@ describe("ValueBandCard", () => {
     expect(screen.getByText("Net value")).toBeTruthy();
     expect(screen.getByTestId("ctem-value-band-value-basis").textContent).toBe("Last 30 days · Estimated · Default rate");
     expect(tile.textContent).toContain("Estimated");
-    expect(screen.getByRole("link", { name: "See the value" }).getAttribute("href")).toBe("/value");
+    expect(screen.getByRole("link", { name: "See the value" }).getAttribute("href")).toBe("/tasks/value");
   });
 
   it("says no default rate once the organization set its own, role rates included", () => {

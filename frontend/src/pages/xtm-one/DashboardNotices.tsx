@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { workItemPath, workItemsPath } from "@/lib/task-routes";
 import { Icon } from "@filigran/design-system";
 import { ListTodo, ShieldOff } from "lucide-react";
 import { useMemo } from "react";
@@ -43,8 +44,8 @@ function WorkItemsWaitingForMeAlert() {
   const open = () =>
     navigate(
       count === 1 && oldest
-        ? `/operations/work-items?item=${oldest.id}`
-        : "/operations/work-items?view=waiting",
+        ? workItemPath(oldest.id)
+        : workItemsPath({ view: "waiting" }),
     );
   return (
     <DashboardNotice

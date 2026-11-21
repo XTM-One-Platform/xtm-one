@@ -67,7 +67,7 @@ def test_the_lab_starts_the_seed_and_reads_every_row_back():
         "'missing'",
         "&fleet=",
         "'no-reason blocked work items'",
-        "/operations/work-items?vis=all",
+        "/tasks/work-items?vis=all",
         "/operations/work-items'",
         "stderr_summary(process.stderr)",
     ):

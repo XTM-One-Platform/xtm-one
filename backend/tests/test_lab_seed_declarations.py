@@ -1781,7 +1781,7 @@ def test_the_roi_chat_seed_covers_every_state_of_the_from_chat_card():
         "'/roi/chat?window=30d'",
         "stderr_summary(process.stderr)",
         "seeded ROI chat records (",
-        "/value?scope=organization",
+        "/tasks/value?scope=organization",
         "FLEET_MEMBERS[0]",
     ):
         assert part in helper, part
@@ -3473,7 +3473,8 @@ def test_the_seeded_routes_are_routes_of_the_frontend():
     for route in ("/runs/:id", "/fleets/:fleetId", "/tools/:id", "/templates/:id", "/investigation-packs/:id",
                   "/relays/:id",
                   "/evaluations/datasets/:id", "/evaluations/:evaluationId/compare", "/evaluations/:id", "/ctem/:stage",
-                  "/workspaces/:workspaceId", "/users/:id", "/operations/:tab", "/videos/:id",
+                  "/tasks/workspaces/:workspaceId", "/tasks/work-items/:itemId", "/tasks/value", "/users/:id",
+                  "/operations/shared-state", "/videos/:id",
                   "/integrations/:id/:tab?"):
         assert f'path="{route}' in app, route
 

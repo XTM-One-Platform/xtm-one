@@ -29,10 +29,11 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import { useFleet, useFleetHealth, useFleetMembers } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
+import { workspacePath } from "@/lib/task-routes";
 
 /** Where an agent or the fleet opened from the Team tab goes back to. */
 function teamBackState(workspaceId: string) {
-  return { backTo: `/workspaces/${workspaceId}/team`, backLabel: "Back to the workspace" };
+  return { backTo: workspacePath(workspaceId, "team"), backLabel: "Back to the workspace" };
 }
 
 export function WorkspaceTeam({ workspaceId, fleetId }: { workspaceId: string; fleetId: string }) {

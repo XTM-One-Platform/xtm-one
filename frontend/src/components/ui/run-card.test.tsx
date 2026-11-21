@@ -53,7 +53,7 @@ describe("a Live Activity row", () => {
     expect(titleLine.className).not.toContain("flex-wrap");
     // The trigger is a link to the item, an icon only: no "Scheduled" chip text.
     const marker = within(titleLine).getByTestId("scheduled-run-badge");
-    expect(marker.getAttribute("href")).toBe("/operations/work-items?item=item-1");
+    expect(marker.getAttribute("href")).toBe("/tasks/work-items/item-1");
     expect(marker.getAttribute("aria-label")).toBe("Scheduled");
     expect(marker.textContent).toBe("");
     expect(within(titleLine).getByText("Re-check the main CI run").className).toContain("truncate");

@@ -19,6 +19,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * placeholder), the pickup state, why the reader sees it and where it came
  * from. The rows of Operations > Work Items and the detail dialog share them.
  */
+import { workItemPath } from "@/lib/task-routes";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ElementType, MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -297,7 +298,7 @@ export function WorkItemBlockers({ blockers, nowrap = false }: { blockers: WorkI
         blocker.accessible && blocker.id ? (
           <Link
             key={blocker.id}
-            to={`/operations/work-items?item=${blocker.id}`}
+            to={workItemPath(blocker.id)}
             onClick={stop}
             className="inline-flex min-w-0 max-w-full items-center gap-1 text-accent hover:underline"
           >
