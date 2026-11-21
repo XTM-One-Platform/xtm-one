@@ -139,6 +139,12 @@ def _answer_budget() -> int:
 #: An argument the caller did not give, apart from an explicit null (which clears).
 _UNSET: Any = object()
 
+#: What update_work_item answers for an empty owner_agent_id (#862): never a clear.
+OWNER_KEPT_LINE = (
+    "owner_agent_id was empty: the owner is kept (an agent never clears an item's owner; "
+    "name another agent to re-route it)"
+)
+
 
 def _clearable(value: Any) -> str | None:
     """A clearable date argument for the service, which reads ``None`` as
@@ -1226,7 +1232,7 @@ def build_work_item_tools(
         status: str = "",
         priority: str = "",
         description: str = "",
-        owner_agent_id: str = "",
+        owner_agent_id: str | None = None,
         correlation_key: str = "",
         due_at: str | None = _UNSET,
         not_before: str | None = _UNSET,
@@ -1285,7 +1291,10 @@ def build_work_item_tools(
                     f"{attachable.refusal_reason()} {list_available_files(file_context)}"
                 )
             attached = attachable.file_ids
-        resolved_owner, owner_err = await _owner_argument(owner_agent_id)
+        # An empty owner is never a clear through this tool: the owner is kept,
+        # and the read-back says so instead of a silent no-op (#862).
+        owner_kept = owner_agent_id is not None and not owner_agent_id.strip()
+        resolved_owner, owner_err = await _owner_argument(owner_agent_id or "")
         if owner_err:
             return owner_err
         impact, impact_err = _fleet_impact_argument(fleet_impact)
@@ -1357,6 +1366,9 @@ def build_work_item_tools(
         stop = finished_under_holder_text(item, _own_run_ids())
         if stop:
             msg += f"\n  - {stop}"
+        if owner_kept and item.get("status") == "blocked":
+            # Only where a clear would matter: a blocked item needs its owner (#762).
+            msg += f"\n  - {OWNER_KEPT_LINE}"
         if note.strip():
             stamp = (item.get("description") or "").split(": ", 1)[0]
             msg += (

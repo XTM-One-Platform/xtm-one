@@ -8,7 +8,7 @@ import {
   ArrowUpRight, Plus, ChevronRight, ShieldCheck, Link2,
   Scale, ExternalLink, Sparkles, RefreshCw, type LucideIcon,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,7 +91,10 @@ import { postureCsv, postureCsvFilename } from "./ctem/posture-export";
 import { LifecycleHeader } from "./ctem/LifecycleHeader";
 import { ActivityFeed } from "./ctem/ActivityFeed";
 import { ActivityRow } from "./ctem/ActivityRow";
-import { deterministicActivity, feedCapacity } from "./ctem/activity-feed";
+import { deterministicActivity, feedCapacity, mergeActivity, signalActivity } from "./ctem/activity-feed";
+import { useRecentCtemSignals } from "@/hooks/api/useCtemSignalsApi";
+import { LOOP_PARAM, LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
+import { loopParam } from "./ctem/loop/loop-stages";
 import { CoverageMatrixCard } from "./ctem/CoverageMatrixCard";
 import { ExposureStatsCard } from "./ctem/ExposureStatsCard";
 import { ValueBandCard } from "./ctem/ValueBandCard";
@@ -572,7 +575,22 @@ export default function CtemCommandCenter({
   const latestRuns = useMemo(() => (recentRuns ?? []).slice(0, 6), [recentRuns]);
   // D3-4 (#9567): with no agent run, Live activity lists the deterministic
   // events the page already holds (syncs, registrations, health, validation).
-  const activityEvents = useMemo(() => deterministicActivity(posture, registrations), [posture, registrations]);
+  const deterministicEvents = useMemo(() => deterministicActivity(posture, registrations), [posture, registrations]);
+  // The CTEM loop is never hidden (#838, dev-docs/ctem-loop-visibility.md):
+  // the newest signals join the feed, refreshed by the activity stream frame
+  // ctem_signal_update, and open their loop trace.
+  const { data: recentSignals } = useRecentCtemSignals();
+  const signalEvents = useMemo(() => signalActivity(recentSignals?.signals), [recentSignals]);
+  const activityEvents = useMemo(() => mergeActivity(signalEvents, deterministicEvents), [signalEvents, deterministicEvents]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openSignalTrace = useCallback(
+    (signalId: string) => {
+      const next = new URLSearchParams(searchParams);
+      next.set(LOOP_PARAM, loopParam("signal", signalId));
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams],
+  );
   // Done for you (C2 V3): every deterministic event, its axis keeps the period's.
   const timelineEvents = useMemo(() => deterministicActivity(posture, registrations, 50), [posture, registrations]);
 
@@ -1533,12 +1551,14 @@ export default function CtemCommandCenter({
           <div className="flex-1 overflow-auto min-h-0">
             {latestRuns.length > 0 ? (
               <div className="space-y-2">
+                {/* Signals stay visible beside the runs (#838): the two newest, above. */}
+                {signalEvents.length > 0 && <ActivityFeed events={signalEvents.slice(0, 2)} onOpenSignal={openSignalTrace} />}
                 {latestRuns.map((run) => <RunCard key={run.id} run={run} compact card={false} />)}
               </div>
             ) : activityEvents.length > 0 ? (
               // Only the rows the card holds whole: the oldest never hides under
               // an inner scroll (#9568 UX round 1 B1).
-              <ActivityFeed events={activityEvents.slice(0, feedCapacity(size, activityEvents.length))} />
+              <ActivityFeed events={activityEvents.slice(0, feedCapacity(size, activityEvents.length))} onOpenSignal={openSignalTrace} />
             ) : (
               <div className="grayscale opacity-50 pointer-events-none select-none divide-y divide-[var(--border-elevation-subtle)]">
                 {DEMO_ACTIVITY.slice(0, feedCapacity(size, DEMO_ACTIVITY.length)).map((row) => <DemoActivityRow key={row.id} row={row} />)}
@@ -1929,6 +1949,7 @@ export default function CtemCommandCenter({
       />
 
       <PostureExplainDialog open={postureExplainOpen} onOpenChange={setPostureExplainOpen} posture={posture} />
+      <LoopTraceDialog />
     </div>
   );
 }

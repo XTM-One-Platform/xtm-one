@@ -2593,6 +2593,16 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
 
+        # --- 9c0. Component versions of the connected platforms ---
+        # No model call; nothing is read while no assignment subscribes to
+        # integration.version.changed, one read per platform every 5 minutes.
+        try:
+            from app.services.integration_component_versions import component_versions_tick
+
+            await component_versions_tick()
+        except Exception as e:
+            logger.error("Component versions tick error: %s", format_exception_message(e), exc_info=True)
+
         # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
         # work needs agentic AI and Platform Health switched on (``cycles.health_tick``).
