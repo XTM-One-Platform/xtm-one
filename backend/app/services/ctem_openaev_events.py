@@ -1,0 +1,180 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""OpenAEV events moving CTEM cases (CTEM-15, #918): event-driven, no poll, no model call.
+
+A provisioned OpenAEV trigger delivers to the per-assignment webhook route
+(``services/openaev_trigger_provisioning.py`` names the event of a delivery).
+Two things happen there, whatever assignment the delivery reaches:
+
+- the signal table (``services/ctem_signal_listeners.py``) records a path 8
+  signal for ``scenario_score_degraded`` (a mitigation that was proven no
+  longer holds);
+- :func:`note_event` (this module) finds the cases a result is about, a
+  case whose validation reference or OpenAEV member names the delivered
+  resource, writes one ``source_event`` entry in each case's history and
+  raises ``ctem_case.validation_finished`` once per case and occurrence. The
+  loop fleets listen to it (routed by trigger path, as the other case
+  events), read the result in OpenAEV and write it on the case with
+  ``record_ctem_case_validation``, which resolves or reopens the case.
+
+Path 4 (an attack path reaching a critical asset) needs an OpenAEV event
+that does not exist yet (CTEM-13); it plugs into :data:`CASE_EVENT_KEYS`
+and the signal table when it ships.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+
+logger = logging.getLogger(__name__)
+
+PROVIDER = "openaev"
+#: The platform event a case raises when an OpenAEV result it waits on arrives.
+CASE_VALIDATION_FINISHED = "ctem_case.validation_finished"
+#: The delivered events that can carry a case's validation or re-test result.
+CASE_EVENT_KEYS: frozenset[str] = frozenset({"simulation_finished", "finding_updated", "finding_deleted"})
+#: The states in which a case still waits on a result (a resolved case reopens through a failed re-test).
+WAITING_STATES: tuple[str, ...] = ("needs_attention", "in_progress", "mitigated_watching", "resolved")
+#: Most cases one delivery is matched against.
+SCAN_LIMIT = 500
+#: The history kind of the entry (``ctem_case_events.kind`` is 20 characters).
+HISTORY_KIND = "source_event"
+
+
+def delivered(payload: Mapping[str, Any]) -> dict[str, str]:
+    """The OpenAEV facts of a normalized delivery (``_openaev_event``), as text."""
+    meta = payload.get("_openaev_event") if isinstance(payload, Mapping) else None
+    if not isinstance(meta, Mapping):
+        return {}
+    return {k: str(v).strip() for k, v in meta.items() if isinstance(v, str | int) and str(v).strip()}
+
+
+def references(case: CtemCase, issues: list[CtemCaseIssue], resource_id: str) -> bool:
+    """Whether *case* waits on the OpenAEV object *resource_id* (a validation reference or a member)."""
+    if not resource_id:
+        return False
+    for entry in case.validations or []:
+        if not isinstance(entry, Mapping) or str(entry.get("provider") or "").lower() != PROVIDER:
+            continue
+        if resource_id in str(entry.get("ref") or ""):
+            return True
+    return any(i.source == PROVIDER and i.external_id == resource_id for i in issues)
+
+
+def event_id(case: CtemCase, event: str, facts: Mapping[str, str]) -> str:
+    """One platform event per case, OpenAEV object and occurrence (its message tells two updates apart)."""
+    marker = "\n".join((event, facts.get("resource_id", ""), facts.get("message", "")))
+    digest = hashlib.sha256(f"{CASE_VALIDATION_FINISHED}\n{case.id}\n{marker}".encode()).hexdigest()[:32]
+    return f"ctem-case-{digest}"
+
+
+async def matching_cases(db: AsyncSession, resource_id: str) -> list[CtemCase]:
+    """The cases that wait on *resource_id*, newest first."""
+    cases = (
+        (
+            await db.execute(
+                select(CtemCase)
+                .where(CtemCase.state.in_(WAITING_STATES))
+                .order_by(CtemCase.updated_at.desc())
+                .limit(SCAN_LIMIT)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not cases:
+        return []
+    ids = [c.id for c in cases]
+    members = (
+        (
+            await db.execute(
+                select(CtemCaseIssue).where(
+                    CtemCaseIssue.case_id.in_(ids),
+                    CtemCaseIssue.source == PROVIDER,
+                    CtemCaseIssue.external_id == resource_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_case: dict[Any, list[CtemCaseIssue]] = {}
+    for member in members:
+        by_case.setdefault(member.case_id, []).append(member)
+    return [c for c in cases if references(c, by_case.get(c.id, []), resource_id)]
+
+
+async def route(
+    db: AsyncSession, event: str, payload: Mapping[str, Any], *, now: datetime | None = None
+) -> list[tuple[str, dict[str, Any], str]]:
+    """Write the history entries of a delivery; the platform events to raise after the commit."""
+    from app.services.ctem_case_loop import case_data
+    from app.services.ctem_cases import SYSTEM_ACTOR
+
+    if event not in CASE_EVENT_KEYS:
+        return []
+    facts = delivered(payload)
+    resource_id = facts.get("resource_id", "")
+    if not resource_id:
+        return []
+    now = now or datetime.now(UTC)
+    out: list[tuple[str, dict[str, Any], str]] = []
+    for case in await matching_cases(db, resource_id):
+        db.add(
+            CtemCaseEvent(
+                case_id=case.id,
+                actor=SYSTEM_ACTOR,
+                kind=HISTORY_KIND,
+                at=now,
+                to_value=event[:300],
+                evidence=f"{PROVIDER}:{resource_id}"[:300],
+                reason=(facts.get("message") or None),
+            )
+        )
+        openaev = {
+            "event": event,
+            "resource_type": facts.get("resource_type"),
+            "resource_id": resource_id,
+            "platform_url": facts.get("platform_url"),
+        }
+        data = case_data(case, openaev={k: v for k, v in openaev.items() if v})
+        out.append((CASE_VALIDATION_FINISHED, data, event_id(case, event, facts)))
+    return out
+
+
+async def note_event(event: str, payload: Mapping[str, Any], *, verified: bool) -> int:
+    """Move the cases an OpenAEV delivery is about; never raises. How many case events were raised.
+
+    XTM One mode only, and only for a delivery verified against the
+    integration's webhook secret (a forged delivery never moves a case).
+    """
+    from app.core.config import settings
+
+    if not verified or settings.is_copilot_like or event not in CASE_EVENT_KEYS:
+        return 0
+    from app.core.database import async_session
+    from app.services.platform_events import publish
+
+    try:
+        async with async_session() as db:
+            pending = await route(db, event, payload)
+            if not pending:
+                return 0
+            await db.commit()
+        raised = 0
+        for name, data, eid in pending:
+            if await publish(name, data, event_id=eid):
+                raised += 1
+        return raised
+    except Exception:
+        logger.warning("CTEM cases not moved by an OpenAEV %s delivery", event, exc_info=True)
+        return 0

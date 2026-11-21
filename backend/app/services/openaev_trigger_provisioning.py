@@ -34,7 +34,15 @@ simulations, injects and findings. The events map to triggers as follows
   ``exercise_status`` = ``FINISHED``;
 * ``atomic_test_finished``: resource ``INJECT``, ``UPDATE``, filtered on a
   closed ``inject_status`` (``EXECUTED``, ``PARTIAL``, ``ERROR``);
-* ``finding_created``: resource ``FINDING``, ``CREATE``.
+* ``finding_created``: resource ``FINDING``, ``CREATE``;
+* ``finding_updated`` / ``finding_deleted``: resource ``FINDING``, ``UPDATE``
+  / ``DELETE`` (CTEM-15, #918);
+* ``asset_created`` / ``asset_updated``: resource ``ASSET``, ``CREATE`` /
+  ``UPDATE``;
+* ``vulnerability_created``: resource ``VULNERABILITY``, ``CREATE``;
+* ``scenario_score_degraded``: resource ``SCENARIO``, ``SCORE_DEGRADATION``
+  (OpenAEV's semantic event, valid on scenarios only): a mitigation that was
+  proven no longer holds, a path 8 signal of the CTEM loop.
 
 Every object is named ``XTM One - <fleet> - <purpose>``; a trigger adds
 `` - <event>``, which is how the receiver names the event of a delivery
@@ -78,6 +86,12 @@ EVENTS: dict[str, tuple[str, str, str | None, tuple[str, ...]]] = {
     "simulation_finished": ("SIMULATION", "UPDATE", "exercise_status", ("FINISHED",)),
     "atomic_test_finished": ("INJECT", "UPDATE", "inject_status", ("EXECUTED", "PARTIAL", "ERROR")),
     "finding_created": ("FINDING", "CREATE", None, ()),
+    "finding_updated": ("FINDING", "UPDATE", None, ()),
+    "finding_deleted": ("FINDING", "DELETE", None, ()),
+    "asset_created": ("ASSET", "CREATE", None, ()),
+    "asset_updated": ("ASSET", "UPDATE", None, ()),
+    "vulnerability_created": ("VULNERABILITY", "CREATE", None, ()),
+    "scenario_score_degraded": ("SCENARIO", "SCORE_DEGRADATION", None, ()),
 }
 
 #: ``(method, path, json)`` -> ``(status, body)``; the body is ``None`` on 404.
