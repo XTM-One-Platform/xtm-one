@@ -111,12 +111,16 @@ function NoteEntry({
           ))}
       </div>
       {/* A height cap, not line-clamp: the body is block Markdown (div > p), which
-          -webkit-line-clamp on a wrapper does not cut (UX round 1, B1). About 6
-          lines of content-base (line height 1.75em), faded at the bottom. */}
+          -webkit-line-clamp on a wrapper does not cut (UX round 1, B1). 10.5em of
+          the list item's caption font (126 px): about 5 lines of content-base,
+          faded at the bottom (UX round 2, A6). Focus
+          never lands in the hidden part: a link or chip below the fold opens the
+          note when it takes focus (UX round 2, B1). */}
       <div
         className={cn("relative pt-1", folded && "max-h-[10.5em] overflow-hidden")}
         data-testid="work-item-note-body"
         data-folded={folded ? "true" : undefined}
+        onFocusCapture={folded ? () => setOpen(true) : undefined}
       >
         <NoteMarkdown text={note.body} repo={repo} />
         {folded && (

@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -845,6 +845,18 @@ describe("the work item detail", () => {
     expect(screen.queryByTestId("work-item-note-fade")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
     expect(body.getAttribute("data-folded")).toBe("true");
+  });
+
+  it("opens a folded note when keyboard focus enters it, so focus never lands in hidden text (#776, UX round 2 B1)", () => {
+    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}\n\nSee [the run log](https://example.com/log) below the fold.\n\nRead the brief.` }));
+    const body = screen.getByTestId("work-item-note-body");
+    expect(body.getAttribute("data-folded")).toBe("true");
+    const link = within(body).getByRole("link", { name: /the run log/ });
+    act(() => link.focus());
+    expect(body.getAttribute("data-folded")).toBeNull();
+    expect(body.className).not.toContain("overflow-hidden");
+    expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
   });
 
   it("renders no script or iframe a description carries", () => {
