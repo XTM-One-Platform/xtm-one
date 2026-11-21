@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1971 tools across 114 providers; 52 held back by hand.
+# 1984 tools across 115 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1445,6 +1445,19 @@ qualys:list_qualys_hosts
 qualys:list_qualys_reports
 qualys:list_qualys_scanner_appliances
 qualys:list_qualys_scans
+quotapath:export_quotapath_deals
+quotapath:export_quotapath_payouts
+quotapath:get_quotapath_commission_totals
+quotapath:get_quotapath_deal
+quotapath:list_quotapath_deals
+quotapath:list_quotapath_payouts
+quotapath:list_quotapath_plans
+quotapath:list_quotapath_quota_assignments
+quotapath:list_quotapath_quota_values
+quotapath:list_quotapath_resolved_payouts
+quotapath:list_quotapath_teams
+quotapath:list_quotapath_unresolved_payouts
+quotapath:list_quotapath_users
 ransomware_live:get_ransomlive_csirt_contacts
 ransomware_live:get_ransomlive_group
 ransomware_live:get_ransomlive_iocs
