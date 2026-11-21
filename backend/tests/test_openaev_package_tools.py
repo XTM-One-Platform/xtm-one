@@ -787,6 +787,83 @@ async def test_empty_update_bodies_are_rejected():
 # ── Connector catalog browsing + connector-instance deployment ───────────
 
 
+class _PathApi:
+    """Stub for `_api` answering each path with its own canned body."""
+
+    def __init__(self, bodies):
+        self._bodies = bodies
+        self.paths: list[str] = []
+
+    async def __call__(self, base_url, headers, method, path, action, *, json=None, params=None):
+        self.paths.append(path)
+        body = self._bodies.get(path)
+        if isinstance(body, str):
+            return None, body
+        return _FakeResp(body), None
+
+
+async def test_query_connectors_shows_the_reported_composer_version_and_image(monkeypatch):
+    # The XTM Composer version and image come from what the Composer reports to
+    # OpenAEV (GET /api/settings, OpenAEV #9612), never from the platform version.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/collectors": [{"collector_id": "c1", "collector_name": "Mitre"}],
+            "/api/settings": {
+                "platform_version": "3.261118.0",
+                "xtm_composer_version": "3.261121.0",
+                "xtm_composer_image": "filigran/xtm-composer:3.261121.0",
+                "xtm_composer_last_connectivity_check": "2026-11-21T14:00:00Z",
+            },
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(executor, "query_openaev_connectors", {"kind": "collectors"})
+    assert not result.is_error, result.content
+    assert "Mitre" in result.content
+    assert "  version: 3.261121.0" in result.content
+    assert "  image: filigran/xtm-composer:3.261121.0" in result.content
+    assert "  last connectivity check: 2026-11-21T14:00:00Z" in result.content
+    assert "3.261118.0" not in result.content
+
+
+async def test_query_connectors_names_an_openaev_without_composer_fields(monkeypatch):
+    # An older OpenAEV (no xtm_composer_* in its settings) is named as such, and a
+    # failed settings read keeps the connector list.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    monkeypatch.setattr(
+        platform,
+        "_api",
+        _PathApi(
+            {
+                "/api/injectors": [{"injector_id": "i1", "injector_name": "HTTP"}],
+                "/api/settings": {"platform_version": "3.261118.0"},
+            }
+        ),
+    )
+    result = await _run(executor, "query_openaev_connectors", {"kind": "injectors"})
+    assert "XTM Composer: not reported by this OpenAEV" in result.content
+    assert "3.261118.0" not in result.content
+
+    monkeypatch.setattr(
+        platform,
+        "_api",
+        _PathApi(
+            {
+                "/api/injectors": [{"injector_id": "i1", "injector_name": "HTTP"}],
+                "/api/settings": "OpenAEV answered 403",
+            }
+        ),
+    )
+    result = await _run(executor, "query_openaev_connectors", {"kind": "injectors"})
+    assert "HTTP" in result.content
+    assert "XTM Composer: could not be read (OpenAEV answered 403)" in result.content
+
+
 async def test_catalog_get_surfaces_required_and_secret_params(monkeypatch):
     # query_openaev_catalog get fetches the connector + its configuration schema
     # and flags required / secret parameters so the agent knows what to ask for.

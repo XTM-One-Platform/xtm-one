@@ -146,6 +146,36 @@ def _instance_runtime_lines(data: dict[str, object]) -> list[str]:
     return lines
 
 
+#: The XTM Composer fields of ``GET /api/settings`` (OpenAEV #9612), in the
+#: order they are shown.
+_COMPOSER_FIELDS = (
+    ("xtm_composer_version", "version"),
+    ("xtm_composer_image", "image"),
+    ("xtm_composer_last_connectivity_check", "last connectivity check"),
+)
+
+
+def _composer_lines(settings: object) -> list[str]:
+    """The XTM Composer the OpenAEV settings report, as answer lines.
+
+    The version and image are the ones XTM Composer itself reports at
+    registration and on each connectivity refresh ('unknown' for an XTM
+    Composer too old to report one). An OpenAEV that predates these fields, or
+    with no XTM Composer registered, is named as such: the platform version is
+    never shown in place of the Composer's.
+    """
+    if not isinstance(settings, dict) or not any(key in settings for key, _ in _COMPOSER_FIELDS):
+        return [
+            "XTM Composer: not reported by this OpenAEV (no XTM Composer registered, "
+            "or an OpenAEV release that does not expose its version and image)."
+        ]
+    lines = ["XTM Composer:"]
+    for key, label in _COMPOSER_FIELDS:
+        value = settings.get(key)
+        lines.append(f"  {label}: {value if value else 'not reported'}")
+    return lines
+
+
 def register(
     base_url: str,
     headers: dict[str, str],
@@ -193,6 +223,13 @@ def register(
             "or this connector id as connector_id (with connector_kind for a collector "
             "or executor). A connector without one is registered externally."
         )
+        # The XTM Composer that deploys the catalog connectors: a failed settings
+        # read leaves the connector list whole and says so.
+        sresp, serr = await _api(base_url, headers, "get", "/api/settings", "read the XTM Composer")
+        if serr:
+            lines.append(f"XTM Composer: could not be read ({serr})")
+        else:
+            lines.extend(_composer_lines(sresp.json() if sresp is not None else None))
         return "\n".join(lines)
 
     async def _related_ids(connector_id: str, kind: str) -> tuple[dict[str, Any] | None, str]:
@@ -753,7 +790,8 @@ def register(
             description=(
                 "List OpenAEV connectors (read-only). kind: 'injectors' (inject "
                 "delivery types), 'collectors' (security platform data collectors), or "
-                "'executors' (agent execution backends)."
+                "'executors' (agent execution backends). Also shows the XTM Composer "
+                "version, image and last connectivity check."
             ),
             input_schema={
                 "type": "object",
