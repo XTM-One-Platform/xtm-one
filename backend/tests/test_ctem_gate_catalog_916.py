@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -25,7 +26,7 @@ from app.services.fleet_autonomy import AUTONOMY_LEVELS, effective_gates, gate_c
 from app.services.fleets import BUILTIN_FLEET_WRITABLE_FIELDS, ensure_builtin_fleet_writable
 
 _LOOP_FLEETS = ("ctem-threat-response", "ctem-vuln-prioritization", "ctem-ai-security", "ctem-third-party-risk")
-_TICKET_TOOLS = {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change", "sync_ctem_case_ticket"}
+_TICKET_TOOLS = {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change"}
 
 
 def _gates(slug: str) -> list[dict]:
@@ -88,6 +89,50 @@ def test_a_pin_survives_a_seed_upgrade():
     _seed_approval_gates(fleet, BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"])
     assert fleet.approval_pins == {CTEM_MOBILIZE_GATE: "run"}
     assert [g["key"] for g in fleet.approval_gates] == list(CTEM_GATE_KEYS)
+
+
+_ADDED = {
+    "key": "customer.production_window",
+    "action": "Change production outside the change window",
+    "module": "XTM One",
+    "approver": "Change manager",
+    "impact": "high",
+    "tools": [{"name": "create_servicenow_change"}],
+}
+
+
+def test_added_gates_are_writable_on_a_built_in_fleet() -> None:
+    assert "customer_gates" in BUILTIN_FLEET_WRITABLE_FIELDS
+    fleet: Any = SimpleNamespace(is_builtin=True, slug="ctem-vuln-prioritization")
+    ensure_builtin_fleet_writable(fleet, {"customer_gates"})
+
+
+def test_an_added_gate_joins_the_seeded_catalog_and_the_level_acts_on_it() -> None:
+    seeded = _gates("ctem-vuln-prioritization")
+    gates = effective_gates(seeded, None, customer=[_ADDED])
+    assert [g["key"] for g in gates] == [*CTEM_GATE_KEYS, _ADDED["key"]]
+    assert gates[-1]["source"] == "customer"
+    catalog = {e["key"]: e["gated"] for e in gate_catalog("full_gates", gates)}
+    assert catalog[_ADDED["key"]] is True
+    pinned = effective_gates(seeded, None, pins={_ADDED["key"]: "run"}, customer=[_ADDED])
+    assert {e["key"]: e["gated"] for e in gate_catalog("full_gates", pinned)}[_ADDED["key"]] is False
+
+
+def test_an_added_gate_never_replaces_a_seeded_one() -> None:
+    clash = dict(_ADDED, key=CTEM_MOBILIZE_GATE, tools=[])
+    gates = effective_gates(_gates("ctem-vuln-prioritization"), None, customer=[clash, {"no": "key"}, "x"])
+    mobilize = [g for g in gates if g["key"] == CTEM_MOBILIZE_GATE]
+    assert len(mobilize) == 1 and mobilize[0]["source"] == "stored" and mobilize[0]["tools"]
+    assert len(gates) == len(CTEM_GATE_KEYS)
+
+
+def test_an_added_gate_survives_a_seed_upgrade() -> None:
+    fleet: Any = SimpleNamespace(approval_gates=None, approval_pins=None, customer_gates=[_ADDED])
+    _seed_approval_gates(fleet, BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"])
+    _seed_approval_gates(fleet, BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"])
+    assert fleet.customer_gates == [_ADDED]
+    keys = [g["key"] for g in effective_gates(fleet.approval_gates, None, customer=fleet.customer_gates)]
+    assert keys[-1] == _ADDED["key"]
 
 
 _PERSONAS = (
