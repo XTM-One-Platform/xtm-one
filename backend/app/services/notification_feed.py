@@ -21,14 +21,16 @@ The items come from the two sources the bell always read:
   takes it out of that population, which clears its entry.
 
 Read state lives on the server (``NotificationReadState``) so a phone and a
-computer agree on what is unread. A run awaiting a human, and a work item
-waiting for the person, is unread until it is answered, whatever was marked.
+computer agree on what is unread. A decision still waiting (a run awaiting a
+human, a work item waiting for the person, a flow parked on its Ask-user node)
+carries ``awaiting_answer`` and is unread until it is answered, whatever was
+opened, dismissed or marked read (#991).
 """
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -38,7 +40,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.base import strip_artifact_markers
 from app.models.notification_read_state import NotificationReadState
-from app.services.decision_links import flow_run_link, run_link, work_item_link
 
 #: Activity types an integration auth failure is recorded under (#3218).
 AUTH_FAILURE_ACTIVITY_TYPES: tuple[str, ...] = ("assignment_auth_quarantine", "assignment_auth_failure")
@@ -77,8 +78,9 @@ NOTIFICATION_KINDS: tuple[str, ...] = (
 
 #: Kinds that wait on the person: shown first.
 URGENT_KINDS: frozenset[str] = frozenset({"hitl", "flow_hitl", "work_item_waiting"})
-#: Kinds unread until answered, whatever was marked read.
-UNREAD_UNTIL_ANSWERED_KINDS: frozenset[str] = frozenset({"hitl", "work_item_waiting"})
+#: The decision kinds: an entry of one of them that still waits carries
+#: ``awaiting_answer`` and stays unread until answered (#991).
+UNREAD_UNTIL_ANSWERED_KINDS: frozenset[str] = frozenset({"hitl", "flow_hitl", "work_item_waiting"})
 #: The id prefix of a waiting work item's entry (never a run's or an activity's id).
 WORK_ITEM_WAITING_PREFIX = "work_item:"
 
@@ -100,8 +102,11 @@ class NotificationItem:
     subtitle: str | None = None
     summary: str | None = None
     critical: bool = False
-    #: The run a ``hitl`` item waits on (the Inbox answers it there).
+    #: The run a ``hitl`` item waits on (the Inbox answers it there), or the
+    #: flow run a ``flow_hitl`` item asks from.
     run_id: str | None = None
+    #: A decision still waiting for its answer: unread whatever was read (#991).
+    awaiting_answer: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -155,11 +160,12 @@ def present_run(run: Any) -> NotificationItem | None:
             id=str(run.id),
             kind="hitl",
             created_at=created,
-            route=run_link(run.id),
+            route=f"/operations/executions/{run.id}",
             title=title,
             subtitle=run.agent_name,
             summary=run.human_input_question,
             run_id=str(run.id),
+            awaiting_answer=True,
         )
     preview = summary_preview(run.result_summary)
     # A summary that is mostly a marker would make an empty notification.
@@ -169,7 +175,7 @@ def present_run(run: Any) -> NotificationItem | None:
         id=str(run.id),
         kind="run",
         created_at=created,
-        route=run_link(run.id),
+        route=f"/operations/executions/{run.id}",
         title=title,
         subtitle=run.agent_name,
         summary=preview,
@@ -207,10 +213,11 @@ def present_waiting_work_item(item: dict[str, Any]) -> NotificationItem | None:
         id=f"{WORK_ITEM_WAITING_PREFIX}{item_id}",
         kind="work_item_waiting",
         created_at=str(item.get("since") or ""),
-        route=work_item_link(item_id),
+        route=f"/tasks/work-items/{item_id}",
         title=title,
         subtitle="Waiting for your decision",
         summary=waiting_deadline_text(item.get("deadline")),
+        awaiting_answer=True,
     )
 
 
@@ -250,7 +257,14 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
             return None
         flow_id = _str(metadata, "flow_id")
         run_id = _str(metadata, "flow_run_id")
-        route = flow_run_link(flow_id, run_id if source == "flow_hitl" else None)
+        route = "/flows"
+        if _is_uuid(flow_id):
+            route = f"/flows/library/{flow_id}"
+            if source == "flow_hitl" and _is_uuid(run_id):
+                route += f"?run={run_id}"
+        if source == "flow_hitl" and _is_uuid(run_id):
+            # Whether the run still waits is read in build_feed (one query).
+            return item(source, route, "Flow", run_id=run_id)
         return item(source, route, "Flow")
     if source == "security_audit":
         audit_path = _str(metadata, "audit_path")
@@ -275,7 +289,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         run_id = _str(metadata, "run_id")
         conversation_id = _str(metadata, "conversation_id")
         if _is_uuid(run_id):
-            route = run_link(run_id)
+            route = f"/operations/executions/{run_id}"
         elif _is_uuid(conversation_id):
             route = f"/chat?c={conversation_id}"
         else:
@@ -286,7 +300,9 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
     if source == "run_action_request":
         # Someone who cannot answer a paused run asked its owner to act: the run.
         run_id = _str(metadata, "run_id")
-        return item("run_action_request", run_link(run_id), "Run")
+        return item(
+            "run_action_request", f"/operations/executions/{run_id}" if _is_uuid(run_id) else "/operations", "Run"
+        )
     if source == "builtin_tools_outside_allowlist":
         # A release shipped tools an agent's allowlist leaves out (#12192): its
         # Tooling section, where each one is added in one click.
@@ -319,14 +335,44 @@ def _parse_time(value: str) -> datetime | None:
 
 
 def is_unread(item: NotificationItem, *, read_at: datetime | None, dismissed: set[str]) -> bool:
-    # Any entry its recipient dismissed or opened is read (#901); a decision
-    # still waiting stays listed, and "Mark all read" leaves it unread.
+    # A decision still waiting is unread until answered, whatever was opened,
+    # dismissed or marked read (#991). Any other entry its recipient opened or
+    # dismissed is read (#901).
+    if item.awaiting_answer and item.kind in UNREAD_UNTIL_ANSWERED_KINDS:
+        return True
     if item.id in dismissed:
         return False
-    if item.kind in UNREAD_UNTIL_ANSWERED_KINDS:
-        return True
     created = _parse_time(item.created_at)
     return read_at is None or (created is not None and created > read_at)
+
+
+def flow_ask_waits(run: Any) -> bool:
+    """Whether a flow run is still parked on an Ask-user node nobody answered."""
+    from app.models.flow_run import FLOW_RUN_STATUS_AWAITING
+
+    waiting = (run.state or {}).get("waiting") if isinstance(run.state, dict) else None
+    return (
+        run.status == FLOW_RUN_STATUS_AWAITING
+        and isinstance(waiting, dict)
+        and waiting.get("kind") == "human"
+        and not waiting.get("released")
+    )
+
+
+async def mark_waiting_flow_asks(db: AsyncSession, items: list[NotificationItem]) -> list[NotificationItem]:
+    """Set ``awaiting_answer`` on each ``flow_hitl`` entry whose flow run still waits.
+
+    A run answered, cancelled, finished or gone leaves its entry an ordinary
+    one, read on open, so no entry is ever pinned with nothing to answer.
+    """
+    from app.models.flow_run import FlowRun
+
+    run_ids = {uuid.UUID(i.run_id) for i in items if i.kind == "flow_hitl" and i.run_id and _is_uuid(i.run_id)}
+    if not run_ids:
+        return items
+    rows = (await db.execute(select(FlowRun).where(FlowRun.id.in_(run_ids)))).scalars().all()
+    waiting = {str(run.id) for run in rows if flow_ask_waits(run)}
+    return [replace(i, awaiting_answer=True) if i.kind == "flow_hitl" and i.run_id in waiting else i for i in items]
 
 
 # ── Read state ───────────────────────────────────────────────────────────────
@@ -397,7 +443,7 @@ async def build_feed(db: AsyncSession, user: Any, *, limit: int = FEED_WINDOW) -
     if getattr(user, "notify_waiting_work_items", True) is not False:
         waiting = await list_work_items_waiting_for_person(user_id=str(user.id), limit=limit)
         items += [i for row in waiting if (i := present_waiting_work_item(row)) is not None]
-    merged = merge_items(items)
+    merged = await mark_waiting_flow_asks(db, merge_items(items))
     read_at, dismissed_list = await load_read_state(db, user.id)
     dismissed = set(dismissed_list)
     payload = []
