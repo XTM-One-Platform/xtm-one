@@ -48,6 +48,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import json
 import logging
 import re
 import time
@@ -1553,9 +1554,23 @@ def build_sandbox_workspace_tools(
         get: list[str] | None = None,
         place: dict | None = None,
         french_spacing: str | None = None,
+        set_from: str | None = None,
     ) -> str | ToolResult:
         if not isinstance(paths, list) or not paths or not all(isinstance(p, str) for p in paths):
             return _error("paths must name one or more JSON files of the workspace.")
+        if set_from:
+            # set_from: the set object is a workspace JSON file, read here, never re-sent by the model.
+            if set is not None:
+                return _error("give either 'set' or 'set_from', not both. Nothing was written.")
+            got_set = await _text_of(set_from, settle=False)
+            if isinstance(got_set, ToolResult):
+                return got_set
+            try:
+                set = json.loads(got_set[1])
+            except ValueError as exc:
+                return _error(f"set_from {set_from} is not JSON ({exc}). Nothing was written.")
+            if not isinstance(set, dict):
+                return _error(f"set_from {set_from} must hold a JSON object like 'set'. Nothing was written.")
         texts: dict[str, str] = {}
         for path in paths:
             got = await _text_of(path, settle=False)
@@ -4012,6 +4027,10 @@ def build_sandbox_workspace_tools(
                     "set": {
                         "type": "object",
                         "description": 'Path ("*": every file) to {key: value}; a new key goes last unless placed.',
+                    },
+                    "set_from": {
+                        "type": "string",
+                        "description": "Instead of set: a workspace JSON file holding that object, read on the server.",
                     },
                     "place": {
                         "type": "object",
