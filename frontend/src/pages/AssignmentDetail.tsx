@@ -93,7 +93,9 @@ export default function AssignmentDetail() {
 
   const qc = useQueryClient();
   const { data: assignment, isLoading } = useAssignment(id || "", { notFoundIsOrdinary: true });
-  const { data: runs } = useAssignmentRuns(id || "", 10);
+  // The runs are read once the assignment answered: an unknown id 404s on both reads, and the runs'
+  // 404 thrown to the section boundary would beat Page not found below (#797 S4).
+  const { data: runs } = useAssignmentRuns(assignment ? assignment.id : "", 10);
 
   const update = useUpdateAssignment();
   const remove = useDeleteAssignment();

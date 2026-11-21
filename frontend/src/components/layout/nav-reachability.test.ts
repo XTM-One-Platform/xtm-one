@@ -253,11 +253,12 @@ test("no route redirects or aliases a former address; an unknown one is not foun
   assert.ok(routes.some((route) => route.path === "/fleets"), "/fleets is a page of its own");
 });
 
-test("an unknown agent, assignment or run id is Page not found, never a section error (#797 S4)", () => {
-  for (const page of ["AgentDetail.tsx", "AssignmentDetail.tsx", "RunDetail.tsx"]) {
+// One pattern, one component: the detail pages answer an unknown id with RouteNotFound. The
+// rendered behaviour (a 404 never reaching the section boundary) is pages/unknown-id-not-found.test.tsx.
+test("an unknown agent, assignment, run, flow or machine id is Page not found, never a page-local state (#797 S4)", () => {
+  for (const page of ["AgentDetail.tsx", "AssignmentDetail.tsx", "RunDetail.tsx", "flow-builder/index.tsx", "RunnerDetail.tsx"]) {
     const source = readFileSync(new URL(`../../pages/${page}`, import.meta.url), "utf8");
-    assert.match(source, /notFoundIsOrdinary: true/, `${page} reads its entity with a 404 as an answer`);
-    assert.match(source, /if \(!(agent|assignment|run)\) return <RouteNotFound \/>;/, `${page} renders RouteNotFound`);
+    assert.match(source, /if \(!(agent|assignment|run|flow|runner)\) return <RouteNotFound \/>;/, `${page} renders RouteNotFound`);
     assert.doesNotMatch(source, /<NotFoundState/, `${page} draws no page-local not-found state`);
   }
 });
