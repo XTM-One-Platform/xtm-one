@@ -105,7 +105,8 @@ DEFAULT_AI_LABEL_PROMPT = (
 
 DEFAULT_HITL_PROMPT = (
     "\nHuman in the Loop: use `request_human_input` when unsure, need approval, "
-    "or face high-stakes/irreversible decisions. Provide clear context and options. "
+    "or face high-stakes/irreversible decisions. Ask one plain question, put what you "
+    "found in `context`, give `options` with your `recommendation` and the source `links`. "
     "Only pause for genuine edge cases — handle routine tasks autonomously."
 )
 

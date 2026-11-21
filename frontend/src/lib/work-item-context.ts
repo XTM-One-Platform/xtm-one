@@ -328,19 +328,48 @@ export function blockedRefLabel(ref: Pick<WorkItemBlockedRef, "repo" | "number" 
 /**
  * What releases a reference, in a sentence a person reads: the explanation of
  * a waiting item names one per kind it waits for. Read by
- * `t_i18n(REF_RELEASE_EXPLANATIONS[kind])`. @i18n-keys
+ * `refReleaseSentences`. @i18n-keys
  */
-export const REF_RELEASE_EXPLANATIONS = {
+const REF_RELEASE_EXPLANATIONS = {
   pull_request: "A pull request releases it once merged or closed.",
   issue: "An issue releases it once closed.",
   deployment: "A deployment releases it once the change runs in production.",
   workflow_run: "A workflow releases it at its next successful run.",
 } as const satisfies Record<WorkItemBlockedRef["kind"], string>;
 
+/**
+ * The pull request sentence when every pull request waited for is released
+ * by the same event (#842, J.2): "merged or closed" only when that is what the
+ * references say. Read by `t_i18n(...)`. @i18n-keys
+ */
+const PULL_REQUEST_RELEASE = {
+  merged: "A pull request releases it once merged.",
+  closed: "A pull request releases it once closed.",
+} as const;
+
 /** The kinds of *refs*, each once, in the order `REF_RELEASE_EXPLANATIONS` lists them. */
-export function refKindsOf(refs: Pick<WorkItemBlockedRef, "kind">[]): WorkItemBlockedRef["kind"][] {
+function refKindsOf(refs: Pick<WorkItemBlockedRef, "kind">[]): WorkItemBlockedRef["kind"][] {
   const kinds = new Set(refs.map((ref) => ref.kind));
   return (Object.keys(REF_RELEASE_EXPLANATIONS) as WorkItemBlockedRef["kind"][]).filter((kind) => kinds.has(kind));
+}
+
+/**
+ * One release sentence per kind of reference *refs* holds (never one per
+ * reference: each reference stays a chip under "Waits for"), as untranslated
+ * keys. The pull request sentence follows `release_on`: "merged" when every
+ * pull request waits for its merge, "closed" when every one waits for its
+ * close, "merged or closed" otherwise (#842, J.2).
+ */
+export function refReleaseSentences(
+  refs: Pick<WorkItemBlockedRef, "kind" | "release_on">[],
+): { kind: WorkItemBlockedRef["kind"]; text: string }[] {
+  return refKindsOf(refs).map((kind) => {
+    if (kind !== "pull_request") return { kind, text: REF_RELEASE_EXPLANATIONS[kind] };
+    const events = new Set(refs.filter((ref) => ref.kind === "pull_request").map((ref) => ref.release_on));
+    const only = events.size === 1 ? [...events][0] : null;
+    const text = only === "merged" || only === "closed" ? PULL_REQUEST_RELEASE[only] : REF_RELEASE_EXPLANATIONS.pull_request;
+    return { kind, text };
+  });
 }
 
 /**
