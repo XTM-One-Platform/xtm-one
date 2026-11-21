@@ -78,3 +78,17 @@ def test_no_matching_call_keeps_the_plain_stub():
     al._clear_stale_tool_results(messages, live_budget_chars=1_000)
     assert messages[1].content == al._REFETCHABLE_STUB_TEMPLATE.format(tool="list_x", target="", chars="5,000")
     assert al._tool_call_target(None) == "" and al._tool_call_target({"query": "q"}) == ""
+
+
+def test_reused_call_id_pairs_in_transcript_order():
+    """Two turns minting the same id (Gemini ``call_<name>_0``): each result
+    names its OWN call's window, never the later call's (no global id map)."""
+    messages = [ChatMessage(role="user", content="go")]
+    messages += _read_turn("call_sandbox_read_file_0", {"path": "repo/a.py", "offset_line": 1})
+    messages += _read_turn("call_sandbox_read_file_0", {"path": "repo/b.py", "offset_line": 500})
+    messages += _read_turn("last", {"path": "repo/c.py"})
+
+    al._clear_stale_tool_results(messages, live_budget_chars=1_000)
+
+    assert messages[2].content.startswith("[Earlier sandbox_read_file result for path=repo/a.py, offset_line=1 ")
+    assert messages[4].content.startswith("[Earlier sandbox_read_file result for path=repo/b.py, offset_line=500 ")

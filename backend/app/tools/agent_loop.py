@@ -6767,16 +6767,29 @@ def _tool_call_target(arguments: object) -> str:
     return f" for {segment}"
 
 
-def _tool_call_arguments_by_id(messages: list[ChatMessage]) -> dict[str, object]:
-    """Each tool call id of the transcript -> the arguments the model sent."""
-    found: dict[str, object] = {}
-    for m in messages:
-        if m.role != "assistant" or not m.tool_calls:
+def _tool_call_arguments_by_result(messages: list[ChatMessage]) -> dict[int, object]:
+    """Index of each tool result in *messages* -> the arguments of its call.
+
+    Paired in TRANSCRIPT ORDER, never through a global ``tool_call_id`` map
+    (``backend/app/tools/AGENTS.md``; :func:`collect_task_labels`): an id is
+    only unique within the response that minted it, so a result consumes the
+    oldest still-unanswered call carrying its id (FIFO per id). A result whose
+    call was pruned finds nothing pending and gets no entry.
+    """
+    pending: dict[str, deque[object]] = {}
+    found: dict[int, object] = {}
+    for index, m in enumerate(messages):
+        if m.role == "assistant" and m.tool_calls:
+            for tc in m.tool_calls:
+                call_id = getattr(tc, "id", None)
+                if call_id:
+                    pending.setdefault(str(call_id), deque()).append(getattr(tc, "arguments", None))
             continue
-        for tc in m.tool_calls:
-            call_id = getattr(tc, "id", None)
-            if call_id:
-                found[str(call_id)] = getattr(tc, "arguments", None)
+        if m.role != "tool":
+            continue
+        queue = pending.get(str(m.tool_call_id or ""))
+        if queue:
+            found[index] = queue.popleft()
     return found
 
 
@@ -7598,7 +7611,7 @@ def _clear_stale_tool_results(
     freed = 0
     cleared = 0
     budget_exceeded = False
-    call_arguments: dict[str, object] | None = None
+    call_arguments: dict[int, object] | None = None
     for position, idx in enumerate(reversed(tool_indices)):
         msg = messages[idx]
         body = msg.content or ""
@@ -7637,10 +7650,10 @@ def _clear_stale_tool_results(
             # the loop breaker forgives the re-read it invites. It names what
             # the call addressed, so the re-read is that window alone.
             if call_arguments is None:
-                call_arguments = _tool_call_arguments_by_id(messages)
+                call_arguments = _tool_call_arguments_by_result(messages)
             msg.content = _REFETCHABLE_STUB_TEMPLATE.format(
                 tool=msg.name or "tool",
-                target=_tool_call_target(call_arguments.get(str(msg.tool_call_id or ""))),
+                target=_tool_call_target(call_arguments.get(idx)),
                 chars=f"{body_len:,}",
             )
         freed += body_len - len(msg.content or "")
