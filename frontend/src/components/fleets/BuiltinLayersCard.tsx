@@ -31,6 +31,8 @@ import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { useUpdateAgent } from "@/hooks/api/useAgentApi";
 import { useSkillVersions, useSkills } from "@/hooks/api/useSkillApi";
@@ -54,13 +56,17 @@ export function BuiltinLayersCard({ agent, canEditCustomerLayer }: { agent: Agen
   const { t_i18n } = useFormatter();
   return (
     <Card data-testid="builtin-layers-card">
-      <CardHeader className="pb-2">
-        <CardTitle className="content-base">{t_i18n("What you can change on this built-in agent")}</CardTitle>
-        <p className="content-caption text-default-secondary">
-          {t_i18n("Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.")}
-        </p>
+      {/* The section-card header of General and Pipeline: one left edge and one title style on the page (UX r1 B4, A5). */}
+      <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
+        <CardTitle className="content-base flex items-center gap-2">
+          {t_i18n("What you can change on this built-in agent")}
+          <InfoTip
+            label={t_i18n("What each layer means")}
+            content={t_i18n("Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.")}
+          />
+        </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 px-4 pb-4 pt-0">
         <div className="grid gap-3 md:grid-cols-2">
           <section aria-labelledby="builtin-locked" className="rounded-md border border-elevation-subtle p-3">
             <h3 id="builtin-locked" className="flex items-center gap-1.5 content-compact font-medium">
@@ -78,12 +84,12 @@ export function BuiltinLayersCard({ agent, canEditCustomerLayer }: { agent: Agen
             </h3>
             <ul className="mt-2 space-y-1 content-compact">
               {YOURS_ITEMS.map((item) => (
-                <li key={item} className="flex items-center justify-between gap-2">
+                <li key={item} className="flex items-center gap-2">
                   <span className="min-w-0 truncate">{t_i18n(item)}</span>
                   {yoursItemSet(item, agent) ? (
                     <Badge variant="secondary" className="shrink-0">{t_i18n("Set")}</Badge>
                   ) : (
-                    <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Release default")}</span>
+                    <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set")}</span>
                   )}
                 </li>
               ))}
@@ -119,14 +125,24 @@ function OrganizationNotes({ agent, canEdit }: { agent: Agent; canEdit: boolean 
 
   return (
     <section aria-labelledby="builtin-notes" className="space-y-1.5">
-      <h3 id="builtin-notes" className="content-compact font-medium">{t_i18n("Organization notes")}</h3>
-      <p className="content-compact text-default-secondary">
+      {/* The body-size field label with its InfoTip (UX r1 B2). */}
+      <div className="flex items-center gap-1">
+        <Label id="builtin-notes" htmlFor={canEdit ? "builtin-notes-input" : undefined}>
+          {t_i18n("Organization notes")}
+        </Label>
+        <InfoTip
+          label={t_i18n("What organization notes are")}
+          content={t_i18n("Every run of this agent reads them after the product's persona, never in its place: who owns which asset, how tickets are routed, what to leave alone. Up to 4,000 characters. Empty, the agent runs on the persona alone.")}
+        />
+      </div>
+      <p id="builtin-notes-help" className="content-compact text-default-secondary">
         {t_i18n("Added after the product's persona on every run, never in its place.")}
       </p>
       {canEdit ? (
         <>
           <Textarea
-            aria-labelledby="builtin-notes"
+            id="builtin-notes-input"
+            aria-describedby="builtin-notes-help"
             value={value}
             maxLength={CUSTOMER_NOTES_MAX_CHARS}
             rows={4}
@@ -135,7 +151,7 @@ function OrganizationNotes({ agent, canEdit }: { agent: Agent; canEdit: boolean 
           />
           {changed && (
             <div className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(null)} disabled={update.isPending}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setDraft(null)} disabled={update.isPending}>
                   {t_i18n("Cancel")}
                 </Button>
                 <Button type="button" size="sm" onClick={save} disabled={update.isPending}>

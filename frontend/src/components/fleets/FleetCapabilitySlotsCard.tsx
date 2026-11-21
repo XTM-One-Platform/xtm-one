@@ -23,13 +23,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * On a built-in fleet a binding is the customer layer: kept by every release,
  * while the fleet's members, handovers and gates stay locked. The card is not
  * shown when no member's role declares a slot.
+ *
+ * Compact (UX round 1 of #994, B3/B4): one bar styled like Fleet defaults,
+ * a one-line summary of the connected slots, expanded on click into one row
+ * per member with its slots inline, so the Members table stays on the first
+ * screen.
  */
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -51,47 +58,79 @@ const SLOT_STATE_LABELS = {
   unavailable: "None connected",
 } as const;
 
+/** A slot that can be bound but is not reads as a warning, apart from "None connected" (UX r1 A1). */
+const SLOT_STATE_VARIANTS = {
+  filled: "success",
+  empty: "warning",
+  unavailable: "outline",
+} as const;
+
 export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
   const { t_i18n } = useFormatter();
   const { data, isLoading, error } = useFleetCapabilitySlots(fleet.id);
+  const [open, setOpen] = useState(false);
   if (isLoading || error || !data || data.members.length === 0) return null;
+  const slots = data.members.flatMap((member) => member.slots);
+  const connected = slots.filter((slot) => slot.state === "filled").length;
+  const help = fleet.is_builtin
+    ? t_i18n("Connect your tools to each member. Your bindings are kept by every release; the members and their handovers stay the product's.")
+    : t_i18n("Connect your tools to each member.");
   return (
     <Card data-testid="fleet-capability-slots">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 content-base">
-          <Icon name="network" size={16} className="text-accent" aria-hidden /> {t_i18n("Capabilities")}
-        </CardTitle>
-        <p className="content-caption text-default-secondary">
-          {fleet.is_builtin
-            ? t_i18n("Connect your tools to each member. Your bindings are kept by every release; the members and their handovers stay the product's.")
-            : t_i18n("Connect your tools to each member.")}
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {data.members.map((member) => (
-          <MemberSlots key={member.member_id} fleetId={fleet.id} member={member} />
-        ))}
+      <CardContent className="space-y-3 p-4">
+        {/* The Fleet defaults bar's header: icon, 12 px title, one-line summary (UX r1 B4). */}
+        <div className="flex items-start gap-2">
+          <Icon name="network" size={16} className="shrink-0 text-default-secondary" aria-hidden />
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+            <h3 className="flex shrink-0 items-center gap-1 whitespace-nowrap content-compact font-medium">
+              {t_i18n("Capabilities")}
+              <InfoTip label={t_i18n("What capability slots are")} content={help} />
+            </h3>
+            <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-capability-slots-summary">
+              {t_i18n("{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}", { connected, total: slots.length })}
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto shrink-0"
+            aria-expanded={open}
+            aria-controls="fleet-capability-slots-rows"
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? t_i18n("Hide slots") : t_i18n("Show slots")}
+          </Button>
+        </div>
+        {open && (
+          <ul id="fleet-capability-slots-rows" className="divide-y divide-elevation-subtle">
+            {data.members.map((member) => (
+              <MemberSlots key={member.member_id} fleetId={fleet.id} member={member} />
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );
 }
 
+/** One row per member: name and role on the left, its slots inline across the width. */
 function MemberSlots({ fleetId, member }: { fleetId: string; member: FleetMemberSlots }) {
   const { t_i18n } = useFormatter();
   return (
-    <section aria-label={member.name} className="rounded-md border border-elevation-subtle p-3">
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <Link to={`/agents/${member.agent_id}`} className="content-compact font-medium hover:underline">
+    <li aria-label={member.name} className="grid gap-2 py-2 first:pt-0 last:pb-0 md:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="min-w-0">
+        <Link to={`/agents/${member.agent_id}`} className="block truncate content-compact font-medium hover:underline">
           {member.name || t_i18n("Unknown agent")}
         </Link>
-        {member.role_label && <span className="content-caption text-default-secondary">{member.role_label}</span>}
+        {member.role_label && <span className="block truncate content-caption text-default-secondary">{member.role_label}</span>}
       </div>
-      <ul className="mt-2 space-y-2">
+      <ul className="flex min-w-0 flex-wrap gap-x-4 gap-y-2">
         {member.slots.map((slot) => (
           <SlotRow key={slot.capability} fleetId={fleetId} member={member} slot={slot} />
         ))}
       </ul>
-    </section>
+    </li>
   );
 }
 
@@ -107,8 +146,8 @@ function SlotRow({ fleetId, member, slot }: { fleetId: string; member: FleetMemb
 
   return (
     <li className="flex flex-wrap items-center gap-2 content-compact" data-testid={`slot-${member.member_id}-${slot.capability}`}>
-      <span className="w-40 shrink-0 truncate" title={slot.label}>{t_text(slot.label)}</span>
-      <Badge variant={slot.state === "filled" ? "success" : "outline"} className="shrink-0">
+      <span className="shrink-0">{t_text(slot.label)}</span>
+      <Badge variant={SLOT_STATE_VARIANTS[slot.state]} className="shrink-0">
         {t_i18n(SLOT_STATE_LABELS[slot.state])}
       </Badge>
       {slot.bound.map((integration) => (

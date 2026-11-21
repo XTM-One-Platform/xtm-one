@@ -1438,6 +1438,8 @@ export function ConfigTab({
         <CompanyManagedBanner
           entityLabel="agent"
           isBuiltin
+          // Where the two-layer card renders, the banner says what is locked and what stays yours (UX r1 B1 on #994).
+          hasCustomerLayer={isXtmOne && !agent.read_only_reason}
           // An administrator still customizes a built-in agent's ROI outcomes (#9836 R3b, UX round 2 B3).
           exception={isAdmin ? t_i18n("Its ROI outcomes stay customizable under Outcomes.") : undefined}
         />

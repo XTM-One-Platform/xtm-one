@@ -20017,7 +20017,6 @@
   "Integrations and their tools": "Integraciones y sus herramientas",
   "Skills and custom tools": "Habilidades y herramientas personalizadas",
   "Organization notes": "Notas de la organización",
-  "Release default": "Valor de la versión",
   "Added after the product's persona on every run, never in its place.": "Se añaden tras la persona del producto en cada ejecución, nunca en su lugar.",
   "Who owns which asset, how tickets are routed, what to leave alone": "Quién es dueño de cada activo, cómo se enrutan los tickets, qué no tocar",
   "Organization notes saved": "Notas de la organización guardadas",
@@ -20037,5 +20036,14 @@
   "The binding could not be changed": "No se pudo cambiar el vínculo",
   "Unbind {name}": "Desvincular {name}",
   "Bind an integration to {slot}": "Vincular una integración a {slot}",
-  "Bind an integration": "Vincular una integración"
+  "Bind an integration": "Vincular una integración",
+  "What each layer means": "Qué significa cada capa",
+  "What organization notes are": "Qué son las notas de la organización",
+  "Every run of this agent reads them after the product's persona, never in its place: who owns which asset, how tickets are routed, what to leave alone. Up to 4,000 characters. Empty, the agent runs on the persona alone.": "Cada ejecución de este agente las lee después de la persona del producto, nunca en su lugar: quién es responsable de cada activo, cómo se enrutan los tickets, qué no se debe tocar. Hasta 4000 caracteres. Vacías, el agente funciona solo con la persona.",
+  "This is a built-in {entity} pre-configured by the platform. Its persona, handovers and gates are locked; its organization notes and integrations stay yours.": "Este es un {entity} integrado preconfigurado por la plataforma. Su persona, traspasos y aprobaciones están bloqueados; sus notas de organización e integraciones siguen siendo suyas.",
+  "Built-in fleets ship with the platform: their members, handovers and gates are locked; the integrations bound to their capability slots stay yours.": "Las flotas integradas vienen con la plataforma: sus miembros, traspasos y aprobaciones están bloqueados; las integraciones vinculadas a sus ranuras de capacidad siguen siendo suyas.",
+  "What capability slots are": "Qué son las ranuras de capacidad",
+  "{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}": "{total, plural, one {{connected} de # ranura conectada} other {{connected} de # ranuras conectadas}}",
+  "Show slots": "Mostrar ranuras",
+  "Hide slots": "Ocultar ranuras"
 }
