@@ -39,7 +39,6 @@ const QUERY_ALLOWED: Record<string, string> = {
   "pages/CustomTools.tsx": "redirect shim: legacy ?tab=custom / ?tab=approvals links",
   "pages/VideoStudio.tsx": "redirect shim: legacy ?tab=media / recordings / clips / profiles links",
   "pages/operations/WorkItemsTab.tsx": "list filter: the Stale / Waiting / Scheduled segment of the work items list",
-  "pages/xtm-one/DashboardNotices.tsx": "list filter: a link to the work items list filtered on Waiting",
 };
 
 const QUERY_NAVIGATION = /[?&](?:tab|view)=|\.(?:get|set|has|delete)\(\s*["'](?:tab|view)["']|\{\s*(?:tab|view):\s*key\s*\}/;
