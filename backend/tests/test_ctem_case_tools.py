@@ -407,6 +407,9 @@ async def test_the_remediation_decision_waits_above_a_set_threshold_as_one_unifi
     assert item["correlation_key"] == f"ctem:remediation:{env.case.id}"
     gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
     assert [g.to_value for g in gates] == ["waited"]
+    assert "expected loss 500" in body["reason"]
+    trail = [r.reason or "" for r in env.db.added if isinstance(r, CtemCaseEvent)]
+    assert trail and all("500" not in t and "cost" not in t and "threshold 100" not in t for t in trail)
 
 
 async def test_a_decider_without_opencrq_read_gets_no_figures_on_the_waiting_decision(

@@ -86,6 +86,18 @@ def test_a_decider_without_opencrq_read_sees_no_figures() -> None:
     assert all("expected loss" not in o["effect"] for o in ask["options"])
 
 
+@pytest.mark.parametrize("threshold", [None, 100.0, 50_000_000.0])
+def test_the_case_trail_never_carries_a_figure_even_for_a_decider_with_opencrq_read(threshold: float | None) -> None:
+    """Every viewer of the case reads its history, whatever their own OpenCRQ access (review on #1003)."""
+    decision = rd.decide(
+        _parsed(), "C", gate_waits=False, gate_by="level low", approval_threshold=threshold, figures_visible=True
+    )
+    note = rd.outcome_note(decision, _parsed())
+    for figure in ("19,600,000", "19600000", "120,000", "150,000", "cost", "expected loss 1", "100", "5e+07"):
+        assert figure not in decision.case_reason and figure not in note
+    assert "8 weeks" in note
+
+
 def test_the_waiting_ask_is_a_unified_decision_with_figures() -> None:
     ask = rd.decision_ask("Disable HTTP/2", _parsed(), "A", figures=True, reason="the gate waits (pin wait)")
     assert set(ask) >= {"question", "context", "options", "recommendation"}

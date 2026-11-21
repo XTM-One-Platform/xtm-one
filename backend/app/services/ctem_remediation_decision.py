@@ -21,7 +21,8 @@ This module holds the rules, no model call:
   read OpenCRQ.
 
 The case keeps the outcome in its event trail (``ctem_case_loop.record_gate``
-plus one ``note`` naming the option and the figures the user may read).
+plus one ``note`` naming the option). Every viewer of the case reads that
+trail, so it never carries an OpenCRQ figure (cost, expected loss, threshold).
 """
 
 from __future__ import annotations
@@ -59,6 +60,12 @@ class Decision:
     chosen: str = ""
     figures_shown: bool = True
     notes: list[str] = field(default_factory=list)
+    trail_reason: str = ""
+
+    @property
+    def case_reason(self) -> str:
+        """The reason written on the case trail, which every viewer of the case reads: never an OpenCRQ figure."""
+        return self.trail_reason or self.reason
 
 
 def _number(value: Any, name: str) -> float | None:
@@ -166,12 +173,14 @@ def decide(
                 True,
                 f"expected loss {loss:g} is above the approval threshold {approval_threshold:g}",
                 figures_shown=figures_visible,
+                trail_reason="the expected loss is above the approval threshold",
             )
         return Decision(
             False,
             f"decided by policy: expected loss {loss:g} within the approval threshold {approval_threshold:g} ({gate_by})",
             chosen=choice.key,
             figures_shown=figures_visible,
+            trail_reason=f"decided by policy: expected loss within the approval threshold ({gate_by})",
         )
     return Decision(False, f"decided by policy ({gate_by})", chosen=choice.key, figures_shown=figures_visible)
 
@@ -225,11 +234,16 @@ def decision_ask(
 
 
 def outcome_note(decision: Decision, options: list[RemediationOption]) -> str:
-    """The case note of the outcome: the option chosen (or the wait) and each option's line."""
+    """The case note of the outcome: the option chosen (or the wait) and each option's line.
+
+    The case history is read by every viewer of the case, whatever their own
+    OpenCRQ access, so the note never carries a cost or an expected loss: the
+    figures stay in the ask and the tool answer of the deciding user.
+    """
     head = (
-        f"Remediation option {decision.chosen}: {decision.reason}"
+        f"Remediation option {decision.chosen}: {decision.case_reason}"
         if decision.chosen
-        else f"Remediation decision waits: {decision.reason}"
+        else f"Remediation decision waits: {decision.case_reason}"
     )
-    lines = [head] + [f"{o.key}. {o.label}: {option_effect(o, figures=decision.figures_shown)}" for o in options]
+    lines = [head] + [f"{o.key}. {o.label}: {option_effect(o, figures=False)}" for o in options]
     return "\n".join(lines)[:2000]

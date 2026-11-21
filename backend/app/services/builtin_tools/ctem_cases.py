@@ -426,7 +426,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     case,
                     key=decision_rules.GATE_KEY,
                     outcome="waited" if decision.waits else "passed_automatically",
-                    by=decision.reason[:300],
+                    by=decision.case_reason[:300],
                     option=decision.chosen,
                     actor=agent_id,
                 )
