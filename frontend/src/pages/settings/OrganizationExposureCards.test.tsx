@@ -200,6 +200,15 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     expect(within(screen.getByTestId("settings.organization.prioritization-policy")).queryByText(/No policy yet/)).toBeNull();
   });
 
+  it("ignores the policy keys the backend adds with their defaults (scope, SLA) when telling a set policy", () => {
+    mockApi();
+    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_crown_jewel_criticality: "", exclusions: [], accepted_risks: [] };
+    const stored = { ...empty, scope_min_criticality: "high", require_risk_scenario: false, sla_hours: { p1: 24, p2: 72, p3: 720 }, pir_min_score_vulnerability: 70, pir_min_score_threat: 75 };
+    const form = { ...BASE, prioritization_policy: stored } as ProfileForm;
+    renderWithProviders(<Harness initial={form} editing={false} />);
+    expect(within(screen.getByTestId("settings.organization.prioritization-policy")).getByText(/No policy yet/)).toBeTruthy();
+  });
+
   it("maps a refused PIR score to its field", () => {
     expect(exposureIssueFromRefusal(BASE, "prioritization_policy.pir_min_score_threat: Input should be less than or equal to 100")).toMatchObject({ section: "score", field: "pir_min_score_threat" });
   });
