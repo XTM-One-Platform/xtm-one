@@ -19930,5 +19930,10 @@
   "{criticality}, below {threshold}": "{criticality}、{threshold} 未満",
   "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "シグナル: 受信 {total} 件、確認済み {confirmed} 件、スコープ内 {inScope} 件、ケース化 {cases} 件、ウォッチリスト {watchlist} 件",
   "Back to Case": "ケースに戻る",
-  "Ran a fleet step on this case": "このケースでフリートのステップを実行しました"
+  "Ran a fleet step on this case": "このケースでフリートのステップを実行しました",
+  "Fleet working": "フリート作業中",
+  "{fleet} is working on {case}": "{fleet} が {case} に取り組んでいます",
+  "Run queued, it starts shortly": "実行はキュー待ちです。まもなく開始します",
+  "Step in progress: {agent}": "実行中のステップ: {agent}",
+  "Step in progress": "実行中のステップ"
 }
