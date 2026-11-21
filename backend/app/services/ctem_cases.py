@@ -76,10 +76,13 @@ class SourceIssue:
     not_affected: str | None = None
     #: What OpenCTI could not tell ("version not known to OpenCTI", "fixed version unknown"), else ``None``.
     version_note: str | None = None
-    #: The OpenCTI Software ("<name> <version>") whose ``remediates`` gave ``fixed_version`` (#928), else ``None``.
-    fixed_by: str | None = None
-    #: With a declared version: whether OpenCTI holds a Software of it (#928); ``None`` when none is declared.
-    declared_version_known: bool | None = None
+    #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
+    #: ``None`` when the source does not carry it (OpenCTI, an OpenAEV older than the lifecycle).
+    retest_status: str | None = None
+    #: When a re-test last ended on the finding, ISO 8601, else ``None``.
+    last_tested_at: str | None = None
+    #: A re-test is queued on the finding and has not finished.
+    retest_pending: bool = False
 
     @property
     def member_id(self) -> str:
