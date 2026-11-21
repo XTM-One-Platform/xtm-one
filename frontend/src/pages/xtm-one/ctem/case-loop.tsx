@@ -81,18 +81,27 @@ export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" |
   };
 }
 
+/** The re-test words of an OpenAEV member of a case (CTEM-14-UI). @i18n-keys */
+const RETEST_LABELS = {
+  queued: "Re-test queued",
+  notReproduced: "Not reproduced",
+  resolved: "Resolved",
+  reproduced: "Reproduced",
+  notRetested: "Not re-tested yet",
+} as const;
+
 /**
  * The re-test word of an OpenAEV member of a case (CTEM-14-UI), translated
  * where drawn: a queued re-test first, then the finding's lifecycle status.
  * Null for a member whose source carries no lifecycle (OpenCTI, a signal, an
- * OpenAEV older than the lifecycle). @i18n-keys
+ * OpenAEV older than the lifecycle).
  */
 export function retestLabel(issue: CtemCaseIssue): string | null {
   if (isRestrictedIssue(issue)) return null;
-  if (issue.retest_pending) return "Re-test queued";
-  if (issue.retest_status === "not_reproduced") return "Not reproduced";
-  if (issue.retest_status === "resolved") return "Resolved";
-  if (issue.retest_status === "open") return issue.last_tested_at ? "Reproduced" : "Not re-tested yet";
+  if (issue.retest_pending) return RETEST_LABELS.queued;
+  if (issue.retest_status === "not_reproduced") return RETEST_LABELS.notReproduced;
+  if (issue.retest_status === "resolved") return RETEST_LABELS.resolved;
+  if (issue.retest_status === "open") return issue.last_tested_at ? RETEST_LABELS.reproduced : RETEST_LABELS.notRetested;
   return null;
 }
 
