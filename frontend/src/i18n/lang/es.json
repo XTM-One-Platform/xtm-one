@@ -19809,5 +19809,9 @@
   "The digest lists warning and critical findings.": "El resumen incluye los hallazgos de advertencia y críticos.",
   "The digest lists critical findings only.": "El resumen solo incluye los hallazgos críticos.",
   "Emails the recipients below about health findings.": "Envía a los destinatarios indicados los hallazgos de salud.",
-  "One email a day with the open findings.": "Un correo al día con los hallazgos abiertos."
+  "One email a day with the open findings.": "Un correo al día con los hallazgos abiertos.",
+  "Status and scope": "Estado y alcance",
+  "Spend limits": "Límites de gasto",
+  "Health checks": "Comprobaciones de salud",
+  "Alerts": "Alertas"
 }

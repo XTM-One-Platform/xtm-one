@@ -4,7 +4,7 @@
 // Asserted on roles, text and test ids (src/no-class-name-assertions.test.ts).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { HealthSection } from "@/pages/settings/HealthSection";
@@ -117,6 +117,25 @@ describe("HealthSection read view", () => {
     const usage = await screen.findByTestId("health.budget-usage");
     expect(usage).toHaveTextContent("Spent in 2026-11: 0 tokens, $4.20.");
     expect(usage).not.toHaveTextContent("USD");
+  });
+
+  it("is one compact section: a bar jumping to four groups and the pets, each block in its group once", async () => {
+    renderSection();
+    await screen.findByTestId("health.analysis");
+    const bar = screen.getByRole("navigation", { name: "On this page" });
+    const links = within(bar).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")]);
+    expect(links).toEqual([
+      ["Status and scope", "#health-settings-status"],
+      ["Spend limits", "#health-settings-spend"],
+      ["Health checks", "#health-settings-checks"],
+      ["Alerts", "#health-settings-alerts"],
+      ["Companion pets", "#health-settings-pets"],
+    ]);
+    expect(within(screen.getByTestId("settings.health.group.spend")).getByTestId("health.analysis")).toBeInTheDocument();
+    expect(within(screen.getByTestId("settings.health.group.checks")).getByTestId("settings.health.schedule")).toBeInTheDocument();
+    expect(within(screen.getByTestId("settings.health.group.alerts")).getByTestId("settings.health.alert-emails")).toBeInTheDocument();
+    // The section title is the tab's; the first block no longer repeats it as a header.
+    expect(screen.queryByRole("heading", { name: "Platform Health" })).toBeNull();
   });
 
   it("shows the alert emails block, off by default", async () => {
