@@ -471,8 +471,24 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   the call (the `budget.py` ledger, renamed). Over the ceiling the call is refused and the
   page says so. Test (e) forces an over-spend.
 - Traces carry their own source (`platform_health`), excluded from customer quota and
-  from agentic execution counts, visible in observability; the spend is shown on the
-  Health page.
+  from agentic execution counts, visible in observability; the spend is shown in
+  Settings > Platform Health, next to the ceilings, never on the Health page (#961).
+- Where the outcome shows (#961, 21 Nov 2026): on each module card of the Health page, one
+  "AI summary" block (`components/health/ModuleAnalysisSummary.tsx`, the `StatCard` footer):
+  the first line of `summary` (the headline, the first fix), clamped to two lines, with
+  "As of <time>"; Show more opens the whole text and the order of fixes in the shared
+  `InfoPopover`, never in place, so the cards of a grid row keep one height. Show more is
+  offered when the summary holds more than its headline OR the clamped headline is cut
+  (measured after layout and on resize, `scrollHeight > clientHeight`), so a one-line
+  summary too long for two lines still opens in full. The footer
+  follows the subtitle in normal flow, never pinned to the card bottom: the dividers of one
+  grid row share one y and the spare height falls below the footer content. A module with no open finding, or the analysis off, shows
+  no block and its card no footer (`analysisRowFor` decides it in the overview); a refused or failed analysis shows one muted line with its
+  reason in plain words, never a success badge. Analyse now is the item of the card's
+  actions menu, disabled with its reason while AI is off, the analysis is off or a ceiling
+  is cleared. Administrators only (overview scope `all`). The former full-width Analysis
+  panel (`HealthAnalysisPanel.tsx`) is removed. One AI block per card: the Module Analyst
+  line of section 12.7 joins this block, never a second one.
 - As built (S9a): `services/health/analysis.py`, tables `health_module_analyses` and
   `health_analysis_spend` (periods `D:YYYY-MM-DD`, `M:YYYY-MM`, row-locked month then day),
   `HealthSettings.analysis` (off, four ceilings, any cleared refuses `ceiling_not_set`), a
@@ -496,7 +512,9 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 
 - Enrolled agents and fleets (list, bulk enrol, bulk remove).
 - Per module (XTM One mode only): check toggles and the (E) thresholds of section 4.
-- Analysis: on or off, daily and monthly ceiling.
+- Analysis: on or off, daily and monthly ceiling, and under them today's and this month's
+  analysis spend against each ceiling (`AnalysisSpendLines`, from `GET /health/analysis`;
+  moved from the Health page by #961).
 - Alert emails: off by default; recipients, minimum severity, immediate for a new
   critical finding plus a daily digest, one email per finding (dedupe on finding id).
   Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`): after
@@ -516,7 +534,9 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 
 - Left menu "Platform Health" (`/health`), generic AI leaf, both modes.
 - Overview: one card per module present (agents, fleets; plus XTM One, OpenCTI, OpenAEV,
-  OpenCRQ in XTM One mode) with score, counts by severity and trend.
+  OpenCRQ in XTM One mode) with score, counts by severity and trend; for an administrator,
+  a card with open findings carries the AI summary of section 6 and an actions menu
+  (Analyse now). No spend and no analysis panel on the page (#961).
 - Findings list filterable by module, severity, category, status.
 - Finding detail: evidence, recommendation, doc link, history, dismiss with reason,
   "Ask AI" (where AI runs).

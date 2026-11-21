@@ -224,6 +224,11 @@ from .kb import (
     load_kb_names,
     load_write_locked_kb_ids,
 )
+from .learned_skill import (
+    LEARNED_LESSON_TOOL,
+    build_learned_lesson_tool,
+    offers_learned_lesson_tool,
+)
 from .loaders import (
     _MCP_TOOL_NAMESPACE_SEPARATOR as _MCP_TOOL_NAMESPACE_SEPARATOR,
 )
@@ -429,6 +434,7 @@ __all__ = [
     "CTEM_SIGNAL_TOOL_NAMES",
     "DOCX_CONTENT_TYPE",
     "FLOW_LAB_READ_TOOLS",
+    "LEARNED_LESSON_TOOL",
     "MAX_CATALOG_DESCRIPTION_CHARS",
     "MEMORY_STEWARD_SUITE_ID",
     "ORGANIZATION_CONTEXT_TOOL",
@@ -477,6 +483,7 @@ __all__ = [
     "build_kb_document_update_tool",
     "build_kb_search_tool",
     "build_kb_store_tool",
+    "build_learned_lesson_tool",
     "build_memory_search_tool",
     "build_memory_steward_tools",
     "build_memory_store_tool",
@@ -555,6 +562,7 @@ __all__ = [
     "offered_handover_types",
     "offers_ctem_case_tools",
     "offers_ctem_signal_tools",
+    "offers_learned_lesson_tool",
     "offers_organization_context_write",
     "offers_organization_proposals",
     "offers_user_admin",
