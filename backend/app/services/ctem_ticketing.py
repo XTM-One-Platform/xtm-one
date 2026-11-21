@@ -855,7 +855,7 @@ def _raise_retest(events: case_loop.PendingEvents | None, case: CtemCase, now: d
     ticket = managed_ticket(case) or {}
     events.add(
         CASE_RETEST_REQUESTED,
-        case_loop.case_data(case, ticket_integration=ticket.get("integration"), ticket_key=ticket.get("key")),
+        {**case_loop.case_data(case), "ticket_integration": ticket.get("integration"), "ticket_key": ticket.get("key")},
         f"{CASE_RETEST_REQUESTED}:{case.id}:{ticket.get('at', now.isoformat())}",
     )
 

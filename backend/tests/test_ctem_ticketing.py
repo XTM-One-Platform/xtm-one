@@ -447,7 +447,9 @@ def test_retest_event_is_declared_platform_wide():
     from app.services import platform_events
 
     assert tk.CASE_RETEST_REQUESTED in platform_events.PLATFORM_EVENTS
-    assert tk.CASE_RETEST_REQUESTED in platform_events.PLATFORM_WIDE_EVENTS
+    # A case event: heard only by readers of the case (#933), never platform-wide.
+    assert tk.CASE_RETEST_REQUESTED in platform_events.VIEWER_CHECKED_EVENTS
+    assert tk.CASE_RETEST_REQUESTED not in platform_events.PLATFORM_WIDE_EVENTS
 
 
 def test_sync_settings_default_and_parse_from_a_saved_profile():

@@ -40,7 +40,7 @@ The settings live on Settings > Organization > Identity and risk, card "Ticketin
 
 The autonomous tick runs `ctem_ticketing.sync_cases` once per `CTEM_TICKETING_SYNC_SECONDS` (default 300, minimum 60, Redis slot `ctem:ticketing:sync`), after the case sweep. Per case of the primary organization (newest 200): the pass never opens a ticket (section 5); a case whose state asks the ticket to close (resolved: done, accepted risk: cancelled) or to reopen pushes it; every other managed ticket is pulled. Reopen is decided by `needs_reopen`: the sync closed the ticket for the case (`closed_by_case`), or a failed re-test is newer than the ticket's done; a ticket done while the case waits for its re-test is left done.
 
-A pull that moves a ticket to done on an open case raises `ctem_case.retest_requested` (platform-wide, the case fields with `ticket_integration` and `ticket_key`) once; the fleets run the re-test and the case closes on its result.
+A pull that moves a ticket to done on an open case raises `ctem_case.retest_requested` (a viewer-checked case event, #933: the case id and routing with `ticket_integration` and `ticket_key`, heard only by readers of the case) once; the fleets run the re-test and the case closes on its result.
 
 Inbound status (`apply_inbound_status`): a status an event carries for a ticket of the declared integration is mapped like a pull (customer `status_map` first) onto the case that manages that key, in the same transaction; a ticket no case manages, or an event of another integration, changes nothing. A delivery that fails to apply is logged and left to the next pull, never refused.
 
