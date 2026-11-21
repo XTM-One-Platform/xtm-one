@@ -181,7 +181,7 @@ describe("EntityPageHeader", () => {
 
     renderWithProviders(
       <MemoryRouter>
-        <EntityPageHeader backTo="/traces" backLabel="Back to Traces" title="chat" />
+        <EntityPageHeader backTo="/observability/traces" backLabel="Back to Traces" title="chat" />
       </MemoryRouter>,
     );
     expect(screen.queryByTestId("entity-page-header-tile")).toBeNull();

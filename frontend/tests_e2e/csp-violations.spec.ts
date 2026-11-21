@@ -577,7 +577,7 @@ test.describe('Content-Security-Policy - signed in', () => {
     try {
       const violations = await watchViolations(context);
 
-      await visit(page, '/traces');
+      await visit(page, '/observability/traces');
       await expect(page.getByRole('heading', { name: 'Observability', level: 1 })).toBeVisible();
 
       await visit(page, `/flows/${flowId}/builder`);

@@ -701,7 +701,7 @@ export default function App() {
         <Route path="/integrations/:id/:tab?" element={<Page><IntegrationDetail /></Page>} />
         <Route path="/integrations/new" element={<Page><NewIntegration /></Page>} />
         {/* Saved sign-ins every browser of the platform opens: not behind the Video Studio flag. */}
-        <Route path="/browser-profiles" element={<Page><BrowserProfiles /></Page>} />
+        <Route path="/connections" element={<Page><BrowserProfiles /></Page>} />
         {/* An OAuth2 implicit sign-in lands here with the token in the fragment. */}
         <Route path="/oauth/implicit" element={<Page><OAuthImplicitCallback /></Page>} />
         <Route path="/knowledge" element={<Page><KnowledgeBases /></Page>} />
@@ -736,8 +736,8 @@ export default function App() {
         <Route path="/tools/custom" element={<Page><CustomTools /></Page>} />
         <Route path="/tools/sources" element={<Page><CustomTools /></Page>} />
         <Route path="/tools/:id/:tab?" element={<Page><CustomToolDetail /></Page>} />
-        <Route path="/variables" element={<Page><Variables /></Page>} />
-        <Route path="/variables/:id" element={<Page><Variables /></Page>} />
+        <Route path="/connections/variables" element={<Page><Variables /></Page>} />
+        <Route path="/connections/variables/:id" element={<Page><Variables /></Page>} />
         <Route path="/prompts" element={<Page><Prompts /></Page>} />
         <Route path="/prompts/:id/:tab?" element={<Page><PromptDetail /></Page>} />
         {/* The packs API answers 403 while DEEP_INVESTIGATION is off. */}
@@ -766,17 +766,17 @@ export default function App() {
         <Route path="/groups/:id/:tab?" element={<AdminRoute><Page><GroupDetail /></Page></AdminRoute>} />
         <Route path="/objects" element={<AdminRoute><Page><AdminObjects /></Page></AdminRoute>} />
         <Route path="/intents" element={<XtmOneRoute><Page><Intents /></Page></XtmOneRoute>} />
-        <Route path="/analytics/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
-        <Route path="/traces" element={<AdminRoute><Page><Traces /></Page></AdminRoute>} />
-        <Route path="/trace-sessions" element={<AdminRoute><Page><TraceSessions /></Page></AdminRoute>} />
-        <Route path="/traces/:id/:tab?" element={<Page><TraceDetail /></Page>} />
+        <Route path="/observability/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
+        <Route path="/observability/traces" element={<AdminRoute><Page><Traces /></Page></AdminRoute>} />
+        <Route path="/observability/sessions" element={<AdminRoute><Page><TraceSessions /></Page></AdminRoute>} />
+        <Route path="/observability/traces/:id/:tab?" element={<Page><TraceDetail /></Page>} />
         <Route path="/logs" element={<AdminRoute><Page><AuditLogs /></Page></AdminRoute>} />
         <Route path="/profile/agent-accounts/:accountId/:tab?" element={<Page><AgentAccountPage /></Page>} />
         <Route path="/profile/:tab?" element={<Page><Profile /></Page>} />
         <Route path="/desktop" element={<Page><Desktop /></Page>} />
         <Route path="/runners/:id" element={<Page><RunnerDetail /></Page>} />
-        <Route path="/relays" element={<Page><Relays /></Page>} />
-        <Route path="/relays/:id/:tab?" element={<Page><RelayGroupDetail /></Page>} />
+        <Route path="/connections/relays" element={<Page><Relays /></Page>} />
+        <Route path="/connections/relays/:id/:tab?" element={<Page><RelayGroupDetail /></Page>} />
         <Route path="/ai-adoption/:tab?" element={
           platformConfig?.features.ai_adoption === false
             ? <Navigate to="/" replace />

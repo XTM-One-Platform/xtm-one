@@ -20,7 +20,7 @@ const VIEWPORTS = [
 const LIST_PAGES: Array<{ path: string; view?: string }> = [
   { path: '/presentations', view: 'presentations' },
   { path: '/users' },
-  { path: '/traces' },
+  { path: '/observability/traces' },
 ];
 
 async function pageOverflow(page: Page): Promise<number> {

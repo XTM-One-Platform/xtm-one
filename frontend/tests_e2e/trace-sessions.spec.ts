@@ -65,7 +65,7 @@ async function mockAgentsAndSessions(
 test.describe('Trace Sessions — table display', () => {
   test('renders session rows with conversation, counts, tokens, and cost', async ({ page }) => {
     await mockAgentsAndSessions(page);
-    await page.goto('/trace-sessions');
+    await page.goto('/observability/sessions');
 
     await expect(page.getByRole('heading', { name: 'Observability', level: 1 })).toBeVisible();
     await expect(page.getByText('conv-session-1')).toBeVisible();
@@ -80,14 +80,14 @@ test.describe('Trace Sessions — table display', () => {
 
   test('shows the empty state when no sessions match the current filters', async ({ page }) => {
     await mockAgentsAndSessions(page, { items: [] });
-    await page.goto('/trace-sessions');
+    await page.goto('/observability/sessions');
 
     await expect(page.getByText('No sessions found')).toBeVisible();
   });
 
   test('hides the Models filter by default (no models selected/known yet)', async ({ page }) => {
     await mockAgentsAndSessions(page);
-    await page.goto('/trace-sessions');
+    await page.goto('/observability/sessions');
     await openFilters(page);
 
     await expect(filterHeading(page, 'Agents')).toBeVisible();
@@ -101,7 +101,7 @@ test.describe('Trace Sessions — column sorting', () => {
     await mockAgentsAndSessions(page, {
       onSessionsRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/trace-sessions');
+    await page.goto('/observability/sessions');
 
     const errors = page.getByRole('columnheader', { name: 'Errors' });
     await expect(errors).toHaveAttribute('aria-sort', 'none');
@@ -123,7 +123,7 @@ test.describe('Trace Sessions — column sorting', () => {
 
   test('the default last-activity order is shown as sorted and needs no URL params', async ({ page }) => {
     await mockAgentsAndSessions(page);
-    await page.goto('/trace-sessions');
+    await page.goto('/observability/sessions');
 
     await expect(page.getByRole('columnheader', { name: 'Last Activity' })).toHaveAttribute('aria-sort', 'descending');
     await expect(page).not.toHaveURL(/sort=/);
@@ -144,7 +144,7 @@ test.describe('Trace Sessions — pages past the offset bound', () => {
       total: 1_000_000,
       onSessionsRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/trace-sessions?sort=error_count&dir=desc');
+    await page.goto('/observability/sessions?sort=error_count&dir=desc');
 
     await expect(page.getByText(/Page 1 of 20,?000/).first()).toBeVisible();
     // Exact: the "Last Activity" column header is a button too.
@@ -170,7 +170,7 @@ test.describe('Trace Sessions — pages past the offset bound', () => {
       total: 1_000_000,
       onSessionsRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/trace-sessions?sort=error_count&dir=desc&page=5000');
+    await page.goto('/observability/sessions?sort=error_count&dir=desc&page=5000');
 
     await expect(page.getByText('This page is too deep to open in this order')).toBeVisible();
     await expect.poll(() => requestedUrls.some((url) => listParams(url).get('limit') === '1')).toBe(true);
@@ -200,7 +200,7 @@ test.describe('Trace Sessions — filter usage', () => {
     await mockAgentsAndSessions(page, {
       onSessionsRequest: (route) => requestedUrls.push(route.request().url()),
     });
-    await page.goto('/trace-sessions');
+    await page.goto('/observability/sessions');
     await openFilters(page);
 
     await page.getByRole('combobox', { name: 'Select agents' }).click();
@@ -225,7 +225,7 @@ test.describe('Trace Sessions — filter usage', () => {
 
   test('a pre-selected "Platform default" model in the URL shows the Models filter with a proper label', async ({ page }) => {
     await mockAgentsAndSessions(page);
-    await page.goto('/trace-sessions?model=__platform_default__');
+    await page.goto('/observability/sessions?model=__platform_default__');
     await openFilters(page);
 
     await expect(filterHeading(page, 'Models')).toBeVisible();
@@ -235,7 +235,7 @@ test.describe('Trace Sessions — filter usage', () => {
   test('Clear filters removes agent, model, status, and date filters', async ({ page }) => {
     await mockAgentsAndSessions(page);
     await page.goto(
-      '/trace-sessions?agent_id=agent-alpha&model=__platform_default__&status=error&date_from=2026-01-01&date_to=2026-01-31',
+      '/observability/sessions?agent_id=agent-alpha&model=__platform_default__&status=error&date_from=2026-01-01&date_to=2026-01-31',
     );
     await openFilters(page);
 

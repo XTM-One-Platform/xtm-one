@@ -241,7 +241,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         return None
 
     if source == "llm_analytics_refresh":
-        return item("analytics_refresh", _internal_path(_str(metadata, "dashboard_path"), "/analytics"), "System")
+        return item("analytics_refresh", _internal_path(_str(metadata, "dashboard_path"), "/observability"), "System")
     if source in ("flow_hitl", "flow"):
         # The builder is hidden behind its flag: a link nobody can open is worse
         # than no notification.

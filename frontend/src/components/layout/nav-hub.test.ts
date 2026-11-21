@@ -100,8 +100,8 @@ test("Tools & Integrations keeps one card per connection page: the Connections f
     assert.ok(group);
     return hubPages(group).map((page) => page.to);
   };
-  assert.deepEqual(routes(base), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles", "/variables", "/relays"]);
-  assert.deepEqual(routes({ ...base, customVariables: false, relays: false }), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles"]);
+  assert.deepEqual(routes(base), ["/mcp-servers", "/tools", "/integrations", "/connections", "/connections/variables", "/connections/relays"]);
+  assert.deepEqual(routes({ ...base, customVariables: false, relays: false }), ["/mcp-servers", "/tools", "/integrations", "/connections"]);
 });
 
 test("the Agents hub: non-admins get no Intents card, Community Edition reads Fleets unlicensed", () => {

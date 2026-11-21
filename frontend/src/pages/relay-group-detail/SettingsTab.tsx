@@ -100,7 +100,7 @@ export function SettingsTab({ group, canManage }: { group: RelayGroup; canManage
     if (!ok) return;
     // A group still in use answers 409 with how many resources route through
     // it; the global error toast says so.
-    remove.mutate(group.id, { onSuccess: () => navigate("/relays") });
+    remove.mutate(group.id, { onSuccess: () => navigate("/connections/relays") });
   };
 
   return (

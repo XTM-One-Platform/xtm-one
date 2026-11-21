@@ -157,7 +157,7 @@ clicking it, or navigate by URL.
 | Operations (what is running or past; Executions tab = `TaskHistory`, Background Tasks, Shared State, Worksets) | `/operations/<tab>` | `useAllAssignmentRuns`, `useAllFlowRuns`, `useAssignmentRunCount`, `useDeleteAssignmentRun`, `useBulkDeleteRuns`, `useCleanupStaleRuns`, `useRespondToHumanInput`, `useDismissRun`, `useAgents`, `useBackgroundTasks`, `useSharedStates` |
 | Tasks (what to do and follow, #775; Work Items the default tab, Value, Workspaces; every link through `lib/task-routes.ts`, no alias of a former path) | `/tasks/work-items[/<id>]`, `/tasks/value[/<table>]`, `/tasks/value/methodology`, `/tasks/workspaces[/<id>]` | `useWorkItems`, `useValueReport`, `useWorkspaces` |
 | Presentations | `/presentations` | `usePresentations`, `usePresentationActions`, `useLibraryParams` |
-| Video Studio (behind `VIDEO_STUDIO`; tabs Videos and Media, `?tab=profiles` redirects to `/browser-profiles`) | `/videos` | `useVideoProjects`, `useVideoTakes`, `useVideoClips`, `useVideoTemplates`, `useUpdateVideoAsset`, `useDuplicateVideoProject`, `useDeleteVideoProject` |
+| Video Studio (behind `VIDEO_STUDIO`; tabs Videos and Media, browser profiles live at `/connections`) | `/videos` | `useVideoProjects`, `useVideoTakes`, `useVideoClips`, `useVideoTemplates`, `useUpdateVideoAsset`, `useDuplicateVideoProject`, `useDeleteVideoProject` |
 | Video Editor (behind `VIDEO_STUDIO`) | `/videos/:id` (outside `AppLayout`, full screen) | `useVideoProject`, `useVideoEditor`, `useVideoQuality`, `useVideoTemplates`, `useDuplicateVideoProject`, `useDeleteVideoProject` |
 | Public video (public link, no session) | `/public/videos/:token` | `usePublicVideo`, `downloadPublicVideo` |
 | Files | `/files` | `useFiles`, `useDeleteFile` |
@@ -181,8 +181,8 @@ clicking it, or navigate by URL.
 | MCP Server Detail | `/mcp-servers/:id/:tab?` | `useMCPServers`, `useUpdateMCPServer`, `useDeleteMCPServer`, `useTestMCPServer`, `useRefreshMCPTools` |
 | Custom Tools | `/tools` | `useCustomTools`, `useCreateCustomTool` |
 | Custom Tool Detail | `/tools/:id/:tab?` | `useCustomTools`, `useUpdateCustomTool`, `useDeleteCustomTool`, `useTestCustomTool` |
-| Browser profiles (saved sign-ins the agents' browser and the Video Studio open; Tools & Integrations) | `/browser-profiles` | `useBrowserProfiles`, `useDeleteBrowserProfile`, `useEntityFilter` (cards: `useSaveBrowserProfile`, `useSignInBrowserProfile`, `useSubmitMfaCode`) |
-| Variables | `/variables`, `/variables/:id` | `useVariables`, `useVariable`, `useCreateVariable`, `useUpdateVariable`, `useDeleteVariable` |
+| Browser profiles (saved sign-ins the agents' browser and the Video Studio open; the default tab of Tools & Integrations > Connections, #797 S2: no alias of `/browser-profiles`, `/variables`, `/relays`) | `/connections` | `useBrowserProfiles`, `useDeleteBrowserProfile`, `useEntityFilter` (cards: `useSaveBrowserProfile`, `useSignInBrowserProfile`, `useSubmitMfaCode`) |
+| Variables | `/connections/variables`, `/connections/variables/:id` | `useVariables`, `useVariable`, `useCreateVariable`, `useUpdateVariable`, `useDeleteVariable` |
 | Skills | `/skills` | `useSkills`, `useCreateSkill`, `useDeleteSkill`, `useRefreshSkill` |
 | Skill Detail | `/skills/:id/:tab?` | `useSkill`, `useUpdateSkill`, `useDeleteSkill`, `useRefreshSkill` |
 | Prompts | `/prompts` | `usePrompts`, `useCreatePrompt` |
@@ -195,17 +195,17 @@ clicking it, or navigate by URL.
 | Audit Logs (admin) | `/logs` | `useAuditLogs`, `useAuditLogActions`, `useAuditLogEntityTypes`, `useUsers` |
 | Objects (admin) | `/objects` | `useAdminObjects`, `useUsers` |
 | Intents (controls admin-only) | `/intents` | `useIntents`, `useVerticals`, `useCreateIntent`, `useUpdateIntent`, `useBindIntent` |
-| LLM Analytics (admin) | `/analytics` | `useTraceAnalyticsSummary`, `useTraceAnalyticsCostOverTime`, `useTraceAnalyticsCostByAgent`, `useTraceAnalyticsLatency`, `useTraceAnalyticsErrors` |
-| Traces (admin) | `/traces` | `useTraces`, `useAgents` |
-| Trace Sessions (admin; `/traces/sessions` redirects here) | `/trace-sessions` | `useTraceSessions`, `useAgents` |
-| Trace Detail | `/traces/:id/:tab?` | `useTrace`, `useTraceSpans`, `useTraceSessionExplorer` |
+| Observability: Model usage and Outcomes (admin; a group manager reads Model usage; #797 S2 moved the family under its menu entry, no alias of `/analytics`, `/traces`, `/trace-sessions`) | `/observability`, `/observability/outcomes` | `useTraceAnalyticsSummary`, `useTraceAnalyticsCostOverTime`, `useTraceAnalyticsCostByAgent`, `useTraceAnalyticsLatency`, `useTraceAnalyticsErrors` |
+| Traces (admin) | `/observability/traces` | `useTraces`, `useAgents` |
+| Trace Sessions (admin) | `/observability/sessions` | `useTraceSessions`, `useAgents` |
+| Trace Detail | `/observability/traces/:id/:tab?` | `useTrace`, `useTraceSpans`, `useTraceSessionExplorer` |
 | AI Adoption (admin, when the feature is on) | `/ai-adoption/:tab?` | `useGroups` (tabs use `useAiAdoptionApi.ts`) |
 | Settings (admin) | `/settings/:tab?/:section?` | `useLLMProviders`, `useCreateLLMProvider`, `useUpdateLLMProvider`, `useDeleteLLMProvider`, `useLLMProviderDeletionImpact`, `useGeneralAssistantConfig`, `useUpdateGeneralAssistantConfig`, `useAvailableModels`, `useAvailableMusicModels`, `useMCPServers`, `useUsers`, `useSSOConfig`, `useChannelBots`, `useChannelBotCatalog`, `useCreateChannelBot`, `useUpdateChannelBot`, `useDeleteChannelBot`, `usePurgeAllMemories`, `useGenerateMCPKey`, `useRevokeMCPKey` |
 | Profile | `/profile/:tab?` | `useMe`, `useUpdateProfile`, `useChangePassword`, `useProviderModels`, `useApiKeys` |
 | Agent account (`/profile/runners` redirects to `/desktop`) | `/profile/agent-accounts/:accountId/:tab?` | `useAgentAccount`, `useUpdateAgentAccount`, `useDeleteAgentAccount`, `useSyncAgentAccount` |
 | XTM One Desktop | `/desktop` | `useDesktopRunner` |
 | Runner Detail | `/runners/:id` | `useRunner` |
-| Relays | `/relays`, `/relays/:id/:tab?` | `useRelayGroups`, `useCreateRelayGroup`, `useRelayMeta`, `useRelaysEnabled`, `useRelayGroup` |
+| Relays | `/connections/relays`, `/connections/relays/:id/:tab?` | `useRelayGroups`, `useCreateRelayGroup`, `useRelayMeta`, `useRelaysEnabled`, `useRelayGroup` |
 | Users (admin) | `/users` | `useUsers` |
 | User Detail (admin) | `/users/:id/:tab?` | `useUser`, `useUpdateUserRole`, `useToggleUserActive`, `useDeleteUser`, `useUserStats` |
 | New User (admin) | `/users/new` | `useCreateUser`, `useAuthConfig` |

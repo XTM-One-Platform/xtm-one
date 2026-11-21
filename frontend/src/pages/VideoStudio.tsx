@@ -41,7 +41,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * picked card by card, or every one the filters match - `Select
  *   all unused` selects every medium no video uses in one click.
  * Recordings sign in with a browser profile, managed on its own page
- * (`/browser-profiles`, Tools & Integrations): every agent browses with them.
+ * (`/connections`, Tools & Integrations): every agent browses with them.
  */
 import { useId, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -1446,7 +1446,7 @@ export default function VideoStudio() {
             </Button>
             <Tip content={t_i18n("The sign-ins recordings start with, shared with every agent's browser")}>
               <Button variant="outline" className="gap-1.5" asChild>
-                <Link to="/browser-profiles">
+                <Link to="/connections">
                   <KeyRound className="h-4 w-4" /> {t_i18n("Browser profiles")}
                 </Link>
               </Button>

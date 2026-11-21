@@ -439,7 +439,7 @@ export function ObservabilityTab({ agent }: { agent: Agent }) {
           isError={recentTracesQuery.isError}
           onRetry={() => void recentTracesQuery.refetch()}
           emptyLabel={t_i18n("No recent traces for this agent.")}
-          rowHref={(trace) => `/traces/${trace.id}`}
+          rowHref={(trace) => `/observability/traces/${trace.id}`}
         />
       </section>
 

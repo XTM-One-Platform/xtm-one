@@ -174,7 +174,7 @@ export function MessageFooterActions({
       {isAdmin && stored?.llm_trace_id && (
         <Tip content={t_i18n("View trace")}>
           <Link
-            to={`/traces/${stored.llm_trace_id}`}
+            to={`/observability/traces/${stored.llm_trace_id}`}
             aria-label={t_i18n("View trace")}
             className="text-default-disabled hover:text-accent focus-visible:text-accent transition-colors"
           >

@@ -46,7 +46,7 @@ function Where() {
 function renderCard() {
   const t = (id: string) => id;
   return renderWithProviders(
-    <MemoryRouter initialEntries={["/analytics?period=7d"]}>
+    <MemoryRouter initialEntries={["/observability?period=7d"]}>
       <Routes>
         <Route
           path="*"
@@ -115,7 +115,7 @@ describe("Top agents rows", () => {
     renderCard();
     fireEvent.click(screen.getByText("Private Bot"));
     fireEvent.click(screen.getByText("Old Bot"));
-    expect(screen.getByTestId("where").textContent).toBe("/analytics?period=7d");
+    expect(screen.getByTestId("where").textContent).toBe("/observability?period=7d");
 
     fireEvent.click(screen.getByRole("link"));
     expect(screen.getByTestId("where").textContent).toBe("/agents/open");

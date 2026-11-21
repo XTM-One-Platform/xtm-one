@@ -82,7 +82,7 @@ export default function TraceDetail() {
     && sessionExplorerQuery.isLoading,
   );
 
-  const backTo = requestedSessionId ? "/trace-sessions" : "/traces";
+  const backTo = requestedSessionId ? "/observability/sessions" : "/observability/traces";
   const backLabel = requestedSessionId ? "Back to Sessions" : "Back to Traces";
 
   if (isTraceLoading) return <PageSkeleton cards={4} />;
@@ -94,7 +94,7 @@ export default function TraceDetail() {
         title="Trace not found"
         description="This trace may have been deleted or you don't have access."
         actionLabel="View All Traces"
-        onAction={() => navigate("/traces")}
+        onAction={() => navigate("/observability/traces")}
         backTo={backTo}
         backLabel={backLabel}
       />
@@ -210,7 +210,7 @@ export default function TraceDetail() {
                   return (
                     <Link
                       key={sessionTrace.id}
-                      to={`/traces/${sessionTrace.id}?session_id=${activeSessionId}`}
+                      to={`/observability/traces/${sessionTrace.id}?session_id=${activeSessionId}`}
                       className={`rounded-sm border px-2 py-1 content-compact transition-colors ${
                         isCurrent
                           ? "border-elevation-default bg-elevation-highlight/15 text-default-primary"

@@ -326,11 +326,11 @@ export const NAV_SECTIONS: NavSection[] = [
              routed through: infrastructure, never AI-locked. A reader with the
              two flags off sees the plain row Browser profiles. */
           {
-            ...leaf("/browser-profiles", Cable, "Connections"),
+            ...leaf("/connections", Cable, "Connections"),
             family: [
-              { to: "/browser-profiles", icon: KeyRound, label: "Browser profiles" },
-              { to: "/variables", icon: Braces, label: "Variables", visible: (f) => f.customVariables },
-              { to: "/relays", icon: Network, label: "Relays", visible: (f) => f.relays },
+              { to: "/connections", icon: KeyRound, label: "Browser profiles" },
+              { to: "/connections/variables", icon: Braces, label: "Variables", visible: (f) => f.customVariables },
+              { to: "/connections/relays", icon: Network, label: "Relays", visible: (f) => f.relays },
             ],
           },
         ],
@@ -355,13 +355,13 @@ export const NAV_SECTIONS: NavSection[] = [
          the row is that one page, named after it (r3 A1). Traces, Sessions and
          Outcomes stay administrators'. */
       {
-        ...leaf("/analytics", Gauge, "Observability"),
+        ...leaf("/observability", Gauge, "Observability"),
         groupManagers: true,
         family: [
-          { to: "/analytics", icon: BarChart3, label: "Model usage", groupManagers: true },
-          { to: "/analytics/outcomes", icon: Target, label: "Outcomes" },
-          { to: "/traces", icon: Scan, label: "Traces" },
-          { to: "/trace-sessions", icon: Activity, label: "Sessions" },
+          { to: "/observability", icon: BarChart3, label: "Model usage", groupManagers: true },
+          { to: "/observability/outcomes", icon: Target, label: "Outcomes" },
+          { to: "/observability/traces", icon: Scan, label: "Traces" },
+          { to: "/observability/sessions", icon: Activity, label: "Sessions" },
         ],
       },
       /* Sprout, not TrendingUp: that one is the Value tab's, and no two rows share an icon. */

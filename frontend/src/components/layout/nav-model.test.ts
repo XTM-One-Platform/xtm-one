@@ -177,7 +177,7 @@ test("Dashboards is listed, in the nav and the palette, only while the Dashboard
   assert.ok(!routes({ ...FLAGS, dashboardStudio: false }).includes("/dashboards"));
 });
 
-const OBSERVABILITY = ["/analytics", "/analytics/outcomes", "/traces", "/trace-sessions"];
+const OBSERVABILITY = ["/observability", "/observability/outcomes", "/observability/traces", "/observability/sessions"];
 
 const adminLeaf = (isAdmin: boolean, isGroupManager: boolean, to: string) =>
   resolveNav(FLAGS, isAdmin, isGroupManager)
@@ -185,14 +185,14 @@ const adminLeaf = (isAdmin: boolean, isGroupManager: boolean, to: string) =>
     ?.entries.find((entry) => entry.kind === "leaf" && entry.to === to);
 
 test("Observability is one family row: Model usage, Outcomes, Traces, Sessions (#9301 N3)", () => {
-  const row = adminLeaf(true, false, "/analytics");
+  const row = adminLeaf(true, false, "/observability");
   assert.ok(row && row.kind === "leaf");
   assert.equal(row.label, "Observability");
   assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [
-    ["/analytics", "Model usage"],
-    ["/analytics/outcomes", "Outcomes"],
-    ["/traces", "Traces"],
-    ["/trace-sessions", "Sessions"],
+    ["/observability", "Model usage"],
+    ["/observability/outcomes", "Outcomes"],
+    ["/observability/traces", "Traces"],
+    ["/observability/sessions", "Sessions"],
   ]);
   assert.equal(row.locked, undefined, "a read surface, never AI-locked (SC-011)");
   const palette = navDestinations(resolveNav(FLAGS, true)).filter((dest) => OBSERVABILITY.includes(dest.to));
@@ -202,13 +202,13 @@ test("Observability is one family row: Model usage, Outcomes, Traces, Sessions (
 
 test("every member page of Observability lights the family row", () => {
   const sections = resolveNav(FLAGS, true);
-  for (const path of ["/analytics", "/analytics/outcomes", "/traces", "/traces/abc", "/trace-sessions"]) {
-    assert.equal(activeNavPath(sections, path), "/analytics", path);
+  for (const path of ["/observability", "/observability/outcomes", "/observability/traces", "/observability/traces/abc", "/observability/sessions"]) {
+    assert.equal(activeNavPath(sections, path), "/observability", path);
   }
 });
 
 test("a group manager's Administration is the single row Model usage, the page's h1 (r3 A1)", () => {
-  const row = adminLeaf(false, true, "/analytics");
+  const row = adminLeaf(false, true, "/observability");
   assert.ok(row && row.kind === "leaf");
   assert.equal(row.label, "Model usage");
   assert.equal(row.family, undefined, "one member: no family, no tab row");
@@ -217,7 +217,7 @@ test("a group manager's Administration is the single row Model usage, the page's
       .map((dest) => dest.to)
       .filter((to) => OBSERVABILITY.includes(to));
   assert.deepEqual(observability(true, false), OBSERVABILITY);
-  assert.deepEqual(observability(false, true), ["/analytics"]);
+  assert.deepEqual(observability(false, true), ["/observability"]);
   assert.deepEqual(observability(false, false), []);
   assert.deepEqual(
     resolveNav(FLAGS, false, true).find((section) => section.id === "admin")?.entries.length,
@@ -228,33 +228,33 @@ test("a group manager's Administration is the single row Model usage, the page's
 
 test("Tools & Integrations lists its fixed pages and nothing per integration", () => {
   const children = toolsGroup().children;
-  assert.deepEqual(children.map((child) => child.to), ["/mcp-servers", "/tools", "/integrations", "/browser-profiles"]);
-  assert.deepEqual(children[3].family?.map((member) => member.to), ["/browser-profiles", "/variables", "/relays"]);
+  assert.deepEqual(children.map((child) => child.to), ["/mcp-servers", "/tools", "/integrations", "/connections"]);
+  assert.deepEqual(children[3].family?.map((member) => member.to), ["/connections", "/connections/variables", "/connections/relays"]);
 });
 
 test("Connections is one family row: Browser profiles, Variables, Relays (#9301 N3b)", () => {
-  const row = toolsGroup().children.find((child) => child.to === "/browser-profiles");
+  const row = toolsGroup().children.find((child) => child.to === "/connections");
   assert.ok(row);
   assert.equal(row.label, "Connections");
   assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [
-    ["/browser-profiles", "Browser profiles"],
-    ["/variables", "Variables"],
-    ["/relays", "Relays"],
+    ["/connections", "Browser profiles"],
+    ["/connections/variables", "Variables"],
+    ["/connections/relays", "Relays"],
   ]);
   assert.equal(row.locked, undefined, "infrastructure, never AI-locked");
   const sections = resolveNav(FLAGS, false);
-  for (const path of ["/browser-profiles", "/variables", "/variables/v-1", "/relays", "/relays/r-1"]) {
-    assert.equal(activeNavPath(sections, path), "/browser-profiles", path);
+  for (const path of ["/connections", "/connections/variables", "/connections/variables/v-1", "/connections/relays", "/connections/relays/r-1"]) {
+    assert.equal(activeNavPath(sections, path), "/connections", path);
   }
-  const palette = navDestinations(sections).filter((dest) => ["/browser-profiles", "/variables", "/relays"].includes(dest.to));
+  const palette = navDestinations(sections).filter((dest) => ["/connections", "/connections/variables", "/connections/relays"].includes(dest.to));
   assert.deepEqual(palette.map((dest) => [dest.to, dest.parent]), [
-    ["/browser-profiles", "Connections"], ["/variables", "Connections"], ["/relays", "Connections"],
+    ["/connections", "Connections"], ["/connections/variables", "Connections"], ["/connections/relays", "Connections"],
   ]);
   /* Both flags off: one member, a plain row with that page's name. */
   const alone = resolveNav({ ...FLAGS, customVariables: false, relays: false }, false)
     .flatMap((section) => section.entries)
     .find((entry): entry is NavGroup => entry.kind === "group" && entry.id === "tools-and-integrations")
-    ?.children.find((child) => child.to === "/browser-profiles");
+    ?.children.find((child) => child.to === "/connections");
   assert.equal(alone?.label, "Browser profiles");
   assert.equal(alone?.family, undefined);
 });
