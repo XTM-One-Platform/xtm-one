@@ -19953,5 +19953,19 @@
   "Propose to raise the scope": "スコープの拡大を提案",
   "Optional: nothing waits on it.": "任意: この操作を待つものはありません。",
   "Proposal saved. An administrator reviews it in Settings > Organization.": "提案を保存しました。管理者が「設定 > 組織」で確認します。",
-  "The proposal could not be saved": "提案を保存できませんでした"
+  "The proposal could not be saved": "提案を保存できませんでした",
+  "Signal to case": "シグナルからケースまで",
+  "Case to first validation": "ケースから最初の検証まで",
+  "Case to decision": "ケースから判断まで",
+  "Case to passing re-test": "ケースから再テスト合格まで",
+  "No case yet": "まだケースはありません",
+  "{count, plural, one {# hour} other {# hours}}": "{count, plural, other {#時間}}",
+  "The loop measures could not be read": "ループの測定値を読み込めませんでした",
+  "No case yet: the measures start with the first case the loop opens": "まだケースはありません: ループが最初のケースを開くと測定が始まります",
+  "Median of {count, plural, one {# case} other {# cases}}": "{count, plural, other {#件}}のケースの中央値",
+  "Closed on proof": "証拠に基づくクローズ",
+  "No resolved case yet": "解決済みのケースはまだありません",
+  "{proven} of {count, plural, one {# resolved case} other {# resolved cases}}": "解決済み{count, plural, other {#件}}のうち{proven}件",
+  "Loop measures": "ループの測定値",
+  "How fast the loop runs, read from the history of the cases you can see": "表示できるケースの履歴から読み取ったループの速度"
 }
