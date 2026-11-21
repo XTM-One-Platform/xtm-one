@@ -321,3 +321,134 @@ def test_a_course_of_action_that_is_an_upgrade_carries_its_version():
 def test_the_tech_stack_entry_takes_an_optional_version():
     assert TechStackEntry(product="nginx").version == ""
     assert TechStackEntry(product="nginx", version="1.27.1").version == "1.27.1"
+
+
+# ---------------------------------------------------------------------------
+# Slice 2: the enrichment provider read (VulnCheck NVD 2.0) in the reader
+# ---------------------------------------------------------------------------
+
+
+class _Resp:
+    def __init__(self, payload):
+        self.status_code = 200
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def _fake_vulncheck(monkeypatch, served: dict[str, dict[str, dict]], calls: list | None = None):
+    """*served*: index name -> CVE -> record; an index absent answers a 402 error."""
+    from app.integrations.providers import vulncheck
+
+    async def _fake(client, method, url, provider, action, **kwargs):
+        index = url.rsplit("/", 1)[-1]
+        cve = kwargs["params"]["cve"]
+        if calls is not None:
+            calls.append((index, cve))
+        if index not in served:
+            return None, "VulnCheck: 402 not licensed"
+        record = served[index].get(cve)
+        return _Resp({"data": [record] if record else []}), None
+
+    monkeypatch.setattr(vulncheck, "safe_request", _fake)
+
+
+@pytest.mark.asyncio
+async def test_nvd2_records_fall_back_to_the_community_index(monkeypatch):
+    from app.integrations.providers.vulncheck import nvd2_records
+
+    calls: list = []
+    _fake_vulncheck(monkeypatch, {"nist-nvd2": {"CVE-2026-123633": NVD2}}, calls)
+    records = await nvd2_records("vc_key", ["cve-2026-123633", "not-a-cve", "CVE-2026-9"])
+    assert list(records) == ["CVE-2026-123633"]
+    assert ("vulncheck-nvd2", "CVE-2026-123633") in calls and ("nist-nvd2", "CVE-2026-123633") in calls
+
+
+@pytest.mark.asyncio
+async def test_nvd2_records_read_nothing_without_a_key_or_a_cve(monkeypatch):
+    from app.integrations.providers.vulncheck import nvd2_records
+
+    calls: list = []
+    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {}}, calls)
+    assert await nvd2_records("  ", ["CVE-2026-1"]) == {}
+    assert await nvd2_records("vc_key", ["latest"]) == {}
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_nvd2_records_stop_at_the_cap(monkeypatch):
+    from app.integrations.providers.vulncheck import nvd2_records
+
+    calls: list = []
+    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {}}, calls)
+    await nvd2_records("vc_key", [f"CVE-2026-{1000 + n}" for n in range(10)], cap=3)
+    assert len({cve for _, cve in calls}) == 3
+
+
+NGINX_STACK = [{"product": "nginx", "vendor": "F5", "cpe": "", "version": "1.27.1", "label": "F5 nginx"}]
+
+
+@pytest.mark.asyncio
+async def test_provider_ranges_are_keyed_as_the_reader_reads_them(monkeypatch):
+    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}})
+    ranges = await source.provider_ranges_for("vc_key", NGINX_STACK, ["CVE-2026-123633", "CVE-2026-404"])
+    assert list(ranges) == ["CVE-2026-123633|f5 nginx"]
+    assert [r.fixed for r in ranges["CVE-2026-123633|f5 nginx"]] == ["1.30.7", "1.31.9", None]
+
+
+class _FakeOpenCti:
+    """The three OpenCTI reads of ``_read_opencti``: software, has relations, remediations."""
+
+    def __init__(self):
+        self.queries = 0
+
+    async def __call__(self, client, base_url, headers, query, variables):
+        self.queries += 1
+        if "stixCyberObservables" in query:
+            node = {"id": "sw-1", "name": "nginx", "vendor": "F5", "cpe": ""}
+            return {"stixCyberObservables": {"edges": [{"node": node}]}}, None
+        if "CtemCaseStackVulns" in query:
+            rel = {"from": {"id": "sw-1"}, "to": {"id": "v1", "name": "CVE-2026-123633"}}
+            return {"stixCoreRelationships": {"edges": [{"node": rel}], "pageInfo": {}}}, None
+        return {"stixCoreRelationships": {"edges": []}}, None
+
+
+@pytest.mark.asyncio
+async def test_the_opencti_read_takes_the_fixed_version_from_the_provider(monkeypatch):
+    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
+    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}})
+    issues = await source._read_opencti(None, "http://octi", {}, NGINX_STACK, "vc_key")
+    assert [(i.external_id, i.fixed_version, i.installed_version) for i in issues] == [("v1", "1.30.7", "1.27.1")]
+    assert list(cc.group_issues(issues).groups) == ["upgrade:f5/nginx@1.30.7"]
+
+
+@pytest.mark.asyncio
+async def test_the_opencti_read_without_a_provider_keeps_latest(monkeypatch):
+    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
+    calls: list = []
+    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}}, calls)
+    issues = await source._read_opencti(None, "http://octi", {}, NGINX_STACK, None)
+    assert calls == []
+    assert issues[0].fixed_version is None
+
+
+@pytest.mark.asyncio
+async def test_a_provider_outage_never_drops_the_opencti_read(monkeypatch):
+    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(source, "provider_ranges_for", _boom)
+    issues = await source._read_opencti(None, "http://octi", {}, NGINX_STACK, "vc_key")
+    assert [i.external_id for i in issues] == ["v1"] and issues[0].fixed_version is None
+
+
+@pytest.mark.asyncio
+async def test_an_installed_version_outside_the_provider_ranges_is_not_affected(monkeypatch):
+    monkeypatch.setattr(source, "_graphql", _FakeOpenCti())
+    _fake_vulncheck(monkeypatch, {"vulncheck-nvd2": {"CVE-2026-123633": NVD2}})
+    stack = [dict(NGINX_STACK[0], version="1.30.7")]
+    issues = await source._read_opencti(None, "http://octi", {}, stack, "vc_key")
+    assert issues[0].not_affected == "not affected: version 1.30.7 is outside the affected ranges"
