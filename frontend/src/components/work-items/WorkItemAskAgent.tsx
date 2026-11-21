@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import { useAskWorkItem } from "@/hooks/api/useWorkItemApi";
+import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 import { primeChatDraft } from "@/lib/chat-launch";
 import { formatTimeAgo } from "@/lib/relative-time";
@@ -94,14 +95,19 @@ export function explainPrompt(t_i18n: Translate, item: Pick<WorkItem, "id" | "ti
  * The item's actions as one rule (#774). `explain` opens the agent's chat
  * with the message sent; `send` posts the action to the item's agent and
  * toasts. *onDone* runs once the action left (the dialog closes).
+ * The ask route and the chat are AI gated: with AI off both are refused, so
+ * `aiOff` disables every control that starts one and `aiReason` says why.
  */
 export function useAskTheAgent(onDone?: () => void) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
   const { toast } = useToast();
   const ask = useAskWorkItem();
+  const aiOff = useAiActionDisabled();
+  const aiReason = useAiDisabledReason();
 
   const explain = (item: WorkItem): boolean => {
+    if (aiOff) return false;
     const agent = askableAgent(item);
     if (!agent?.id) return false;
     primeChatDraft(explainPrompt(t_i18n, item), { agentId: agent.id, autoSend: true });
@@ -111,6 +117,7 @@ export function useAskTheAgent(onDone?: () => void) {
   };
 
   const send = async (item: WorkItem, action: SentAskAction, text?: string): Promise<boolean> => {
+    if (aiOff) return false;
     try {
       const sent = await ask.mutateAsync({ id: item.id, action, text: text?.trim() || undefined });
       toast({
@@ -135,7 +142,7 @@ export function useAskTheAgent(onDone?: () => void) {
     }
   };
 
-  return { explain, send, isPending: ask.isPending };
+  return { explain, send, isPending: ask.isPending, aiOff, aiReason };
 }
 
 export function WorkItemAskAgent({
@@ -149,7 +156,7 @@ export function WorkItemAskAgent({
   onDone?: () => void;
 }) {
   const { t_i18n, intl } = useFormatter();
-  const { explain, send, isPending } = useAskTheAgent(onDone);
+  const { explain, send, isPending, aiOff, aiReason } = useAskTheAgent(onDone);
   const [solving, setSolving] = useState(false);
   const [changed, setChanged] = useState("");
   const chatAgent = askableAgent(item);
@@ -158,7 +165,7 @@ export function WorkItemAskAgent({
   const pending = askPending(item);
   const labelId = useId();
   const changedId = useId();
-  const disabled = pending || isPending;
+  const disabled = pending || isPending || aiOff;
 
   const sent: { key: SentAskAction; icon: typeof RefreshCw; label: string; tip: string }[] = [
     {
@@ -197,11 +204,15 @@ export function WorkItemAskAgent({
         <>
           <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-2">
             {chatAgent && (
-              <Tip content={t_i18n("Opens a chat with {agent} and asks where the item stands.", { agent: chatAgent.name ?? "" })}>
+              <Tip
+                content={aiReason ?? t_i18n("Opens a chat with {agent} and asks where the item stands.", { agent: chatAgent.name ?? "" })}
+                wrap={aiOff}
+              >
                 <Button
                   size="sm"
                   variant="outline"
                   className="gap-1"
+                  disabled={aiOff}
                   onClick={() => explain(item)}
                   data-testid="work-item-ask-agent-explain"
                 >
@@ -210,7 +221,7 @@ export function WorkItemAskAgent({
               </Tip>
             )}
             {sent.map(({ key, icon: Icon, label, tip }) => (
-              <Tip key={key} content={tip}>
+              <Tip key={key} content={aiReason ?? tip} wrap={aiOff}>
                 <Button
                   size="sm"
                   variant="outline"
@@ -243,7 +254,12 @@ export function WorkItemAskAgent({
                     }}
                   />
                 </div>
-                <Button className="gap-1" onClick={() => void send(item, "solved", changed)} data-testid="work-item-ask-solved-send">
+                <Button
+                  className="gap-1"
+                  disabled={aiOff}
+                  onClick={() => void send(item, "solved", changed)}
+                  data-testid="work-item-ask-solved-send"
+                >
                   <Send className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Send")}
                 </Button>
               </div>

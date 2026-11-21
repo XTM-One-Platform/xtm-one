@@ -615,9 +615,18 @@ export default function WorkItemsTab({
           label: t_i18n("Ask the agent to re-check"),
           icon: RefreshCw,
           separatorBefore: true,
+          disabled: askAgent.aiOff,
+          disabledReason: askAgent.aiReason ?? undefined,
           onSelect: () => void askAgent.send(item, "recheck"),
         },
-        { id: "ask-solved", label: t_i18n("Tell the agent it's solved"), icon: CheckCheck, onSelect: () => void askAgent.send(item, "solved") },
+        {
+          id: "ask-solved",
+          label: t_i18n("Tell the agent it's solved"),
+          icon: CheckCheck,
+          disabled: askAgent.aiOff,
+          disabledReason: askAgent.aiReason ?? undefined,
+          onSelect: () => void askAgent.send(item, "solved"),
+        },
       );
     }
     if (actions.close && canClose(item)) {
