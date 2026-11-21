@@ -59,6 +59,10 @@ logger = logging.getLogger(__name__)
 OCTI_ISSUE_CAP = 2000
 #: Most CVE findings read from OpenAEV.
 AEV_FINDING_CAP = 2000
+#: The connected enrichment provider whose NVD 2.0 records give the affected ranges (CTEM-11).
+ENRICHMENT_PROVIDER = "vulncheck"
+#: Most CVE records one recompute reads from it (the rest keep the other sources).
+ENRICHMENT_CVE_CAP = 100
 _PAGE = 500
 
 _OCTI_STACK_VULNS = """
@@ -254,8 +258,68 @@ def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
     return out
 
 
+async def _enrichment_key(db: AsyncSession, user_id: str) -> str | None:
+    """The API key of the company-managed enrichment provider *user_id* may use, else ``None``.
+
+    The provider serves NVD 2.0 CVE records (CTEM-11 slice 2); same row choice
+    as the posture's ``_user_creds`` (company-managed, visible to the user).
+    """
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import integration_visible_filter
+    from app.models.integration import Integration
+    from app.services.integration_tools import _get_token
+
+    row = (
+        (
+            await db.execute(
+                select(Integration)
+                .where(
+                    Integration.provider == ENRICHMENT_PROVIDER,
+                    # access_restricted: honoured - a restricted row serves its grantees only.
+                    Integration.is_company_managed.is_(True),
+                    await integration_visible_filter(db, user_id),
+                )
+                .order_by(Integration.created_at)
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if row is None:
+        return None
+    token = await _get_token(db, str(row.id), ENRICHMENT_PROVIDER, user_id=user_id)
+    return (token or "").strip() or None
+
+
+async def provider_ranges_for(
+    api_key: str, stack: list[dict[str, str]], cves: list[str]
+) -> dict[str, list[fixed_versions.AffectedRange]]:
+    """The affected ranges the enrichment provider serves, keyed as ``opencti_issues`` reads them.
+
+    One NVD 2.0 record per CVE (at most ``ENRICHMENT_CVE_CAP``), parsed per
+    stack entry: ``<CVE>|<stack label, lower case>``. A provider that answers
+    nothing leaves the fixed version to the other sources.
+    """
+    from app.integrations.providers.vulncheck import nvd2_records
+
+    records = await nvd2_records(api_key, cves, cap=ENRICHMENT_CVE_CAP)
+    out: dict[str, list[fixed_versions.AffectedRange]] = {}
+    for cve, record in records.items():
+        for entry in stack:
+            ranges = fixed_versions.ranges_from_nvd2(record, vendor=entry.get("vendor") or "", product=entry["product"])
+            if ranges:
+                out[f"{cve.upper()}|{entry['label'].lower()}"] = ranges
+    return out
+
+
 async def _read_opencti(
-    client: httpx.AsyncClient, base_url: str, headers: dict[str, str], stack: list[dict[str, str]]
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict[str, str],
+    stack: list[dict[str, str]],
+    enrichment_key: str | None = None,
 ) -> list[rules.SourceIssue] | None:
     cpes = sorted({e["cpe"] for e in stack if e["cpe"]})
     names = sorted({e["product"] for e in stack})
@@ -306,7 +370,20 @@ async def _read_opencti(
         remediations.extend(
             (e or {}).get("node") or {} for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
         )
-    return opencti_issues(software, stack, relations, remediations)
+    ranges: dict[str, list[fixed_versions.AffectedRange]] = {}
+    if enrichment_key:
+        cves = sorted(
+            {
+                name.upper()
+                for r in relations
+                if (name := ((r.get("to") or {}).get("name") or "").strip()).upper().startswith("CVE-")
+            }
+        )
+        try:
+            ranges = await provider_ranges_for(enrichment_key, stack, cves)
+        except Exception as exc:  # the provider is an extra source: its outage never drops the OpenCTI read
+            logger.info("CTEM cases: enrichment provider ranges unavailable: %s", format_exception_message(exc))
+    return opencti_issues(software, stack, relations, remediations, ranges)
 
 
 async def _read_openaev(
@@ -433,8 +510,13 @@ async def read_open_issues(
     if octi and stack:
         base_url, headers = octi
         try:
+            enrichment_key = await _enrichment_key(db, user_id)
+        except Exception as exc:  # no provider is a known state: the fixed version comes from the other sources
+            logger.info("CTEM cases: enrichment provider key unavailable: %s", format_exception_message(exc))
+            enrichment_key = None
+        try:
             async with httpx.AsyncClient(timeout=30) as client:
-                found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack)
+                found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack, enrichment_key)
         except Exception as exc:
             logger.warning("CTEM cases: OpenCTI read failed: %s", format_exception_message(exc))
             found = None

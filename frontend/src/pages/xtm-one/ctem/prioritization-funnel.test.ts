@@ -213,6 +213,25 @@ for (const width of [1080, 1728]) {
     }
   });
 
+  test(`at ${width}px no branch label box meets the cases outcomes box, policy not configured (#897 UX round 3, B4)`, () => {
+    const policyOff: CtemFunnel = {
+      ...LIVE_FUNNEL,
+      layers: LIVE_FUNNEL.layers.map((l) => (l.key === "policy" ? { ...l, count: null, drop: null, state: "not_configured" } : l)),
+    };
+    for (const funnel of [LIVE_FUNNEL, policyOff, SAMPLE_FUNNEL]) {
+      const layout = flowLayout(funnel, width);
+      const box = { x0: layout.tiles.x, x1: layout.tiles.x + layout.tiles.width, y0: layout.outcomesTop, y1: layout.outcomesTop + layout.outcomesHeight };
+      assert.ok(box.y1 <= FLOW_HEIGHT, `outcomes end inside the reserved height (${box.y1})`);
+      assert.ok(box.y0 >= layout.tiles.ys[1] + layout.tiles.height, "outcomes sit below the tiles");
+      for (const step of layout.steps) {
+        if (step.labelY === null) continue;
+        const label = { x0: step.labelX, x1: step.labelX + step.labelWidth, y0: step.labelY - 10, y1: step.labelY + 10 };
+        const meets = label.x0 < box.x1 && label.x1 > box.x0 && label.y0 < box.y1 && label.y1 > box.y0;
+        assert.ok(!meets, `${step.layer.key} label ${JSON.stringify(label)} meets outcomes ${JSON.stringify(box)}`);
+      }
+    }
+  });
+
   test(`at ${width}px the case tiles end inside the measured width (B4)`, () => {
     const layout = flowLayout(LIVE_FUNNEL, width);
     assert.ok(layout.tiles.width > 0);

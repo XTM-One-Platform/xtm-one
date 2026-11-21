@@ -841,10 +841,10 @@ test.describe.serial('A2A handover from a tasked agent', () => {
     const resp = await rest.put(`/api/v1/agents/${agentId}`, {
       data: { handover_types: {} },
     });
-    // Every field of a built-in is rewritten from seed data on every startup,
-    // which is what makes the chain something an e2e may rely on.
+    // Handover wiring is mechanics: rewritten from seed data on every startup,
+    // which is what makes the chain something an e2e may rely on (#914).
     expect(resp.status()).toBe(403);
-    expect((await resp.json()).detail).toBe('Built-in agents cannot be modified');
+    expect((await resp.json()).detail).toMatch(/^Built-in agents cannot be modified/);
   });
 
   test('a built-in can still be exposed, but only by a company-managed registration', async () => {

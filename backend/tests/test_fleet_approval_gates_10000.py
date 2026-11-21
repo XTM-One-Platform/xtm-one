@@ -140,7 +140,7 @@ def test_the_context_carries_the_catalog_only_when_stored():
 def test_the_tool_enforced_gates_of_the_threat_response_fleet_are_stored():
     fleet = _seeded_fleet("ctem-threat-response")
     keys = {g["key"] for g in fleet.approval_gates if g.get("tools")}
-    assert {"openaev.scenario.launch", "ticket.create"} <= keys
+    assert {"ctem.validation.non_readonly", "ctem.mobilize"} <= keys
 
 
 def test_the_seed_is_idempotent():
