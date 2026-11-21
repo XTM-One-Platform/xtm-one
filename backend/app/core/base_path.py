@@ -134,7 +134,6 @@ SPA_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "ai-adoption",
         "analytics",
         "assignments",
-        "background-tasks",
         "briefing",
         "browser-profiles",
         "catalog",
@@ -184,12 +183,9 @@ SPA_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "traces",
         "users",
         "v",
-        "value",
         "variables",
         "videos",
         "work",
-        "work-items",
-        "workspaces",
     }
 )
 

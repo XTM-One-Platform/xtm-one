@@ -21,7 +21,7 @@ afterEach(() => {
 
 const renderPage = (locale = "en") =>
   renderWithProviders(
-    <MemoryRouter initialEntries={["/value/methodology"]}>
+    <MemoryRouter initialEntries={["/tasks/value/methodology"]}>
       <ValueMethodology />
     </MemoryRouter>,
     { locale },
@@ -125,10 +125,10 @@ const figures = (): RoiFigures =>
 describe("Read the methodology", () => {
   it("opens the methodology page from the popover of a figure", () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/value"]}>
+      <MemoryRouter initialEntries={["/tasks/value"]}>
         <Routes>
-          <Route path="/value" element={<RoiFigure figures={figures()} metric="net" currency="USD" window="30d" layout="card" />} />
-          <Route path="/value/methodology" element={<p>methodology page</p>} />
+          <Route path="/tasks/value" element={<RoiFigure figures={figures()} metric="net" currency="USD" window="30d" layout="card" />} />
+          <Route path="/tasks/value/methodology" element={<p>methodology page</p>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -142,6 +142,6 @@ describe("Read the methodology", () => {
   it("is a plain link where no router is mounted", () => {
     renderWithProviders(<RoiFigure figures={figures()} metric="net" currency="USD" window="30d" layout="card" />);
     fireEvent.click(screen.getByTestId("roi-how-net"));
-    expect(screen.getByTestId("roi-how-methodology").getAttribute("href")).toMatch(/\/value\/methodology$/);
+    expect(screen.getByTestId("roi-how-methodology").getAttribute("href")).toMatch(/\/tasks\/value\/methodology$/);
   });
 });

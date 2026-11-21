@@ -69,7 +69,7 @@ const PENDING: Record<string, number> = {
   "src/hooks": 1,
   "src/lib": 5,
   "src/lib/commands": 1,
-  "src/pages": 113,
+  "src/pages": 112,
   "src/pages/agent-detail": 28,
   "src/pages/ai-adoption": 3,
   "src/pages/analytics": 8,

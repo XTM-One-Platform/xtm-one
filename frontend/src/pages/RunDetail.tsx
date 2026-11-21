@@ -13,6 +13,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
+import { workItemPath } from "@/lib/task-routes";
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useTick } from "@/hooks/useTick";
@@ -1035,7 +1036,7 @@ export default function RunDetail() {
                 variant="secondary"
                 size="sm"
                 className="gap-1.5"
-                onClick={() => navigate(`/operations/work-items?item=${scheduledItemId}`)}
+                onClick={() => navigate(workItemPath(scheduledItemId))}
               >
                 <CalendarClock className="h-3.5 w-3.5" /> {t_i18n("View the scheduled work item")}
               </Button>

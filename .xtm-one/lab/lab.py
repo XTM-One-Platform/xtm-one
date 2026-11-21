@@ -2072,13 +2072,13 @@ def seed_peer(token: str, base: str) -> tuple[dict[str, dict[str, str]], dict[st
     seeded["signed-in session (peer)"] = {"id": PEER_EMAIL, "url": signed_in_url(base, peer_token)}
     log_session("signed-in session (peer)", seeded["signed-in session (peer)"])
     rows: list[tuple[str, str, object]] = [
-        # The administrator opens /operations/workspaces: "Shared by Lab peer" on this row.
-        ("workspace shared by the peer", "/workspaces/{id}", lambda: _shared_workspace(peer_token, admin, "peer")),
-        ("workspace shared with the peer", "/workspaces/{id}", lambda: _shared_workspace(token, peer, "administrator")),
-        ("peer work item", "/operations/work-items", lambda: _created(api("POST", "/work-items", peer_token, {
+        # The administrator opens /tasks/workspaces: "Shared by Lab peer" on this row.
+        ("workspace shared by the peer", "/tasks/workspaces/{id}", lambda: _shared_workspace(peer_token, admin, "peer")),
+        ("workspace shared with the peer", "/tasks/workspaces/{id}", lambda: _shared_workspace(token, peer, "administrator")),
+        ("peer work item", "/tasks/work-items", lambda: _created(api("POST", "/work-items", peer_token, {
             "title": f"{SEED_NAME} work item of the peer", "description": "Seeded by the lab, owned by the peer.",
         }))),
-        ("peer shared state", "/operations/state", lambda: _created(api("POST", "/shared-state", peer_token, {
+        ("peer shared state", "/operations/shared-state", lambda: _created(api("POST", "/shared-state", peer_token, {
             "key": "lab-peer-sample", "label": f"{SEED_NAME} state of the peer", "value": {"seeded_by": "lab"},
         }))),
     ]
@@ -2286,7 +2286,7 @@ def seed_workspace_work_item(token: str, base: str, workspace: str) -> dict[str,
     item = _created(row)
     if not isinstance(row, dict) or row.get("workspace_id") != workspace:
         raise RuntimeError(f"the work item was not filed in workspace {workspace}: {str(row)[:120]}")
-    return {"workspace work item": {"id": item, "url": f"{base}/operations/work-items"}}
+    return {"workspace work item": {"id": item, "url": f"{base}/tasks/work-items"}}
 
 
 def seed_budget_ceiling(peer_token: str, base: str) -> dict[str, dict[str, str]]:
@@ -3472,7 +3472,7 @@ def seed_roi_records(token: str, base: str) -> dict[str, dict[str, str]]:
         f"ROI review run ({outcome})": {"id": run, "url": f"{base}/runs/{run}"}
         for outcome, run in rows["runs"].items()
     }
-    seeded["ROI review work item"] = {"id": item, "url": f"{base}/operations/work-items?item={item}"}
+    seeded["ROI review work item"] = {"id": item, "url": f"{base}/tasks/work-items/{item}"}
     seeded["ROI review agent"] = {"id": agent, "url": f"{base}/agents/{agent}"}
     seeded["ROI review assignment"] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
     return seeded
@@ -3529,7 +3529,7 @@ def seed_roi_chat_records(
     total = series.get("total_lines") if isinstance(series, dict) else None
     if total is None or total < len(records):
         raise RuntimeError(f"GET /roi/chat answered {total} lines of {len(records)} seeded")
-    url = f"{base}/value?scope=organization"
+    url = f"{base}/tasks/value?scope=organization"
     log(f"seeded ROI chat records ({len(records)}): {url}")
     log(f"seeded fleet chat stamped: {stamped}")
     return {"ROI chat records": {"id": ",".join(records.values()), "url": url}}
@@ -3719,7 +3719,7 @@ def seed_roi_chat_only(token: str, base: str) -> dict[str, dict[str, str]]:
     remainder = next((r for r in rows if isinstance(r, dict) and r.get("key") == "no_agent"), None)
     if not remainder or not remainder.get("hours"):
         raise RuntimeError(f"GET /roi?window=7d: no no_agent row with hours in By agent ({remainder})")
-    url = f"{base}/value?scope=organization&window=7d"
+    url = f"{base}/tasks/value?scope=organization&window=7d"
     log(f"seeded ROI chat-only (organization): {url}")
     seeded = {"ROI chat-only no_agent remainder": {"id": "no_agent", "url": url}}
     for scope, subject, url in (("agent", agent, f"{base}/agents/{agent}"), ("fleet", fleet, f"{base}/flows/fleets/{fleet}")):
@@ -4063,7 +4063,7 @@ def seed_operations(token: str, agent: str, base: str) -> dict[str, dict[str, st
 
 
 def seed_stale_reasons(token: str, base: str) -> dict[str, dict[str, str]]:
-    """One work item per ``stale_reason``, so ``/operations/work-items?view=stale`` renders every reason (#9905).
+    """One work item per ``stale_reason``, so ``/tasks/work-items?view=stale`` renders every reason (#9905).
 
     Through the API a lab only produces ``past_due``: ``seed_stale_reasons.py`` writes the four items
     through the backend's ``WorkItem`` model with aged timestamps, with its interpreter and
@@ -4085,7 +4085,7 @@ def seed_stale_reasons(token: str, base: str) -> dict[str, dict[str, str]]:
     if wrong:
         raise RuntimeError(f"stale reasons not read back: {', '.join(wrong)}")
     return {"stale reasons": {"id": ",".join(f"{r}={i}" for r, i in ids.items()),
-                              "url": f"{base}/operations/work-items?view=stale"}}
+                              "url": f"{base}/tasks/work-items?view=stale"}}
 
 
 def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
@@ -4121,7 +4121,7 @@ def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str
     if wrong:
         raise RuntimeError(f"no-reason blocked items not read back: {', '.join(wrong)}")
     seeded = {"no-reason blocked work items": {"id": ids["operations"],
-                                              "url": f"{base}/operations/work-items?vis=all"}}
+                                              "url": f"{base}/tasks/work-items?vis=all"}}
     if "fleet" in ids:
         seeded["no-reason blocked work items in the fleet"] = {
             "id": ids["fleet"], "url": f"{base}/fleets/{fleet}/operations/work-items"}
@@ -4160,10 +4160,11 @@ def seed_scheduled_one_offs(token: str, base: str) -> dict[str, dict[str, str]]:
             wrong.append(state)
     if wrong:
         raise RuntimeError(f"scheduled one-offs not read back: {', '.join(wrong)}")
-    url = f"{base}/operations/work-items?view=scheduled"
+    # One item opens as its own path over the Scheduled view (#775): /tasks/work-items/<id>?view=scheduled.
+    url = f"{base}/tasks/work-items"
     return {
-        "scheduled one-off": {"id": ids["upcoming"], "url": f"{url}&item={ids['upcoming']}"},
-        "scheduled one-off (missed)": {"id": ids["missed"], "url": f"{url}&item={ids['missed']}"},
+        "scheduled one-off": {"id": ids["upcoming"], "url": f"{url}/{ids['upcoming']}?view=scheduled"},
+        "scheduled one-off (missed)": {"id": ids["missed"], "url": f"{url}/{ids['missed']}?view=scheduled"},
     }
 
 

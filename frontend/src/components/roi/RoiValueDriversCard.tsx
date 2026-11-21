@@ -26,6 +26,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * drawn unlinked and named "Deleted agent". It starts no run and calls no
  * model. Community Edition: the same line as the Value card.
  */
+import { VALUE_METHODOLOGY_PATH, valuePath } from "@/lib/task-routes";
 import type { ComponentType } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
@@ -84,7 +85,7 @@ export function RoiValueDriversCard() {
           </div>
           {/* The By agent tab of the Value page (UX design round C3). */}
           <Button asChild variant="ghost" size="sm" className="h-7 shrink-0 content-compact gap-1" data-testid="home-value-drivers-all">
-            <Link to="/value/agents">
+            <Link to={valuePath("agents")}>
               <Icon name="arrow-up-right" size={16} /> {t_i18n("All agents")}
             </Link>
           </Button>
@@ -109,7 +110,7 @@ export function RoiValueDriversCard() {
         ) : rows.length === 0 ? (
           <EmptyState variant="inset" density="compact" icon={EmptyGlyph} title="No value recorded yet">
             <Button asChild variant="secondary" size="sm">
-              <Link to="/value/methodology">{t_i18n("Declare a unit of work")}</Link>
+              <Link to={VALUE_METHODOLOGY_PATH}>{t_i18n("Declare a unit of work")}</Link>
             </Button>
           </EmptyState>
         ) : (

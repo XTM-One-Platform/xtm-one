@@ -48,7 +48,8 @@ frontend/src/
 │   ├── Work.tsx             ← /work (hub: what agents PRODUCE: operations, presentations, files)
 │   ├── AgentStudio.tsx      ← /agent-studio (hub: what agents are MADE OF: knowledge, prompts, templates, skills)
 │   ├── ToolsAndIntegrations.tsx ← /tools-and-integrations (hub: what agents ACT THROUGH: MCP servers first, then tools, integrations, variables)
-│   ├── Operations.tsx       ← /operations/:tab? (shell: Executions = TaskHistory, BackgroundTasks, operations/ tabs; `/tasks`, `/background-tasks`, `/work-items`, `/workspaces` redirect here)
+│   ├── Operations.tsx       ← /operations/<tab> (what is running or past: Executions = TaskHistory, BackgroundTasks, Shared State, Worksets)
+│   ├── Tasks.tsx            ← /tasks/<tab> (what to do and follow: Work Items `/tasks/work-items[/<id>]`, Value `/tasks/value[/<table>]`, Workspaces `/tasks/workspaces[/<id>]`; links built by lib/task-routes.ts, no alias of a former path)
 │   ├── operations/          ← tabs.ts (the tab list), WorkItemsTab, SharedStateTab, WorksetsTab, WorkspacesTab
 │   ├── TaskHistory.tsx      ← The Executions tab of /operations
 │   ├── Presentations.tsx    ← /presentations (deck library, paged by the server: Mine / Shared / Company, present / edit-with-assistant / share / duplicate / delete)

@@ -21,6 +21,7 @@
  * setup, waiting for you), its legend a swatch and a count before each label;
  * then three rows by default, each led by a dot in its source's colour.
  */
+import { workItemsPath } from "@/lib/task-routes";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Inbox, ShieldQuestion, Zap } from "lucide-react";
@@ -228,7 +229,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
         id: "work-items-waiting", source: "work_item", icon: Inbox, tone: "text-feedback-warning-primary",
         title: t_i18n("{count, plural, one {{shown} work item waits for you} other {{shown} work items wait for you}}", { count: waitingCount, shown: formatCompactNumber(waitingCount) }),
         reason: oldest?.title ?? t_i18n("A decision or an answer is owed before the work goes on"),
-        cta: "Open", onAction: () => navigate("/operations/work-items?view=waiting"),
+        cta: "Open", onAction: () => navigate(workItemsPath({ view: "waiting" })),
         priority: ACT_NOW_PRIORITY.work_item,
       });
     }

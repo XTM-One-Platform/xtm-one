@@ -227,6 +227,7 @@ AFFINITY_STOP = frozenset({"test", "tests", "spec", "index", "init", "main", "ut
 #: Files named in a note about what was not searched or not held.
 NAMED_IN_NOTE = 5
 _TOKEN = re.compile(r"[A-Za-z0-9]+")
+_MARKER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 #: Reads the file as checked out (``bytes``) or says why it cannot (``str``).
 BaseReader = Callable[[str], Awaitable[bytes | str]]
@@ -241,6 +242,32 @@ def is_prose_file(path: str) -> bool:
     """Whether *path* is prose by its extension (``.md``, ``.rst``, ``.txt``...): no identifier source."""
     name = path.rsplit("/", 1)[-1]
     return "." in name and name.rsplit(".", 1)[-1].casefold() in PROSE_EXTENSIONS
+
+
+def excluded_markers(argv: Iterable[str]) -> tuple[str, ...]:
+    """The pytest markers a check's *argv* deselects with ``-m "not X"`` (``-m "not integration"``).
+
+    Only a plain ``not X`` (or ``not X and not Y``) expression is read; any other expression answers none.
+    """
+    args = list(argv)
+    found: list[str] = []
+    for i, arg in enumerate(args):
+        if arg == "-m" and i + 1 < len(args):
+            expression = args[i + 1]
+        elif arg.startswith("-m") and len(arg) > 2:
+            expression = arg[2:].lstrip("=")
+        else:
+            continue
+        parts = [p.strip() for p in expression.split(" and ")]
+        names = [p[4:].strip() for p in parts if p.startswith("not ")]
+        if len(names) == len(parts) and all(_MARKER_NAME.fullmatch(n) for n in names):
+            found.extend(names)
+    return tuple(dict.fromkeys(found))
+
+
+def marked_with(text: str, markers: Iterable[str]) -> list[str]:
+    """The *markers* a test file's *text* applies (``pytest.mark.X``, ``pytestmark = pytest.mark.X``)."""
+    return [m for m in markers if re.search(r"\bpytest\.mark\." + re.escape(m) + r"\b", text)]
 
 
 def is_source_scan(text: str, scans: Iterable[re.Pattern[str]] = ()) -> bool:
@@ -647,6 +674,9 @@ class Selection:
     #: Selected test file -> the top-level directories it reads that the checkout does not hold (ranked last,
     #: never run by ``affected=true``: :meth:`runnable`).
     outside: dict[str, list[str]] = field(default_factory=dict)
+    #: Selected test file -> the markers it applies that the check's ``-m "not X"`` deselects: pytest collects
+    #: the file and runs none (or only part) of its tests, so the answer names them and the marker.
+    deselected: dict[str, list[str]] = field(default_factory=dict)
 
     def runnable(self) -> list[str]:
         """The selected test files this checkout can run: every one but those reading a directory it lacks."""
@@ -684,6 +714,17 @@ class Selection:
                 + (" ..." if len(self.quoted_only) > 5 else "")
                 + "."
             )
+        if self.deselected:
+            markers = sorted({m for found in self.deselected.values() for m in found})
+            files = list(self.deselected)
+            rows.append(
+                f"Deselected by this check's -m: {len(files)} selected test file(s) are marked "
+                + ", ".join(markers)
+                + ", which this check does not run: "
+                + ", ".join(files[:NAMED_IN_NOTE])
+                + (f", +{len(files) - NAMED_IN_NOTE} more" if len(files) > NAMED_IN_NOTE else "")
+                + ". Run them with the check that selects that marker (args: these files) before the push."
+            )
         if self.scoped:
             rows.append(
                 "Names defined by a changed Python module select only the tests that import it: "
@@ -705,11 +746,14 @@ async def affected_tests(
     clock: Callable[[], float] = time.monotonic,
     always: Iterable[str] = (),
     scans: Iterable[str] = (),
+    excluded: Iterable[str] = (),
 ) -> Selection:
     """The test files under the check directory *cwd* (workspace path) that the checkout's *changes* affect.
 
     *always* (the check's ``affected_always`` globs) names the test files selected on every source change;
     *scans* (its ``affected_scan_patterns``) the text of the source-scan gates selected on it.
+    *excluded* (:func:`excluded_markers` of its argv) the pytest markers it deselects: a selected file
+    applying one is listed in :attr:`Selection.deselected`.
 
     With *deadline* (a *clock* instant) the test files are read until then only: the
     rest are not searched and the selection's notes say how many.
@@ -896,6 +940,9 @@ async def affected_tests(
     )
     if prose:
         out.notes.append(_prose_note(prose, out.tests, searched_all=not skipped))
+    deselecting = tuple(excluded)
+    if deselecting:
+        out.deselected = {path: hit for path in out.tests if (hit := marked_with(texts.get(path, ""), deselecting))}
     absent = missing_directories(record)
     if absent:
         # A test reading a tree the checkout lacks fails on a missing file, not on the change: run it last.

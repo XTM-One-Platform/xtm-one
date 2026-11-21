@@ -14,7 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { workItemPath, workItemsPath } from "@/lib/task-routes";
 import {
   ListTodo, AlertTriangle, CheckCircle2, XCircle, Trash2, Eye,
   Clock, Hash, Circle, CircleDot, CircleDashed, Ban, CalendarClock, Hourglass, RotateCcw, User, History, GitPullRequest,
@@ -236,16 +237,19 @@ const ACTIONS_COLUMN = "w-32 2xl:w-60";
  * what is filed there or owned or created by its fleet's members,
  * every segment by default. `fleet` locks it on a fleet (its page's
  * Operations tab); elsewhere `?fleet=` narrows it to what a fleet's
- * home members own or created.
+ * home members own or created. `itemInPath`: the Tasks tab (#775), where one
+ * item opens as its own path (`/tasks/work-items/<id>`) instead of `?item=`.
  */
 export default function WorkItemsTab({
   workspace,
   fleet: lockedFleet,
   emptyDescription,
   toolbarLead,
+  itemInPath = false,
 }: {
   workspace?: string;
   fleet?: string;
+  itemInPath?: boolean;
   emptyDescription?: string;
   /** A control of the host drawn first on the filter row (the fleet tab's list select), never a row of its own. */
   toolbarLead?: ReactNode;
@@ -272,8 +276,10 @@ export default function WorkItemsTab({
   // On a fleet's tab, an administrator may read Mine or All instead.
   const fleetScope = lockedFleet ? fleetListScope(searchParams.get("scope"), isAdmin) : "fleet";
   const fleet = fleetScope === "fleet" ? fleetParam : undefined;
-  // A row, or a run's "Scheduled" badge, opens one item's details.
-  const openId = searchParams.get("item");
+  // A row, or a run's "Scheduled" badge, opens one item's details: on Tasks its own path, on a host page `?item=`.
+  const { itemId: pathItemId } = useParams<{ itemId?: string }>();
+  const navigate = useNavigate();
+  const openId = itemInPath ? (pathItemId ?? null) : searchParams.get("item");
   const page = table.page;
   const pageSize = table.pageSize;
   const debouncedSearch = useDebounce(search, 300);
@@ -483,8 +489,14 @@ export default function WorkItemsTab({
 
   const hasMoreBeyondVisible = deletableMatchingCount > selectableIds.length;
 
-  const openDetails = useCallback((item: WorkItem) => updateParam("item", item.id), [updateParam]);
-  const closeDetails = useCallback(() => updateParam("item", undefined), [updateParam]);
+  const openDetails = useCallback(
+    (item: WorkItem) => (itemInPath ? navigate(workItemPath(item.id, searchParams)) : updateParam("item", item.id)),
+    [itemInPath, navigate, searchParams, updateParam],
+  );
+  const closeDetails = useCallback(
+    () => (itemInPath ? navigate(workItemsPath(searchParams), { replace: true }) : updateParam("item", undefined)),
+    [itemInPath, navigate, searchParams, updateParam],
+  );
 
   const handleRequeue = useCallback(async (item: WorkItem) => {
     try {
