@@ -7920,8 +7920,16 @@ async def execute_assignment_run(
                 # and have it execute.  Wrap the composite in a
                 # ScopedToolExecutor so only the offered tool surface
                 # (``effective_tools``) is executable.
+                # The Module Analyst's every model call is reserved and booked on
+                # its own ceiling ledger (#101 S14b-2, dev-docs 12.5), decided by
+                # the same server-only predicate as its quota exemption.
+                _loop_llm = llm
+                if _module_analyst_exempt:
+                    from app.services.health.module_analyst_ceiling import ModuleAnalystCeilingLLM
+
+                    _loop_llm = ModuleAnalystCeilingLLM(llm, model=wf_resolved_model)
                 loop_kwargs: dict = dict(
-                    llm=llm,
+                    llm=_loop_llm,
                     messages=messages,
                     tools=effective_tools if effective_tools else None,
                     executor=(
