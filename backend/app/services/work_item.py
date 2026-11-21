@@ -876,6 +876,8 @@ def _visible_clause(
         # The owner agent reads what it may claim (#11900): *actor* is set
         # only on an agent's own read (its get_work_item tool).
         tiers.append(_owner_agent_clause(actor))
+        # An item another person handed to this agent (#858).
+        tiers.append(_handed_to_clause(actor))
     return or_(*tiers)
 
 
@@ -936,6 +938,8 @@ def _writable_clause(
     if actor is not None:
         # The owner agent's own tier (#11900): an agent's write path only.
         tiers.append(_owner_agent_clause(actor))
+        # An item another person handed to this agent (#858).
+        tiers.append(_handed_to_clause(actor))
     return or_(*tiers)
 
 
@@ -1009,6 +1013,142 @@ def _owner_agent_clause(actor: CompanyManagedWriter | None) -> Any:
             ),
             and_(assignee, filed_by_its_creator),
         ),
+    )
+
+
+def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
+    """Items another person handed to *actor*, its OWNER agent (#858).
+
+    A person's agent files an item for an agent of another person: the item
+    carries its creator's ``user_id`` and workspace, the owner agent's runs act
+    as the owner agent's own person, so no other tier admits it and the hand-off
+    is dropped without anyone seeing it. This tier admits it to the owner
+    agent's own tools, dispatch and settlement (never to a person's read), on
+    one of two grants only (Sam's decision on #858):
+
+    1. the creator may open the owner agent: their own, company-managed and not
+       narrowed, or shared with them or one of their groups
+       (``shared_with_user_column_clause``; an administrator's role is no grant);
+    2. the creating agent's home fleet and the owner agent's home fleet are
+       connected, either fleet naming the other or the other's agent as a
+       ``connected`` member.
+
+    Nothing else widens: the same check refuses the hand-off at creation
+    (:func:`_refuse_unreachable_owner`), so an item no tier gives its owner
+    is never written.
+    """
+    if actor is None or actor.agent_id is None:
+        return false()
+    agent_id = actor.agent_id
+    return and_(
+        WorkItem.owner_agent_id == agent_id,
+        WorkItem.user_id.is_not(None),
+        or_(
+            _creator_may_open_agent(WorkItem.user_id, agent_id),
+            _fleets_connected(WorkItem.created_by_agent_id, agent_id),
+        ),
+    )
+
+
+def _creator_may_open_agent(user_column: Any, agent_id: Any) -> Any:
+    """Grant 1 of :func:`_handed_to_clause`: the person *user_column* names may open *agent_id*."""
+    from app.api.v1.helpers import shared_with_user_column_clause
+    from app.models.agent import Agent
+
+    return select(Agent.id).where(Agent.id == agent_id, shared_with_user_column_clause(Agent, user_column)).exists()
+
+
+def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
+    """Grant 2 of :func:`_handed_to_clause`: the two agents' home fleets are connected.
+
+    Either direction: a ``connected`` row of one live fleet names the other
+    fleet (``target_fleet_id``) or the other agent (``agent_id``).
+    """
+    from sqlalchemy.orm import aliased
+
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
+
+    def home(agent: Any) -> Any:
+        return (
+            select(FleetMember.fleet_id)
+            .join(Fleet, Fleet.id == FleetMember.fleet_id)
+            .where(
+                FleetMember.agent_id == agent,
+                FleetMember.role == FLEET_ROLE_MEMBER,
+                Fleet.is_archived.is_(False),
+            )
+            .scalar_subquery()
+        )
+
+    link = aliased(FleetMember)
+    creator_home, owner_home = home(creator_agent), home(owner_agent)
+    return (
+        select(link.id)
+        .where(
+            link.role == "connected",
+            or_(
+                and_(
+                    link.fleet_id == creator_home,
+                    or_(link.target_fleet_id == owner_home, link.agent_id == owner_agent),
+                ),
+                and_(
+                    link.fleet_id == owner_home,
+                    or_(link.target_fleet_id == creator_home, link.agent_id == creator_agent),
+                ),
+            ),
+        )
+        .exists()
+    )
+
+
+class OwnerAgentUnreachableError(ValueError):
+    """A work item handed to an agent its owner runs could never read (#858)."""
+
+
+async def _refuse_unreachable_owner(
+    db: Any,
+    *,
+    owner_agent_id: uuid.UUID | None,
+    user_id: uuid.UUID | None,
+    created_by_agent_id: uuid.UUID | None,
+    is_company_managed: bool,
+    writer: CompanyManagedWriter,
+) -> None:
+    """Refuse a person's item for an agent neither grant of :func:`_handed_to_clause` reaches.
+
+    Only an agent's own filing (its create_work_item tool, *writer* naming
+    the agent) of a person's item handed to another agent is checked: the
+    path a hand-off between fleets takes. Company-managed items keep their
+    own tiers (#11900, #12120).
+    The refusal names the owner agent, so the hand-off is never dropped
+    silently.
+    """
+    if owner_agent_id is None or user_id is None or is_company_managed or writer.agent_id is None:
+        return
+    if created_by_agent_id is not None and created_by_agent_id == owner_agent_id:
+        return
+    from sqlalchemy import literal
+
+    from app.models.agent import Agent
+
+    user = literal(user_id, type_=WorkItem.user_id.type)
+    creator = literal(created_by_agent_id, type_=WorkItem.created_by_agent_id.type)
+    row = (
+        await db.execute(
+            select(
+                Agent.name,
+                _creator_may_open_agent(user, owner_agent_id),
+                _fleets_connected(creator, owner_agent_id) if created_by_agent_id else false(),
+            ).where(Agent.id == owner_agent_id)
+        )
+    ).first()
+    if row is None or row[1] or row[2]:
+        return
+    raise OwnerAgentUnreachableError(
+        f"The work item cannot be handed to {row[0]!r}: that agent is not shared with you "
+        "and its fleet is not connected to the fleet of the agent filing it, so it could "
+        "never read the item. Ask its owner to share the agent with you or to connect "
+        "the two fleets."
     )
 
 
@@ -2037,6 +2177,15 @@ async def create_work_item(
         # `read_only` grantee who could create work items would be queueing
         # tasks that other people's agents then pick up and act on — no
         # permission gained on paper, everyone else's fleet steered.
+        # A hand-off its owner agent could never read is refused here (#858).
+        await _refuse_unreachable_owner(
+            db,
+            owner_agent_id=owner_uuid,
+            user_id=user_uuid,
+            created_by_agent_id=creator_uuid,
+            is_company_managed=is_company_managed,
+            writer=writer,
+        )
         if workspace_id is not None:
             _readable, writable = await _workspace_tiers(db, user_id)
             if workspace_id not in writable:
@@ -5088,7 +5237,8 @@ async def list_work_items(
         # predicate, and a disabled staleness window yields no clause rather
         # than an early return.
         readable, _ = await _workspace_tiers(db, user_id)
-        query = select(WorkItem).where(_visible_clause(uid, readable), *clauses)
+        # An agent's listing also reads the items handed to it (#858).
+        query = select(WorkItem).where(or_(_visible_clause(uid, readable), _handed_to_clause(reader)), *clauses)
 
         if column_order is not None:
             query = query.order_by(*column_order)

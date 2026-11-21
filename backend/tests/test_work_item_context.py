@@ -158,16 +158,19 @@ def _lookup(viewer_id: uuid.UUID) -> ctx._Lookup:
     return ctx._Lookup(SimpleNamespace(id=viewer_id, is_admin=False))
 
 
-def test_an_agent_the_reader_cannot_open_is_never_named():
+def test_an_owner_agent_the_reader_cannot_open_keeps_its_name_never_its_id():
+    # #858: the owner of an item the reader sees is named read-only (no id, no
+    # link); any other agent the reader cannot open stays unnamed.
     viewer = uuid.uuid4()
-    mine, theirs = uuid.uuid4(), uuid.uuid4()
+    mine, theirs, hidden = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     lookup = _lookup(viewer)
-    lookup.agents = {mine: ("Mine", "bot"), theirs: ("Theirs", "bot")}
+    lookup.agents = {mine: ("Mine", "bot"), theirs: ("Theirs", "bot"), hidden: ("Hidden", "bot")}
     lookup.visible_agents = {mine}
     context = lookup.context(
         _item(owner_agent_id=str(theirs), created_by_agent_id=str(mine), user_id=str(viewer)), NOW
     )
-    assert context["owner_agent"] == {"id": None, "name": None, "icon": None, "accessible": False}
+    assert context["owner_agent"] == {"id": None, "name": "Theirs", "icon": "bot", "accessible": False}
+    assert lookup.agent(hidden) == {"id": None, "name": None, "icon": None, "accessible": False}
     assert context["created_by_agent"] == {
         "id": str(mine),
         "name": "Mine",
