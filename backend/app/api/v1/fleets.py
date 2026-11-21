@@ -1085,7 +1085,7 @@ async def unbind_fleet_member_slot(
 
     user_group_ids = await get_user_group_ids(db, user.id)
     row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
-    target = str(parse_uuid(integration_id, label="integration_id"))
+    target = str(parse_path_id(integration_id, not_found_detail="This integration is not bound to that slot."))
     try:
         agent.integration_bindings = bindings_without(
             row.role_label, capability, agent.integration_bindings, target, PROVIDER_CATALOG
