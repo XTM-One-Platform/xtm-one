@@ -86,6 +86,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_signals as signals
+        from app.services.ctem_loop_stream import publish_signal_update
         from app.services.organizations import get_primary
 
         if scope is None:
@@ -118,6 +119,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     recorded_by=str(scope),
                 )
                 await db.commit()
+                await publish_signal_update(db, row)
                 return _dump({"created": created, "signal": signals.to_dict(row)})
         except signals.SignalError as exc:
             return f"Refused: {exc}. Nothing was recorded."

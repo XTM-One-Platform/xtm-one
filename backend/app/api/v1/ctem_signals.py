@@ -25,6 +25,7 @@ from app.core.database import get_db
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
 from app.models.user import User
 from app.services import ctem_signals as signals
+from app.services.ctem_loop_stream import publish_signal_update
 from app.services.organizations import get_primary
 
 router = APIRouter()
@@ -141,6 +142,7 @@ async def record_ctem_signal(
     except signals.SignalError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await db.commit()
+    await publish_signal_update(db, row)
     return {"created": created, "signal": signals.to_dict(row)}
 
 
