@@ -176,6 +176,7 @@ def test_fleet_has_one_agent_per_role():
         "experimenter",
         "flow_lab",
         "memory_steward",
+        "module_analyst",
         "orchestrator",
         "quality_analyst",
     ]
@@ -198,7 +199,18 @@ def test_every_assignment_and_handover_names_a_fleet_agent():
 def test_assignment_keys_cover_every_schedule():
     from app.services.health.cycles import SCHEDULE_KEYS
 
-    assert set(SCHEDULE_KEYS) | {"investigation"} == set(fleet_seed.ASSIGNMENT_BY_KEY)
+    # The per-target assignments: an investigation, and a module's (#101 S14, its own triggers).
+    assert set(SCHEDULE_KEYS) | {"investigation", "module_analyst"} == set(fleet_seed.ASSIGNMENT_BY_KEY)
+
+
+def test_the_module_analyst_is_seeded_with_no_module_write_and_no_handover():
+    """Section 12.3: the member carries no tool group that writes; nobody hands it work."""
+    spec = next(s for s in fleet_seed.FLEET_AGENTS if s.role == "module_analyst")
+    assert spec.disable_chat and spec.handovers == ()
+    assert set(spec.builtin_tool_ids) <= {fleet_seed.IMPROVEMENTS_GROUP}
+    assert not set(spec.builtin_tool_ids) & fleet_seed.NON_CONSENT_TOOL_GROUPS
+    assert all(spec.slug not in {t for t, _ in s.handovers} for s in fleet_seed.FLEET_AGENTS)
+    assert fleet_seed.ASSIGNMENT_BY_KEY["module_analyst"].agent_slug == spec.slug
 
 
 def test_every_persona_file_exists():

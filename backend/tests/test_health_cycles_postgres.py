@@ -206,7 +206,8 @@ async def test_the_built_in_seeds_never_sweep_the_health_rows(concierge_on):
         await builtin_fleet_seed.seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[])
         agents, _, fleets, _, _ = await _fleet_counts(db)
 
-    assert len(agents) == 5
+    # The orchestrator and its five members, the Module Analyst (#101 S14) included.
+    assert len(agents) == 6
     assert [f.slug for f in fleets if f.is_builtin and f.slug == "platform-health"] == ["platform-health"]
 
 
