@@ -146,6 +146,7 @@ async def ensure_learned_skill(db: AsyncSession, agent: Any, *, author_id: uuid.
     The binding goes on the agent's customer layer (``skill_ids``,
     ``skill_load_modes``) and is recorded in ``customer_fields`` so the seed keeps it.
     """
+    from app.api.v1.helpers import resolve_company_managed_owner_id
     from app.models.agent_skill import AgentSkill
     from app.services.builtin_customer_layer import record_customer_fields
     from app.services.organizations import get_primary
@@ -156,8 +157,11 @@ async def ensure_learned_skill(db: AsyncSession, agent: Any, *, author_id: uuid.
     skill = await find_learned_skill(db, agent.id)
     if skill is None:
         primary = await get_primary(db)
+        # Owned like every company-managed row (the platform admin), never by the
+        # user whose run recorded the first lesson: deleting that user must not
+        # cascade to the skill. ``author_id`` stays on the SkillVersion rows only.
         skill = AgentSkill(
-            user_id=author_id,
+            user_id=await resolve_company_managed_owner_id(db),
             is_company_managed=True,
             name=skill_name(agent.name, getattr(primary, "name", None)),
             description=f"Durable lessons {agent.name} recorded for this organization. Read it each run.",

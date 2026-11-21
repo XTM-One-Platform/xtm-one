@@ -64,3 +64,42 @@ def test_tool_is_offered_to_built_ins_only(monkeypatch):
     definitions, _ = build_learned_lesson_tool(agent_id="00000000-0000-0000-0000-000000000001", user_id=None)
     assert [d.name for d in definitions] == [LEARNED_LESSON_TOOL]
     assert len(definitions[0].description) <= 300
+
+
+async def test_learned_skill_is_owned_by_the_company_owner_not_the_author(monkeypatch):
+    """Deleting the user whose run wrote the first lesson must not cascade to the skill."""
+    import uuid
+    from types import SimpleNamespace
+
+    from app.api.v1 import helpers
+    from app.services import builtin_customer_layer, organizations, skill_versioning
+
+    owner_id, author_id = uuid.uuid4(), uuid.uuid4()
+    versions: list = []
+
+    async def _none(*_a, **_k):
+        return None
+
+    async def _owner(_db):
+        return owner_id
+
+    async def _version(_db, skill, *, author_id, commit_message):
+        versions.append(author_id)
+
+    monkeypatch.setattr(learned, "find_learned_skill", _none)
+    monkeypatch.setattr(organizations, "get_primary", _none)
+    monkeypatch.setattr(helpers, "resolve_company_managed_owner_id", _owner)
+    monkeypatch.setattr(skill_versioning, "create_skill_version", _version)
+    monkeypatch.setattr(builtin_customer_layer, "record_customer_fields", lambda *_a: None)
+
+    added: list = []
+
+    async def _flush():
+        added[-1].id = uuid.uuid4()
+
+    db = SimpleNamespace(add=added.append, flush=_flush)
+    agent = SimpleNamespace(id=uuid.uuid4(), name="Triage", is_builtin=True, skill_ids=[], skill_load_modes={})
+    skill = await learned.ensure_learned_skill(db, agent, author_id=author_id)
+    assert skill.user_id == owner_id
+    assert skill.is_company_managed
+    assert versions == [author_id]
