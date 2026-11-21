@@ -752,7 +752,7 @@ async def _ensure_trigger(
 #: as the score at delivery; the fleet reads the live score from OpenCTI.
 PIR_WEBHOOK_TEMPLATE = (
     '{"notification_id": "<%= data[0].notification_id %>:<%= data[0].instance.id %>:'
-    '<%= data[0].type %>:<%= data[0].message %>:'
+    "<%= data[0].type %>:<%= data[0].message %>:"
     "<%= JSON.stringify((data[0].instance.extensions || {})"
     "['extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba'] || {}).pir_information) %>\", "
     '"type": "<%= data[0].type %>", "message": "<%= data[0].message %>", '
@@ -761,7 +761,9 @@ PIR_WEBHOOK_TEMPLATE = (
 )
 
 
-def pir_playbook_nodes(spec: dict[str, Any], notifier_id: str, member_id: str) -> tuple[dict, dict]:
+def pir_playbook_nodes(
+    spec: dict[str, Any], notifier_id: str, member_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """The two node configurations of a PIR playbook: (Listen PIR events, Send to notifier).
 
     The entry listens to the profile PIRs (``inPirFilters`` items are
@@ -819,7 +821,7 @@ async def _own_user_id(gql: Gql) -> str:
 
 
 async def _ensure_pir_playbook(
-    gql: Gql, playbook_id: str | None, name: str, entry: dict, notify: dict
+    gql: Gql, playbook_id: str | None, name: str, entry: dict[str, Any], notify: dict[str, Any]
 ) -> str:
     """One running playbook *name* holding exactly *entry* then *notify*; rebuilt on any drift."""
     playbook_id = playbook_id or await _find_by_name(gql, "playbooks", name)
@@ -850,7 +852,9 @@ async def _ensure_pir_playbook(
     created = (data.get("playbookAdd") or {}).get("id")
     if not created:
         raise RuntimeError("OpenCTI returned no playbook id")
-    node_add = "mutation XtmNodeAdd($id: ID!, $input: PlaybookAddNodeInput!) { playbookAddNode(id: $id, input: $input) }"
+    node_add = (
+        "mutation XtmNodeAdd($id: ID!, $input: PlaybookAddNodeInput!) { playbookAddNode(id: $id, input: $input) }"
+    )
     data, err = await gql(
         node_add,
         {
@@ -890,7 +894,7 @@ async def _ensure_pir_playbook(
     )
     if err:
         raise RuntimeError(err)
-    return created
+    return str(created)
 
 
 async def _delete(gql: Gql, field: str, object_id: str) -> None:

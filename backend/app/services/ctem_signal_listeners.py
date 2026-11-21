@@ -137,7 +137,7 @@ def _pir_matches(data: Mapping[str, Any], payload: Mapping[str, Any]) -> list[di
         return []
     extensions = data.get("extensions")
     found: list[dict[str, Any]] = []
-    for ext in (extensions.values() if isinstance(extensions, dict) else []):
+    for ext in extensions.values() if isinstance(extensions, dict) else []:
         info = ext.get("pir_information") if isinstance(ext, dict) else None
         for item in info if isinstance(info, list) else []:
             pir_id = _text(item.get("pir_id")) if isinstance(item, dict) else ""
