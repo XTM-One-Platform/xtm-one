@@ -93,9 +93,21 @@ const PICKUP_ICONS: Record<WorkItemPickupState, ElementType> = {
 export function WorkItemAgent({ agent, className }: { agent: WorkItemAgentRef; className?: string }) {
   const { t_i18n } = useFormatter();
   if (!agent.accessible || !agent.id) {
+    const why = t_i18n("This agent is not shared with you: you can see the work item, not the agent.");
+    // The label is cut in a narrow column: the tooltip names the agent in full
+    // on its first line, then says why it cannot be opened.
     return (
       <Tip
-        content={t_i18n("This agent is not shared with you: you can see the work item, not the agent.")}
+        content={
+          agent.name ? (
+            <span className="flex flex-col gap-0.5">
+              <span className="font-medium">{agent.name}</span>
+              <span>{why}</span>
+            </span>
+          ) : (
+            why
+          )
+        }
         wrap
         wrapClassName="inline-flex min-w-0 max-w-full"
       >
