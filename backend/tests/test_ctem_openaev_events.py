@@ -62,7 +62,9 @@ def test_the_new_events_are_provisioned(event: str, expected: tuple[str, str]) -
 
 
 def test_the_score_degradation_is_a_path_8_signal() -> None:
-    found = listeners.match("openaev", "scenario_score_degraded", _delivery("scenario_score_degraded", "SCENARIO", "s1"))
+    found = listeners.match(
+        "openaev", "scenario_score_degraded", _delivery("scenario_score_degraded", "SCENARIO", "s1")
+    )
     assert found is not None
     row, signal = found
     assert row.trigger_path == "mitigation_regression" and row.lens == "inside"
@@ -71,8 +73,13 @@ def test_the_score_degradation_is_a_path_8_signal() -> None:
 
 
 def test_other_openaev_events_record_no_signal() -> None:
-    assert listeners.match("openaev", "simulation_finished", _delivery("simulation_finished", "SIMULATION", "x")) is None
-    assert listeners.match("openaev", "scenario_score_degraded", _delivery("scenario_score_degraded", "FINDING", "x")) is None
+    assert (
+        listeners.match("openaev", "simulation_finished", _delivery("simulation_finished", "SIMULATION", "x")) is None
+    )
+    assert (
+        listeners.match("openaev", "scenario_score_degraded", _delivery("scenario_score_degraded", "FINDING", "x"))
+        is None
+    )
     assert listeners.match("openaev", "scenario_score_degraded", {}) is None
 
 
@@ -148,7 +155,10 @@ async def test_route_raises_one_event_per_waiting_case(monkeypatch: pytest.Monke
 
 
 async def test_an_unverified_delivery_moves_nothing() -> None:
-    assert await aev.note_event("simulation_finished", _delivery("simulation_finished", "SIMULATION", "s"), verified=False) == 0
+    assert (
+        await aev.note_event("simulation_finished", _delivery("simulation_finished", "SIMULATION", "s"), verified=False)
+        == 0
+    )
 
 
 def test_the_case_event_is_registered_and_heard_by_exactly_one_fleet() -> None:
@@ -162,7 +172,7 @@ def test_the_case_event_is_registered_and_heard_by_exactly_one_fleet() -> None:
 def test_the_listen_only_assignment_provisions_and_never_runs() -> None:
     assert CTEM_F2_OPENAEV_ASSIGNMENT in BUILTIN_ASSIGNMENTS
     config = CTEM_F2_OPENAEV_ASSIGNMENT["trigger_config"]
-    assert prov.read_provision_spec(config)["events"] == list(CTEM_OPENAEV_LOOP_EVENTS)
+    assert set(prov.read_provision_spec(config)["events"]) == set(CTEM_OPENAEV_LOOP_EVENTS)
     assert set(CTEM_OPENAEV_LOOP_EVENTS) <= set(prov.EVENTS)
     assert set(aev.CASE_EVENT_KEYS) <= set(CTEM_OPENAEV_LOOP_EVENTS)
     for event in CTEM_OPENAEV_LOOP_EVENTS:

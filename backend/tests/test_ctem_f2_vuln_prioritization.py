@@ -79,6 +79,7 @@ def test_the_assignments_are_on_the_orchestrator() -> None:
         "Vulnerability sighted",
         "Daily backlog pass",
         "Re-test due",
+        "OpenAEV results into cases",
         "Case opened or reopened",
     }
     assert {a["agent_slug"] for a in CTEM_F2_ASSIGNMENTS} == {_ORCH}
