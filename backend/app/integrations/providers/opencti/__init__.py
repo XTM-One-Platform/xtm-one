@@ -38,6 +38,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn
 from app.integrations.http import RefreshableHeaders, parse_compound_token
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -68,11 +69,14 @@ def build_tools(
     executor: CallableToolExecutor,
     *,
     platform_names_sink: Callable[[Any], None] | None = None,
+    registered_version_fn: RegisteredVersionFn | None = None,
     **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenCTI integration tools.
 
-    ``token`` is ``base_url||api_token`` (compound format).
+    ``token`` is ``base_url||api_token`` (compound format). ``registered_version_fn``
+    (injected for an integration a registration owns) reads the version XTM One
+    registered, named beside the live answer of ``get_opencti_platform_version``.
     """
     base_url, api_token = parse_compound_token(token, 2)
     # ``parse_compound_token`` does not normalise - strip whitespace and the
@@ -151,7 +155,7 @@ def build_tools(
     # only scope STIX knowledge changes, not platform configuration.
     tools += register_playbooks(base_url, headers, executor)
     tools += register_workspaces(base_url, headers, executor)
-    tools += register_access(base_url, headers, executor)
+    tools += register_access(base_url, headers, executor, registered_version_fn=registered_version_fn)
     tools += register_notifications(base_url, headers, executor)
     tools += register_customization(base_url, headers, executor)
     tools += register_audit(base_url, headers, executor)

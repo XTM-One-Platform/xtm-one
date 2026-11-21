@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.constants import TRUNCATE_SNIPPET
 from app.core.egress import EgressRoute, egress_client, egress_route
 from app.core.integration_tool_slug import derive_tool_slug, tool_slug_error
+from app.core.module_versions import registered_version_reader
 from app.core.platform_identity import (
     RegisteredPlatform,
     platform_for_integration,
@@ -6570,6 +6571,15 @@ async def _build_integration_tools_inner(
                 _names_sink = context.get(PLATFORM_NAMES_CONTEXT_KEY)
                 if isinstance(_names_sink, list) and _declares(builder, "platform_names_sink"):
                     _builder_kwargs["platform_names_sink"] = _platform_names.append
+                # A module XTM One registered names the version it registered beside
+                # its own live version read (#888): a platform-managed integration only.
+                _version_row = _row_cache.get(integration_id)
+                if (
+                    _version_row is not None
+                    and _version_row.auth_type == "platform_managed"
+                    and _declares(builder, "registered_version_fn")
+                ):
+                    _builder_kwargs["registered_version_fn"] = registered_version_reader(str(integration_id))
                 _attack_found: list[tuple[str, str]] = []
                 _attack_sink = context.get(ATTACK_SOURCES_CONTEXT_KEY)
                 if isinstance(_attack_sink, list) and _declares(builder, "attack_source_sink"):

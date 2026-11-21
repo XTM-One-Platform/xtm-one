@@ -51,7 +51,15 @@ subscriber's run-as user, the payload adding `component_kind`,
 `services/integration_component_versions.py`).
 The version itself is read on demand by `manage_openaev_settings` action
 `version`, `get_opencti_platform_version` (GraphQL `about { version }`) and
-`get_opencrq_platform_version` (the public tRPC `health` procedure).
+`get_opencrq_platform_version` (the public tRPC `health` procedure). The
+source of a build baseline is the version XTM One registered, the string the
+CTEM Command Center chips show (`PlatformRegistration.platform_version`, with
+its `-dev.<sha>`): `get_platform_overview` returns it per module under
+`registered_modules` (version, commit, status, healthy, `registered_at`,
+`last_heartbeat_at`), and each of the three version tools names it beside the
+module's live answer, labelled a fallback; when the two differ the answer
+names both and infers no upgrade or downgrade (`core/module_versions.py`,
+#888).
 The OpenCTI integration exposes notifier and trigger management
 (`manage_opencti_trigger`, `manage_opencti_notifier`) that S2 builds on; per
 the program brief, the OpenCTI integration event is a create / update / delete
