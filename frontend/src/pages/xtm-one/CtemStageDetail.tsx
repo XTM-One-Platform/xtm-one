@@ -53,6 +53,7 @@ import { postureBusy } from "./ctem/landing-refresh";
 import { Spinner } from "@filigran/design-system";
 import { ScopingRing, DiscoveryArea, ValidationMatrix, type DiscoveryPoint } from "./ctem/stage-heroes";
 import { DiscoveryMix } from "./ctem/DiscoveryMix";
+import { TriggerPathsCard } from "./ctem/loop/TriggerPathsCard";
 import { ScopingMix } from "./ctem/ScopingMix";
 import { ValidationMix } from "./ctem/ValidationMix";
 import { PrioritizationMix } from "./ctem/PrioritizationMix";
@@ -565,6 +566,8 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
+      {/* The loop's signals by trigger path and lens (CTEM-30, #937): a path with no source reads "Not configured". */}
+      {stage === "discovery" && vertical === "cyber" && <TriggerPathsCard onConnect={() => navigate("/")} />}
       {/* Prioritization's mixed views and gap fillers (#11998), under the funnel. */}
       {hasReal && stage === "prioritization" && vertical === "cyber" && (
         <PrioritizationMix

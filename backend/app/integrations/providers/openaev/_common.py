@@ -67,6 +67,28 @@ def json_answer(value: Any, limit: int = JSON_READ_CHARS) -> str:
     return clip_text(json.dumps(value, default=str), limit)
 
 
+def json_window(value: Any, offset: int = 0, limit: int = JSON_READ_CHARS) -> str:
+    """*value* as compact JSON, read by *limit*-character windows from *offset*.
+
+    A read past *limit* is no longer a dead end: the window is cut at an exact
+    character (never a word boundary, so the next window starts where this one
+    stops) and ends with ``... [truncated, N more characters: read on with
+    offset=END]``; a window past the first starts with ``[characters A to B of
+    TOTAL]``. Offset 0 on an answer that fits is the plain JSON.
+    """
+    text = json.dumps(value, default=str)
+    total = len(text)
+    offset = max(0, offset)
+    if offset == 0 and total <= limit:
+        return text
+    if offset >= total:
+        return f"offset {offset} is past the end: the answer is {total} characters."
+    end = min(total, offset + limit)
+    head = f"[characters {offset} to {end} of {total}]\n" if offset else ""
+    tail = f" ... [truncated, {total - end} more characters: read on with offset={end}]" if end < total else ""
+    return f"{head}{text[offset:end]}{tail}"
+
+
 #: Inject content keys that name targets, mapped to the inject relation OpenAEV
 #: actually targets. The "Update the inject" form and the executor both read the
 #: relations (inject_assets, inject_asset_groups); the same ids left in
@@ -258,21 +280,22 @@ _INJECT_BULKY_KEYS: tuple[str, ...] = (
 )
 
 
-def inject_read_answer(inject: Any, limit: int = JSON_READ_CHARS) -> str:
+def inject_read_answer(inject: Any, limit: int = JSON_READ_CHARS, offset: int = 0) -> str:
     """An inject read: its targets line first, then its JSON, bulky keys last.
 
     The stored targets (``inject_asset_groups``, ``inject_assets``) are always
     named in full ahead of the JSON, so a large ``inject_content`` (a long
     command line, many arguments) that pushes the answer past *limit* never
-    hides the relations the executor targets. Not an object: plain
-    ``json_answer``.
+    hides the relations the executor targets. The JSON is read by windows
+    (``json_window``): a cut names the *offset* that reads on, the targets
+    line still first. Not an object: its JSON alone.
     """
     if not isinstance(inject, dict):
-        return json_answer(inject, limit)
+        return json_window(inject, offset, limit)
     ordered = {k: v for k, v in inject.items() if k not in _INJECT_BULKY_KEYS}
     ordered.update({k: inject[k] for k in _INJECT_BULKY_KEYS if k in inject})
     head = inject_targets_line(inject)
-    body = json_answer(ordered, limit)
+    body = json_window(ordered, offset, limit)
     return f"{head}\n{body}" if head else body
 
 
