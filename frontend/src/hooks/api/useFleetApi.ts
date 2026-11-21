@@ -481,6 +481,51 @@ export function useFleetFlow(fleetId: string | null | undefined, shown = true) {
   });
 }
 
+/** An integration as a capability slot shows it (`FleetSlotIntegration`, #914 slice 2). */
+interface FleetSlotIntegration {
+  integration_id: string;
+  provider: string;
+  /** Empty when the reader cannot see the bound integration. */
+  name: string;
+}
+
+/** One capability a member's role can use, and how it is filled (`FleetCapabilitySlot`). */
+export interface FleetCapabilitySlot {
+  capability: string;
+  label: string;
+  state: "filled" | "empty" | "unavailable";
+  bound: FleetSlotIntegration[];
+  candidates: FleetSlotIntegration[];
+}
+
+/** The capability slots of one home member (`FleetMemberSlots`). */
+export interface FleetMemberSlots {
+  member_id: string;
+  agent_id: string;
+  name: string;
+  role_label: string;
+  /** Whether the reader may bind or unbind on this member's agent. */
+  can_edit: boolean;
+  slots: FleetCapabilitySlot[];
+}
+
+/** `GET /fleets/{id}/capability-slots`. */
+export interface FleetCapabilitySlots {
+  fleet_id: string;
+  members: FleetMemberSlots[];
+}
+
+/** Each home member's capability slots: configuration only, never a run or quota (#914). */
+export function useFleetCapabilitySlots(fleetId: string | null | undefined, shown = true) {
+  return useQuery<FleetCapabilitySlots>({
+    queryKey: [...KEY, "capability-slots", fleetId],
+    queryFn: () => api.get(`/fleets/${fleetId}/capability-slots`),
+    enabled: !!fleetId && shown,
+    ...FLEET_QUERY_POLICY,
+    throwOnError: false,
+  });
+}
+
 /** One object of a fork's source that moved since the fork (`FleetSourceChange`). */
 export interface FleetSourceChange {
   object: "fleet" | "member" | "connected";
@@ -1540,6 +1585,44 @@ export function useUpdateFleetMember(fleetId: string) {
   const invalidate = useInvalidateFleet();
   return useMutation<FleetMember, Error, { memberId: string; patch: FleetMemberPatch }>({
     mutationFn: ({ memberId, patch }) => api.patch<FleetMember>(`/fleets/${fleetId}/members/${memberId}`, patch),
+    onSettled: invalidate,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** A slot write: the member, the capability and the integration. */
+export interface FleetSlotWrite {
+  memberId: string;
+  capability: string;
+  integrationId: string;
+}
+
+/**
+ * Bind a connected integration to a member's capability slot, in one click
+ * (`POST /fleets/{id}/members/{member}/slots/{capability}`); on a built-in it
+ * is the customer layer, kept by every seed run. The caller says the refusal.
+ */
+export function useBindFleetSlot(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  return useMutation<FleetMemberSlots, Error, FleetSlotWrite>({
+    mutationFn: ({ memberId, capability, integrationId }) =>
+      api.post<FleetMemberSlots>(
+        `/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}`,
+        { integration_id: integrationId },
+      ),
+    onSettled: invalidate,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** Unbind an integration from a member's capability slot. The caller says the refusal. */
+export function useUnbindFleetSlot(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  return useMutation<FleetMemberSlots, Error, FleetSlotWrite>({
+    mutationFn: ({ memberId, capability, integrationId }) =>
+      api.delete<FleetMemberSlots>(
+        `/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}/${integrationId}`,
+      ),
     onSettled: invalidate,
     meta: OWN_ERROR_TOAST,
   });
