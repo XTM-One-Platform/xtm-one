@@ -835,7 +835,8 @@ async def scoped_tracked_blocks(db: AsyncSession, scope: dict | None) -> list[st
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
-    An empty tech stack version (CTEM-11) is left out the same way.
+    An empty tech stack version (CTEM-11) is left out the same way, and so are
+    ticketing sync settings left at their defaults (#917).
 
     The always-on block and every reader that dumped the whole profile keep
     their exact text for a profile that never filled the new parts.
@@ -847,6 +848,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for entry in dumped.get("tech_stack") or []:
         if not entry.get("version"):
             entry.pop("version", None)
+    ticketing = dumped.get("ticketing")
+    if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
+        ticketing.pop("sync", None)
     return dumped
 
 

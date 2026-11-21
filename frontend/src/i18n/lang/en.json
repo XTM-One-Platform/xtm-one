@@ -2010,6 +2010,7 @@
   "CTEM case resolved": "CTEM case resolved",
   "CTEM case past its SLA": "CTEM case past its SLA",
   "CTEM case validation finished": "CTEM case validation finished",
+  "CTEM case re-test requested": "CTEM case re-test requested",
   "Connected MCP Servers": "Connected MCP Servers",
   "Connecting integrations…": "Connecting integrations…",
   "Connecting to server...": "Connecting to server...",

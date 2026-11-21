@@ -2007,6 +2007,7 @@
   "CTEM case resolved": "Caso CTEM resuelto",
   "CTEM case past its SLA": "Caso CTEM fuera de plazo",
   "CTEM case validation finished": "Validación del caso CTEM terminada",
+  "CTEM case re-test requested": "Nueva prueba del caso CTEM solicitada",
   "Connected MCP Servers": "Servidores MCP conectados",
   "Connecting integrations…": "Conectando integraciones…",
   "Connecting to server...": "Conectando al servidor...",
