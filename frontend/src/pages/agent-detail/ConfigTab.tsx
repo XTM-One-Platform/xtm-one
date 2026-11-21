@@ -24,7 +24,7 @@ import { hasStructuredOutput } from "@/components/roi/roi-outcomes";
 import { SectionNav, type SectionNavItem } from "@/components/ui/section-nav";
 import { CompanyManagedBanner } from "@/components/ui/company-managed-banner";
 import { ToolApprovalCard } from "@/pages/agent-detail/config/ToolApprovalCard";
-import { BuiltinLayersCard } from "@/components/agents/BuiltinLayersCard";
+import { BuiltinLayersCard } from "@/components/fleets/BuiltinLayersCard";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { SharedBanner } from "@/components/ui/shared-banner";
 import { AgentToolScopeLoader } from "./config/AgentToolScopeLoader";
