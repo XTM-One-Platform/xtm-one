@@ -43,6 +43,7 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 from .health_quality import RefusalError, build_group, parse_uuid, untrusted_json
 
 if TYPE_CHECKING:
+    from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.services.health.access import Reader
@@ -92,10 +93,33 @@ def _registration_of(finding: Any) -> str | None:
     return str(value) if value else None
 
 
+def _open_findings_query(module: str, registration: uuid.UUID, limit: int) -> Select[Any]:
+    """The open findings of *registration*, most severe first, then by check and id.
+
+    The order is the engine's severity weight (critical, warning, info), never the
+    severity string, so a ``limit`` drops info findings before warnings.
+    """
+    from sqlalchemy import case, select
+
+    from app.models.health_check import STATUS_OPEN, HealthCheckFinding
+    from app.services.health.engine import SEVERITY_WEIGHTS
+
+    severity_weight = case(SEVERITY_WEIGHTS, value=HealthCheckFinding.severity, else_=0)
+    return (
+        select(HealthCheckFinding)
+        .where(
+            HealthCheckFinding.module == module,
+            HealthCheckFinding.status == STATUS_OPEN,
+            HealthCheckFinding.subject["registration_id"].astext == str(registration),
+        )
+        .order_by(severity_weight.desc(), HealthCheckFinding.check_id, HealthCheckFinding.id)
+        .limit(limit)
+    )
+
+
 async def _list_module_findings(db: AsyncSession, reader: Reader, registration_id: str = "", limit: int = 50) -> str:
     from sqlalchemy import select
 
-    from app.models.health_check import STATUS_OPEN, HealthCheckFinding
     from app.models.health_module_analyst import HealthFindingRecommendation
 
     if not _may_read(reader):
@@ -103,22 +127,7 @@ async def _list_module_findings(db: AsyncSession, reader: Reader, registration_i
     registration = parse_uuid(registration_id, "registration_id")
     module = await _module_registration(db, registration)
     limit = max(1, min(int(limit or 50), 100))
-    rows = (
-        (
-            await db.execute(
-                select(HealthCheckFinding)
-                .where(
-                    HealthCheckFinding.module == module,
-                    HealthCheckFinding.status == STATUS_OPEN,
-                    HealthCheckFinding.subject["registration_id"].astext == str(registration),
-                )
-                .order_by(HealthCheckFinding.severity, HealthCheckFinding.check_id, HealthCheckFinding.id)
-                .limit(limit)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    rows = (await db.execute(_open_findings_query(module, registration, limit))).scalars().all()
     previous: dict[str, list[dict[str, Any]]] = {}
     if rows:
         recs = (

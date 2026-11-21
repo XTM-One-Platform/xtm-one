@@ -115,6 +115,23 @@ async def test_a_non_admin_never_reads_module_findings(role, admin):
     assert refused.value.message == tools._NOT_ALLOWED
 
 
+def test_findings_are_ordered_by_severity_weight_not_by_the_string() -> None:
+    """critical, warning, info: an alphabetical ORDER BY severity would put info before warning."""
+    from sqlalchemy.dialects import postgresql
+
+    from app.services.health.engine import SEVERITY_WEIGHTS
+
+    query = tools._open_findings_query("opencti", uuid.uuid4(), 10)
+    pg = postgresql.dialect()  # type: ignore[no-untyped-call]
+    sql = str(query.compile(dialect=pg, compile_kwargs={"literal_binds": True}))
+    order_by = sql.split("ORDER BY", 1)[1]
+    assert order_by.lstrip().startswith("CASE")
+    assert "END DESC" in order_by
+    assert "WHEN 'critical' THEN 25" in order_by
+    assert SEVERITY_WEIGHTS["critical"] > SEVERITY_WEIGHTS["warning"] > SEVERITY_WEIGHTS["info"]
+    assert "LIMIT 10" in sql
+
+
 def test_readers_allowed_to_list():
     assert tools._may_read(_reader(role="module_analyst"))
     assert tools._may_read(_reader(admin=True))
