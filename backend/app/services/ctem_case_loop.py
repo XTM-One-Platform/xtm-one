@@ -414,6 +414,88 @@ def record_ticket(
     return case
 
 
+#: The exposure classes OpenCRQ's topology rule reads (CTEM-24); anything else is ``unknown``.
+EXPOSURES: tuple[str, ...] = ("internet_facing", "internal", "unknown")
+#: Supporting assets one exploitation write keeps (the tool lists 30 a read).
+EXPLOITATION_MAX = 30
+_TECHNIQUES_MAX = 12
+#: An ATT&CK technique id, alone or leading a label ("T1190 Exploit Public-Facing Application").
+_TECHNIQUE_ID = re.compile(r"^(T\d{4}(?:\.\d{3})?)\b")
+
+
+def _exposure(value: object) -> str:
+    word = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return word if word in EXPOSURES else "unknown"
+
+
+def _techniques(value: object) -> list[str]:
+    out: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        match = _TECHNIQUE_ID.match(str(item or "").strip().upper())
+        if match and match.group(1) not in out:
+            out.append(match.group(1))
+    return out[:_TECHNIQUES_MAX]
+
+
+def record_exploitation(
+    db: AsyncSession,
+    case: CtemCase,
+    entries: list[dict[str, Any]],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write how the CVE would be exploited on the scenario's assets (CTEM-24, #936).
+
+    *entries* is the triage step's ``exploitation`` array (from
+    ``get_opencrq_cve_exploitation``): per supporting asset, the ATT&CK
+    techniques in attack order, the exposure and the reading. The list is
+    replaced whole (the newest read is the truth); an entry with no valid
+    technique is dropped. One ``exploitation`` event when it changed, its
+    evidence the technique ids alone (the history is served to every viewer,
+    the asset names are not). Never moves the case state. The caller commits.
+    """
+    now = now or datetime.now(UTC)
+    kept: list[dict[str, Any]] = []
+    for raw in entries if isinstance(entries, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        techniques = _techniques(raw.get("techniques"))
+        asset = str(raw.get("asset") or "").strip()[:200]
+        if not techniques or not asset:
+            continue
+        kept.append(
+            {
+                "risk_scenario_id": str(raw.get("risk_scenario_id") or "").strip()[:100] or None,
+                "asset": asset,
+                "exposure": _exposure(raw.get("exposure")),
+                "techniques": techniques,
+                "reading": str(raw.get("reading") or "").strip()[:500],
+            }
+        )
+    if len(kept) > EXPLOITATION_MAX:
+        kept = kept[:EXPLOITATION_MAX]
+    if not kept:
+        raise rules.CaseRuleError("an exploitation reading needs at least one asset with an ATT&CK technique id")
+    previous = [{k: v for k, v in e.items() if k != "at"} for e in (case.exploitation or [])]
+    if previous == kept:
+        return case
+    case.exploitation = [{**e, "at": now.isoformat()} for e in kept]
+    ids = sorted({t for e in kept for t in e["techniques"]})
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "exploitation",
+            now,
+            from_value=str(len(previous)) if previous else None,
+            to_value=str(len(kept)),
+            evidence=", ".join(ids)[:300],
+        )
+    )
+    return case
+
+
 def breached(case: CtemCase, now: datetime) -> bool:
     """True the first time an open case is past its SLA (the escalation is raised once)."""
     due = rules.as_utc(case.sla_due_at)

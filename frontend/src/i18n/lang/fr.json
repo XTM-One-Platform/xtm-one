@@ -19959,5 +19959,10 @@
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {SLA dépassé de {shown} jour} other {SLA dépassé de {shown} jours}}",
   "P1 case opened by the loop: {sla}": "Dossier P1 ouvert par la boucle : {sla}",
   "P1 case opened by the loop": "Dossier P1 ouvert par la boucle",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# atténué, sous surveillance} other {# atténués, sous surveillance}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# atténué, sous surveillance} other {# atténués, sous surveillance}}",
+  "How it would be exploited": "Comment elle serait exploitée",
+  "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "Pas encore de lecture d’exploitation : le tri l’écrit depuis OpenCRQ quand un scénario de risque contient un actif concerné.",
+  "Restricted asset": "Actif restreint",
+  "Techniques in attack order": "Techniques dans l’ordre de l’attaque",
+  "Recorded how it would be exploited": "A enregistré comment elle serait exploitée"
 }
