@@ -1670,10 +1670,13 @@ async def _assignment_filter_reason(
     the delivery handed to the run is left as it came.
     """
     if provider == "opencti":
-        # CTEM-08: "a vulnerability on software we run", read before any filter, gate or run.
+        # CTEM-08: "a vulnerability on software we run" and the policy's PIR score
+        # thresholds (read live), before any filter, gate or run.
         from app.services import ctem_trigger_rules
 
-        rule = await ctem_trigger_rules.filter_reason(db, trigger_config, payload)
+        rule = await ctem_trigger_rules.filter_reason(
+            db, trigger_config, payload, agent=agent, receiver_integration_id=receiver_integration_id
+        )
         if rule is not None:
             return rule
     filter_config = trigger_filter(trigger_config)
