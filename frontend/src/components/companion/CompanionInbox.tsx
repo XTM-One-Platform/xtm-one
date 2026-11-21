@@ -38,7 +38,7 @@ import {
 } from "@/hooks/api/useAssignmentApi";
 import { useDismissNotification, useMarkNotificationsRead, useNotifications } from "@/hooks/api/useNotificationApi";
 import { useFormatter } from "@/i18n";
-import { notificationSubtitle, readsOnOpen, UNREAD_UNTIL_ANSWERED } from "@/lib/notification-kinds";
+import { canMarkAllRead as anyReadable, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
 import { cn, timeAgo } from "@/lib/utils";
 import type { NotificationItem } from "@/types";
 
@@ -111,8 +111,8 @@ export function CompanionInbox() {
 
   if (isLoading) return <PageSkeleton cards={3} />;
   const items = feed?.items ?? [];
-  // "Mark all read" leaves an entry unread until answered; opening one reads it.
-  const canMarkAllRead = items.some((item) => item.unread && !UNREAD_UNTIL_ANSWERED.has(item.kind));
+  // A decision still waiting stays unread until answered; opening another entry reads it (#991).
+  const canMarkAllRead = anyReadable(items);
 
   return (
     <div className="flex flex-col gap-4">
