@@ -53,7 +53,13 @@ def reads(monkeypatch):
         calls.append(user_id)
         return view_of.ViewerView(open_ids={f"signal:{len(calls)}"})
 
+    async def signal_members(db, user_id):
+        return set()
+
     monkeypatch.setattr("app.services.ctem_cases_source.read_view", read_view)
+    # The signal members are read live from the database on every call, cached or not:
+    # out of this test's scope, which is the cached view.
+    monkeypatch.setattr(view_of, "signal_members", signal_members)
     return calls
 
 
