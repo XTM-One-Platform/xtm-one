@@ -215,6 +215,12 @@ class HealthModuleAnalystSettings(BaseModel):
     ``change_min_interval_minutes`` is the debounce of section 12.2: at most one
     change-triggered cycle per registration in that window. A registration listed in
     ``excluded_registration_ids`` gets no cycle.
+
+    The ceilings are its own (section 12.5), outside the agentic quota: tokens and
+    dollars per UTC day and month on the ``health_module_analyst_spend`` ledger, and
+    a token cap per cycle. A ceiling an administrator clears (``None``) refuses every
+    model call (``ceiling_not_set``). The defaults are the provisional figures of
+    section 12.6 until the S14b lab measurement replaces them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -222,6 +228,20 @@ class HealthModuleAnalystSettings(BaseModel):
     enabled: bool = True
     change_min_interval_minutes: int = Field(default=120, ge=15, le=24 * 60)
     excluded_registration_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SCOPE_IDS)
+    cycle_tokens: int | None = Field(default=80_000, ge=0, le=MAX_TOKENS)
+    day_tokens: int | None = Field(default=500_000, ge=0, le=MAX_TOKENS)
+    day_cost_usd: Decimal | None = Field(default=Decimal("4"), ge=0, le=MAX_COST_USD, decimal_places=6)
+    month_tokens: int | None = Field(default=10_000_000, ge=0, le=MAX_TOKENS)
+    month_cost_usd: Decimal | None = Field(default=Decimal("60"), ge=0, le=MAX_COST_USD, decimal_places=6)
+
+    def ceilings_set(self) -> bool:
+        return None not in (
+            self.cycle_tokens,
+            self.day_tokens,
+            self.day_cost_usd,
+            self.month_tokens,
+            self.month_cost_usd,
+        )
 
     @field_validator("excluded_registration_ids")
     @classmethod
