@@ -19950,6 +19950,7 @@
   "Escalated: SLA breached": "Escalado: SLA incumplido",
   "Not exposed": "No expuesto",
   "Reopened: re-test failed": "Reabierto: la nueva prueba falló",
+  "Closed on passing re-test": "Cerrado tras una nueva prueba superada",
   "Escalated": "Escalado",
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, one {Queda {shown} min} other {Quedan {shown} min}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, one {Queda {shown} h} other {Quedan {shown} h}}",
@@ -19964,5 +19965,9 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "Aún no hay lectura de explotación: el triaje la escribe desde OpenCRQ cuando un escenario de riesgo contiene un activo afectado.",
   "Restricted asset": "Activo restringido",
   "Techniques in attack order": "Técnicas en el orden del ataque",
-  "Recorded how it would be exploited": "Registró cómo se explotaría"
+  "Recorded how it would be exploited": "Registró cómo se explotaría",
+  "Re-test queued": "Nueva prueba en cola",
+  "Not reproduced": "No reproducido",
+  "Reproduced": "Reproducido",
+  "Not re-tested yet": "Aún sin nueva prueba"
 }

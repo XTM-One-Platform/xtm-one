@@ -9,7 +9,7 @@
  * say the same thing in the same words.
  */
 import { Chip, Icon } from "@filigran/design-system";
-import type { CtemCasePriority, CtemCaseSeverity, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { isRestrictedIssue, type CtemCaseIssue, type CtemCasePriority, type CtemCaseSeverity, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import { CasePriorityChip } from "./cases-shared";
@@ -59,14 +59,41 @@ export function slaSentence(countdown: NonNullable<ReturnType<typeof slaCountdow
   return t_i18n(SLA_SENTENCES[countdown.late ? "late" : "left"][countdown.unit], values);
 }
 
-/** The loop marks of a case: reopened by a failed re-test, escalated past its SLA. */
+/**
+ * The loop marks of a case: reopened by a failed re-test, escalated past its
+ * SLA, closed on a passing re-test (CTEM-14-UI: resolved, and its latest
+ * validation is a re-test that passed; `closedBy` names the run).
+ */
 export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" | "sla_breached_at">): {
   reopened: boolean;
   escalated: boolean;
+  closedOnRetest: boolean;
+  closedBy: string | null;
 } {
   const open = OPEN_STATES.has(c.state);
   const last = c.validations?.length ? c.validations[c.validations.length - 1] : undefined;
-  return { reopened: open && last?.result === "failed", escalated: open && Boolean(c.sla_breached_at) };
+  const closedOnRetest = c.state === "resolved" && last?.kind === "retest" && (last.result === "passed" || last.result === "not_exposed");
+  return {
+    reopened: open && last?.result === "failed",
+    escalated: open && Boolean(c.sla_breached_at),
+    closedOnRetest,
+    closedBy: closedOnRetest && last ? `${last.provider} ${last.ref}` : null,
+  };
+}
+
+/**
+ * The re-test word of an OpenAEV member of a case (CTEM-14-UI), translated
+ * where drawn: a queued re-test first, then the finding's lifecycle status.
+ * Null for a member whose source carries no lifecycle (OpenCTI, a signal, an
+ * OpenAEV older than the lifecycle). @i18n-keys
+ */
+export function retestLabel(issue: CtemCaseIssue): string | null {
+  if (isRestrictedIssue(issue)) return null;
+  if (issue.retest_pending) return "Re-test queued";
+  if (issue.retest_status === "not_reproduced") return "Not reproduced";
+  if (issue.retest_status === "resolved") return "Resolved";
+  if (issue.retest_status === "open") return issue.last_tested_at ? "Reproduced" : "Not re-tested yet";
+  return null;
 }
 
 function CaseSeverityChip({ severity }: { severity: CtemCaseSeverity | null | undefined }) {
@@ -91,7 +118,7 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
   const { t_i18n, intl } = useFormatter();
   const marks = caseLoopMarks(c);
   const countdown = OPEN_STATES.has(c.state) ? slaCountdown(c.sla_due_at, now) : null;
-  if (!countdown && !marks.reopened && !marks.escalated) return null;
+  if (!countdown && !marks.reopened && !marks.escalated && !marks.closedOnRetest) return null;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 content-caption" data-testid="ctem-case-loop-line">
       {countdown && (
@@ -109,6 +136,12 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
         <span className="flex items-center gap-1 text-default-primary" data-testid="ctem-case-escalated">
           <Icon name="circle-alert" size={16} aria-hidden />
           {t_i18n("Escalated")}
+        </span>
+      )}
+      {marks.closedOnRetest && (
+        <span className="flex items-center gap-1 text-default-primary" data-testid="ctem-case-closed-on-retest" title={marks.closedBy ?? undefined}>
+          <Icon name="circle-check" size={16} aria-hidden />
+          {t_i18n("Closed on passing re-test")}
         </span>
       )}
     </span>

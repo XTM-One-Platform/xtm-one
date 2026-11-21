@@ -32,13 +32,27 @@ describe("caseLoopMarks", () => {
   const failed = [{ provider: "openaev", kind: "retest", ref: "r1", result: "failed" as const, at: "x" }];
   const passed = [{ provider: "openaev", kind: "retest", ref: "r1", result: "passed" as const, at: "x" }];
   it("marks an open case whose last validation failed as reopened", () => {
-    expect(caseLoopMarks({ state: "needs_attention", validations: failed, sla_breached_at: null })).toEqual({ reopened: true, escalated: false });
+    expect(caseLoopMarks({ state: "needs_attention", validations: failed, sla_breached_at: null })).toMatchObject({ reopened: true, escalated: false, closedOnRetest: false });
   });
   it("marks an open case past its SLA as escalated", () => {
-    expect(caseLoopMarks({ state: "in_progress", validations: passed, sla_breached_at: "x" })).toEqual({ reopened: false, escalated: true });
+    expect(caseLoopMarks({ state: "in_progress", validations: passed, sla_breached_at: "x" })).toMatchObject({ reopened: false, escalated: true, closedOnRetest: false });
   });
-  it("marks nothing on a resolved case", () => {
-    expect(caseLoopMarks({ state: "resolved", validations: failed, sla_breached_at: "x" })).toEqual({ reopened: false, escalated: false });
+  it("marks nothing on a resolved case whose last validation is not a passing re-test", () => {
+    expect(caseLoopMarks({ state: "resolved", validations: failed, sla_breached_at: "x" })).toEqual({
+      reopened: false,
+      escalated: false,
+      closedOnRetest: false,
+      closedBy: null,
+    });
+    const scan = [{ provider: "openaev", kind: "validation", ref: "s1", result: "passed" as const, at: "x" }];
+    expect(caseLoopMarks({ state: "resolved", validations: scan, sla_breached_at: null }).closedOnRetest).toBe(false);
+    expect(caseLoopMarks({ state: "resolved", validations: [], sla_breached_at: null }).closedOnRetest).toBe(false);
+  });
+  it("marks a resolved case closed by a passing re-test, naming the run", () => {
+    expect(caseLoopMarks({ state: "resolved", validations: passed, sla_breached_at: null })).toMatchObject({
+      closedOnRetest: true,
+      closedBy: "openaev r1",
+    });
   });
 });
 

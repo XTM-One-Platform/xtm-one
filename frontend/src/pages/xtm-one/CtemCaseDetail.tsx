@@ -35,7 +35,7 @@ import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
-import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { CaseLoopLine, CaseUrgencyChip, retestLabel } from "./ctem/case-loop";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -272,6 +272,27 @@ export default function CtemCaseDetail() {
       sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (r.issue.assets?.length ?? 0)),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.assets ?? []).join("; ")),
       hideBelow: "4xl",
+      hideable: true,
+    },
+    {
+      key: "retest",
+      header: "Re-test",
+      cell: (r) => {
+        const label = retestLabel(r.issue);
+        if (!label || isRestrictedIssue(r.issue)) return null;
+        return (
+          <span className="flex flex-col" data-testid="ctem-case-issue-retest">
+            <span>{t_i18n(label)}</span>
+            {r.issue.last_tested_at && (
+              <span className="content-caption text-default-secondary">
+                {intl.formatDate(r.issue.last_tested_at, { dateStyle: "medium", timeStyle: "short" })}
+              </span>
+            )}
+          </span>
+        );
+      },
+      sortValue: (r) => retestLabel(r.issue) ?? "~",
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.retest_status ?? (r.issue.retest_pending ? "queued" : ""))),
       hideable: true,
     },
     {

@@ -78,6 +78,10 @@ interface CtemCaseVisibleIssue {
   crown_jewels?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
+  /** OpenAEV finding lifecycle (CTEM-14-UI); absent when the source carries none. */
+  retest_status?: "open" | "not_reproduced" | "resolved" | null;
+  last_tested_at?: string | null;
+  retest_pending?: boolean;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */

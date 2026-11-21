@@ -77,6 +77,24 @@ def test_openaev_findings_join_the_opencti_case_by_cve():
     assert [i.member_id for i in grouping.no_known_fix] == ["openaev:f-2"]
 
 
+def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
+    findings = [
+        {
+            "finding_id": "f-1",
+            "finding_value": "CVE-2026-1",
+            "finding_status": "NOT_REPRODUCED",
+            "finding_last_tested": "2026-11-21T10:00:00Z",
+        },
+        {"finding_id": "f-2", "finding_value": "CVE-2026-2", "finding_status": "OPEN", "finding_retest_inject_id": "inj-9"},
+        {"finding_id": "f-3", "finding_value": "CVE-2026-3"},  # an OpenAEV older than the lifecycle
+    ]
+    one, two, three = source.openaev_issues(findings)
+    assert one.retest_status == "not_reproduced" and one.last_tested_at.startswith("2026-11-21T10:00")
+    assert not one.retest_pending
+    assert two.retest_status == "open" and two.retest_pending and two.last_tested_at is None
+    assert (three.retest_status, three.last_tested_at, three.retest_pending) == (None, None, False)
+
+
 @pytest.mark.asyncio
 async def test_recompute_writes_nothing_when_a_product_cannot_answer(monkeypatch):
     async def read(db, user_id, vertical, *, now=None, members=None):
