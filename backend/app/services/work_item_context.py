@@ -403,13 +403,19 @@ class _Lookup:
             )
         return out
 
-    def agent(self, agent_id: object) -> dict | None:
+    def agent(self, agent_id: object, *, named: bool = False) -> dict | None:
         aid = _uuid(agent_id)
         if aid is None:
             return None
         if aid not in self.visible_agents:
             # Named only to a viewer who may open it; one that was deleted
-            # since has no row at all (its id is set NULL with it).
+            # since has no row at all (its id is set NULL with it). *named*:
+            # the OWNER agent of an item the viewer sees keeps its name,
+            # read-only, never its id or a link (#858): who holds the work is
+            # part of the item, not of the agent.
+            if named and aid in self.agents:
+                name, icon = self.agents[aid]
+                return {"id": None, "name": name, "icon": icon, "accessible": False}
             return {"id": None, "name": None, "icon": None, "accessible": False}
         name, icon = self.agents[aid]
         return {"id": str(aid), "name": name, "icon": icon, "accessible": True}
@@ -431,7 +437,7 @@ class _Lookup:
         else:
             visibility = {"reason": "own", "workspace": None}
         return {
-            "owner_agent": self.agent(item.get("owner_agent_id")),
+            "owner_agent": self.agent(item.get("owner_agent_id"), named=True),
             "created_by_agent": self.agent(item.get("created_by_agent_id")),
             "claimed_by_agent": (
                 None

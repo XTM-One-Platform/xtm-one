@@ -102,7 +102,7 @@ export function WorkItemAgent({ agent, className }: { agent: WorkItemAgentRef; c
         <span className={cn("inline-flex min-w-0 items-center gap-1 italic text-default-secondary", className)}>
           <Lock className="h-3 w-3 shrink-0" />
           <span className="truncate" data-testid="work-item-agent-hidden-label">
-            {t_i18n("an agent you cannot open")}
+            {agent.name ?? t_i18n("an agent you cannot open")}
           </span>
         </span>
       </Tip>
