@@ -248,7 +248,7 @@ class _SyncSession(FakeSession):
 
 
 @pytest.mark.asyncio
-async def test_scheduled_pass_creates_pulls_pushes_and_raises_the_retest_once(monkeypatch):
+async def test_scheduled_pass_never_creates_then_pulls_pushes_and_raises_the_retest_once(monkeypatch):
     from app.services import ctem_case_loop as case_loop
     from app.services import organization_context as oc
 
@@ -269,8 +269,14 @@ async def test_scheduled_pass_creates_pulls_pushes_and_raises_the_retest_once(mo
     monkeypatch.setattr(tk, "adapter_for", _adapter)
     db = _SyncSession([mobilized, waiting, low])
     events = case_loop.PendingEvents()
+    # The pass opens no ticket: only the Mobilization role's gated call does (gate ctem.mobilize).
     counts = await tk.sync_cases(db, events=events, now=NOW)
-    assert counts["created"] == 1 and adapter.created == 1
+    assert counts["created"] == 0 and adapter.created == 0
+    assert (await tk.sync_case(db, mobilized, adapter, SYNC, integration="i", now=NOW)).notes == [
+        "the settings ask a ticket once the case passes Mobilize"
+    ]
+    created = await tk.sync_case(db, mobilized, adapter, SYNC, integration="i", create=True, now=NOW)
+    assert created.action == "created" and adapter.created == 1
     assert waiting.tickets == [] and low.tickets == []
     adapter.tickets["ITS-1"] = tk.RemoteTicket(key="ITS-1", url="u", status="done", external_status="Done")
     counts = await tk.sync_cases(db, events=events, now=NOW)

@@ -672,9 +672,6 @@ class ServiceNowAdapter:
 CASE_RETEST_REQUESTED = "ctem_case.retest_requested"
 #: Cases one pass syncs at most.
 SYNC_BATCH = 200
-#: The case states that mean the case passed Mobilize (an owner works it). CTEM-34's
-#: one Mobilize decision moves a case there; with the fleet on autonomous it is automatic.
-MOBILIZED_STATES: tuple[str, ...] = ("in_progress",)
 
 
 #: The cadence of the ticketing pass when ``CTEM_TICKETING_SYNC_SECONDS`` is not set.
@@ -712,10 +709,12 @@ async def sync_cases(
 ) -> dict[str, int]:
     """Sync every case of the primary organization with its ticketing target. The caller commits.
 
-    Creates the ticket of a mobilized case the settings ask one for, pulls the
-    status of every managed ticket (ServiceNow has no push: this is its
-    inbound), and pushes the case state to the ticket when they disagree. No
-    ticketing declared: nothing to do, counted as ``not_connected``.
+    Pulls the status of every managed ticket (ServiceNow has no push: this is
+    its inbound) and pushes the case state to the ticket when they disagree.
+    It never opens a ticket: that is the Mobilization role's gated call
+    (``sync_one`` with ``create``, gate ``ctem.mobilize``), so no case gets a
+    ticket without its Mobilize decision. No ticketing declared: nothing to
+    do, counted as ``not_connected``.
     """
     from sqlalchemy import select
 
@@ -775,19 +774,19 @@ async def sync_case(
 ) -> SyncOutcome:
     """One sync step on *case*, the one the scheduled pass and the Mobilization tool share. The caller commits.
 
-    No managed ticket: create it when the case passed Mobilize and the settings
-    ask one (or *create*, the Mobilization role's explicit call, which an open
-    case only takes). A case state the ticket must follow: push it. Otherwise
-    pull the ticket's status, and a ticket that reached done queues the re-test.
+    No managed ticket: create it only on *create*, the Mobilization role's
+    call that the gate ``ctem.mobilize`` holds (an open case only); otherwise
+    say whether the settings ask one for this case. A case state the ticket
+    must follow: push it. Otherwise pull the ticket's status, and a ticket
+    that reached done queues the re-test.
     """
     now = now or datetime.now(UTC)
     ticket = managed_ticket(case)
     if ticket is None:
-        wanted_create = case.state in MOBILIZED_STATES and should_create(case, sync)
-        if create and case.state in OPEN_STATES:
-            wanted_create = True
-        if not wanted_create:
-            return SyncOutcome(notes=["no ticket asked for this case"])
+        if not (create and case.state in OPEN_STATES):
+            due = case.state in OPEN_STATES and should_create(case, sync)
+            note = "the settings ask a ticket once the case passes Mobilize" if due else "no ticket asked for this case"
+            return SyncOutcome(notes=[note])
         outcome = await ensure_ticket(db, case, adapter, sync, integration=integration, base_url=base_url, now=now)
         outcome.action = "created"
         return outcome

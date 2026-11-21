@@ -34,10 +34,11 @@ The settings live on Settings > Organization > Identity and risk, card "Ticketin
 - Each managed ticket carries `sync`: `state` (`linked`, `in_sync`, `out_of_date`, `error`), `since`, `provider`, `correlation`, `external_status`, and for the last two states `error` and `fix` (the one action that fixes it). A read that fails keeps the `since` of the running out-of-date.
 - A resolved case moves its ticket to done, an accepted risk to cancelled, a reopened case reopens it (or opens a linked one).
 - No ticketing declared: `adapter_for` answers `No ticketing connected` and the case links to the settings; never an error.
+- Tests: the rules on fakes in `tests/test_ctem_ticketing.py`; on PostgreSQL, `tests/test_ctem_ticketing_postgres.py` proves the pass opens nothing, one ticket per case over replayed calls and passes and a lost case write, the re-test asked once on a done ticket, and a pass that touches the declared organization only.
 
 ## 4. Schedule and events
 
-The autonomous tick runs `ctem_ticketing.sync_cases` once per `CTEM_TICKETING_SYNC_SECONDS` (default 300, minimum 60, Redis slot `ctem:ticketing:sync`), after the case sweep. Per case of the primary organization (newest 200): a mobilized case (`in_progress`) with no managed ticket gets one when `create_on` asks for it; a case whose state asks the ticket to close (resolved: done, accepted risk: cancelled) or to reopen pushes it; every other managed ticket is pulled. Reopen is decided by `needs_reopen`: the sync closed the ticket for the case (`closed_by_case`), or a failed re-test is newer than the ticket's done; a ticket done while the case waits for its re-test is left done.
+The autonomous tick runs `ctem_ticketing.sync_cases` once per `CTEM_TICKETING_SYNC_SECONDS` (default 300, minimum 60, Redis slot `ctem:ticketing:sync`), after the case sweep. Per case of the primary organization (newest 200): the pass never opens a ticket (section 5); a case whose state asks the ticket to close (resolved: done, accepted risk: cancelled) or to reopen pushes it; every other managed ticket is pulled. Reopen is decided by `needs_reopen`: the sync closed the ticket for the case (`closed_by_case`), or a failed re-test is newer than the ticket's done; a ticket done while the case waits for its re-test is left done.
 
 A pull that moves a ticket to done on an open case raises `ctem_case.retest_requested` (platform-wide, the case fields with `ticket_integration` and `ticket_key`) once; the fleets run the re-test and the case closes on its result.
 
@@ -45,7 +46,7 @@ Inbound status (`apply_inbound_status`): a status an event carries for a ticket 
 
 ## 5. Gates
 
-Opening a case's ticket is the gate `ctem.mobilize` of the CTEM gate catalog (#916, `dev-docs/ctem-fleets.md` section 11): the tool rule `sync_ctem_case_ticket` with `create: true` sits beside the free-form ticketing tools under that one key, so one Mobilize decision per case covers it, and with the fleet on autonomous it runs with no decision. A sync without `create` (push the case state, pull the ticket status) changes nothing the case has not already decided and is not gated; the scheduled pass is not gated either, since it only creates the ticket of a case already past Mobilize (`in_progress`).
+Opening a case's ticket is the gate `ctem.mobilize` of the CTEM gate catalog (#916, `dev-docs/ctem-fleets.md` section 11): the tool rule `sync_ctem_case_ticket` with `create: true` sits beside the free-form ticketing tools under that one key, so one Mobilize decision per case covers it, and with the fleet on autonomous it runs with no decision. A sync without `create` (push the case state, pull the ticket status) changes nothing the case has not already decided and is not gated; it answers whether `create_on` asks a ticket for the case, which the role then opens with `create`. The scheduled pass and the inbound events never open a ticket, so no ticket exists without the case's Mobilize decision. Segregation: the ticket carries only the case's own fields (title, fix, severity, trigger path, SLA date, the link back and the correlation), never an issue, a finding or a source the case's readers may not read, and it is written with the declared ticketing integration only.
 
 ## 6. Agents
 
