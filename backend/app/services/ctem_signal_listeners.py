@@ -181,7 +181,7 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             primary = await get_primary(db)
             if primary is None:
                 return False
-            await ctem_signals.record_signal(
+            signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
                 signal=ctem_signals.SignalInput(
@@ -197,6 +197,9 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 recorded_via="listener",
                 recorded_by=ctem_signals.SYSTEM_ACTOR,
             )
+            from app.services import ctem_scope_gate_store
+
+            await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
             await db.commit()
             return True
     except Exception:
