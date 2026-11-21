@@ -4211,6 +4211,7 @@ def build_agent_builder_tool(
             if row is None:
                 return f"Unknown custom provider '{key}'."
             label, names = row.name, custom_declared_tool_names(row.metadata_json)
+            access = {name: integration_tool_access(name) for name in names}
         else:
             key = key.lower()
             tools = build_tools_for_provider(key)
@@ -4221,9 +4222,11 @@ def build_agent_builder_tool(
                 )
             label = PROVIDER_CATALOG.get(key, {}).get("name", key)
             names = [tool.name for tool in tools]
+            # The catalog's type honours a definition's read_only declaration
+            # (definition_tool_type), as the badge and a read-only binding do.
+            access = {tool.name: "read" if tool.tool_type == "read" else "write" for tool in tools}
         if not names:
             return f"{label} (`{key}`) has no tools."
-        access = {name: integration_tool_access(name) for name in names}
         reads = sum(1 for value in access.values() if value == "read")
         lines = [
             f"**{label}** (`{key}`) - {len(names)} tools "
