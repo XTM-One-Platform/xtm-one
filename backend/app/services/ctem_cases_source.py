@@ -591,6 +591,7 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     members = await store.member_ids(db, organization_id=primary.id, vertical=vertical) if primary else []
     read = await read_open_issues(db, user_id, vertical, members=members)
     view = ViewerView(missing=list(read.missing), complete=read.complete)
+    view.opencrq = await _reads_opencrq(db, user_id)
     for issue in read.closed:
         view.issues[issue.member_id] = issue
     for issue in read.issues:
@@ -601,6 +602,16 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
             view.issues[issue.member_id] = issue
             view.open_ids.add(issue.member_id)
     return view
+
+
+async def _reads_opencrq(db: AsyncSession, user_id: str) -> bool:
+    """Whether *user_id* reads OpenCRQ with their own credentials (#936): the gate on the
+    OpenCRQ asset names and scenario ids of a case's exploitation reading."""
+    try:
+        return await _user_creds(db, user_id, "opencrq") is not None
+    except Exception as exc:  # unreadable is not readable: the names stay restricted
+        logger.info("CTEM cases: OpenCRQ access unreadable for %s: %s", user_id, format_exception_message(exc))
+        return False
 
 
 async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str) -> list[rules.SourceIssue]:
