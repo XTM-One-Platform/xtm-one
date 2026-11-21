@@ -201,11 +201,8 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
     async def creds(db, user_id, provider):
         return (f"https://{provider}", {})
 
-    async def read_opencti(client, base_url, headers, stack, enrichment_key=None):
+    async def read_opencti(client, base_url, headers, stack):
         return [octi_issue]
-
-    async def no_enrichment(db, user_id):
-        return None
 
     applied: list = []
 
@@ -228,7 +225,6 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
     monkeypatch.setattr(source, "_profile_tech_stack", stack)
     monkeypatch.setattr(source, "_user_creds", creds)
     monkeypatch.setattr(source, "_read_opencti", read_opencti)
-    monkeypatch.setattr(source, "_enrichment_key", no_enrichment)
     monkeypatch.setattr(source, "attach_probe", lambda headers, base_url: headers)
     monkeypatch.setattr(source, "_api", _aev_findings_api([]))
     monkeypatch.setattr(source.store, "member_ids", members)

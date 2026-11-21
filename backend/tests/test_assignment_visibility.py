@@ -428,10 +428,6 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
     ),
     ("services/builtin_tools/flow_builder.py", "_get_flow_examples"): "seeded examples",
     ("services/ctem_metrics_collector.py", "_user_creds"): "system credential lookup",
-    ("services/ctem_cases_source.py", "_enrichment_key"): (
-        "system credential lookup of the enrichment provider (CTEM-11), composed with "
-        "integration_visible_filter; lists nothing to a caller"
-    ),
     ("services/evaluation_engine.py", "_load_default_judge_prompt_from_skill"): ("seeded built-in skill"),
     ("services/agent_template_skills.py", "visible_skill_ids_by_slug"): (
         "seeded built-in skill: a template default names one by slug, and the "
