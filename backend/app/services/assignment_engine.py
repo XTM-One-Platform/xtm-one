@@ -6459,6 +6459,25 @@ async def execute_assignment_run(
                 # The run's Platform Health cycle books what its experiments spend.
                 run_id=str(run.id),
             )
+            # --- Module Analyst (#101 S14a-2b-4): the investigated module's allow-listed reads ---
+            from app.services.builtin_tools.health_modules import add_module_read_tools
+
+            try:
+                await add_module_read_tools(
+                    db,
+                    composite,
+                    agent_builtin_tool_ids,
+                    trigger_context=run.trigger_context,
+                    agent_id=run.agent_id,
+                    user_id=str(effective_user_id) if effective_user_id else None,
+                    run_id=str(run.id),
+                )
+            except Exception as exc:
+                logger.error(
+                    "Module Analyst read tools not loaded for run %s: %s",
+                    run_id,
+                    format_exception_message(exc),
+                )
             from app.services.builtin_tools.flow_lab import add_flow_lab_tools
 
             add_flow_lab_tools(

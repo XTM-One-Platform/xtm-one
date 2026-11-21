@@ -815,6 +815,12 @@ decision written here).
   Analyst or an administrator, `record_finding_recommendation` writes for the Module
   Analyst alone, inside one of its cycles and on a finding of the registration that cycle
   investigates (one row per finding and cycle, a second call revises it).
+- The module reads reach the run through `health_modules.add_module_read_tools`
+  (S14a-2b-4), called by the assignment engine for every run carrying the group: the
+  registration is read from the run's own cycle row (target type `module`, same agent),
+  never from the payload; its integration is built with the read-only binding rule, then
+  every tool outside `MODULE_ANALYST_TOOLS` is withheld and refused by name. Any other
+  run, Copilot mode or an inactive registration gets no module tool.
 - The orchestrator does not delegate to the analyst; it starts only from its own
   triggers.
 
