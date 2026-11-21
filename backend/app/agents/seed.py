@@ -1891,7 +1891,7 @@ _EDITING_INTENTS: list[tuple[str, str]] = [
 _EDITING_INTENT_AGENTS: list[tuple[str, str]] = [
     ("opencti-assistant", "cti"),
     ("openaev-assistant", "aev"),
-    ("opencrq-assistant", "grc"),
+    ("opencrq-assistant", "crq"),
     ("fimi-analyst", "fimi"),
 ]
 
@@ -1945,9 +1945,9 @@ _INTENT_DESCRIPTIONS: dict[str, str] = {
     "cti.stix_harvester": "Extract cyber threat intelligence from documents into STIX 2.1 bundles",
     "cti.stix_transformer": "Transform a STIX 2.1 bundle (enrich, filter, rewrite, normalize) and return a valid STIX 2.1 bundle",
     "cti.stix_consumer": "Consume a STIX 2.1 bundle as the final step of an OpenCTI playbook (summarize, alert, post, dispatch)",
-    "grc.control_gap_analysis": "Analyze control capability gaps against a compliance framework",
-    "grc.risk_scenario_generator": "Draft risk scenarios from business and threat context",
-    "grc.assessment_summary": "Summarize a compliance assessment and its requirement answers",
+    "crq.control_gap_analysis": "Analyze control capability gaps against a compliance framework",
+    "crq.risk_scenario_generator": "Draft risk scenarios from business and threat context",
+    "crq.assessment_summary": "Summarize a compliance assessment and its requirement answers",
 }
 
 def _build_intent_bindings() -> list[dict]:
