@@ -223,6 +223,18 @@ describe("the work item detail", () => {
     );
   });
 
+  it("names a long agent the reader cannot open in full in its tooltip", async () => {
+    const longName = "Digital Security Office desk that triages every policy, watch and detection hand-off";
+    const hidden = { id: "agent-9", name: longName, icon: null, accessible: false };
+    openDialog(item({ context: context({ owner_agent: hidden }) }));
+    const label = screen.getAllByTestId("work-item-agent-hidden-label").find((node) => node.textContent === longName);
+    expect(label).toBeDefined();
+    fireEvent.focus(label?.closest("[tabindex]") as HTMLElement);
+    const tip = await screen.findByRole("tooltip");
+    expect(tip.textContent).toContain(longName);
+    expect(tip.textContent).toContain("This agent is not shared with you");
+  });
+
   it("names the inbox that takes the item, and the one whose filters leave it out", () => {
     openDialog(
       item({
