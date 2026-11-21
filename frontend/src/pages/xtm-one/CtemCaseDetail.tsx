@@ -23,7 +23,6 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
-import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   isRestrictedIssue,
@@ -33,7 +32,6 @@ import {
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
-  type CtemCaseVisibleIssue,
 } from "@/hooks/api/useCtemCasesApi";
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
@@ -43,7 +41,6 @@ import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
-import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -93,8 +90,6 @@ const EVENT_LABEL: Record<string, string> = {
   created: "Created the case",
   issue_added: "Added an issue",
   issue_closed: "Closed an issue",
-  // The folded upgrade target moved (CTEM-11, #894; shown by #928).
-  retargeted: "Changed the target version",
   state: "Changed the state to",
   owner: "Changed the owner",
   due: "Changed the due date",
@@ -109,6 +104,15 @@ const EVENT_LABEL: Record<string, string> = {
   sla_breached: "Escalated: SLA breached",
   // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
   exploitation: "Recorded how it would be exploited",
+  // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
+  source_event: "OpenAEV result received",
+};
+
+/** The OpenAEV event of a `source_event` history row, translated where drawn (#956). */
+const SOURCE_EVENT_LABEL: Record<string, string> = {
+  simulation_finished: "Simulation finished",
+  finding_updated: "Finding updated",
+  finding_deleted: "Finding deleted",
 };
 
 /** The result word of a validation history row, translated where drawn. */
@@ -139,41 +143,6 @@ const RUN_OUTCOME_VARIANTS: Partial<Record<TimelineOutcome, "success" | "warning
 };
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
-
-/**
- * The fixed version of one issue and where OpenCTI's knowledge came from (CTEM-11, #946; shown by #928):
- * the remediating Software, else the course of action, else "unknown"; a declared version OpenCTI
- * holds no Software of is named, never guessed.
- */
-function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
-  const { t_i18n } = useFormatter();
-  if (issue.not_affected || issue.source !== "opencti") return null;
-  const unknownDeclared = issue.declared_version_known === false ? issue.installed_version : null;
-  const secondary =
-    issue.fixed_version && issue.fixed_by
-      ? t_i18n("Matched on Software {software}", { software: issue.fixed_by })
-      : issue.fixed_version && issue.course_of_action_name
-        ? t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })
-        : unknownDeclared
-          ? t_i18n("Version {version} not known to OpenCTI", { version: unknownDeclared })
-          : null;
-  return (
-    <span className="flex min-w-0 flex-col" data-testid="ctem-case-issue-version">
-      <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
-      {secondary && <IssueCaption text={secondary} />}
-    </span>
-  );
-}
-
-/**
- * The secondary line of an Issues cell (UX round 3 B1 on #931): one line, cut with an ellipsis,
- * the full sentence in the tooltip, so every row keeps the two-line height at
- * 1080 and 1728 (Design standards s.3). The shared TruncatedText draws the design-system
- * tooltip only when the line is cut; the 10 rem cap gives the auto-layout cell a width (13.ak).
- */
-function IssueCaption({ text }: { text: string }) {
-  return <TruncatedText text={text} className="max-w-[10rem] content-compact text-default-secondary" />;
-}
 
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
@@ -211,8 +180,6 @@ export default function CtemCaseDetail() {
     () => (kase?.issues ?? []).map((issue, i) => ({ key: isRestrictedIssue(issue) ? `restricted-${i}` : `${issue.source}:${issue.external_id}`, issue })),
     [kase],
   );
-  // Members OpenCTI relates to none of the declared versions (CTEM-11, #946; shown by #928), from the viewer's own read.
-  const notAffectedOf = (r: IssueRow) => (isRestrictedIssue(r.issue) || r.issue.open || !r.issue.not_affected ? undefined : r.issue.installed_version || undefined);
 
   if (isNotFoundError(error)) {
     return (
@@ -344,32 +311,11 @@ export default function CtemCaseDetail() {
       hideable: true,
     },
     {
-      key: "version",
-      header: "Fixed version",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : <IssueVersion issue={r.issue} />),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.fixed_version ?? "~")),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.fixed_version ?? "")),
-      hideBelow: "xl",
-      hideable: true,
-    },
-    {
       key: "state",
       header: "State",
-      cell: (r) => {
-        if (isRestrictedIssue(r.issue)) return null;
-        if (r.issue.open) return t_i18n("Open");
-        const version = notAffectedOf(r);
-        return version ? (
-          <span className="flex min-w-0 flex-col" data-testid="ctem-case-not-affected">
-            <span>{t_i18n("Not affected")}</span>
-            <IssueCaption text={t_i18n("OpenCTI relates no vulnerability to version {version}", { version })} />
-          </span>
-        ) : (
-          t_i18n("Closed")
-        );
-      },
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? 3 : r.issue.open ? 0 : notAffectedOf(r) ? 2 : 1),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : notAffectedOf(r) ? "not affected" : "closed"),
+      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.open ? t_i18n("Open") : t_i18n("Closed")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? 2 : r.issue.open ? 0 : 1),
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : "closed"),
     },
   ];
 
@@ -464,12 +410,6 @@ export default function CtemCaseDetail() {
         />
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
-
-      {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
-        <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version. Declare the version you run in Settings > Organization > Tech stack.")}
-        </p>
-      )}
 
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
@@ -572,8 +512,10 @@ export default function CtemCaseDetail() {
                 <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
-                {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
                 {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
+                {e.to && e.kind === "source_event" && (
+                  <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
+                )}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (
