@@ -243,6 +243,17 @@ jobs:
       - name: Enable pgvector extension
         run: |
           PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      # The same database settings as ci.yml's bootstrap job, so this gate
+      # measures the code CI passed, not the runner's disk: on a durable
+      # PostgreSQL the fresh-DB migration chain took most of the fixture's 60 s
+      # and went past it on a slower runner (run 44856277034, #806).
+      - name: Run PostgreSQL without durability
+        run: |
+          PGPASSWORD=copilot_ci psql -h localhost -U copilot -d copilot -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "SELECT pg_reload_conf()"
       - name: Run bootstrap tests
         working-directory: backend
         env:

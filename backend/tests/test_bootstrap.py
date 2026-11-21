@@ -40,6 +40,8 @@ BASE_URL = "http://127.0.0.1:8099"
 STARTUP_TIMEOUT = 60  # seconds to wait for the server to become healthy
 POLL_INTERVAL = 1  # seconds between health polls
 DEFAULT_APP_VERSION = "0.0.0-dev"
+#: First line faulthandler writes when SIGABRT stops a stalled server.
+FAULTHANDLER_MARKER = "Fatal Python error: Aborted"
 #: Seconds a stalled server gets to write its thread stacks after SIGABRT.
 STACK_DUMP_GRACE = 10
 
@@ -78,9 +80,14 @@ def _startup_timeout_message(bound: bool, last_status: int | None, last_body: st
         )
     else:
         phase = f"the server listened but /api/health/ready last answered {last_status}: {last_body[:500]}"
+    # faulthandler's dump after SIGABRT runs to several thousand characters:
+    # a plain tail of the output keeps only the stacks and loses the server
+    # log that names the startup step it was on. Keep the end of each.
+    log, marker, stacks = output.partition(FAULTHANDLER_MARKER)
+    shown = f"{log[-4000:]}\n{marker}{stacks[:4000]}" if marker else output[-6000:]
     return (
         f"Backend did not become healthy within {STARTUP_TIMEOUT}s: {phase}.\n"
-        f"Output (thread stacks at the stop included):\n{output[-6000:]}"
+        f"Output (server log, then the thread stacks at the stop):\n{shown}"
     )
 
 
