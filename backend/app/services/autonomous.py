@@ -1632,6 +1632,22 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case expiry error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM case loop (#857): open the cases of confirmed signals still
+        # waiting, escalate SLA breaches once. Rules only, no model call;
+        # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).
+        try:
+            from app.services import ctem_case_loop
+
+            if await ctem_case_loop.sweep_due():
+                pending = ctem_case_loop.PendingEvents()
+                counts = await ctem_case_loop.sweep(db, events=pending)
+                await db.commit()
+                await ctem_case_loop.publish_pending(pending)
+                if any(counts.values()):
+                    logger.info("CTEM case sweep: %s", counts)
+        except Exception as e:
+            logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # Assignments marked delete_assignment(after_run=true) whose runs
         # have all ended: deleted now, so a one-off retires itself.
         try:
