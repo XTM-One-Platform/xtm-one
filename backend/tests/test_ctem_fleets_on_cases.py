@@ -43,6 +43,7 @@ def test_the_case_assignment_is_a_valid_platform_event_trigger() -> None:
             "ctem_case.opened",
             "ctem_case.reopened",
             "ctem_case.sla_breached",
+            "ctem_case.validation_finished",
         }
         # Seeded switched off, left to an administrator, like every fleet automation.
         assert assignment["enabled"] is False and assignment["admin_opt_in"] is True

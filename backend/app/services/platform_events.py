@@ -217,6 +217,8 @@ _CTEM_CASE_KEYS = (
     "state",
     "trigger_path",
 )
+#: ctem_case.validation_finished adds the OpenAEV delivery it reports (#918).
+_CTEM_CASE_VALIDATION_KEYS = (*_CTEM_CASE_KEYS, "openaev.event", "openaev.resource_type", "openaev.resource_id")
 _VIDEO_KEYS = (
     "job_kind",
     "job_id",
@@ -455,6 +457,15 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_case.validation_finished": {
+        "description": (
+            "An OpenAEV result a CTEM case waits on arrived (a simulation it references finished, a finding it "
+            "holds changed or was deleted; services/ctem_openaev_events.py), once per case and occurrence: read "
+            "the result and write it on the case with record_ctem_case_validation. Payload: the case fields and "
+            "openaev {event, resource_type, resource_id, platform_url}. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_VALIDATION_KEYS,
+    },
     "timer.due": {
         "description": (
             "A timer an agent armed with arm_timer reached its due time (services/platform_timers.py): "
@@ -486,6 +497,7 @@ VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
         "ctem_case.reopened",
         "ctem_case.resolved",
         "ctem_case.sla_breached",
+        "ctem_case.validation_finished",
     }
 )
 

@@ -16,7 +16,8 @@ run, no quota: a signal is data the reconcile and scope gate read next.
 Paths with a listener today: 1 (new vulnerability: an OpenCTI Vulnerability,
 or a ``has`` relationship to one), 2 (relevant threat: an OpenCTI Intrusion
 Set, Threat Actor, Campaign or Malware), 3 (code flaw: a new open Aikido
-issue). The other paths enter through the agent tool and the API until their
+issue), 8 (mitigation regression: an OpenAEV scenario whose score degraded,
+CTEM-15). The other paths enter through the agent tool and the API until their
 products emit an event (design ``dev-docs/ctem-signals.md`` section 4).
 """
 
@@ -64,6 +65,7 @@ LISTENERS: tuple[Listener, ...] = (
         "inside",
         "code",
     ),
+    Listener("openaev", ("scenario_score_degraded",), ("scenario",), "mitigation_regression", "inside", "asset"),
 )
 
 
@@ -144,9 +146,36 @@ def _aikido_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] 
     }
 
 
+def _openaev_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A provisioned OpenAEV delivery, normalized by the route into ``_openaev_event``."""
+    meta = payload.get("_openaev_event")
+    if not isinstance(meta, dict):
+        return None
+    kind = _text(meta.get("resource_type")).lower()
+    if row.object_types and kind not in row.object_types:
+        return None
+    external_id = _text(meta.get("resource_id"))
+    if not external_id:
+        return None
+    message = _text(meta.get("message"))[:300]
+    evidence: dict[str, Any] = {"event": _text(meta.get("event_type")), "resource_type": kind}
+    if message:
+        evidence["message"] = message
+    url = _text(meta.get("platform_url"))
+    if url:
+        evidence["platform_url"] = url
+    return {
+        "external_id": external_id,
+        "ref": f"openaev {kind or 'object'} {external_id}",
+        "label": message or None,
+        "evidence": evidence,
+    }
+
+
 _EXTRACTORS: dict[str, Callable[[Listener, Mapping[str, Any]], dict[str, Any] | None]] = {
     "opencti": _opencti_signal,
     "aikido": _aikido_signal,
+    "openaev": _openaev_signal,
 }
 
 
