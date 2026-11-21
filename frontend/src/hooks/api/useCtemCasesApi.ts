@@ -41,6 +41,26 @@ export interface CtemCaseSummary {
   first_seen_at: string | null;
   /** Products that did not answer this read: their issues show without details. */
   details_unavailable: string[];
+  /** The loop (#857): how the case started, its severity and SLA, its proof. */
+  trigger_path?: string;
+  severity?: CtemCaseSeverity | null;
+  sla_due_at?: string | null;
+  sla_breached_at?: string | null;
+  validations?: CtemCaseValidation[];
+  resolution_kind?: string | null;
+}
+
+export type CtemCaseSeverity = "P1" | "P2" | "P3";
+
+/** One validation reference written on a case (OpenAEV run, re-test, provider scan). */
+interface CtemCaseValidation {
+  provider: string;
+  kind: string;
+  ref: string;
+  result: "passed" | "not_exposed" | "failed" | "pending";
+  at: string;
+  mitigation_only?: boolean;
+  note?: string | null;
 }
 
 /** A member issue the caller sees. */
@@ -112,8 +132,6 @@ export interface CtemCaseBulkResult {
 export interface CtemRecomputeResult {
   applied: boolean;
   missing?: string[];
-  /** Issues kept out of every case: the declared tech stack version is outside their ranges (CTEM-11). */
-  not_affected?: number;
   [key: string]: unknown;
 }
 

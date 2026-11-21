@@ -34,9 +34,12 @@ import {
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
-import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
-import { keyVersion, notAffectedVersion, notAffectedVersions } from "./ctem/case-version";
+import { useNow } from "@/hooks/useTick";
+import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -81,8 +84,6 @@ const EVENT_LABEL: Record<string, string> = {
   created: "Created the case",
   issue_added: "Added an issue",
   issue_closed: "Closed an issue",
-  // The folded upgrade target moved (CTEM-11, #894; shown by #928).
-  retargeted: "Changed the target version",
   state: "Changed the state to",
   owner: "Changed the owner",
   due: "Changed the due date",
@@ -91,20 +92,21 @@ const EVENT_LABEL: Record<string, string> = {
   merged: "Merged cases",
   // The store writes `merge` (ctem_cases_store.merge_cases, S5c).
   merge: "Merged cases",
+  // The loop (CTEM-03, #857; shown by CTEM-03-UI, #892).
+  signal: "A signal joined the case",
+  validation: "Recorded a validation",
+  sla_breached: "Escalated: SLA breached",
+};
+
+/** The result word of a validation history row, translated where drawn. */
+const VALIDATION_RESULT_LABEL: Record<string, string> = {
+  passed: "Passed",
+  not_exposed: "Not exposed",
+  failed: "Failed",
+  pending: "Pending",
 };
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
-
-/** The evidence of a history row; the not-affected sentence the platform stores is re-rendered in the locale (#928). */
-function CaseEvidence({ evidence }: { evidence: string }) {
-  const { t_i18n } = useFormatter();
-  const version = notAffectedVersion(evidence);
-  return (
-    <span className="text-default-secondary">
-      {version ? t_i18n("Not affected: version {version} is outside the affected ranges", { version }) : evidence}
-    </span>
-  );
-}
 
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
@@ -122,6 +124,8 @@ export default function CtemCaseDetail() {
   const [evidence, setEvidence] = useState("");
   const [expiry, setExpiry] = useState(inDays(90));
   const [formError, setFormError] = useState<string | null>(null);
+  // The SLA countdown of the header moves without a reload (#892).
+  const now = useNow(60_000);
 
   const actorIds = useMemo(() => {
     const ids = new Set<string>();
@@ -137,9 +141,6 @@ export default function CtemCaseDetail() {
     () => (kase?.issues ?? []).map((issue, i) => ({ key: isRestrictedIssue(issue) ? `restricted-${i}` : `${issue.source}:${issue.external_id}`, issue })),
     [kase],
   );
-  // Members closed because the version the organization runs is outside their ranges (CTEM-11, #928).
-  const notAffected = useMemo(() => notAffectedVersions(kase?.history ?? []), [kase]);
-  const notAffectedOf = (r: IssueRow) => (isRestrictedIssue(r.issue) || r.issue.open ? undefined : notAffected.get(r.key));
 
   if (isNotFoundError(error)) {
     return (
@@ -222,7 +223,14 @@ export default function CtemCaseDetail() {
     {
       key: "source",
       header: "Source",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.source === "openaev" ? "OpenAEV" : "OpenCTI"),
+      cell: (r) =>
+        isRestrictedIssue(r.issue)
+          ? null
+          : r.issue.source === "signal"
+            ? t_i18n("Signal")
+            : r.issue.source === "openaev"
+              ? "OpenAEV"
+              : "OpenCTI",
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : r.issue.source),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.source),
     },
@@ -266,21 +274,9 @@ export default function CtemCaseDetail() {
     {
       key: "state",
       header: "State",
-      cell: (r) => {
-        if (isRestrictedIssue(r.issue)) return null;
-        if (r.issue.open) return t_i18n("Open");
-        const version = notAffectedOf(r);
-        return version ? (
-          <span className="flex flex-col" data-testid="ctem-case-not-affected">
-            <span>{t_i18n("Not affected")}</span>
-            <span className="content-compact text-default-secondary">{t_i18n("Version {version} is outside the affected ranges", { version })}</span>
-          </span>
-        ) : (
-          t_i18n("Closed")
-        );
-      },
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? 3 : r.issue.open ? 0 : notAffectedOf(r) ? 2 : 1),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : notAffectedOf(r) ? "not affected" : "closed"),
+      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.open ? t_i18n("Open") : t_i18n("Closed")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? 2 : r.issue.open ? 0 : 1),
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : "closed"),
     },
   ];
 
@@ -323,8 +319,9 @@ export default function CtemCaseDetail() {
         crumbExtras={
           <>
             <CaseStateChip state={kase.state} />
-            <CasePriorityChip priority={kase.priority} />
+            <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
+            <CaseLoopLine c={kase} now={now} />
           </>
         }
         title={kase.title}
@@ -375,17 +372,13 @@ export default function CtemCaseDetail() {
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
 
-      {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
-        <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {t_i18n("Fixed version unknown: no source names the version that fixes these issues. Declare the version you run in Settings > Organization > Tech stack, or connect an enrichment provider.")}
-        </p>
-      )}
-
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
           {t_i18n("{products} did not answer: details of its issues are unavailable.", { products: kase.details_unavailable.join(", ") })}
         </p>
       )}
+
+      <CaseOpenedBy caseId={kase.id} />
 
       <Card>
         <CardHeader>
@@ -451,9 +444,9 @@ export default function CtemCaseDetail() {
                 <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
-                {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
+                {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && <CaseEvidence evidence={e.evidence} />}
+                {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (
                   <span className="ml-auto whitespace-nowrap text-default-secondary">
                     {intl.formatDate(e.at, { dateStyle: "medium", timeStyle: "short" })}
@@ -464,6 +457,9 @@ export default function CtemCaseDetail() {
           </ol>
         </CardContent>
       </Card>
+
+      {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
+      <LoopTraceDialog />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">
