@@ -352,7 +352,8 @@ describe("OrganizationSection", () => {
     expect(within(row).queryByRole("combobox")).toBeNull();
     openTab(/^Technology/);
     const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
-    expect(within(tech).getByText("Not set")).toBeTruthy();
+    // CPE and Version (CTEM-11, #928) are both empty: each reads Not set.
+    expect(within(tech).getAllByText("Not set")).toHaveLength(2);
     expect(within(tech).queryByRole("textbox")).toBeNull();
     expect(screen.queryByPlaceholderText("cpe:2.3:a:vendor:product:*")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
