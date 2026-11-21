@@ -639,14 +639,16 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
           })}
 
         {casesLive && (
-          <p
-            className="absolute line-clamp-2 content-caption text-default-secondary"
+          // Mitigated, watching on its own line above the closed line, and no
+          // clamp: every count shows at 1080, where the column is 118 px (UX
+          // round 2 on #897, B4; #865 prod retest D1 for the watching state).
+          <div
+            className="absolute flex flex-col gap-1 content-caption text-default-secondary"
             style={{ left: layout.tiles.x, top: FLOW_TOP + 92, width: layout.tiles.width }}
-            data-testid="ctem-flow-cases-closed"
+            data-testid="ctem-flow-cases-outcomes"
           >
-            {/* Mitigated, watching first: closed for now, its re-test still on (#865 prod retest D1). */}
             {(caseStates.mitigated_watching ?? 0) > 0 && (
-              <>
+              <p>
                 <Link
                   to={casesListHref({ state: "mitigated_watching" })}
                   className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
@@ -654,21 +656,22 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
                   tabIndex={-1}
                   data-testid="ctem-flow-cases-mitigated"
                 >
-                  {/* Inline, on the text baseline with the ", " after it (UX round 1 on #897, B2). */}
+                  {/* Inline, on the text baseline (UX round 1 on #897, B2). */}
                   <Icon name="eye" size={16} aria-hidden className="mr-1 inline-block align-text-bottom" />
                   {t_i18n("{count, plural, one {# mitigated, watching} other {# mitigated, watching}}", { count: caseStates.mitigated_watching ?? 0 })}
                 </Link>
-                {", "}
-              </>
+              </p>
             )}
-            <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
-              {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
-            </Link>
-            {", "}
-            <Link to={casesListHref({ state: "accepted_risk" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
-              {t_i18n("{count, plural, one {# accepted risk} other {# accepted risk}}", { count: caseStates.accepted_risk })}
-            </Link>
-          </p>
+            <p data-testid="ctem-flow-cases-closed">
+              <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
+                {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
+              </Link>
+              {", "}
+              <Link to={casesListHref({ state: "accepted_risk" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
+                {t_i18n("{count, plural, one {# accepted risk} other {# accepted risk}}", { count: caseStates.accepted_risk })}
+              </Link>
+            </p>
+          </div>
         )}
       </div>
       {casesLive && (

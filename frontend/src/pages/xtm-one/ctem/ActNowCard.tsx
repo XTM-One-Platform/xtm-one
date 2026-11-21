@@ -40,7 +40,7 @@ import { useWorkItemsWaitingForMe } from "@/hooks/api/useWorkItemApi";
 import { usePendingApprovalsByTool } from "@/hooks/api/useAssignmentApi";
 import { useCtemCases } from "@/hooks/api/useCtemCasesApi";
 import { useNow } from "@/hooks/useTick";
-import { slaCountdown, slaSentence } from "./case-loop";
+import { CaseUrgencyChip, slaCountdown, slaSentence } from "./case-loop";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
 import { GenericContextNotice } from "./GenericContextNotice";
 import { RecommendedActionsEmpty } from "./RecommendedActionsEmpty";
@@ -127,9 +127,15 @@ function ActNowRowButton({
           </span>
         )}
       </span>
-      <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)}>
-        {t_i18n(prio.label)}
-      </span>
+      {row.caseUrgency ? (
+        <span className="shrink-0" data-testid="ctem-act-now-case-urgency">
+          <CaseUrgencyChip severity={row.caseUrgency.severity} priority={row.caseUrgency.priority} />
+        </span>
+      ) : (
+        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)}>
+          {t_i18n(prio.label)}
+        </span>
+      )}
       <ChevronRight className="h-4 w-4 shrink-0 text-default-secondary" aria-hidden />
     </button>
   );
@@ -241,6 +247,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
           : t_i18n("P1 case opened by the loop"),
         cta: "Open", onAction: () => navigate(`/ctem/cases/${c.id}`),
         priority: ACT_NOW_PRIORITY.case_p1,
+        caseUrgency: { severity: c.severity ?? null, priority: c.priority },
       });
     }
     if (waitingCount > 0) {

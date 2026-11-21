@@ -19,7 +19,7 @@ const state = vi.hoisted(() => ({
   isAdmin: true,
   version: null as number | null,
   navigated: [] as string[],
-  cases: [] as { id: string; title: string; state: string; severity: string | null; sla_due_at: string | null }[],
+  cases: [] as { id: string; title: string; state: string; severity: string | null; priority?: string; sla_due_at: string | null }[],
 }));
 
 vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
@@ -112,6 +112,16 @@ describe("ActNowCard", () => {
     expect(within(items()[0]).getByText("Do first")).toBeTruthy();
     expect(within(items()[0]).getByText("Close the exposure of edge-01")).toBeTruthy();
     expect(screen.queryByText("Patch a P2")).toBeNull();
+  });
+
+  it("shows a case row's own urgency, the P1 chip of the case, never a High band (UX round 2 on #897, B3)", () => {
+    state.cases = [
+      { id: "c1", title: "Close the exposure of edge-01", state: "needs_attention", severity: "P1", priority: "critical", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+    ];
+    card([row("kev", 95)]);
+    const first = items()[0];
+    expect(within(first).getByTestId("ctem-act-now-case-urgency").textContent).toContain("P1");
+    expect(within(first).queryByText("High")).toBeNull();
   });
 
   it("marks the first row Do first, and only the first", () => {

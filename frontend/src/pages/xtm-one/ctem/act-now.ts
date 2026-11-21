@@ -9,6 +9,7 @@
 // Start chatting, never a row. Pure: no model, no run, no endpoint.
 
 import type { LucideIcon } from "lucide-react";
+import type { CtemCasePriority, CtemCaseSeverity } from "@/hooks/api/useCtemCasesApi";
 import { CTEM_STAGE_KEYS } from "@/lib/constants";
 
 /** Where a row comes from: it ranks the rows, decides Ask AI and the generic
@@ -42,6 +43,9 @@ export interface ActNowRow {
   subject?: string;
   figure?: string;
   mergeTitle?: (subjects: string[]) => string;
+  /** A case row: the case's own urgency, drawn with the chip the case header
+   *  and the board use, never a queue band (UX round 2 on #897, B3). */
+  caseUrgency?: { severity: CtemCaseSeverity | null; priority: CtemCasePriority };
 }
 
 /** Rows shown before "Show all (N)" expands the queue in place: three by
