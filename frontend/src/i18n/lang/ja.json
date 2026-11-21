@@ -15342,6 +15342,7 @@
   "No fleet run yet": "フリートの実行はまだありません",
   "Runs of your fleets show here as their triggers fire: OpenCTI, OpenAEV and OpenCRQ events, schedules and work items.": "フリートの実行は、トリガーが発火するとここに表示されます: OpenCTI、OpenAEV、OpenCRQ のイベント、スケジュール、作業項目。",
   "Open run of {agent}": "{agent} の実行を開く",
+  "Open case {title}": "ケース {title} を開く",
   "Agent not read yet": "エージェントはまだ読み込まれていません",
   "Run source: schedule": "スケジュール",
   "Run source: work item": "ワークアイテム",
