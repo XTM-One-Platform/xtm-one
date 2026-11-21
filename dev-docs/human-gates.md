@@ -465,6 +465,37 @@ lab seed tests already read), and an e2e opens the deep link of each bell kind
 and each channel card on the lab and checks no "Page not found". A route moved
 later fails that test, not a person.
 
+### J. Card and drawer layout
+
+**J.1 Decision card.** Every option is a full-width tile of the same width
+(one grid column, `w-full` button): the label in bold on line 1, its effect
+on line 2, the whole tile one button (keyboard and screen reader: the effect
+is the button's description). The recommended tile is accented and carries a
+small "Recommended" pill; there is no separate column. An effect is clamped
+to 3 lines; "Show more" shows under the tile, outside the button, only when
+the clamp actually cuts the text (measured on the rendered span and followed
+on resize, never a character count). A leading "Recommended:" an agent wrote
+into an effect is dropped at render; the ask guard refuses it (S1). With options, free text folds behind
+"Answer differently"; without options it stays open. The header holds the
+question, who asks (the owner agent, named when the reader may see it), the
+sources (`ask.links`) and the deadline. After the answer, every surface and
+channel card shows the decided state (who, which option, when, section I).
+One component; S3 generalises it to `DecisionCard` for the other surfaces.
+
+**J.2 Work item drawer.** Title, status, priority, owner, due and what it
+waits for come first, in words. The stamped notes are an "Activity" timeline
+with each long note folded, the brief under it. A release explanation is one
+sentence per kind of reference, never one per reference (each reference stays
+a chip under "Waits for"); the pull request sentence says "merged" or
+"closed" when every pull request waits for that event, "merged or closed"
+only when they differ.
+
+Test: unit tests assert one tile per option, every tile `w-full` in a single
+column, one pill, the prefix dropped, the clamp and its toggle outside the
+button, the folded free text, and the pull request sentence per `release_on`;
+the UX Director reviews the lab at drawer width and full page, light and dark,
+with 2, 3 and 5 options and long and short effects.
+
 ## 10. H. Slices
 
 Each slice is one PR on xtm-one with its dev item linked to the program item,
