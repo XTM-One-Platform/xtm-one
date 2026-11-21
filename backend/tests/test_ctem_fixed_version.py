@@ -250,7 +250,9 @@ def test_the_case_view_carries_the_version_fields_of_the_viewers_own_read():
 
     from app.services import ctem_cases_view as view_mod
 
-    issue = next(i for i in source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [], FIXES) if i.external_id == "v1")
+    issue = next(
+        i for i in source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS, [], FIXES) if i.external_id == "v1"
+    )
     row = SimpleNamespace(source="opencti", external_id="v1", open=True)
     shown = view_mod._visible_issue(row, issue)
     assert shown["installed_version"] == "9.0.90" and shown["fixed_version"] == "9.0.98"
