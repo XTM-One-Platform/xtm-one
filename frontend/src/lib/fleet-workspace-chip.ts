@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Where the fleet-workspace chip leads, and the back state the page it
  * opens gets, so the round trip returns where it started.
  */
-import { workspacePath } from "@/lib/task-routes";
+import { workspacePath } from "./task-routes.ts";
 
 export type FleetWorkspaceChipTarget =
   | { kind: "fleet"; id: string; name: string; archived?: boolean }

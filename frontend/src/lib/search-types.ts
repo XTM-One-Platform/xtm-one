@@ -5,7 +5,7 @@
  * type: its label (English, translated by the caller), its library icon and
  * the route of one hit. One table, so the typeahead and the page never differ.
  */
-import { workItemPath } from "@/lib/task-routes";
+import { workItemPath } from "./task-routes.ts";
 import type { ComponentProps } from "react";
 import type { Icon } from "@filigran/design-system";
 import type { SearchHit, SearchType } from "@/hooks/api/useSearchApi";

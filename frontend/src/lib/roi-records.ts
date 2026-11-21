@@ -22,7 +22,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * covers it.
  */
 
-import { workItemPath } from "@/lib/task-routes";
+import { workItemPath } from "./task-routes.ts";
 import type { RoiWindow } from "@/hooks/api/useRoiReportApi";
 import { parseValueWindow } from "./roi-value.ts";
 

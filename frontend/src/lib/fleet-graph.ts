@@ -30,7 +30,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Fleets layer.
  */
 
-import { workItemsPath } from "@/lib/task-routes";
+import { workItemsPath } from "./task-routes.ts";
 import type { FleetGraph, FleetMemberHealth, FleetMemberHealthStatus } from "@/hooks/api/useFleetApi";
 
 /**
