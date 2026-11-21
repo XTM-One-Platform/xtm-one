@@ -94,7 +94,7 @@ def test_the_tool_schema_shows_links() -> None:
 
     description = _BLOCKED_WHY_SCHEMA["ask"]["description"]
     assert "links:[{label,url}]" in description
-    assert "needs_human: all but deadline and links" in description
+    assert "needs_human: all but deadline, links; 2+ options" in description
 
 
 # ── The read path: no bare title ────────────────────────────────────────────
