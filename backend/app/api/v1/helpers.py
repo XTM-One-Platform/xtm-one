@@ -3465,7 +3465,10 @@ def shared_with_user_column_clause(model_cls: type[VisibilityQueryable], user_id
         model_cls.user_id == user_id_column,
         _company_managed_visible(model_cls),
         person_grant,
-        exists().where(GroupMember.user_id == user_id_column, group_grant),
+        # Correlated to the enclosing query explicitly: nested under another
+        # subquery, auto-correlation would add the table of *user_id_column*
+        # to this FROM and match any of its rows (#890).
+        exists().where(GroupMember.user_id == user_id_column, group_grant).correlate_except(GroupMember),
     )
     if (hidden := hidden_rows_excluded(model_cls)) is not None:
         return and_(hidden, visible)
