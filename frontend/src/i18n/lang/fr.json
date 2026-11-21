@@ -19899,5 +19899,5 @@
   "Unknown, threshold {threshold}": "Inconnue, seuil {threshold}",
   "{criticality}, at or above {threshold}": "{criticality}, au niveau de {threshold} ou au-dessus",
   "{criticality}, below {threshold}": "{criticality}, sous {threshold}",
-  "Gates: {total, plural, one {# signal in} other {# signals in}}, {confirmed} confirmed, {inScope} in scope, {cases, plural, one {# case} other {# cases}} ({watchlist} on the watchlist)": "Filtres : {total, plural, one {# signal reçu} other {# signaux reçus}}, {confirmed} confirmés, {inScope} dans le périmètre, {cases, plural, one {# dossier} other {# dossiers}} ({watchlist} en surveillance)"
+  "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "Signaux : {total, plural, one {# reçu} other {# reçus}}, {confirmed, plural, one {# confirmé} other {# confirmés}}, {inScope} dans le périmètre, {cases, plural, one {# a ouvert un dossier} other {# ont ouvert un dossier}}, {watchlist} en surveillance"
 }

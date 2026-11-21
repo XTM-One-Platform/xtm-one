@@ -19899,5 +19899,5 @@
   "Unknown, threshold {threshold}": "不明、しきい値 {threshold}",
   "{criticality}, at or above {threshold}": "{criticality}、{threshold} 以上",
   "{criticality}, below {threshold}": "{criticality}、{threshold} 未満",
-  "Gates: {total, plural, one {# signal in} other {# signals in}}, {confirmed} confirmed, {inScope} in scope, {cases, plural, one {# case} other {# cases}} ({watchlist} on the watchlist)": "ゲート: 受信 {total, plural, other {# 件}}、確認済み {confirmed} 件、スコープ内 {inScope} 件、{cases, plural, other {# 件のケース}}（ウォッチリスト {watchlist} 件）"
+  "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "シグナル: 受信 {total} 件、確認済み {confirmed} 件、スコープ内 {inScope} 件、ケース化 {cases} 件、ウォッチリスト {watchlist} 件"
 }
