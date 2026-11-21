@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { CheckCircle2, PlugZap, RefreshCw, ServerOff, type LucideIcon } from "lucide-react";
+import { CheckCircle2, PlugZap, Radar, RefreshCw, ServerOff, type LucideIcon } from "lucide-react";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import type { ActivityEvent } from "./activity-feed";
+import { decisionSentence, SIGNAL_STATE_LABEL } from "./loop/DecisionReason";
+
+const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 
 /**
  * The words and icon of one deterministic event (D3-4, #9567), shared by the
@@ -35,6 +38,18 @@ export function activityText(
         icon: CheckCircle2,
         title: t_i18n("Validation results"),
         detail: t_i18n("{met} of {total} expectations met in simulations", { met: event.met, total: event.total }),
+      };
+    case "signal_received":
+      // Never hidden (section 3): the path, the lens, the state and its why on one line.
+      return {
+        icon: Radar,
+        title: t_i18n("Signal received: {subject}", { subject: event.label }),
+        detail: [
+          t_i18n(event.path),
+          t_i18n(LENS_LABEL[event.lens] ?? event.lens),
+          t_i18n(SIGNAL_STATE_LABEL[event.state] ?? event.state),
+          decisionSentence(event.decision, t_i18n),
+        ].join(" · "),
       };
   }
 }

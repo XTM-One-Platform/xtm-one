@@ -8,6 +8,7 @@
 // registrations loaded by the command center are the only sources.
 
 import type { CtemPosture } from "@/types";
+import type { CtemDecisionRecord, CtemSignal, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { listCapacity, type WidgetSize } from "@/components/dashboard-grid/widget-density";
 
 /** Pixels of the Live activity card that are not rows: padding, header,
@@ -47,15 +48,25 @@ export type ActivityEvent =
   /** A registered platform stopped sending heartbeats. */
   | { kind: "platform_unhealthy"; id: string; at: string; title: string }
   /** OpenAEV validation results: expectations met of those with a result. */
-  | { kind: "validation"; id: string; at: string; met: number; total: number };
+  | { kind: "validation"; id: string; at: string; met: number; total: number }
+  /** A CTEM signal entered the loop (#838): it opens its loop trace. */
+  | {
+      kind: "signal_received"; id: string; at: string; signalId: string; label: string;
+      path: string; lens: string; state: CtemSignalState; decision: CtemDecisionRecord | null;
+    };
 
 /**
  * Status dot of a row. A validation with some expectations met is partial
  * (amber); red is kept for none met and for a platform that stopped
  * responding (#9594 A3).
  */
-export function eventStatus(event: ActivityEvent): "completed" | "partial" | "failed" {
+export function eventStatus(event: ActivityEvent): "running" | "completed" | "partial" | "failed" {
   if (event.kind === "platform_unhealthy") return "failed";
+  // A signal still moving through the loop pulses; a stopped one is partial (amber).
+  if (event.kind === "signal_received") {
+    if (event.state === "new" || event.state === "confirmed") return "running";
+    return event.state === "case_opened" ? "completed" : "partial";
+  }
   if (event.kind === "validation" && event.met < event.total) return event.met > 0 ? "partial" : "failed";
   return "completed";
 }
@@ -115,5 +126,27 @@ export function deterministicActivity(
 
   return events
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.id.localeCompare(b.id))
+    .slice(0, Math.max(0, limit));
+}
+
+/** The signals the caller reads, as feed events (newest sighting first), at most `limit`. */
+export function signalActivity(signals: CtemSignal[] | null | undefined, limit = 6): ActivityEvent[] {
+  const events: ActivityEvent[] = [];
+  for (const s of signals ?? []) {
+    const at = s.last_seen_at ?? s.first_seen_at;
+    if (!validTime(at)) continue;
+    events.push({
+      kind: "signal_received", id: `signal:${s.id}`, at, signalId: s.id,
+      label: s.subject.label || s.subject.ref, path: s.trigger_path_label || s.trigger_path,
+      lens: s.lens, state: s.state, decision: s.decision,
+    });
+  }
+  return events.slice(0, Math.max(0, limit));
+}
+
+/** Signal rows and the deterministic events in one feed, newest first. */
+export function mergeActivity(a: ActivityEvent[], b: ActivityEvent[], limit = 6): ActivityEvent[] {
+  return [...a, ...b]
+    .sort((x, y) => Date.parse(y.at) - Date.parse(x.at) || x.id.localeCompare(y.id))
     .slice(0, Math.max(0, limit));
 }

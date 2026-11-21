@@ -33,6 +33,8 @@ export function ActivityRow({
   status,
   time,
   at,
+  onOpen,
+  openLabel,
 }: {
   as?: "div" | "li";
   icon: LucideIcon;
@@ -43,13 +45,17 @@ export function ActivityRow({
   time: string;
   /** ISO timestamp of the row: its absolute time is shown in a tooltip. */
   at?: string;
+  /** A row that opens something (a signal's loop trace, #838): the whole row is the button. */
+  onOpen?: () => void;
+  /** The accessible name of that button. */
+  openLabel?: string;
 }) {
   const { t_i18n, intl } = useFormatter();
   const statusLabel =
     status === "running" ? t_i18n("Running") : status === "partial" ? t_i18n("Partial") : status === "failed" ? t_i18n("Failed") : t_i18n("Completed");
   const timeLabel = <span data-testid="activity-row-time" className="content-caption text-default-secondary whitespace-nowrap">{time}</span>;
-  return (
-    <Tag className="flex items-center gap-3 py-2.5">
+  const body = (
+    <>
       <div className="h-7 w-7 rounded-sm bg-elevation-hover ring-1 ring-[var(--border-elevation-subtle)] flex items-center justify-center shrink-0">
         <Icon className="h-3.5 w-3.5 text-default-secondary" aria-hidden />
       </div>
@@ -66,6 +72,19 @@ export function ActivityRow({
         <span className="sr-only">{statusLabel}</span>
         {at ? <Tip content={formatShortDateTimeIntl(intl, at)}>{timeLabel}</Tip> : timeLabel}
       </div>
+    </>
+  );
+  if (!onOpen) return <Tag className="flex items-center gap-3 py-2.5">{body}</Tag>;
+  return (
+    <Tag>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={openLabel}
+        className="flex w-full items-center gap-3 rounded-sm py-2.5 text-left hover:bg-elevation-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+      >
+        {body}
+      </button>
     </Tag>
   );
 }

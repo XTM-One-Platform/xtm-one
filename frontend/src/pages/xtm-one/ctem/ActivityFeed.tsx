@@ -9,17 +9,20 @@ import { ActivityRow } from "./ActivityRow";
 /**
  * The deterministic activity feed of the Live activity card (D3-4, #9567):
  * the rows of `deterministicActivity` through the card's shared `ActivityRow`
- * (icon, title, one detail line, status dot, time). Read-only: no row links
- * to a page CE cannot open.
+ * (icon, title, one detail line, status dot, time). A signal row (#838) opens
+ * its loop trace through `onOpenSignal` (the page sets `?loop=`); the other
+ * rows stay read-only: no row links to a page CE cannot open.
  */
-export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
+export function ActivityFeed({ events, onOpenSignal }: { events: ActivityEvent[]; onOpenSignal?: (signalId: string) => void }) {
   const { t_i18n, intl } = useFormatter();
-  const row = (event: ActivityEvent) => activityText(event, t_i18n);
 
   return (
     <ul className="divide-y divide-[var(--border-elevation-subtle)]" aria-label={t_i18n("Recent platform activity")}>
       {events.map((event) => {
-        const { icon, title, detail } = row(event);
+        const { icon, title, detail } = activityText(event, t_i18n);
+        const signalId = event.kind === "signal_received" ? event.signalId : null;
+        const label = event.kind === "signal_received" ? event.label : "";
+        const open = signalId !== null && onOpenSignal ? () => onOpenSignal(signalId) : undefined;
         return (
           <ActivityRow
             key={event.id}
@@ -30,6 +33,8 @@ export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
             status={eventStatus(event)}
             time={formatTimeAgo(intl, event.at)}
             at={event.at}
+            onOpen={open}
+            openLabel={open ? t_i18n("Show {subject} in the loop", { subject: label }) : undefined}
           />
         );
       })}
