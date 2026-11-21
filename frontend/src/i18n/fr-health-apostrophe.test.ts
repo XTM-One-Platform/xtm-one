@@ -32,7 +32,7 @@ function catalogKeys(source: string): string[] {
   for (const quote of ['"', "'", "`"]) {
     const literal = new RegExp(`${quote}((?:[^${quote}\\\\\\n]|\\\\.)+)${quote}`, "g");
     for (const match of source.matchAll(literal)) {
-      const key = match[1].replaceAll(`\\${quote}`, quote);
+      const key = match[1].split(`\\${quote}`).join(quote);
       if (key in fr) keys.push(key);
     }
   }
