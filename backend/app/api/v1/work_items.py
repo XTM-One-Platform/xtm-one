@@ -640,7 +640,18 @@ async def get_work_item(
         **described,
         "roi": await _roi_block(described, user),
         "attachments": await _attachments_block(described),
+        "note_runs": await _note_runs_block(described, user),
     }
+
+
+async def _note_runs_block(item: dict[str, object], user: User) -> dict[str, dict[str, object]]:
+    """The agent behind each stamped note's run, for the dialog's activity timeline (#776)."""
+    from app.core.database import async_session
+    from app.services.work_item_note_runs import note_runs
+
+    async with async_session() as db:
+        description = item.get("description")
+        return await note_runs(db, description if isinstance(description, str) else None, user)
 
 
 async def _attachments_block(item: dict) -> dict:
