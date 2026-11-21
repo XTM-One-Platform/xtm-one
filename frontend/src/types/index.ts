@@ -16245,6 +16245,8 @@ export interface HealthAlertEmailSettings {
   min_severity: "critical" | "warning" | "info";
   immediate: boolean;
   digest: boolean;
+  /** Minutes a critical finding stays open before its immediate email (default 15, 0 to 1440). */
+  alert_after_minutes?: number;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */
