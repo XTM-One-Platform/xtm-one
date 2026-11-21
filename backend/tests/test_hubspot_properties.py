@@ -492,7 +492,7 @@ async def test_search_hubspot_deals_extra_props_in_output():
 
     with patch("app.integrations.providers.hubspot.safe_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = (fake_resp, None)
-        result = await search_fn(properties="partner_sourced,partner_manager")
+        result = (await search_fn(properties="partner_sourced,partner_manager")).content
 
     # Core formatted fields
     assert "Partner Deal" in result
@@ -553,11 +553,51 @@ async def test_search_hubspot_deals_falsy_values_shown():
 
     with patch("app.integrations.providers.hubspot.safe_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = (fake_resp, None)
-        result = await search_fn(properties="custom_bool,custom_zero")
+        result = (await search_fn(properties="custom_bool,custom_zero")).content
 
     # Falsy values should NOT be filtered out
     assert "custom_bool: false" in result
     assert "custom_zero: 0" in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool", ["search_hubspot_contacts", "search_hubspot_companies", "search_hubspot_deals", "search_hubspot_tickets"]
+)
+async def test_an_empty_search_is_an_empty_structured_list_a_gate_check_reads_as_empty(tool):
+    """A gate check tests the structured value: nothing found is ``[]``, never the non-empty text."""
+    from app.services.assignment_activation_check import condition_met, structured_result
+
+    mock_executor = MagicMock()
+    mock_executor.register = MagicMock()
+    build_tools("fake-token", mock_executor)
+    search_fn = _get_registered_fn(mock_executor, tool)
+
+    with patch("app.integrations.providers.hubspot.safe_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (_mock_response({"total": 0, "results": [], "paging": {}}), None)
+        result = await search_fn()
+
+    data, readable = structured_result(result)
+    assert readable and data == []
+    assert result.content  # the model still reads a sentence
+    assert not condition_met(data, "non_empty")
+    assert condition_met(data, "empty")
+
+
+@pytest.mark.asyncio
+async def test_a_ticket_search_lists_its_records_as_the_structured_value():
+    mock_executor = MagicMock()
+    mock_executor.register = MagicMock()
+    build_tools("fake-token", mock_executor)
+    search_fn = _get_registered_fn(mock_executor, "search_hubspot_tickets")
+    ticket = {"id": "77", "properties": {"subject": "Access request", "hs_pipeline_stage": "1"}}
+
+    with patch("app.integrations.providers.hubspot.safe_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (_mock_response({"total": 1, "results": [ticket], "paging": {}}), None)
+        result = await search_fn(raw_values=True)
+
+    assert result.structured == [{"id": "77", "properties": {"subject": "Access request", "hs_pipeline_stage": "1"}}]
+    assert "Access request" in result.content
 
 
 # ---------------------------------------------------------------------------
