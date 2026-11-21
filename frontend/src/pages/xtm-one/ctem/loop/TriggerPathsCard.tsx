@@ -29,16 +29,19 @@ const LENS_HEADING = { inside: "Inside", outside: "Outside", world: "World" } as
 /** The states a path row names, in loop order. */
 const ROW_STATES: readonly CtemSignalState[] = ["new", "to_validate", "watchlist", "case_opened"];
 
+/**
+ * One path (UX round 1 B1 on #941): the name on line 1 at full width, never
+ * cut; the counts, or "Not configured" with its connect action, on line 2 in
+ * one row that does not wrap. Two row heights, aligned across the lenses.
+ */
 function PathRow({ path, onConnect }: { path: CtemSignalPath; onConnect: () => void }) {
   const { t_i18n } = useFormatter();
   const { count, exactCount } = useNumberFormat();
   return (
-    <li className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-1.5 content-compact" data-testid="ctem-trigger-path" data-path={path.id} data-configured={path.configured}>
-      <span className="min-w-0 flex-1 truncate font-medium" title={t_i18n(path.label)}>
-        {t_i18n(path.label)}
-      </span>
+    <li className="flex min-w-0 flex-col gap-1 py-1.5 content-compact" data-testid="ctem-trigger-path" data-path={path.id} data-configured={path.configured}>
+      <span className="min-w-0 font-medium" data-testid="ctem-trigger-path-name">{t_i18n(path.label)}</span>
       {path.configured ? (
-        <span className="flex flex-wrap items-center gap-1 content-caption">
+        <span className="flex flex-nowrap items-center gap-1 whitespace-nowrap content-caption">
           {ROW_STATES.map((state) => {
             const n = path.counts[state] ?? 0;
             const label = t_i18n(SIGNAL_STATE_LABEL[state]);
@@ -51,7 +54,7 @@ function PathRow({ path, onConnect }: { path: CtemSignalPath; onConnect: () => v
           })}
         </span>
       ) : (
-        <span className="flex items-center gap-2 content-caption">
+        <span className="flex flex-nowrap items-center gap-2 whitespace-nowrap content-caption">
           <span className="text-default-secondary" data-testid="ctem-trigger-path-not-configured">{t_i18n("Not configured")}</span>
           <Button variant="ghost" size="sm" onClick={onConnect}>{t_i18n("Connect")}</Button>
         </span>
@@ -81,7 +84,8 @@ export function TriggerPathsCard({ onConnect }: { onConnect: () => void }) {
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
+        // Three lens columns only where a count row fits on one line (2xl); one column below.
+        <div className="grid gap-4 2xl:grid-cols-3">
           {LENSES.map((lens) => (
             <div key={lens} className="min-w-0" data-testid={`ctem-trigger-lens-${lens}`}>
               <h3 className="content-caption font-medium text-default-secondary">{t_i18n(LENS_HEADING[lens])}</h3>

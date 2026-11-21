@@ -19999,9 +19999,9 @@
   "Case opened by the loop": "Case opened by the loop",
   "Signals by trigger path": "Signals by trigger path",
   "{live} of {total} paths with a source": "{live} of {total} paths with a source",
-  "Propose to raise the scope": "Propose to raise the scope",
+  "Propose scope threshold {level}": "Propose scope threshold {level}",
   "Optional: nothing waits on it.": "Optional: nothing waits on it.",
-  "Proposal saved. An administrator reviews it in Settings > Organization.": "Proposal saved. An administrator reviews it in Settings > Organization.",
+  "Proposal saved. An administrator accepts or rejects it in Settings > Organization > Exposure.": "Proposal saved. An administrator accepts or rejects it in Settings > Organization > Exposure.",
   "The proposal could not be saved": "The proposal could not be saved",
   "Signal to case": "Signal to case",
   "Case to first validation": "Case to first validation",
@@ -20021,5 +20021,11 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.",
   "Restricted asset": "Restricted asset",
   "Techniques in attack order": "Techniques in attack order",
-  "Recorded how it would be exploited": "Recorded how it would be exploited"
+  "Recorded how it would be exploited": "Recorded how it would be exploited",
+  "Under 1 hour": "Under 1 hour",
+  "Proposed changes": "Proposed changes",
+  "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, one {# waits for a decision} other {# wait for a decision}}",
+  "Changes proposed outside this form. Nothing changes until you accept one.": "Changes proposed outside this form. Nothing changes until you accept one.",
+  "From {current} to {proposed}": "From {current} to {proposed}",
+  "The decision could not be saved": "The decision could not be saved"
 }

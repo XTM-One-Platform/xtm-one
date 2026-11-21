@@ -28,7 +28,7 @@ import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
 
 export const LOOP_PARAM = "loop";
@@ -133,24 +133,27 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
 /**
  * "Tune scope" on a watchlisted signal (CTEM-30, #937): one optional action
  * that stores a proposal to lower the scope threshold to this signal's
- * criticality. An administrator accepts it in Settings > Organization; nothing
- * waits on it and the signal stays on the watchlist until then.
+ * criticality. An administrator accepts or rejects it on the Exposure tab of
+ * Settings > Organization (card "Proposed changes"); nothing waits on it and
+ * the signal stays on the watchlist until then. The button names the change
+ * (UX round 1 A3 on #941): the threshold it would set.
  */
 function ProposeScope({ signal }: { signal: CtemSignal }) {
   const { t_i18n } = useFormatter();
   const propose = useProposeSignalScope();
   const criticality = signal.decision?.scope?.criticality;
+  const level = String(levelLabel(criticality, t_i18n));
   if (signal.state !== "watchlist" || signal.decision?.reason_code !== "below_scope_threshold" || !criticality) return null;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-caption" data-testid="ctem-signal-propose-scope">
       {propose.isSuccess ? (
         <span className="text-default-secondary" role="status">
-          {t_i18n("Proposal saved. An administrator reviews it in Settings > Organization.")}
+          {t_i18n("Proposal saved. An administrator accepts or rejects it in Settings > Organization > Exposure.")}
         </span>
       ) : (
         <>
           <Button variant="secondary" size="sm" disabled={propose.isPending} onClick={() => propose.mutate(signal.id)}>
-            {t_i18n("Propose to raise the scope")}
+            {t_i18n("Propose scope threshold {level}", { level })}
           </Button>
           <span className="text-default-secondary">{t_i18n("Optional: nothing waits on it.")}</span>
         </>

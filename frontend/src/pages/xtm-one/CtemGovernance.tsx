@@ -279,7 +279,9 @@ function LoopMeasures() {
   const duration = (hours: number | null) =>
     hours == null
       ? t_i18n("No case yet")
-      : hours < 48
+      : hours < 1
+        ? t_i18n("Under 1 hour")
+        : hours < 48
         ? t_i18n("{count, plural, one {# hour} other {# hours}}", { count: Math.round(hours * 10) / 10 })
         : t_i18n("{count, plural, one {# day} other {# days}}", { count: Math.round(hours / 2.4) / 10 });
   if (isError) return <NotConfiguredFrame reason={t_i18n("The loop measures could not be read")} testId="ctem-governance-loop-error" />;
@@ -294,9 +296,12 @@ function LoopMeasures() {
         <div key={s.key} className="rounded-sm border border-elevation-subtle-soft p-3" data-testid={`ctem-governance-loop-${s.key}`}>
           <dt className="content-caption text-default-secondary">{t_i18n(s.label)}</dt>
           <dd className="content-compact font-medium">{duration(m[s.key].median_hours)}</dd>
-          <dd className="content-caption text-default-secondary">
-            {t_i18n("Median of {count, plural, one {# case} other {# cases}}", { count: m[s.key].count })}
-          </dd>
+          {/* A step no case reached says "No case yet" alone (UX round 1 A2 on #941). */}
+          {m[s.key].count > 0 && (
+            <dd className="content-caption text-default-secondary">
+              {t_i18n("Median of {count, plural, one {# case} other {# cases}}", { count: m[s.key].count })}
+            </dd>
+          )}
         </div>
       ))}
       <div className="rounded-sm border border-elevation-subtle-soft p-3" data-testid="ctem-governance-loop-closed_on_proof">
