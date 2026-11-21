@@ -986,11 +986,13 @@ export function OrganizationSection() {
       },
     },
   ];
+  // Edit mode: the CPE input takes what is left, so the fixed columns give it 100 px more at 1080,
+  // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
   const techEdit: ListEditColumn<Tech>[] = [
-    { key: "product", header: "Product", width: readWidth(240), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
+    { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
-    { key: "version", header: "Version (optional)", hideable: true, width: readWidth(180), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
+    { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
   ];
   const aiEdit: ListEditColumn<AiSystem>[] = [
     { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },

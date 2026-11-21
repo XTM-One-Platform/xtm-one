@@ -23,6 +23,7 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   isRestrictedIssue,
@@ -148,20 +149,30 @@ function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
   const { t_i18n } = useFormatter();
   if (issue.not_affected || issue.source !== "opencti") return null;
   const unknownDeclared = issue.declared_version_known === false ? issue.installed_version : null;
+  const secondary =
+    issue.fixed_version && issue.fixed_by
+      ? t_i18n("Matched on Software {software}", { software: issue.fixed_by })
+      : issue.fixed_version && issue.course_of_action_name
+        ? t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })
+        : unknownDeclared
+          ? t_i18n("Version {version} not known to OpenCTI", { version: unknownDeclared })
+          : null;
   return (
-    <span className="flex flex-col" data-testid="ctem-case-issue-version">
+    <span className="flex min-w-0 flex-col" data-testid="ctem-case-issue-version">
       <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
-      {issue.fixed_version && issue.fixed_by && (
-        <span className="content-compact text-default-secondary">{t_i18n("Matched on Software {software}", { software: issue.fixed_by })}</span>
-      )}
-      {issue.fixed_version && !issue.fixed_by && issue.course_of_action_name && (
-        <span className="content-compact text-default-secondary">{t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })}</span>
-      )}
-      {unknownDeclared && (
-        <span className="content-compact text-default-secondary">{t_i18n("Version {version} not known to OpenCTI", { version: unknownDeclared })}</span>
-      )}
+      {secondary && <IssueCaption text={secondary} />}
     </span>
   );
+}
+
+/**
+ * The secondary line of an Issues cell (UX round 3 B1 on #931): one line, cut with an ellipsis,
+ * the full sentence in the tooltip, so every row keeps the two-line height at
+ * 1080 and 1728 (Design standards s.3). The shared TruncatedText draws the design-system
+ * tooltip only when the line is cut; the 10 rem cap gives the auto-layout cell a width (13.ak).
+ */
+function IssueCaption({ text }: { text: string }) {
+  return <TruncatedText text={text} className="max-w-[10rem] content-compact text-default-secondary" />;
 }
 
 export default function CtemCaseDetail() {
@@ -349,9 +360,9 @@ export default function CtemCaseDetail() {
         if (r.issue.open) return t_i18n("Open");
         const version = notAffectedOf(r);
         return version ? (
-          <span className="flex flex-col" data-testid="ctem-case-not-affected">
+          <span className="flex min-w-0 flex-col" data-testid="ctem-case-not-affected">
             <span>{t_i18n("Not affected")}</span>
-            <span className="content-compact text-default-secondary">{t_i18n("OpenCTI relates no vulnerability to version {version}", { version })}</span>
+            <IssueCaption text={t_i18n("OpenCTI relates no vulnerability to version {version}", { version })} />
           </span>
         ) : (
           t_i18n("Closed")
