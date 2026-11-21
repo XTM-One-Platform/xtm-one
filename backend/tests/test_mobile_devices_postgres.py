@@ -204,10 +204,10 @@ async def test_read_state_is_shared_by_every_session(no_limits) -> None:
             ).status_code == 422
 
 
-async def test_a_waiting_work_item_entry_is_read_through_the_dismiss_route(
+async def test_a_waiting_work_item_entry_stays_unread_through_the_dismiss_route(
     no_limits: _FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#901, UX B1: the feed's ``work_item:<uuid>`` id is accepted by dismiss and reads it."""
+    """#901 accepts the feed's ``work_item:<uuid>`` id on dismiss; #991 keeps it unread while it waits."""
     from app.services import work_item
 
     item_id = str(uuid.uuid4())
@@ -224,16 +224,17 @@ async def test_a_waiting_work_item_entry_is_read_through_the_dismiss_route(
         assert (await client.post(f"/api/v1/notifications/{entry['id']}/dismiss")).status_code == 204
         after = (await client.get("/api/v1/notifications")).json()
         again = next(i for i in after["items"] if i["id"] == entry["id"])
-        assert again["unread"] is False
+        assert again["unread"] is True
+        assert again["awaiting_answer"] is True
         imported = await client.post("/api/v1/notifications/read", json={"dismissed_ids": [entry["id"]]})
         assert imported.status_code == 200
         assert (await client.post("/api/v1/notifications/work_item:nope/dismiss")).status_code == 404
 
 
-async def test_mark_all_read_never_unreads_an_entry_read_one_by_one(
+async def test_mark_all_read_never_reads_a_waiting_decision(
     no_limits: _FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#901, UX B4: "Mark all read" keeps the dismissed ids of pinned kinds."""
+    """#991: neither a dismiss nor "Mark all read" reads a decision that still waits for an answer."""
     from app.services import work_item
 
     item_id = str(uuid.uuid4())
@@ -254,11 +255,11 @@ async def test_mark_all_read_never_unreads_an_entry_read_one_by_one(
                 assert (await client.post(f"/api/v1/notifications/{entry['id']}/dismiss")).status_code == 204
             read = (await client.post("/api/v1/notifications/read", json={})).json()
             ids = {i["id"] for i in pinned}
-            assert all(i["unread"] is False for i in read["items"] if i["id"] in ids)
-            assert read["unread_count"] == 0
+            assert all(i["unread"] is True for i in read["items"] if i["id"] in ids)
+            assert read["unread_count"] == len(ids)
             after = (await client.get("/api/v1/notifications")).json()
-            assert all(i["unread"] is False for i in after["items"] if i["id"] in ids)
-            assert after["unread_count"] == 0
+            assert all(i["unread"] is True for i in after["items"] if i["id"] in ids)
+            assert after["unread_count"] == len(ids)
 
 
 async def _paused_run(db, owner: User) -> AssignmentRun:

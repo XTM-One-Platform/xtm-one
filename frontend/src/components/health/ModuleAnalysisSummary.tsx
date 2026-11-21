@@ -27,7 +27,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@filigran/design-system";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { OverflowMenu } from "@/components/ui/overflow-menu";
+import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { useRunHealthAnalysis } from "@/hooks/api/useHealthApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
@@ -94,41 +94,65 @@ function useClampCut(text: string) {
 }
 
 /** Why Analyse now is not offered, in plain words; null when it may run. */
-function runBlockedReason(overview: HealthAnalysisOverview, aiOff: boolean, t: (key: string) => string): string | null {
+function runBlockedReason(overview: HealthAnalysisOverview | undefined, aiOff: boolean, t: (key: string) => string): string | null {
   if (aiOff) return t(ANALYSIS_REASON_LABELS.ai_off);
-  if (!overview.enabled) return t(ANALYSIS_REASON_LABELS.disabled);
+  if (!overview?.enabled) return t(ANALYSIS_REASON_LABELS.disabled);
   if (!overview.ceilings_set) return t(ANALYSIS_REASON_LABELS.ceiling_not_set);
   return null;
 }
 
-function AnalysisActions({
-  module,
-  overview,
-  run,
-}: {
-  module: HealthModule;
-  overview: HealthAnalysisOverview;
-  run: ReturnType<typeof useRunHealthAnalysis>;
-}) {
+/** The "Analyse now" item of a module card's AI block menu, with its pending and failed state. */
+export function useAnalyseNowItem(module: HealthModule, overview: HealthAnalysisOverview | undefined) {
   const { t_i18n } = useFormatter();
   const aiOff = useAiActionDisabled();
+  const run = useRunHealthAnalysis();
   const blocked = runBlockedReason(overview, aiOff, t_i18n);
+  const item: OverflowMenuItem = {
+    id: `health-analysis-run-${module}`,
+    label: t_i18n("Analyse now"),
+    icon: SparklesGlyph,
+    onSelect: () => run.mutate(module),
+    disabled: blocked !== null,
+    disabledReason: blocked ?? undefined,
+  };
+  return { item, busy: run.isPending, failed: run.isError };
+}
+
+/**
+ * The one header of a module card's AI block, whatever its body (UX round 6 B1 on #953): the AI glyph,
+ * the caption in the caption style and the card's AI actions menu. The analysis summary and the Module
+ * Analyst's investigation line both render it, so the block keeps one anatomy across a row.
+ */
+export function AiBlockHeader({
+  module,
+  caption,
+  items,
+  busy,
+}: {
+  module: HealthModule;
+  caption: string;
+  items: OverflowMenuItem[];
+  busy: boolean;
+}) {
+  const { t_i18n } = useFormatter();
   return (
-    <OverflowMenu
-      label={t_i18n("{module} actions", { module: t_i18n(HEALTH_MODULE_LABELS[module]) })}
-      busy={run.isPending}
-      side="auto"
-      items={[
-        {
-          id: `health-analysis-run-${module}`,
-          label: t_i18n("Analyse now"),
-          icon: SparklesGlyph,
-          onSelect: () => run.mutate(module),
-          disabled: blocked !== null,
-          disabledReason: blocked ?? undefined,
-        },
-      ]}
-    />
+    <div className="flex items-center justify-between gap-2" data-testid={`health-ai-block-header-${module}`}>
+      <span className="inline-flex items-center gap-1.5 content-caption font-medium uppercase tracking-wider text-default-secondary">
+        <SparklesGlyph className="shrink-0" />
+        {caption}
+      </span>
+      <OverflowMenu label={t_i18n("{module} actions", { module: t_i18n(HEALTH_MODULE_LABELS[module]) })} busy={busy} side="auto" items={items} />
+    </div>
+  );
+}
+
+/** The line an AI block shows when its last action could not be started. */
+export function AnalysisStartFailed() {
+  const { t_i18n } = useFormatter();
+  return (
+    <p role="alert" className="content-compact text-feedback-error-primary">
+      {t_i18n("The analysis could not be started.")}
+    </p>
   );
 }
 
@@ -189,38 +213,50 @@ function Outcome({ module, analysis }: { module: HealthModule; analysis: HealthM
 }
 
 /**
- * The AI block of one module card: nothing for a module with no open finding; else its title, the
- * actions menu and the outcome of the latest analysis. Nothing either while the analysis is off.
+ * The AI block of one module card: nothing for a module with no open finding; else its header (the
+ * actions menu holds Analyse now, then the card's other AI actions) and the outcome of the latest
+ * analysis. Nothing either while the analysis is off.
  */
 export function ModuleAnalysisSummary({
   module,
   hasOpenFindings,
   overview,
+  extraItems = [],
+  extraBusy = false,
 }: {
   module: HealthModule;
   hasOpenFindings: boolean;
   overview: HealthAnalysisOverview | undefined;
+  /** The card's other AI actions (Investigate now on an analyst module), after Analyse now. */
+  extraItems?: OverflowMenuItem[];
+  extraBusy?: boolean;
 }) {
-  const { t_i18n } = useFormatter();
-  const run = useRunHealthAnalysis();
   // Analysis off: there is no outcome to show, and the settings say why.
   const analysis = analysisRowFor(module, hasOpenFindings, overview);
   if (!analysis || !overview) return null;
+  return <SummaryBlock module={module} analysis={analysis} overview={overview} extraItems={extraItems} extraBusy={extraBusy} />;
+}
+
+function SummaryBlock({
+  module,
+  analysis,
+  overview,
+  extraItems,
+  extraBusy,
+}: {
+  module: HealthModule;
+  analysis: HealthModuleAnalysis;
+  overview: HealthAnalysisOverview;
+  extraItems: OverflowMenuItem[];
+  extraBusy: boolean;
+}) {
+  const { t_i18n } = useFormatter();
+  const analyse = useAnalyseNowItem(module, overview);
   return (
     <section className="space-y-1.5" aria-label={t_i18n("AI summary")} data-testid={`health-analysis-${module}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 content-caption font-medium uppercase tracking-wider text-default-secondary">
-          <SparklesGlyph className="shrink-0" />
-          {t_i18n("AI summary")}
-        </span>
-        <AnalysisActions module={module} overview={overview} run={run} />
-      </div>
+      <AiBlockHeader module={module} caption={t_i18n("AI summary")} items={[analyse.item, ...extraItems]} busy={analyse.busy || extraBusy} />
       <Outcome module={module} analysis={analysis} />
-      {run.isError ? (
-        <p role="alert" className="content-compact text-feedback-error-primary">
-          {t_i18n("The analysis could not be started.")}
-        </p>
-      ) : null}
+      {analyse.failed ? <AnalysisStartFailed /> : null}
     </section>
   );
 }
