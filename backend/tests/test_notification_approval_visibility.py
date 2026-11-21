@@ -23,6 +23,7 @@ from fastapi import HTTPException
 
 from app.api.v1.assignments import _refuse_not_awaiting
 from app.tools.base import HumanInputRequestedError
+from tests import app_sources
 
 BACKEND = Path(__file__).resolve().parent.parent
 
@@ -60,12 +61,8 @@ def test_every_proposal_raise_supplies_a_question():
     is being asked — would silently un-list every approval in the header.
     """
     offenders = []
-    for path in (BACKEND / "app").rglob("*.py"):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:  # pragma: no cover - defensive
-            continue
-        for node in ast.walk(tree):
+    for path in app_sources.python_files():
+        for node in app_sources.walk(app_sources.tree(path)):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
@@ -92,12 +89,8 @@ def test_the_sweep_actually_finds_the_gated_raise():
     """Guards the guard: if the walk stopped matching, the test above would
     pass by finding nothing — which is how this kind of check goes stale."""
     found = 0
-    for path in (BACKEND / "app").rglob("*.py"):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:  # pragma: no cover - defensive
-            continue
-        for node in ast.walk(tree):
+    for path in app_sources.python_files():
+        for node in app_sources.walk(app_sources.tree(path)):
             if (
                 isinstance(node, ast.Call)
                 and getattr(node.func, "id", None) == "HumanInputRequestedError"
@@ -185,12 +178,8 @@ def test_there_is_exactly_one_standing_approval_grant():
     `test_tool_approval_preferences.py` and do not need repeating.
     """
     grants = []
-    for path in (BACKEND / "app").rglob("*.py"):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError:  # pragma: no cover - defensive
-            continue
-        for node in ast.walk(tree):
+    for path in app_sources.python_files():
+        for node in app_sources.walk(app_sources.tree(path)):
             if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and (
                 node.name == "_grant_standing_approvals"
             ):

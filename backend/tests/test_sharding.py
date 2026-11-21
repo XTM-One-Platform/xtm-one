@@ -128,3 +128,15 @@ def test_a_split_reads_tests_or_files(value):
 def test_an_unknown_split_is_refused():
     with pytest.raises(ValueError, match="PYTEST_SHARD_SPLIT"):
         parse_split("modules")
+
+
+def test_the_table_a_job_deals_by_is_the_one_its_run_handed_out(tmp_path):
+    from tests.sharding import DURATIONS_PATH, durations_path
+
+    assert durations_path(None) == DURATIONS_PATH
+    table = tmp_path / "unit.json"
+    table.write_text("{}", encoding="utf-8")
+    assert durations_path(str(table)) == table
+    # A job that fell back alone would deal the files unlike its siblings: one would run twice or never.
+    with pytest.raises(ValueError, match="PYTEST_SHARD_DURATIONS"):
+        durations_path(str(tmp_path / "missing.json"))
