@@ -183,6 +183,8 @@ class TechStackEntry(BaseModel):
     product: str = Field(min_length=1, max_length=200)
     vendor: str = Field(default="", max_length=200)
     cpe: str = Field(default="", max_length=300)
+    #: The version the organization runs, optional (CTEM-11): cases then name the version to reach.
+    version: str = Field(default="", max_length=100)
 
 
 class AiSystem(BaseModel):

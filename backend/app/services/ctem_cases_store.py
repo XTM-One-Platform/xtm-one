@@ -85,6 +85,9 @@ async def apply_recompute(
     """
     now = now or datetime.now(UTC)
     issues = list(issues)
+    # A member the declared version puts outside every affected range is closed with that reason (CTEM-11).
+    not_affected = {i.member_id: i.not_affected for i in issues if i.not_affected}
+    closed = list(dict.fromkeys([*closed, *not_affected]))
     cases = await _scope_cases(db, organization_id, vertical)
     members = await _members(db, [c.id for c in cases])
     by_id = {str(c.id): c for c in cases}
@@ -138,7 +141,8 @@ async def apply_recompute(
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
         for member_id in plan.resolve:
             rows[member_id].open = False
-            db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=rules.CLOSED_AT_SOURCE, at=now))
+            evidence = not_affected.get(member_id) or rules.CLOSED_AT_SOURCE
+            db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=evidence, at=now))
         if plan.add or plan.reopen or plan.resolve:
             counts["updated"] += 1
         if plan.new_state:
@@ -157,7 +161,9 @@ async def apply_recompute(
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
             case.state = plan.new_state
             case.state_since = now
-    counts["no_known_fix"] = len(rules.group_issues(issues).no_known_fix)
+    grouping = rules.group_issues(issues)
+    counts["no_known_fix"] = len(grouping.no_known_fix)
+    counts["not_affected"] = len(grouping.not_affected)
     return counts
 
 

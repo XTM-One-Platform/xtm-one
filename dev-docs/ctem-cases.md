@@ -120,6 +120,42 @@ Keys are normalized (lower case, trimmed, vendor folded to the stack entry).
 The same vulnerability on two products yields two memberships, one per key.
 A configuration change is R1 only (a course of action); it is never guessed.
 
+### 4.2bis Fixed version and declared version (CTEM-11, #894)
+
+The reader fills `fixed_version` per (vulnerability, stack product), first
+source that answers wins (`services/ctem_fixed_version.py`, pure):
+
+1. OpenCTI's affected ranges on the Vulnerability (`opencti_ranges`). OpenCTI
+   carries none today; the hook answers nothing until the range attribute of
+   CTEM-09 lands, then is read here first.
+2. A course of action that is a plain upgrade ("Upgrade to 9.0.98",
+   `version_from_course_of_action`): the case stays R1, its `fixed_version`
+   is the named version.
+3. Ranges a connected enrichment provider served, in the NVD 2.0 shape
+   (`configurations[].nodes[].cpeMatch[]`, `ranges_from_nvd2`), passed to
+   `opencti_issues(provider_ranges=...)`. The provider read in the reader is
+   the next slice; the parser and the hook are in place.
+4. Nothing: "fixed version unknown", the key stays `@latest`.
+
+A tech stack entry takes an optional `version` (the version the organization
+runs). With it:
+
+- the fix taken is the smallest fix of the ranges that contain the declared
+  version and lie above it;
+- the upgrade members of one product fold onto ONE key, the smallest version
+  that fixes every member (the greatest of their fixed versions), titled
+  "Upgrade <vendor product> to <version>";
+- a member whose declared version is outside every known range is "not
+  affected: version <v> is outside the affected ranges": it opens no case, is
+  counted `not_affected` and listed in the recompute answer
+  (`not_affected_issues`, at most 50), and an existing member that turns not
+  affected is closed with that reason as evidence.
+
+Without a declared version nothing changes (two fixed versions stay two
+cases, as section 2 says). Versions compare part by part (numbers as numbers,
+`rc`/`beta`/`alpha`/`dev` before the release, a post-release letter after it,
+an epoch `1:` and a `v` prefix read); distribution backports are not visible.
+
 ### 4.3 Recompute
 
 - Runs on demand: `POST /api/v1/ctem-cases/recompute` (the list's "Recompute"),
