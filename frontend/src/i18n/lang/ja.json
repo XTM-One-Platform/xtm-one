@@ -19985,7 +19985,7 @@
   "Hide done and cancelled": "完了とキャンセルを非表示",
   "Show done and cancelled": "完了とキャンセルを表示",
   "{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}": "{count, plural, other {依存関係のない項目 # 件 (リスト表示に表示)}}",
-  "The first {count} items are drawn: narrow the filters to see the rest.": "最初の {count} 件を表示しています。残りを見るにはフィルターを絞り込んでください。",
+  "Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.": "最初の {count, plural, other {# 件}}を表示しています。残りを見るにはフィルターを絞り込んでください。",
   "Clear focus": "フォーカスを解除",
   "No dependency to draw": "表示する依存関係はありません",
   "None of the items these filters match waits for another item, a pull request, a deployment or a person.": "このフィルターに一致する項目は、他の項目、プルリクエスト、デプロイ、人のいずれも待機していません。",
