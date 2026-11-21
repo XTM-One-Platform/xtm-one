@@ -92,9 +92,7 @@ def _registration_of(finding: Any) -> str | None:
     return str(value) if value else None
 
 
-async def _list_module_findings(
-    db: AsyncSession, reader: Reader, registration_id: str = "", limit: int = 50
-) -> str:
+async def _list_module_findings(db: AsyncSession, reader: Reader, registration_id: str = "", limit: int = 50) -> str:
     from sqlalchemy import select
 
     from app.models.health_check import STATUS_OPEN, HealthCheckFinding
@@ -226,11 +224,7 @@ async def _record_finding_recommendation(
     if cycle is None or cycle.target_type != "module" or cycle.target_id is None:
         raise RefusalError(_NOT_IN_CYCLE)
     finding = await db.get(HealthCheckFinding, str(finding_id or "").strip())
-    if (
-        finding is None
-        or finding.module not in MODULE_PROVIDERS
-        or _registration_of(finding) != str(cycle.target_id)
-    ):
+    if finding is None or finding.module not in MODULE_PROVIDERS or _registration_of(finding) != str(cycle.target_id):
         # The same answer for a finding of another registration: no existence leak.
         raise RefusalError("Error: finding not found.")
     if finding.status != STATUS_OPEN:

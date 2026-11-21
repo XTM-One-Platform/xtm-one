@@ -22,7 +22,7 @@ def _reader(*, role: str | None = None, admin: bool = False, cycle_id: uuid.UUID
 
 
 def test_the_group_offers_one_read_and_one_write():
-    definitions, executor = tools.build_health_module_tools("")
+    definitions, _executor = tools.build_health_module_tools("")
     assert [d.name for d in definitions] == ["list_module_findings", "record_finding_recommendation"]
     assert all(d.source == "builtin:health_modules" for d in definitions)
     read_only, read_executor = tools.build_health_module_tools("", read_only=True)
@@ -81,7 +81,11 @@ async def test_a_recommendation_outside_a_cycle_is_refused():
 async def test_text_and_confidence_are_bounded(text, confidence):
     with pytest.raises(RefusalError):
         await tools._record_finding_recommendation(
-            None, _reader(role="module_analyst", cycle_id=uuid.uuid4()), finding_id="f", text=text, confidence=confidence
+            None,
+            _reader(role="module_analyst", cycle_id=uuid.uuid4()),
+            finding_id="f",
+            text=text,
+            confidence=confidence,
         )
 
 
@@ -98,7 +102,9 @@ def test_evidence_is_trimmed_to_its_fields():
     cleaned = tools._clean_evidence(
         [{"tool": " list_opencrq_jobs ", "object_ids": [1, "a"], "values": {"failed": 3}, "extra": "dropped"}]
     )
-    assert cleaned == [{"tool": "list_opencrq_jobs", "object_ids": ["1", "a"], "values": {"failed": 3}, "read_at": None}]
+    assert cleaned == [
+        {"tool": "list_opencrq_jobs", "object_ids": ["1", "a"], "values": {"failed": 3}, "read_at": None}
+    ]
     assert json.dumps(cleaned)
 
 
