@@ -10,9 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api, notFoundIsOrdinary } from "@/lib/api";
 import { ctemCasesPollInterval, ctemCasesRetry } from "./useCtemCasesApi";
 
-export const CTEM_SIGNAL_STATES = ["new", "confirmed", "to_validate", "discarded", "watchlist", "case_opened"] as const;
+const CTEM_SIGNAL_STATES = ["new", "confirmed", "to_validate", "discarded", "watchlist", "case_opened"] as const;
 export type CtemSignalState = (typeof CTEM_SIGNAL_STATES)[number];
-export type CtemLens = "inside" | "outside" | "world";
+type CtemLens = "inside" | "outside" | "world";
 
 /** A decision record (dev-docs/ctem-loop-visibility.md section 3), written by the reconcile and scope gate. */
 export interface CtemDecisionRecord {

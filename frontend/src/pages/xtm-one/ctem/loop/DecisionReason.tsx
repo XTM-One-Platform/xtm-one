@@ -40,7 +40,7 @@ const SIGNAL_STATE_SEVERITY: Record<CtemSignalState, ChipSeverity> = {
  */
 const REASON_SENTENCE: Record<string, string> = {};
 
-export function SignalStateChip({ state }: { state: CtemSignalState }) {
+function SignalStateChip({ state }: { state: CtemSignalState }) {
   const { t_i18n } = useFormatter();
   return <Chip label={t_i18n(SIGNAL_STATE_LABEL[state] ?? state)} severity={SIGNAL_STATE_SEVERITY[state] ?? "neutral"} className="shrink-0" />;
 }

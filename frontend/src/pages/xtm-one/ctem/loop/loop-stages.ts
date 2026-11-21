@@ -22,9 +22,9 @@ export const LOOP_STAGES = [
   { key: "close", label: "Close and feed back" },
 ] as const;
 
-export type LoopStageKey = (typeof LOOP_STAGES)[number]["key"];
+type LoopStageKey = (typeof LOOP_STAGES)[number]["key"];
 /** passed: done; current: the object waits here; stopped: the loop ends here, with its reason. */
-export type LoopStageStatus = "passed" | "current" | "stopped" | "not_reached";
+type LoopStageStatus = "passed" | "current" | "stopped" | "not_reached";
 
 export interface LoopStageView {
   key: LoopStageKey;
