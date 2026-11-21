@@ -309,3 +309,24 @@ async def test_a_ticket_reference_is_written_once_and_updated_in_place(env: Simp
     assert (
         await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="A", status="x")
     ).startswith("Refused:")
+
+
+async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused(env: SimpleNamespace) -> None:
+    """CTEM-34 (#916): the loop trace shows every gate, passed automatically or waited."""
+    body = json.loads(
+        await env.call(
+            "update_ctem_case",
+            case_id=str(env.case.id),
+            gate={"key": "ctem.remediation.decision", "outcome": "passed_automatically", "by": "level low"},
+        )
+    )
+    assert body["updated"]["state"] == "needs_attention"
+    gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [(g.from_value, g.to_value, g.reason) for g in gates] == [
+        ("ctem.remediation.decision", "passed_automatically", "level low")
+    ]
+    commits = env.db.commits
+    refused = await env.call(
+        "update_ctem_case", case_id=str(env.case.id), gate={"key": "ticket.create", "outcome": "waited"}
+    )
+    assert refused.startswith("Refused:") and env.db.commits == commits

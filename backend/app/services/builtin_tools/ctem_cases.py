@@ -212,6 +212,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         evidence: str = "",
         note: str = "",
         exploitation: list[dict[str, Any]] | None = None,
+        gate: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -258,6 +259,18 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 if exploitation is not None:
                     case_loop.record_exploitation(db, case, exploitation, actor=agent_id)
+                if gate is not None:
+                    if not isinstance(gate, dict):
+                        raise rules.CaseRuleError("gate must be an object with key and outcome")
+                    case_loop.record_gate(
+                        db,
+                        case,
+                        key=str(gate.get("key") or ""),
+                        outcome=str(gate.get("outcome") or ""),
+                        by=str(gate.get("by") or ""),
+                        option=str(gate.get("option") or ""),
+                        actor=agent_id,
+                    )
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
                 return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
@@ -404,7 +417,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step. in_progress needs an owner; resolved needs evidence "
+                "reading of the triage step, or a loop gate passed or waited. in_progress needs an owner; "
+                "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
             ),
@@ -432,6 +446,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             },
                             "required": ["asset", "techniques"],
                         },
+                    },
+                    "gate": {
+                        "type": "object",
+                        "description": (
+                            "A gate of the fleet's catalog: passed automatically (by: level or pin), "
+                            "waited, or answered (by: who, option)."
+                        ),
+                        "properties": {
+                            "key": {"type": "string", "description": "The gate key, e.g. ctem.mobilize."},
+                            "outcome": {"type": "string", "enum": ["passed_automatically", "waited", "answered"]},
+                            "by": {"type": "string"},
+                            "option": {"type": "string"},
+                        },
+                        "required": ["key", "outcome"],
                     },
                 },
                 "required": ["case_id"],

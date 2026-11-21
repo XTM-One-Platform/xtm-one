@@ -419,3 +419,93 @@ class TestTurnFarmingIsBounded:
         src = inspect.getsource(delegation.delegate)
         assert "max_continuations" not in src
         assert "turn_limit" not in src
+
+
+class TestTaskIdPrefix:
+    """#978: a shortened id of the caller's own task names it; anything else
+    is refused with the full-id remedy, never read as another caller's."""
+
+    class _PrefixDb(RecordingDb):
+        """Exact lookup misses; the prefix lookup answers *matches*."""
+
+        def __init__(self, matches):
+            super().__init__(owns_continuation=False)
+            self.matches = matches
+            self.issued = []
+
+        async def execute(self, stmt):
+            self.issued.append(stmt)
+            matches = self.matches
+
+            class _Scalars:
+                def all(self):
+                    return matches
+
+                def first(self):
+                    return None
+
+            class _Result:
+                def scalar_one_or_none(self):
+                    return None
+
+                def scalars(self):
+                    return _Scalars()
+
+            return _Result()
+
+    @pytest.mark.asyncio
+    async def test_a_unique_owned_prefix_resolves(self):
+        full = "99c39a2e-a078-42d8-9196-a6319f2d5bfa"
+        db = self._PrefixDb([full])
+        got = await delegation._resolve_owned_prefix(db, integration_row(), settings_row(), None, "99c39a2e")
+        assert got == full
+
+    @pytest.mark.asyncio
+    async def test_an_ambiguous_prefix_does_not_resolve(self):
+        db = self._PrefixDb(["99c39a2e-aaaa", "99c39a2e-bbbb"])
+        assert await delegation._resolve_owned_prefix(db, integration_row(), settings_row(), None, "99c39a2e") is None
+
+    @pytest.mark.asyncio
+    async def test_a_short_prefix_is_never_looked_up(self):
+        db = self._PrefixDb(["99c39a2e-aaaa"])
+        assert await delegation._resolve_owned_prefix(db, integration_row(), settings_row(), None, "99c3") is None
+        assert db.issued == []
+
+    @pytest.mark.asyncio
+    async def test_the_prefix_lookup_is_scoped_like_the_ownership_check(self):
+        import uuid
+
+        calling = delegation.CallingRun(agent_id=uuid.uuid4(), user_id=uuid.uuid4(), run_ref=uuid.uuid4())
+        db = self._PrefixDb([])
+        await delegation._resolve_owned_prefix(
+            db, integration_row(), settings_row(id=uuid.uuid4()), calling, "99c39a2e"
+        )
+        where = str(db.issued[0].compile())
+        for column in ("integration_id", "partner_task_id", "user_id", "target_id", "run_ref"):
+            assert f"a2a_delegations.{column}" in where, column
+        assert "LIKE" in where
+
+    @pytest.mark.asyncio
+    async def test_delegate_collects_through_a_resolved_prefix(self, monkeypatch):
+        full = "99c39a2e-a078-42d8-9196-a6319f2d5bfa"
+        sent = []
+
+        def handler(request):
+            sent.append(request.content.decode())
+            return rpc({"id": full, "status": {"state": "input-required", "message": {"parts": [{"text": "?"}]}}})
+
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(handler))
+        result = await delegation.delegate(
+            self._PrefixDb([full]), integration_row(), settings_row(), message="go on", continue_task_id="99c39a2e"
+        )
+        assert result.partner_reason != "continuation_not_owned"
+        assert sent and full in sent[0]
+
+    @pytest.mark.asyncio
+    async def test_an_unresolved_id_names_the_full_id_remedy(self, monkeypatch):
+        monkeypatch.setattr(httpx, "AsyncClient", client_for(lambda r: rpc({})))
+        result = await delegation.delegate(
+            self._PrefixDb([]), integration_row(), settings_row(), message="x", continue_task_id="99c39a2e"
+        )
+        assert result.partner_reason == "continuation_not_owned"
+        assert "full task id" in result.detail
