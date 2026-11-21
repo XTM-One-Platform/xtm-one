@@ -50,8 +50,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 MAX_QUESTION_CHARS = 500
 MAX_CONTEXT_CHARS = 800
@@ -184,7 +186,10 @@ _GITHUB = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/(pull|issues)/(\d+)"
 
 def _link_label(url: str) -> str | None:
     """The button text of a source URL the write path recognises; ``None`` for any other URL."""
-    host = url.split("/", 3)[2].lower() if url.count("/") >= 2 else ""
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return None
     if host.endswith(".atlassian.net"):
         key = _JIRA_KEY.search(url)
         return key.group(1) if key else "Jira"
@@ -194,34 +199,47 @@ def _link_label(url: str) -> str | None:
             kind = "PR" if match.group(3) == "pull" else "Issue"
             return f"{match.group(2)} {kind} #{match.group(4)}"
         return None
-    if host.endswith("notion.so") or host.endswith("notion.site"):
+    if host in ("notion.so", "notion.site") or host.endswith((".notion.so", ".notion.site")):
         return "Notion page"
-    if host.endswith("concordnow.com"):
+    if host == "concordnow.com" or host.endswith(".concordnow.com"):
         return "Concord document"
     return None
+
+
+def _strings(value: object) -> Iterator[str]:
+    """Every string of *value*, nested dict values and list items included, decoded (no JSON escapes)."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _strings(item)
+    elif value is not None:
+        yield str(value)
 
 
 def source_links(*texts: object) -> list[dict[str, str]]:
     """The Jira, GitHub, Notion and Concord links found in *texts*, first seen first (#834).
 
     Deterministic, no model: what the write path and the backfill put in
-    ``ask.links`` when the agent wrote none. A payload is read as its JSON text.
+    ``ask.links`` when the agent wrote none. A payload is read string by string,
+    so a JSON escape (``\\n``) never runs into a URL.
     """
     links: list[dict[str, str]] = []
     seen: set[str] = set()
     for text in texts:
-        if text in (None, "", {}, []):
-            continue
-        raw = text if isinstance(text, str) else json.dumps(text, ensure_ascii=False, default=str)
-        for match in _URL.finditer(raw):
-            url = match.group(0).rstrip(".,;:!?")[:MAX_URL_CHARS]
-            label = _link_label(url)
-            if label is None or url in seen:
-                continue
-            seen.add(url)
-            links.append({"label": label, "url": url})
-            if len(links) >= MAX_LINKS:
-                return links
+        for raw in _strings(text):
+            for match in _URL.finditer(raw):
+                url = match.group(0).rstrip(".,;:!?")[:MAX_URL_CHARS]
+                label = _link_label(url)
+                if label is None or url in seen:
+                    continue
+                seen.add(url)
+                links.append({"label": label, "url": url})
+                if len(links) >= MAX_LINKS:
+                    return links
     return links
 
 

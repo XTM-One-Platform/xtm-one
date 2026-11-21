@@ -54,6 +54,24 @@ def test_links_are_deduplicated_bounded_and_read_from_a_payload() -> None:
     assert len(source_links(many)) == MAX_LINKS
 
 
+def test_a_host_is_parsed_never_matched_on_the_text_after_its_slashes() -> None:
+    assert source_links("https://evil.example#x.atlassian.net") == []
+    assert source_links("https://evil.example?q=.atlassian.net/browse/FIN-1") == []
+    assert source_links("https://notnotion.so/page https://evilconcordnow.com/doc") == []
+    assert source_links("https://user@filigran.atlassian.net:443/browse/FIN-2") == [
+        {"label": "FIN-2", "url": "https://user@filigran.atlassian.net:443/browse/FIN-2"}
+    ]
+    assert source_links("https://notion.so/page") == [{"label": "Notion page", "url": "https://notion.so/page"}]
+
+
+def test_a_payload_url_ends_at_its_string_never_at_a_json_escape() -> None:
+    payload = {"note": f"{JIRA}\nnext line", "nested": [{"pr": "https://github.com/XTM-One-Platform/xtm-one/pull/9"}]}
+    assert source_links(payload) == [
+        {"label": "FIN-798", "url": JIRA},
+        {"label": "xtm-one PR #9", "url": "https://github.com/XTM-One-Platform/xtm-one/pull/9"},
+    ]
+
+
 def test_the_agents_own_links_are_kept() -> None:
     mine = {**CARD, "links": [{"label": "Contract", "url": "https://example.com/c"}]}
     assert with_source_links(mine, JIRA) is mine
