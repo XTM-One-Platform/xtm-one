@@ -254,7 +254,9 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         prompt=(
             "List the Platform Health cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "
-            "and everything skipped with its reason. Use the cycles' own figures and statuses; a cycle that "
+            "and everything skipped with its reason. Add a Modules part for the module investigation cycles: "
+            "cycles run, recommendations attached, agentic findings opened and resolved, and the Module Analyst's "
+            "spend against its own ceiling. Use the cycles' own figures and statuses; a cycle that "
             "is not completed is never reported as completed. Write in the language the trigger names (`language`)."
         ),
         show_in_digest=True,

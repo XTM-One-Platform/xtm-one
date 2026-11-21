@@ -78,6 +78,10 @@ class CycleDigest:
     proposals: dict[str, Any] | None = None
     budget: dict[str, Any] = field(default_factory=dict)
     dry_run_writes: int | None = None
+    #: A Module Analyst cycle (#101 S14d, dev-docs 12.7): recommendations it attached, by confidence.
+    recommendations: dict[str, int] | None = None
+    #: A Module Analyst cycle: agentic findings of its registration opened and resolved in the window.
+    agentic_findings: dict[str, int] | None = None
     skipped: list[dict[str, Any]] = field(default_factory=list)
     #: Sections a lower level could not give (not installed, failed): shown as such.
     unavailable: list[str] = field(default_factory=list)
@@ -160,6 +164,82 @@ async def _proposals(db: AsyncSession, w: Window) -> dict[str, Any] | None:
     }
 
 
+async def _recommendations(db: AsyncSession, w: Window) -> dict[str, int] | None:
+    """Recommendations attached to the module registration's findings in the window, by confidence."""
+    from app.models.health_module_analyst import RECOMMENDATION_CONFIDENCES, HealthFindingRecommendation
+
+    if w.target_type != "module" or w.target_id is None:
+        return None
+    rows = await db.execute(
+        select(HealthFindingRecommendation.confidence, func.count())
+        .where(
+            HealthFindingRecommendation.registration_id == w.target_id,
+            HealthFindingRecommendation.created_at >= w.since,
+            HealthFindingRecommendation.created_at < w.until,
+        )
+        .group_by(HealthFindingRecommendation.confidence)
+    )
+    counts = {confidence: 0 for confidence in RECOMMENDATION_CONFIDENCES}
+    counts.update({str(confidence): int(count) for confidence, count in rows.all()})
+    return {"attached": sum(counts.values()), **counts}
+
+
+async def _agentic_findings(db: AsyncSession, w: Window) -> dict[str, int] | None:
+    """Agentic findings (``<module>.agentic.<slug>``) of the registration opened and resolved in the window."""
+    from app.models.health_check import HealthCheckFinding
+
+    if w.target_type != "module" or w.target_id is None:
+        return None
+    scoped = (
+        HealthCheckFinding.check_id.contains(".agentic."),
+        HealthCheckFinding.subject["registration_id"].astext == str(w.target_id),
+    )
+    opened = await db.scalar(
+        select(func.count()).where(
+            *scoped, HealthCheckFinding.first_seen >= w.since, HealthCheckFinding.first_seen < w.until
+        )
+    )
+    resolved = await db.scalar(
+        select(func.count()).where(
+            *scoped, HealthCheckFinding.resolved_at >= w.since, HealthCheckFinding.resolved_at < w.until
+        )
+    )
+    return {"opened": int(opened or 0), "resolved": int(resolved or 0)}
+
+
+async def _module_analyst_budget(db: AsyncSession, run: Any, cap_tokens: int | None) -> dict[str, Any]:
+    """A Module Analyst cycle's spend: its run's traces against its own per-cycle cap (dev-docs 12.5).
+
+    Its cycle row carries nothing (``cycles._book_runs`` books it at zero on its own ledger), so
+    the fleet figures would read 0 against the fleet cap; ``ledger`` says which ceiling applies.
+    """
+    from decimal import Decimal
+
+    from app.models.llm_trace import LLMTrace
+
+    tokens, cost = 0, Decimal(0)
+    if run is not None:
+        used = func.coalesce(
+            LLMTrace.total_tokens,
+            func.coalesce(LLMTrace.input_tokens, 0) + func.coalesce(LLMTrace.output_tokens, 0),
+        )
+        row = (
+            await db.execute(
+                select(func.coalesce(func.sum(used), 0), func.coalesce(func.sum(LLMTrace.total_cost), 0)).where(
+                    LLMTrace.assignment_run_id == run.id
+                )
+            )
+        ).one()
+        tokens, cost = int(row[0] or 0), Decimal(row[1] or 0)
+    return {
+        "ledger": "module_analyst",
+        "spent_tokens": tokens,
+        "spent_cost_usd": str(cost),
+        "cap_tokens": cap_tokens,
+        "cap_cost_usd": None,
+    }
+
+
 def _target(w: Window) -> tuple[str, uuid.UUID] | None:
     return (w.target_type, w.target_id) if w.target_id is not None else None
 
@@ -171,6 +251,8 @@ _SECTIONS: Final[dict[str, Section]] = {
     "experiments": _experiments,
     "proposals": _proposals,
     "dry_run_writes": _dry_run_writes,
+    "recommendations": _recommendations,
+    "agentic_findings": _agentic_findings,
 }
 #: Which sections each specialist's cycle reports.
 _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
@@ -178,8 +260,8 @@ _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
     "quality_analyst": ("findings", "experiments", "proposals", "dry_run_writes"),
     "flow_lab": ("findings", "experiments", "proposals", "dry_run_writes"),
     "experimenter": ("experiments", "proposals", "dry_run_writes"),
-    # Its recommendations section lands with its tools (#101 S14d).
-    "module_analyst": ("proposals", "dry_run_writes"),
+    # What it attached to its registration's findings and the agentic findings it opened (#101 S14d).
+    "module_analyst": ("recommendations", "agentic_findings", "proposals", "dry_run_writes"),
     # An investigation delegates to every specialist; the weekly digest reads cycles.
     "orchestrator": ("findings", "experiments", "proposals", "dry_run_writes"),
 }
@@ -225,7 +307,8 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         target_id=cycle.target_id,
         fleet_agent_ids=await fleet_agent_ids(db),
     )
-    caps = (await load_health_settings(db)).budget
+    health = await load_health_settings(db)
+    caps = health.budget
     digest = CycleDigest(
         cycle_id=str(cycle.id),
         specialist=cycle.specialist,
@@ -239,12 +322,16 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         run_status=run.status if run is not None else None,
         stop_reason=cycle.stop_reason,
         signal=record.signal if record is not None else None,
-        budget={
-            "spent_tokens": int(cycle.spent_tokens),
-            "spent_cost_usd": str(cycle.spent_cost_usd),
-            "cap_tokens": caps.cycle_tokens,
-            "cap_cost_usd": str(caps.cycle_cost_usd) if caps.cycle_cost_usd is not None else None,
-        },
+        budget=(
+            await _module_analyst_budget(db, run, health.module_analyst.cycle_tokens)
+            if cycle.specialist == "module_analyst"
+            else {
+                "spent_tokens": int(cycle.spent_tokens),
+                "spent_cost_usd": str(cycle.spent_cost_usd),
+                "cap_tokens": caps.cycle_tokens,
+                "cap_cost_usd": str(caps.cycle_cost_usd) if caps.cycle_cost_usd is not None else None,
+            }
+        ),
     )
     for name in _SECTIONS_BY_SPECIALIST.get(cycle.specialist, ()):
         value, available = await _load_section(db, name, window)
