@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import redis_client
 from app.models.user import User
+from app.services import ctem_case_loop as case_loop
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_source as source
 from app.services import ctem_cases_store as store
@@ -38,7 +39,23 @@ from app.services.organizations import get_primary
 
 router = APIRouter()
 
-CaseState = Literal["needs_attention", "in_progress", "resolved", "accepted_risk"]
+CaseState = Literal["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"]
+
+
+class CaseValidation(BaseModel):
+    """A validation reference (#857): an OpenAEV run or re-test, a provider re-scan, a directory check.
+
+    ``passed`` or ``not_exposed`` resolves the case (``mitigation_only``: to
+    mitigated, watching, the re-test stays on); ``failed`` reopens a resolved or
+    watched case; ``pending`` only records it.
+    """
+
+    provider: str = Field(min_length=1, max_length=40)
+    kind: str = Field(default="validation", min_length=1, max_length=40)
+    ref: str = Field(min_length=1, max_length=300)
+    result: Literal["passed", "not_exposed", "failed", "pending"]
+    mitigation_only: bool = False
+    note: str | None = Field(default=None, max_length=500)
 
 
 class CaseUpdate(BaseModel):
@@ -348,5 +365,47 @@ async def update_ctem_case(
     await db.commit()
     refreshed = await visible_case(db, case_id, str(user.id), vertical)
     if refreshed is None:  # deleted by a concurrent writer between the commit and the read
+        raise HTTPException(status_code=404, detail="Case not found")
+    return refreshed[1]
+
+
+@router.post("/{case_id}/validations")
+async def record_ctem_case_validation(
+    case_id: uuid.UUID,
+    body: CaseValidation,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Record a validation reference on a case the caller sees (#857); a pass proves, a fail reopens.
+
+    The case then carries a validation plan: it resolves only on a passing
+    reference. Raises ``ctem_case.resolved`` or ``ctem_case.reopened`` after the commit.
+    """
+    _require_xtm_one()
+    vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
+    shown = await visible_case(db, case_id, str(user.id), vertical)
+    if shown is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    (case, _rows, _), _ = shown
+    pending = case_loop.PendingEvents()
+    try:
+        await case_loop.record_validation(
+            db,
+            case,
+            provider=body.provider,
+            kind=body.kind,
+            ref=body.ref,
+            result=body.result,
+            mitigation_only=body.mitigation_only,
+            note=body.note,
+            actor=str(user.id),
+            events=pending,
+        )
+    except rules.CaseRuleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await db.commit()
+    await case_loop.publish_pending(pending)
+    refreshed = await visible_case(db, case_id, str(user.id), vertical)
+    if refreshed is None:
         raise HTTPException(status_code=404, detail="Case not found")
     return refreshed[1]

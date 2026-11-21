@@ -18,6 +18,7 @@ type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
 const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
   needs_attention: "medium",
   in_progress: "info",
+  mitigated_watching: "low",
   resolved: "low",
   accepted_risk: "neutral",
 };
@@ -26,6 +27,7 @@ const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
 export const CASE_STATE_LABEL: Record<CtemCaseState, string> = {
   needs_attention: "Needs attention",
   in_progress: "In progress",
+  mitigated_watching: "Mitigated, watching",
   resolved: "Resolved",
   accepted_risk: "Accepted risk",
 };

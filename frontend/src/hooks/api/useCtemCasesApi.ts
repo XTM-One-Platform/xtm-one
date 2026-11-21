@@ -11,7 +11,7 @@ import { api, notFoundIsOrdinary } from "@/lib/api";
 import { REFETCH_INTERVAL_SLOW } from "@/lib/constants";
 import { isNetworkError, retryQuery } from "@/lib/query-outage-policy";
 
-export const CTEM_CASE_STATES = ["needs_attention", "in_progress", "resolved", "accepted_risk"] as const;
+export const CTEM_CASE_STATES = ["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"] as const;
 export type CtemCaseState = (typeof CTEM_CASE_STATES)[number];
 export type CtemCasePriority = "critical" | "high" | "medium" | "low";
 

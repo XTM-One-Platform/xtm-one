@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
+from app.services import ctem_case_loop as case_loop
 from app.models.ctem_signal import LENSES, SIGNAL_STATES, SUBJECT_KINDS, TRIGGER_PATHS
 from app.models.user import User
 from app.services import ctem_scope_gate_store as scope_gate
@@ -141,8 +142,9 @@ async def record_ctem_signal(
         )
     except signals.SignalError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await scope_gate.evaluate_after_record(db, row, created=created)
+    pending = await scope_gate.evaluate_after_record(db, row, created=created)
     await db.commit()
+    await case_loop.publish_pending(pending)
     return {"created": created, "signal": signals.to_dict(row)}
 
 

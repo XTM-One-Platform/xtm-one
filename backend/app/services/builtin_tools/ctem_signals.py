@@ -119,8 +119,11 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 )
                 from app.services import ctem_scope_gate_store
 
-                await ctem_scope_gate_store.evaluate_after_record(db, row, created=created)
+                from app.services import ctem_case_loop
+
+                pending = await ctem_scope_gate_store.evaluate_after_record(db, row, created=created)
                 await db.commit()
+                await ctem_case_loop.publish_pending(pending)
                 return _dump({"created": created, "signal": signals.to_dict(row)})
         except signals.SignalError as exc:
             return f"Refused: {exc}. Nothing was recorded."

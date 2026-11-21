@@ -98,6 +98,7 @@ function inflowLine(state: CtemCaseState, n: number, period: number, t: (k: stri
   const lines: Record<CtemCaseState, string> = {
     needs_attention: "{count, plural, one {+# new or reopened in {days} d} other {+# new or reopened in {days} d}}",
     in_progress: "{count, plural, one {+# started in {days} d} other {+# started in {days} d}}",
+    mitigated_watching: "{count, plural, one {+# mitigated in {days} d} other {+# mitigated in {days} d}}",
     resolved: "{count, plural, one {+# resolved in {days} d} other {+# resolved in {days} d}}",
     accepted_risk: "{count, plural, one {+# risk accepted in {days} d} other {+# risk accepted in {days} d}}",
   };

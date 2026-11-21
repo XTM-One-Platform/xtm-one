@@ -35,6 +35,7 @@ import { profileFieldHref } from "@/lib/organization-profile-tabs";
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
   needs_attention: "bg-feedback-alert-primary",
   in_progress: "bg-feedback-info-primary",
+  mitigated_watching: "bg-feedback-success-primary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
 };

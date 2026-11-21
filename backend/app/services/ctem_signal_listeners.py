@@ -199,8 +199,11 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             )
             from app.services import ctem_scope_gate_store
 
-            await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
+            from app.services import ctem_case_loop
+
+            pending = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
             await db.commit()
+            await ctem_case_loop.publish_pending(pending)
             return True
     except Exception:
         logger.warning("CTEM signal from a %s %s delivery not recorded", provider, event_key, exc_info=True)

@@ -196,15 +196,32 @@ async def evaluate(
     return decision
 
 
-async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: bool) -> None:
-    """The gate on a signal just recorded; a failure leaves it ``new`` for an on-demand pass, never refuses it."""
+async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: bool) -> Any:
+    """The gate on a signal just recorded, then its case (#857); a failure never refuses the signal.
+
+    A gate failure leaves it ``new`` for an on-demand pass; a case that could
+    not be opened leaves it ``confirmed`` for the scheduled sweep. Answers the
+    case events to raise once the caller has committed
+    (``ctem_case_loop.publish_pending``).
+    """
+    from app.services import ctem_case_loop
+
+    pending = ctem_case_loop.PendingEvents()
     if not created:
-        return
+        return pending
     try:
         async with db.begin_nested():
             await evaluate(db, row)
     except Exception:
         logger.warning("CTEM scope gate not run on signal %s; it stays new", getattr(row, "id", "?"), exc_info=True)
+        return pending
+    try:
+        async with db.begin_nested():
+            await ctem_case_loop.open_from_signal(db, row, events=pending)
+    except Exception:
+        pending.items.clear()
+        logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
+    return pending
 
 
 async def evaluate_open(
