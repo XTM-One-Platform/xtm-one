@@ -6521,6 +6521,8 @@ export interface WorkItem {
   blocked_reason?: string | null;
   /** Blocked on a person's decision. */
   needs_human?: boolean;
+  /** The person a needs_human item waits for when not its user (#11893); null otherwise. */
+  waits_for_user_id?: string | null;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */

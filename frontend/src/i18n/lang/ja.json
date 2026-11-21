@@ -20116,6 +20116,7 @@
   "Not reproduced": "再現なし",
   "Reproduced": "再現あり",
   "Not re-tested yet": "未再テスト",
+  "Quick filters": "クイックフィルター",
   "PIR score minimum: threat activity": "PIR スコアの最小値: 脅威活動",
   "0 to 100. A vulnerability flagged in a PIR starts a fleet run at or above this score. Default: 70.": "0〜100。PIR でフラグ付けされた脆弱性は、このスコア以上でフリートの実行を開始します。既定値: 70。",
   "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at or above this score. Default: 75.": "0〜100。PIR でフラグ付けされた侵入セット、キャンペーン、マルウェアは、このスコア以上でフリートの実行を開始します。既定値: 75。",

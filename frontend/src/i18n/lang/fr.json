@@ -20116,6 +20116,7 @@
   "Not reproduced": "Non reproduit",
   "Reproduced": "Reproduit",
   "Not re-tested yet": "Pas encore retesté",
+  "Quick filters": "Filtres rapides",
   "PIR score minimum: threat activity": "Score PIR minimum : activité de menace",
   "0 to 100. A vulnerability flagged in a PIR starts a fleet run at or above this score. Default: 70.": "0 à 100. Une vulnérabilité signalée dans un PIR lance une exécution de la flotte à partir de ce score. Par défaut : 70.",
   "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at or above this score. Default: 75.": "0 à 100. Un intrusion set, une campagne ou un malware signalé dans un PIR lance une exécution de la flotte à partir de ce score. Par défaut : 75.",
