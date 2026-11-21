@@ -1069,6 +1069,10 @@ def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
     from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
 
     def home(agent: Any) -> Any:
+        # Nested two levels under the listing: SQLAlchemy only correlates to
+        # the immediately enclosing SELECT, so *agent* naming a column of the
+        # listing's table would add that table to this FROM and return one
+        # row per item (#890). Correlate everything but the fleet tables.
         return (
             select(FleetMember.fleet_id)
             .join(Fleet, Fleet.id == FleetMember.fleet_id)
@@ -1077,6 +1081,7 @@ def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
                 FleetMember.role == FLEET_ROLE_MEMBER,
                 Fleet.is_archived.is_(False),
             )
+            .correlate_except(FleetMember, Fleet)
             .scalar_subquery()
         )
 

@@ -124,6 +124,79 @@ async def test_connected_fleets_let_the_owner_agent_read_the_hand_off() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_owner_agent_lists_hand_offs_from_two_connected_fleets() -> None:
+    """Two items handed by agents of two fleets: the home-fleet subquery stays per item (#890).
+
+    Before the fix the subquery lost its correlation, read every item's
+    creator and the listing raised CardinalityViolationError.
+    """
+    from app.models.fleet import FleetMember
+
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            first_creator = await _make_user(session, email="first@example.com")
+            second_creator = await _make_user(session, email="second@example.com")
+            holder = await _make_user(session, email="holder2@example.com")
+            first = await _private_agent(session, first_creator, name="First desk")
+            second = await _private_agent(session, second_creator, name="Second desk")
+            owner = await _private_agent(session, holder, name="Holder desk")
+            first_fleet = await _fleet(session, first_creator, first, name="First")
+            second_fleet = await _fleet(session, second_creator, second, name="Second")
+            office = await _fleet(session, holder, owner, name="Holder")
+            for target in (first_fleet, second_fleet):
+                session.add(
+                    FleetMember(id=uuid.uuid4(), fleet_id=office.id, target_fleet_id=target.id, role="connected")
+                )
+            await session.commit()
+
+        async with _pointed_at_db(sessions):
+            one = await _hand(creator=first_creator, creating_agent=first, owner_agent=owner, title="one")
+            two = await _hand(creator=second_creator, creating_agent=second, owner_agent=owner, title="two")
+            reader = agent_writer(is_company_managed=False, agent_id=owner.id)
+            listed = await wi_service.list_work_items(user_id=str(holder.id), reader=reader)
+
+    assert {one["id"], two["id"]} <= {i["id"] for i in listed}
+
+
+@pytest.mark.asyncio
+async def test_a_group_share_reaches_only_items_its_members_created() -> None:
+    """The group grant reads the item's own creator, not any item's (#890)."""
+    from app.models.group import Group, GroupMember
+
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            member = await _make_user(session, email="member@example.com")
+            outsider = await _make_user(session, email="outsider@example.com")
+            holder = await _make_user(session, email="holder3@example.com")
+            group = Group(id=uuid.uuid4(), name="Shared group")
+            session.add(group)
+            await session.flush()
+            session.add(GroupMember(group_id=group.id, user_id=member.id))
+            member_desk = await _private_agent(session, member, name="Member desk")
+            outsider_desk = await _private_agent(session, outsider, name="Outsider desk", shared_with=[outsider])
+            owner = await _private_agent(session, holder, name="Group-shared assistant", shared_with=[outsider])
+            owner.shared_group_ids = [str(group.id)]
+            await session.commit()
+
+        async with _pointed_at_db(sessions):
+            mine = await _hand(creator=member, creating_agent=member_desk, owner_agent=owner, title="by member")
+            theirs = await _hand(creator=outsider, creating_agent=outsider_desk, owner_agent=owner, title="by outsider")
+            async with sessions() as session:
+                from app.models.agent import Agent
+
+                # The outsider loses the person share: only the group grant
+                # could reach their item now, and they are not in the group.
+                agent = await session.get(Agent, owner.id)
+                agent.shared_user_ids = []
+                await session.commit()
+            reader = agent_writer(is_company_managed=False, agent_id=owner.id)
+            listed = {i["id"] for i in await wi_service.list_work_items(user_id=str(holder.id), reader=reader)}
+
+    assert mine["id"] in listed
+    assert theirs["id"] not in listed
+
+
+@pytest.mark.asyncio
 async def test_an_unreachable_owner_agent_is_refused_by_name() -> None:
     async with _temp_database() as sessions:
         async with sessions() as session:
