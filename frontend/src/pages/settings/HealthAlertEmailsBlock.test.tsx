@@ -95,7 +95,8 @@ describe("AlertEmailsBlock alert delay", () => {
     const field = screen.getByRole("spinbutton", { name: "Send after" });
     expect(field).toHaveValue(15);
     fireEvent.change(field, { target: { value: "30" } });
-    expect(onChange.mock.calls.at(-1)?.[0].alert_emails.alert_after_minutes).toBe(30);
+    const calls = onChange.mock.calls;
+    expect(calls[calls.length - 1]?.[0].alert_emails.alert_after_minutes).toBe(30);
   });
 
   it("reads the delay at rest when immediate emails are on", () => {
