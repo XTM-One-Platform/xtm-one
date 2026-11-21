@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 #: What the cycle runner starts: one fleet-wide schedule per specialist, the
 #: per-target investigation, and the weekly digest.
-AssignmentKey = Literal["memory", "quality", "flows", "investigation", "digest"]
+AssignmentKey = Literal["memory", "quality", "flows", "investigation", "digest", "module_analyst"]
 
 #: Tool groups shipped by levels 3 and 8 (ids registered in ``builtin_tool_groups``).
 IMPROVEMENTS_GROUP: Final = "improvement_proposals"
@@ -185,6 +185,16 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         builtin_tool_ids=("health_experiments", "health_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
         skill_slugs=("health-experimenter",),
     ),
+    # The Module Analyst (#101 S14, dev-docs/platform-health.md section 12): starts only
+    # from its own triggers (section 12.2), so the orchestrator hands it nothing.
+    FleetAgentSpec(
+        slug="health-module-analyst",
+        role="module_analyst",
+        name="Module Analyst",
+        description="Investigates each registered module read-only and attaches recommendations to its findings.",
+        icon="Radar",
+        builtin_tool_ids=(IMPROVEMENTS_GROUP,),
+    ),
 )
 
 _REPORT = (
@@ -251,6 +261,22 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         timeout_seconds=900,
         max_iterations=15,
     ),
+    # One cycle per registration (target type ``module``); started by the triggers of
+    # section 12.2 (S14a-2b), never by a schedule of its own in ``cycles.SCHEDULE_KEYS``.
+    FleetAssignmentSpec(
+        key="module_analyst",
+        agent_slug="health-module-analyst",
+        name="Platform Health module investigation",
+        description="Investigates one registered module after its findings changed, daily, or on demand.",
+        prompt=(
+            "Investigate the registered module the trigger names (`target_id`, a platform registration): read "
+            "its open findings, read the module through your read tools, and attach a recommendation to each "
+            "finding the evidence explains. Never write to the module. "
+            f"{_REPORT}"
+        ),
+        timeout_seconds=1800,
+        max_iterations=30,
+    ),
 )
 
 ROLE_BY_SLUG: Final[dict[str, str]] = {spec.slug: spec.role for spec in FLEET_AGENTS}
@@ -260,7 +286,7 @@ RENAMED_FLEET_AGENT_SLUGS: Final[dict[str, str]] = {
 }
 ASSIGNMENT_BY_KEY: Final[dict[str, FleetAssignmentSpec]] = {spec.key: spec for spec in FLEET_ASSIGNMENTS}
 
-_FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows and experiments."
+_FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows, experiments and modules."
 
 
 async def _skill_ids_by_slug(db: AsyncSession, slugs: set[str]) -> dict[str, str]:

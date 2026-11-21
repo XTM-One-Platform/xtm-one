@@ -178,6 +178,8 @@ _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
     "quality_analyst": ("findings", "experiments", "proposals", "dry_run_writes"),
     "flow_lab": ("findings", "experiments", "proposals", "dry_run_writes"),
     "experimenter": ("experiments", "proposals", "dry_run_writes"),
+    # Its recommendations section lands with its tools (#101 S14d).
+    "module_analyst": ("proposals", "dry_run_writes"),
     # An investigation delegates to every specialist; the weekly digest reads cycles.
     "orchestrator": ("findings", "experiments", "proposals", "dry_run_writes"),
 }
