@@ -1004,10 +1004,7 @@ OpenCTI pass in `services/opencti_trigger_provisioning.py`) creates in
 OpenCTI, under the bound integration's identity, a Generic webhook notifier
 posting to `/api/hooks/integrations/<integration>/assignments/<assignment>`
 with `X-OpenCTI-Token` set to the integration's `webhook_secret` (no secret:
-nothing is provisioned, the state says why; a platform-managed integration,
-which the registration writes without one, gets a secret generated and stored
-in its extra config by the first pass that needs it,
-`trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
+nothing is provisioned, the state says why), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
 `x_opencti_score` gte) and that notifier. Both are named
 `XTM One - <fleet> - <purpose>`.
@@ -1052,17 +1049,25 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   software we run" listener uses it on `has` from Software, Infrastructure
   or System to Vulnerability, whatever KEV or EPSS. The OpenCTI signal
   listener records the source in the signal's `evidence.software`, so the
-  scope gate resolves the signal to that product. The PIR score thresholds
-  of the same item build on the PIR playbook mode below (CTEM-05).
-- Checked at save time (#970): create and update (REST and the agent
-  builder tools) run the provider's `read_provision_spec` on the trigger as
-  it will be saved (`trigger_provisioning.provision_spec_error`) and refuse
-  an unusable block with the pass's own message, never 15 minutes later.
-  `organization_context` is a list of profile field names (`["pir_ids"]`,
-  any of `pir_ids`, `regions`, `sector`): the values are read from the
-  primary organization profile, so an object such as `{"pir_ids": [...]}` is
-  refused. A subset of the profile PIRs is not supported: the playbook
-  listens to every PIR of the profile; narrow the PIRs in the profile.
+  scope gate resolves the signal to that product.
+- Trigger rule "PIR score thresholds" (CTEM-08):
+  `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
+  to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
+  primary profile's prioritization policy: `pir_min_score_vulnerability`
+  (default 70) for a Vulnerability, `pir_min_score_threat` (default 75) for
+  threat activity (intrusion set, threat actor, campaign, malware). Both are
+  policy settings, bounded 0 to 100, never constants. The delivered score
+  lags one change, so the receiver re-reads the entity's live
+  `pirInformation(pirId)` for each delivered PIR with the trigger's OpenCTI
+  integration and starts the run when one PIR reaches the threshold; a score
+  it cannot read drops the delivery naming why (a narrowing rule never widens
+  on an outage). A delivery whose entity is not of the listener's
+  `provision.entity_types` is dropped too, since one playbook per listener
+  delivers every flag of the profile PIRs, and so is any type the policy has
+  no threshold for (a report, an indicator): the rule fails closed. Seeded
+  on "Vulnerability flagged in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
+  the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
+  object, holds the threshold and an edit in Settings needs no reprovision.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
   playbook instead of a live trigger. OpenCTI flags an entity in a PIR

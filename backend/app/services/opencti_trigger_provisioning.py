@@ -199,13 +199,7 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         isinstance(min_epss, bool) or not isinstance(min_epss, int | float) or not 0 <= min_epss <= 1
     ):
         raise ProvisionSpecError("provision.min_epss_score must be a number from 0 to 1")
-    context = raw.get("organization_context")
-    if context is not None and not isinstance(context, str | list):
-        raise ProvisionSpecError(
-            "provision.organization_context must be a list of profile field names, "
-            f'e.g. ["pir_ids"] (any of {list(DERIVABLE_CONTEXT_FIELDS)}): the values come from the profile'
-        )
-    context_fields = _str_list(context, "organization_context")
+    context_fields = _str_list(raw.get("organization_context"), "organization_context")
     not_derivable = [f for f in context_fields if f not in DERIVABLE_CONTEXT_FIELDS]
     if not_derivable:
         raise ProvisionSpecError(
@@ -1033,10 +1027,9 @@ def bound_opencti_integration_id(assignment: Any, agent: Any) -> str | None:
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, str, str] | str:
     """``(gql, integration_id, base_url, secret)`` or the reason it cannot be built."""
-    from app.integrations.providers.opencti._common import _client, _graphql
+    from app.core.security import configured_secret
     from app.models.integration import Integration
-    from app.services.integration_tools import _get_token
-    from app.services.trigger_provisioning import receiver_secret
+    from app.services.vault import reveal_json_field
 
     integration_id = bound_opencti_integration_id(assignment, agent)
     if not integration_id:
@@ -1046,8 +1039,8 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
         return f"OpenCTI integration {integration_id} not found"
     # The receiver checks X-OpenCTI-Token against this reading, a vault reference resolved (#6080).
     try:
-        # A platform-managed integration gets its secret generated here (#970).
-        secret = await receiver_secret(integration)
+        extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
+        secret = configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret"))
     except Exception as exc:  # unreadable config, unreadable vault secret or unusable secret
         return f"the OpenCTI integration's webhook_secret cannot be read: {type(exc).__name__}"
     if not secret:
@@ -1059,7 +1052,27 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
     if user_id is None:
         logger.warning("OpenCTI provisioning of assignment %s skipped: %s", assignment.id, NO_RUN_AS_REASON)
         return NO_RUN_AS_REASON
-    token = await _get_token(db, integration_id, "opencti", user_id=str(user_id) if user_id else None, integ=integration)
+    connection = await integration_gql(db, integration, user_id)
+    if isinstance(connection, str):
+        return connection
+    gql, api_base = connection
+    return gql, integration_id, api_base, secret
+
+
+async def integration_gql(db: Any, integration: Any, user_id: Any, *, timeout: int = 30) -> tuple[Gql, str] | str:
+    """``(gql, base_url)`` on one OpenCTI integration for ``user_id``, or the reason it cannot be built.
+
+    The caller hands the integration a trigger is bound to (the assignment's or
+    its agent's binding, or the one the receiver authenticated): provisioning
+    here, and the CTEM-08 PIR score rule, which re-reads a delivered entity's
+    live score with the same integration (services/ctem_trigger_rules.py).
+    """
+    from app.integrations.providers.opencti._common import _client, _graphql
+    from app.services.integration_tools import _get_token
+
+    token = await _get_token(
+        db, str(integration.id), "opencti", user_id=str(user_id) if user_id else None, integ=integration
+    )
     if not token or "||" not in token:
         return "no OpenCTI token could be resolved for the integration"
     api_base, _, api_token = token.partition("||")
@@ -1075,10 +1088,10 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
         headers = attach_probe(headers, api_base)
 
     async def gql(query: str, variables: dict | None = None) -> tuple[dict, str | None]:
-        async with _client(headers, timeout=30) as client:
+        async with _client(headers, timeout=timeout) as client:
             return await _graphql(client, api_base, headers, query, variables)
 
-    return gql, integration_id, api_base, secret
+    return gql, api_base
 
 
 def _with_state(trigger_config: dict, state: dict | None) -> dict:
