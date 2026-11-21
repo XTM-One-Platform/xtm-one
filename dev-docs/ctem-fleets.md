@@ -1815,6 +1815,32 @@ each UI PR, the wireframes above are ASCII).
 
 ## 11. Fleet control: autonomy level, Enable, Pause all, Resume, Back to not set up (#9769, #11060)
 
+**CTEM gate catalog (#916, CTEM-34).** The four CTEM loop fleets
+(threat response, vulnerability prioritization, AI security, third-party
+risk) declare one gate per loop stage, from
+`app.agents.builtin_fleet_docs.CTEM_GATE_KEYS`:
+
+| Key | Stage | Impact | Tools paused |
+|---|---|---|---|
+| `ctem.validation.non_readonly` | Validate: an OpenAEV test that is not read-only | high | the OpenAEV launches |
+| `ctem.analyst_review` | Review of the threat package | low | none |
+| `ctem.remediation.decision` | Decide the remediation option | high | none |
+| `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
+| `ctem.production_change` | A change applied on production through an integration | high | none |
+| `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none |
+| `ctem.close_without_retest` | A case closed with no passing re-test | high | none |
+
+At the seeded level (Low) only `ctem.mobilize` waits; every other gate runs
+and the case records it as passed automatically. Full human gates: every gate
+waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
+either way on a built-in fleet too. The former keys (`ticket.create`,
+`openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
+the Mobilize action, so one Mobilize decision covers every ticket of its case.
+The personas name no approval of their own: they apply the catalog the run
+prompt states (`tests/test_ctem_gate_catalog_916.py` pins it). A gate that
+waits is a decision of the unified system (`dev-docs/human-gates.md`), never a
+CTEM-specific card.
+
 **Not set up stays Not set up (#11060).** A person's (`PUT /assignments/{id}`)
 or an agent's (`update_assignment`) switch-off of an automation that has never
 run (`execution_count` 0 and no `last_triggered_at`,
@@ -1830,7 +1856,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 |---|---|---|---|
 | `PATCH /fleets/{id}` `autonomy_level` | `full_gates`, `medium`, `low` (built-in fleet default, #10005), `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
 | `GET /fleets/{id}/approval-gates` | The approval gate catalog the level acts on (`Fleet.approval_gates`, else the documentation's gates; #10000), the gates proposed from the members' configuration (`services/fleet_gate_proposals.py`: one gate per bound integration and impact class naming its write tools, read-only bindings and tool scoping honoured; impact table: read never gated, mark or draft `low`, send, reply, forward, delete, isolate, payment or signature `destructive`, every other write `high`) and the approvals that exist outside the level (agent and automation human in the loop, tool-call approval). Also `autonomy_level`, `effective_catalog` (every gate the level acts on with `source` stored, documentation or computed, `pin`, `tools`, `gated` and `by_level`: the cursor's before-click preview) and `computed_catalog_on` (#10153). No model call, no quota (#10014) | whoever sees the fleet | allowed |
-| `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes the level only). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
+| `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes them too since #916, kept across seed upgrades: the seed never writes them). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
 | `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys); a built-in fleet is refused (the seed writes its catalog). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
 | `POST /fleets/{id}/enable` | Enable fleet (S4b): every automation that is off switches on (seeded, paused by a person, by Pause all), never one an emergency stop holds; the seeded fleet automations run as `run_as_user_id` (the caller by default, another user an administrator's choice). All or nothing: 400 while the run-as user misses a module an automation needs (`fleet_run_as.missing_providers`), 409 when nothing is off or during an emergency stop. `dry_run` answers the plan (each automation, its modules, what is missing) for the setup dialog. Audit `fleet_enable` | whoever manages the fleet; a built-in fleet an administrator | refused (`require_agentic_ai`): it starts new AI work |
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
