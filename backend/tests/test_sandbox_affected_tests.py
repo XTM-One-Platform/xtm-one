@@ -809,3 +809,29 @@ async def test_a_selected_file_marked_with_a_deselected_marker_is_named_not_sile
     assert "tests/test_tool_postgres.py" in text
     plain = await affected.affected_tests(workspace, record, changes, cwd="co/backend", read_base=read_base)
     assert plain.deselected == {}
+    # Without a check of the directory selecting the marker, the advice stays generic.
+    assert "the check that selects that marker" in text
+    selection.runners = {"integration": ["backend-integration"]}
+    named = selection.describe()
+    assert "Run them with backend-integration (integration) (args: these files) before the push." in named
+    assert "the check that selects that marker" not in named
+
+
+def test_the_markers_a_check_selects_are_read_from_its_argv() -> None:
+    integration = ("python", "../.xtm-one/stores.py", "-m", "integration", "-q")
+    assert affected.selected_markers(integration) == ("integration",)
+    assert affected.selected_markers(("python", "-m", "pytest", "-m", "slow or integration")) == ("slow", "integration")
+    # `python -m pytest` names a module, never a marker; a `not` expression selects nothing.
+    assert affected.selected_markers(("python", "-m", "pytest", "-q")) == ()
+    assert affected.selected_markers(("python", "-m", "pytest", "-m", "not integration")) == ()
+    assert affected.selected_markers(("pytest", "-m", "integration and not slow")) == ()
+
+
+def test_the_check_running_a_deselected_marker_is_found_in_the_same_directory() -> None:
+    checks = [
+        ("backend-unit", ("python", "-m", "pytest", "-m", "not integration"), "co/backend"),
+        ("backend-integration", ("python", "../.xtm-one/stores.py", "-m", "integration"), "co/backend"),
+        ("other-integration", ("pytest", "-m", "integration"), "co/worker"),
+    ]
+    assert affected.marker_runners(checks, "co/backend", ["integration"]) == {"integration": ["backend-integration"]}
+    assert affected.marker_runners(checks, "co/backend", ["slow"]) == {}
