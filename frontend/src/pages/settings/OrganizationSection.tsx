@@ -97,6 +97,7 @@ import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
+import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -1992,6 +1993,8 @@ export function OrganizationSection() {
           {tab === "exposure" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.exposure)} className="space-y-4" data-testid="settings.organization.panel-exposure">
             {missingIn("exposure")}
+            {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
+            <OrganizationProposalsCard />
             {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
           </div>
           )}

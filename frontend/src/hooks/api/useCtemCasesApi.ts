@@ -210,6 +210,32 @@ export function useCtemCases(options?: {
   });
 }
 
+/** One loop duration over the cases the caller sees: the median in hours, `null` with no sample. */
+interface CtemLoopDuration {
+  median_hours: number | null;
+  count: number;
+}
+
+/** How fast the loop runs (`GET /ctem-cases/measures`, CTEM-30), read from the case history. */
+interface CtemLoopMeasures {
+  signal_to_case: CtemLoopDuration;
+  case_to_validation: CtemLoopDuration;
+  case_to_decision: CtemLoopDuration;
+  case_to_passing_retest: CtemLoopDuration;
+  closed_on_proof: { share: number | null; proven: number; resolved: number };
+  case_count: number;
+}
+
+export function useCtemLoopMeasures() {
+  return useQuery<{ vertical: string; measures: CtemLoopMeasures }>({
+    queryKey: ["ctem-cases", "measures"],
+    queryFn: () => api.get("/ctem-cases/measures"),
+    retry: ctemCasesRetry,
+    refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
+    throwOnError: false,
+  });
+}
+
 export function useCtemCase(id: string | undefined) {
   return useQuery<CtemCaseDetail>({
     queryKey: ["ctem-cases", "case", id],
