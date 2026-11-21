@@ -545,15 +545,13 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
         {layout.steps.map((step) => {
           if (step.labelY === null) return null;
           const layer = step.layer;
-          const dx = Math.min(layout.pitch * 0.5, 64);
-          const left = step.x + dx + 6;
           const cta = layer.state === "not_configured" ? FUNNEL_LAYER_COPY[layer.key].cta : undefined;
           const biggest = layout.biggest === layer.key;
           return (
             <div
               key={layer.key}
               className="absolute flex h-5 min-w-0 items-center gap-1.5 overflow-hidden content-caption"
-              style={{ left, top: step.labelY - 10, width: Math.max(layout.width - left - 4, 0) }}
+              style={{ left: step.labelX, top: step.labelY - 10, width: step.labelWidth }}
               data-testid={`ctem-flow-label-${layer.key}`}
             >
               {step.removed != null ? (
@@ -642,9 +640,11 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
           // Mitigated, watching on its own line above the closed line, and no
           // clamp: every count shows at 1080, where the column is 118 px (UX
           // round 2 on #897, B4; #865 prod retest D1 for the watching state).
+          // Placed by the layout below the top branch label, the labels beside
+          // it ending before the column (UX round 3 on #897, B4).
           <div
             className="absolute flex flex-col gap-1 content-caption text-default-secondary"
-            style={{ left: layout.tiles.x, top: FLOW_TOP + 92, width: layout.tiles.width }}
+            style={{ left: layout.tiles.x, top: layout.outcomesTop, width: layout.tiles.width }}
             data-testid="ctem-flow-cases-outcomes"
           >
             {(caseStates.mitigated_watching ?? 0) > 0 && (

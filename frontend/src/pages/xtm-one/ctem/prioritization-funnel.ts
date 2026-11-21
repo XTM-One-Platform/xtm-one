@@ -269,6 +269,10 @@ export interface FlowStep {
   drawnShare: number | null;
   /** Baseline of the branch label (staircase), null on the first step. */
   labelY: number | null;
+  /** Left edge of the branch label, past the branch curve. */
+  labelX: number;
+  /** Width of the branch label box: to the figure's edge, or to `labelRight` on a row beside or below the outcomes block's top. */
+  labelWidth: number;
   /** The previous live layer's key, for the drop text; null on the first. */
   fromKey: CtemFunnelLayerKey | null;
 }
@@ -283,7 +287,24 @@ export interface FlowLayout {
   biggest: CtemFunnelLayerKey | null;
   node: { x: number; y: number; width: number; height: number };
   tiles: { x: number; width: number; height: number; ys: [number, number] };
+  /** Right edge of a branch label on a row beside the outcomes block: 8 px before the cases column. */
+  labelRight: number;
+  /**
+   * Top of the cases outcomes block (mitigated, resolved, accepted risk),
+   * placed below the highest branch label row so the top label, which runs
+   * into the cases column, never draws over it; the rows beside the block end
+   * at `labelRight` (UX round 3 on #897, B4: "Set a prioritization policy"
+   * drew over "0 resolved" at 1080).
+   */
+  outcomesTop: number;
+  /** Height reserved for the outcomes block. */
+  outcomesHeight: number;
 }
+
+/** Height reserved for the outcomes block: three caption lines and their gaps (1080 wraps the mitigated line). */
+const FLOW_OUTCOMES_HEIGHT = 60;
+/** Half height of a branch label box (h-5, centred on its baseline row). */
+const FLOW_LABEL_HALF = 10;
 
 /** The flow laid out at `width` px (the measured figure width). */
 export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
@@ -302,9 +323,11 @@ export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
   layers.forEach((layer, index) => {
     const x = index * pitch;
     const labelY = index === 0 ? null : FLOW_HEIGHT - 32 - (index - 1) * FLOW_LABEL_ROW;
+    const labelX = x + Math.min(pitch * 0.5, 64) + 6;
+    const labelWidth = Math.max(width - labelX - 4, 0);
     const live = layer.state === "live" && layer.count !== null;
     if (index === 0 || !live || prevCount <= 0) {
-      steps.push({ layer, x, entered: height, kept: height, height, branch: 0, removed: null, trueShare: null, drawnShare: null, labelY, fromKey: null });
+      steps.push({ layer, x, entered: height, kept: height, height, branch: 0, removed: null, trueShare: null, drawnShare: null, labelY, labelX, labelWidth, fromKey: null });
       if (index === 0 && live) fromKey = layer.key;
       return;
     }
@@ -327,6 +350,8 @@ export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
       trueShare: (removed / prevCount) * 100,
       drawnShare: entered > 0 ? (branch / entered) * 100 : 0,
       labelY,
+      labelX,
+      labelWidth,
       fromKey,
     });
     if (removed > biggestDrop) {
@@ -340,7 +365,22 @@ export function flowLayout(funnel: CtemFunnel, width: number): FlowLayout {
   const node = { x: flowWidth + 8, y: FLOW_TOP - 6, width: nodeWidth, height: 64 };
   const tileX = node.x + node.width + 28;
   const tiles = { x: tileX, width: Math.max(width - tileX - 2, 0), height: 48, ys: [FLOW_TOP - 24, FLOW_TOP + 32] as [number, number] };
-  return { width, flowWidth, pitch, steps, biggest, node, tiles };
+  const labelRight = Math.max(tileX - 8, 0);
+  const rows = steps.map((step) => step.labelY).filter((y): y is number => y !== null);
+  const topRow = rows.length > 0 ? Math.min(...rows) : FLOW_HEIGHT;
+  const underTiles = tiles.ys[1] + tiles.height + 12;
+  const underLabels = Math.max(underTiles, topRow + FLOW_LABEL_HALF + 8);
+  // Below the top label row when the block still fits the reserved height;
+  // else under the tiles, the rows beside it then ending at labelRight.
+  const outcomesTop = underLabels + FLOW_OUTCOMES_HEIGHT <= FLOW_HEIGHT ? underLabels : underTiles;
+  for (const step of steps) {
+    if (step.labelY === null) continue;
+    // Every row from the block's top down ends before the column: a wrapped
+    // translation that runs past the reserved height still clears them.
+    const beside = step.labelY + FLOW_LABEL_HALF > outcomesTop;
+    if (beside) step.labelWidth = Math.max(Math.min(step.labelWidth, labelRight - step.labelX), 0);
+  }
+  return { width, flowWidth, pitch, steps, biggest, node, tiles, labelRight, outcomesTop, outcomesHeight: FLOW_OUTCOMES_HEIGHT };
 }
 
 const f = (value: number) => value.toFixed(1);
