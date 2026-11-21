@@ -116,9 +116,9 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
     });
 
   return (
-    // Fills the card footer: a status wrapping to two lines grows this block, never moves the divider;
-    // only the action row is pinned to the bottom (UX round 3 B1 on #953).
-    <div className="flex flex-1 flex-col gap-2" data-testid={`health-investigation-${module}`}>
+    // In normal flow in the card footer, the one AI block of the card (#965): a status wrapping to two
+    // lines grows this block below the divider, never moves the divider.
+    <div className="flex flex-col gap-2" data-testid={`health-investigation-${module}`}>
       <p className="content-compact font-medium text-default-secondary">{t_i18n("Last investigation")}</p>
       {investigation ? (
         <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
@@ -132,7 +132,7 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
         // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
         <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>
       )}
-      <div className="mt-auto">
+      <div>
         <AiDisabledTip>
           <Button
             variant="outline"
