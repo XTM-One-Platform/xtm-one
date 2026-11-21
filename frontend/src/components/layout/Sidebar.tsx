@@ -37,7 +37,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Lock, Menu, X } from "lucide-react";
 import {
-  Icon,
   Navbar,
   NavbarItem,
   NavbarSeparator,
@@ -71,6 +70,8 @@ import openaevWordmark from "@/assets/products/openaev.svg";
 import openaevWordmarkLight from "@/assets/products/openaev-light.svg";
 import xtmHubWordmark from "@/assets/products/xtm-hub.svg";
 import xtmHubWordmarkLight from "@/assets/products/xtm-hub-light.svg";
+import opencrqWordmark from "@/assets/products/opencrq.svg";
+import opencrqWordmarkLight from "@/assets/products/opencrq-light.svg";
 import { MadeByFiligran } from "./MadeByFiligran";
 import { NavRowBody } from "./NavRowBody";
 import {
@@ -312,27 +313,44 @@ function NavGroupBlock({
 /**
  * A suite product's logo in the switcher, the row's only visible content.
  *
- * The wordmark files are OpenCTI's and OpenAEV's own (the library declares its
- * product wordmarks without exporting them, F09), in the variant of the theme.
- * OpenCRQ has no wordmark yet: its glyph, with its name beside it so its row
- * reads like the others.
+ * The wordmark files are the suite's one switcher set, byte-identical to the
+ * files OpenCTI, OpenAEV and OpenCRQ draw their own switchers with (the
+ * library declares its product wordmarks without exporting them, F09): full
+ * #0FBCFF on dark, full #0015A8 on light, 164 units wide. Every row is the
+ * product's wordmark alone, OpenCRQ's included.
  */
-const SUITE_WORDMARKS: Record<Exclude<SuiteProduct, "opencrq">, { dark: string; light: string }> = {
+const SUITE_WORDMARKS: Record<SuiteProduct, { dark: string; light: string }> = {
   opencti: { dark: openctiWordmark, light: openctiWordmarkLight },
   openaev: { dark: openaevWordmark, light: openaevWordmarkLight },
+  opencrq: { dark: opencrqWordmark, light: opencrqWordmarkLight },
   xtm_hub: { dark: xtmHubWordmark, light: xtmHubWordmarkLight },
 };
 
 function suiteLogo(product: SuiteProduct, mode: "light" | "dark") {
-  if (product === "opencrq") {
-    return (
-      <span className="inline-flex items-center gap-2">
-        <Icon name="custom/opencrq" size={20} />
-        <span className="content-base font-medium">{SUITE_PRODUCT_NAMES.opencrq}</span>
-      </span>
-    );
-  }
   return <img src={SUITE_WORDMARKS[product][mode]} alt="" className="h-auto w-full object-contain" />;
+}
+
+/**
+ * Copilot mode's header: the platform logo, a link home, and nothing else. The
+ * suite switcher is XTM One's (Sam, 21 Nov 2026): Copilot is not a suite
+ * product, so it has no chevron and no menu. The slots are the library
+ * switcher's own (28px tall, 126px wide expanded, a 28px square in the rail),
+ * so the logo sits exactly where XTM One's does.
+ */
+function PlatformHomeLogo({ logo, mark, label }: { logo: ReactNode; mark: ReactNode; label: string }) {
+  const collapsed = useNavbarCollapsed();
+  return (
+    <Link
+      to="/"
+      aria-label={label}
+      className={cn(
+        "inline-flex shrink-0 items-center focus-visible:outline-none focus-visible:ring-2 ring-focus",
+        collapsed ? "size-7 justify-center" : "h-7 w-[126px] overflow-hidden",
+      )}
+    >
+      {collapsed ? mark : logo}
+    </Link>
+  );
 }
 
 export function Sidebar({ impersonating = false }: { impersonating?: boolean }) {
@@ -464,15 +482,19 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
 
   const navbarHeader = (
     <>
-      <ProductSwitcher
-        logo={brandLogo}
-        logoCollapsed={brandMark}
-        label={t_i18n("Switch product")}
-        options={productOptions}
-        logoTo="/"
-        linkComponent={Link}
-        logoLabel={`${platformName} home`}
-      />
+      {isXtm ? (
+        <ProductSwitcher
+          logo={brandLogo}
+          logoCollapsed={brandMark}
+          label={t_i18n("Switch product")}
+          options={productOptions}
+          logoTo="/"
+          linkComponent={Link}
+          logoLabel={`${platformName} home`}
+        />
+      ) : (
+        <PlatformHomeLogo logo={brandLogo} mark={brandMark} label={`${platformName} home`} />
+      )}
       {/* Mobile only: the backdrop closes the nav too, but a visible control is
           the discoverable way out on touch. */}
       <button
