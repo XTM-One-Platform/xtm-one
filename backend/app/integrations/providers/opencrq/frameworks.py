@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 
+from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
@@ -177,7 +178,11 @@ def _fmt_capability_event(e: dict) -> str:
 
 
 def register(
-    base_url: str, headers: dict[str, str], executor: CallableToolExecutor
+    base_url: str,
+    headers: dict[str, str],
+    executor: CallableToolExecutor,
+    *,
+    registered_version_fn: RegisteredVersionFn | None = None,
 ) -> list[ToolDefinition]:
     async def list_opencrq_tenants() -> str:
         tenants, err = await _trpc(
@@ -849,12 +854,18 @@ def register(
 
     async def get_opencrq_platform_version() -> str:
         health, err = await _trpc(base_url, headers, "health", "read the platform version")
+        version = health.get("version") if isinstance(health, dict) and not err else None
         if err:
-            return err
-        version = health.get("version") if isinstance(health, dict) else None
-        if not isinstance(version, str) or not version.strip():
-            return "OpenCRQ answered health without a version: the platform version could not be read."
-        return _quarantined("OpenCRQ version:", json.dumps({"version": version.strip()[:200]}), "platform version")
+            answer, version = err, ""
+        elif not isinstance(version, str) or not version.strip():
+            answer, version = "OpenCRQ answered health without a version: the platform version could not be read.", ""
+        else:
+            version = version.strip()[:200]
+            answer = _quarantined("OpenCRQ version:", json.dumps({"version": version}), "platform version")
+        if registered_version_fn is None:
+            return answer
+        # The live value stays inside its quarantine: the comparison names it, never quotes it.
+        return version_answer("OpenCRQ", answer, version, await registered_version_fn(), quote_live=False)
 
     executor.register("list_opencrq_tenants", list_opencrq_tenants)
     executor.register("get_opencrq_platform_version", get_opencrq_platform_version)

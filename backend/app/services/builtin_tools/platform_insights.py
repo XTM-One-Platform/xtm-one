@@ -515,7 +515,8 @@ def build_platform_insights_tools(
             description=(
                 "What this platform holds today, in one call: its identity (Instance ID, name, URL), objects per "
                 "type (the Admin Objects counts), agents by state, assignments by trigger type and state, "
-                "integrations by provider, knowledge bases with "
+                "integrations by provider, each connected module's registered version (the CTEM chips' string; "
+                "read builds from it), knowledge bases with "
                 "their document and chunk totals, MCP servers, machines by status, files and their storage "
                 "footprint, users active / total and groups, plus the deployed build, the feature flags on, the "
                 "trace retention and whether the daily analytics aggregation is fresh. "

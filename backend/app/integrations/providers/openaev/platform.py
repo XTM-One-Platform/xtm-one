@@ -23,6 +23,7 @@ import json
 import logging
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import PlatformCapabilities, _api, _search_body, json_answer
@@ -151,6 +152,7 @@ def register(
     executor: CallableToolExecutor,
     *,
     capabilities: PlatformCapabilities,
+    registered_version_fn: RegisteredVersionFn | None = None,
 ) -> list[ToolDefinition]:
     async def query_openaev_connectors(kind: str = "injectors") -> str:
         kind = (kind or "injectors").strip().lower()
@@ -671,15 +673,19 @@ def register(
             resp, err = await _api(
                 base_url, headers, "get", "/api/settings/version", "get version"
             )
+            version = "" if err else _version_from_body(resp.text if resp is not None else "")[:200]
             if err:
-                return err
-            version = _version_from_body(resp.text if resp is not None else "")
-            if not version:
-                return (
+                answer = err
+            elif not version:
+                answer = (
                     "OpenAEV answered GET /api/settings/version without a version "
                     "(empty body): the platform version could not be read."
                 )
-            return f"OpenAEV version: {json.dumps({'version': version[:200]})}"
+            else:
+                answer = f"OpenAEV version: {json.dumps({'version': version})}"
+            if registered_version_fn is None:
+                return answer
+            return version_answer("OpenAEV", answer, version, await registered_version_fn())
 
         if action == "update_policies":
             if not extra:

@@ -19,6 +19,7 @@ import json
 import logging
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn, version_answer
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _client, _edges, _graphql
@@ -251,7 +252,11 @@ def _edits(pairs: list[tuple[str, object]]) -> list[dict]:
 
 
 def register(
-    base_url: str, headers: dict[str, str], executor: CallableToolExecutor
+    base_url: str,
+    headers: dict[str, str],
+    executor: CallableToolExecutor,
+    *,
+    registered_version_fn: RegisteredVersionFn | None = None,
 ) -> list[ToolDefinition]:
     async def _gql(query: str, variables: dict | None = None) -> tuple[dict, str | None]:
         async with _client(headers, timeout=30) as client:
@@ -1026,13 +1031,18 @@ def register(
 
     async def get_opencti_platform_version() -> str:
         data, err = await _gql("query PlatformVersion { about { version } }")
-        if err:
-            return err
-        about = data.get("about") if isinstance(data, dict) else None
+        about = data.get("about") if isinstance(data, dict) and not err else None
         version = about.get("version") if isinstance(about, dict) else None
-        if not isinstance(version, str) or not version.strip():
-            return "OpenCTI answered about { version } without a version: the platform version could not be read."
-        return f"OpenCTI version: {json.dumps({'version': version.strip()[:200]})}"
+        if err:
+            answer, version = err, ""
+        elif not isinstance(version, str) or not version.strip():
+            answer, version = "OpenCTI answered about { version } without a version: the platform version could not be read.", ""
+        else:
+            version = version.strip()[:200]
+            answer = f"OpenCTI version: {json.dumps({'version': version})}"
+        if registered_version_fn is None:
+            return answer
+        return version_answer("OpenCTI", answer, version, await registered_version_fn())
 
     executor.register("list_opencti_capabilities", list_opencti_capabilities)
     executor.register("manage_opencti_profile", manage_opencti_profile)

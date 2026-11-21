@@ -45,6 +45,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.core.module_versions import RegisteredVersionFn
 from app.integrations.http import RefreshFn, parse_compound_token
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -101,6 +102,7 @@ def build_tools(
     persist_file_fn: PersistFileFn | None = None,
     refresh_fn: RefreshFn | None = None,
     tenant_id: str = "",
+    registered_version_fn: RegisteredVersionFn | None = None,
     **_kwargs: Any,
 ) -> list[ToolDefinition]:
     """Build OpenAEV integration tools.
@@ -173,6 +175,12 @@ def build_tools(
     tools += register_dashboards(base_url, headers, executor)
     tools += register_notifications(base_url, headers, executor)
     tools += register_preview(base_url, headers, executor, capabilities=capabilities)
-    tools += register_platform(base_url, headers, executor, capabilities=capabilities)
+    tools += register_platform(
+        base_url,
+        headers,
+        executor,
+        capabilities=capabilities,
+        registered_version_fn=registered_version_fn,
+    )
     tools += register_autonomous(base_url, headers, executor)
     return tools
