@@ -41,6 +41,26 @@ export interface CtemCaseSummary {
   first_seen_at: string | null;
   /** Products that did not answer this read: their issues show without details. */
   details_unavailable: string[];
+  /** The loop (#857): how the case started, its severity and SLA, its proof. */
+  trigger_path?: string;
+  severity?: CtemCaseSeverity | null;
+  sla_due_at?: string | null;
+  sla_breached_at?: string | null;
+  validations?: CtemCaseValidation[];
+  resolution_kind?: string | null;
+}
+
+export type CtemCaseSeverity = "P1" | "P2" | "P3";
+
+/** One validation reference written on a case (OpenAEV run, re-test, provider scan). */
+interface CtemCaseValidation {
+  provider: string;
+  kind: string;
+  ref: string;
+  result: "passed" | "not_exposed" | "failed" | "pending";
+  at: string;
+  mitigation_only?: boolean;
+  note?: string | null;
 }
 
 /** A member issue the caller sees. */
@@ -67,7 +87,7 @@ export interface CtemCaseRestrictedIssue {
 
 export type CtemCaseIssue = CtemCaseVisibleIssue | CtemCaseRestrictedIssue;
 
-export interface CtemCaseEvent {
+interface CtemCaseEvent {
   at: string | null;
   actor: string;
   kind: string;
@@ -163,32 +183,6 @@ export function useCtemCase(id: string | undefined) {
     enabled: Boolean(id),
     // An unknown case, or one the caller sees nothing of (#11613), is a 404
     // the page shows as NotFoundState, never the ErrorBoundary.
-    ...notFoundIsOrdinary,
-  });
-}
-
-/** One fleet run a case event started (`CaseRunEntry`, `GET /fleets/case-runs/{id}`, #915). */
-export interface CtemCaseRun {
-  id: string;
-  agent_id: string;
-  agent_name: string | null;
-  status: string;
-  created_at: string;
-  completed_at: string | null;
-  outcome: string;
-}
-
-/**
- * The fleet runs working on one case, oldest first, the ones the caller may
- * see. Only with agentic AI licensed (`enabled`): the route is gated like the
- * other fleet reads. Polled while a run is in flight so steps show live.
- */
-export function useCtemCaseRuns(id: string | undefined, enabled: boolean) {
-  return useQuery<{ case_id: string; runs: CtemCaseRun[] }>({
-    queryKey: ["ctem-cases", "runs", id],
-    queryFn: () => api.get(`/fleets/case-runs/${id}`),
-    enabled: Boolean(id) && enabled,
-    refetchInterval: (query) => (query.state.data?.runs.some((r) => r.outcome === "active") ? 10_000 : REFETCH_INTERVAL_SLOW),
     ...notFoundIsOrdinary,
   });
 }

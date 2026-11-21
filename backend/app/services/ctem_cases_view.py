@@ -27,11 +27,16 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+import uuid
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
+
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_signal import CtemSignal
+from app.models.user import User
 from app.services import ctem_cases as rules
 
 logger = logging.getLogger(__name__)
@@ -61,9 +66,12 @@ class ViewerView:
     missing: list[str] = field(default_factory=list)
     complete: bool = True
     no_access: bool = False
+    #: The signal members (``signal:<id>``) this viewer may read, read fresh on
+    #: every call and never cached: the signals API judges them, not a product.
+    signals: set[str] = field(default_factory=set)
 
     def sees(self, member_id: str) -> bool:
-        return member_id in self.issues or member_id in self.unavailable
+        return member_id in self.issues or member_id in self.unavailable or member_id in self.signals
 
     def to_json(self) -> str:
         return json.dumps(
@@ -108,24 +116,8 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     return rules.SourceIssue(**data)
 
 
-def _view_key(user_id: str, vertical: str, generation: str = "0") -> str:
-    return f"ctem:cases:view:{user_id}:{vertical}:{generation}"
-
-
-def _generation_key(vertical: str) -> str:
-    return f"ctem:cases:view-generation:{vertical}"
-
-
-async def _generation(client: Any, vertical: str) -> str:
-    """The current generation of every cached view of *vertical* (``0`` before the first bump)."""
-    try:
-        raw = await client.get(_generation_key(vertical))
-    except Exception:
-        logger.info("CTEM cases: view generation unreadable for %s", vertical, exc_info=True)
-        return "0"
-    if isinstance(raw, bytes):
-        raw = raw.decode()
-    return str(raw) if raw else "0"
+def _view_key(user_id: str, vertical: str) -> str:
+    return f"ctem:cases:view:{user_id}:{vertical}"
 
 
 def _seen_key(user_id: str, vertical: str) -> str:
@@ -141,20 +133,49 @@ async def _redis() -> Any | None:
         return None
 
 
+SIGNAL_SOURCE = "signal"
+
+
+async def signal_members(db: Any, user_id: str) -> set[str]:
+    """The ``signal:<id>`` members *user_id* may read: every case-bound signal for an
+    administrator, else the signals recorded for them (the rule of ``GET /ctem-signals``).
+
+    A case opened from a signal with no product issue (a path without a CVE) is
+    then visible to whoever sees the signal that opened it, never to nobody.
+    """
+    try:
+        user = await db.get(User, uuid.UUID(str(user_id)))
+    except (ValueError, TypeError):
+        user = None
+    query = select(CtemSignal.id).where(CtemSignal.case_id.is_not(None))
+    if not getattr(user, "is_admin", False):
+        query = query.where(CtemSignal.recorded_by == str(user_id))
+    try:
+        ids = (await db.execute(query)).scalars()
+    except Exception:
+        logger.info("CTEM cases: signal members unreadable for %s", user_id, exc_info=True)
+        return set()
+    return {f"{SIGNAL_SOURCE}:{i}" for i in ids}
+
+
 async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = False) -> ViewerView:
     """The viewer's own view of the source, from the per-user cache unless *fresh*.
 
     The source read is ``ctem_cases_source.read_view``; it is given the member
     ids of the shared cases so the closed members the viewer can still read
-    are found by id.
+    are found by id. The signal members are read fresh on every call.
     """
+    view = await _product_view(db, user_id, vertical, fresh=fresh)
+    return replace(view, signals=await signal_members(db, user_id))
+
+
+async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
     from app.services import ctem_cases_source as source
 
     client = await _redis()
-    generation = await _generation(client, vertical) if client is not None else "0"
     if client is not None and not fresh:
         try:
-            cached = await client.get(_view_key(user_id, vertical, generation))
+            cached = await client.get(_view_key(user_id, vertical))
             if cached:
                 return ViewerView.from_json(cached)
         except Exception:
@@ -172,7 +193,7 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
             logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
     if client is not None:
         try:
-            await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
+            await client.set(_view_key(user_id, vertical), view.to_json(), ex=VIEW_TTL_SECONDS)
             visible = sorted(set(view.issues) | view.unavailable)
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:
@@ -186,25 +207,9 @@ async def forget_view(user_id: str, vertical: str) -> None:
     if client is None:
         return
     try:
-        await client.delete(_view_key(user_id, vertical, await _generation(client, vertical)))
+        await client.delete(_view_key(user_id, vertical))
     except Exception:
         logger.info("CTEM cases: view cache not dropped for %s", user_id, exc_info=True)
-
-
-async def forget_all_views(vertical: str) -> None:
-    """Drop every viewer's cached view of *vertical* (a case opened, a signal joined one).
-
-    The cases changed for everyone, not only for the caller, so the views are
-    retired by bumping their generation: the next read of each viewer misses
-    and reads its own source again; the old entries expire with their TTL.
-    """
-    client = await _redis()
-    if client is None:
-        return
-    try:
-        await client.incr(_generation_key(vertical))
-    except Exception:
-        logger.info("CTEM cases: view generation not bumped for %s", vertical, exc_info=True)
 
 
 def _member_id(row: CtemCaseIssue) -> str:
@@ -212,6 +217,8 @@ def _member_id(row: CtemCaseIssue) -> str:
 
 
 def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[str, Any]:
+    if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: its page holds the details
+        return {"source": row.source, "external_id": row.external_id, "open": row.open}
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
     return {
@@ -233,6 +240,16 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
     return [r for r in rows if view.sees(_member_id(r))]
 
 
+SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
+
+
+def case_priority(severity: str | None, details: list[Any]) -> str:
+    """The priority a case shows: its loop severity when set, else the default policy."""
+    if severity in SEVERITY_PRIORITY:
+        return SEVERITY_PRIORITY[severity]
+    return rules.default_priority(details) if details else "low"
+
+
 def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict[str, Any] | None:
     """The list row of *case* for this viewer, ``None`` when they see none of its issues."""
     visible = visible_members(rows, view)
@@ -240,7 +257,7 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         return None
     details = [view.issues[_member_id(r)] for r in visible if r.open and _member_id(r) in view.issues]
     agg = rules.aggregates(details)
-    unavailable = sorted({r.source for r in visible if _member_id(r) not in view.issues})
+    unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
     return {
         "id": str(case.id),
         "title": case.title,
@@ -253,9 +270,12 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "due_at": case.due_at.isoformat() if case.due_at else None,
         "accepted_reason": case.accepted_reason,
         "accepted_until": case.accepted_until.isoformat() if case.accepted_until else None,
-        # Computed on what this viewer sees: another viewer may get another figure.
-        "priority": rules.default_priority(details) if details else "low",
-        "priority_basis": "default policy, on the issues you can see",
+        # One case, one urgency (UX round 1 on #897, B3): a loop severity sets the
+        # priority; otherwise computed on what this viewer sees.
+        "priority": case_priority(case.severity, details),
+        "priority_basis": (
+            "loop severity" if case.severity in SEVERITY_PRIORITY else "default policy, on the issues you can see"
+        ),
         "issue_count": len(rows),
         "open_issue_count": sum(1 for r in rows if r.open),
         "restricted_count": len(rows) - len(visible),

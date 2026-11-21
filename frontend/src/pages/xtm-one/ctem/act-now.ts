@@ -9,12 +9,13 @@
 // Start chatting, never a row. Pure: no model, no run, no endpoint.
 
 import type { LucideIcon } from "lucide-react";
+import type { CtemCasePriority, CtemCaseSeverity } from "@/hooks/api/useCtemCasesApi";
 import { CTEM_STAGE_KEYS } from "@/lib/constants";
 
 /** Where a row comes from: it ranks the rows, decides Ask AI and the generic
  *  notice. Not drawn on the row: "Module" on every rule row said nothing
  *  (#11213). */
-export type ActNowSource = "briefing" | "stage" | "module" | "work_item" | "approval" | "setup" | "agent" | "fleet";
+export type ActNowSource = "briefing" | "stage" | "module" | "work_item" | "approval" | "setup" | "agent" | "case";
 
 export interface ActNowRow {
   id: string;
@@ -42,6 +43,9 @@ export interface ActNowRow {
   subject?: string;
   figure?: string;
   mergeTitle?: (subjects: string[]) => string;
+  /** A case row: the case's own urgency, drawn with the chip the case header
+   *  and the board use, never a queue band (UX round 2 on #897, B3). */
+  caseUrgency?: { severity: CtemCaseSeverity | null; priority: CtemCasePriority };
 }
 
 /** Rows shown before "Show all (N)" expands the queue in place: three by
@@ -50,8 +54,8 @@ export interface ActNowRow {
 export const ACT_NOW_COLLAPSED = 3;
 
 /** The source groups the Act now bar counts, in its order. */
-export type ActNowGroup = "posture" | "blind_spots" | "setup" | "waiting" | "working";
-const ACT_NOW_GROUPS: readonly ActNowGroup[] = ["posture", "blind_spots", "setup", "waiting", "working"];
+export type ActNowGroup = "posture" | "blind_spots" | "setup" | "waiting";
+const ACT_NOW_GROUPS: readonly ActNowGroup[] = ["posture", "blind_spots", "setup", "waiting"];
 
 /** The legend label of each group. @i18n-keys */
 export const ACT_NOW_GROUP_LABELS = {
@@ -59,7 +63,6 @@ export const ACT_NOW_GROUP_LABELS = {
   blind_spots: "Blind spots",
   setup: "Setup",
   waiting: "Waiting for you",
-  working: "Fleet working",
 } as const satisfies Record<ActNowGroup, string>;
 
 /** The fill of each group: the bar segment, its legend swatch and the dot of
@@ -69,7 +72,6 @@ export const ACT_NOW_GROUP_FILLS: Record<ActNowGroup, string> = {
   blind_spots: "var(--color-feedback-alert-primary)",
   setup: "var(--color-accent)",
   waiting: "var(--color-feedback-warning-primary)",
-  working: "var(--color-feedback-info-primary)",
 };
 
 /** The ids of the blind spot rows: `connect-<stage>`, one per stage a missing
@@ -81,7 +83,6 @@ const BLIND_SPOT_IDS: ReadonlySet<string> = new Set(CTEM_STAGE_KEYS.map((stage) 
  *  fact read from a module. */
 export function actNowGroup(row: Pick<ActNowRow, "id" | "source">): ActNowGroup {
   if (row.source === "work_item" || row.source === "approval") return "waiting";
-  if (row.source === "fleet") return "working";
   if (row.source === "setup") return BLIND_SPOT_IDS.has(row.id) ? "blind_spots" : "setup";
   return "posture";
 }
@@ -107,6 +108,7 @@ const ELSEWHERE: ReadonlySet<ActNowSource> = new Set(["briefing", "stage", "agen
 
 /** Rank of a source when two rows share a priority: what a person owes first. */
 const SOURCE_ORDER: Record<ActNowSource, number> = {
+  case: -1,
   work_item: 0,
   approval: 1,
   module: 2,
@@ -114,17 +116,10 @@ const SOURCE_ORDER: Record<ActNowSource, number> = {
   stage: 4,
   setup: 5,
   agent: 6,
-  fleet: 7,
 };
 
 function titleKey(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.\s]+$/, "");
-}
-
-/** Whether a row shows a priority label: a fleet at work is not a task for
- *  the reader, so its row carries none (UX round 1 on #920, B2). */
-export function actNowShowsPriority(row: ActNowRow): boolean {
-  return row.source !== "fleet";
 }
 
 /** The priority band a row shows as its small label. */
@@ -234,60 +229,16 @@ export function actNowAskAiPrompt(t_i18n: Translate, row: Pick<ActNowRow, "title
  *  100, KEV 95, failed expectations 90, detection gap 80, stack 50). What
  *  waits on the reader comes first: a person blocks a run or a work item until
  *  they answer. */
-export const ACT_NOW_PRIORITY = { work_item: 98, approval: 97, fleet: 60 } as const;
+export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97 } as const;
 
-/** The fields of a fleet timeline entry a "fleet working" row reads
- *  (`TimelineEntry` of `lib/ctem-fleet-timeline.ts`). */
-interface ActNowFleetRun {
-  runId: string;
-  fleetName: string;
-  agentName: string | null;
-  outcome: string | null;
-  at: string;
-  caseId: string | null;
-}
+/** The open P1 cases Act now lists, most urgent SLA first (CTEM-03-UI, #892): a
+ *  P1 case opened by the loop is what to do first, above what waits on the
+ *  reader. Two at most, so the queue keeps room for the rest. */
+const ACT_NOW_CASE_MAX = 2;
 
-/** One case a fleet is working on now: the newest in-flight run of that case
- *  (#915, CTEM-04-UI slice 3). */
-interface ActNowFleetWork {
-  caseId: string;
-  caseTitle: string;
-  fleetName: string;
-  /** The member running the step in progress (`null` until the fleet health names it). */
-  agentName: string | null;
-  /** Waiting to start (`pending`) or running. */
-  pending: boolean;
-  runId: string;
-  /** Other in-flight runs on the same case. */
-  others: number;
-}
-
-/**
- * The cases a fleet works on now, from the fleet timeline: one entry per case,
- * its newest running or pending run, newest first. A run tied to no case, or
- * to a case the reader cannot see (`caseTitles` has no entry), is left out: the
- * row would link to a case the board does not show. Pure: the page reads the
- * timeline and the cases it already holds, never a request of its own.
- */
-export function actNowFleetWork(
-  timeline: readonly ActNowFleetRun[],
-  caseTitles: Readonly<Record<string, string | undefined>>,
-): ActNowFleetWork[] {
-  const byCase = new Map<string, ActNowFleetWork>();
-  const sorted = [...timeline].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  for (const run of sorted) {
-    if (!run.caseId || (run.outcome !== "running" && run.outcome !== "pending")) continue;
-    const title = caseTitles[run.caseId];
-    if (title === undefined) continue;
-    const prev = byCase.get(run.caseId);
-    if (prev) {
-      prev.others += 1;
-      continue;
-    }
-    byCase.set(run.caseId, {
-      caseId: run.caseId, caseTitle: title, fleetName: run.fleetName, agentName: run.agentName,
-      pending: run.outcome === "pending", runId: run.runId, others: 0,
-    });
-  }
-  return [...byCase.values()];
+export function actNowP1Cases<T extends { state: string; severity?: string | null; sla_due_at?: string | null }>(cases: readonly T[]): T[] {
+  return cases
+    .filter((c) => c.severity === "P1" && (c.state === "needs_attention" || c.state === "in_progress"))
+    .sort((a, b) => (a.sla_due_at ?? "\uffff").localeCompare(b.sla_due_at ?? "\uffff"))
+    .slice(0, ACT_NOW_CASE_MAX);
 }

@@ -87,8 +87,6 @@ from app.api.v1.schemas.fleet import (
     AgentConnectedFleet,
     AgentFleetsResponse,
     AgentHomeFleet,
-    CaseRunEntry,
-    CaseRunsResponse,
     FleetActivityResponse,
     FleetAgentCostEntry,
     FleetApprovalGatesResponse,
@@ -190,7 +188,6 @@ from app.services.fleet_runs import fleet_cost
 from app.services.fleet_views import (
     build_fleet_graph,
     build_fleet_health,
-    case_runs,
     fleet_automation_counts,
     fleet_card_facts,
     fleet_run_stats,
@@ -1386,7 +1383,8 @@ async def apply_fleet_autonomy_endpoint(
 
     Raising the level, pinning an action to run alone or removing an
     "Always wait" pin lets an action run with less approval: administrators
-    only (403). A built-in fleet takes the level only (its pins are refused).
+    only (403). A built-in fleet takes its pins too (#916, CTEM-34): they are
+    the customer's, the seed never writes them, so they survive an upgrade.
     On a custom fleet it turns the computed catalog on. One audit row
     ``autonomy_level_change`` with the level and pins before and after.
     """
@@ -1406,7 +1404,7 @@ async def apply_fleet_autonomy_endpoint(
     if pins_lower_approval(previous_pins, new_pins) and not user.is_admin:
         raise HTTPException(status_code=403, detail=PIN_RUN_REFUSAL)
     fleet.autonomy_level = new_level
-    if not fleet.is_builtin:
+    if not fleet.is_builtin or body.pins is not None:
         fleet.approval_pins = new_pins
     await log_audit(
         db,
@@ -2784,7 +2782,6 @@ async def get_fleet_activity(
                 trigger_type=trigger_type,
                 trigger_provider=trigger_provider,
                 trigger_event=trigger_event,
-                case_id=case_id,
             )
             for (
                 run_id,
@@ -2797,40 +2794,9 @@ async def get_fleet_activity(
                 trigger_type,
                 trigger_provider,
                 trigger_event,
-                case_id,
             ) in runs
         ],
         delegations=delegations,
-    )
-
-
-@router.get("/case-runs/{case_id}", response_model=CaseRunsResponse)
-async def get_case_runs(
-    case_id: uuid.UUID,
-    limit: int = Query(50, ge=1, le=200),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    _gate: None = Depends(require_agentic_ai_licensed),
-):
-    """The fleet runs a CTEM case's events started (#915), oldest first, the ones
-    the caller may see (``run_visible_filter``), for the case page that shows
-    the agents' steps beside the case history. An id in, runs out: the case
-    itself is read through ``GET /ctem-cases/{id}``, per viewer."""
-    runs = await case_runs(db, case_id, run_scope=run_visible_filter(user.id), limit=limit)
-    return CaseRunsResponse(
-        case_id=str(case_id),
-        runs=[
-            CaseRunEntry(
-                id=str(run_id),
-                agent_id=str(agent_id),
-                agent_name=agent_name,
-                status=run_status,
-                created_at=_iso(created_at) or "",
-                completed_at=_iso(completed_at),
-                outcome=outcome,
-            )
-            for (run_id, agent_id, agent_name, run_status, created_at, completed_at, outcome) in runs
-        ],
     )
 
 

@@ -105,19 +105,19 @@ class CaseFix:
 
 @dataclass
 class PendingEvents:
-    """Platform events to raise after the caller's commit, in order.
-
-    ``verticals`` names the verticals whose case membership changed (a case
-    opened, a signal joined one): their cached viewer views are dropped after
-    the commit, so the case shows on the board and its page at once instead of
-    after the view TTL.
-    """
+    """Platform events to raise after the caller's commit, in order."""
 
     items: list[tuple[str, dict[str, Any], str]] = field(default_factory=list)
-    verticals: set[str] = field(default_factory=set)
+    #: Live frames for the web app (``ctem_case_update``, CTEM-03-UI #892): ids and states only.
+    frames: list[dict[str, str]] = field(default_factory=list)
 
     def add(self, name: str, data: dict[str, Any], event_id: str) -> None:
         self.items.append((name, data, event_id))
+
+    def frame(self, case: CtemCase, event_kind: str, at: datetime) -> None:
+        from app.services.ctem_loop_stream import case_frame
+
+        self.frames.append(case_frame(str(case.id), case.state, event_kind, at.isoformat()))
 
 
 def _norm(value: str | None) -> str:
@@ -273,7 +273,7 @@ async def open_from_signal(
     signal.case_id = case.id
     signal.updated_at = now
     if events is not None:
-        events.verticals.add(vertical)
+        events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case, signal_id=str(signal.id)), _event_id(CASE_OPENED, case, "open"))
     return case
@@ -354,6 +354,8 @@ async def record_validation(
         case.resolution_kind = None
         if events is not None:
             events.add(CASE_REOPENED, case_data(case, validation=entry), _event_id(CASE_REOPENED, case, at))
+    if events is not None:
+        events.frame(case, "validation", now)
     return case
 
 
@@ -446,6 +448,7 @@ async def sweep(
     )
     for signal in waiting:
         before = len(events.items) if events is not None else 0
+        frames_before = len(events.frames) if events is not None else 0
         # Read before the savepoint: its rollback expires the signal, and a lazy refresh on an
         # AsyncSession raises MissingGreenlet inside the handler, which would stop the whole pass.
         signal_id = signal.id
@@ -456,6 +459,7 @@ async def sweep(
         except Exception:
             if events is not None:
                 del events.items[before:]
+                del events.frames[frames_before:]
             counts["skipped"] += 1
             logger.warning("CTEM case not opened for signal %s; skipped this sweep", signal_id, exc_info=True)
             continue
@@ -485,6 +489,7 @@ async def sweep(
         counts["sla_breached"] += 1
         if events is not None:
             events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
+            events.frame(case, "sla_breached", now)
     return counts
 
 
@@ -515,15 +520,14 @@ async def sweep_due() -> bool:
 
 
 async def publish_pending(events: PendingEvents | None) -> int:
-    """Drop the stale viewer views, then raise the collected case events (after the commit); how many were published."""
+    """Raise the collected case events and live frames (after the commit); how many events were published."""
     if not events:
         return 0
-    if events.verticals:
-        from app.services.ctem_cases_view import forget_all_views
+    if events.frames:
+        from app.services.ctem_loop_stream import publish_case_updates
 
-        for vertical in sorted(events.verticals):
-            await forget_all_views(vertical)
-        events.verticals.clear()
+        frames, events.frames = events.frames, []
+        await publish_case_updates(frames)
     if not events.items:
         return 0
     from app.services.platform_events import publish

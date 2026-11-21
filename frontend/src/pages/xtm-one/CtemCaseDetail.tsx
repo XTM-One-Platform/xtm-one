@@ -9,9 +9,8 @@
  * but that word; a case the caller sees nothing of answers 404.
  */
 import { useMemo, useState, type ComponentProps } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Icon, Textarea } from "@filigran/design-system";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
@@ -27,20 +26,20 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   isRestrictedIssue,
   useCtemCase,
-  useCtemCaseRuns,
   useSplitCtemCase,
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
 } from "@/hooks/api/useCtemCasesApi";
-import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
-import { CASE_RUN_LINE, caseActivity, caseRunLine } from "@/lib/ctem-case-activity";
-import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
-import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
+import { useNow } from "@/hooks/useTick";
+import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -93,25 +92,18 @@ const EVENT_LABEL: Record<string, string> = {
   merged: "Merged cases",
   // The store writes `merge` (ctem_cases_store.merge_cases, S5c).
   merge: "Merged cases",
+  // The loop (CTEM-03, #857; shown by CTEM-03-UI, #892).
+  signal: "A signal joined the case",
+  validation: "Recorded a validation",
+  sla_breached: "Escalated: SLA breached",
 };
 
-/**
- * The badge of a fleet run on the case history, the keys the fleet timeline
- * uses (one run). @i18n-keys
- */
-const RUN_OUTCOME_LABELS = {
-  succeeded: "Run outcome: succeeded",
-  failed: "Run outcome: failed",
-  running: "Run outcome: running",
-  pending: "Run outcome: pending",
-  interrupted: "Run outcome: interrupted",
-  cancelled: "Run outcome: cancelled",
-} as const satisfies Record<TimelineOutcome, string>;
-
-const RUN_OUTCOME_VARIANTS: Partial<Record<TimelineOutcome, "success" | "warning" | "destructive" | "secondary">> = {
-  succeeded: "success",
-  failed: "destructive",
-  interrupted: "warning",
+/** The result word of a validation history row, translated where drawn. */
+const VALIDATION_RESULT_LABEL: Record<string, string> = {
+  passed: "Passed",
+  not_exposed: "Not exposed",
+  failed: "Failed",
+  pending: "Pending",
 };
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
@@ -123,9 +115,6 @@ export default function CtemCaseDetail() {
   const { toast } = useToast();
   const { data: me } = useMe();
   const { data: kase, isLoading, error, isError, refetch } = useCtemCase(id);
-  const agenticLicensed = useAgenticAIEnabled();
-  const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
-  const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -135,6 +124,8 @@ export default function CtemCaseDetail() {
   const [evidence, setEvidence] = useState("");
   const [expiry, setExpiry] = useState(inDays(90));
   const [formError, setFormError] = useState<string | null>(null);
+  // The SLA countdown of the header moves without a reload (#892).
+  const now = useNow(60_000);
 
   const actorIds = useMemo(() => {
     const ids = new Set<string>();
@@ -232,7 +223,14 @@ export default function CtemCaseDetail() {
     {
       key: "source",
       header: "Source",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.source === "openaev" ? "OpenAEV" : "OpenCTI"),
+      cell: (r) =>
+        isRestrictedIssue(r.issue)
+          ? null
+          : r.issue.source === "signal"
+            ? t_i18n("Signal")
+            : r.issue.source === "openaev"
+              ? "OpenAEV"
+              : "OpenCTI",
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : r.issue.source),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.source),
     },
@@ -321,8 +319,9 @@ export default function CtemCaseDetail() {
         crumbExtras={
           <>
             <CaseStateChip state={kase.state} />
-            <CasePriorityChip priority={kase.priority} />
+            <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
+            <CaseLoopLine c={kase} now={now} />
           </>
         }
         title={kase.title}
@@ -378,6 +377,8 @@ export default function CtemCaseDetail() {
           {t_i18n("{products} did not answer: details of its issues are unavailable.", { products: kase.details_unavailable.join(", ") })}
         </p>
       )}
+
+      <CaseOpenedBy caseId={kase.id} />
 
       <Card>
         <CardHeader>
@@ -435,41 +436,15 @@ export default function CtemCaseDetail() {
         </CardHeader>
         <CardContent>
           <ol className="space-y-3" data-testid="ctem-case-history">
-            {activity.map((item) => {
-              if (item.kind === "run") {
-                const run = item.run;
-                const outcome = timelineOutcome(run.outcome, run.status);
-                return (
-                  <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base" data-testid="ctem-case-run">
-                    <span className="font-medium">{run.agent_name ?? t_i18n("Agent")}</span>
-                    <Link
-                      to={`/operations/executions/${run.id}`}
-                      state={{ backTo: `/ctem/cases/${id}`, backLabel: "Back to Case" }}
-                      aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
-                      className="hover:underline"
-                    >
-                      {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
-                    </Link>
-                    {outcome && (
-                      <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">
-                        {t_i18n(RUN_OUTCOME_LABELS[outcome])}
-                      </Badge>
-                    )}
-                    <span className="ml-auto whitespace-nowrap text-default-secondary">
-                      {intl.formatDate(run.created_at, { dateStyle: "medium", timeStyle: "short" })}
-                    </span>
-                  </li>
-                );
-              }
-              const e = item.event;
-              return (
-              <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base">
+            {[...kase.history].reverse().map((e, i) => (
+              <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-2 content-base">
                 <span className="font-medium">
                   {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
                 </span>
                 <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
+                {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (
@@ -478,11 +453,13 @@ export default function CtemCaseDetail() {
                   </span>
                 )}
               </li>
-              );
-            })}
+            ))}
           </ol>
         </CardContent>
       </Card>
+
+      {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
+      <LoopTraceDialog />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">
