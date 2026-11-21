@@ -477,9 +477,13 @@ they are not drawn rather than estimated from one page of the list.
 | `get_ctem_case` | one case with members (source, id), the latest 20 history events |
 | `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
 | `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk) |
+| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
+| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
 
-Granted to the built-in CTEM Remediation Coordinator and Mobilization Analyst
-(their tool lists only), RBAC of the posture (the caller's integrations).
+Granted to the built-in CTEM loop orchestrators (vulnerability prioritization,
+threat response, which run a case from `ctem_case.opened`, #891), the
+Remediation Coordinator and the Mobilization Analyst (their tool lists only),
+RBAC of the posture (the caller's integrations).
 Every write is an event with the agent as actor.
 
 Shipped in S2 (#11545): `backend/app/services/builtin_tools/ctem_cases.py`,

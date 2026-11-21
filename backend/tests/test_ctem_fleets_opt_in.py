@@ -23,6 +23,9 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability sighted"),
     ("ctem-vuln-prioritization-orchestrator", "Daily backlog pass"),
     ("ctem-vuln-prioritization-orchestrator", "Re-test due"),
+    # The loop fleets run on cases (#891): seeded off, after migration c9160fleetoptin1.
+    ("ctem-threat-response-orchestrator", "Case opened or reopened"),
+    ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
     ("ctem-ai-security-orchestrator", "New AI-enabled report"),
     ("ctem-ai-security-orchestrator", "Weekly AI threat watch"),
     ("ctem-ai-security-orchestrator", "AI system registered"),
@@ -63,6 +66,8 @@ _FLEET_ASSIGNMENTS = {
 _SEEDED_AFTER_C9160 = {
     ("ctem-third-party-risk-orchestrator", "Tracked organization named"),
     ("ctem-third-party-risk-orchestrator", "Weekly third-party review"),
+    ("ctem-threat-response-orchestrator", "Case opened or reopened"),
+    ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "opencti-pir-desk-orchestrator"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "openaev-detection-desk-orchestrator"),
     *(k for k in _FLEET_ASSIGNMENTS if k[0] == "opencrq-risk-desk-orchestrator"),

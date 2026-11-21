@@ -128,13 +128,15 @@ def test_only_the_ctem_remediation_agents_are_offered_the_tools(monkeypatch):
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
     assert offers_ctem_case_tools("ctem-remediation-coordinator", is_builtin=True)
     assert offers_ctem_case_tools("ctem-mobilization-analyst", is_builtin=True)
+    assert offers_ctem_case_tools("ctem-vuln-prioritization-orchestrator", is_builtin=True)
+    assert offers_ctem_case_tools("ctem-threat-response-orchestrator", is_builtin=True)
     assert not offers_ctem_case_tools("ctem-remediation-coordinator", is_builtin=False)
     assert not offers_ctem_case_tools("ctem-assistant", is_builtin=True)
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: True), raising=False)
     assert not offers_ctem_case_tools("ctem-remediation-coordinator", is_builtin=True)
 
 
-def test_the_four_tools_are_defined(env):
+def test_the_case_tools_are_defined(env):
     assert tuple(d.name for d in env.defs) == CTEM_CASE_TOOL_NAMES
 
 
@@ -235,4 +237,69 @@ async def test_bad_arguments_are_answered_without_a_write(env):
 
 def test_module_is_wired_to_the_tool_names():
     slugs = set(tools_module.CTEM_CASE_AGENT_SLUGS)
-    assert slugs == {"ctem-remediation-coordinator", "ctem-mobilization-analyst"}
+    assert slugs == {
+        "ctem-remediation-coordinator",
+        "ctem-mobilization-analyst",
+        "ctem-vuln-prioritization-orchestrator",
+        "ctem-threat-response-orchestrator",
+    }
+
+
+# ── #891: the validation and ticket references an agent writes on a case ──
+
+
+async def test_a_passing_retest_resolves_the_case_and_raises_resolved(env, monkeypatch):
+    from app.services import ctem_case_loop
+
+    published: list = []
+
+    async def _publish(pending):
+        published.extend(name for name, _data, _id in pending.items)
+
+    monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
+    body = json.loads(
+        await env.call(
+            "record_ctem_case_validation",
+            case_id=str(env.case.id),
+            provider="openaev",
+            ref="simulation-42",
+            result="passed",
+        )
+    )
+    assert body["updated"]["state"] == "resolved"
+    assert env.case.validations[-1]["ref"] == "simulation-42" and env.case.validations[-1]["kind"] == "retest"
+    assert ctem_case_loop.CASE_RESOLVED in published and env.db.commits == 1
+    kinds = {r.kind for r in env.db.added if isinstance(r, CtemCaseEvent)}
+    assert {"validation", "state"} <= kinds
+
+
+async def test_a_validation_without_its_reference_is_refused(env):
+    answer = await env.call(
+        "record_ctem_case_validation", case_id=str(env.case.id), provider="openaev", ref="", result="passed"
+    )
+    assert answer.startswith("Refused:") and env.db.commits == 0
+    assert "No case" in await env.call(
+        "record_ctem_case_validation", case_id=str(uuid.uuid4()), provider="openaev", ref="x", result="passed"
+    )
+
+
+async def test_a_ticket_reference_is_written_once_and_updated_in_place(env):
+    first = json.loads(
+        await env.call(
+            "record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="ITS-12", url="https://j/ITS-12"
+        )
+    )
+    assert first["updated"]["state"] == "needs_attention"
+    await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="ITS-12", status="done")
+    assert len(env.case.tickets) == 1
+    assert (env.case.tickets[0]["status"], env.case.tickets[0]["url"]) == ("done", "https://j/ITS-12")
+    # The same write again changes nothing and writes no event.
+    before = len(env.db.added)
+    await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="ITS-12", status="done")
+    assert len(env.db.added) == before
+    assert (await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="")).startswith(
+        "Refused:"
+    )
+    assert (
+        await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="A", status="x")
+    ).startswith("Refused:")
