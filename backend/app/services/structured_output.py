@@ -27,6 +27,7 @@ Gemini ``response_schema``) bypass steps 2–3 but still run validation.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -470,6 +471,11 @@ def coerce_types(data: dict, schema: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+#: How many schema validation errors ``validate_and_parse`` collects. Callers
+#: read whether there are errors and log them; none needs the whole list.
+MAX_SAP_VALIDATION_ERRORS = 50
+
+
 def validate_and_parse(
     raw_output: str,
     schema: dict,
@@ -519,10 +525,14 @@ def validate_and_parse(
                 for item in data
             ]
 
-    # Step 5: Validate against schema (bounded regexes, nothing retrieved)
+    # Step 5: Validate against schema (bounded regexes, nothing retrieved). The
+    # errors are only reported, so the first MAX_SAP_VALIDATION_ERRORS of them
+    # are enough: collecting every error of a large payload (a STIX bundle of
+    # thousands of objects) is what kept a worker busy for minutes.
     validator = output_schema_validator(schema, Draft7Validator)
     validation_errors = sorted(
-        output_schema_errors(validator, data), key=lambda e: list(e.absolute_path)
+        output_schema_errors(validator, data, limit=MAX_SAP_VALIDATION_ERRORS),
+        key=lambda e: list(e.absolute_path),
     )
 
     if validation_errors:
@@ -708,6 +718,45 @@ def deliver_json_answer(
     else:
         repaired = emit_bare_json(content, log_context=log_context)
     return content if repaired is None else repaired
+
+
+async def emit_repaired_json_in_thread(
+    raw_output: str,
+    schema: dict,
+    *,
+    log_context: str,
+) -> str | None:
+    """``emit_repaired_json`` in a worker thread, for a caller on the event loop.
+
+    Repairing and validating a large answer is CPU-bound and can take minutes;
+    run on the event loop it blocks every other request of the worker, its
+    health probe included, until the worker is restarted and the caller's
+    connection drops with no trace.
+    """
+    return await asyncio.to_thread(emit_repaired_json, raw_output, schema, log_context=log_context)
+
+
+async def deliver_json_answer_in_thread(
+    content: str,
+    output_format: str,
+    output_schema: dict | None,
+    *,
+    log_context: str,
+) -> str:
+    """``deliver_json_answer`` in a worker thread, for a caller on the event loop.
+
+    Same rule as ``deliver_json_answer``; a non-JSON format returns at once
+    without a thread hop.
+    """
+    if output_format != "json" or not content:
+        return content
+    return await asyncio.to_thread(
+        deliver_json_answer,
+        content,
+        output_format,
+        output_schema,
+        log_context=log_context,
+    )
 
 
 # ---------------------------------------------------------------------------
