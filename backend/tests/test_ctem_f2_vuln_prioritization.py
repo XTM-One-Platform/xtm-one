@@ -77,6 +77,7 @@ def test_the_assignments_are_on_the_orchestrator() -> None:
     assert set(by_name) == {
         "New KEV or EPSS jump",
         "Vulnerability on software we run",
+        "Vulnerability flagged in a PIR",
         "Vulnerability sighted",
         "Daily backlog pass",
         "Re-test due",
@@ -123,3 +124,13 @@ def test_software_we_run_trigger_filters_has_to_a_vulnerability_and_reads_the_pr
         "toTypes": ["Vulnerability"],
     }
     assert filters["filterGroups"] == []
+
+
+def test_pir_flag_listener_is_a_pir_playbook_held_to_the_policy_threshold() -> None:
+    a = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability flagged in a PIR")
+    assert a["trigger_config"]["pir_min_score"] == "policy"
+    spec = prov.read_provision_spec(a["trigger_config"])
+    assert spec is not None
+    assert spec["mode"] == "pir_playbook"
+    assert spec["organization_context"] == ["pir_ids"]
+    assert spec["entity_types"] == ["Vulnerability"]
