@@ -51,6 +51,7 @@ import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useFormatter } from "@/i18n";
 import { outcomeRowPath } from "@/lib/roi-outcomes";
+import { operationsPath, valuePath, workItemsPath } from "@/lib/task-routes";
 import {
   VALUE_SCOPE_LABELS,
   VALUE_SCOPE_LINES,
@@ -76,7 +77,7 @@ import {
   type ValueTab,
 } from "@/lib/roi-value";
 
-/** The three tables, each a URL-backed tab (`/value/:tab?`). */
+/** The three tables, each a URL-backed tab (`/tasks/value/:tab?`). */
 const VALUE_TABS: { key: ValueTab; label: string; icon: React.ElementType }[] = [
   { key: "fleets", label: "By fleet", icon: Workflow },
   { key: "agents", label: "By agent", icon: Bot },
@@ -242,7 +243,7 @@ function ValueReviewLine({ report, linked }: { report: RoiReportResponse; linked
           share: share(shares.runs.reviewed, shares.runs.total),
         })}
         {linked && shares.runs.reviewed < shares.runs.total && (
-          <Link to="/operations/executions" className="ml-2 text-accent hover:underline">{t_i18n("Review the rest")}</Link>
+          <Link to={operationsPath("executions")} className="ml-2 text-accent hover:underline">{t_i18n("Review the rest")}</Link>
         )}
       </span>
       {shares.workItems.total > 0 && (
@@ -253,7 +254,7 @@ function ValueReviewLine({ report, linked }: { report: RoiReportResponse; linked
             share: share(shares.workItems.reviewed, shares.workItems.total),
           })}
           {linked && (
-            <Link to="/operations/work-items" className="ml-2 text-accent hover:underline">{t_i18n("Open the work items")}</Link>
+            <Link to={workItemsPath()} className="ml-2 text-accent hover:underline">{t_i18n("Open the work items")}</Link>
           )}
         </span>
       )}
@@ -312,7 +313,11 @@ function ValueHero({ report, window }: { report: RoiReportResponse; window: RoiW
   );
 }
 
-export default function Value() {
+/**
+ * The Value report, the Value tab of Tasks (#775). `embedded`: the Tasks page
+ * draws the page title, so the report draws none of its own.
+ */
+export default function Value({ embedded = false }: { embedded?: boolean } = {}) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -339,14 +344,13 @@ export default function Value() {
       { replace: true },
     );
 
-  // An unknown or retired tab (e.g. `/value/by-agent`) lands on the default tab, replacing the entry, never the error frame (#12229).
+  // An unknown or retired table (e.g. `/tasks/value/by-agent`) lands on the default one, replacing the entry, never the error frame (#12229).
   if (rawTab !== tab) {
-    const search = searchParams.toString();
-    return <Navigate to={`/value${search ? `?${search}` : ""}`} replace />;
+    return <Navigate to={valuePath(undefined, searchParams)} replace />;
   }
 
   // #10215 slice c23 (criterion 5): the page's help sentence sits in the title's "i", never as a visible line under the h1.
-  const title = (
+  const title = embedded ? null : (
     <ListPageHeader
       title={
         <span className="flex items-center gap-2">

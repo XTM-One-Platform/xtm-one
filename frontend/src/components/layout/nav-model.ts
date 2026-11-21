@@ -31,8 +31,8 @@
 import {
   Activity, BarChart3, BookOpen, Bot, Boxes, Braces, Briefcase, Cable, Clapperboard, ClipboardList, Compass,
   Database, FileText, FlaskConical, FolderOpen, Gauge, GraduationCap, KeyRound, LayoutDashboard, LayoutGrid,
-  LayoutTemplate, Link2, MessageSquare, Network, Presentation, Puzzle, Route, Scan, ScrollText,
-  Server, Settings, Shield, Sparkles, Sprout, Target, Telescope, TrendingUp, User, Users, Wand2, Workflow,
+  LayoutTemplate, Link2, ListChecks, MessageSquare, Network, Presentation, Puzzle, Route, Scan, ScrollText,
+  Server, Settings, Shield, Sparkles, Sprout, Target, Telescope, User, Users, Wand2, Workflow,
   Wrench, Zap, type LucideIcon,
 } from "lucide-react";
 
@@ -258,12 +258,14 @@ export const NAV_SECTIONS: NavSection[] = [
         to: "/work",
         description: "What your agents produce: runs, decks, and files.",
         children: [
+          /* Tasks (#775, Sam, 20 Nov 2026): what to do and follow (Work Items,
+             Value, Workspaces), right above what is running or past
+             (Operations). Value is a tab of Tasks, no row of its own: its
+             Community Edition upgrade path is drawn in the tab. Every user,
+             both modes, open with AI off. */
+          /* "Tasks page": the id "Tasks" is the A2A edge's verb ("Confie", "Asigna"). */
+          leaf("/tasks", ListChecks, "Tasks page"),
           leaf("/operations", ClipboardList, "Operations"),
-          /* The Value page (#9836 R5, design dev-docs/roi-outcomes.md 10.7): the
-             value of the work above, right after it (Sam, 8 Nov 2026: not a
-             top-level row). Every user, both modes; locked on Community Edition
-             like the other Enterprise areas, open with AI off. */
-          { ...leaf("/value", TrendingUp, "Value"), requiresLicense: true },
           aiLeaf("/presentations", Presentation, "Presentations"),
           aiLeaf("/videos", Clapperboard, "Videos", (f) => f.videoStudio),
           leaf("/dashboards", LayoutGrid, "Dashboards", (f) => f.dashboardStudio),
@@ -362,7 +364,7 @@ export const NAV_SECTIONS: NavSection[] = [
           { to: "/trace-sessions", icon: Activity, label: "Sessions" },
         ],
       },
-      /* Sprout, not TrendingUp: that one is Value's, and no two rows share an icon. */
+      /* Sprout, not TrendingUp: that one is the Value tab's, and no two rows share an icon. */
       aiLeaf("/ai-adoption", Sprout, "AI Adoption", (f) => f.aiAdoption),
       aiLeaf("/evaluations", FlaskConical, "Evaluations", (f) => f.evaluation),
       /* Platform Health (#101 S1): a translated label, never the administrator's name; `/concierge` redirects here. */

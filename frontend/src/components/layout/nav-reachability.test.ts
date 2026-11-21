@@ -79,13 +79,13 @@ const ADMIN_AND_GROUP_MANAGERS: readonly Role[] = ["admin", "groupManager"];
 /** Today's left menu (main 667ec49f), one line per destination; the place of a row is not part of the contract. */
 const REACHABILITY: readonly Reach[] = [
   { to: "/", roles: EVERYONE, guard: "none" },
-  { to: "/value", roles: EVERYONE, lock: "license", guard: "none" },
   { to: "/chat", roles: EVERYONE, gate: "chat", lock: "ai", guard: "none" },
   { to: "/flows", roles: EVERYONE, guard: "none" },
   { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" },
   { to: "/agents", roles: EVERYONE, lock: "ai", guard: "none" },
   { to: "/agents-hub", roles: EVERYONE, guard: "none" },
   { to: "/work", roles: EVERYONE, guard: "none" },
+  { to: "/tasks", roles: EVERYONE, guard: "none" },
   { to: "/operations", roles: EVERYONE, guard: "none" },
   { to: "/presentations", roles: EVERYONE, lock: "ai", guard: "none" },
   { to: "/videos", roles: EVERYONE, gate: "videoStudio", lock: "ai", guard: "none" },
@@ -190,9 +190,9 @@ test("the palette lists each page once", () => {
   assert.deepEqual(table.filter((to, index) => table.indexOf(to) !== index), [], "one line per page in the table");
 });
 
-test("the pages named by the program are pinned: Value, Fleets, Create an agent, the group managers' Analytics", () => {
+test("the pages named by the program are pinned: Tasks, Fleets, Create an agent, the group managers' Analytics", () => {
   const find = (to: string) => REACHABILITY.find((reach) => reach.to === to);
-  assert.deepEqual(find("/value"), { to: "/value", roles: EVERYONE, lock: "license", guard: "none" });
+  assert.deepEqual(find("/tasks"), { to: "/tasks", roles: EVERYONE, guard: "none" });
   assert.deepEqual(find("/fleets"), { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" });
   assert.deepEqual(find("/agents/new"), { to: "/agents/new", roles: EVERYONE, lock: "ai", guard: "none" });
   assert.deepEqual(find("/analytics")?.roles, ADMIN_AND_GROUP_MANAGERS);
@@ -208,7 +208,7 @@ const appRoutes = (): { path: string; body: string }[] => {
     .filter((route) => route.path !== "");
 };
 
-/** `/value/:tab?` serves `/value`: trailing optional segments do not change the page. */
+/** `/tasks/value/:tab?` serves `/tasks/value`: trailing optional segments do not change the page. */
 const servesExactly = (path: string, to: string) => path === to || path.replace(/(\/:[A-Za-z]+\?)+$/, "") === to;
 
 /** `/fleets/:fleetId/:tab?` serves `/fleets/x`: a parameter takes one segment. Tried after `servesExactly`. */

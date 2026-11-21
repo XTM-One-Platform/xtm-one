@@ -92,7 +92,7 @@ Rules the model enforces (don't work around them):
   `/agents-hub` hub; children Agents, Fleets, Agentic Flow, and Intents for administrators
   through a leaf `adminOnly`; "Create an agent" is an action, a `paletteOnly` destination
   of the group and a button on the list and the hubs, never a row), then the **Work** group, what agents
-  *produce* (Operations, Value right after it, Presentations, Videos (the Video Studio, behind `VIDEO_STUDIO`), Dashboards, Files).
+  *produce* (Tasks, then Operations, Presentations, Videos (the Video Studio, behind `VIDEO_STUDIO`), Dashboards, Files).
   A group's row and each of its children carry their own lock (`requiresAi`,
   `requiresLicense`), shown on the row inline and in the rail flyout. The left-menu
   consolidation (#9301) moves rows in slices; `nav-reachability.test.ts` pins who
@@ -154,7 +154,8 @@ clicking it, or navigate by URL.
 | Agent Studio (hub) | `/agent-studio` | `useKnowledgeBases`, `usePrompts`, `useTemplateContainers`, `useSkills`, `useInvestigationPacks` (behind `DEEP_INVESTIGATION`) |
 | Investigation packs | `/investigation-packs`, `/investigation-packs/:id/:tab?` | `useInvestigationPacks`, `useInvestigationPack`, `usePackBuilderCatalog`, `useBuiltinPacks`, `useDuplicateBuiltinPack`, `useCreateInvestigationPack`, `useUpdateInvestigationPack`, `usePreviewInvestigationPack`, `useInvestigationPackVersions` |
 | Tools & Integrations (hub) | `/tools-and-integrations` | `useMCPServers`, `useCustomTools`, `useIntegrations`, `useBrowserProfiles`, `useVariables`, `useRelayGroups` |
-| Operations (Executions tab = `TaskHistory`; `/tasks`, `/background-tasks`, `/work-items`, `/workspaces` redirect to its tabs) | `/operations/:tab?` | `useAllAssignmentRuns`, `useAllFlowRuns`, `useAssignmentRunCount`, `useDeleteAssignmentRun`, `useBulkDeleteRuns`, `useCleanupStaleRuns`, `useRespondToHumanInput`, `useDismissRun`, `useAgents`, `useBackgroundTasks`, `useWorkItems`, `useSharedStates` |
+| Operations (what is running or past; Executions tab = `TaskHistory`, Background Tasks, Shared State, Worksets) | `/operations/<tab>` | `useAllAssignmentRuns`, `useAllFlowRuns`, `useAssignmentRunCount`, `useDeleteAssignmentRun`, `useBulkDeleteRuns`, `useCleanupStaleRuns`, `useRespondToHumanInput`, `useDismissRun`, `useAgents`, `useBackgroundTasks`, `useSharedStates` |
+| Tasks (what to do and follow, #775; Work Items the default tab, Value, Workspaces; every link through `lib/task-routes.ts`, no alias of a former path) | `/tasks/work-items[/<id>]`, `/tasks/value[/<table>]`, `/tasks/value/methodology`, `/tasks/workspaces[/<id>]` | `useWorkItems`, `useValueReport`, `useWorkspaces` |
 | Presentations | `/presentations` | `usePresentations`, `usePresentationActions`, `useLibraryParams` |
 | Video Studio (behind `VIDEO_STUDIO`; tabs Videos and Media, `?tab=profiles` redirects to `/browser-profiles`) | `/videos` | `useVideoProjects`, `useVideoTakes`, `useVideoClips`, `useVideoTemplates`, `useUpdateVideoAsset`, `useDuplicateVideoProject`, `useDeleteVideoProject` |
 | Video Editor (behind `VIDEO_STUDIO`) | `/videos/:id` (outside `AppLayout`, full screen) | `useVideoProject`, `useVideoEditor`, `useVideoQuality`, `useVideoTemplates`, `useDuplicateVideoProject`, `useDeleteVideoProject` |

@@ -104,18 +104,18 @@ test("every row of a group carries its own lock: Fleets by the licence, Agentic 
   assert.equal(lock({ ...FLAGS, aiLicensed: false }, "/agents"), "unlicensed");
 });
 
-test("Value sits in Work right after Operations, both modes, every user; locked on Community Edition only, never by AI off", () => {
-  // Sam, 8 Nov 2026: not a top-level row; reachable in two clicks from Work.
-  const value = (flags: NavFlags, isAdmin: boolean) => group("work", isAdmin, flags).children.find((child) => child.to === "/value");
+test("Tasks sits in Work right above Operations, both modes, every user, open with AI off; Value is a tab, no row", () => {
+  // Sam, 20 Nov 2026 (#775): what to do and follow above what is running or past; the menu does not grow.
+  const tasks = (flags: NavFlags, isAdmin: boolean) => group("work", isAdmin, flags).children.find((child) => child.to === "/tasks");
   for (const xtmOne of [false, true]) {
-    assert.deepEqual(group("work", false, { ...FLAGS, xtmOne }).children.slice(0, 2).map((child) => child.to), ["/operations", "/value"]);
-    const entry = value({ ...FLAGS, xtmOne }, false);
+    const children = group("work", false, { ...FLAGS, xtmOne }).children.map((child) => child.to);
+    assert.deepEqual(children.slice(0, 2), ["/tasks", "/operations"]);
+    assert.ok(!children.includes("/value"), "Value is a Tasks tab, not a menu row");
+    const entry = tasks({ ...FLAGS, xtmOne }, false);
     assert.ok(entry && !entry.locked, `listed and open (xtmOne ${xtmOne}, not admin)`);
   }
-  const aiOff = value({ ...FLAGS, aiEnabled: false }, false);
+  const aiOff = tasks({ ...FLAGS, aiEnabled: false }, false);
   assert.ok(aiOff && !aiOff.locked, "AI off keeps the read surface open");
-  const community = value({ ...FLAGS, aiLicensed: false }, false);
-  assert.ok(community && community.locked && community.lockReason === "unlicensed");
 });
 
 test("the command center pages light the home row; a fleet lights Fleets, a flow Agentic Flow", () => {
@@ -126,7 +126,9 @@ test("the command center pages light the home row; a fleet lights Fleets, a flow
   assert.equal(activeNavPath(sections, "/fleets/f-1/members"), "/fleets");
   assert.equal(activeNavPath(sections, "/flows/map/schedule"), "/flows");
   assert.equal(activeNavPath(sections, "/agents/new"), "/agents");
-  assert.equal(activeNavPath(sections, "/value/methodology"), "/value");
+  assert.equal(activeNavPath(sections, "/tasks/value/methodology"), "/tasks");
+  assert.equal(activeNavPath(sections, "/tasks/work-items/0b1c"), "/tasks");
+  assert.equal(activeNavPath(sections, "/operations/shared-state"), "/operations");
   assert.equal(activeNavPath(sections, "/dashboards/d-1"), "/dashboards", "the studio is not the home");
 });
 

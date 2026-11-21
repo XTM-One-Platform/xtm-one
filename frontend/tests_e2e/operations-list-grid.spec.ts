@@ -140,7 +140,7 @@ async function openWorkItems(page: Page) {
       await route.fulfill({ response, json: [...ROWS, ...items].slice(0, 20) });
     },
   );
-  await page.goto('/operations/work-items?vis=mine');
+  await page.goto('/tasks/work-items?vis=mine');
 }
 
 // A route callback still inside route.fetch when a test ends (a list refetch
@@ -491,10 +491,10 @@ const WORKSPACE_ROWS = [
 ];
 
 const TABS = [
-  { name: 'Shared State', path: '/api/v1/shared-state', url: '/operations/state?vis=mine', rows: STATE_ROWS, prefix: 'shared-state', bare: 'A bare entry', heavy: 'A heavy entry' },
+  { name: 'Shared State', path: '/api/v1/shared-state', url: '/operations/shared-state?vis=mine', rows: STATE_ROWS, prefix: 'shared-state', bare: 'A bare entry', heavy: 'A heavy entry' },
   { name: 'Worksets', path: '/api/v1/worksets', url: '/operations/worksets?vis=mine', rows: WORKSET_ROWS, prefix: 'workset', bare: 'A bare workset', heavy: 'A heavy workset' },
   { name: 'Background Tasks', path: '/api/v1/chat/sub-agent-tasks', url: '/operations/background-tasks?vis=mine', rows: TASK_ROWS, prefix: 'background-task', bare: 'A bare task', heavy: 'A heavy task', detail: 'page', whole: '00000000-0000-4000-8000-000000008396' },
-  { name: 'Workspaces', path: '/api/v1/workspaces', url: '/operations/workspaces', rows: WORKSPACE_ROWS, prefix: 'workspace', bare: 'A bare workspace', heavy: 'A heavy workspace', detail: 'page', whole: 'Where the fleet coordinates' },
+  { name: 'Workspaces', path: '/api/v1/workspaces', url: '/tasks/workspaces', rows: WORKSPACE_ROWS, prefix: 'workspace', bare: 'A bare workspace', heavy: 'A heavy workspace', detail: 'page', whole: 'Where the fleet coordinates' },
 ];
 
 for (const tab of TABS) {

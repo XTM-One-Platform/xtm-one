@@ -213,7 +213,7 @@ test("the badge names the cause and the count, never a bare Stale", () => {
 });
 
 test("the stale badge links to the stale work items of that owner", () => {
-  assert.equal(staleWorkItemsHref("agent-1"), "/operations/work-items?view=stale&agent=agent-1");
+  assert.equal(staleWorkItemsHref("agent-1"), "/tasks/work-items?view=stale&agent=agent-1");
 });
 
 test("the stale link's accessible name starts with the visible badge text in every catalog", () => {

@@ -19,13 +19,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * (the whole organization for an administrator, his own agents and fleets
  * otherwise, the Value page's opening scope), each through the shared
  * `RoiFigure` with its "How this is computed" button, and "See the value" to
- * `/value`. Costs masked: "Hours saved" and "Value". It reads the Value page's
+ * `/tasks/value`. Costs masked: "Hours saved" and "Value". It reads the Value page's
  * own report and draws its ledger hero (`figures`, #12077 L7a, design 12.8:
  * `figures(mine)` or the organization's), the Value page hero's figures
  * (one cache entry, so the card and the page never differ), starts
  * no run and calls no model. Community Edition: the card says where Value
  * lives, never a dead end (b3cd836b).
  */
+import { valuePath } from "@/lib/task-routes";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, TrendingUp } from "lucide-react";
 import { RoiFigure } from "@/components/roi/RoiFigure";
@@ -62,7 +63,7 @@ export function RoiValueCard() {
           </div>
           {/* The same header action as the sibling widgets (Agents "All", Last Conversations, Live Activity): 28 px, ArrowUpRight (UX r1 B1). */}
           <Button asChild variant="ghost" size="sm" className="h-7 shrink-0 content-compact gap-1" data-testid="home-value-see">
-            <Link to="/value">
+            <Link to={valuePath()}>
               <ArrowUpRight className="h-3 w-3" aria-hidden /> {t_i18n("See the value")}
             </Link>
           </Button>
