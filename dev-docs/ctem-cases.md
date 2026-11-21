@@ -133,8 +133,18 @@ source that answers wins (`services/ctem_fixed_version.py`, pure):
    is the named version.
 3. Ranges a connected enrichment provider served, in the NVD 2.0 shape
    (`configurations[].nodes[].cpeMatch[]`, `ranges_from_nvd2`), passed to
-   `opencti_issues(provider_ranges=...)`. The provider read in the reader is
-   the next slice; the parser and the hook are in place.
+   `opencti_issues(provider_ranges=...)`. The reader reads them itself
+   (`ctem_cases_source._read_opencti`, slice 2): when a company-managed
+   VulnCheck integration is visible to the reading user
+   (`ENRICHMENT_PROVIDER`, `_enrichment_key`), the CVE names of the
+   vulnerabilities on the stack are looked up with
+   `vulncheck.nvd2_records` (enriched `vulncheck-nvd2` index first, the
+   community `nist-nvd2` index when the key is not licensed for it, 8 reads at
+   a time, at most `ENRICHMENT_CVE_CAP` = 100 CVEs per recompute) and parsed
+   per stack entry (`provider_ranges_for`, keyed `<CVE>|<stack label>`). No
+   integration, an unreadable key, a provider outage or a CVE past the cap
+   leave the fixed version to the other sources: the OpenCTI read is never
+   dropped for it.
 4. Nothing: "fixed version unknown", the key stays `@latest`.
 
 A tech stack entry takes an optional `version` (the version the organization
@@ -559,8 +569,6 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 **Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
 
 **Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id; filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
-
-**OpenAEV results move the case (CTEM-15, #918).** The seeded assignment "OpenAEV results into cases" of the vulnerability fleet provisions the OpenAEV triggers `simulation_finished`, `finding_updated`, `finding_deleted` and `scenario_score_degraded`; its filter drops every delivery, so it never runs. On a verified delivery, the webhook route (`services/ctem_openaev_events.py`) finds the cases that wait on the delivered object (an `openaev` validation reference whose `ref` names it, or an `openaev` member with that id; states `needs_attention`, `in_progress`, `mitigated_watching`, `resolved`), writes one `source_event` history entry per case and raises `ctem_case.validation_finished` once per case and occurrence, with `openaev {event, resource_type, resource_id, platform_url}`. Both loop fleets hear it (routed by `trigger_path`), read the result in OpenAEV and write it with `record_ctem_case_validation`, which resolves or reopens the case. No poll, no model call before the run. A `scenario_score_degraded` delivery records a path 8 (`mitigation_regression`) signal through the signal table. Path 4 waits for an OpenAEV event on an attack path reaching a critical asset (CTEM-13).
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
 

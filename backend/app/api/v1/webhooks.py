@@ -199,7 +199,7 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -1669,6 +1669,13 @@ async def _assignment_filter_reason(
     received on (*receiver_integration_id*), else of the assignment's own;
     the delivery handed to the run is left as it came.
     """
+    if provider == "opencti":
+        # CTEM-08: "a vulnerability on software we run", read before any filter, gate or run.
+        from app.services import ctem_trigger_rules
+
+        rule = await ctem_trigger_rules.filter_reason(db, trigger_config, payload)
+        if rule is not None:
+            return rule
     filter_config = trigger_filter(trigger_config)
     if not filter_config or not isinstance(payload, dict):
         return None
@@ -4648,13 +4655,6 @@ async def receive_assignment_webhook(
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
             )
-            if provider == "openaev":
-                # An OpenAEV result a CTEM case waits on moves it (CTEM-15, #918).
-                await ctem_openaev_events.note_event(
-                    event_key,
-                    payload,
-                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
-                )
 
             # ── 6. Resolve the specific assignment ────────────────────────────
             wf_result = await db.execute(

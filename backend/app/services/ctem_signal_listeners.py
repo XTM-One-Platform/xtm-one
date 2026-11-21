@@ -16,8 +16,7 @@ run, no quota: a signal is data the reconcile and scope gate read next.
 Paths with a listener today: 1 (new vulnerability: an OpenCTI Vulnerability,
 or a ``has`` relationship to one), 2 (relevant threat: an OpenCTI Intrusion
 Set, Threat Actor, Campaign or Malware), 3 (code flaw: a new open Aikido
-issue), 8 (mitigation regression: an OpenAEV scenario whose score degraded,
-CTEM-15). The other paths enter through the agent tool and the API until their
+issue). The other paths enter through the agent tool and the API until their
 products emit an event (design ``dev-docs/ctem-signals.md`` section 4).
 """
 
@@ -65,7 +64,6 @@ LISTENERS: tuple[Listener, ...] = (
         "inside",
         "code",
     ),
-    Listener("openaev", ("scenario_score_degraded",), ("scenario",), "mitigation_regression", "inside", "asset"),
 )
 
 
@@ -107,6 +105,14 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     for key in ("x_opencti_cvss_base_score", "x_opencti_epss_score", "x_opencti_cisa_kev", "source_ref"):
         if data.get(key) not in (None, ""):
             evidence[key.removeprefix("x_opencti_")] = data[key]
+    if kind.startswith("relationship:"):
+        # CTEM-08: the software or asset the relationship starts from, so the scope
+        # gate resolves the signal to the tech stack product it names.
+        from app.services.ctem_trigger_rules import source_name
+
+        source = source_name(payload)
+        if source:
+            evidence["software"] = [source]
     meta = payload.get("_opencti_event")
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
@@ -138,36 +144,9 @@ def _aikido_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] 
     }
 
 
-def _openaev_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
-    """A provisioned OpenAEV delivery, normalized by the route into ``_openaev_event``."""
-    meta = payload.get("_openaev_event")
-    if not isinstance(meta, dict):
-        return None
-    kind = _text(meta.get("resource_type")).lower()
-    if row.object_types and kind not in row.object_types:
-        return None
-    external_id = _text(meta.get("resource_id"))
-    if not external_id:
-        return None
-    message = _text(meta.get("message"))[:300]
-    evidence: dict[str, Any] = {"event": _text(meta.get("event_type")), "resource_type": kind}
-    if message:
-        evidence["message"] = message
-    url = _text(meta.get("platform_url"))
-    if url:
-        evidence["platform_url"] = url
-    return {
-        "external_id": external_id,
-        "ref": f"openaev {kind or 'object'} {external_id}",
-        "label": message or None,
-        "evidence": evidence,
-    }
-
-
 _EXTRACTORS: dict[str, Callable[[Listener, Mapping[str, Any]], dict[str, Any] | None]] = {
     "opencti": _opencti_signal,
     "aikido": _aikido_signal,
-    "openaev": _openaev_signal,
 }
 
 
