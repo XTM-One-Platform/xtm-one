@@ -29,6 +29,7 @@ Every piece of Platform Health work is a run of one of the fleet's assignments, 
 | Analysis | Whether the routing model explains the findings, and its hard ceilings per day and per month, in tokens and in dollars (see [Analysis](#analysis)). |
 | Schedule | When each fleet-wide cycle starts, as a cron expression in the time zone chosen: memory consolidation (default every night at 02:00), quality review (Mondays 03:00), flow review (Mondays 04:00) and the weekly digest (Mondays 07:00). Each can be switched off. A schedule never fires at start-up: it first fires at its next occurrence. |
 | Signals | The thresholds below, each with its own switch. |
+| Alert emails | Off by default. On, Platform Health emails the recipients named (up to 20) from the platform sender: one email per critical finding as soon as a health pass opens it, once per finding, and one digest a day (UTC) of the open findings at or above the minimum severity, sent only when there is at least one. Each of the two can be switched off. Nothing is sent while the platform email (SMTP) is not configured; no model call. |
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
 | Dry-run | Every write of every Platform Health agent is logged instead of executed: memory changes, proposals, sandbox copies. Digests count what was logged. |
 

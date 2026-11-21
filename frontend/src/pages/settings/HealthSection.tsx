@@ -46,6 +46,7 @@ import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSettings, HealthBudgetCaps, HealthSettings } from "@/types";
 
 import { BlockTitle, type BlockProps } from "./health-block";
+import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
 import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
 import { HealthPetLibrary } from "./HealthPetLibrary";
 import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
@@ -141,6 +142,7 @@ function EnableBlock({ draft, editing, onChange }: BlockProps) {
         <SettingsSwitchField
           id={`${fieldId}-enabled`}
           label={t_i18n("Enable Platform Health")}
+          helper={t_i18n("Runs the health checks and their schedules.")}
           info={t_i18n("On: Platform Health watches its scope, runs its schedules and proposes improvements within its budget. Off: it reads nothing and starts no work; its settings are kept.")}
           checked={draft.enabled}
           onCheckedChange={(enabled) => onChange({ ...draft, enabled })}
@@ -427,6 +429,8 @@ const BLOCKS: ((props: BlockProps) => React.JSX.Element | null)[] = [
   SignalsBlock,
   // #101 S10c: the OpenCTI and OpenAEV check thresholds (XTM One modes only).
   ModuleThresholdsBlock,
+  // #101 S12b: the alert emails, off by default.
+  AlertEmailsBlock,
   DurationsBlock,
   DryRunBlock,
 ];
@@ -444,7 +448,8 @@ export function HealthSection() {
     !!draft &&
     CAP_KEYS.every((key) => capValid(key, draft.budget[key])) &&
     CEILING_KEYS.every((key) => ceilingValid(key, draft.analysis[key])) &&
-    moduleThresholdsValid(draft);
+    moduleThresholdsValid(draft) &&
+    alertEmailsValid(draft);
 
   const submit = () => {
     if (!draft) return;
