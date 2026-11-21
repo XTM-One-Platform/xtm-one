@@ -233,6 +233,16 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "max_epss": agg["max_epss"],
         "first_seen_at": agg["first_seen_at"].isoformat() if agg["first_seen_at"] else None,
         "details_unavailable": unavailable,
+        # The loop (#857): ids, enums, dates and references only, the same for every viewer.
+        "trigger_path": case.trigger_path,
+        "severity": case.severity,
+        "sla_due_at": case.sla_due_at.isoformat() if case.sla_due_at else None,
+        "sla_breached_at": case.sla_breached_at.isoformat() if case.sla_breached_at else None,
+        "risk_scenario_ids": list(case.risk_scenario_ids or []),
+        "tickets": list(case.tickets or []),
+        "validations": list(case.validations or []),
+        "validation_plan": bool(case.validation_plan),
+        "resolution_kind": case.resolution_kind,
     }
 
 

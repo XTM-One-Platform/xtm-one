@@ -106,6 +106,7 @@ const LIVE_FILL = ["bg-accent/25", "bg-accent/40", "bg-accent/60", "bg-accent/75
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
   needs_attention: "bg-feedback-alert-primary",
   in_progress: "bg-feedback-info-primary",
+  mitigated_watching: "bg-feedback-success-tertiary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
 };

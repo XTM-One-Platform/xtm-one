@@ -198,10 +198,11 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 recorded_via="listener",
                 recorded_by=ctem_signals.SYSTEM_ACTOR,
             )
-            from app.services import ctem_scope_gate_store
+            from app.services import ctem_case_loop, ctem_scope_gate_store
 
-            await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
+            pending = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
             await db.commit()
+            await ctem_case_loop.publish_pending(pending)
             await publish_signal_update(db, signal)
             return True
     except Exception:

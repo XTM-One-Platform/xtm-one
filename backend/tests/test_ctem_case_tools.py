@@ -140,7 +140,13 @@ def test_the_four_tools_are_defined(env):
 
 async def test_list_answers_the_cases_and_every_state_count(env):
     body = json.loads(await env.call("list_ctem_cases", state="needs_attention", limit=500))
-    assert body["counts"] == {"needs_attention": 1, "in_progress": 0, "resolved": 0, "accepted_risk": 0}
+    assert body["counts"] == {
+        "needs_attention": 1,
+        "in_progress": 0,
+        "mitigated_watching": 0,
+        "resolved": 0,
+        "accepted_risk": 0,
+    }
     assert body["cases"][0]["title"] == "Upgrade Apache Tomcat to 9.0.98"
     assert body["cases"][0]["max_cvss"] == 9.8
 

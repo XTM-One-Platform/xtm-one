@@ -275,8 +275,8 @@ def test_aggregates_count_distinct_assets_and_crown_jewels():
 # ---------------------------------------------------------------------------
 
 
-def test_the_model_carries_the_four_states_and_the_accepted_risk_constraint():
-    assert CASE_STATES == ("needs_attention", "in_progress", "resolved", "accepted_risk")
+def test_the_model_carries_the_five_states_and_the_accepted_risk_constraint():
+    assert CASE_STATES == ("needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk")
     names = {c.name for c in CtemCase.__table__.constraints}
     assert {"ck_ctem_cases_state_valid", "ck_ctem_cases_accepted_risk_complete"} <= names
     assert CtemCaseIssue.__table__.c.case_id.foreign_keys

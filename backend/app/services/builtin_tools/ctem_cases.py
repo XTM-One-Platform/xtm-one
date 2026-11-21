@@ -30,6 +30,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ctem_case import CASE_STATES
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
@@ -38,7 +39,8 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = ("list_ctem_cases", "get_ctem_case", "cr
 _SOURCE = "builtin:ctem_cases"
 #: The built-in agents that carry the tools (design section 8).
 CTEM_CASE_AGENT_SLUGS: frozenset[str] = frozenset({"ctem-remediation-coordinator", "ctem-mobilization-analyst"})
-_STATES = ("needs_attention", "in_progress", "resolved", "accepted_risk")
+#: Every case state, read from the model so a new state reaches the counts and the enum (#857).
+_STATES: tuple[str, ...] = CASE_STATES
 #: History events one ``get_ctem_case`` answer carries.
 _HISTORY_PAGE = 20
 

@@ -71,6 +71,10 @@ const PLATFORM_EVENT_LABELS = {
   "agent_account.owner_sent": "Mailbox owner sent an email",
   "platform.release.deployed": "New release deployed",
   "integration.version.changed": "Connected platform upgraded",
+  "ctem_case.opened": "CTEM case opened",
+  "ctem_case.reopened": "CTEM case reopened",
+  "ctem_case.resolved": "CTEM case resolved",
+  "ctem_case.sla_breached": "CTEM case past its SLA",
   "platform.default_model_route.changed": "Default model route changed",
   "timer.due": "Timer due",
 } as const;

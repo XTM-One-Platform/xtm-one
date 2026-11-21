@@ -58,6 +58,13 @@ describe("CasesCountsCard", () => {
     expect(screen.queryByTestId("ctem-cases-expiring")).toBeNull();
   });
 
+  it("draws one count link per state, mitigated, watching included", async () => {
+    get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 1, mitigated_watching: 1 }, cases: [], details_unavailable: [] });
+    draw();
+    await screen.findByRole("link", { name: "Needs attention: 1 case" });
+    expect(screen.getAllByTestId(/^ctem-cases-count-/)).toHaveLength(5);
+  });
+
   it("a state the API leaves out counts zero, never a dash", async () => {
     get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 1 }, cases: [], details_unavailable: [] });
     draw();

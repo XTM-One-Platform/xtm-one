@@ -5,7 +5,7 @@
  * section 7.0): one DS Chip severity per state and per priority, owners as the
  * DS Avatar, "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Chip } from "@filigran/design-system";
+import { Avatar, Chip, Icon } from "@filigran/design-system";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -14,10 +14,17 @@ import { formatList } from "@/lib/format-list";
 
 type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
 
-/** One colour per state, everywhere (7.0): alert, info, success, neutral. */
+/**
+ * One colour per state, everywhere (7.0): alert, info, success, neutral. The DS
+ * Chip has six severities and no free one that means "mitigated" (high and
+ * critical read as danger; LIBRARY-FEEDBACK F06), so mitigated, watching keeps
+ * the success family and is told apart from resolved by its DS eye icon and its
+ * own segment token (UX round 1 of #857, B3).
+ */
 const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
   needs_attention: "medium",
   in_progress: "info",
+  mitigated_watching: "low",
   resolved: "low",
   accepted_risk: "neutral",
 };
@@ -26,6 +33,7 @@ const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
 export const CASE_STATE_LABEL: Record<CtemCaseState, string> = {
   needs_attention: "Needs attention",
   in_progress: "In progress",
+  mitigated_watching: "Mitigated, watching",
   resolved: "Resolved",
   accepted_risk: "Accepted risk",
 };
@@ -47,9 +55,24 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 /** Higher first: the sort value of a priority. */
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
+/**
+ * The DS icon a state carries inside its Chip (the Chip's own startIcon, so the
+ * chip keeps the left edge and baseline of its siblings), where its colour
+ * alone is shared (UX round 2 of #857, B1).
+ */
+const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
+
 export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();
-  return <Chip label={t_i18n(CASE_STATE_LABEL[state])} severity={CASE_STATE_SEVERITY[state]} className="shrink-0" />;
+  const icon = CASE_STATE_ICON[state];
+  return (
+    <Chip
+      label={t_i18n(CASE_STATE_LABEL[state])}
+      severity={CASE_STATE_SEVERITY[state]}
+      className="shrink-0"
+      startIcon={icon ? <Icon name={icon} size={16} aria-hidden /> : undefined}
+    />
+  );
 }
 
 export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
