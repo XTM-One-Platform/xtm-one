@@ -39,8 +39,6 @@ import { CTEM_PRIORITY_CONFIG } from "@/lib/constants";
 import { useWorkItemsWaitingForMe } from "@/hooks/api/useWorkItemApi";
 import { usePendingApprovalsByTool } from "@/hooks/api/useAssignmentApi";
 import { useCtemCases } from "@/hooks/api/useCtemCasesApi";
-import { useCtemSignalList } from "@/hooks/api/useCtemSignalsApi";
-import { CRITICALITY_LABELS } from "@/lib/organization-profile";
 import { useNow } from "@/hooks/useTick";
 import { CaseUrgencyChip, slaCountdown, slaSentence } from "./case-loop";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
@@ -48,7 +46,7 @@ import { GenericContextNotice } from "./GenericContextNotice";
 import { RecommendedActionsEmpty } from "./RecommendedActionsEmpty";
 import {
   ACT_NOW_COLLAPSED, ACT_NOW_GROUP_FILLS, ACT_NOW_GROUP_LABELS, ACT_NOW_PRIORITY, actNowAskAiPrompt, actNowGroup, actNowGroupCounts,
-  actNowCasePriority, actNowCases, actNowIsGeneric, actNowOffersAskAi, actNowPriorityLabel, actNowQueue, caseScopes,
+  actNowIsGeneric, actNowOffersAskAi, actNowP1Cases, actNowPriorityLabel, actNowQueue, actNowShowsPriority,
   type ActNowRow,
 } from "./act-now";
 
@@ -129,12 +127,19 @@ function ActNowRowButton({
           </span>
         )}
       </span>
+      {/* A P1 case shows its urgency chip; a fleet row keeps the slot empty (an
+          invisible twin) so the chevrons stay aligned with the rows that carry a
+          priority (UX round 1 on #920, B2). */}
       {row.caseUrgency ? (
         <span className="shrink-0" data-testid="ctem-act-now-case-urgency">
           <CaseUrgencyChip severity={row.caseUrgency.severity} priority={row.caseUrgency.priority} />
         </span>
+      ) : actNowShowsPriority(row) ? (
+        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)} data-testid="ctem-act-now-priority">
+          {t_i18n(prio.label)}
+        </span>
       ) : (
-        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)}>
+        <span aria-hidden className="invisible shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold" data-testid="ctem-act-now-priority-slot">
           {t_i18n(prio.label)}
         </span>
       )}
@@ -231,12 +236,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
   // `ctem_case_update` frame re-reads the list, so it appears without a reload.
   const cases = useCtemCases({ throwOnError: false });
   const now = useNow(60_000);
-  // The scope the gate read for each case, from the reader's own signals only
-  // (CTEM-30, #937): a case whose signals they cannot read ranks after the others
-  // of its severity and names no crown jewel.
-  const caseSignals = useCtemSignalList("case_opened", 200);
-  const scopes = useMemo(() => caseScopes(caseSignals.data?.pages.flatMap((p) => p.signals) ?? []), [caseSignals.data]);
-  const loopCases = useMemo(() => actNowCases(cases.data?.cases ?? [], scopes), [cases.data, scopes]);
+  const p1Cases = useMemo(() => actNowP1Cases(cases.data?.cases ?? []), [cases.data]);
 
   const waitingCount = waiting.data?.count ?? 0;
   const approvalRuns =
@@ -244,27 +244,19 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
 
   const queue = useMemo(() => {
     const extra: ActNowRow[] = [];
-    loopCases.forEach((c, index) => {
+    for (const c of p1Cases) {
       const countdown = slaCountdown(c.sla_due_at, now);
-      const scope = scopes.get(c.id);
-      const parts = [
-        scope?.crownJewels.length
-          ? t_i18n("Crown jewel: {name}", { name: scope.crownJewels.join(", ") })
-          : scope?.criticality
-            ? t_i18n("Scope criticality: {level}", { level: t_i18n((CRITICALITY_LABELS as Record<string, string>)[scope.criticality] ?? scope.criticality) })
-            : "",
-        countdown ? slaSentence(countdown, t_i18n, intl.locale) : "",
-      ].filter(Boolean);
       extra.push({
-        id: `case-${c.id}`, source: "case", icon: Zap,
-        tone: c.severity === "P1" ? "text-feedback-error-primary" : "text-feedback-warning-primary",
+        id: `case-${c.id}`, source: "case", icon: Zap, tone: "text-feedback-error-primary",
         title: c.title,
-        reason: parts.length > 0 ? parts.join(" · ") : t_i18n("Case opened by the loop"),
+        reason: countdown
+          ? t_i18n("P1 case opened by the loop: {sla}", { sla: slaSentence(countdown, t_i18n, intl.locale) })
+          : t_i18n("P1 case opened by the loop"),
         cta: "Open", onAction: () => navigate(`/ctem/cases/${c.id}`),
-        priority: actNowCasePriority(c.severity, index),
+        priority: ACT_NOW_PRIORITY.case_p1,
         caseUrgency: { severity: c.severity ?? null, priority: c.priority },
       });
-    });
+    }
     if (waitingCount > 0) {
       const oldest = waiting.data?.oldest;
       extra.push({
@@ -285,7 +277,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
       });
     }
     return actNowQueue([...rows, ...extra], undefined, briefingActions);
-  }, [rows, briefingActions, loopCases, scopes, now, intl.locale, waitingCount, waiting.data?.oldest, approvalRuns, navigate, t_i18n]);
+  }, [rows, briefingActions, p1Cases, now, intl.locale, waitingCount, waiting.data?.oldest, approvalRuns, navigate, t_i18n]);
 
   const shown = expanded ? queue : queue.slice(0, ACT_NOW_COLLAPSED);
   const more = queue.length > ACT_NOW_COLLAPSED;

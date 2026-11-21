@@ -15,7 +15,7 @@ import { CTEM_STAGE_KEYS } from "@/lib/constants";
 /** Where a row comes from: it ranks the rows, decides Ask AI and the generic
  *  notice. Not drawn on the row: "Module" on every rule row said nothing
  *  (#11213). */
-export type ActNowSource = "briefing" | "stage" | "module" | "work_item" | "approval" | "setup" | "agent" | "case";
+export type ActNowSource = "briefing" | "stage" | "module" | "work_item" | "approval" | "setup" | "agent" | "case" | "fleet";
 
 export interface ActNowRow {
   id: string;
@@ -54,8 +54,8 @@ export interface ActNowRow {
 export const ACT_NOW_COLLAPSED = 3;
 
 /** The source groups the Act now bar counts, in its order. */
-export type ActNowGroup = "posture" | "blind_spots" | "setup" | "waiting";
-const ACT_NOW_GROUPS: readonly ActNowGroup[] = ["posture", "blind_spots", "setup", "waiting"];
+export type ActNowGroup = "posture" | "blind_spots" | "setup" | "waiting" | "working";
+const ACT_NOW_GROUPS: readonly ActNowGroup[] = ["posture", "blind_spots", "setup", "waiting", "working"];
 
 /** The legend label of each group. @i18n-keys */
 export const ACT_NOW_GROUP_LABELS = {
@@ -63,6 +63,7 @@ export const ACT_NOW_GROUP_LABELS = {
   blind_spots: "Blind spots",
   setup: "Setup",
   waiting: "Waiting for you",
+  working: "Fleet working",
 } as const satisfies Record<ActNowGroup, string>;
 
 /** The fill of each group: the bar segment, its legend swatch and the dot of
@@ -72,6 +73,7 @@ export const ACT_NOW_GROUP_FILLS: Record<ActNowGroup, string> = {
   blind_spots: "var(--color-feedback-alert-primary)",
   setup: "var(--color-accent)",
   waiting: "var(--color-feedback-warning-primary)",
+  working: "var(--color-feedback-info-primary)",
 };
 
 /** The ids of the blind spot rows: `connect-<stage>`, one per stage a missing
@@ -83,6 +85,7 @@ const BLIND_SPOT_IDS: ReadonlySet<string> = new Set(CTEM_STAGE_KEYS.map((stage) 
  *  fact read from a module. */
 export function actNowGroup(row: Pick<ActNowRow, "id" | "source">): ActNowGroup {
   if (row.source === "work_item" || row.source === "approval") return "waiting";
+  if (row.source === "fleet") return "working";
   if (row.source === "setup") return BLIND_SPOT_IDS.has(row.id) ? "blind_spots" : "setup";
   return "posture";
 }
@@ -116,10 +119,17 @@ const SOURCE_ORDER: Record<ActNowSource, number> = {
   stage: 4,
   setup: 5,
   agent: 6,
+  fleet: 7,
 };
 
 function titleKey(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.\s]+$/, "");
+}
+
+/** Whether a row shows a priority label: a fleet at work is not a task for
+ *  the reader, so its row carries none (UX round 1 on #920, B2). */
+export function actNowShowsPriority(row: ActNowRow): boolean {
+  return row.source !== "fleet";
 }
 
 /** The priority band a row shows as its small label. */
@@ -229,67 +239,72 @@ export function actNowAskAiPrompt(t_i18n: Translate, row: Pick<ActNowRow, "title
  *  100, KEV 95, failed expectations 90, detection gap 80, stack 50). What
  *  waits on the reader comes first: a person blocks a run or a work item until
  *  they answer. */
-export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97, case_p2: 96, case_p3: 72 } as const;
+export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97, fleet: 60 } as const;
 
-/** The open loop cases Act now lists (CTEM-03-UI #892, ranked by the loop since
- *  CTEM-30 #937): five at most, so the queue keeps room for the rest. */
-const ACT_NOW_CASE_MAX = 5;
+/** The fields of a fleet timeline entry a "fleet working" row reads
+ *  (`TimelineEntry` of `lib/ctem-fleet-timeline.ts`). */
+interface ActNowFleetRun {
+  runId: string;
+  fleetName: string;
+  agentName: string | null;
+  outcome: string | null;
+  at: string;
+  caseId: string | null;
+}
 
-const SEVERITY_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2 };
-const CRITICALITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-
-/** What the scope gate read for a case, from its origin signals the reader may read. */
-export interface CaseScope {
-  /** The highest scope criticality among its signals, or null when none is readable. */
-  criticality: string | null;
-  /** The crown jewels its signals were reconciled to. */
-  crownJewels: string[];
+/** One case a fleet is working on now: the newest in-flight run of that case
+ *  (#915, CTEM-04-UI slice 3). */
+interface ActNowFleetWork {
+  caseId: string;
+  caseTitle: string;
+  fleetName: string;
+  /** The member running the step in progress (`null` until the fleet health names it). */
+  agentName: string | null;
+  /** Waiting to start (`pending`) or running. */
+  pending: boolean;
+  runId: string;
+  /** Other in-flight runs on the same case. */
+  others: number;
 }
 
 /**
- * The scope of each case, from the reader's own signals (`case_id` and the
- * scope gate's decision record): a case whose signals the reader cannot read
- * has no entry, and its row shows severity and SLA only.
+ * The cases a fleet works on now, from the fleet timeline: one entry per case,
+ * its newest running or pending run, newest first. A run tied to no case, or
+ * to a case the reader cannot see (`caseTitles` has no entry), is left out: the
+ * row would link to a case the board does not show. Pure: the page reads the
+ * timeline and the cases it already holds, never a request of its own.
  */
-export function caseScopes(
-  signals: readonly { case_id: string | null; decision: { scope?: { criticality?: string | null } | null; reconcile?: { crown_jewels_named?: string[] } } | null }[],
-): Map<string, CaseScope> {
-  const out = new Map<string, CaseScope>();
-  for (const s of signals) {
-    if (!s.case_id) continue;
-    const prev = out.get(s.case_id) ?? { criticality: null, crownJewels: [] };
-    const crit = s.decision?.scope?.criticality ?? null;
-    const better = crit && (prev.criticality === null || (CRITICALITY_RANK[crit] ?? 9) < (CRITICALITY_RANK[prev.criticality] ?? 9));
-    const jewels = [...prev.crownJewels];
-    for (const j of s.decision?.reconcile?.crown_jewels_named ?? []) if (!jewels.includes(j)) jewels.push(j);
-    out.set(s.case_id, { criticality: better ? crit : prev.criticality, crownJewels: jewels });
+export function actNowFleetWork(
+  timeline: readonly ActNowFleetRun[],
+  caseTitles: Readonly<Record<string, string | undefined>>,
+): ActNowFleetWork[] {
+  const byCase = new Map<string, ActNowFleetWork>();
+  const sorted = [...timeline].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  for (const run of sorted) {
+    if (!run.caseId || (run.outcome !== "running" && run.outcome !== "pending")) continue;
+    const title = caseTitles[run.caseId];
+    if (title === undefined) continue;
+    const prev = byCase.get(run.caseId);
+    if (prev) {
+      prev.others += 1;
+      continue;
+    }
+    byCase.set(run.caseId, {
+      caseId: run.caseId, caseTitle: title, fleetName: run.fleetName, agentName: run.agentName,
+      pending: run.outcome === "pending", runId: run.runId, others: 0,
+    });
   }
-  return out;
+  return [...byCase.values()];
 }
 
-/**
- * The open cases of the loop, ranked as the loop ranks them: severity (P1,
- * P2, P3), then scope criticality (critical first, unknown last), then the
- * nearest SLA. A case with no loop severity is left to the cases board.
- */
-export function actNowCases<T extends { id: string; state: string; severity?: string | null; sla_due_at?: string | null }>(
-  cases: readonly T[],
-  scopes: ReadonlyMap<string, CaseScope> = new Map(),
-): T[] {
-  const crit = (c: T) => CRITICALITY_RANK[scopes.get(c.id)?.criticality ?? ""] ?? 9;
+/** The open P1 cases Act now lists, most urgent SLA first (CTEM-03-UI, #892): a
+ *  P1 case opened by the loop is what to do first, above what waits on the
+ *  reader. Two at most, so the queue keeps room for the rest. */
+const ACT_NOW_CASE_MAX = 2;
+
+export function actNowP1Cases<T extends { state: string; severity?: string | null; sla_due_at?: string | null }>(cases: readonly T[]): T[] {
   return cases
-    .filter((c) => c.severity && c.severity in SEVERITY_RANK && (c.state === "needs_attention" || c.state === "in_progress"))
-    .sort(
-      (a, b) =>
-        SEVERITY_RANK[a.severity as string] - SEVERITY_RANK[b.severity as string] ||
-        crit(a) - crit(b) ||
-        (a.sla_due_at ?? "\uffff").localeCompare(b.sla_due_at ?? "\uffff"),
-    )
+    .filter((c) => c.severity === "P1" && (c.state === "needs_attention" || c.state === "in_progress"))
+    .sort((a, b) => (a.sla_due_at ?? "\uffff").localeCompare(b.sla_due_at ?? "\uffff"))
     .slice(0, ACT_NOW_CASE_MAX);
-}
-
-/** The queue priority of the case at *index* of `actNowCases`: its severity's band, kept in the loop's order inside it. */
-export function actNowCasePriority(severity: string | null | undefined, index: number): number {
-  const base = severity === "P1" ? ACT_NOW_PRIORITY.case_p1 : severity === "P2" ? ACT_NOW_PRIORITY.case_p2 : ACT_NOW_PRIORITY.case_p3;
-  return base - index * 0.01;
 }
