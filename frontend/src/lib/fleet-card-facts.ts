@@ -111,7 +111,7 @@ export function fleetStarts(memberIds: readonly string[], assignments: readonly 
 }
 
 /** The Platform Health fleet's own facts (`Fleet.health_starts`, #974), as the card reads them. */
-export interface HealthStartsFacts {
+interface HealthStartsFacts {
   events: boolean;
   schedules: number;
   modules: readonly string[];
