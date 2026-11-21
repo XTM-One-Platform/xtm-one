@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.utils import format_exception_message
-from app.services.work_item_ask import normalize_ask, person_ask_missing, unreadable_reasons, with_source_links
+from app.services.work_item_ask import normalize_ask, person_ask_missing, unreadable_reasons
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +72,8 @@ SYSTEM_PROMPT = (
     '{"question": one sentence, the decision in the reader\'s terms, '
     '"context": 2 to 4 short plain lines separated by \\n (what the matter is, what was found, '
     'what each answer leads to), "options": 2 to 4 objects {"key": "A", "label": the button text, '
-    '"effect": what choosing it does}, "recommendation": the key of the option the item recommends '
-    "(the safest one when it says none)}. Plain words only: no timestamp, no id, no UUID, no SHA, "
-    "no message id, no "
+    '"effect": what choosing it does}, "recommendation": the key of the option the item recommends}. '
+    "Plain words only: no timestamp, no id, no UUID, no SHA, no message id, no "
     "correlation or timer key, no 'card sent' or 'msg'; name things by what they are. Keep the "
     "item's language. When the item does not say what the decision is, answer {}."
 )
@@ -106,12 +105,23 @@ def ask_readable(ask: object) -> bool:
     return not any(unreadable_reasons(text) for text in _texts(ask))
 
 
+def card_complete(ask: object) -> bool:
+    """Whether *ask* is complete for both rules: #776 (question, context, 2+ options) and #762 (a recommendation).
+
+    A card this pass stores must pass ``refuse_needs_human_without_ask``, so a
+    later write that keeps ``needs_human`` on the item is never refused. Pure.
+    """
+    from app.services.work_item_blocked_refs import ask_is_complete
+
+    return not person_ask_missing(ask) and ask_is_complete(ask)
+
+
 def card_unreadable(ask: object) -> bool:
     """Whether the card of a ``needs_human`` item fails a person: unreadable or incomplete.
 
     Pure, no model call: what ``get_fleet_health`` reports and this pass selects.
     """
-    return not ask_readable(ask) or bool(person_ask_missing(ask))
+    return not ask_readable(ask) or not card_complete(ask)
 
 
 def _clip(value: object, limit: int) -> str:
@@ -163,7 +173,7 @@ async def rewrite_item(item: Any, rewriter: Rewriter) -> Rewrite | None:
         current is not None
         and ask_readable(current)
         and len(current.get("options") or []) >= 2
-        and current.get("recommendation")
+        and str(current.get("recommendation") or "").strip()
     ):
         # A readable structured ask is kept: only its missing context is added.
         answer = parse_answer(await rewriter(CONTEXT_PROMPT, f"{item_prompt(item)}\n\nQuestion: {current['question']}"))
@@ -174,17 +184,14 @@ async def rewrite_item(item: Any, rewriter: Rewriter) -> Rewrite | None:
             return None
         candidate = {k: answer.get(k) for k in ("question", "context", "options", "recommendation")}
         candidate = {k: v for k, v in candidate.items() if v not in (None, "", [])}
-        for kept in ("deadline", "links"):
-            if current and current.get(kept):
-                candidate[kept] = current[kept]
+        if current and current.get("deadline"):
+            candidate["deadline"] = current["deadline"]
     try:
         ask = normalize_ask(candidate)
     except ValueError:
         return None
-    if ask is None or person_ask_missing(ask):
+    if ask is None or not card_complete(ask):
         return None
-    # The sources the reader opens to decide, from the item's own text (#834): no model.
-    ask = with_source_links(ask, getattr(item, "description", None), getattr(item, "payload", None)) or ask
     reason = str(getattr(item, "blocked_reason", None) or "")
     old_question = str((current or {}).get("question") or "").strip()
     if old_question and old_question != ask["question"]:
@@ -197,8 +204,6 @@ async def rewrite_item(item: Any, rewriter: Rewriter) -> Rewrite | None:
 @dataclass
 class BackfillReport:
     rewritten: list[str] = field(default_factory=list)
-    #: Readable cards that only gained their source links (no model call).
-    linked: list[str] = field(default_factory=list)
     #: ``(item id, fleet id or "")`` of the cards left unreadable.
     unrewritable: list[tuple[str, str]] = field(default_factory=list)
 
@@ -243,16 +248,8 @@ async def _store(db: Any, item_id: Any, values: dict[str, Any]) -> bool:
 
 async def backfill_readable_asks(db: Any, rewriter: Rewriter, *, limit: int = MAX_ITEMS) -> BackfillReport:
     """Rewrite the unreadable cards of the open ``needs_human`` items; what was done. Commits nothing."""
-    waiting = await _waiting_items(db)
-    pending = [item for item in waiting if card_unreadable(item.ask)][:limit]
+    pending = [item for item in await _waiting_items(db) if card_unreadable(item.ask)][:limit]
     report = BackfillReport()
-    for item in waiting:
-        # A readable card without its sources gains them from the item's own text (#834).
-        if item in pending or not isinstance(item.ask, dict) or item.ask.get("links"):
-            continue
-        linked = with_source_links(item.ask, getattr(item, "description", None), getattr(item, "payload", None))
-        if linked is not item.ask and await _store(db, item.id, {"ask": linked}):
-            report.linked.append(str(item.id))
     if not pending:
         return report
     fleets = await _fleets_by_workspace(db)
@@ -337,11 +334,8 @@ async def on_release_deployed(release: dict[str, Any], *, rewriter: Rewriter | N
 
         if not release.get("version"):
             return None
-        if _lease_key(release) in _done:
-            return None
-        if await _lease_held(release):
+        if _lease_key(release) in _done or await _lease_held(release):
             _done.add(_lease_key(release))
-            logger.warning("Decision card backfill skipped for %s: another process ran it.", _lease_key(release))
             return None
         async with async_session() as db:
             refusal = await agentic_refusal(db)
@@ -356,24 +350,19 @@ async def on_release_deployed(release: dict[str, Any], *, rewriter: Rewriter | N
                 return None
             if not await _take_lease(release):
                 _done.add(_lease_key(release))
-                logger.warning("Decision card backfill skipped for %s: lease not taken.", _lease_key(release))
                 return None
             _done.add(_lease_key(release))
             report = await backfill_readable_asks(db, rewriter)
             await db.commit()
         label = str(release.get("release") or release.get("version"))
-        # WARNING, not INFO: production keeps WARNING and above, and the count is
-        # what tells a pass that ran and found nothing from one that never ran (#834).
-        logger.warning(
-            "Decision card backfill of release %s: %d card(s) rewritten for their reader, %d given their "
-            "source links, %d left unreadable.",
+        logger.info(
+            "Release %s: %d decision card(s) rewritten for their reader, %d left unreadable.",
             label,
             len(report.rewritten),
-            len(report.linked),
             len(report.unrewritable),
         )
         for item_id, fleet_id in report.unrewritable:
-            logger.warning("Decision card not readable: item %s, fleet %s", item_id, fleet_id or "none")
+            logger.info("Decision card not readable: item %s, fleet %s", item_id, fleet_id or "none")
         return report
     except Exception as exc:
         logger.warning("Decision card backfill not run: %s", format_exception_message(exc))
