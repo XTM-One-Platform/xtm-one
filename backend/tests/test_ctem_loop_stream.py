@@ -101,3 +101,56 @@ async def test_publish_sends_one_frame_per_reader(monkeypatch: pytest.MonkeyPatc
     signal = _signal(recorded_by="system")
     await stream.publish_signal_update(_NO_DB, signal)
     assert sent == [(f"activity:{admin}", stream.signal_frame(signal))]
+
+
+def test_case_frame_carries_ids_and_states_only() -> None:
+    frame = stream.case_frame("c1", "resolved", "validation", "2026-11-21T08:00:00+00:00")
+    assert frame == {
+        "type": "ctem_case_update",
+        "case_id": "c1",
+        "state": "resolved",
+        "event_kind": "validation",
+        "at": "2026-11-21T08:00:00+00:00",
+    }
+
+
+def test_case_channels_are_personal_and_once_each() -> None:
+    a, b = str(uuid.uuid4()), str(uuid.uuid4())
+    assert stream.case_channels([a, b, a]) == [f"activity:{a}", f"activity:{b}"]
+    assert "activity:company" not in stream.case_channels([a])
+
+
+@pytest.mark.asyncio
+async def test_case_publish_sends_each_frame_to_each_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeRedis:
+        async def publish(self, channel: str, payload: str) -> None:
+            sent.append((channel, json.loads(payload)))
+
+    async def client() -> FakeRedis:
+        return FakeRedis()
+
+    user = str(uuid.uuid4())
+
+    async def users() -> list[str]:
+        return [user]
+
+    monkeypatch.setattr(stream, "redis_client", client)
+    monkeypatch.setattr(stream, "_active_user_ids", users)
+    monkeypatch.setattr(stream, "_down_until", 0.0)
+    frame = stream.case_frame("c1", "needs_attention", "created", "2026-11-21T08:00:00+00:00")
+    assert await stream.publish_case_updates([frame]) == 1
+    assert sent == [(f"activity:{user}", frame)]
+
+
+@pytest.mark.asyncio
+async def test_case_publish_failure_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def broken() -> list[str]:
+        raise ConnectionError("db down")
+
+    monkeypatch.setattr(stream, "_active_user_ids", broken)
+    monkeypatch.setattr(stream, "_down_until", 0.0)
+    frame = stream.case_frame("c1", "resolved", "validation", "x")
+    assert await stream.publish_case_updates([frame]) == 0
+    assert stream._down_until > 0
