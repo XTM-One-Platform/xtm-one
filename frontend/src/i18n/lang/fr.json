@@ -19874,5 +19874,11 @@
   "Matched assets": "Ressources rattachées",
   "Scope threshold": "Seuil de périmètre",
   "Risk scenarios": "Scénarios de risque",
-  "Policy checks": "Contrôles de la politique"
+  "Policy checks": "Contrôles de la politique",
+  "Exclusion": "Exclusion",
+  "Known exploited always in": "Exploitée connue toujours incluse",
+  "Crown jewel minimum criticality": "Criticité minimale des actifs critiques",
+  "Risk scenario required": "Scénario de risque requis",
+  "{rule}: passed": "{rule} : respecté",
+  "{rule}: failed": "{rule} : non respecté"
 }

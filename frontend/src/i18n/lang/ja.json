@@ -19874,5 +19874,11 @@
   "Matched assets": "結び付いたアセット",
   "Scope threshold": "スコープしきい値",
   "Risk scenarios": "リスクシナリオ",
-  "Policy checks": "ポリシーチェック"
+  "Policy checks": "ポリシーチェック",
+  "Exclusion": "除外",
+  "Known exploited always in": "既知の悪用は常に対象",
+  "Crown jewel minimum criticality": "重要資産の最小重要度",
+  "Risk scenario required": "リスクシナリオ必須",
+  "{rule}: passed": "{rule}: 合格",
+  "{rule}: failed": "{rule}: 不合格"
 }
