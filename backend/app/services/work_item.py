@@ -686,6 +686,43 @@ def bounded_trigger_item(item: dict | None) -> dict | None:
     return {**item, **bounded}
 
 
+# A note the platform stamps on top of a description: "2026-11-21 07:12Z: ..."
+# or "2026-11-20 19:14Z (run <id>): ..." (#8670).
+_STAMPED_NOTE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}Z(?: \([^)]*\))?: ")
+CARD_FALLBACK_CHARS = 600
+
+
+def card_brief(description: str | None) -> str:
+    """The brief of *description*: its paragraphs past the stamped notes, cut short (#834)."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", description or "") if p.strip()]
+    brief = [p for p in paragraphs if not _STAMPED_NOTE.match(p)] or paragraphs[-1:]
+    text = "\n\n".join(brief)
+    if len(text) <= CARD_FALLBACK_CHARS:
+        return text
+    return text[:CARD_FALLBACK_CHARS].rsplit(" ", 1)[0].rstrip() + "..."
+
+
+def _card_fallback(item: WorkItem) -> dict | None:
+    """The readable card of a needs_human item whose ask is missing or incomplete, else ``None``.
+
+    Read from the item alone, no model call: the first lines of its brief, the
+    source links in it, and the fields the ask still lacks (#834).
+    """
+    if not getattr(item, "needs_human", None):
+        return None
+    from app.services.work_item_ask import person_ask_missing, source_links
+
+    ask = getattr(item, "ask", None)
+    missing = person_ask_missing(ask)
+    if not missing:
+        return None
+    return {
+        "brief": card_brief(item.description),
+        "links": source_links(item.description, item.payload),
+        "missing": missing,
+    }
+
+
 def serialize_work_item(
     item: WorkItem,
     *,
@@ -742,6 +779,9 @@ def serialize_work_item(
         "waits_for_user_id": (str(recipient) if (recipient := getattr(item, "waits_for_user_id", None)) else None),
         # The decision asked of a person; None on a legacy item (#9437).
         "ask": getattr(item, "ask", None) or None,
+        # What a decision card shows when its ask is missing or incomplete:
+        # the brief and its links, never the bare title (#834). No model call.
+        "card_fallback": _card_fallback(item),
         "blocked_why": blocked_why(item),
         # The agents its completion is routed to; None when nobody.
         "fleet_impact": getattr(item, "fleet_impact", None) or None,
@@ -1890,9 +1930,10 @@ async def create_work_item(
     refs = normalize_blocked_on_refs(blocked_on_refs)
     refuse_unobserved_deployment_refs(refs)
     reason = normalize_blocked_reason(blocked_reason)
-    from app.services.work_item_ask import normalize_ask
+    from app.services.work_item_ask import normalize_ask, with_source_links
 
-    structured_ask = normalize_ask(ask)
+    # The sources the reader opens, from the item's own text when the agent gave none (#834).
+    structured_ask = with_source_links(normalize_ask(ask), description, payload)
     if require_person_ask and needs_human:
         from app.services.work_item_ask import refuse_incomplete_person_ask
 
@@ -2489,7 +2530,10 @@ async def update_work_item(
                 item.claimed_by_run_id = None
                 item.claimed_at = None
         if ask is not None:
-            item.ask = new_ask
+            from app.services.work_item_ask import with_source_links
+
+            # The sources the reader opens, from the item's own text when the agent gave none (#834).
+            item.ask = with_source_links(new_ask, item.description, item.payload)
         if item.status != "blocked" and previous_status == "blocked":
             # No longer blocked: what it waited for no longer applies. An item put
             # back to work keeps the pull requests it still waited for, so a
