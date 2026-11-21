@@ -127,6 +127,24 @@ def delivered_pir_ids(payload: object) -> list[str]:
     return [p["pir_id"] for p in _pir_matches(payload["data"], payload)]
 
 
+def type_drop_reason(trigger_config: object, payload: object) -> str | None:
+    """Why a PIR playbook delivery is not for this listener: its entity is not of the provision's types.
+
+    A PIR playbook delivers every entity flagged in the profile PIRs; two
+    listeners on the same PIRs (vulnerabilities, threat activity) each keep
+    their own ``provision.entity_types``. No types declared: every kind is kept.
+    """
+    provision = trigger_config.get("provision") if isinstance(trigger_config, Mapping) else None
+    types = provision.get("entity_types") if isinstance(provision, Mapping) else None
+    wanted = {t.strip().lower() for t in types if isinstance(t, str)} if isinstance(types, list) else set()
+    data = payload.get("data") if isinstance(payload, Mapping) else None
+    kind = data.get("type") if isinstance(data, Mapping) else None
+    kind = kind.strip().lower() if isinstance(kind, str) else ""
+    if not wanted or kind in wanted:
+        return None
+    return f"pir_min_score: {kind or 'an entity'} is not one of this listener's entity types"
+
+
 def threshold_for(policy: Any, kind: str) -> int:
     """The policy's minimum PIR score for *kind* (the policy defaults when no profile is saved)."""
     from app.services.organization_context import PrioritizationPolicy
@@ -226,6 +244,9 @@ async def pir_filter_reason(
     kind = pir_kind(payload)
     if not kind:
         return None
+    wrong_type = type_drop_reason(trigger_config, payload)
+    if wrong_type is not None:
+        return wrong_type
     pir_ids = delivered_pir_ids(payload)
     if not pir_ids:
         return pir_drop_reason(kind, 0, {})

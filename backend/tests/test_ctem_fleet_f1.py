@@ -88,8 +88,14 @@ def test_the_new_agents_are_seeded_once():
 
 def test_the_spec_assignments_live_on_the_orchestrator() -> None:
     assignments = _f1_assignments()
-    # The three of the spec, plus the case loop (#891).
-    assert set(assignments) == {"New relevant threat", "Weekly threat sweep", "Re-test due", "Case opened or reopened"}
+    # The three of the spec, plus the case loop (#891) and the PIR score trigger (CTEM-08).
+    assert set(assignments) == {
+        "New relevant threat",
+        "Threat activity flagged in a PIR",
+        "Weekly threat sweep",
+        "Re-test due",
+        "Case opened or reopened",
+    }
     assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "0 7 * * 1"}
     assert assignments["Re-test due"]["trigger_type"] == "work_item"
     assert assignments["Re-test due"]["trigger_config"] == {"correlation_prefix": "ctem:f1:retest:"}
@@ -103,3 +109,13 @@ def test_the_new_threat_trigger_is_provisioned_from_the_organization_profile():
     assert set(spec["entity_types"]) == {"Intrusion-Set", "Campaign", "Report"}
     assert spec["event_types"] == ["create"]
     assert set(spec["organization_context"]) == {"sector", "regions"}
+
+
+def test_the_pir_threat_trigger_is_a_pir_playbook_held_to_the_policy_threshold() -> None:
+    trigger = _f1_assignments()["Threat activity flagged in a PIR"]
+    assert trigger["trigger_config"]["pir_min_score"] == "policy"
+    spec = read_provision_spec(trigger["trigger_config"])
+    assert spec is not None
+    assert spec["mode"] == "pir_playbook"
+    assert spec["organization_context"] == ["pir_ids"]
+    assert "Vulnerability" not in spec["entity_types"]

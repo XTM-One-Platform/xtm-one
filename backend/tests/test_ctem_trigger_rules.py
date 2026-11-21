@@ -125,6 +125,13 @@ def test_delivered_pir_ids_are_read_from_the_extension() -> None:
     assert rules.delivered_pir_ids({"xtm_source": "pir_playbook"}) == []
 
 
+def test_a_listener_keeps_only_its_own_entity_types() -> None:
+    threat_cfg = {"pir_min_score": "policy", "provision": {"entity_types": ["Intrusion-Set", "Malware"]}}
+    assert rules.type_drop_reason(threat_cfg, _flagged("intrusion-set", [("p1", 80)])) is None
+    assert "not one of" in str(rules.type_drop_reason(threat_cfg, _flagged("vulnerability", [("p1", 80)])))
+    assert rules.type_drop_reason({"pir_min_score": "policy"}, _flagged("vulnerability", [("p1", 80)])) is None
+
+
 def test_thresholds_come_from_the_policy_with_defaults_70_and_75() -> None:
     from app.services.organization_context import PrioritizationPolicy
 

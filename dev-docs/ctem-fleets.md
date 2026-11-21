@@ -1049,8 +1049,24 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   software we run" listener uses it on `has` from Software, Infrastructure
   or System to Vulnerability, whatever KEV or EPSS. The OpenCTI signal
   listener records the source in the signal's `evidence.software`, so the
-  scope gate resolves the signal to that product. The PIR score thresholds
-  of the same item build on the PIR playbook mode below (CTEM-05).
+  scope gate resolves the signal to that product.
+- Trigger rule "PIR score thresholds" (CTEM-08):
+  `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
+  to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
+  primary profile's prioritization policy: `pir_min_score_vulnerability`
+  (default 70) for a Vulnerability, `pir_min_score_threat` (default 75) for
+  threat activity (intrusion set, threat actor, campaign, malware). Both are
+  policy settings, bounded 0 to 100, never constants. The delivered score
+  lags one change, so the receiver re-reads the entity's live
+  `pirInformation(pirId)` for each delivered PIR with the trigger's OpenCTI
+  integration and starts the run when one PIR reaches the threshold; a score
+  it cannot read drops the delivery naming why (a narrowing rule never widens
+  on an outage). A delivery whose entity is not of the listener's
+  `provision.entity_types` is dropped too, since one playbook per listener
+  delivers every flag of the profile PIRs. Seeded on "Vulnerability flagged
+  in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
+  the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
+  object, holds the threshold and an edit in Settings needs no reprovision.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
   playbook instead of a live trigger. OpenCTI flags an entity in a PIR
