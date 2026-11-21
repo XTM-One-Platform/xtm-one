@@ -70,11 +70,12 @@ backend writes on the signal (`decision`) or the case event (`reason`):
   the signal's `evidence.link`, the crown jewel in Settings > Organization,
   the case).
 
-Contract for the backend items: a decision record is
-`{outcome, reason_code, reason_params, inputs: [{name, value, source}], at,
-actor}`. `reason_code` is a stable key the frontend translates with
-`reason_params` (en, fr, es, ja catalogs; ICU plurals for counts); no
-sentence is stored in English in the database. A record with an unknown
+Contract for the backend items: a decision record carries at least
+`{outcome, reason_code, reason_params, decided_at}`; the reconcile and scope
+gate record (dev-docs/ctem-scope-gate.md section 6) adds `reconcile`, `scope`
+and `policy_checks`, which the loop trace lists as labelled inputs. `reason_code` is a stable key the frontend translates with
+`reason_params` (en, fr, es, ja catalogs; ICU plurals for counts); the
+English `reason` line the gate also stores is for agents and is never drawn. A record with an unknown
 `reason_code` shows its outcome chip and "Reason not available in this
 version", never an empty cell. A signal with no decision yet shows "Waiting
 for reconcile".

@@ -46,8 +46,13 @@ const STATE_PLACE: Record<CtemSignalState, { passed: number; at: number; stopped
 
 /** The ten stages as one signal reached them. */
 export function signalLoop(signal: Pick<CtemSignal, "state" | "first_seen_at" | "decision">): LoopStageView[] {
-  const place = STATE_PLACE[signal.state] ?? STATE_PLACE.new;
-  const decidedAt = signal.decision?.at ?? null;
+  // A confirmed signal the gate sent to a case passed the scope gate and waits
+  // for the case step (CTEM-03); a confirmed one with no decision waits at the gate.
+  const place =
+    signal.state === "confirmed" && signal.decision?.outcome === "case"
+      ? { passed: 2, at: 3, stopped: false }
+      : (STATE_PLACE[signal.state] ?? STATE_PLACE.new);
+  const decidedAt = signal.decision?.decided_at ?? null;
   return LOOP_STAGES.map((stage, index) => {
     let status: LoopStageStatus = "not_reached";
     if (index <= place.passed) status = "passed";

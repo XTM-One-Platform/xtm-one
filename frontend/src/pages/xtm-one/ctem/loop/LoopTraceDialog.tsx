@@ -22,7 +22,7 @@ import { isNotFoundError } from "@/lib/api";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { DecisionReason } from "./DecisionReason";
+import { DecisionReason, decisionSentence } from "./DecisionReason";
 import { parseLoopParam, signalLoop, type LoopStageView } from "./loop-stages";
 
 export const LOOP_PARAM = "loop";
@@ -82,6 +82,8 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
               <span className="block content-caption text-default-secondary">
                 {t_i18n(STATUS_LABEL[stage.status])}
                 {stage.at ? ` · ${formatShortDateTimeIntl(intl, stage.at)}` : ""}
+                {/* The stage where the loop stopped names why (#851 UX round 2 B4). */}
+                {stage.status === "stopped" ? ` · ${decisionSentence(signal.decision, t_i18n)}` : ""}
               </span>
             </span>
           </li>

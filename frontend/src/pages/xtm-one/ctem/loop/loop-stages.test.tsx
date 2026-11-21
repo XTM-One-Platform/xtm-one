@@ -9,7 +9,7 @@ import { renderWithProviders } from "@/testing/providers";
 import { eventStatus, mergeActivity, signalActivity, type ActivityEvent } from "../activity-feed";
 import { ActivityFeed } from "../ActivityFeed";
 import { currentStage, LOOP_STAGES, parseLoopParam, signalLoop } from "./loop-stages";
-import { decisionSentence } from "./DecisionReason";
+import { DecisionReason, decisionSentence } from "./DecisionReason";
 
 const ID = "11111111-2222-3333-4444-555555555555";
 const t = (id: string) => id;
@@ -49,7 +49,7 @@ describe("signalLoop", () => {
   });
 
   it("a watchlisted signal stops at the scope gate", () => {
-    const stages = signalLoop(signal({ state: "watchlist", decision: { reason_code: "x", at: "2026-11-21T08:06:00Z" } }));
+    const stages = signalLoop(signal({ state: "watchlist", decision: { outcome: "watchlist", reason_code: "x", decided_at: "2026-11-21T08:06:00Z" } }));
     expect(stages[1].status).toBe("passed");
     expect(currentStage(stages)).toMatchObject({ key: "scope", status: "stopped", at: "2026-11-21T08:06:00Z" });
   });
@@ -73,6 +73,53 @@ describe("decisionSentence", () => {
   it("never leaves the why empty", () => {
     expect(decisionSentence(null, t)).toBe("Waiting for reconcile");
     expect(decisionSentence({ reason_code: "unknown_code" }, t)).toBe("Reason not available in this version");
+    // A decided record of an older shape (no code) is decided, never "waiting".
+    expect(decisionSentence({ outcome: "discarded", reason: "contradicted by this signal" }, t)).toBe("Reason not available in this version");
+  });
+
+  // #851 UX round 2 B4: a decided signal says why, from the CTEM-02 record.
+  it("reads the reason code of each decided outcome", () => {
+    expect(decisionSentence({ outcome: "discarded", reason_code: "contradicted_by_evidence", reason_params: {} }, t)).toBe(
+      "Contradicted by the verdict of its own source",
+    );
+    expect(decisionSentence({ outcome: "to_validate", reason_code: "subject_unresolved", reason_params: {} }, t)).toBe(
+      "Not resolved to an asset, a crown jewel or the tech stack",
+    );
+    const watch = { outcome: "watchlist", reason_code: "below_scope_threshold", reason_params: { criticality: "low", threshold: "high" } };
+    const seen: Record<string, string | number>[] = [];
+    const capture = (id: string, values?: Record<string, string | number>) => {
+      if (values) seen.push(values);
+      return id;
+    };
+    expect(decisionSentence(watch, capture)).toBe("Criticality {criticality} below the scope threshold {threshold}");
+    expect(seen[seen.length - 1]).toEqual({ criticality: "Low", threshold: "High" });
+  });
+});
+
+describe("decided signals in the trace and the row", () => {
+  const decided = (state: CtemSignal["state"], reason_code: string) =>
+    signal({ state, decision: { outcome: state, reason_code, reason_params: {}, decided_at: "2026-11-21T08:06:00Z", reconcile: { lenses: ["outside"], confidence: "low", assets: ["vpn-gw-01"] } } });
+
+  it("a discarded signal reads its reason in the row, never waiting", () => {
+    renderWithProviders(<ActivityFeed events={signalActivity([decided("discarded", "contradicted_by_evidence")])} onOpenSignal={vi.fn()} />);
+    expect(screen.queryByText(/Waiting for reconcile/)).toBeNull();
+    expect(screen.getByText(/Contradicted by the verdict of its own source/)).toBeInTheDocument();
+  });
+
+  it("a watchlist signal stops at the scope gate and a case-bound one waits at the case step", () => {
+    expect(currentStage(signalLoop(decided("watchlist", "below_scope_threshold")))).toMatchObject({ key: "scope", status: "stopped" });
+    const toCase = signal({ state: "confirmed", decision: { outcome: "case", reason_code: "in_scope", decided_at: "2026-11-21T08:06:00Z" } });
+    expect(currentStage(signalLoop(toCase))).toMatchObject({ key: "case", status: "current" });
+    expect(currentStage(signalLoop(decided("to_validate", "subject_unresolved")))).toMatchObject({ key: "reconcile", status: "stopped" });
+  });
+
+  it("lists the decision inputs with labels", () => {
+    renderWithProviders(<DecisionReason state="to_validate" decision={decided("to_validate", "subject_unresolved").decision} showInputs />);
+    const inputs = screen.getByTestId("ctem-decision-inputs");
+    expect(inputs).toHaveTextContent("Lenses");
+    expect(inputs).toHaveTextContent("outside");
+    expect(inputs).toHaveTextContent("Matched assets");
+    expect(inputs).toHaveTextContent("vpn-gw-01");
   });
 });
 

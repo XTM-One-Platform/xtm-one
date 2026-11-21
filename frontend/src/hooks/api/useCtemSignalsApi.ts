@@ -14,14 +14,34 @@ const CTEM_SIGNAL_STATES = ["new", "confirmed", "to_validate", "discarded", "wat
 export type CtemSignalState = (typeof CTEM_SIGNAL_STATES)[number];
 type CtemLens = "inside" | "outside" | "world";
 
-/** A decision record (dev-docs/ctem-loop-visibility.md section 3), written by the reconcile and scope gate. */
+/**
+ * A decision record as the reconcile and scope gate writes it (version 1,
+ * dev-docs/ctem-scope-gate.md section 6): `reason_code` and `reason_params`
+ * are what the UI translates; `reason` is the English line agents read.
+ */
 export interface CtemDecisionRecord {
+  version?: number;
   outcome?: string;
+  state?: string;
+  reason?: string;
   reason_code?: string;
   reason_params?: Record<string, string | number>;
-  inputs?: { name: string; value: string | number | boolean | null; source?: string }[];
-  at?: string;
-  actor?: string;
+  inputs?: { lens?: string; source_provider?: string; cves?: string[] } & Record<string, unknown>;
+  reconcile?: {
+    assets?: string[];
+    crown_jewels_named?: string[];
+    tech_stack?: string[];
+    lenses?: string[];
+    confidence?: string;
+  } & Record<string, unknown>;
+  scope?: {
+    criticality?: string | null;
+    threshold?: string;
+    risk_scenarios?: { id: string; name: string }[];
+  } | null;
+  policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
+  severity?: string | null;
+  decided_at?: string;
 }
 
 /** One signal as the API answers it (`to_dict` in backend/app/services/ctem_signals.py). */
