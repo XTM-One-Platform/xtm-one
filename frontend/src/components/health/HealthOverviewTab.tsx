@@ -36,6 +36,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { ModuleAnalysisSummary, analysisRowFor } from "@/components/health/ModuleAnalysisSummary";
+import { ANALYST_MODULES, AnalystRecommendationBlock, ModuleInvestigationLine } from "@/components/health/ModuleAnalystParts";
 import {
   useDismissHealthFindings,
   useHealthAnalysis,
@@ -73,6 +74,15 @@ const SEVERITY_BADGE: Record<HealthSeverity, "destructive" | "warning" | "second
   warning: "warning",
   info: "secondary",
 };
+
+/** Where a finding comes from: a deterministic check or the Module Analyst (#101 S14c). @i18n-keys */
+const SOURCE_LABELS = {
+  // "Checks" is the checkbox field's key (fr "Coches"): the source has its own words (UX round 1 B1 on #953).
+  checks: "Health checks",
+  agentic: "Agentic",
+} as const;
+
+const sourceOf = (finding: HealthFinding): keyof typeof SOURCE_LABELS => (finding.agentic ? "agentic" : "checks");
 
 const HISTORY_WINDOWS = [7, 30, 90] as const;
 type HistoryWindow = (typeof HISTORY_WINDOWS)[number];
@@ -246,6 +256,7 @@ function FindingDetail({
           <p className="content-base text-default-primary">{checkRecommendation(finding.check_id, finding.recommendation, t_i18n)}</p>
         </div>
       ) : null}
+      {finding.analyst_recommendation ? <AnalystRecommendationBlock recommendation={finding.analyst_recommendation} /> : null}
       {lines.length ? (
         <div className="space-y-1">
           <h4 className="content-compact font-medium text-default-secondary">{t_i18n("Evidence")}</h4>
@@ -380,6 +391,24 @@ export function HealthOverviewTab() {
   const [dismissing, setDismissing] = useState<HealthFinding[]>([]);
   const cards = useMemo(() => overview.data?.modules ?? [], [overview.data]);
   const modules = useMemo(() => cards.map((card) => card.module), [cards]);
+  // One AI block per module card (#965, #953), administrators only: the newest of the module's analysis
+  // summary (#961) and the Module Analyst's last investigation (section 12.7). An analysed module never
+  // investigated shows its summary; an investigated module with no newer summary shows the investigation
+  // line and "Investigate now". No row to show, no footer: a card never carries an empty divider.
+  const moduleFooter = (card: (typeof cards)[number]) => {
+    if (!isAdmin) return undefined;
+    const hasOpenFindings = card.critical + card.warning + card.info > 0;
+    const row = analysisRowFor(card.module, hasOpenFindings, analysis.data);
+    const investigated = ANALYST_MODULES.includes(card.module);
+    const investigation = card.last_investigation;
+    const investigatedAt = investigation ? Date.parse(investigation.closed_at ?? investigation.opened_at) : Number.NaN;
+    const analysedAt = row?.analysed_at ? Date.parse(row.analysed_at) : Number.NaN;
+    const summaryIsNewer = row !== null && (Number.isNaN(investigatedAt) || analysedAt > investigatedAt);
+    if (row && (!investigated || summaryIsNewer)) {
+      return <ModuleAnalysisSummary module={card.module} hasOpenFindings={hasOpenFindings} overview={analysis.data} />;
+    }
+    return investigated ? <ModuleInvestigationLine module={card.module} investigation={investigation} /> : undefined;
+  };
   const lists = { open: openFindings, dismissed: dismissedFindings, resolved: resolvedFindings };
   const findings = lists[view];
   // Tab counts come from each list's server total, never from the rows of a page.
@@ -433,7 +462,17 @@ export function HealthOverviewTab() {
       {
         key: "finding",
         header: "Finding",
-        cell: (finding) => <CellText text={findingTitle(finding, t_i18n)} />,
+        cell: (finding) =>
+          finding.agentic ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <Badge variant="outline" className="shrink-0 whitespace-nowrap" data-testid="health-finding-agentic">
+                {t_i18n(SOURCE_LABELS.agentic)}
+              </Badge>
+              <CellText text={findingTitle(finding, t_i18n)} />
+            </span>
+          ) : (
+            <CellText text={findingTitle(finding, t_i18n)} />
+          ),
         sortValue: (finding) => findingTitle(finding, t_i18n),
         csv: (finding) => findingTitle(finding, t_i18n),
       },
@@ -489,6 +528,17 @@ export function HealthOverviewTab() {
           .map((value) => ({ value, label: categoryLabel(value, t_i18n) }))
           .sort((a, b) => a.label.localeCompare(b.label)),
       },
+      // Checks or Module Analyst (section 12.7): offered once the view holds an agentic finding.
+      ...(rows.some((finding) => finding.agentic)
+        ? [
+            {
+              key: "source",
+              label: "Source",
+              values: (finding: HealthFinding) => [sourceOf(finding)],
+              options: Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label: t_i18n(label) })),
+            },
+          ]
+        : []),
     ],
     [t_i18n, modules, rows],
   );
@@ -581,17 +631,7 @@ export function HealthOverviewTab() {
             value={String(card.score)}
             subtitle={moduleCardSubtitle(card, t_i18n)}
             iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
-            footer={
-              // The outcome of the module's analysis (#961): administrators, modules with open findings.
-              // No row to show, no footer: a card never carries an empty divider (UX round 1 B1 on #965).
-              isAdmin && analysisRowFor(card.module, card.critical + card.warning + card.info > 0, analysis.data) ? (
-                <ModuleAnalysisSummary
-                  module={card.module}
-                  hasOpenFindings={card.critical + card.warning + card.info > 0}
-                  overview={analysis.data}
-                />
-              ) : undefined
-            }
+            footer={moduleFooter(card)}
           />
         ))}
       </div>
