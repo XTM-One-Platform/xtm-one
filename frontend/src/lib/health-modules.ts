@@ -233,9 +233,13 @@ const HEALTH_PERIOD_LABELS = {
   yearly: "Yearly",
 } as const;
 
-/** A key no table names yet (a check newer than this build): its words, never its snake case. */
+/**
+ * A key no table names yet (a check newer than this build): its words, never its snake case.
+ * The module segment goes, and the `agentic` segment of a Module Analyst check id with it: the
+ * row's Agentic badge already says so (UX round 1 B2 on #953).
+ */
 function humanize(key: string): string {
-  const words = key.replace(/^[a-z_]+\./, "").replace(/_/g, " ").trim();
+  const words = key.replace(/^[a-z_]+\.(?:agentic\.)?/, "").replace(/_/g, " ").trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key;
 }
 

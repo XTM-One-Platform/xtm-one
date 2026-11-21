@@ -65,12 +65,12 @@ The search box at the left of the top bar (`Search…`) opens the command palett
 
 The bell in the top bar shows how many notifications you have not read. It collects what your agents and the platform want you to know:
 
-- runs and work items waiting for your input or decision, listed first and marked `Action needed` until you answer, open or dismiss them;
+- runs, flows and work items waiting for your input or decision, listed first and marked `Action needed` until you answer them;
 - the results of assignments set to notify you when they complete;
 - flow notifications and questions, reminders and messages from agents;
 - problems that need you: an integration that can no longer sign in, a resource an assignment keeps missing, a chained run that could not start, security and API key notices.
 
-Click a notification to open the page it is about; opening it marks it read. Point at one and use `Mark as read` to mark it read without opening it, or `Mark all read` for all of them. A notification waiting for your answer stays listed until you answer it; opening it or `Mark as read` takes it out of the unread count, and `Mark all read` leaves it unread. A work item you cannot open is never listed. `View all` opens `Operations > Executions` on its `Notifications` filter. What you mark read is kept on your account, so your other devices agree.
+Click a notification to open the page it is about; opening it marks it read. Point at one and use `Mark as read` to mark it read without opening it, or `Mark all read` for all of them. A notification waiting for your answer stays unread until you answer it: opening it does not read it, it has no `Mark as read`, and `Mark all read` leaves it unread; while one waits, the bell's count turns red. A work item you cannot open is never listed. `View all` opens `Operations > Executions` on its `Notifications` filter. What you mark read is kept on your account, so your other devices agree.
 
 ## The top bar
 

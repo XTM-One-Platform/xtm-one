@@ -19,6 +19,8 @@ interface TechStackEntry {
   product: string;
   vendor: string;
   cpe: string;
+  /** The version the organization runs, optional (CTEM-11): absent on a profile saved before it. */
+  version?: string;
 }
 
 interface AiSystem {

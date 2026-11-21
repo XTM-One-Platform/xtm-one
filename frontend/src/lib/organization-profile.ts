@@ -22,7 +22,8 @@ export interface ProfileLike {
     /** The assets and asset groups (by name) the crown jewel runs on (#11543, groups apart since #11781). */
     asset_names?: string[];
   }[];
-  tech_stack: { product: string; vendor: string; cpe: string }[];
+  /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
+  tech_stack: { product: string; vendor: string; cpe: string; version?: string }[];
   ai_systems: { name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string }[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615): the page never labels a PIR with its id. */
@@ -306,7 +307,10 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         pir_ids: [...new Set(form.pir_ids.map((id) => id.trim()).filter(Boolean))],
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
         crown_jewels: form.crown_jewels.filter((jewel) => jewel.name.trim()),
-        tech_stack: form.tech_stack.filter((entry) => entry.product.trim()),
+        // An empty version is left out: the saved shape of a profile that never declares one stays the same.
+        tech_stack: form.tech_stack
+          .filter((entry) => entry.product.trim())
+          .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
         ai_systems: form.ai_systems.filter((system) => system.name.trim()),
         risk_appetite: {
           annual_loss_threshold: parseAmount(form.annual_loss_threshold, FIELD_LABELS["risk_appetite.annual_loss_threshold"], "annual_loss_threshold"),
