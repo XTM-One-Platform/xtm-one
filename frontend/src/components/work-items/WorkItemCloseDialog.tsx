@@ -56,6 +56,7 @@ export function WorkItemCloseDialog({
   mode,
   onOpenChange,
   returnFocusTo,
+  onCompleted,
 }: {
   item: WorkItem | null;
   mode: WorkItemCloseMode;
@@ -67,6 +68,8 @@ export function WorkItemCloseDialog({
    * Also the fallback when the opener is gone on a plain dismiss.
    */
   returnFocusTo?: () => HTMLElement | null | undefined;
+  /** Runs once the item is closed (not on a plain dismiss): the detail dialog under it closes too (#774). */
+  onCompleted?: (item: WorkItem) => void;
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
@@ -99,6 +102,7 @@ export function WorkItemCloseDialog({
       toast({ title: t_i18n(copy.success), variant: "success" });
       confirmed.current = true;
       close(false);
+      onCompleted?.(item);
     } catch (e) {
       toast({
         title: t_i18n("Failed to update work item"),

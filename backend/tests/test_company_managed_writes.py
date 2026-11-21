@@ -196,6 +196,8 @@ _WRITE_FUNCTIONS = {
         "complete_work_item",
         # A person answers the decision an item waits for (#9437).
         "answer_work_item",
+        # A person sends Re-check, It's solved or Do it to the item's agent (#774).
+        "ask_work_item",
         # The inbox run's end: completes, keeps or parks the item.
         "settle_inbox_work_item",
         "requeue_work_item",
