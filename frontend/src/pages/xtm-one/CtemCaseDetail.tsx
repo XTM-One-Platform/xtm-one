@@ -14,6 +14,7 @@ import { Icon, Textarea } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NotFoundState } from "@/components/ui/not-found-state";
@@ -35,7 +36,7 @@ import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
-import { CaseLoopLine, CaseUrgencyChip, retestLabel } from "./ctem/case-loop";
+import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -207,6 +208,9 @@ export default function CtemCaseDetail() {
 
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
+  // The Re-test column exists only when a member carries the OpenAEV lifecycle,
+  // so an older case looks the same as before (UX round 1 on #962, B1).
+  const showRetest = hasRetestData(kase.issues ?? []);
 
   const columns: DataTableColumn<IssueRow>[] = [
     {
@@ -274,27 +278,28 @@ export default function CtemCaseDetail() {
       hideBelow: "4xl",
       hideable: true,
     },
-    {
-      key: "retest",
-      header: "Re-test",
-      cell: (r) => {
-        const label = retestLabel(r.issue);
-        if (!label || isRestrictedIssue(r.issue)) return null;
-        return (
-          <span className="flex flex-col" data-testid="ctem-case-issue-retest">
-            <span>{t_i18n(label)}</span>
-            {r.issue.last_tested_at && (
-              <span className="content-caption text-default-secondary">
-                {intl.formatDate(r.issue.last_tested_at, { dateStyle: "medium", timeStyle: "short" })}
-              </span>
-            )}
-          </span>
-        );
-      },
-      sortValue: (r) => retestLabel(r.issue) ?? "~",
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.retest_status ?? (r.issue.retest_pending ? "queued" : ""))),
-      hideable: true,
-    },
+    ...(showRetest
+      ? [
+          {
+            key: "retest",
+            header: "Re-test",
+            cell: (r: IssueRow) =>
+              isRestrictedIssue(r.issue) ? null : (
+                <span className="flex flex-col items-start gap-0.5">
+                  <RetestChip issue={r.issue} />
+                  {r.issue.last_tested_at && (
+                    <span className="content-caption text-default-secondary">
+                      <DateTimeCell value={r.issue.last_tested_at} testId="ctem-case-issue-last-tested" />
+                    </span>
+                  )}
+                </span>
+              ),
+            sortValue: (r: IssueRow) => (isRestrictedIssue(r.issue) ? 99 : retestRank(r.issue)),
+            csv: (r: IssueRow) => (isRestrictedIssue(r.issue) ? "" : (r.issue.retest_status ?? (r.issue.retest_pending ? "queued" : ""))),
+            hideable: true,
+          } satisfies DataTableColumn<IssueRow>,
+        ]
+      : []),
     {
       key: "state",
       header: "State",

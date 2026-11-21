@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/testing/providers";
 import { actNowP1Cases } from "./act-now";
-import { CaseUrgencyChip, caseLoopMarks, slaCountdown } from "./case-loop";
+import type { CtemCaseIssue } from "@/hooks/api/useCtemCasesApi";
+import { CaseUrgencyChip, RetestChip, caseLoopMarks, hasRetestData, retestRank, slaCountdown } from "./case-loop";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
 
@@ -42,17 +43,43 @@ describe("caseLoopMarks", () => {
       reopened: false,
       escalated: false,
       closedOnRetest: false,
-      closedBy: null,
+      closedAt: null,
+      closedProvider: null,
     });
     const scan = [{ provider: "openaev", kind: "validation", ref: "s1", result: "passed" as const, at: "x" }];
     expect(caseLoopMarks({ state: "resolved", validations: scan, sla_breached_at: null }).closedOnRetest).toBe(false);
     expect(caseLoopMarks({ state: "resolved", validations: [], sla_breached_at: null }).closedOnRetest).toBe(false);
   });
-  it("marks a resolved case closed by a passing re-test, naming the run", () => {
-    expect(caseLoopMarks({ state: "resolved", validations: passed, sla_breached_at: null })).toMatchObject({
-      closedOnRetest: true,
-      closedBy: "openaev r1",
-    });
+  it("marks a resolved case closed by a passing re-test, naming the product and the time, never the run reference", () => {
+    const marks = caseLoopMarks({ state: "resolved", validations: passed, sla_breached_at: null });
+    expect(marks).toMatchObject({ closedOnRetest: true, closedAt: "x", closedProvider: "OpenAEV" });
+    expect(JSON.stringify(marks)).not.toContain("r1");
+  });
+});
+
+describe("re-test of a member", () => {
+  const member = (extra: Partial<CtemCaseIssue>): CtemCaseIssue => ({ source: "openaev", external_id: "f1", open: true, ...extra }) as CtemCaseIssue;
+  it("has no column data when no member carries the lifecycle", () => {
+    expect(hasRetestData([member({}), member({ source: "opencti" } as Partial<CtemCaseIssue>)])).toBe(false);
+    expect(hasRetestData([member({}), member({ retest_status: "open" })])).toBe(true);
+    expect(hasRetestData([member({ retest_pending: true })])).toBe(true);
+  });
+  it("sorts by lifecycle order, members with no lifecycle last", () => {
+    const ranks = [
+      member({ retest_status: "resolved" }),
+      member({ retest_pending: true }),
+      member({ retest_status: "open", last_tested_at: "2026-11-20T14:05:00Z" }),
+      member({}),
+      member({ retest_status: "not_reproduced" }),
+      member({ retest_status: "open" }),
+    ].map(retestRank);
+    expect(ranks).toEqual([4, 0, 1, 99, 3, 2]);
+  });
+  it("draws one chip per state and nothing without a lifecycle", () => {
+    renderWithProviders(<RetestChip issue={member({ retest_status: "open", last_tested_at: "2026-11-20T14:05:00Z" })} />);
+    expect(screen.getByText("Reproduced")).toBeInTheDocument();
+    const empty = renderWithProviders(<RetestChip issue={member({})} />);
+    expect(empty.container.textContent).toBe("");
   });
 });
 

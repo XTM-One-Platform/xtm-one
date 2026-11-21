@@ -19967,6 +19967,8 @@
   "Techniques in attack order": "Techniques in attack order",
   "Recorded how it would be exploited": "Recorded how it would be exploited",
   "Re-test queued": "Re-test queued",
+  "Re-test passed in {provider} on {date}": "Re-test passed in {provider} on {date}",
+  "Re-test passed on {date}": "Re-test passed on {date}",
   "Not reproduced": "Not reproduced",
   "Reproduced": "Reproduced",
   "Not re-tested yet": "Not re-tested yet"
