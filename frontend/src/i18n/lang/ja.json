@@ -19999,9 +19999,9 @@
   "Case opened by the loop": "ループが開いたケース",
   "Signals by trigger path": "トリガー経路別のシグナル",
   "{live} of {total} paths with a source": "ソースのある経路: {total} 件中 {live} 件",
-  "Propose to raise the scope": "スコープの拡大を提案",
+  "Propose scope threshold {level}": "スコープしきい値 {level} を提案",
   "Optional: nothing waits on it.": "任意: この操作を待つものはありません。",
-  "Proposal saved. An administrator reviews it in Settings > Organization.": "提案を保存しました。管理者が「設定 > 組織」で確認します。",
+  "Proposal saved. An administrator accepts or rejects it in Settings > Organization > Exposure.": "提案を保存しました。管理者が「設定 > 組織 > エクスポージャー」で承認または却下します。",
   "The proposal could not be saved": "提案を保存できませんでした",
   "Signal to case": "シグナルからケースまで",
   "Case to first validation": "ケースから最初の検証まで",
@@ -20021,5 +20021,11 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "悪用の読み取りはまだありません。リスクシナリオに影響を受ける資産がある場合、トリアージが OpenCRQ から書き込みます。",
   "Restricted asset": "制限された資産",
   "Techniques in attack order": "攻撃順のテクニック",
-  "Recorded how it would be exploited": "想定される悪用方法を記録しました"
+  "Recorded how it would be exploited": "想定される悪用方法を記録しました",
+  "Under 1 hour": "1時間未満",
+  "Proposed changes": "提案された変更",
+  "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, other {# 件が判断待ち}}",
+  "Changes proposed outside this form. Nothing changes until you accept one.": "このフォーム以外から提案された変更です。承認するまで何も変わりません。",
+  "From {current} to {proposed}": "{current} から {proposed} へ",
+  "The decision could not be saved": "判断を保存できませんでした"
 }

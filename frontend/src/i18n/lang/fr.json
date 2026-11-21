@@ -19999,9 +19999,9 @@
   "Case opened by the loop": "Dossier ouvert par la boucle",
   "Signals by trigger path": "Signaux par chemin de déclenchement",
   "{live} of {total} paths with a source": "{live} chemins sur {total} avec une source",
-  "Propose to raise the scope": "Proposer d'élargir le périmètre",
+  "Propose scope threshold {level}": "Proposer le seuil de périmètre {level}",
   "Optional: nothing waits on it.": "Facultatif : rien n'attend cette action.",
-  "Proposal saved. An administrator reviews it in Settings > Organization.": "Proposition enregistrée. Un administrateur l'examine dans Paramètres > Organisation.",
+  "Proposal saved. An administrator accepts or rejects it in Settings > Organization > Exposure.": "Proposition enregistrée. Un administrateur l'accepte ou la refuse dans Paramètres > Organisation > Exposition.",
   "The proposal could not be saved": "La proposition n'a pas pu être enregistrée",
   "Signal to case": "Du signal au cas",
   "Case to first validation": "Du cas à la première validation",
@@ -20021,5 +20021,11 @@
   "No exploitation reading yet: triage writes it from OpenCRQ when a risk scenario holds an affected asset.": "Pas encore de lecture d’exploitation : le tri l’écrit depuis OpenCRQ quand un scénario de risque contient un actif concerné.",
   "Restricted asset": "Actif restreint",
   "Techniques in attack order": "Techniques dans l’ordre de l’attaque",
-  "Recorded how it would be exploited": "A enregistré comment elle serait exploitée"
+  "Recorded how it would be exploited": "A enregistré comment elle serait exploitée",
+  "Under 1 hour": "Moins d'une heure",
+  "Proposed changes": "Modifications proposées",
+  "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, one {# attend une décision} other {# attendent une décision}}",
+  "Changes proposed outside this form. Nothing changes until you accept one.": "Modifications proposées en dehors de ce formulaire. Rien ne change tant que vous n'en acceptez pas une.",
+  "From {current} to {proposed}": "De {current} à {proposed}",
+  "The decision could not be saved": "La décision n'a pas pu être enregistrée"
 }
