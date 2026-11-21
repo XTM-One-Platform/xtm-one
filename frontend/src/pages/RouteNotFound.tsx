@@ -26,7 +26,7 @@ export default function RouteNotFound() {
       actionLabel="Go to Home"
       onAction={() => navigate("/")}
       backTo="/"
-      backLabel="Home"
+      backLabel="Back to Home"
     />
   );
 }
