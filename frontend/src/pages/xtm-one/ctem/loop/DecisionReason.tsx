@@ -62,9 +62,38 @@ const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 const LEVEL_PARAMS = new Set(["criticality", "threshold", "minimum", "confidence"]);
 
-function levelLabel(value: unknown, t_i18n: Translate): string {
+/** The lens words, as the trace header draws them. @i18n-keys */
+const LENS_LABEL = { inside: "Inside", outside: "Outside", world: "World" } as const;
+const LENS_LABELS: Readonly<Record<string, string>> = LENS_LABEL;
+
+/** The policy rules the gate checks (`policy_checks[].rule`), in words. @i18n-keys */
+const POLICY_RULE_LABEL = {
+  exclusion: "Exclusion",
+  accepted_risk: "Accepted risk",
+  kev_always_in: "Known exploited always in",
+  cvss_min: "CVSS minimum",
+  epss_min: "EPSS minimum",
+  internet_exposure_required: "Internet exposure required",
+  min_crown_jewel_criticality: "Crown jewel minimum criticality",
+  require_risk_scenario: "Risk scenario required",
+} as const;
+const POLICY_RULE_LABELS: Readonly<Record<string, string>> = POLICY_RULE_LABEL;
+
+/** A level word is translated; a number (a CVSS or EPSS minimum) passes through as it is. */
+function levelLabel(value: unknown, t_i18n: Translate): string | number {
+  if (typeof value === "number") return value;
   if (typeof value !== "string" || !value) return "";
   return LEVEL_LABEL[value] ? t_i18n(LEVEL_LABEL[value]) : value;
+}
+
+function lensLabel(value: unknown, t_i18n: Translate): string {
+  const lens = String(value);
+  return LENS_LABELS[lens] ? t_i18n(LENS_LABELS[lens]) : lens;
+}
+
+function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): string {
+  const label = POLICY_RULE_LABELS[rule] ? t_i18n(POLICY_RULE_LABELS[rule]) : rule;
+  return passed ? t_i18n("{rule}: passed", { rule: label }) : t_i18n("{rule}: failed", { rule: label });
 }
 
 function SignalStateChip({ state }: { state: CtemSignalState }) {
@@ -87,13 +116,14 @@ export function decisionSentence(decision: CtemDecisionRecord | null | undefined
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
 function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): { label: string; value: string }[] {
   if (!decision) return [];
-  const level = (value: unknown) => levelLabel(value, t_i18n);
+  const level = (value: unknown) => String(levelLabel(value, t_i18n));
   const list = (value: unknown) => (Array.isArray(value) ? value.filter(Boolean).map(String).join(", ") : "");
   const reconcile = decision.reconcile ?? {};
   const scope = decision.scope ?? null;
-  const checks = (decision.policy_checks ?? []).map((c) => `${c.rule} ${c.passed ? "✓" : "✗"}`).join(", ");
+  const checks = (decision.policy_checks ?? []).map((c) => policyCheckLabel(c.rule, c.passed, t_i18n)).join(", ");
+  const lenses = Array.isArray(reconcile.lenses) ? reconcile.lenses.filter(Boolean).map((lens) => lensLabel(lens, t_i18n)).join(", ") : "";
   const rows: { label: string; value: string }[] = [
-    { label: t_i18n("Lenses"), value: list(reconcile.lenses) },
+    { label: t_i18n("Lenses"), value: lenses },
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
     { label: t_i18n("Matched assets"), value: list(reconcile.assets) },
     { label: t_i18n("Crown jewels"), value: list(reconcile.crown_jewels_named) },

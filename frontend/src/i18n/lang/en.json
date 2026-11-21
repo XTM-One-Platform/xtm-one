@@ -19874,5 +19874,11 @@
   "Matched assets": "Matched assets",
   "Scope threshold": "Scope threshold",
   "Risk scenarios": "Risk scenarios",
-  "Policy checks": "Policy checks"
+  "Policy checks": "Policy checks",
+  "Exclusion": "Exclusion",
+  "Known exploited always in": "Known exploited always in",
+  "Crown jewel minimum criticality": "Crown jewel minimum criticality",
+  "Risk scenario required": "Risk scenario required",
+  "{rule}: passed": "{rule}: passed",
+  "{rule}: failed": "{rule}: failed"
 }

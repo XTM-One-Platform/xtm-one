@@ -94,6 +94,18 @@ describe("decisionSentence", () => {
     expect(decisionSentence(watch, capture)).toBe("Criticality {criticality} below the scope threshold {threshold}");
     expect(seen[seen.length - 1]).toEqual({ criticality: "Low", threshold: "High" });
   });
+
+  // #851 UX round 3 B5: a numeric minimum is kept, never blanked by the level lookup.
+  it("keeps the numeric minimum of a score below the policy", () => {
+    const below = { outcome: "watchlist", reason_code: "score_below_policy", reason_params: { score: "CVSS", value: 5.3, minimum: 7 } };
+    const seen: Record<string, string | number>[] = [];
+    const capture = (id: string, values?: Record<string, string | number>) => {
+      if (values) seen.push(values);
+      return id;
+    };
+    decisionSentence(below, capture);
+    expect(seen[seen.length - 1]).toEqual({ score: "CVSS", value: 5.3, minimum: 7 });
+  });
 });
 
 describe("decided signals in the trace and the row", () => {
@@ -117,9 +129,30 @@ describe("decided signals in the trace and the row", () => {
     renderWithProviders(<DecisionReason state="to_validate" decision={decided("to_validate", "subject_unresolved").decision} showInputs />);
     const inputs = screen.getByTestId("ctem-decision-inputs");
     expect(inputs).toHaveTextContent("Lenses");
-    expect(inputs).toHaveTextContent("outside");
+    expect(inputs).toHaveTextContent("Outside");
     expect(inputs).toHaveTextContent("Matched assets");
     expect(inputs).toHaveTextContent("vpn-gw-01");
+  });
+
+  // #851 UX round 3 B6: lens and policy rules in words, passed or failed as text.
+  it("labels the lens and the policy checks, never raw identifiers", () => {
+    const decision = {
+      outcome: "watchlist",
+      reason_code: "score_below_policy",
+      reason_params: { score: "CVSS", value: 5.3, minimum: 7 },
+      reconcile: { lenses: ["world"] },
+      policy_checks: [
+        { rule: "cvss_min", value: 5.3, threshold: 7, passed: false },
+        { rule: "internet_exposure_required", value: true, passed: true },
+      ],
+    };
+    renderWithProviders(<DecisionReason state="watchlist" decision={decision} showInputs />);
+    const inputs = screen.getByTestId("ctem-decision-inputs");
+    expect(inputs).toHaveTextContent("World");
+    expect(inputs).toHaveTextContent("CVSS minimum: failed");
+    expect(inputs).toHaveTextContent("Internet exposure required: passed");
+    expect(inputs).not.toHaveTextContent("cvss_min");
+    expect(screen.getByText("CVSS 5.3 below the policy minimum 7")).toBeInTheDocument();
   });
 });
 
