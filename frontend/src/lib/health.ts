@@ -144,13 +144,18 @@ const REFUSAL_LABELS = {
   start_failed: "{name} could not start this work.",
 } as const;
 
+/** The i18n key of a refusal code (`{name}` placeholder), `null` for a code this build does not know. */
+export function healthRefusalCodeKey(code: unknown): string | null {
+  return typeof code === "string" && Object.prototype.hasOwnProperty.call(REFUSAL_LABELS, code)
+    ? REFUSAL_LABELS[code as keyof typeof REFUSAL_LABELS]
+    : null;
+}
+
 /** The i18n key of a refusal: by its code, else the generic one. */
 export function healthRefusalKey(error: unknown): string {
   const detail = (error as { detail?: unknown } | null)?.detail;
   const code = detail && typeof detail === "object" ? (detail as { code?: unknown }).code : undefined;
-  return typeof code === "string" && Object.prototype.hasOwnProperty.call(REFUSAL_LABELS, code)
-    ? REFUSAL_LABELS[code as keyof typeof REFUSAL_LABELS]
-    : REFUSAL_LABELS.start_failed;
+  return healthRefusalCodeKey(code) ?? REFUSAL_LABELS.start_failed;
 }
 
 /** @i18n-keys */

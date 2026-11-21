@@ -41,7 +41,7 @@ import { useAgents } from "@/hooks/api/useAgentApi";
 import { useHealthBudget, useHealthName, useHealthSettings, useSaveHealthSettings } from "@/hooks/api/useHealthApi";
 import { useFlows } from "@/hooks/api/useFlowApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
-import { defaultHealthName } from "@/lib/health";
+import { defaultHealthName, healthRefusalCodeKey } from "@/lib/health";
 import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSettings, HealthBudgetCaps, HealthSettings } from "@/types";
 
@@ -277,6 +277,11 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
   const { count: n, money: usd } = useNumberFormat("USD");
   const fieldId = useId();
   const { data: budget } = useHealthBudget();
+  const healthName = useHealthName();
+  // The refusal read by its code in the reader's language (#794: the server's English line showed
+  // untranslated in fr); the server's message only for a code this build does not know.
+  const refusalKey = healthRefusalCodeKey(budget?.refusal);
+  const refusalText = refusalKey ? t_i18n(refusalKey, { name: healthName }) : budget?.refusal_message;
   const setCap = (key: keyof HealthBudgetCaps, raw: string) => {
     const value = raw.trim() === "" ? null : TOKEN_CAPS.has(key) ? Number(raw) : raw.trim();
     onChange({ ...draft, budget: { ...draft.budget, [key]: value } });
@@ -328,7 +333,7 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
               tokens: n(budget.used.tokens),
               cost: usd(Number(budget.used.cost_usd)),
             })}
-            {budget.refusal_message && <span className="ml-1 text-feedback-warning-primary">{budget.refusal_message}</span>}
+            {budget.refusal && refusalText && <span className="ml-1 text-feedback-warning-primary">{refusalText}</span>}
           </div>
         )}
       </div>
