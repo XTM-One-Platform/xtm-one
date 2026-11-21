@@ -2798,7 +2798,7 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "severity, sla_due_at). The case is the record of this loop: read it first with "
+            "state). The case is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
             "it owned by you when no open item has that key; when one is open, add a note "
