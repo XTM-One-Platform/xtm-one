@@ -515,6 +515,22 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 - Access: an admin sees all; an agent manager sees the findings of what they manage
   (`cycle_access` rule).
 
+### 8.1 Access matrix (S13, pinned by `backend/tests/test_health_role_mode_matrix_postgres.py`)
+
+The same in Copilot, XTM One and `ai_disabled`; only the module cards of an administrator
+follow the mode (section 1.1). A group manager does not manage its members' agents: it
+reads Platform Health as a plain user unless it owns or is shared an agent.
+
+| `GET /api/v1/health...` | Administrator | Group manager, agent owner, plain user |
+|---|---|---|
+| `/name`, `/me/opt-out`, `/pets` | 200 | 200 |
+| `/overview`, `/findings` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
+| `/history` | 200 | 200, empty |
+| `/improvements`, `/cycles`, `/signals` without a target | 200 | 404 (one managed target only, `?agent_id=` or `?target_type=&target_id=`) |
+| `/settings`, `/budget`, `/schedules`, `/analysis`, `/me/companion`, `/me/activity` | 200 | 403 |
+
+`POST /analysis/{module}/run` is refused `ai_disabled` (403, `detail.code`) while AI is off.
+
 ## 9. Platform email (SMTP) integration
 
 - Built-in company-managed integration "Platform email (SMTP)", present only when
