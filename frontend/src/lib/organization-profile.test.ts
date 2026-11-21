@@ -2,7 +2,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { formatAmount, fromForm, pirLink, pirNamesOf, splitList, toForm, unreadablePlatform, type ProfileLike } from "./organization-profile.ts";
+import {
+  DEFAULT_TICKETING_SYNC,
+  formatAmount,
+  fromForm,
+  pirLink,
+  pirNamesOf,
+  splitList,
+  isSupportedRecordType,
+  ticketingDefaults,
+  ticketingSyncOf,
+  toForm,
+  unreadablePlatform,
+  type ProfileLike,
+} from "./organization-profile.ts";
 
 const PROFILE: ProfileLike = {
   name: "Acme",
@@ -111,6 +124,36 @@ describe("organization profile form", () => {
     assert.equal(unreadablePlatform("OpenCTI PIRs: Enterprise Edition"), "OpenCTI PIRs");
     assert.equal(unreadablePlatform("OpenAEV: TimeoutError"), "OpenAEV");
     assert.equal(unreadablePlatform("something else"), "");
+  });
+
+  it("keeps the CTEM ticketing sync through a save, cleaned, and adds none to a profile without one (#917)", () => {
+    const sync = { ...DEFAULT_TICKETING_SYNC, create_on: "mobilize_p1" as const, labels: ["ctem"], priority_map: { P1: "Highest" }, status_map: { "Ready for QA": "done" } };
+    const withSync: ProfileLike = { ...PROFILE, ticketing: { integration: "int-1", project: "SEC", sync } };
+    const kept = fromForm(toForm(withSync));
+    assert.ok("profile" in kept);
+    assert.deepEqual(kept.profile.ticketing, withSync.ticketing);
+    const form = toForm(withSync);
+    form.ticketing.sync = { ...sync, record_type: " Bug ", labels: ["ctem", " ctem", ""], priority_map: { P1: " ", P2: "High" }, status_map: { " ": "done", " QA ": "in_progress" } };
+    const cleaned = fromForm(form);
+    assert.ok("profile" in cleaned);
+    assert.deepEqual(cleaned.profile.ticketing.sync, { ...sync, record_type: "Bug", labels: ["ctem"], priority_map: { P2: "High" }, status_map: { QA: "in_progress" } });
+    const none = fromForm(toForm(PROFILE));
+    assert.ok("profile" in none);
+    assert.equal("sync" in none.profile.ticketing, false);
+  });
+
+  it("fills a partial stored sync with the program defaults, and names the backend default per provider (#917)", () => {
+    assert.deepEqual(ticketingSyncOf({ on_reopen: "linked" }), { ...DEFAULT_TICKETING_SYNC, on_reopen: "linked" });
+    assert.deepEqual(ticketingSyncOf(undefined), DEFAULT_TICKETING_SYNC);
+    assert.equal(ticketingDefaults("servicenow").record_type, "incident");
+    assert.equal(ticketingDefaults("jira").priority.P1, "Highest");
+  });
+
+  it("accepts only the three ServiceNow tables the case sync writes to, any Jira issue type", () => {
+    for (const table of ["incident", "change_request", "problem", "", " problem "]) assert.equal(isSupportedRecordType("servicenow", table), true, table);
+    for (const table of ["sc_task", "Incident", "task"]) assert.equal(isSupportedRecordType("servicenow", table), false, table);
+    assert.equal(isSupportedRecordType("jira", "sc_task"), true);
+    assert.equal(isSupportedRecordType("", "Bug"), true);
   });
 
   it("names the field when an amount is not a number", () => {

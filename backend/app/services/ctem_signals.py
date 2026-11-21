@@ -247,6 +247,43 @@ async def list_signals(
     return list(rows), total, counts
 
 
+async def counts_by_path(
+    db: AsyncSession, *, organization_id: uuid.UUID, recorded_by: str | None
+) -> dict[str, dict[str, int]]:
+    """The signals the reader may see, counted by trigger path then state (CTEM-30, #937).
+
+    Same visibility as :func:`list_signals`, so a path never counts a signal
+    the reader cannot open. Every path and state is present, zeros included.
+    """
+    statement = _visible(
+        select(CtemSignal.trigger_path, CtemSignal.state, func.count()),
+        organization_id=organization_id,
+        recorded_by=recorded_by,
+    ).group_by(CtemSignal.trigger_path, CtemSignal.state)
+    counts = {path: {s: 0 for s in SIGNAL_STATES} for path in TRIGGER_PATHS}
+    for path, state, number in (await db.execute(statement)).all():
+        if path in counts and state in counts[path]:
+            counts[path][state] = int(number)
+    return counts
+
+
+async def observed_by_case(
+    db: AsyncSession, case_ids: list[uuid.UUID], *, organization_id: uuid.UUID, recorded_by: str | None
+) -> dict[uuid.UUID, list[datetime]]:
+    """When the signals that opened or joined each case were observed, the reader's own only (CTEM-30, #937)."""
+    out: dict[uuid.UUID, list[datetime]] = {cid: [] for cid in case_ids}
+    if not case_ids:
+        return out
+    statement = _visible(
+        select(CtemSignal.case_id, CtemSignal.observed_at).where(CtemSignal.case_id.in_(case_ids)),
+        organization_id=organization_id,
+        recorded_by=recorded_by,
+    )
+    for case_id, observed in (await db.execute(statement)).all():
+        out.setdefault(case_id, []).append(observed)
+    return out
+
+
 async def get_signal(
     db: AsyncSession, signal_id: uuid.UUID, *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> CtemSignal | None:
@@ -285,12 +322,23 @@ def to_dict(signal: CtemSignal) -> dict[str, Any]:
     }
 
 
-def path_catalog() -> list[dict[str, Any]]:
-    """The 12 trigger paths, with their default lens and whether a listener maps an event to them."""
+def path_catalog(counts: dict[str, dict[str, int]] | None = None) -> list[dict[str, Any]]:
+    """The 12 trigger paths, with their default lens and whether a listener maps an event to them.
+
+    With *counts* (:func:`counts_by_path`), each path also carries its signals
+    by state and ``configured``: a listener feeds it or it holds a signal. A
+    path that is neither reads "not configured", never 0 (CTEM-30, #937).
+    """
     from app.services.ctem_signal_listeners import paths_with_listener
 
     listened = paths_with_listener()
-    return [
-        {"id": path, "label": label, "default_lens": lens, "listener": path in listened}
-        for path, (label, lens) in PATH_CATALOG.items()
-    ]
+    out: list[dict[str, Any]] = []
+    for path, (label, lens) in PATH_CATALOG.items():
+        row: dict[str, Any] = {"id": path, "label": label, "default_lens": lens, "listener": path in listened}
+        if counts is not None:
+            by_state = counts.get(path) or {s: 0 for s in SIGNAL_STATES}
+            row["counts"] = by_state
+            row["total"] = sum(by_state.values())
+            row["configured"] = row["listener"] or row["total"] > 0
+        out.append(row)
+    return out

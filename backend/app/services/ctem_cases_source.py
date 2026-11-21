@@ -214,12 +214,17 @@ def opencti_issues(
         if current is None or (name or coa_id) < (current[1] or current[0]):
             coa_of[vuln] = (coa_id, name)
     fixed_of: dict[tuple[str, str], list[str]] = {}
+    # The remediating Software named per version, so the case says which node gave the fix (#928).
+    fixed_name: dict[tuple[str, str, str], str] = {}
     for rel in fixes or []:
         node = rel.get("from") or {}
         vuln = (rel.get("to") or {}).get("id")
         label = _stack_matches(node, stack)
-        if vuln and label and (node.get("version") or "").strip():
-            fixed_of.setdefault((vuln, label), []).append(node["version"].strip())
+        version = (node.get("version") or "").strip()
+        if vuln and label and version:
+            fixed_of.setdefault((vuln, label), []).append(version)
+            software = (node.get("name") or "").strip() or entry_by_label[label]["product"]
+            fixed_name.setdefault((vuln, label, version), f"{software} {version}"[:300])
     holders: dict[tuple[str, str], set[str]] = {}
     vuln_of: dict[str, dict[str, Any]] = {}
     order: list[tuple[str, str]] = []
@@ -252,6 +257,7 @@ def opencti_issues(
                     f"{fixed_versions.NOT_AFFECTED_PREFIX} {installed} has no 'has' relation to {name} in OpenCTI"
                 )
         fixed = fixed_versions.smallest_fix_above(fixed_of.get((vuln_id, label), ()), installed)
+        fixed_by = fixed_name.get((vuln_id, label, fixed)) if fixed else None
         if fixed is None:
             fixed = fixed_versions.version_from_course_of_action(coa[1] if coa else None)
         if fixed is None and not not_affected:
@@ -275,6 +281,8 @@ def opencti_issues(
                 installed_version=installed,
                 not_affected=not_affected,
                 version_note="; ".join(notes) or None,
+                fixed_by=fixed_by,
+                declared_version_known=bool(declared_ids.get(label)) if installed else None,
             )
         )
     return out

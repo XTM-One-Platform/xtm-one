@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { PrioritizationPolicy } from "@/lib/organization-profile";
+import type { PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -19,6 +19,8 @@ interface TechStackEntry {
   product: string;
   vendor: string;
   cpe: string;
+  /** The version the organization runs, optional (CTEM-11): absent on a profile saved before it. */
+  version?: string;
 }
 
 interface AiSystem {
@@ -44,7 +46,8 @@ export interface OrganizationProfile {
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
-  ticketing: { integration: string; project: string };
+  /** The ticketing target; `sync` is how CTEM cases sync with it (#917, absent on an older profile: the defaults). */
+  ticketing: { integration: string; project: string; sync?: TicketingSync };
   /** The Exposure Posture score aimed for, 0-100 (#11547 S2e); absent or null: no target. */
   posture_target?: number | null;
   /** The CTEM prioritization rules (#11543); the Governance & Risk page reads its accepted risks. */
@@ -262,6 +265,44 @@ export function useOrganizationPirs(enabled: boolean) {
     queryFn: () => api.get("/organization-context/pirs"),
     enabled,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** One field change of a stored proposal (#9484 S-a2; CTEM-30 "propose scope"): nothing changes until an administrator accepts it. */
+export interface OrganizationContextFieldProposal {
+  /** A contract path, such as "prioritization_policy.scope_min_criticality". */
+  field: string;
+  value: unknown;
+  basis: string;
+  current: unknown;
+  conflict: boolean;
+}
+
+interface OrganizationContextProposal {
+  id: string;
+  kind: "fields" | "new_tracked";
+  proposals: OrganizationContextFieldProposal[];
+  status: "pending" | "accepted" | "rejected";
+  created_at: string;
+}
+
+/** The pending proposals, newest first (administrators, like the page that lists them). */
+export function useOrganizationContextProposals() {
+  return useQuery<OrganizationContextProposal[]>({
+    queryKey: [...KEY, "proposals"],
+    queryFn: () => api.get("/organization-context/proposals?status=pending"),
+  });
+}
+
+/** Accepts the named fields of a proposal (a new profile version) or rejects it with none. */
+export function useDecideOrganizationContextProposal() {
+  const qc = useQueryClient();
+  return useMutation<{ status: "accepted" | "rejected"; version: number | null }, Error, { id: string; accept: string[] }>({
+    mutationFn: ({ id, accept }) => api.post(`/organization-context/proposals/${encodeURIComponent(id)}/decide`, { accept }),
+    // The profile and the list both move: an accepted field is a new version.
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    // The card says the failure inline.
+    meta: { suppressGlobalErrorToast: true },
   });
 }
 
