@@ -299,7 +299,9 @@ def test_a_cleared_page_is_free_again_but_the_budget_never_forgives():
         assert breaker.screen("read_file_content", args).action == "allow"
         answers.append(_answer(breaker, transcript, "read_file_content", args, "page " * 300))
     for answer in answers:
-        answer.content = al._REFETCHABLE_STUB_TEMPLATE.format(tool=answer.name, chars=f"{len(answer.content):,}")
+        answer.content = al._REFETCHABLE_STUB_TEMPLATE.format(
+            target="", tool=answer.name, chars=f"{len(answer.content):,}"
+        )
     breaker.screen("read_file_content", {"file_id": "doc", "offset": 0})
     assert key not in breaker._similar, "the invited re-read is not a repeat on the target"
     assert breaker._page_counts[key] == 5, "but it is one more page served"
