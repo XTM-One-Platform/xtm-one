@@ -40,6 +40,7 @@ class _Inner:
 
     async def chat(self, messages, model=None, max_tokens=4096, tools=None, **kwargs):
         self.calls += 1
+        self.max_tokens = max_tokens
         if self.fail:
             raise RuntimeError("provider down")
         return ChatResponse(content="ok", model="m", usage={"input_tokens": 100, "output_tokens": 20})
@@ -116,6 +117,20 @@ async def test_a_call_reserves_its_worst_case_then_books_the_real_usage(monkeypa
     assert ledger.booked[0]["spent_cost"] == Decimal("0.12")
     # The run's cycle counter follows the real usage, not the reservation.
     assert llm.cycle_tokens_used == 120
+
+
+async def test_the_loop_s_full_output_allowance_is_capped_so_the_first_call_fits_the_cycle(monkeypatch):
+    # The loop asks for the model's whole output allowance (64,000 on the lab model):
+    # reserved as is, it alone passed the 80,000 per-cycle cap with the prompt and every
+    # cycle was refused before its first call (lab measurement, 21 Nov 2026).
+    ledger = _Ledger()
+    inner = _Inner()
+    llm = _wrapped(monkeypatch, ledger, inner=inner)
+    await llm.chat_stream_with_tools(MESSAGES, None, max_tokens=64_000)
+    (tokens, _cost, _used) = ledger.reserved[0]
+    assert tokens == 201 + mac.MAX_CALL_OUTPUT
+    assert inner.max_tokens == mac.MAX_CALL_OUTPUT
+    assert tokens < HealthModuleAnalystSettings().cycle_tokens
 
 
 async def test_the_cycle_counter_is_passed_to_the_next_reservation(monkeypatch):
