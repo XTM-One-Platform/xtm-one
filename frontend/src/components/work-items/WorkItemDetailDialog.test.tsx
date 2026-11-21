@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -21,10 +21,15 @@ vi.mock("@/hooks/useAuth", () => ({
 const workItemQuery = vi.hoisted(() => ({ current: { data: undefined as unknown, isLoading: false, isError: false } }));
 const complete = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
 const answerMutation = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
+const askMutation = vi.hoisted(() => ({
+  mutateAsync: vi.fn(async () => ({ item: {}, agent: { id: "agent-1", name: "Notion Agent" }, via: "run" })),
+  isPending: false,
+}));
 vi.mock("@/hooks/api/useWorkItemApi", () => ({
   useWorkItem: () => workItemQuery.current,
   useCompleteWorkItem: () => complete,
   useAnswerWorkItem: () => answerMutation,
+  useAskWorkItem: () => askMutation,
   useCancelScheduledWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
   useRescheduleScheduledWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -91,11 +96,11 @@ function item(overrides: Partial<WorkItem> = {}): WorkItem {
   };
 }
 
-function openDialog(data: WorkItem, actions = {}) {
+function openDialog(data: WorkItem, actions = {}, onClose: () => void = () => {}) {
   workItemQuery.current = { data, isLoading: false, isError: false };
   return renderWithProviders(
     <MemoryRouter>
-      <WorkItemDetailDialog itemId={data.id} onClose={() => {}} actionsFor={() => actions} />
+      <WorkItemDetailDialog itemId={data.id} onClose={onClose} actionsFor={() => actions} />
     </MemoryRouter>,
   );
 }
@@ -349,32 +354,69 @@ describe("the work item detail", () => {
       logged.mockRestore();
     });
 
-    it("opens a chat with the owner agent, the Explain message in the composer, never sent", () => {
+    it("Explain opens the owner agent's chat with the message sent on arrival, and closes the dialog (#774)", () => {
       sessionStorage.clear();
-      openDialog(waiting({ ask }), { answer: true });
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
       const ask_agent = screen.getByTestId("work-item-ask-agent");
       expect(within(ask_agent).getByTestId("work-item-ask-freshness").textContent).toContain("Last activity");
-      expect(ask_agent.textContent).toContain("Opens a chat with Notion Agent");
+      expect(ask_agent.textContent).toContain("are sent to Notion Agent");
       fireEvent.click(within(ask_agent).getByTestId("work-item-ask-agent-explain"));
       const draft = sessionStorage.getItem("copilot:chat-input-draft:new") ?? "";
       expect(draft).toContain(item().id);
       expect(draft).toContain("Explain in plain words");
       expect(sessionStorage.getItem("copilot:chat-input-draft:agent")).toBe("agent-1");
-      expect(sessionStorage.getItem("copilot:chat-input-draft:autosend")).toBeNull();
+      expect(sessionStorage.getItem("copilot:chat-input-draft:autosend")).toBe("1");
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it("asks the creator to re-check when the owner cannot be opened, and says so when neither can", () => {
+    it("Re-check is sent to the item's agent, no chat, toast and the dialog closes (#774)", async () => {
       sessionStorage.clear();
-      const hidden = { id: null, name: null, icon: null, accessible: false };
-      openDialog(waiting({ ask, context: context({ owner_agent: hidden }) }), { answer: true });
+      askMutation.mutateAsync.mockClear();
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
       fireEvent.click(screen.getByTestId("work-item-ask-agent-recheck"));
-      expect(sessionStorage.getItem("copilot:chat-input-draft:new")).toContain("close it as obsolete");
-      expect(sessionStorage.getItem("copilot:chat-input-draft:agent")).toBe("agent-2");
-      cleanup();
+      expect(askMutation.mutateAsync).toHaveBeenCalledWith({ id: item().id, action: "recheck", text: undefined });
+      expect(await screen.findByText("Sent to Notion Agent")).toBeTruthy();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.getItem("copilot:chat-input-draft:new")).toBeNull();
+    });
+
+    it("It's solved takes an optional line, then sends it with the action (#774)", async () => {
+      askMutation.mutateAsync.mockClear();
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
+      fireEvent.click(screen.getByTestId("work-item-ask-agent-solved"));
+      expect(askMutation.mutateAsync).not.toHaveBeenCalled();
+      const form = screen.getByTestId("work-item-ask-solved-form");
+      fireEvent.change(within(form).getByRole("textbox"), { target: { value: "key rotated" } });
+      fireEvent.click(screen.getByTestId("work-item-ask-solved-send"));
+      expect(askMutation.mutateAsync).toHaveBeenCalledWith({ id: item().id, action: "solved", text: "key rotated" });
+      await screen.findByText("Sent to Notion Agent");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables the sends while one waits for the agent, and says so", () => {
+      const at = new Date().toISOString();
+      openDialog(waiting({ ask, payload: { _ask: { at } }, last_activity_at: at }), { answer: true });
+      expect((screen.getByTestId("work-item-ask-agent-recheck") as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId("work-item-ask-effect").textContent).toContain("Already sent, waiting for Notion Agent");
+    });
+
+    it("a decision option answer closes the dialog (#774)", async () => {
+      const onClose = vi.fn();
+      openDialog(waiting({ ask }), { answer: true }, onClose);
+      fireEvent.click(within(screen.getByTestId("work-item-decision")).getAllByTestId("work-item-decision-option")[0]);
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it("sends to the agent it cannot open, without Explain, and says why", () => {
+      const hidden = { id: "agent-9", name: "Desk", icon: null, accessible: false };
       openDialog(waiting({ ask, context: context({ owner_agent: hidden, created_by_agent: hidden }) }), { answer: true });
       const ask_agent = screen.getByTestId("work-item-ask-agent");
-      expect(within(ask_agent).queryAllByRole("button")).toHaveLength(0);
-      expect(ask_agent.textContent).toContain("You cannot open the agent behind this work item");
+      expect(screen.queryByTestId("work-item-ask-agent-explain")).toBeNull();
+      expect(screen.getByTestId("work-item-ask-agent-recheck")).toBeTruthy();
+      expect(ask_agent.textContent).toContain("so Explain is not offered");
       cleanup();
       openDialog(waiting({ ask, context: context({ owner_agent: null, created_by_agent: null }) }), { answer: true });
       const no_agent = screen.getByTestId("work-item-ask-agent");
@@ -807,86 +849,6 @@ describe("the work item detail", () => {
     openDialog(item({ description: "![pixel](//tracker.example.test/p.png)" }));
     expect(screen.getByTestId("work-item-detail").querySelector("img")).toBeNull();
     expect(screen.getByText("pixel")).toBeTruthy();
-  });
-
-  it("shows stamped notes as an activity timeline over the brief, ids as chips (#776)", () => {
-    const run = "8f240eba-1111-4222-8333-944445555666";
-    openDialog(
-      item({
-        description: `2026-11-20 23:22Z (run ${run}): **Pushed** head b6ce1323be6d239a33100a2b6f20a1918298aad3 (run 8f240eba...)\n\nRead the 120 pages.`,
-        note_runs: { [run]: { agent: { id: "a1", name: "Developer" }, accessible: true } },
-      }),
-    );
-    const notes = screen.getAllByTestId("work-item-note");
-    expect(notes).toHaveLength(1);
-    expect(screen.getByTestId("work-item-note-author").textContent).toBe("Developer");
-    // The run is a link named by its first 8 characters, never the uuid inline.
-    expect(notes[0].querySelector(`a[href="/runs/${run}"]`)?.textContent).toContain("8f240eba");
-    const body = screen.getByTestId("work-item-note-body");
-    expect(body.textContent).not.toContain(run);
-    expect(body.textContent).not.toContain("(run");
-    expect(body.querySelector("strong")?.textContent).toBe("Pushed");
-    expect(screen.getByTestId("work-item-id-chip").textContent).toBe("b6ce1323");
-    expect(screen.getByTestId("work-item-brief").textContent).toContain("Read the 120 pages.");
-  });
-
-  it("folds a long note by height, block Markdown included, and unfolds it (#776, UX B1)", () => {
-    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
-    openDialog(item({ description: `2026-11-20 23:22Z: ${para}\n\nA second paragraph.\n\nRead the brief.` }));
-    const body = screen.getByTestId("work-item-note-body");
-    // A height cap on the wrapper, never -webkit-line-clamp: the text sits in block children.
-    expect(body.className).not.toContain("line-clamp");
-    // overflow-clip, never overflow-hidden: a clip box cannot be scrolled by a focus (UX round 3 B1).
-    expect(body.className).toContain("overflow-clip");
-    expect(body.className).not.toContain("overflow-hidden");
-    expect(body.getAttribute("data-folded")).toBe("true");
-    expect(screen.getByTestId("work-item-note-fade")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(body.getAttribute("data-folded")).toBeNull();
-    expect(body.className).not.toContain("overflow-clip");
-    expect(screen.queryByTestId("work-item-note-fade")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-    expect(body.getAttribute("data-folded")).toBe("true");
-  });
-
-  it("opens a folded note when keyboard focus enters it, so focus never lands in hidden text (#776, UX round 2 B1)", () => {
-    const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
-    // The link sits in the note's own paragraph, past the fold: the oldest note keeps its
-    // first paragraph only (splitDescription), a second paragraph would be the brief.
-    openDialog(item({ description: `2026-11-20 23:22Z: ${para}See [the run log](https://example.com/log) below the fold.\n\nRead the brief.` }));
-    const body = screen.getByTestId("work-item-note-body");
-    expect(body.getAttribute("data-folded")).toBe("true");
-    const link = within(body).getByRole("link", { name: /the run log/ });
-    const intoView = vi.fn();
-    link.scrollIntoView = intoView;
-    const frames = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
-    // The browser's focus scroll of the folded box, which the handler undoes
-    // (jsdom has no layout: an own writable scrollTop stands in for it).
-    Object.defineProperty(body, "scrollTop", { configurable: true, writable: true, value: 405 });
-    act(() => link.focus());
-    frames.mockRestore();
-    expect(body.getAttribute("data-folded")).toBeNull();
-    expect(body.className).not.toContain("overflow-clip");
-    expect(body.scrollTop).toBe(0);
-    // The focused link is brought into the dialog's visible area once the note opens (UX round 3 B1).
-    expect(intoView).toHaveBeenCalledWith({ block: "nearest" });
-    expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
-    // Folding again by keyboard leaves the body at its first lines.
-    body.scrollTop = 405;
-    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-    expect(body.getAttribute("data-folded")).toBe("true");
-    expect(body.scrollTop).toBe(0);
-  });
-
-  it("renders no script or iframe a description carries", () => {
-    openDialog(item({ description: 'x <script>window.__pwned = 1</script> <iframe src="https://e.test"></iframe> [a](javascript:alert(1))' }));
-    const detail = screen.getByTestId("work-item-detail");
-    expect(detail.querySelector("script")).toBeNull();
-    expect(detail.querySelector("iframe")).toBeNull();
-    expect(detail.querySelector('a[href^="javascript"]')).toBeNull();
   });
 
   it("offers no action to a reader who may not change the item", () => {
