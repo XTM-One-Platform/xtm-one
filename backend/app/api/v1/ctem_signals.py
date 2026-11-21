@@ -79,10 +79,19 @@ async def _organization_id(db: AsyncSession) -> uuid.UUID:
 
 
 @router.get("/paths")
-async def list_ctem_signal_paths(user: User = Depends(get_current_user)) -> dict[str, Any]:
-    """The 12 trigger paths, their default lens and whether an integration listener feeds them."""
+async def list_ctem_signal_paths(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The 12 trigger paths, their default lens, whether a listener feeds them, and the signals the caller sees per path."""
     _require_xtm_one()
-    return {"paths": signals.path_catalog()}
+    primary = await get_primary(db)
+    counts = (
+        await signals.counts_by_path(db, organization_id=primary.id, recorded_by=_reader(user))
+        if primary is not None
+        else None
+    )
+    return {"paths": signals.path_catalog(counts if counts is not None else {})}
 
 
 @router.get("")
@@ -181,6 +190,52 @@ async def evaluate_ctem_signal(
         raise HTTPException(status_code=409, detail="This signal opened a case: the case step owns it now")
     await db.commit()
     return signals.to_dict(row)
+
+
+#: The scope gate outcomes a scope proposal answers: the subject's criticality was known and below the threshold.
+SCOPE_PROPOSAL_CODES = frozenset({"below_scope_threshold"})
+
+
+@router.post("/{signal_id}/propose-scope")
+async def propose_ctem_signal_scope(
+    signal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Propose to lower the scope threshold to this watchlisted signal's criticality (CTEM-30, #937).
+
+    Stores one organization context proposal and nothing else: the profile
+    changes only when an administrator accepts it in Settings > Organization.
+    It is a suggestion, never a gate. 404 for a signal the caller cannot read,
+    409 when the signal is not on the watchlist below the threshold.
+    """
+    _require_xtm_one()
+    from app.services import organization_context_proposals as proposals
+
+    row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=_reader(user))
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such signal")
+    decision = row.decision or {}
+    criticality = ((decision.get("scope") or {}).get("criticality")) or ""
+    if row.state != "watchlist" or decision.get("reason_code") not in SCOPE_PROPOSAL_CODES or not criticality:
+        raise HTTPException(status_code=409, detail="Only a watchlisted signal below the scope threshold can propose a scope change")
+    label = row.subject_label or row.subject_ref
+    try:
+        proposal = await proposals.propose(
+            db,
+            author_user_id=user.id,
+            changes=[
+                {
+                    "field": "prioritization_policy.scope_min_criticality",
+                    "value": criticality,
+                    "basis": f"Watchlisted CTEM signal on {label}: criticality {criticality} below the scope threshold",
+                }
+            ],
+        )
+    except proposals.ProposalError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    return {"proposal_id": str(proposal.id), "status": proposal.status, "field": "prioritization_policy.scope_min_criticality", "value": criticality}
 
 
 @router.get("/{signal_id}")

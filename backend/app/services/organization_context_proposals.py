@@ -58,11 +58,18 @@ class ProposalError(ValueError):
     """A proposal that cannot be stored or decided; the message names why."""
 
 
+#: Policy settings of the primary profile a proposal may name besides the contract fields:
+#: the CTEM watchlist's "propose to raise the scope" (CTEM-30, #937). An administrator
+#: still accepts it field by field; nothing is applied on proposal.
+PROPOSABLE_POLICY_PATHS: tuple[str, ...] = ("prioritization_policy.scope_min_criticality",)
+
+
 def _contract_paths(role: str) -> tuple[str, ...]:
     from app.services.organizations import TRACKED_CONTRACT_FIELDS
 
-    fields = org_context.CONTRACT_FIELDS if role == "primary" else TRACKED_CONTRACT_FIELDS
-    return tuple(path for path, _label in fields)
+    if role == "primary":
+        return tuple(path for path, _label in org_context.CONTRACT_FIELDS) + PROPOSABLE_POLICY_PATHS
+    return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 
 
 def _get(data: dict[str, Any], path: str) -> Any:
@@ -448,6 +455,7 @@ __all__ = [
     "MAX_CHANGES",
     "MAX_NEW_TRACKED",
     "MAX_TRACKED_DRAFT_ROWS",
+    "PROPOSABLE_POLICY_PATHS",
     "ProposalError",
     "apply_changes",
     "decide",
