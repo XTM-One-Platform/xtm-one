@@ -73,8 +73,11 @@ def test_the_refusal_says_needs_human_and_same_call():
     with pytest.raises(ValueError) as exc:
         refuse_incomplete_person_ask(None)
     message = str(exc.value)
-    assert message.startswith("needs_human parks the item for a person")
+    assert message.startswith("needs_human needs an ask card")
     assert "in the same call" in message
+    # One message for the rule (#862): the four fields and nothing written.
+    for field in ("question", "context", "(at least 2)", "recommendation", "nothing was written"):
+        assert field in message
 
 
 def test_the_tool_paths_require_the_card():

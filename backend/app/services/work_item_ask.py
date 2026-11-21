@@ -342,11 +342,13 @@ def person_ask_missing(ask: object) -> list[str]:
 
 def refuse_incomplete_person_ask(ask: object) -> None:
     """``ValueError`` naming what an agent's needs_human write must add to its ask."""
+    from app.services.work_item_blocked_refs import ASK_REQUIRED_MESSAGE
+
     missing = person_ask_missing(ask)
     if missing:
+        # One message for the rule, whichever check meets it first (#862).
         raise ValueError(
-            f"needs_human parks the item for a person, who reads its ask as a decision card: add "
-            f"{', '.join(missing)} in the same call ({READABLE_ASK_EXAMPLE})"
+            f"{ASK_REQUIRED_MESSAGE} (missing: {', '.join(missing)}); nothing was written ({READABLE_ASK_EXAMPLE})"
         )
 
 

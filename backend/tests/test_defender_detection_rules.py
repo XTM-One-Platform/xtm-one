@@ -109,7 +109,8 @@ def test_the_existing_tools_are_kept():
     executor = CallableToolExecutor()
     names = [t.name for t in df.build_tools(token="tenant||client||secret", executor=executor)]
     assert len(names) == len(set(names))
-    assert len([n for n in names if n not in _NEW_TOOLS]) == 49
+    # 49 before #863, plus the three Live Response tools (run script, library, result).
+    assert len([n for n in names if n not in _NEW_TOOLS]) == 52
     assert {"create_defender_indicator", "run_defender_hunting_query"} <= set(names)
 
 

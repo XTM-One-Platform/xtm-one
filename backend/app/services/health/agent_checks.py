@@ -547,6 +547,7 @@ async def _owned_open_items(db: AsyncSession, agents: list[uuid.UUID]) -> dict[u
                 WorkItem.needs_human,
                 WorkItem.ask,
                 WorkItem.payload,
+                WorkItem.action_mode,
             ).where(WorkItem.owner_agent_id.in_(agents), WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES))
         )
     ).all()
@@ -600,6 +601,8 @@ async def blocked_without_blocker_items(db: AsyncSession, now: datetime, agents:
             str(row.id)
             for row in owned.get(agent_id, [])
             if row.status == "blocked"
+            # A scheduled one-off has its own reschedule and cancel actions (#862).
+            and getattr(row, "action_mode", None) is None
             and blocked_without_blocker(
                 blocked_on=row.blocked_on,
                 blocked_on_refs=row.blocked_on_refs,

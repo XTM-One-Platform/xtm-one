@@ -828,3 +828,34 @@ async def test_summarize_image_runs_on_the_parse_executor_and_never_raises(monke
     # ... but unlike the summary, a gate that could not run must not pass: it raises.
     with pytest.raises(RuntimeError):
         await run_color_check(summary, expect=[], forbid=[parse_hex_color(CYAN)])
+
+
+# ── Blank or painted (gap screenshot-blank-warning-light-page) ─────────
+
+
+def _light_page(*, ink: str | None) -> Image.Image:
+    """A #FAFAFA 1440x900 page, two skeleton bars a few shades off it, and optionally grey text lines."""
+    image = Image.new("RGB", (1440, 900), "#FAFAFA")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([100, 100, 699, 129], fill="#EEEEEE")  # loading skeleton
+    draw.rectangle([100, 160, 499, 179], fill="#EEEEEE")
+    if ink:
+        for top in range(300, 420, 24):  # five lines of a 404 message, about 2% of the page
+            draw.rectangle([500, top, 1039, top + 11], fill=ink)
+    return image
+
+
+def test_a_light_page_of_grey_text_is_painted_not_blank():
+    summary = summarize_image_bytes(_png(_light_page(ink="#5F6368")))
+    assert summary is not None and summary.dominant is not None
+    assert summary.dominant.share > image_summary.BLANK_DOMINANT_SHARE
+    assert not summary.colors  # no saturated colour: the old rule flagged it
+    assert summary.ink_share > image_summary.BLANK_MAX_INK_SHARE
+    assert not image_summary.looks_blank(summary)
+
+
+def test_a_background_with_only_a_skeleton_is_still_blank():
+    summary = summarize_image_bytes(_png(_light_page(ink=None)))
+    assert summary is not None
+    assert summary.ink_share == 0.0
+    assert image_summary.looks_blank(summary)

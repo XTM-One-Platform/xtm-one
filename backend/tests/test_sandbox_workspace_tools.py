@@ -1241,6 +1241,42 @@ async def test_json_keys_changes_every_catalog_in_one_commit_or_none(store):
     assert b'"K"' not in await _workspace_bytes(store, conversation, "i18n/en.json")
 
 
+async def test_json_keys_reads_the_set_from_a_workspace_file(store):
+    """set_from: the set object is read from a workspace JSON file; set and set_from together are refused."""
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    await _put(composite, "i18n/en.json", b'{\n  "Save": "Save"\n}\n')
+    await _put(composite, "i18n/fr.json", b'{\n  "Save": "Enregistrer"\n}\n')
+    await _put(composite, "work/set.json", b'{"i18n/en.json": {"New": "New"}, "i18n/fr.json": {"New": "Nouveau"}}')
+    done = await composite.execute_tool(
+        ToolCall(
+            id="s1",
+            name="sandbox_json_keys",
+            arguments={"paths": ["i18n/en.json", "i18n/fr.json"], "set_from": "work/set.json"},
+        )
+    )
+    assert not done.is_error, done.content
+    assert done.content.startswith("Wrote 2 of 2 file(s) in one commit")
+    assert (
+        await _workspace_bytes(store, conversation, "i18n/fr.json")
+        == b'{\n  "Save": "Enregistrer",\n  "New": "Nouveau"\n}\n'
+    )
+    both = await composite.execute_tool(
+        ToolCall(
+            id="s2",
+            name="sandbox_json_keys",
+            arguments={"paths": ["i18n/en.json"], "set": {"*": {"K": "V"}}, "set_from": "work/set.json"},
+        )
+    )
+    assert both.is_error and "either 'set' or 'set_from'" in both.content
+    await _put(composite, "work/list.json", b"[1]")
+    wrong = await composite.execute_tool(
+        ToolCall(id="s3", name="sandbox_json_keys", arguments={"paths": ["i18n/en.json"], "set_from": "work/list.json"})
+    )
+    assert wrong.is_error and "must hold a JSON object" in wrong.content
+    assert b'"K"' not in await _workspace_bytes(store, conversation, "i18n/en.json")
+
+
 async def test_edit_file_changes_a_crlf_file_and_keeps_its_endings(store):
     """A file with Windows line endings: the find copied from sandbox_read_file (LF) matches, CRLF is kept."""
     conversation, user = uuid.uuid4(), uuid.uuid4()

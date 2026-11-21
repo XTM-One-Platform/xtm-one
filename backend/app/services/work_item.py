@@ -84,6 +84,7 @@ from app.services.ownership_scope import ownership_clause
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
+    names_reference_state,
     normalize_blocked_on_refs,
     normalize_blocked_reason,
     own_pull_request,
@@ -2107,6 +2108,7 @@ async def create_work_item(
         dispatchable = item.status == "open" and item.owner_agent_id is not None
         deployment = item.status == "blocked" and _names_deployment(refs)
         workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
+        reference_states = item.status == "blocked" and names_reference_state(refs)
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
@@ -2132,6 +2134,11 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_workflow_run_check
 
         schedule_workflow_run_check(item_id)
+    if reference_states:
+        # Once at creation: the pull request may be merged or the issue closed already (#862).
+        from app.services.work_item_blocked_refs import schedule_reference_state_check
+
+        schedule_reference_state_check(item_id)
     return await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
 
 
@@ -2617,6 +2624,7 @@ async def update_work_item(
         )
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
         workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
+        reference_states = bool(refs) and item.status == "blocked" and names_reference_state(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
         relay_title = item.title
@@ -2659,6 +2667,11 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_workflow_run_check
 
         schedule_workflow_run_check(item_id)
+    if reference_states:
+        # Once at the write: the pull request may be merged or the issue closed already (#862).
+        from app.services.work_item_blocked_refs import schedule_reference_state_check
+
+        schedule_reference_state_check(item_id)
     return await _read_back(item_id, user_id=user_id, writer=writer)
 
 
@@ -4339,6 +4352,17 @@ def _release_unfinished(
             if waits
             else "No release condition: work_item.release_exhausted was raised for the owner's fleet."
         )
+        if not waits:
+            # Nothing the platform observes releases it: a person decides (#862).
+            park_for_person(
+                item,
+                question="Put this work item back in the queue, or cancel it?",
+                context=(
+                    f"Its owner agent took it {attempts} times and each run ended without finishing it.\n"
+                    "Nothing it waits for would put it back by itself.\n"
+                    "Put it back once the agent can finish it; cancel it if it is no longer needed."
+                ),
+            )
         item.blocked_reason = normalize_blocked_reason(
             f"Released {attempts} time(s) by inbox runs that ended without completing it "
             f"(runs {', '.join(runs) or 'unknown'}; last: {why}). {tail} Put it back in the queue "
@@ -4382,6 +4406,43 @@ def stash_resume_wait_refs(payload: Any, refs: Any) -> dict:
     else:
         out.pop(RESUME_WAIT_REFS_KEY, None)
     return out
+
+
+#: The options of a card the platform writes when it parks an item itself (#862).
+PLATFORM_PARK_OPTIONS = (
+    {
+        "key": "requeue",
+        "label": "Put it back in the queue",
+        "effect": "Its owner agent takes it again, with your answer in its context.",
+    },
+    {
+        "key": "cancel",
+        "label": "Cancel it",
+        "effect": "Its owner agent closes it as no longer needed.",
+    },
+)
+
+
+def platform_park_card(question: str, context: str) -> dict[str, Any]:
+    """The decision card of an item the platform parks itself: put it back, or cancel. Pure.
+
+    Blocked is black or white (#762): a park with no blocker the platform
+    releases waits for a person's decision, so the platform writes the card
+    a person answers (question, context, two options, the recommended one)
+    instead of a reason alone. Ids and run names stay in ``blocked_reason``.
+    """
+    return {
+        "question": question,
+        "context": context,
+        "options": [dict(o) for o in PLATFORM_PARK_OPTIONS],
+        "recommendation": "requeue",
+    }
+
+
+def park_for_person(item: Any, *, question: str, context: str) -> None:
+    """Make *item* (being set ``blocked``) wait for a person's decision on a platform card (#862)."""
+    item.needs_human = True
+    item.ask = platform_park_card(question, context)
 
 
 def release_conditions(item: Any) -> list[str]:
@@ -6172,6 +6233,17 @@ async def release_work_item_claim(
                 item.blocked_reason = normalize_blocked_reason(
                     f"{item.result} Put it back in the queue once the inbox can run it."
                 )
+                if not release_conditions(item):
+                    # A reason alone releases nothing: a person decides on a card (#862).
+                    park_for_person(
+                        item,
+                        question="Put this work item back in the queue, or cancel it?",
+                        context=(
+                            f"The runs started for it failed {attempts} times in a row, so it is no longer "
+                            "started.\nThe error of the last run is under Technical details.\n"
+                            "Put it back once the cause is fixed; cancel it if it is no longer needed."
+                        ),
+                    )
             else:
                 item.status = "open"
         else:
@@ -6236,6 +6308,16 @@ async def park_unreachable_work_item(
         previous_status = item.status
         item.status = "blocked"
         item.blocked_reason = text
+        # Black or white (#762): its creator or an administrator decides on a card (#862).
+        park_for_person(
+            item,
+            question="Put this work item back in the queue, or cancel it?",
+            context=(
+                "The agent's run that took it could not read or settle it, so it is no longer started.\n"
+                "The run and the cause are under Technical details.\n"
+                "Put it back once the agent can reach it; cancel it if it is no longer needed."
+            ),
+        )
         item.claimed_by_agent_id = None
         item.claimed_by_run_id = None
         item.claimed_at = None
