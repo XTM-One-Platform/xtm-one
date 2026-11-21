@@ -19944,7 +19944,14 @@
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
-  "P1 case opened by the loop: {sla}": "P1 case opened by the loop: {sla}",
-  "P1 case opened by the loop": "P1 case opened by the loop",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}",
+  "Crown jewel: {name}": "Crown jewel: {name}",
+  "Scope criticality: {level}": "Scope criticality: {level}",
+  "Case opened by the loop": "Case opened by the loop",
+  "Signals by trigger path": "Signals by trigger path",
+  "{live} of {total} paths with a source": "{live} of {total} paths with a source",
+  "Propose to raise the scope": "Propose to raise the scope",
+  "Optional: nothing waits on it.": "Optional: nothing waits on it.",
+  "Proposal saved. An administrator reviews it in Settings > Organization.": "Proposal saved. An administrator reviews it in Settings > Organization.",
+  "The proposal could not be saved": "The proposal could not be saved"
 }

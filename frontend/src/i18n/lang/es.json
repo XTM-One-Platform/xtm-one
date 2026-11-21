@@ -19944,7 +19944,14 @@
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, one {{shown} min tras el SLA} other {{shown} min tras el SLA}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {{shown} h tras el SLA} other {{shown} h tras el SLA}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {{shown} día tras el SLA} other {{shown} días tras el SLA}}",
-  "P1 case opened by the loop: {sla}": "Caso P1 abierto por el bucle: {sla}",
-  "P1 case opened by the loop": "Caso P1 abierto por el bucle",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigado, en vigilancia} other {# mitigados, en vigilancia}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigado, en vigilancia} other {# mitigados, en vigilancia}}",
+  "Crown jewel: {name}": "Activo crítico: {name}",
+  "Scope criticality: {level}": "Criticidad del alcance: {level}",
+  "Case opened by the loop": "Caso abierto por el bucle",
+  "Signals by trigger path": "Señales por vía de activación",
+  "{live} of {total} paths with a source": "{live} de {total} vías con una fuente",
+  "Propose to raise the scope": "Proponer ampliar el alcance",
+  "Optional: nothing waits on it.": "Opcional: nada espera esta acción.",
+  "Proposal saved. An administrator reviews it in Settings > Organization.": "Propuesta guardada. Un administrador la revisa en Configuración > Organización.",
+  "The proposal could not be saved": "No se pudo guardar la propuesta"
 }

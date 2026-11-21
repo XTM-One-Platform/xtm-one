@@ -229,16 +229,67 @@ export function actNowAskAiPrompt(t_i18n: Translate, row: Pick<ActNowRow, "title
  *  100, KEV 95, failed expectations 90, detection gap 80, stack 50). What
  *  waits on the reader comes first: a person blocks a run or a work item until
  *  they answer. */
-export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97 } as const;
+export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97, case_p2: 96, case_p3: 72 } as const;
 
-/** The open P1 cases Act now lists, most urgent SLA first (CTEM-03-UI, #892): a
- *  P1 case opened by the loop is what to do first, above what waits on the
- *  reader. Two at most, so the queue keeps room for the rest. */
-const ACT_NOW_CASE_MAX = 2;
+/** The open loop cases Act now lists (CTEM-03-UI #892, ranked by the loop since
+ *  CTEM-30 #937): five at most, so the queue keeps room for the rest. */
+const ACT_NOW_CASE_MAX = 5;
 
-export function actNowP1Cases<T extends { state: string; severity?: string | null; sla_due_at?: string | null }>(cases: readonly T[]): T[] {
+const SEVERITY_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2 };
+const CRITICALITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+/** What the scope gate read for a case, from its origin signals the reader may read. */
+export interface CaseScope {
+  /** The highest scope criticality among its signals, or null when none is readable. */
+  criticality: string | null;
+  /** The crown jewels its signals were reconciled to. */
+  crownJewels: string[];
+}
+
+/**
+ * The scope of each case, from the reader's own signals (`case_id` and the
+ * scope gate's decision record): a case whose signals the reader cannot read
+ * has no entry, and its row shows severity and SLA only.
+ */
+export function caseScopes(
+  signals: readonly { case_id: string | null; decision: { scope?: { criticality?: string | null } | null; reconcile?: { crown_jewels_named?: string[] } } | null }[],
+): Map<string, CaseScope> {
+  const out = new Map<string, CaseScope>();
+  for (const s of signals) {
+    if (!s.case_id) continue;
+    const prev = out.get(s.case_id) ?? { criticality: null, crownJewels: [] };
+    const crit = s.decision?.scope?.criticality ?? null;
+    const better = crit && (prev.criticality === null || (CRITICALITY_RANK[crit] ?? 9) < (CRITICALITY_RANK[prev.criticality] ?? 9));
+    const jewels = [...prev.crownJewels];
+    for (const j of s.decision?.reconcile?.crown_jewels_named ?? []) if (!jewels.includes(j)) jewels.push(j);
+    out.set(s.case_id, { criticality: better ? crit : prev.criticality, crownJewels: jewels });
+  }
+  return out;
+}
+
+/**
+ * The open cases of the loop, ranked as the loop ranks them: severity (P1,
+ * P2, P3), then scope criticality (critical first, unknown last), then the
+ * nearest SLA. A case with no loop severity is left to the cases board.
+ */
+export function actNowCases<T extends { id: string; state: string; severity?: string | null; sla_due_at?: string | null }>(
+  cases: readonly T[],
+  scopes: ReadonlyMap<string, CaseScope> = new Map(),
+): T[] {
+  const crit = (c: T) => CRITICALITY_RANK[scopes.get(c.id)?.criticality ?? ""] ?? 9;
   return cases
-    .filter((c) => c.severity === "P1" && (c.state === "needs_attention" || c.state === "in_progress"))
-    .sort((a, b) => (a.sla_due_at ?? "\uffff").localeCompare(b.sla_due_at ?? "\uffff"))
+    .filter((c) => c.severity && c.severity in SEVERITY_RANK && (c.state === "needs_attention" || c.state === "in_progress"))
+    .sort(
+      (a, b) =>
+        SEVERITY_RANK[a.severity as string] - SEVERITY_RANK[b.severity as string] ||
+        crit(a) - crit(b) ||
+        (a.sla_due_at ?? "\uffff").localeCompare(b.sla_due_at ?? "\uffff"),
+    )
     .slice(0, ACT_NOW_CASE_MAX);
+}
+
+/** The queue priority of the case at *index* of `actNowCases`: its severity's band, kept in the loop's order inside it. */
+export function actNowCasePriority(severity: string | null | undefined, index: number): number {
+  const base = severity === "P1" ? ACT_NOW_PRIORITY.case_p1 : severity === "P2" ? ACT_NOW_PRIORITY.case_p2 : ACT_NOW_PRIORITY.case_p3;
+  return base - index * 0.01;
 }

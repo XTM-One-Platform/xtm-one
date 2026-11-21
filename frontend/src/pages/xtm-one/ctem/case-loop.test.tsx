@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/testing/providers";
-import { actNowP1Cases } from "./act-now";
+import { actNowCasePriority, actNowCases, caseScopes } from "./act-now";
 import { CaseUrgencyChip, caseLoopMarks, slaCountdown } from "./case-loop";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
@@ -56,8 +56,8 @@ describe("CaseUrgencyChip", () => {
   });
 });
 
-describe("actNowP1Cases", () => {
-  it("keeps the open P1 cases, the nearest SLA first, two at most", () => {
+describe("actNowCases", () => {
+  it("ranks the open loop cases by severity, then scope criticality, then the nearest SLA", () => {
     const cases = [
       { id: "a", state: "needs_attention", severity: "P1", sla_due_at: "2026-11-22T10:00:00Z" },
       { id: "b", state: "in_progress", severity: "P1", sla_due_at: "2026-11-21T20:00:00Z" },
@@ -65,6 +65,21 @@ describe("actNowP1Cases", () => {
       { id: "d", state: "resolved", severity: "P1", sla_due_at: "2026-11-21T13:00:00Z" },
       { id: "e", state: "needs_attention", severity: "P1", sla_due_at: "2026-11-23T10:00:00Z" },
     ];
-    expect(actNowP1Cases(cases).map((c) => c.id)).toEqual(["b", "a"]);
+    expect(actNowCases(cases).map((c) => c.id)).toEqual(["b", "a", "e", "c"]);
+    // A critical crown jewel puts its case first among the P1s, whatever its SLA.
+    const scopes = caseScopes([
+      { case_id: "e", decision: { scope: { criticality: "critical" }, reconcile: { crown_jewels_named: ["Customer data"] } } },
+      { case_id: "a", decision: { scope: { criticality: "low" } } },
+      { case_id: "a", decision: { scope: { criticality: "high" } } },
+    ]);
+    expect(scopes.get("a")?.criticality).toBe("high");
+    expect(scopes.get("e")?.crownJewels).toEqual(["Customer data"]);
+    expect(actNowCases(cases, scopes).map((c) => c.id)).toEqual(["e", "a", "b", "c"]);
+  });
+
+  it("keeps a P2 below what waits on the reader and a P1 above it, in the loop's order", () => {
+    expect(actNowCasePriority("P1", 1)).toBeGreaterThan(98);
+    expect(actNowCasePriority("P2", 0)).toBeLessThan(97);
+    expect(actNowCasePriority("P2", 0)).toBeGreaterThan(actNowCasePriority("P2", 1));
   });
 });

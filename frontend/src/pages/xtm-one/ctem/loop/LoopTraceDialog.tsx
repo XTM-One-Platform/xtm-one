@@ -18,8 +18,9 @@ import { useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, type CtemSignal, type CtemSignalState,
+  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useProposeSignalScope, type CtemSignal, type CtemSignalState,
 } from "@/hooks/api/useCtemSignalsApi";
+import { Button } from "@/components/ui/button";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
@@ -113,6 +114,36 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   );
 }
 
+/**
+ * "Tune scope" on a watchlisted signal (CTEM-30, #937): one optional action
+ * that stores a proposal to lower the scope threshold to this signal's
+ * criticality. An administrator accepts it in Settings > Organization; nothing
+ * waits on it and the signal stays on the watchlist until then.
+ */
+function ProposeScope({ signal }: { signal: CtemSignal }) {
+  const { t_i18n } = useFormatter();
+  const propose = useProposeSignalScope();
+  const criticality = signal.decision?.scope?.criticality;
+  if (signal.state !== "watchlist" || signal.decision?.reason_code !== "below_scope_threshold" || !criticality) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-caption" data-testid="ctem-signal-propose-scope">
+      {propose.isSuccess ? (
+        <span className="text-default-secondary" role="status">
+          {t_i18n("Proposal saved. An administrator reviews it in Settings > Organization.")}
+        </span>
+      ) : (
+        <>
+          <Button variant="secondary" size="sm" disabled={propose.isPending} onClick={() => propose.mutate(signal.id)}>
+            {t_i18n("Propose to raise the scope")}
+          </Button>
+          <span className="text-default-secondary">{t_i18n("Optional: nothing waits on it.")}</span>
+        </>
+      )}
+      {propose.isError && <span className="text-feedback-error-primary" role="alert">{t_i18n("The proposal could not be saved")}</span>}
+    </div>
+  );
+}
+
 function SignalTrace({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
@@ -125,6 +156,7 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
       </div>
       <SignalFacts signal={signal} />
       <DecisionReason state={signal.state} decision={signal.decision} showInputs />
+      <ProposeScope signal={signal} />
       {/* One vertical list at every width (#851 UX round 1 B1): the dialog is
           896 px at most, so a row of ten cells (81 px each) wraps its labels
           and staggers the status captions; the list keeps one baseline. */}
