@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1968 tools across 114 providers; 52 held back by hand.
+# 1969 tools across 114 providers; 52 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1209,6 +1209,7 @@ opencrq:get_opencrq_crq_run
 opencrq:get_opencrq_crq_settings
 opencrq:get_opencrq_crq_what_if
 opencrq:get_opencrq_cve
+opencrq:get_opencrq_cve_exploitation
 opencrq:get_opencrq_cve_finding
 opencrq:get_opencrq_evidence
 opencrq:get_opencrq_financial_profile
