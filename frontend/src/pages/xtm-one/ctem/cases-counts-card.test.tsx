@@ -58,6 +58,19 @@ describe("CasesCountsCard", () => {
     expect(screen.queryByTestId("ctem-cases-expiring")).toBeNull();
   });
 
+  it("lays every count link out as a flex row, never on a text baseline, so all five chips share one top", async () => {
+    get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 1, mitigated_watching: 1 }, cases: [], details_unavailable: [] });
+    draw();
+    await screen.findByRole("link", { name: "Needs attention: 1 case" });
+    const links = screen.getAllByTestId(/^ctem-cases-count-/);
+    expect(links).toHaveLength(5);
+    for (const link of links) {
+      const classes = link.className.split(/\s+/);
+      expect(classes).toContain("flex");
+      expect(classes).not.toContain("inline-flex");
+    }
+  });
+
   it("a state the API leaves out counts zero, never a dash", async () => {
     get.mockResolvedValue({ vertical: "cyber", counts: { needs_attention: 1 }, cases: [], details_unavailable: [] });
     draw();
