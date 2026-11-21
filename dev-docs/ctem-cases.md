@@ -145,6 +145,13 @@ runs). With it:
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";
+- that folded key moves when a member with a higher fix appears, when the
+  member that set it is patched, or the first time a version is declared on an
+  `@latest` case: recompute never opens a second case then. The existing case
+  of the same `upgrade:<vendor>/<product>@` that holds the most of the new
+  key's members takes the new key (added to its `keys`, the old ones kept),
+  its title and `fixed_version` follow, and a `retargeted` event records the
+  key (`ctem_cases._holder_of`, `CasePlan.add_keys`);
 - a member whose declared version is outside every known range is "not
   affected: version <v> is outside the affected ranges": it opens no case, is
   counted `not_affected` and listed in the recompute answer

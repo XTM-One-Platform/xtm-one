@@ -171,7 +171,9 @@ def test_the_smallest_version_fixing_every_member_is_the_greatest_fix():
 # ---------------------------------------------------------------------------
 
 
-def _cti(ext, fixed, *, installed="1.27.1", not_affected=None):
+def _cti(
+    ext: str, fixed: str | None, *, installed: str | None = "1.27.1", not_affected: str | None = None
+) -> cc.SourceIssue:
     return cc.SourceIssue(
         source="opencti",
         external_id=ext,
@@ -213,6 +215,55 @@ def test_a_member_turning_not_affected_is_resolved_in_its_case():
     (plan,) = cc.plan_recompute([case], [out], closed=["opencti:9"])
     assert plan.resolve == ["opencti:9"]
     assert plan.new_state == "resolved"
+
+
+def test_a_moved_folded_target_stays_on_the_case_that_holds_the_members() -> None:
+    case = cc.CaseSnapshot(
+        id="c1",
+        keys=["upgrade:f5/nginx@1.30.9"],
+        state="needs_attention",
+        members={"opencti:1": True, "opencti:2": True},
+    )
+    plans = cc.plan_recompute([case], [_cti("1", "1.30.7"), _cti("2", "1.30.9"), _cti("3", "1.31.2")])
+    assert [p.case_id for p in plans] == ["c1"]
+    (plan,) = plans
+    assert plan.add == ["opencti:3"]
+    assert plan.add_keys == ["upgrade:f5/nginx@1.31.2"]
+    assert plan.remediation is not None and plan.remediation.fixed_version == "1.31.2"
+    assert plan.resolve == [] and plan.new_state is None
+
+
+def test_a_latest_case_takes_the_key_the_first_time_a_version_is_declared() -> None:
+    case = cc.CaseSnapshot(
+        id="c1", keys=["upgrade:f5/nginx@latest"], state="needs_attention", members={"opencti:1": True}
+    )
+    (plan,) = cc.plan_recompute([case], [_cti("1", "1.30.7")])
+    assert plan.case_id == "c1"
+    assert plan.add_keys == ["upgrade:f5/nginx@1.30.7"]
+    assert plan.add == []
+
+
+def test_a_patched_top_member_moves_the_target_down_on_the_same_case() -> None:
+    case = cc.CaseSnapshot(
+        id="c1",
+        keys=["upgrade:f5/nginx@1.31.2"],
+        state="needs_attention",
+        members={"opencti:1": True, "opencti:3": True},
+    )
+    (plan,) = cc.plan_recompute([case], [_cti("1", "1.30.7")], closed=["opencti:3"])
+    assert plan.add_keys == ["upgrade:f5/nginx@1.30.7"]
+    assert plan.resolve == ["opencti:3"]
+    assert plan.new_state is None
+
+
+def test_an_unowned_key_of_another_product_still_opens_a_case() -> None:
+    case = cc.CaseSnapshot(
+        id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state="needs_attention", members={"opencti:1": True}
+    )
+    plans = cc.plan_recompute([case], [_cti("1", "1.30.7")])
+    new = [p for p in plans if p.case_id is None]
+    assert len(new) == 1 and new[0].add == ["opencti:1"]
+    assert next(p for p in plans if p.case_id == "c1").add_keys == []
 
 
 # ---------------------------------------------------------------------------

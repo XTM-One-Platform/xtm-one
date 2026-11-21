@@ -132,6 +132,14 @@ async def apply_recompute(
             continue
         case = by_id[plan.case_id]
         rows = {f"{r.source}:{r.external_id}": r for r in members[case.id]}
+        if plan.add_keys:
+            # The folded upgrade target moved: the case keeps its members and takes the new key (CTEM-11).
+            case.keys = [*(case.keys or []), *(k for k in plan.add_keys if k not in (case.keys or []))]
+            if plan.remediation is not None:
+                case.title = plan.remediation.title
+                case.fixed_version = plan.remediation.fixed_version
+            for key in plan.add_keys:
+                db.add(_event(case.id, actor, "retargeted", to_value=key, at=now))
         for member_id in plan.add:
             source, external_id = _split_member(member_id)
             db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
@@ -143,7 +151,7 @@ async def apply_recompute(
             rows[member_id].open = False
             evidence = not_affected.get(member_id) or rules.CLOSED_AT_SOURCE
             db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=evidence, at=now))
-        if plan.add or plan.reopen or plan.resolve:
+        if plan.add or plan.reopen or plan.resolve or plan.add_keys:
             counts["updated"] += 1
         if plan.new_state:
             db.add(

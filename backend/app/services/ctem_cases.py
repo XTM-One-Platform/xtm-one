@@ -248,6 +248,38 @@ class CasePlan:
     new_state: str | None = None  # a system transition, else ``None``
     reason: str | None = None
     evidence: str | None = None
+    #: Keys an existing case takes over: a folded upgrade target that moved (CTEM-11).
+    add_keys: list[str] = field(default_factory=list)
+
+
+def _upgrade_prefix(key: str) -> str | None:
+    """``upgrade:<vendor>/<product>@`` for an upgrade key, else ``None``."""
+    if not key.startswith("upgrade:") or "@" not in key:
+        return None
+    return key.rsplit("@", 1)[0] + "@"
+
+
+def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) -> CaseSnapshot | None:
+    """The existing case of the same product that already holds members of an unowned upgrade key.
+
+    The folded target of a product (section 4.2bis) moves when a member with a
+    higher fix appears, when the member that set it is patched, or the first
+    time a version is declared on an ``@latest`` case. The case that holds
+    those members keeps them and takes the new key, so no second case opens.
+    """
+    prefix = _upgrade_prefix(key)
+    if prefix is None:
+        return None
+    ids = {m.member_id for m in members}
+    best: CaseSnapshot | None = None
+    best_count = 0
+    for case in cases:
+        if not any(k.startswith(prefix) for k in case.keys):
+            continue
+        count = len(ids & set(case.members))
+        if count > best_count:
+            best, best_count = case, count
+    return best
 
 
 def plan_recompute(
@@ -284,8 +316,16 @@ def plan_recompute(
             seen_open[pinned[issue.member_id]].add(issue.member_id)
 
     plans: list[CasePlan] = []
+    taken_keys: dict[str, list[str]] = {}
+    retarget: dict[str, Remediation] = {}
     for key, members in grouping.groups.items():
         owner = key_owner.get(key)
+        if owner is None:
+            owner = _holder_of(key, members, cases)
+            if owner is not None:
+                key_owner[key] = owner
+                taken_keys.setdefault(owner.id, []).append(key)
+                retarget[owner.id] = grouping.remediations[key]
         if owner is None:
             plans.append(
                 CasePlan(
@@ -298,7 +338,7 @@ def plan_recompute(
         seen_open[owner.id].update(m.member_id for m in members)
 
     for case in cases:
-        plan = CasePlan(case_id=case.id, remediation=None)
+        plan = CasePlan(case_id=case.id, remediation=retarget.get(case.id), add_keys=taken_keys.get(case.id, []))
         for member_id in sorted(seen_open[case.id]):
             if member_id not in case.members:
                 plan.add.append(member_id)
