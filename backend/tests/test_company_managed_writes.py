@@ -196,6 +196,8 @@ _WRITE_FUNCTIONS = {
         "complete_work_item",
         # A person answers the decision an item waits for (#9437).
         "answer_work_item",
+        # A person sends Re-check, It's solved or Do it to the item's agent (#774).
+        "ask_work_item",
         # The inbox run's end: completes, keeps or parks the item.
         "settle_inbox_work_item",
         "requeue_work_item",
@@ -598,21 +600,12 @@ async def test_a_company_managed_agent_claims_and_completes_a_company_managed_it
     assert session.committed is True
 
 
-async def _no_cycle(*_a: object, **_kw: object) -> None:
-    return None
-
-
 @pytest.mark.asyncio
-async def test_private_items_are_never_gated(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_private_items_are_never_gated(monkeypatch):
     row = _item(is_company_managed=False)
     _use_session(monkeypatch, row)
-    monkeypatch.setattr("app.services.work_item_wait_cycles.refuse_wait_cycle", _no_cycle)
     out = await wi_service.update_work_item(
-        str(row.id),
-        user_id=str(row.user_id),
-        status="blocked",
-        blocked_on_refs=[{"repo": "o/r", "kind": "pull_request", "number": 7}],
-        writer=PERSONAL_AGENT,
+        str(row.id), user_id=str(row.user_id), status="blocked", blocked_reason="waits for review", writer=PERSONAL_AGENT
     )
     assert out["status"] == "blocked"
 

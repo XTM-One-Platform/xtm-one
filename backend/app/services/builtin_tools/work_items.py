@@ -597,18 +597,24 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
     "blocked_reason": {
         "type": "string",
         "description": (
-            "Context, never the blocker: blocked needs an owner and blocked_on, blocked_on_refs or "
-            "needs_human with ask."
+            "What it waits for, who releases it, since when. Blocked needs this, blocked_on, "
+            "blocked_on_refs or needs_human."
         ),
     },
-    "needs_human": {"type": "boolean", "description": "Blocked on a person's decision; needs ask."},
+    "needs_human": {"type": "boolean", "description": "Blocked on a person's decision."},
     "recipient": {
         "type": "string",
         "description": "needs_human: who decides (user id or email); default: run's person, agent owner, admins",
     },
     "ask": {
         "type": "object",
-        "description": "{question, options:[{key,label,effect}] (2+), recommendation: option key, deadline}",
+        "description": (
+            "{question, context, options:[{key,label,effect}], recommendation: option key, deadline}. "
+            "needs_human needs question, context, 2+ options. A person reads it: plain words; "
+            "no timestamp, id, key or 'card sent' (refused; put them in blocked_reason). "
+            "Good: 'Post Legal's comment asking for the 4 missing documents?'. "
+            "Bad: 'CARD SENT 2026-11-20T11:43Z msg 1795175038574: waiting for GO'"
+        ),
     },
 }
 
@@ -669,8 +675,7 @@ def _blocked_why_lines(item: dict) -> list[str]:
     why = item.get("blocked_why") or {}
     if why.get("missing"):
         lines.append(
-            "  - BLOCKED WITH NO REAL BLOCKER: set blocked_on, blocked_on_refs, or needs_human with an ask "
-            "card, and an owner; or reopen it with not_before."
+            "  - BLOCKED WITH NO REASON: set blocked_on, blocked_on_refs, blocked_reason or needs_human."
         )
     return lines
 
@@ -838,7 +843,7 @@ def _blocked_on_line(blockers: list) -> str:
     return (
         f"  - blocked on {len(blockers)} work item(s): {', '.join(str(b) for b in blockers)}. "
         "It goes back to open by itself once every one of them is done; a cancelled one "
-        "hands it back to its owner."
+        "keeps it blocked."
     )
 
 
@@ -1071,10 +1076,6 @@ def build_work_item_tools(
         blockers, blockers_err = await _full_blocker_ids(blocked_on)
         if blockers_err:
             return blockers_err
-        if not resolved_owner and agent_id and (blockers or refs or needs_human or status == "blocked"):
-            # A blocked item always has an owner that resumes it (#762): left
-            # empty, it stays in the calling agent's own backlog, as promised.
-            resolved_owner = agent_id
         try:
             item = await create_work_item(
                 user_id=acting_user_id,
@@ -1103,6 +1104,8 @@ def build_work_item_tools(
                 dedupe_by=dedupe_by or None,
                 fleet_impact=impact,
                 writer=writer,
+                # An agent parking an item for a person writes the card they read (#776).
+                require_person_ask=True,
             )
         except CompanyManagedWriteRefusedError as exc:
             return _refused(exc)
@@ -1324,6 +1327,8 @@ def build_work_item_tools(
                 take_over=bool(take_over),
                 attachment_file_ids=attached or None,
                 remove_attachment_file_ids=dropped_files or None,
+                # An agent parking an item for a person writes the card they read (#776).
+                require_person_ask=True,
             )
         except CompanyManagedWriteRefusedError as exc:
             return _refused(exc, work_item_id)
