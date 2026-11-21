@@ -189,8 +189,9 @@ def register(
             lines.append(f"- {name} ({ids}){f' [{active}]' if active else ''}")
         lines.append(
             "A connector with a connector_instance_id was deployed from the catalog: "
-            "manage_openaev_connector_instance takes that id, or this connector id as "
-            "connector_id. A connector without one is registered externally."
+            "manage_openaev_connector_instance takes that id as connector_instance_id, "
+            "or this connector id as connector_id (with connector_kind for a collector "
+            "or executor). A connector without one is registered externally."
         )
         return "\n".join(lines)
 
@@ -353,7 +354,27 @@ def register(
             if connector_id:
                 ids, found = await _related_ids(connector_id, kind)
                 if ids is None:
-                    return found
+                    # A connector instance id passed as connector_id: OpenAEV
+                    # knows no connector by it, but it names an instance.
+                    if "404" not in found and not found.startswith("No injector"):
+                        return found
+                    instance_resp, instance_err = await _api(
+                        base_url,
+                        headers,
+                        "get",
+                        f"/api/connector-instances/{connector_id}",
+                        "get connector instance",
+                    )
+                    if instance_err:
+                        return found
+                    instance = instance_resp.json() if instance_resp is not None else None
+                    ids = {
+                        "connector_instance_id": connector_id,
+                        "catalog_connector_id": (instance or {}).get("catalog_connector_id")
+                        if isinstance(instance, dict)
+                        else None,
+                    }
+                    found = "connector instances"
                 instance_id = ids.get("connector_instance_id")
                 if not instance_id:
                     return (
@@ -366,7 +387,11 @@ def register(
                 connector_instance_id = str(instance_id)
                 if not catalog_connector_id:
                     catalog_connector_id = ids.get("catalog_connector_id") or ""
-                resolved_from = f" (resolved from {found[:-1]} {connector_id})"
+                resolved_from = (
+                    " (connector_id was a connector instance id)"
+                    if found == "connector instances"
+                    else f" (resolved from {found[:-1]} {connector_id})"
+                )
             elif catalog_connector_id and action != "update_config":
                 return _CATALOG_ID_IS_NOT_AN_INSTANCE
             elif catalog_connector_id:

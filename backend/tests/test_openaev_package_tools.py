@@ -1205,7 +1205,50 @@ async def test_unknown_connector_id_names_every_kind_tried(monkeypatch):
         {"action": "logs", "connector_id": "nope"},
     )
     assert "No injector, collector or executor with id nope" in result.content
-    assert len(fake.calls) == 3
+    # The three kinds, then the id tried as a connector instance id.
+    assert [c["path"] for c in fake.calls][-1] == "/api/connector-instances/nope"
+    assert len(fake.calls) == 4
+
+
+async def test_connector_instance_id_passed_as_connector_id(monkeypatch):
+    # query_openaev_connectors lists both ids; an instance id given as
+    # connector_id is resolved as the instance instead of failing.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {"connector_instance_id": "ci1"},
+            "/api/connector-instances/ci1/logs/search": _LOGS,
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "logs", "connector_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert json.loads(result.content) == {
+        "connector_instance_id": "ci1",
+        "logs": [{"i": 1}],
+    }
+    assert [c["path"] for c in fake.calls] == [
+        "/api/injectors/ci1/related-ids",
+        "/api/collectors/ci1/related-ids",
+        "/api/executors/ci1/related-ids",
+        "/api/connector-instances/ci1",
+        "/api/connector-instances/ci1/logs/search",
+    ]
+
+
+async def test_connector_list_footer_names_connector_instance_id(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    monkeypatch.setattr(platform, "_api", _PathApi({"/api/injectors": [{"injector_id": "inj1"}]}))
+    result = await _run(executor, "query_openaev_connectors", {"kind": "injectors"})
+    assert "takes that id as connector_instance_id" in result.content
 
 
 async def test_catalog_id_alone_never_picks_a_deployment(monkeypatch):
