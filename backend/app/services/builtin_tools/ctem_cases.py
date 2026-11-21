@@ -211,8 +211,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         reason: str = "",
         evidence: str = "",
         note: str = "",
+        exploitation: list[dict[str, Any]] | None = None,
     ) -> str:
         from app.core.database import async_session
+        from app.services import ctem_case_loop as case_loop
         from app.services import ctem_cases as rules
         from app.services import ctem_cases_store as store
         from app.services import ctem_cases_view as view_of
@@ -254,6 +256,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     evidence=evidence or None,
                     note=note or None,
                 )
+                if exploitation is not None:
+                    case_loop.record_exploitation(db, case, exploitation, actor=agent_id)
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
                 return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
@@ -399,9 +403,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="update_ctem_case",
             description=(
-                "Change a CTEM case: owner, due date, a note, or the state with its reason. in_progress needs "
-                "an owner; resolved needs evidence (a ticket, a change or a validation run); reopening needs a "
-                "reason; accepted_risk is refused to an agent (a person accepts risk)."
+                "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
+                "reading of the triage step. in_progress needs an owner; resolved needs evidence "
+                "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
+                "an agent (a person accepts risk)."
             ),
             input_schema={
                 "type": "object",
@@ -413,6 +418,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "reason": {"type": "string"},
                     "evidence": {"type": "string"},
                     "note": {"type": "string"},
+                    "exploitation": {
+                        "type": "array",
+                        "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces the stored one.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "risk_scenario_id": {"type": "string"},
+                                "asset": {"type": "string"},
+                                "exposure": {"type": "string", "enum": ["internet_facing", "internal", "unknown"]},
+                                "techniques": {"type": "array", "items": {"type": "string"}},
+                                "reading": {"type": "string"},
+                            },
+                            "required": ["asset", "techniques"],
+                        },
+                    },
                 },
                 "required": ["case_id"],
             },

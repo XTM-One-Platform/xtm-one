@@ -37,10 +37,8 @@ clear message that the shared error formatter surfaces.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
-from collections.abc import Iterable
 from typing import Any
 
 import httpx
@@ -251,55 +249,6 @@ def _summarize_doc(doc: dict) -> str:
     if ts:
         parts.append(f"[{ts}]")
     return " | ".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# NVD 2.0 records for a list of CVEs (read by the CTEM case reader, CTEM-11)
-# ---------------------------------------------------------------------------
-
-#: Most CVE records one :func:`nvd2_records` call reads.
-NVD2_RECORDS_CAP = 100
-_NVD2_RECORDS_CONCURRENCY = 8
-
-
-async def nvd2_records(api_key: str, cves: Iterable[str], *, cap: int = NVD2_RECORDS_CAP) -> dict[str, dict[str, Any]]:
-    """The NVD 2.0 CVE records VulnCheck serves for *cves*, keyed by upper-case CVE id.
-
-    Reads the enriched ``vulncheck-nvd2`` index first and the community
-    ``nist-nvd2`` index when the key is not licensed for it (or the enriched
-    index has no record). At most *cap* well-formed ids are read; a CVE whose
-    every read failed or found nothing is absent from the answer, never guessed.
-    """
-    api_key = (api_key or "").strip()
-    wanted = sorted({str(c or "").strip().upper() for c in cves if _is_valid_cve_id(str(c or ""))})[: max(0, cap)]
-    if not wanted or not api_key:
-        return {}
-    headers = build_vulncheck_headers(api_key)
-    out: dict[str, dict[str, Any]] = {}
-    gate = asyncio.Semaphore(_NVD2_RECORDS_CONCURRENCY)
-
-    async def _one(client: httpx.AsyncClient, cve: str) -> None:
-        async with gate:
-            for index in (_NVD2_ENRICHED_INDEX, _NVD2_COMMUNITY_INDEX):
-                resp, err = await safe_request(
-                    client,
-                    "get",
-                    f"{VULNCHECK_API}/v3/index/{index}",
-                    _PROVIDER,
-                    f"lookup {cve}",
-                    headers=headers,
-                    params={"cve": cve, "limit": 1},
-                )
-                if err or resp is None:
-                    continue
-                docs = (resp.json() or {}).get("data") or []
-                if docs and isinstance(docs[0], dict):
-                    out[cve] = docs[0]
-                    return
-
-    async with egress_client(timeout=30) as client:
-        await asyncio.gather(*(_one(client, cve) for cve in wanted))
-    return out
 
 
 # ---------------------------------------------------------------------------

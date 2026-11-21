@@ -751,20 +751,32 @@ How, so the exception cannot leak:
 
 ### 12.6 Default ceiling
 
-The default is set from a measured cost per module per cycle, as section 6 did, in the
-S14b lab measurement (`lab-live`, live model, one registered OpenCTI and one OpenAEV, a
-cycle on a module with open findings and one on a module with none), written here with
-the billed tokens and dollars before S14 ships on by default.
+The default is set from a measured cost per module per cycle, as section 6 did.
 
-Provisional figure until then, from the S9b blend (6.7 USD per million tokens) and the
-shape of the loop (system and tool definitions cached, about 12 read calls of at most
-4,000 characters of result each, 2.2 characters per token): about 45,000 input and 5,000
-output tokens per cycle, 50,000 tokens, 0.34 USD. Per-cycle cap 80,000 tokens. With 3
-modules and at most 3 cycles a module a day (daily plus two change-triggered at the 2
-hour debounce in a bad day): 9 x 50,000 = 450,000 tokens, 3.0 USD a day. Provisional
-defaults: **500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**
-(a month does not run at the bad-day rate every day). The measurement replaces these
-numbers; if it lands more than 30 % away, the defaults move with it in the S14b PR.
+**Measured (S14b-3, 21 Nov 2026).** Lab `lab-ootb-live` (live model through the LLM
+proxy, one OpenCTI registered through the real path, one OpenAEV and one OpenCRQ seeded
+registrations, no open module finding), three daily cycles, one per module, on main with
+the per-call output cap of `module_analyst_ceiling.py` (`MAX_CALL_OUTPUT`, 8,192 tokens
+reserved and sent to the provider, #935). Per run: 21,427 to 21,534 input and 1,038 to
+1,161 output tokens, 22 to 23 s; the ledger day row reads 67,804 tokens and 0.32488 USD
+for the three runs, so about **22,600 tokens and 0.108 USD per module per cycle with no
+open finding**. The first pass of the measurement found that reserving the loop's whole
+output allowance put the first call over the 80,000 per-cycle cap (every run stopped
+`budget_exhausted` with 0 tokens); #935 fixed it before these figures were taken.
+
+A cycle on a module with open findings reads more (the findings and the module state that
+explains them) and is not measured in the lab, which had none to open; it is bounded by
+the per-cycle cap and measured at the production retest of S14 (section 12.9 (g)).
+
+Defaults, kept from the provisional estimate: per-cycle cap **80,000 tokens**,
+**500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**. Why they stay:
+the quiet case (3 modules, one daily cycle each) costs about 68,000 tokens and 0.33 USD a
+day, 10 USD a month, well under them; the bad day (3 modules, 3 cycles each, cycles with
+findings costing up to twice the quiet one, about 45,000 tokens) is 9 x 45,000 = 405,000
+tokens and about 2 USD, under the daily ceiling with headroom for a cycle that reaches its
+cap. Lowering the defaults to the quiet figure would stop the analyst on the day it is
+needed. The production retest replaces the findings estimate; if a cycle with findings
+lands over 55,000 tokens on average, the daily default moves with it.
 
 Model: the platform routing model, as section 6, unless the measurement shows it cannot
 hold the loop (then the platform default model, priced in the same ledger, and the
@@ -848,6 +860,6 @@ decision written here).
 | S14 spec | This section | no |
 | S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2a the member's seed (`health-module-analyst`, no handover, assignment "Platform Health module investigation" that nothing starts yet), S14a-2b its triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i); shipped in two PRs: S14b-1 the server-only predicate `is_module_analyst_run` and the engine exemption (`exempt_module_analyst` on the run's quota trace metadata), `HealthModuleAnalystSettings` ceilings at the provisional defaults of 12.6, the `health_module_analyst_spend` ledger (`module_analyst_budget.py`, migration `h128healthmaspend01`), tests in `tests/test_health_module_analyst_budget*.py`; S14b-2 the reservation before every model call of the loop (`module_analyst_ceiling.py`: the run's provider wrapped by the engine when `is_module_analyst_run` holds; a refused call answers `budget_exhausted` with no tool call), the release from the fleet budget of `budget.py` (`open_cycle` gates the member's cycle on the switches and the licence only, `cycles._settle_cycle` marks its runs booked with nothing charged and never stops it at the fleet caps), tests in `tests/test_health_module_analyst_ceiling.py`; S14b-3 the lab measurement and the default ceiling of 12.6 | no |
-| S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now" | yes |
+| S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now"; shipped in two PRs: S14c-1 the API (`FindingResponse.agentic` and `analyst_recommendation`, the newest `health_finding_recommendations` row; `GET /findings?agentic=`; `ModuleCard.last_investigation` for an administrator; `POST /modules/{module}/investigate`, administrators, `require_agentic_ai`, one on-demand cycle per active registration, `module_analyst_off` and `no_registration` refusals; `tests/test_health_module_analyst_page_api_postgres.py`), S14c-2 the page | S14c-1 no, S14c-2 yes |
 | S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n | yes |
 | S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |

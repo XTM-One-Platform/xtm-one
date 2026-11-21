@@ -361,6 +361,8 @@ def test_no_ai_execution_endpoint_relies_on_the_ui_alone():
         },
         # Platform Health's on-demand analysis (#101 S9): one model call.
         "app/api/v1/platform_health_analysis.py": {"run_health_analysis"},
+        # "Improve with Platform Health" and the Module Analyst's "Investigate now" (#101 S14c).
+        "app/api/v1/platform_health_cycles.py": {"request_cycle", "investigate_module"},
     }
 
     for rel, funcs in expected.items():
