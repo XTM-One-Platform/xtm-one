@@ -267,6 +267,44 @@ export function useOrganizationPirs(enabled: boolean) {
   });
 }
 
+/** One field change of a stored proposal (#9484 S-a2; CTEM-30 "propose scope"): nothing changes until an administrator accepts it. */
+export interface OrganizationContextFieldProposal {
+  /** A contract path, such as "prioritization_policy.scope_min_criticality". */
+  field: string;
+  value: unknown;
+  basis: string;
+  current: unknown;
+  conflict: boolean;
+}
+
+interface OrganizationContextProposal {
+  id: string;
+  kind: "fields" | "new_tracked";
+  proposals: OrganizationContextFieldProposal[];
+  status: "pending" | "accepted" | "rejected";
+  created_at: string;
+}
+
+/** The pending proposals, newest first (administrators, like the page that lists them). */
+export function useOrganizationContextProposals() {
+  return useQuery<OrganizationContextProposal[]>({
+    queryKey: [...KEY, "proposals"],
+    queryFn: () => api.get("/organization-context/proposals?status=pending"),
+  });
+}
+
+/** Accepts the named fields of a proposal (a new profile version) or rejects it with none. */
+export function useDecideOrganizationContextProposal() {
+  const qc = useQueryClient();
+  return useMutation<{ status: "accepted" | "rejected"; version: number | null }, Error, { id: string; accept: string[] }>({
+    mutationFn: ({ id, accept }) => api.post(`/organization-context/proposals/${encodeURIComponent(id)}/decide`, { accept }),
+    // The profile and the list both move: an accepted field is a new version.
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    // The card says the failure inline.
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useDraftOrganizationContext() {
   return useMutation<OrganizationDraftResponse, Error, void>({
     mutationFn: () => api.post("/organization-context/draft", {}),
