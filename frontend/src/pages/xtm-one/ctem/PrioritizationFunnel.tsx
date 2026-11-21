@@ -545,15 +545,13 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
         {layout.steps.map((step) => {
           if (step.labelY === null) return null;
           const layer = step.layer;
-          const dx = Math.min(layout.pitch * 0.5, 64);
-          const left = step.x + dx + 6;
           const cta = layer.state === "not_configured" ? FUNNEL_LAYER_COPY[layer.key].cta : undefined;
           const biggest = layout.biggest === layer.key;
           return (
             <div
               key={layer.key}
               className="absolute flex h-5 min-w-0 items-center gap-1.5 overflow-hidden content-caption"
-              style={{ left, top: step.labelY - 10, width: Math.max(layout.width - left - 4, 0) }}
+              style={{ left: step.labelX, top: step.labelY - 10, width: step.labelWidth }}
               data-testid={`ctem-flow-label-${layer.key}`}
             >
               {step.removed != null ? (
@@ -639,19 +637,41 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
           })}
 
         {casesLive && (
-          <p
-            className="absolute line-clamp-2 content-caption text-default-secondary"
-            style={{ left: layout.tiles.x, top: FLOW_TOP + 92, width: layout.tiles.width }}
-            data-testid="ctem-flow-cases-closed"
+          // Mitigated, watching on its own line above the closed line, and no
+          // clamp: every count shows at 1080, where the column is 118 px (UX
+          // round 2 on #897, B4; #865 prod retest D1 for the watching state).
+          // Placed by the layout below the top branch label, the labels beside
+          // it ending before the column (UX round 3 on #897, B4).
+          <div
+            className="absolute flex flex-col gap-1 content-caption text-default-secondary"
+            style={{ left: layout.tiles.x, top: layout.outcomesTop, width: layout.tiles.width }}
+            data-testid="ctem-flow-cases-outcomes"
           >
-            <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
-              {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
-            </Link>
-            {", "}
-            <Link to={casesListHref({ state: "accepted_risk" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
-              {t_i18n("{count, plural, one {# accepted risk} other {# accepted risk}}", { count: caseStates.accepted_risk })}
-            </Link>
-          </p>
+            {(caseStates.mitigated_watching ?? 0) > 0 && (
+              <p>
+                <Link
+                  to={casesListHref({ state: "mitigated_watching" })}
+                  className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+                  data-flow-mark=""
+                  tabIndex={-1}
+                  data-testid="ctem-flow-cases-mitigated"
+                >
+                  {/* Inline, on the text baseline (UX round 1 on #897, B2). */}
+                  <Icon name="eye" size={16} aria-hidden className="mr-1 inline-block align-text-bottom" />
+                  {t_i18n("{count, plural, one {# mitigated, watching} other {# mitigated, watching}}", { count: caseStates.mitigated_watching ?? 0 })}
+                </Link>
+              </p>
+            )}
+            <p data-testid="ctem-flow-cases-closed">
+              <Link to={casesListHref({ state: "resolved" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
+                {t_i18n("{count, plural, one {# resolved} other {# resolved}}", { count: caseStates.resolved })}
+              </Link>
+              {", "}
+              <Link to={casesListHref({ state: "accepted_risk" })} className={cn("text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)} data-flow-mark="" tabIndex={-1}>
+                {t_i18n("{count, plural, one {# accepted risk} other {# accepted risk}}", { count: caseStates.accepted_risk })}
+              </Link>
+            </p>
+          </div>
         )}
       </div>
       {casesLive && (
@@ -712,6 +732,7 @@ export function PrioritizationFunnelWithCases({
     ? {
         needs_attention: data.counts.needs_attention ?? 0,
         in_progress: data.counts.in_progress ?? 0,
+        mitigated_watching: data.counts.mitigated_watching ?? 0,
         resolved: data.counts.resolved ?? 0,
         accepted_risk: data.counts.accepted_risk ?? 0,
       }

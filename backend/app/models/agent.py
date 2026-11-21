@@ -109,6 +109,15 @@ class Agent(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
 
+    # The customer layer of a built-in agent (#914,
+    # ``services/builtin_customer_layer``): organization notes appended after
+    # the seeded persona, and the customer-layer fields a person set, which the
+    # seed leaves as they are on every boot. NULL on every other agent.
+    customer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_fields: Mapped[list | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True, default=None
+    )
+
     # Group sharing: list of Group UUIDs this entity is shared with.
     # Members of these groups can see (but not edit) the entity.
     # NULL or empty = not shared with any group (private or company-managed).

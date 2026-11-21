@@ -105,7 +105,7 @@ describe("CompanionInbox", () => {
     expect(api.post).toHaveBeenCalledWith("/notifications/22222222-2222-4222-8222-222222222222/dismiss");
   });
 
-  it("opens a waiting work item without a refused read call, its subtitle translated", async () => {
+  it("opens a waiting work item and reads it, its subtitle translated (#901)", async () => {
     const ITEM = "33333333-3333-4333-8333-333333333333";
     api.get.mockImplementation(async (path: string) => {
       if (path === "/notifications") {
@@ -136,7 +136,9 @@ describe("CompanionInbox", () => {
     expect(screen.queryByRole("button", { name: "Mark all read" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Approve the rollout/ }));
     expect(await screen.findByText("Runs page")).toBeTruthy();
-    expect(api.post).not.toHaveBeenCalled();
+    // Opening a pinned entry reads it (#901): one dismiss call, never a refused read.
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith(`/notifications/work_item%3A${ITEM}/dismiss`);
   });
 
   it("marks everything read on the server", async () => {

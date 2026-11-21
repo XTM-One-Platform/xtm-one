@@ -870,6 +870,8 @@ def _visible_clause(
                 WorkItem.workspace_id.is_(None),
             )
         )
+        # The person a decision waits for reads it wherever it was filed (#901).
+        tiers.append(_stored_recipient_clause(user_uuid))
     if readable_workspace_ids:
         tiers.append(and_(WorkItem.workspace_id.in_(list(readable_workspace_ids)), shown))
     if actor is not None:
@@ -884,6 +886,20 @@ def _visible_clause(
 #: The read visibility under its public name, for a counter outside this
 #: module (a workspace's "Holds:" line) that must agree with the lists.
 work_item_visible_clause = _visible_clause
+
+
+def _stored_recipient_clause(user_uuid: uuid.UUID) -> Any:
+    """Items whose stored decision recipient is *user_uuid* (#901).
+
+    A decision item filed by another person's fleet agent carries that
+    person's ``user_id`` and workspace, so neither the own nor the workspace
+    tier admits its recipient: the bell linked to an item its own recipient
+    could not open. The recipient written at the decision
+    (``waits_for_user_id``, checked against the item at that write) reads it
+    wherever it was filed. The owner agent's person gets no standing grant
+    here: the hand-off rules of #858 / #890 decide that.
+    """
+    return WorkItem.waits_for_user_id == user_uuid
 
 
 def _writable_clause(
@@ -4730,10 +4746,14 @@ async def answer_work_item(
     now = datetime.now(UTC)
     async with async_session() as db:
         _readable, writable = await _workspace_tiers(db, user_id)
+        # The person the decision waits for answers it, whoever filed it (#901).
+        answerable = _writable_clause(uid, writable, writer)
+        if uid is not None:
+            from app.services.work_item_recipient import recipient_clause
+
+            answerable = or_(answerable, and_(WorkItem.needs_human.is_(True), recipient_clause(uid)))
         item = (
-            await db.execute(
-                select(WorkItem).where(WorkItem.id == wid, _writable_clause(uid, writable, writer)).with_for_update()
-            )
+            await db.execute(select(WorkItem).where(WorkItem.id == wid, answerable).with_for_update())
         ).scalar_one_or_none()
         if item is None or await _gate_write(db, writer, item, "answer") is None:
             return None
@@ -5075,7 +5095,8 @@ async def work_items_by_id_prefix(
                     select(WorkItem)
                     .where(
                         cast(WorkItem.id, String).startswith(prefix, autoescape=True),
-                        _visible_clause(uid, readable),
+                        # The full id's visibility, the reader's own tiers included (#901).
+                        _visible_clause(uid, readable, reader),
                     )
                     .order_by(WorkItem.id)
                     .limit(limit)
@@ -5781,10 +5802,17 @@ async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int)
     now = datetime.now(UTC)
     since = func.coalesce(WorkItem.last_activity_at, WorkItem.created_at)
     async with async_session() as db:
+        # Only items the person can open: a bell entry whose link answers
+        # "no longer available" is never listed (#901).
+        readable, _ = await _workspace_tiers(db, str(uid))
         rows = (
             await db.execute(
                 select(WorkItem.id, WorkItem.title, WorkItem.ask, since)
-                .where(WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES), _waits_for_person_clause(uid, now))
+                .where(
+                    WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES),
+                    _waits_for_person_clause(uid, now),
+                    _visible_clause(uid, readable),
+                )
                 .order_by(since.desc())
                 .limit(limit)
             )

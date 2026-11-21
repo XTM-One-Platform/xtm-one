@@ -107,7 +107,9 @@ export default function CtemCases() {
     {
       key: "fix",
       header: "Fix",
-      cell: (c) => <TruncatedText text={c.title} className="max-w-[28rem] font-medium" />,
+      // The title gives way first at 1080 so the State chip is never cut and the
+      // table never scrolls (#865 prod retest D2; UX round 1 on #897, B1).
+      cell: (c) => <TruncatedText text={c.title} className="max-w-[15rem] min-[1280px]:max-w-[28rem] font-medium" />,
       sortValue: (c) => c.title.toLowerCase(),
       csv: (c) => c.title,
     },
@@ -158,6 +160,7 @@ export default function CtemCases() {
       cell: (c) => <span className="block max-w-[12rem]"><CaseOwner name={ownerName(c.owner_user_id)} /></span>,
       sortValue: (c) => (ownerName(c.owner_user_id) ?? "").toLowerCase(),
       csv: (c) => ownerName(c.owner_user_id) ?? "",
+      hideBelow: "6xl",
       hideable: true,
     },
     {
@@ -176,6 +179,9 @@ export default function CtemCases() {
     {
       key: "state",
       header: "State",
+      // The chip sets the width (never cut, never a fixed 14rem that scrolls the
+      // table at 1080 in FR): UX round 1 on #897, B1.
+      className: "whitespace-nowrap",
       cell: (c) => <CaseStateChip state={c.state} />,
       sortValue: (c) => CTEM_CASE_STATES.indexOf(c.state),
       csv: (c) => c.state,

@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 #: The frame type the web app routes to the signal queries.
 SIGNAL_FRAME = "ctem_signal_update"
+#: The frame type the web app routes to the case queries (CTEM-03-UI, #892).
+CASE_FRAME = "ctem_case_update"
 #: One publish round, at most (seconds).
 PUBLISH_TIMEOUT_SECONDS = 2.0
 #: After a failure, no publish for this long (seconds): the 30 s polling of the
@@ -74,6 +76,54 @@ def signal_channels(recorded_by: str | None, admin_ids: Iterable[str]) -> list[s
         if admin not in readers:
             readers.append(admin)
     return [f"activity:{reader}" for reader in readers]
+
+
+def case_frame(case_id: str, state: str, event_kind: str, at: str) -> dict[str, str]:
+    """The frame of one case event: ids and states only (section 5), never a title, subject or evidence."""
+    return {"type": CASE_FRAME, "case_id": case_id, "state": state, "event_kind": event_kind, "at": at}
+
+
+def case_channels(user_ids: Iterable[str]) -> list[str]:
+    """The personal channels a case frame goes to, each once: every active user, whose re-read decides what they see."""
+    seen: list[str] = []
+    for user_id in user_ids:
+        if user_id not in seen:
+            seen.append(user_id)
+    return [f"activity:{user_id}" for user_id in seen]
+
+
+async def _active_user_ids() -> list[str]:
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        rows = await db.execute(select(User.id).where(User.is_active.is_(True)))
+        return [str(user_id) for user_id in rows.scalars().all()]
+
+
+async def publish_case_updates(frames: Iterable[dict[str, str]]) -> int:
+    """Publish the case frames collected by a write; call it AFTER the commit. Never raises; how many were sent."""
+    global _down_until
+    frames = list(frames)
+    if not frames or time.monotonic() < _down_until:
+        return 0
+    sent = 0
+    try:
+        async with asyncio.timeout(PUBLISH_TIMEOUT_SECONDS):
+            channels = case_channels(await _active_user_ids())
+            redis = await redis_client()
+            for frame in frames:
+                payload = json.dumps(frame)
+                for channel in channels:
+                    await redis.publish(channel, payload)
+                sent += 1
+    except Exception as exc:
+        _down_until = time.monotonic() + _FAILURE_COOLDOWN_SECONDS
+        logger.warning(
+            "CTEM case SSE publish failed (quiet for %.0fs): %s",
+            _FAILURE_COOLDOWN_SECONDS,
+            format_exception_message(exc),
+        )
+    return sent
 
 
 async def _admin_ids(db: AsyncSession) -> list[str]:
