@@ -43,6 +43,36 @@ class FakeSession:
     def events(self, kind: str) -> list[CtemCaseEvent]:
         return [r for r in self.added if isinstance(r, CtemCaseEvent) and r.kind == kind]
 
+    def begin_nested(self):
+        return _Savepoint()
+
+
+class _Savepoint:
+    """A savepoint that lets the error through, as the real one does after its rollback."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _Rows(list):
+    def all(self) -> list:
+        return list(self)
+
+
+class SweepSession(FakeSession):
+    """The sweep's reads in order: the waiting signals, each case lookup, then the open cases past their SLA."""
+
+    def __init__(self, *reads: list):
+        super().__init__()
+        self.reads = [_Rows(r) for r in reads]
+
+    async def execute(self, _statement):
+        rows = self.reads.pop(0) if self.reads else _Rows()
+        return SimpleNamespace(scalars=lambda: rows)
+
 
 def _signal(**kw) -> SimpleNamespace:
     base = dict(
@@ -159,6 +189,41 @@ def test_paths_with_no_cve_map_to_their_remediation_kind(path, kind):
 def test_a_software_subject_on_a_vulnerability_path_is_an_upgrade():
     fix = loop.fix_of(_signal(trigger_path="new_vulnerability", subject_kind="software", subject_ref="NGINX"))
     assert fix.kind == "upgrade" and fix.key == "upgrade:-/nginx@latest"
+
+
+@pytest.mark.parametrize("path,kind", [("new_exposure", "asset"), ("new_vulnerability", "software")])
+def test_a_long_subject_keeps_the_key_and_title_within_their_columns(path, kind):
+    long_ref = "https://cdn.example.com/" + "a" * 400
+    fix = loop.fix_of(_signal(trigger_path=path, subject_kind=kind, subject_ref=long_ref, subject_label=long_ref))
+    assert len(fix.key) <= loop.COLUMN_MAX and len(fix.title) <= loop.COLUMN_MAX
+    other = loop.fix_of(
+        _signal(trigger_path=path, subject_kind=kind, subject_ref=long_ref + "b", subject_label=long_ref)
+    )
+    assert other.key != fix.key  # two long subjects never share a case
+    short = loop.fix_of(_signal(trigger_path=path, subject_kind=kind, subject_ref="nginx"))
+    assert "#" not in short.key  # a key within the column is unchanged
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
+    bad, good = _signal(), _signal(subject_ref="vpn.example.com", subject_label="vpn.example.com")
+    late = _case(sla_due_at=NOW - timedelta(hours=1))
+    db = SweepSession([bad, good], [], [late])  # signals, the good signal's case lookup, late cases
+    real = loop.open_from_signal
+
+    async def open_or_fail(session, signal, **kw):
+        if signal is bad:
+            kw["events"].add(loop.CASE_OPENED, {}, "half-written")
+            raise RuntimeError("value too long for type character varying(300)")
+        return await real(session, signal, **kw)
+
+    monkeypatch.setattr(loop, "open_from_signal", open_or_fail)
+    events = loop.PendingEvents()
+    counts = await loop.sweep(db, events=events, now=NOW)
+    assert counts == {"opened": 1, "joined": 0, "skipped": 1, "sla_breached": 1}
+    assert bad.state == "confirmed" and good.state == "case_opened"
+    assert [name for name, _, _ in events.items] == [loop.CASE_OPENED, loop.CASE_SLA_BREACHED]
+    assert "half-written" not in [event_id for _, _, event_id in events.items]
 
 
 def test_severity_defaults_to_the_policy_sla_when_the_record_has_none():

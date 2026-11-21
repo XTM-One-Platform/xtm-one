@@ -90,6 +90,8 @@ _TITLES: dict[str, str] = {
 SWEEP_BATCH = 500
 #: The member source of a signal attached to a case.
 SIGNAL_SOURCE = "signal"
+#: Width of ``CtemCase.title`` and ``CtemCaseEvent.to_value`` (the opening event carries the key).
+COLUMN_MAX = 300
 _KEY_SPACES = re.compile(r"\s+")
 
 
@@ -116,6 +118,14 @@ def _norm(value: str | None) -> str:
     return _KEY_SPACES.sub(" ", (value or "").strip().lower())
 
 
+def _bounded_key(key: str) -> str:
+    """*key* within :data:`COLUMN_MAX`; a longer one keeps its head and a digest of the whole, so two keys stay apart."""
+    if len(key) <= COLUMN_MAX:
+        return key
+    digest = hashlib.sha256(key.encode()).hexdigest()[:16]
+    return f"{key[: COLUMN_MAX - len(digest) - 1]}#{digest}"
+
+
 def fix_of(signal: CtemSignal) -> CaseFix:
     """The remediation a signal opens: a CVE or software subject keys on the product, else on path and subject.
 
@@ -127,12 +137,13 @@ def fix_of(signal: CtemSignal) -> CaseFix:
     kind = PATH_REMEDIATION.get(path, "manual")
     if signal.subject_kind == "software" and kind == "patch":
         return CaseFix(
-            key=f"upgrade:-/{_norm(signal.subject_ref)}@latest",
+            key=_bounded_key(f"upgrade:-/{_norm(signal.subject_ref)}@latest"),
             kind="upgrade",
-            title=f"Upgrade {subject} to a fixed version",
+            title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX],
         )
-    key = f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}"
-    return CaseFix(key=key, kind=kind, title=_TITLES.get(kind, "Remediate {subject}").format(subject=subject)[:300])
+    key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
+    title = _TITLES.get(kind, "Remediate {subject}").format(subject=subject)[:COLUMN_MAX]
+    return CaseFix(key=key, kind=kind, title=title)
 
 
 def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None, list[str]]:
@@ -353,7 +364,7 @@ async def sweep(
 ) -> dict[str, int]:
     """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits."""
     now = now or datetime.now(UTC)
-    counts = {"opened": 0, "joined": 0, "sla_breached": 0}
+    counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0}
     waiting = (
         (
             await db.execute(
@@ -368,7 +379,16 @@ async def sweep(
     )
     for signal in waiting:
         before = len(events.items) if events is not None else 0
-        case = await open_from_signal(db, signal, vertical=vertical, events=events, now=now)
+        # One savepoint per signal: a signal that cannot be opened is skipped, never the whole pass.
+        try:
+            async with db.begin_nested():
+                case = await open_from_signal(db, signal, vertical=vertical, events=events, now=now)
+        except Exception:
+            if events is not None:
+                del events.items[before:]
+            counts["skipped"] += 1
+            logger.warning("CTEM case not opened for signal %s; skipped this sweep", signal.id, exc_info=True)
+            continue
         if case is None:
             continue
         opened = events is not None and len(events.items) > before
