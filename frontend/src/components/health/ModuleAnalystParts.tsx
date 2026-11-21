@@ -15,22 +15,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The Module Analyst on the Health page (#101 S14c-2, dev-docs/platform-health.md section 12.7):
- * the last investigation line and "Investigate now" of an OpenCTI, OpenAEV or OpenCRQ card
+ * the last investigation of an OpenCTI, OpenAEV or OpenCRQ card and its "Investigate now" action
  * (administrators), and the "Module Analyst" block of a finding the analyst recommended on.
- * Reading calls no model; "Investigate now" is an AI action, disabled and explained while AI is off.
+ * One AI block per card (#965): the investigation line renders the shared AI block header of the
+ * analysis summary, and "Investigate now" sits in the card's AI actions menu whatever the block's body
+ * shows (UX round 6 B1 and B2 on #953). Reading calls no model; "Investigate now" is an AI action,
+ * disabled and explained while AI is off.
  */
-import { Icon, Spinner } from "@filigran/design-system";
-import { AiDisabledTip } from "@/components/ui/ai-disabled";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { Badge } from "@/components/ui/badge";
+import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { useToast } from "@/components/ui/toast";
+import { AiBlockHeader, AnalysisStartFailed, ModuleAnalysisSummary, useAnalyseNowItem } from "@/components/health/ModuleAnalysisSummary";
 import { useHealthName, useInvestigateHealthModule } from "@/hooks/api/useHealthApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 import { healthRefusalCodeKey } from "@/lib/health";
-import { HEALTH_MODULE_LABELS } from "@/lib/health-modules";
-import type { HealthAnalystRecommendation, HealthLastInvestigation, HealthModule } from "@/types";
+import type { HealthAnalysisOverview, HealthAnalystRecommendation, HealthLastInvestigation, HealthModule } from "@/types";
 
 /** The modules the Module Analyst investigates (`ANALYST_MODULES` in platform_health_findings.py). */
 export const ANALYST_MODULES: readonly HealthModule[] = ["opencti", "openaev", "opencrq"] as const;
@@ -84,14 +85,13 @@ export function investigateRefusalKey(code: unknown): string {
   return healthRefusalCodeKey(code) ?? "{name} could not start this work.";
 }
 
-/** The last investigation of a module card and its "Investigate now" action (administrators). */
-export function ModuleInvestigationLine({ module, investigation }: { module: HealthModule; investigation: HealthLastInvestigation | null | undefined }) {
+/** The "Investigate now" item of an analyst module card's AI actions menu, with its toasts. */
+function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; busy: boolean } {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const healthName = useHealthName();
   const aiOff = useAiActionDisabled();
   const investigate = useInvestigateHealthModule();
-  const label = t_i18n(HEALTH_MODULE_LABELS[module]);
 
   const run = () =>
     investigate.mutate(module, {
@@ -115,42 +115,66 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
       },
     });
 
+  const item: OverflowMenuItem = {
+    id: `health-investigate-${module}`,
+    label: t_i18n("Investigate now"),
+    onSelect: run,
+    disabled: aiOff || investigate.isPending,
+    disabledReason: aiOff ? t_i18n("AI is off on this platform.") : undefined,
+  };
+  return { item, busy: investigate.isPending };
+}
+
+/** The investigation body of a module card's AI block: the outcome, when and what started it. */
+function InvestigationBody({ investigation }: { investigation: HealthLastInvestigation | null | undefined }) {
+  const { t_i18n } = useFormatter();
+  if (!investigation) {
+    // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
+    return <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>;
+  }
   return (
-    // In normal flow in the card footer, the one AI block of the card (#965): a status wrapping to two
-    // lines grows this block below the divider, never moves the divider.
-    <div className="flex flex-col gap-2" data-testid={`health-investigation-${module}`}>
-      <p className="content-compact font-medium text-default-secondary">{t_i18n("Last investigation")}</p>
-      {investigation ? (
-        <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
-          <Badge variant={INVESTIGATION_STATUS_BADGE[investigation.status] ?? "outline"} className="whitespace-nowrap">
-            {t_i18n(labelOf(INVESTIGATION_STATUS_LABELS, investigation.status, INVESTIGATION_STATUS_LABELS.failed))}
-          </Badge>
-          <DateTimeCell value={investigation.closed_at ?? investigation.opened_at} />
-          <span>{t_i18n(labelOf(INVESTIGATION_TRIGGER_LABELS, investigation.trigger, INVESTIGATION_TRIGGER_LABELS.schedule))}</span>
-        </div>
-      ) : (
-        // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
-        <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>
-      )}
-      <div>
-        <AiDisabledTip>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            disabled={aiOff || investigate.isPending}
-            aria-busy={investigate.isPending || undefined}
-            aria-label={t_i18n("Investigate {module} now", { module: label })}
-            onClick={run}
-            data-testid={`health-investigate-${module}`}
-          >
-            {investigate.isPending && <Spinner size="sm" tone="inherit" />}
-            {!investigate.isPending && <Icon name="sparkles" size={16} aria-hidden />}
-            {t_i18n("Investigate now")}
-          </Button>
-        </AiDisabledTip>
-      </div>
+    <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
+      <Badge variant={INVESTIGATION_STATUS_BADGE[investigation.status] ?? "outline"} className="whitespace-nowrap">
+        {t_i18n(labelOf(INVESTIGATION_STATUS_LABELS, investigation.status, INVESTIGATION_STATUS_LABELS.failed))}
+      </Badge>
+      <DateTimeCell value={investigation.closed_at ?? investigation.opened_at} />
+      <span>{t_i18n(labelOf(INVESTIGATION_TRIGGER_LABELS, investigation.trigger, INVESTIGATION_TRIGGER_LABELS.schedule))}</span>
     </div>
+  );
+}
+
+/**
+ * The one AI block of an OpenCTI, OpenAEV or OpenCRQ card (administrators): the analysis summary when
+ * it is the newer, else the last investigation, under one shared header whose menu always holds
+ * Analyse now and Investigate now (UX round 6 B1 and B2 on #953). In normal flow in the card footer:
+ * a status wrapping to two lines grows the block below the divider, never moves the divider.
+ */
+export function ModuleAnalystBlock({
+  module,
+  investigation,
+  showSummary,
+  hasOpenFindings,
+  overview,
+}: {
+  module: HealthModule;
+  investigation: HealthLastInvestigation | null | undefined;
+  /** The analysis summary is newer than the last investigation: the block's body is the summary. */
+  showSummary: boolean;
+  hasOpenFindings: boolean;
+  overview: HealthAnalysisOverview | undefined;
+}) {
+  const { t_i18n } = useFormatter();
+  const investigate = useInvestigateNowItem(module);
+  const analyse = useAnalyseNowItem(module, overview);
+  if (showSummary) {
+    return <ModuleAnalysisSummary module={module} hasOpenFindings={hasOpenFindings} overview={overview} extraItems={[investigate.item]} extraBusy={investigate.busy} />;
+  }
+  return (
+    <section className="space-y-1.5" aria-label={t_i18n("Last investigation")} data-testid={`health-investigation-${module}`}>
+      <AiBlockHeader module={module} caption={t_i18n("Last investigation")} items={[analyse.item, investigate.item]} busy={analyse.busy || investigate.busy} />
+      <InvestigationBody investigation={investigation} />
+      {analyse.failed ? <AnalysisStartFailed /> : null}
+    </section>
   );
 }
 

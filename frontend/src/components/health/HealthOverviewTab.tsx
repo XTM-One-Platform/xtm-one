@@ -36,7 +36,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { ModuleAnalysisSummary, analysisRowFor } from "@/components/health/ModuleAnalysisSummary";
-import { ANALYST_MODULES, AnalystRecommendationBlock, ModuleInvestigationLine } from "@/components/health/ModuleAnalystParts";
+import { ANALYST_MODULES, AnalystRecommendationBlock, ModuleAnalystBlock } from "@/components/health/ModuleAnalystParts";
 import {
   useDismissHealthFindings,
   useHealthAnalysis,
@@ -394,7 +394,8 @@ export function HealthOverviewTab() {
   // One AI block per module card (#965, #953), administrators only: the newest of the module's analysis
   // summary (#961) and the Module Analyst's last investigation (section 12.7). An analysed module never
   // investigated shows its summary; an investigated module with no newer summary shows the investigation
-  // line and "Investigate now". No row to show, no footer: a card never carries an empty divider.
+  // line. Both bodies share one header, and an analyst card's menu always holds Analyse now and
+  // Investigate now (UX round 6 B1, B2). No row to show, no footer: a card never carries an empty divider.
   const moduleFooter = (card: (typeof cards)[number]) => {
     if (!isAdmin) return undefined;
     const hasOpenFindings = card.critical + card.warning + card.info > 0;
@@ -404,10 +405,10 @@ export function HealthOverviewTab() {
     const investigatedAt = investigation ? Date.parse(investigation.closed_at ?? investigation.opened_at) : Number.NaN;
     const analysedAt = row?.analysed_at ? Date.parse(row.analysed_at) : Number.NaN;
     const summaryIsNewer = row !== null && (Number.isNaN(investigatedAt) || analysedAt > investigatedAt);
-    if (row && (!investigated || summaryIsNewer)) {
-      return <ModuleAnalysisSummary module={card.module} hasOpenFindings={hasOpenFindings} overview={analysis.data} />;
+    if (investigated) {
+      return <ModuleAnalystBlock module={card.module} investigation={investigation} showSummary={summaryIsNewer} hasOpenFindings={hasOpenFindings} overview={analysis.data} />;
     }
-    return investigated ? <ModuleInvestigationLine module={card.module} investigation={investigation} /> : undefined;
+    return row ? <ModuleAnalysisSummary module={card.module} hasOpenFindings={hasOpenFindings} overview={analysis.data} /> : undefined;
   };
   const lists = { open: openFindings, dismissed: dismissedFindings, resolved: resolvedFindings };
   const findings = lists[view];

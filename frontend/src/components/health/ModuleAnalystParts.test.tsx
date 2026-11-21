@@ -1,10 +1,13 @@
-// The Module Analyst on the Health page (#101 S14c-2): a module card's last investigation and
-// "Investigate now", and a finding's Module Analyst block.
+// The Module Analyst on the Health page (#101 S14c-2): a module card's one AI block (the last
+// investigation or the analysis summary under one shared header, Investigate now in its menu), and a
+// finding's Module Analyst block.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { renderWithProviders } from "@/testing/providers";
+import type { HealthAnalysisOverview } from "@/types";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 const flags = vi.hoisted(() => ({ aiEnabled: true }));
@@ -14,7 +17,7 @@ vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
   useAiEnabled: () => flags.aiEnabled,
 }));
 
-import { AnalystRecommendationBlock, ModuleInvestigationLine, investigateRefusalKey } from "./ModuleAnalystParts";
+import { AnalystRecommendationBlock, ModuleAnalystBlock, investigateRefusalKey } from "./ModuleAnalystParts";
 
 const INVESTIGATION = {
   cycle_id: "c-1",
@@ -25,7 +28,23 @@ const INVESTIGATION = {
   closed_at: "2026-11-21T10:05:00Z",
 };
 
-describe("ModuleInvestigationLine", () => {
+const OVERVIEW = {
+  enabled: true,
+  ceilings_set: true,
+  modules: [{ module: "opencti", status: "completed", summary: "Restart the stalled connector.", reason: null, analysed_at: "2026-11-21T11:00:00Z" }],
+} as unknown as HealthAnalysisOverview;
+
+const renderBlock = (props: Partial<Parameters<typeof ModuleAnalystBlock>[0]> = {}) =>
+  renderWithProviders(
+    <ModuleAnalystBlock module="opencti" investigation={INVESTIGATION} showSummary={false} hasOpenFindings overview={OVERVIEW} {...props} />,
+  );
+
+const openMenu = async () => {
+  await userEvent.setup().click(screen.getByRole("button", { name: "OpenCTI actions" }));
+  return screen.findByRole("menuitem", { name: /Investigate now/ });
+};
+
+describe("ModuleAnalystBlock", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     flags.aiEnabled = true;
@@ -35,7 +54,7 @@ describe("ModuleInvestigationLine", () => {
   });
 
   it("shows the outcome and what started the last investigation in plain words", () => {
-    renderWithProviders(<ModuleInvestigationLine module="opencti" investigation={INVESTIGATION} />);
+    renderBlock();
     const line = screen.getByTestId("health-investigation-opencti");
     expect(line.textContent).toContain("Ceiling reached");
     expect(line.textContent).toContain("Findings changed");
@@ -43,21 +62,41 @@ describe("ModuleInvestigationLine", () => {
   });
 
   it("says when the module was never investigated", () => {
-    renderWithProviders(<ModuleInvestigationLine module="openaev" investigation={null} />);
+    renderBlock({ module: "openaev", investigation: null });
     expect(screen.getByTestId("health-investigation-openaev").textContent).toContain("Not investigated yet");
   });
 
-  it("starts an investigation of the module on demand", async () => {
+  it("renders the same AI block header whatever the body shows (UX round 6 B1 on #953)", () => {
+    const { unmount } = renderBlock();
+    const investigationHeader = screen.getByTestId("health-ai-block-header-opencti");
+    expect(screen.getByTestId("health-investigation-opencti").contains(investigationHeader)).toBe(true);
+    const investigationTags = [...investigationHeader.querySelectorAll("*")].map((node) => node.tagName);
+    unmount();
+    renderBlock({ showSummary: true });
+    const summaryHeader = screen.getByTestId("health-ai-block-header-opencti");
+    expect(screen.getByTestId("health-analysis-opencti").contains(summaryHeader)).toBe(true);
+    expect([...summaryHeader.querySelectorAll("*")].map((node) => node.tagName)).toEqual(investigationTags);
+  });
+
+  it("keeps Investigate now in the menu when the summary is the body (UX round 6 B2 on #953)", async () => {
+    renderBlock({ showSummary: true });
+    expect(await openMenu()).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /Analyse now/ })).toBeTruthy();
+  });
+
+  it("starts an investigation of the module on demand from the menu", async () => {
     api.post.mockResolvedValue({ module: "opencti", items: [{ registration_id: "r-1", cycle_id: "c-2", run_id: "run-2", refusal: null }] });
-    renderWithProviders(<ModuleInvestigationLine module="opencti" investigation={INVESTIGATION} />);
-    fireEvent.click(screen.getByTestId("health-investigate-opencti"));
+    renderBlock();
+    await userEvent.setup().click(await openMenu());
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/health/modules/opencti/investigate", {}));
   });
 
-  it("disables Investigate now while AI is off", () => {
+  it("disables Investigate now with the reason while AI is off", async () => {
     flags.aiEnabled = false;
-    renderWithProviders(<ModuleInvestigationLine module="opencti" investigation={null} />);
-    expect(screen.getByTestId("health-investigate-opencti").hasAttribute("disabled")).toBe(true);
+    renderBlock({ investigation: null });
+    const item = await openMenu();
+    expect(item.getAttribute("aria-disabled") ?? item.getAttribute("data-disabled")).not.toBeNull();
+    expect(screen.getAllByText("AI is off on this platform.").length).toBeGreaterThan(0);
   });
 
   it("words the refusals of the module route and of a cycle", () => {
