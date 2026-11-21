@@ -38,7 +38,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * dialog shows it on every other unfinished item too (#9879). A sent answer
  * or ask closes the dialog (*onAnswered*, #774).
  */
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { CalendarClock, MessageSquareReply, Send, Sparkles } from "lucide-react";
 import { Icon, Textarea } from "@filigran/design-system";
 
@@ -55,9 +55,6 @@ import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import type { WorkItem, WorkItemAskOption } from "@/types";
 
-/** An effect longer than this is clamped to 3 lines with a "Show more" (#842, J.1). */
-const LONG_EFFECT_CHARS = 160;
-
 /**
  * The effect as the card shows it: a leading "Recommended:" an agent wrote
  * into the text is dropped, the tile carries its own pill (#842, J.1).
@@ -70,9 +67,11 @@ function effectText(effect: string | null | undefined): string {
  * One option as a full-width tile (#842, J.1): the label on line 1, its
  * effect under it, the whole tile one button. Every tile takes the width of
  * the list, so options never get unequal widths or a ragged side column. The
- * recommended tile is accented and carries a "Recommended" pill. A long
- * effect is clamped to 3 lines; "Show more" sits under the tile, outside the
- * button, so no control is nested in another.
+ * recommended tile is accented and carries a "Recommended" pill. The effect
+ * is clamped to 3 lines; "Show more" shows only when the clamp actually cuts
+ * the text (measured on the rendered span and followed on resize, UX round 1
+ * B1: a character count showed a control that changed nothing). It sits under
+ * the tile, outside the button, so no control is nested in another.
  */
 function DecisionTile({
   option,
@@ -87,9 +86,23 @@ function DecisionTile({
 }) {
   const { t_i18n } = useFormatter();
   const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
   const effect = effectText(option.effect);
-  const long = effect.length > LONG_EFFECT_CHARS;
   const effectId = useId();
+  const effectRef = useRef<HTMLSpanElement>(null);
+  // Measured while clamped only: once open, the span is whole and the last
+  // measure keeps "Show less" in place.
+  useLayoutEffect(() => {
+    const span = effectRef.current;
+    if (!span || open) return;
+    const measure = () => setCut(span.scrollHeight > span.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(span);
+    return () => observer.disconnect();
+  }, [effect, open]);
+  const clamped = cut && !open;
   return (
     <li className="min-w-0" data-testid="work-item-decision-tile" data-recommended={recommended ? "true" : undefined}>
       <button
@@ -121,15 +134,16 @@ function DecisionTile({
         {effect && (
           <span
             id={effectId}
-            className={cn("block break-words content-compact text-default-secondary", long && !open && "line-clamp-3")}
+            ref={effectRef}
+            className={cn("block break-words content-compact text-default-secondary", !open && "line-clamp-3")}
             data-testid="work-item-decision-effect"
-            data-clamped={long && !open ? "true" : undefined}
+            data-clamped={clamped ? "true" : undefined}
           >
             {effect}
           </span>
         )}
       </button>
-      {long && (
+      {(cut || open) && (
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

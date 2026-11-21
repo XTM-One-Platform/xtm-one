@@ -471,10 +471,11 @@ later fails that test, not a person.
 (one grid column, `w-full` button): the label in bold on line 1, its effect
 on line 2, the whole tile one button (keyboard and screen reader: the effect
 is the button's description). The recommended tile is accented and carries a
-small "Recommended" pill; there is no separate column. An effect over 160
-characters is clamped to 3 lines with "Show more" under the tile, outside the
-button. A leading "Recommended:" an agent wrote into an effect is dropped at
-render; the ask guard refuses it (S1). With options, free text folds behind
+small "Recommended" pill; there is no separate column. An effect is clamped
+to 3 lines; "Show more" shows under the tile, outside the button, only when
+the clamp actually cuts the text (measured on the rendered span and followed
+on resize, never a character count). A leading "Recommended:" an agent wrote
+into an effect is dropped at render; the ask guard refuses it (S1). With options, free text folds behind
 "Answer differently"; without options it stays open. The header holds the
 question, who asks (the owner agent, named when the reader may see it), the
 sources (`ask.links`) and the deadline. After the answer, every surface and

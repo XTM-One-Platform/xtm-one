@@ -417,18 +417,44 @@ describe("the work item detail", () => {
       expect(tiles[0].getAttribute("aria-describedby")).toBe(effects[0].id);
     });
 
-    it("clamps a long effect to 3 lines with Show more, outside the tile button", () => {
+    it("clamps a clipped effect to 3 lines with Show more, outside the tile button", () => {
       const effect = "This option does a long list of things the reader may want in full. ".repeat(5);
-      openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
-        answer: true,
-      });
-      const shown = screen.getByTestId("work-item-decision-effect");
-      expect(shown.className).toContain("line-clamp-3");
-      const more = screen.getByRole("button", { name: "Show more" });
-      expect(more.closest("[data-testid=work-item-decision-option]")).toBeNull();
-      fireEvent.click(more);
-      expect(shown.className).not.toContain("line-clamp-3");
-      expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      // The clamped span is cut: 72 px of text in a 54 px box.
+      const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(72);
+      const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(54);
+      try {
+        openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
+          answer: true,
+        });
+        const shown = screen.getByTestId("work-item-decision-effect");
+        expect(shown.getAttribute("data-clamped")).toBe("true");
+        const more = screen.getByRole("button", { name: "Show more" });
+        expect(more.closest("[data-testid=work-item-decision-option]")).toBeNull();
+        fireEvent.click(more);
+        expect(shown.getAttribute("data-clamped")).toBeNull();
+        expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+        expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      } finally {
+        height.mockRestore();
+        client.mockRestore();
+      }
+    });
+
+    it("shows no Show more for a long effect that fits in 3 lines (UX r1 B1 on #973)", () => {
+      // 255 characters that fit: scrollHeight equals clientHeight (54 px).
+      const effect = "This option does a long list of things the reader may want. ".repeat(5).slice(0, 255);
+      const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(54);
+      const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(54);
+      try {
+        openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
+          answer: true,
+        });
+        expect(screen.getByTestId("work-item-decision-effect").getAttribute("data-clamped")).toBeNull();
+        expect(within(screen.getByTestId("work-item-decision")).queryByRole("button", { name: "Show more" })).toBeNull();
+      } finally {
+        height.mockRestore();
+        client.mockRestore();
+      }
     });
 
     it("folds the free-text answer behind Answer differently when the ask has options", () => {
