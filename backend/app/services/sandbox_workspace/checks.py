@@ -173,11 +173,17 @@ class CheckSpec:
 #: failed in the sandbox and passed in CI. The run makes a repository at the checkout root with one commit of
 #: the tree (``.gitignore`` honoured; the checkout record, ``.xtm/`` and installed trees left out), ``origin/main`` and
 #: ``origin/master`` on it, runs the command and removes the repository whatever it ended with. A checkout
-#: that holds a ``.git`` of its own is run as it is.
+#: that holds a ``.git`` of its own is run as it is. The repository lives in a directory of its own outside the
+#: checkout (``GIT_DIR`` and ``GIT_WORK_TREE`` exported to the command), so two such checks run at the same
+#: time on one checkout never share a ``.git``: neither waits on the other's ``.git/config`` lock nor loses its
+#: repository when the other one ends and removes it.
 GIT_REPO_SHELL = """set -u
 top="$1"; shift
 if [ -e "$top/.git" ]; then "$@"; exit $?; fi
-trap 'rm -rf "$top/.git"' EXIT
+GIT_WORK_TREE=$(cd "$top" && pwd) || exit 1
+GIT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/xtm-git.XXXXXX") || exit 1
+export GIT_DIR GIT_WORK_TREE
+trap 'rm -rf "$GIT_DIR"' EXIT
 g() { git -C "$top" -c user.name=xtm-one -c user.email=xtm-one@localhost -c init.defaultBranch=main "$@"; }
 g init -q && g add -A -- . ':!.xtm' ':!.xtm-checkout.json' ':(exclude,glob)**/node_modules/**' \\
   ':(exclude,glob)**/.venv/**' ':(exclude,glob)**/.xtm/**' \\
