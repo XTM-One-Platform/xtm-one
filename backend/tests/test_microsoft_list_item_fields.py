@@ -172,6 +172,52 @@ async def test_list_items_pages_and_filters(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_items_filter_caps_at_count_and_resumes_in_page(monkeypatch):
+    page = _StubResponse(
+        {
+            "value": [
+                _item("1", "a.docx", Region="EMEA"),
+                _item("2", "b.docx", Region="APAC"),
+                _item("3", "c.docx", Region="EMEA"),
+                _item("4", "d.docx", Region="EMEA"),
+            ]
+        }
+    )
+    router, result = await _run(
+        monkeypatch,
+        "list_microsoft_list_items",
+        routes=[("/lists/Docs/items", (page, None))],
+        site_id="SITE1",
+        library="Docs",
+        filter_column="Region",
+        filter_value="EMEA",
+        count=2,
+    )
+    assert "2 item(s)" in result.content
+    assert "a.docx" in result.content and "c.docx" in result.content
+    assert "d.docx" not in result.content
+    assert "#skip=3" in result.content
+    token = result.content.split('page_token="')[1].split('"')[0]
+    assert token.startswith(f"{_GRAPH}/sites/SITE1/lists/Docs/items?")
+
+    router, result = await _run(
+        monkeypatch,
+        "list_microsoft_list_items",
+        routes=[("/lists/Docs/items", (page, None))],
+        site_id="SITE1",
+        library="Docs",
+        filter_column="Region",
+        filter_value="EMEA",
+        count=2,
+        page_token=token,
+    )
+    assert "#skip" not in router.calls[0]["url"]
+    assert "1 item(s)" in result.content and "d.docx" in result.content
+    assert "a.docx" not in result.content and "c.docx" not in result.content
+    assert "End of the list." in result.content
+
+
+@pytest.mark.asyncio
 async def test_list_items_hands_back_page_token_and_follows_it(monkeypatch):
     next_link = f"{_GRAPH}/sites/SITE1/lists/Docs/items?$skiptoken=P2"
     first = _StubResponse({"value": [_item("1", "a.docx")], "@odata.nextLink": next_link})

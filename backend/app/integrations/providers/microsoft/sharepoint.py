@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import quote as _url_encode
 from urllib.parse import unquote as _url_decode
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from app.integrations.http import AutoRefreshClient
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -667,6 +667,13 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         token = (page_token or "").strip()
         if token and not token.startswith(f"{_BASE_URL}/"):
             return "Error: page_token must be the value a previous listing returned."
+        # A page_token is a Graph page URL, with ``#skip=N`` when the previous
+        # call stopped at ``count`` inside that page: the first N entries of the
+        # page were already examined, so the follow-up resumes after them.
+        skip = 0
+        if "#skip=" in token:
+            token, _, skip_text = token.partition("#skip=")
+            skip = int(skip_text) if skip_text.isdigit() else 0
         async with _client() as client:
             if token:
                 next_url: str | None = token
@@ -684,6 +691,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             scanned = 0
             pages = 0
             while next_url and pages < _MAX_LIST_ITEM_PAGES:
+                page_url = f"{next_url}?{urlencode(params, safe='$')}" if params else next_url
                 kw: dict = {"params": params} if params else {}
                 resp, err = await _throttled_request(
                     client,
@@ -702,18 +710,28 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                     )
                 data = resp.json() or {}
                 page = data.get("value", [])
-                scanned += len(page)
                 pages += 1
-                for entry in page:
+                resume: str | None = None
+                for index, entry in enumerate(page):
+                    if index < skip:
+                        continue
                     fields = entry.get("fields") or {}
                     if column:
                         key = _column_key(fields, column)
                         if key is None or not _value_matches(fields[key], value):
+                            scanned += 1
                             continue
+                    if len(items) >= count:
+                        # Cap reached inside this page: hand back this page
+                        # with the entries already examined skipped.
+                        resume = f"{page_url}#skip={index}"
+                        break
+                    scanned += 1
                     items.append(entry)
-                next_url = data.get("@odata.nextLink")
+                skip = 0
+                next_url = resume or data.get("@odata.nextLink")
                 params = None
-                if not column or len(items) >= count:
+                if resume or not column or len(items) >= count:
                     break
             where = f" where {column} = '{value}'" if column else ""
             header = f"{len(items)} item(s) of '{lib}'{where} ({scanned} scanned)"
