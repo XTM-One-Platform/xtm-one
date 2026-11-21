@@ -19814,5 +19814,9 @@
   "The digest lists warning and critical findings.": "The digest lists warning and critical findings.",
   "The digest lists critical findings only.": "The digest lists critical findings only.",
   "Emails the recipients below about health findings.": "Emails the recipients below about health findings.",
-  "One email a day with the open findings.": "One email a day with the open findings."
+  "One email a day with the open findings.": "One email a day with the open findings.",
+  "Status and scope": "Status and scope",
+  "Spend limits": "Spend limits",
+  "Health checks": "Health checks",
+  "Alerts": "Alerts"
 }
