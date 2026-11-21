@@ -90,6 +90,7 @@ async def list_ctem_signals(
     state: SignalState | None = Query(default=None),
     trigger_path: TriggerPath | None = Query(default=None),
     lens: Lens | None = Query(default=None),
+    case_id: uuid.UUID | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=signals.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -107,6 +108,7 @@ async def list_ctem_signals(
         state=state,
         trigger_path=trigger_path,
         lens=lens,
+        case_id=case_id,
         limit=limit,
         offset=offset,
     )

@@ -2722,6 +2722,34 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
     },
     {
         **_CTEM_F2_COMMON,
+        "name": "Vulnerability on software we run",
+        "description": (
+            "Triages a vulnerability that OpenCTI links to a Software, Infrastructure or "
+            "System the organization runs, whatever its KEV or EPSS: the source must name a "
+            "tech stack product or an asset of the profile, checked before any model call."
+        ),
+        "trigger_type": "integration_event",
+        "trigger_config": {
+            "provider": "opencti",
+            "runs_in_profile": "source",
+            "provision": {
+                "fleet": _CTEM_F2_FLEET,
+                "purpose": "Vulnerability on software we run",
+                "relationship_types": ["has"],
+                "from_types": ["Software", "Infrastructure", "System"],
+                "to_types": ["Vulnerability"],
+                "event_types": ["create"],
+            },
+        },
+        "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
+            priority=(
+                "The relationship's source is in the organization's tech stack or assets (checked "
+                "before this run): the CVE concerns software we run; triage it on its own scores."
+            )
+        ),
+    },
+    {
+        **_CTEM_F2_COMMON,
         "name": "Vulnerability sighted",
         "description": "Triages, at higher priority, a vulnerability sighted in the organization's data.",
         "trigger_type": "integration_event",
