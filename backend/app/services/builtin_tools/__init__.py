@@ -123,11 +123,6 @@ from .ctem_signals import (
     build_ctem_signal_tools,
     offers_ctem_signal_tools,
 )
-from .learned_skill import (
-    LEARNED_LESSON_TOOL,
-    build_learned_lesson_tool,
-    offers_learned_lesson_tool,
-)
 from .custom_dashboard import (
     build_custom_dashboard_tools,
 )
@@ -228,6 +223,11 @@ from .kb import (
     format_knowledge_base_prompt,
     load_kb_names,
     load_write_locked_kb_ids,
+)
+from .learned_skill import (
+    LEARNED_LESSON_TOOL,
+    build_learned_lesson_tool,
+    offers_learned_lesson_tool,
 )
 from .loaders import (
     _MCP_TOOL_NAMESPACE_SEPARATOR as _MCP_TOOL_NAMESPACE_SEPARATOR,
@@ -434,6 +434,7 @@ __all__ = [
     "CTEM_SIGNAL_TOOL_NAMES",
     "DOCX_CONTENT_TYPE",
     "FLOW_LAB_READ_TOOLS",
+    "LEARNED_LESSON_TOOL",
     "MAX_CATALOG_DESCRIPTION_CHARS",
     "MEMORY_STEWARD_SUITE_ID",
     "ORGANIZATION_CONTEXT_TOOL",
@@ -461,8 +462,6 @@ __all__ = [
     "build_computer_use_tools",
     "build_ctem_case_tools",
     "build_ctem_signal_tools",
-    "build_learned_lesson_tool",
-    "LEARNED_LESSON_TOOL",
     "build_custom_dashboard_tools",
     "build_deep_investigation_tool",
     "build_document_vision_tools",
@@ -484,6 +483,7 @@ __all__ = [
     "build_kb_document_update_tool",
     "build_kb_search_tool",
     "build_kb_store_tool",
+    "build_learned_lesson_tool",
     "build_memory_search_tool",
     "build_memory_steward_tools",
     "build_memory_store_tool",

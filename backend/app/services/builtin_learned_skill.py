@@ -125,7 +125,9 @@ def apply_lesson(body: str | None, title: str, text: str, *, mode: str = "append
         gap = "\n" if section else ""
         updated = f"{current[:start]}{section}{gap}{current[end:].lstrip()}".rstrip() + "\n"
     if len(updated) > LEARNED_SKILL_MAX_CHARS:
-        raise LessonError(f"the skill would pass {LEARNED_SKILL_MAX_CHARS} characters: revise or remove a section first")
+        raise LessonError(
+            f"the skill would pass {LEARNED_SKILL_MAX_CHARS} characters: revise or remove a section first"
+        )
     return updated
 
 
