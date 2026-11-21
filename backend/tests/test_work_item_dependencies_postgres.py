@@ -4,7 +4,7 @@ Against a real PostgreSQL (``tests/scratch_database.py``), as a non-admin
 (rule 19): A, then B created with ``blocked_on=[A]``; B is blocked and not
 stale, its context reads "blocked on items" with A linked; completing A
 reopens B on the next sweep with the note ``unblocked: <A> done``; cancelling
-a blocker leaves the waiting item blocked and says why, once; two creates
+a blocker hands the waiting item back to its owner with a note, once (#762); two creates
 with ``dedupe`` and the same key and title answer the same item. Marked
 ``integration``: CI's integration job is the one with a PostgreSQL service.
 """
@@ -26,6 +26,7 @@ from app.services import work_item as wi_service
 from app.services import work_item_context
 from app.services.company_managed_writes import person_writer
 from tests.scratch_database import ALL_TABLES, scratch_database
+from tests.work_item_owner import add_owner, owner_of
 
 pytestmark = pytest.mark.integration
 
@@ -48,10 +49,12 @@ async def _member(sessions) -> User:
     async with sessions() as db:
         db.add(user)
         await db.commit()
+    await add_owner(sessions, user.id)
     return user
 
 
 async def _create(user: User, title: str, **kwargs) -> dict:
+    kwargs.setdefault("owner_agent_id", owner_of(user.id))
     return await wi_service.create_work_item(user_id=str(user.id), title=title, writer=WRITER, **kwargs)
 
 
@@ -100,23 +103,21 @@ async def test_a_blocked_item_reopens_once_its_blocker_is_done():
         assert await wi_service.release_satisfied_dependencies() == 0
 
 
-async def test_a_cancelled_blocker_keeps_the_item_blocked_and_says_so_once():
+async def test_a_cancelled_blocker_hands_the_item_back_to_its_owner_once() -> None:
+    """Nothing would ever release it: back to its owner's queue, never blocked forever (#762)."""
     async with _database() as sessions:
         user = await _member(sessions)
         a = await _create(user, "Ship the migration")
         b = await _create(user, "Backfill the rows", blocked_on=[a["id"]])
+        # The cancellation itself hands it back (release_dependants_of); the sweep finds nothing left.
         await wi_service.complete_work_item(a["id"], user_id=str(user.id), status="cancelled", writer=WRITER)
 
         assert await wi_service.release_satisfied_dependencies() == 0
-        assert await wi_service.release_satisfied_dependencies() == 0
-        still = await wi_service.get_work_item(b["id"], user_id=str(user.id))
-        assert still["status"] == "blocked"
-        notes = [note["text"] for note in still["claim_notes"]]
-        assert notes == [f"still blocked: {a['id']} cancelled; put it back in the queue or change blocked_on"]
-
-        # Put back by hand: the dependency goes with it.
-        requeued = await wi_service.requeue_work_item(b["id"], user_id=str(user.id), writer=WRITER)
-        assert requeued["status"] == "open" and requeued["blocked_on"] == []
+        back = await wi_service.get_work_item(b["id"], user_id=str(user.id))
+        assert back is not None
+        assert back["status"] == "open" and back["blocked_on"] == []
+        notes = [note["text"] for note in back["claim_notes"]]
+        assert notes == [f"surfaced: {a['id']} cancelled; re-point blocked_on or complete it"]
 
 
 async def test_a_dependant_of_a_dev_item_is_released_at_its_completion_not_its_deployment():

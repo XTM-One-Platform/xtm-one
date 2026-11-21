@@ -424,12 +424,21 @@ async def test_persons_and_flows_keep_the_base_rule_on_a_narrowed_item(monkeypat
         assert session.policy_reads == 0  # nothing to ask: they are not agents
 
 
+async def _no_cycle(*_a: object, **_kw: object) -> None:
+    return None
+
+
 @pytest.mark.asyncio
-async def test_a_private_item_is_never_narrowed(monkeypatch):
+async def test_a_private_item_is_never_narrowed(monkeypatch: pytest.MonkeyPatch) -> None:
     row = _item(is_company_managed=False, user_id=uuid.uuid4())
     session = _use(monkeypatch, row, {A: _policy(read="self", write="self")})
+    monkeypatch.setattr("app.services.work_item_wait_cycles.refuse_wait_cycle", _no_cycle)
     out = await wi_service.update_work_item(
-        str(row.id), user_id=str(row.user_id), status="blocked", blocked_reason="waits for review", writer=_agent(C)
+        str(row.id),
+        user_id=str(row.user_id),
+        status="blocked",
+        blocked_on_refs=[{"repo": "o/r", "kind": "pull_request", "number": 7}],
+        writer=_agent(C),
     )
     assert out["status"] == "blocked" and session.policy_reads == 0
 

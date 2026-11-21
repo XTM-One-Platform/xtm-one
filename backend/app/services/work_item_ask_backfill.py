@@ -72,8 +72,8 @@ SYSTEM_PROMPT = (
     '{"question": one sentence, the decision in the reader\'s terms, '
     '"context": 2 to 4 short plain lines separated by \\n (what the matter is, what was found, '
     'what each answer leads to), "options": 2 to 4 objects {"key": "A", "label": the button text, '
-    '"effect": what choosing it does}, "recommendation": the key of the option the item recommends, '
-    "or null}. Plain words only: no timestamp, no id, no UUID, no SHA, no message id, no "
+    '"effect": what choosing it does}, "recommendation": the key of the option the item recommends}. '
+    "Plain words only: no timestamp, no id, no UUID, no SHA, no message id, no "
     "correlation or timer key, no 'card sent' or 'msg'; name things by what they are. Keep the "
     "item's language. When the item does not say what the decision is, answer {}."
 )
@@ -105,12 +105,23 @@ def ask_readable(ask: object) -> bool:
     return not any(unreadable_reasons(text) for text in _texts(ask))
 
 
+def card_complete(ask: object) -> bool:
+    """Whether *ask* is complete for both rules: #776 (question, context, 2+ options) and #762 (a recommendation).
+
+    A card this pass stores must pass ``refuse_needs_human_without_ask``, so a
+    later write that keeps ``needs_human`` on the item is never refused. Pure.
+    """
+    from app.services.work_item_blocked_refs import ask_is_complete
+
+    return not person_ask_missing(ask) and ask_is_complete(ask)
+
+
 def card_unreadable(ask: object) -> bool:
     """Whether the card of a ``needs_human`` item fails a person: unreadable or incomplete.
 
     Pure, no model call: what ``get_fleet_health`` reports and this pass selects.
     """
-    return not ask_readable(ask) or bool(person_ask_missing(ask))
+    return not ask_readable(ask) or not card_complete(ask)
 
 
 def _clip(value: object, limit: int) -> str:
@@ -158,7 +169,12 @@ class Rewrite:
 async def rewrite_item(item: Any, rewriter: Rewriter) -> Rewrite | None:
     """The readable ask of *item*, or ``None`` when it cannot be written with confidence."""
     current = item.ask if isinstance(getattr(item, "ask", None), dict) else None
-    if current is not None and ask_readable(current) and len(current.get("options") or []) >= 2:
+    if (
+        current is not None
+        and ask_readable(current)
+        and len(current.get("options") or []) >= 2
+        and str(current.get("recommendation") or "").strip()
+    ):
         # A readable structured ask is kept: only its missing context is added.
         answer = parse_answer(await rewriter(CONTEXT_PROMPT, f"{item_prompt(item)}\n\nQuestion: {current['question']}"))
         candidate = {**current, "context": answer.get("context")}
@@ -174,7 +190,7 @@ async def rewrite_item(item: Any, rewriter: Rewriter) -> Rewrite | None:
         ask = normalize_ask(candidate)
     except ValueError:
         return None
-    if ask is None or person_ask_missing(ask):
+    if ask is None or not card_complete(ask):
         return None
     reason = str(getattr(item, "blocked_reason", None) or "")
     old_question = str((current or {}).get("question") or "").strip()
