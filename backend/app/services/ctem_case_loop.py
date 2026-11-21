@@ -28,7 +28,6 @@ import hashlib
 import logging
 import re
 import uuid
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -459,9 +458,3 @@ async def publish_pending(events: PendingEvents | None) -> int:
             published += 1
     events.items.clear()
     return published
-
-
-def validation_matches(case: CtemCase, refs: Iterable[str]) -> bool:
-    """Whether *case* already carries a validation reference among *refs* (an OpenAEV event updates it)."""
-    wanted = {r for r in refs if r}
-    return any(isinstance(v, dict) and v.get("ref") in wanted for v in case.validations or [])
