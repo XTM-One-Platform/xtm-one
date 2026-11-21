@@ -1452,6 +1452,16 @@ class Settings(BaseSettings):
     # deletes. ``0`` disables the per-statement cap (waits indefinitely).
     embedding_reset_statement_timeout_secs: int = 600
 
+    # Per-transaction statement timeout (seconds) of a sandbox workspace
+    # commit (``WorkspaceStore.commit`` in services/sandbox_workspace/store.py).
+    # A checkout of thousands of files reads, deletes and upserts its manifest
+    # under the workspace row lock, and a second commit of the same workspace
+    # waits on that lock: both ran past the 30 000 ms pool default
+    # (core/database.py) and the tool failed with ``QueryCanceledError`` on
+    # ``SELECT ... FOR UPDATE`` or ``UPDATE sandbox_workspaces``. ``0`` keeps
+    # the pool default.
+    sandbox_workspace_commit_statement_timeout_secs: int = 300
+
     # --- Admin user (mandatory, overwritten on every startup) ---
     admin_email: str = "admin@filigran.io"
     admin_password: str = ""
