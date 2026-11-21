@@ -271,6 +271,16 @@ def _visible_issue(row: CtemCaseIssue, issue: rules.SourceIssue | None) -> dict[
         "crown_jewels": list(issue.crown_jewels),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
+        # The OpenAEV finding lifecycle (CTEM-14-UI): absent when the source carries none.
+        **(
+            {
+                "retest_status": issue.retest_status,
+                "last_tested_at": issue.last_tested_at,
+                "retest_pending": issue.retest_pending,
+            }
+            if issue.retest_status or issue.retest_pending
+            else {}
+        ),
     }
 
 

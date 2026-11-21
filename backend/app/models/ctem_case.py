@@ -172,6 +172,7 @@ class CtemCaseEvent(Base):
     #: | retargeted (a folded upgrade target moved, CTEM-11)
     #: | signal | validation | ticket | sla_breached (#857)
     #: | exploitation (the OpenCRQ reading written by triage, #936)
+    #: | gate (a loop gate passed automatically, waited or answered, CTEM-34 #916)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.
     issue: Mapped[str | None] = mapped_column(String(220), nullable=True)

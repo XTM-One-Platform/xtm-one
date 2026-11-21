@@ -109,6 +109,7 @@ RESERVED_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "sitemap.xml",
         "sw.js",
         "xtm-one-emblem.svg",
+        "xtm-one-emblem-light.svg",
         "xtm-one-icon-192.png",
         "xtm-one-icon-512.png",
         "xtm-one-icon-maskable-512.png",

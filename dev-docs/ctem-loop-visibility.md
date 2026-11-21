@@ -109,7 +109,10 @@ loop, and why".
   else links to it; no menu entry.
 - **Content**: the ten stages of section 2 as a horizontal mini-timeline
   (vertical at 1024 and below), the current stage lit, each passed stage with
-  its time and its `DecisionReason`, each gate passed, waiting or stopped,
+  its time and its `DecisionReason`, each gate passed, waiting or stopped
+  (a `gate` event of the case history, CTEM-34 #975: the catalog key, the
+  outcome `passed_automatically`, `waited` or `answered`, what let it run or
+  who answered and the option, written by `update_ctem_case` `gate`),
   the stages not reached greyed with "Not reached". A signal stopped at the
   scope gate shows the path up to "Watchlist" and why; a case shows its origin
   signals (several when one fix covers several signals, `ctem-cases.md`
