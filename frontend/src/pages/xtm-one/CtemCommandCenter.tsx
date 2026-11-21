@@ -84,7 +84,7 @@ import { PrioritizationFunnelCard } from "./ctem/PrioritizationFunnel";
 import { CasesCountsCard } from "./ctem/CasesCountsCard";
 import { SAMPLE_FUNNEL, funnelDisplay } from "./ctem/prioritization-funnel";
 import { ctemKpiOpenCtiHref } from "./ctem/opencti-link";
-import { ASK_AGENT_ROW_ID, type ActNowRow, type ActNowSource } from "./ctem/act-now";
+import { ACT_NOW_PRIORITY, ASK_AGENT_ROW_ID, actNowFleetWork, type ActNowRow, type ActNowSource } from "./ctem/act-now";
 import { lockedKpiFor, type KpiDef } from "./ctem/locked-kpis";
 import { deterministicNextActions, EXPECTATION_REASONS, EXPECTATION_REASON_FALLBACK, rankNextActions } from "./ctem/next-actions";
 import { postureCsv, postureCsvFilename } from "./ctem/posture-export";
@@ -107,6 +107,7 @@ import {
 } from "./ctem/dashboard-context";
 import { coverageMatrix, exposureStats } from "@/lib/ctem-coverage-stats";
 import { useCtemFleetActivity } from "@/hooks/api/useCtemFleetActivity";
+import { useCtemCases } from "@/hooks/api/useCtemCasesApi";
 import { inviteVisible } from "@/lib/fleet-activity";
 import { formatTimeAgo } from "@/lib/relative-time";
 
@@ -497,6 +498,13 @@ export default function CtemCommandCenter({
   const [fleetChoiceOverride, setFleetChoiceOverride] = useState<string[] | null | undefined>(undefined);
   const chosenFleetIds = fleetChoiceOverride !== undefined ? fleetChoiceOverride : user?.ctem_dashboard_fleet_ids ?? null;
   const fleetActivity = useCtemFleetActivity({ isAdmin, licensed: configLoaded && agenticLicensed, chosenIds: chosenFleetIds });
+  // The cases the reader sees, by id: a timeline row of a case run names its case (#915).
+  // Same query as the Cases card and board (shared cache), never a request per row.
+  const { data: casesRead } = useCtemCases({ throwOnError: false });
+  const casesById = useMemo(
+    () => Object.fromEntries((casesRead?.cases ?? []).map((c) => [c.id, c])),
+    [casesRead],
+  );
   const { data: allFleets } = useFleets({ optional: true, enabled: configLoaded && agenticLicensed });
   const [chooseFleetsOpen, setChooseFleetsOpen] = useState(false);
   const saveFleetChoice = useCallback(
@@ -956,7 +964,25 @@ export default function CtemCommandCenter({
   }
   // Act now: the posture rows and the setup; the queue leaves the briefing's
   // steps to the briefing widget and the chat to the hero (#10721).
-  const actNowBase: ActNowRow[] = [...recs, ...ruleRecs];
+  // A fleet working on a case (#915, CTEM-04-UI slice 3): one row per case
+  // with a run in flight, naming the member at work; it opens the case, where
+  // the run's steps are listed with the case events.
+  const fleetWorkRows: ActNowRow[] = actNowFleetWork(
+    fleetActivity.timeline,
+    Object.fromEntries(Object.values(casesById).map((c) => [c.id, c.title])),
+  ).map((work) => ({
+    id: `fleet-working-${work.caseId}`, source: "fleet", icon: Bot, tone: "text-feedback-info-primary",
+    title: t_i18n("{fleet} is working on {case}", { fleet: work.fleetName, case: work.caseTitle }),
+    reason: work.pending
+      ? t_i18n("Run queued, it starts shortly")
+      : work.agentName
+        ? t_i18n("Step in progress: {agent}", { agent: work.agentName })
+        : t_i18n("Step in progress"),
+    cta: "Open",
+    onAction: () => navigate(`/ctem/cases/${work.caseId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } }),
+    priority: ACT_NOW_PRIORITY.fleet,
+  }));
+  const actNowBase: ActNowRow[] = [...recs, ...ruleRecs, ...fleetWorkRows];
   const briefingActions = briefingSteps.map((s) => s.action);
   const recommendations = [...recs, ...(briefingSteps.length === 0 ? ruleRecs : []), ...askRecs]
     .sort((a, b) => b.priority - a.priority)
@@ -1687,6 +1713,7 @@ export default function CtemCommandCenter({
     fleet_timeline: (
       <FleetTimelineCard
         timeline={fleetActivity.timeline}
+        casesById={casesById}
         isLoading={fleetActivity.timelineLoading || !configLoaded}
         licensed={!configLoaded || agenticLicensed}
         lockReason={aiLockReason}

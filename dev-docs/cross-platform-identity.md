@@ -210,6 +210,23 @@ internal network may not reach.
    accepted (403 for a session or an API key). Each hour, one administrator
    sends 200 notices or invitations, one platform 1,000, and one person
    receives 5: past that, 429 with `Retry-After`.
+7. Forwarding the current user to another registered platform (OpenCTI or
+   OpenAEV calling OpenCRQ's lookup with `X-XTM-User-Token`): `POST
+   /xtm/auth/exchange` with the user's own token (the one of step 3) as
+   bearer and `{"audience": "<target platform_url>"}`. XTM One verifies the
+   bearer as at sign-in and answers `{"access_token", "token_type":
+   "Bearer", "expires_in": 600, "audience"}` (`Cache-Control: no-store`):
+   an XTM One token (EdDSA, `/xtm/auth/jwks`) whose `sub` is the user's XTM
+   One id, `email` their XTM One email and `aud` the target's registered
+   identity, valid 10 minutes. The user is the one the bearer names, never
+   one the body names. Refused: 401 for anything but an active
+   registration's valid user token (session, API key, unknown, suspended or
+   revoked registration, expired, another audience); 403 for an audience
+   that is not another active registration (the caller itself and XTM One
+   included) and for a user with no active XTM One account (nothing is
+   provisioned). One platform makes 600 exchanges a minute, then 429. The
+   token is never logged. A platform that gets no token keeps its behaviour
+   without it (OpenCRQ: links only).
 
 Until a platform does 1 to 3, an operator can accept the internal URL it
 addresses its tokens to with `XTM_AUTH_ACCEPTED_AUDIENCES=http://xtm-one:4000`

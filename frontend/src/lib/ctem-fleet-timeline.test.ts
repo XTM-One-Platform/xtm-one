@@ -110,6 +110,29 @@ test("the event is kept for an integration event only, archived fleets are left 
   );
 });
 
+test("a run a case event started names its case, any other run none (#915)", () => {
+  const rows = fleetTimeline(
+    [fleet("f1", "Exposure")],
+    {
+      f1: {
+        fleet_id: "f1",
+        runs: [
+          run("r1", "2026-11-06T10:00:00Z", { trigger_type: "platform_event", case_id: "c-1" }),
+          run("r2", "2026-11-06T09:00:00Z", { trigger_type: "schedule" }),
+        ],
+      },
+    },
+    {},
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.runId, r.caseId]),
+    [
+      ["r1", "c-1"],
+      ["r2", null],
+    ],
+  );
+});
+
 test("no fleet or no activity read yet gives an empty timeline", () => {
   assert.deepEqual(fleetTimeline(undefined, {}, {}), []);
   assert.deepEqual(fleetTimeline([fleet("f1", "Exposure")], {}, {}), []);
