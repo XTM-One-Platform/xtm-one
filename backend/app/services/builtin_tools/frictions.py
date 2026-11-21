@@ -36,8 +36,11 @@ logger = logging.getLogger(__name__)
 _CLASSES = [c for c in FRICTION_CLASSES if c != "unclassified"]
 
 
-def _line(f: dict) -> str:
+def _line(f: dict, *, with_run: bool = False) -> str:
     head = f"- `{f['id']}` {f['kind']}"
+    if with_run and f.get("run_id"):
+        # Listed across runs: the run a friction belongs to, for get_run or a trace read.
+        head += f" in run {f['run_id']}"
     if f.get("tool"):
         head += f" on {f['tool']}"
     if (f.get("count") or 1) > 1:
@@ -143,7 +146,7 @@ def build_friction_tools(
             return f"No {'undisposed ' if undisposed else ''}friction recorded for {what}."
         shown_to = int(offset or 0) + len(rows)
         lines = [f"{total} friction(s) for {what}{' (undisposed)' if undisposed else ''}, showing {len(rows)}:"]
-        lines.extend(_line(r) for r in rows)
+        lines.extend(_line(r, with_run=target_run is None) for r in rows)
         if shown_to < total:
             lines.append(f"More: call again with offset={shown_to}.")
         return "\n".join(lines)
