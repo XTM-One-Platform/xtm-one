@@ -158,7 +158,8 @@ async def test_signal_with_no_cve_opens_a_case_with_severity_sla_and_scenarios()
     assert [(m.source, m.external_id) for m in members] == [("signal", str(signal.id))]
     assert [name for name, _, _ in events.items] == [loop.CASE_OPENED]
     payload = events.items[0][1]
-    assert "title" not in payload and payload["signal_id"] == str(signal.id)
+    assert "title" not in payload and "signal_id" not in payload and payload["case_id"] == str(case.id)
+    assert "severity" not in payload and "risk_scenario_ids" not in payload  # read on the case (#933)
 
 
 @pytest.mark.asyncio
@@ -410,11 +411,11 @@ def test_no_breach_before_the_due_date_or_on_a_closed_case():
     assert not loop.breached(_case(state="resolved", sla_due_at=NOW - timedelta(hours=1)), NOW)
 
 
-def test_every_case_event_is_registered_and_platform_wide():
-    from app.services.platform_events import PLATFORM_EVENTS, PLATFORM_WIDE_EVENTS
+def test_every_case_event_is_registered_and_checked_against_the_viewer():
+    from app.services.platform_events import PLATFORM_EVENTS, PLATFORM_WIDE_EVENTS, VIEWER_CHECKED_EVENTS
 
     for name in loop.CASE_EVENTS:
-        assert name in PLATFORM_EVENTS and name in PLATFORM_WIDE_EVENTS
+        assert name in PLATFORM_EVENTS and name in VIEWER_CHECKED_EVENTS and name not in PLATFORM_WIDE_EVENTS
 
 
 def test_every_case_state_is_counted_by_the_list_route_and_the_tool():
