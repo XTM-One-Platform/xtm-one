@@ -105,9 +105,16 @@ class CaseFix:
 
 @dataclass
 class PendingEvents:
-    """Platform events to raise after the caller's commit, in order."""
+    """Platform events to raise after the caller's commit, in order.
+
+    ``verticals`` names the verticals whose case membership changed (a case
+    opened, a signal joined one): their cached viewer views are dropped after
+    the commit, so the case shows on the board and its page at once instead of
+    after the view TTL.
+    """
 
     items: list[tuple[str, dict[str, Any], str]] = field(default_factory=list)
+    verticals: set[str] = field(default_factory=set)
     #: Live frames for the web app (``ctem_case_update``, CTEM-03-UI #892): ids and states only.
     frames: list[dict[str, str]] = field(default_factory=list)
 
@@ -271,6 +278,7 @@ async def open_from_signal(
     signal.case_id = case.id
     signal.updated_at = now
     if events is not None:
+        events.verticals.add(vertical)
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
@@ -357,8 +365,6 @@ async def record_validation(
 
 #: What a ticket reference's status may say, mapped from the ITSM's own workflow by the writer.
 TICKET_STATUSES: tuple[str, ...] = ("open", "in_progress", "done", "cancelled")
-#: Where a synced ticket stands against its case (#917): written by ``services/ctem_ticketing.py``.
-TICKET_SYNC_STATES: tuple[str, ...] = ("linked", "in_sync", "out_of_date", "error")
 
 
 def record_ticket(
@@ -371,17 +377,12 @@ def record_ticket(
     status: str = "open",
     actor: str = rules.SYSTEM_ACTOR,
     now: datetime | None = None,
-    sync: dict[str, Any] | None = None,
 ) -> CtemCase:
     """Write or update a ticket reference on *case* (#891); never moves the case state.
 
     One entry per ``(integration, key)``: a second write of the same ticket
     updates its status and url in place, so a rerun never lists a ticket twice.
     The case closes on proof (a validation reference), not on a ticket. The caller commits.
-
-    *sync* (#917) is the sync record of a ticket the sync layer manages:
-    ``{state, since, error, fix, provider, correlation, external_status}``; it
-    replaces the stored one and alone never raises a ``ticket`` event.
     """
     integration = (integration or "").strip()[:80]
     key = (key or "").strip()[:120]
@@ -397,24 +398,12 @@ def record_ticket(
         "status": status,
         "at": now.isoformat(),
     }
-    if sync is not None:
-        state = sync.get("state")
-        if state not in TICKET_SYNC_STATES:
-            raise rules.CaseRuleError(f"unknown ticket sync state {state!r}: one of {', '.join(TICKET_SYNC_STATES)}")
-        entry["sync"] = {k: v for k, v in sync.items() if v not in (None, "")}
     tickets = [dict(t) for t in (case.tickets or [])]
     previous = next((t for t in tickets if (t.get("integration"), t.get("key")) == (integration, key)), None)
     if previous is not None:
-        same_status = previous.get("status") == status and (entry["url"] in (None, previous.get("url")))
-        if "sync" not in entry and previous.get("sync"):
-            entry["sync"] = previous["sync"]
-        if same_status and entry.get("sync") == previous.get("sync"):
+        if previous.get("status") == status and (entry["url"] in (None, previous.get("url"))):
             return case
         entry["url"] = entry["url"] or previous.get("url")
-        if same_status:
-            entry["at"] = previous.get("at", entry["at"])
-            case.tickets = [entry if t is previous else t for t in tickets][-20:]
-            return case
         tickets = [entry if t is previous else t for t in tickets]
     else:
         tickets.append(entry)
@@ -617,9 +606,18 @@ async def sweep_due() -> bool:
 
 
 async def publish_pending(events: PendingEvents | None) -> int:
-    """Raise the collected case events and live frames (after the commit); how many events were published."""
+    """Drop the stale viewer views, then raise the live frames and the collected case events (after the commit); how many events were published.
+
+    The views go first: a web app that refetches on a live frame reads the case at once.
+    """
     if not events:
         return 0
+    if events.verticals:
+        from app.services.ctem_cases_view import forget_all_views
+
+        for vertical in sorted(events.verticals):
+            await forget_all_views(vertical)
+        events.verticals.clear()
     if events.frames:
         from app.services.ctem_loop_stream import publish_case_updates
 
