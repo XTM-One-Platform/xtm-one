@@ -24,10 +24,21 @@ from app.services.fleet_views import (
     fleet_scope_clause,
     fleet_tree,
     member_health,
+    run_case_id,
     worst_status,
 )
 from app.services.fleets import HomeFleet
 from app.services.run_outcome import RunFact, member_verdict
+
+
+def test_a_run_started_by_a_case_event_names_its_case_and_nothing_else_does():
+    """#915: the fleet timeline ties a run to its CTEM case by the event's object, an id only."""
+    case_id = uuid.uuid4()
+    assert run_case_id("ctem_case", str(case_id)) == str(case_id)
+    assert run_case_id("work_item", str(case_id)) is None
+    assert run_case_id("ctem_case", None) is None
+    assert run_case_id("ctem_case", "not-a-uuid") is None
+    assert run_case_id(None, None) is None
 
 
 def _fleet(orchestrator: uuid.UUID | None = None, name: str = "CEO Office") -> Fleet:

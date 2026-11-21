@@ -640,6 +640,9 @@ class FleetRunEntry(BaseModel):
     trigger_type: str | None = None
     trigger_provider: str | None = None
     trigger_event: str | None = None
+    #: The CTEM case the run works on, when a case event started it (#915). An
+    #: id only: the case is read through ``GET /ctem-cases/{id}``, per viewer.
+    case_id: str | None = None
 
 
 class FleetActivityResponse(BaseModel):

@@ -2781,6 +2781,7 @@ async def get_fleet_activity(
                 trigger_type=trigger_type,
                 trigger_provider=trigger_provider,
                 trigger_event=trigger_event,
+                case_id=case_id,
             )
             for (
                 run_id,
@@ -2793,6 +2794,7 @@ async def get_fleet_activity(
                 trigger_type,
                 trigger_provider,
                 trigger_event,
+                case_id,
             ) in runs
         ],
         delegations=delegations,

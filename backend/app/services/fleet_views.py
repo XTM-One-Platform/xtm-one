@@ -1026,16 +1026,33 @@ async def fleet_card_facts(
     return out
 
 
+#: The ``trigger_context.object_type`` of a run a CTEM case event started (``ctem_case_loop.case_data``).
+CASE_OBJECT_TYPE = "ctem_case"
+
+
+def run_case_id(object_type: str | None, object_id: str | None) -> str | None:
+    """The CTEM case a run works on (#915): the object of the platform event that
+    started it when that object is a case, else ``None``. An id only: the case
+    itself is read through the case API, which applies the reader's view."""
+    if object_type != CASE_OBJECT_TYPE or not object_id:
+        return None
+    try:
+        return str(uuid.UUID(str(object_id)))
+    except (TypeError, ValueError):
+        return None
+
+
 async def recent_runs(
     db: AsyncSession, agent_ids: Sequence[uuid.UUID], *, run_scope, limit: int
 ) -> list[tuple]:
     """The members' latest runs the caller may see, newest first:
     ``(id, agent_id, assignment_id, status, created_at, completed_at, outcome,
-    trigger_type, trigger_provider, trigger_event)``, the outcome by
+    trigger_type, trigger_provider, trigger_event, case_id)``, the outcome by
     :func:`app.services.run_outcome.run_outcome`, the rule the health badge
-    reads. The three trigger fields are read from ``trigger_context`` key by
-    key (``type``, ``provider``, ``event``; ``None`` when absent), never the
-    whole JSON, so a large delivery body is never loaded for a timeline row."""
+    reads. The trigger fields are read from ``trigger_context`` key by
+    key (``type``, ``provider``, ``event``, ``object_type``, ``object_id``;
+    ``None`` when absent), never the whole JSON, so a large delivery body is
+    never loaded for a timeline row; ``case_id`` is :func:`run_case_id`."""
     from app.models.assignment import AssignmentRun
 
     if not agent_ids:
@@ -1053,6 +1070,8 @@ async def recent_runs(
                 AssignmentRun.trigger_context["type"].as_string(),
                 AssignmentRun.trigger_context["provider"].as_string(),
                 AssignmentRun.trigger_context["event"].as_string(),
+                AssignmentRun.trigger_context["object_type"].as_string(),
+                AssignmentRun.trigger_context["object_id"].as_string(),
             )
             .where(AssignmentRun.agent_id.in_(list(agent_ids)), run_scope)
             .order_by(AssignmentRun.created_at.desc(), AssignmentRun.id.desc())
@@ -1071,6 +1090,7 @@ async def recent_runs(
             trigger_type,
             trigger_provider,
             trigger_event,
+            run_case_id(object_type, object_id),
         )
         for (
             run_id,
@@ -1083,6 +1103,8 @@ async def recent_runs(
             trigger_type,
             trigger_provider,
             trigger_event,
+            object_type,
+            object_id,
         ) in rows
     ]
 

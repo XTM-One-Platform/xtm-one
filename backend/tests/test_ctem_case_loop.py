@@ -171,6 +171,36 @@ async def test_second_signal_on_the_same_fix_joins_the_open_case():
     assert case.severity == "P1"  # the most urgent wins
     assert case.sla_due_at == NOW + timedelta(hours=24)  # the earliest SLA wins
     assert events.items == []  # joining raises no opened event
+    assert events.verticals == {"cyber"}  # but the views still go: the case has a new member
+
+
+@pytest.mark.asyncio
+async def test_opening_or_joining_a_case_drops_every_cached_view_after_the_commit(monkeypatch):
+    """#915: a case opened from a signal shows on the board at once, not after the view TTL."""
+    dropped: list[str] = []
+    published: list[str] = []
+
+    async def forget_all(vertical):
+        dropped.append(vertical)
+
+    async def publish(name, data, *, event_id=None):
+        published.append(name)
+        return True
+
+    monkeypatch.setattr("app.services.ctem_cases_view.forget_all_views", forget_all)
+    monkeypatch.setattr("app.services.platform_events.publish", publish)
+    events = loop.PendingEvents()
+    await loop.open_from_signal(FakeSession(), _signal(), events=events, now=NOW)
+    assert await loop.publish_pending(events) == 1
+    assert dropped == ["cyber"] and published == [loop.CASE_OPENED]
+    assert events.verticals == set() and events.items == []
+    # A signal that opens nothing drops nothing.
+    idle = loop.PendingEvents()
+    await loop.open_from_signal(
+        FakeSession(), _signal(state="watchlist", decision={"outcome": "watchlist"}), events=idle
+    )
+    assert await loop.publish_pending(idle) == 0
+    assert dropped == ["cyber"]
 
 
 @pytest.mark.parametrize(
