@@ -89,8 +89,7 @@ import {
   blockedReason,
   blockedWithoutReason,
   pendingBlockedRefs,
-  REF_RELEASE_EXPLANATIONS,
-  refKindsOf,
+  refReleaseSentences,
   canClose,
   offersMarkDone,
   cancelledBlockers,
@@ -261,9 +260,9 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
             count: waitingPullRequestCount(pickup),
           })}
           {pickup.state === "waiting_for_refs" &&
-            refKindsOf(pendingBlockedRefs(item)).map((kind) => (
+            refReleaseSentences(pendingBlockedRefs(item)).map(({ kind, text }) => (
               <span key={kind} className="block" data-testid="work-item-ref-release" data-kind={kind}>
-                {t_i18n(REF_RELEASE_EXPLANATIONS[kind])}
+                {t_i18n(text)}
               </span>
             ))}
           {pickup.state === "waiting_for_ci" && item.status === "blocked" && (
