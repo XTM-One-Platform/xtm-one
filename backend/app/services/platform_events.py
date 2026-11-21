@@ -209,23 +209,13 @@ _AGENT_ACCOUNT_KEYS = (
     "sent_at",
 )
 _RELEASE_KEYS = ("version", "git_sha", "previous_version", "previous_git_sha", "first_seen_at", "release")
-#: A CTEM case event carries ids and facts only, never a source issue's content (#11613, #857).
+#: A CTEM case event carries the case id and its routing only (#11613, #857, #933): the
+#: run reads the rest with get_ctem_case, under its own user's view of the case.
 _CTEM_CASE_KEYS = (
     "case_id",
-    "organization_id",
     "vertical",
     "state",
-    "remediation_kind",
     "trigger_path",
-    "severity",
-    "sla_due_at",
-    "owner_user_id",
-    "signal_id",
-    "validation.provider",
-    "validation.result",
-    "openaev.event",
-    "openaev.resource_type",
-    "openaev.resource_id",
 )
 _VIDEO_KEYS = (
     "job_kind",
@@ -438,38 +428,30 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     "ctem_case.opened": {
         "description": (
             "A CTEM case was opened from a confirmed, in-scope exposure signal (services/ctem_case_loop.py): "
-            "start a fleet run from the case. Payload: case_id, organization_id, vertical, state, "
-            "remediation_kind, trigger_path, severity, sla_due_at, owner_user_id, risk_scenario_ids, signal_id. "
-            "Platform-wide: heard by every subscriber whatever its scope."
+            "start a fleet run from the case. Payload: case_id, vertical, state, trigger_path; read the "
+            "case with get_ctem_case. Heard only when the user the subscription runs as sees the case "
+            "(an administrator's scope all assignment running as itself hears every case)."
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
     "ctem_case.reopened": {
         "description": (
             "A resolved or watched CTEM case reopened because a re-test failed: restart the remediation. "
-            "Payload: the case fields and the failed validation reference. Platform-wide."
+            "Payload: case_id, vertical, state, trigger_path. Heard only by readers of the case."
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
     "ctem_case.resolved": {
         "description": (
             "A CTEM case resolved on a passing validation reference (not exposed, or fixed): close the run. "
-            "Payload: the case fields and the validation reference. Platform-wide."
+            "Payload: case_id, vertical, state, trigger_path. Heard only by readers of the case."
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
     "ctem_case.sla_breached": {
         "description": (
-            "An open CTEM case passed its SLA (once per case): escalate. Payload: the case fields. Platform-wide."
-        ),
-        "filter_keys": _CTEM_CASE_KEYS,
-    },
-    "ctem_case.validation_finished": {
-        "description": (
-            "An OpenAEV result a CTEM case waits on arrived (a simulation it references finished, a finding it "
-            "holds changed or was deleted; services/ctem_openaev_events.py), once per case and occurrence: read "
-            "the result and write it on the case with record_ctem_case_validation. Payload: the case fields and "
-            "openaev {event, resource_type, resource_id, platform_url}. Platform-wide."
+            "An open CTEM case passed its SLA (once per case): escalate. Payload: case_id, vertical, "
+            "state, trigger_path. Heard only by readers of the case."
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
@@ -491,11 +473,19 @@ PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
         "platform.release.deployed",
         "platform.default_model_route.changed",
         "integration.version.changed",
+    }
+)
+
+#: The events about an object whose readers only the object's own view decides
+#: (#933): a CTEM case is shared, its visibility is per viewer
+#: (``services/ctem_cases_view``). Any scope may subscribe; each delivery is then
+#: checked by :func:`can_read_object` with the identity the run executes as.
+VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
+    {
         "ctem_case.opened",
         "ctem_case.reopened",
         "ctem_case.resolved",
         "ctem_case.sla_breached",
-        "ctem_case.validation_finished",
     }
 )
 
@@ -954,9 +944,18 @@ def touched_workspaces(payload: Mapping[str, Any]) -> set[str]:
     return {str(w) for w in (payload.get("workspace_id"), *(payload.get("workspace_ids") or ())) if w}
 
 
+def is_viewer_checked(payload: Mapping[str, Any]) -> bool:
+    """Whether *payload* is about an object whose own view decides its readers (:data:`VIEWER_CHECKED_EVENTS`)."""
+    return payload.get("event") in VIEWER_CHECKED_EVENTS
+
+
 def in_scope(sub: Subscription, payload: Mapping[str, Any]) -> bool:
-    """Whether *sub* may see an event with *payload*."""
-    if sub.scope_all or is_platform_wide(payload):
+    """Whether *sub* may see an event with *payload*.
+
+    A viewer-checked event passes here whatever the scope: :func:`can_read_object`
+    then decides with the identity the run executes as.
+    """
+    if sub.scope_all or is_platform_wide(payload) or is_viewer_checked(payload):
         return True
     # A personal object (a work item filed by a user) reaches only that user's
     # assignments: naming another user's agent as its owner does not wake it.
@@ -1301,10 +1300,13 @@ async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
         subs = []
     outcomes: list[str] = []
     readable: dict[str, set[str]] = {}
+    object_readers: dict[str, bool] = {}
     for sub, assignment, agent in subs:
         if mismatch_reason(sub, name, payload) is not None:
             continue
         if not await can_read_workspace(sub, payload, readable):
+            continue
+        if not await can_read_object(sub, payload, object_readers):
             continue
         # An assignment never wakes on the end of one of its own runs: a
         # run.completed subscriber would otherwise start itself forever.
@@ -1370,6 +1372,52 @@ async def can_read_workspace(sub: Subscription, payload: Mapping[str, Any], cach
                 logger.warning("Platform event: workspaces of %s unreadable: %s", key, format_exception_message(exc))
                 cache[key] = set()
         if not wanted <= cache[key]:
+            return False
+    return True
+
+
+def object_identities(sub: Subscription) -> set[str]:
+    """The users who must read the object of a viewer-checked event for *sub* to hear it.
+
+    The workspace rule (:func:`can_read_workspace`): the owner and the user the
+    run executes as; an administrator's ``scope: all`` subscription skips the
+    owner's check, never the run-as user's. Empty: nothing to check.
+    """
+    if sub.scope_all:
+        if not sub.run_as_user_id or str(sub.run_as_user_id) == str(sub.user_id):
+            return set()
+        return {str(sub.run_as_user_id)}
+    return {str(u) for u in (sub.user_id, sub.run_as_user_id) if u}
+
+
+async def user_reads_object(user_id: str, payload: Mapping[str, Any]) -> bool:
+    """Whether *user_id* reads the object of a viewer-checked event; any failure refuses."""
+    if payload.get("object_type") != "ctem_case":
+        return False  # a viewer-checked event of no known object reaches no one
+    from app.core.database import async_session
+    from app.services.ctem_cases_view import user_sees_case
+
+    try:
+        async with async_session() as db:
+            return await user_sees_case(db, user_id, payload.get("case_id"), payload.get("vertical"))
+    except Exception as exc:  # unreadable: refuse, never leak
+        logger.warning("Platform event: case visibility of %s unreadable: %s", user_id, format_exception_message(exc))
+        return False
+
+
+async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: dict[str, bool]) -> bool:
+    """Whether *sub* may hear a viewer-checked event (#933); any other event: yes.
+
+    Each user of :func:`object_identities` must read the object, decided by
+    the object's own per-viewer view; *cache* keeps one answer per user and
+    event across the subscriptions of one dispatch.
+    """
+    if not is_viewer_checked(payload):
+        return True
+    for user in object_identities(sub):
+        if user not in cache:
+            cache[user] = await user_reads_object(user, payload)
+        if not cache[user]:
             return False
     return True
 

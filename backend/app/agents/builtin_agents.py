@@ -2807,12 +2807,7 @@ BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 # fleet takes the vulnerability and exposure paths, the threat fleet the
 # threat and supply-chain ones, so a case starts exactly one fleet run.
 CTEM_THREAT_CASE_PATHS: tuple[str, ...] = ("relevant_threat", "credential_leak", "third_party_event")
-_CASE_EVENT_NAMES: tuple[str, ...] = (
-    "ctem_case.opened",
-    "ctem_case.reopened",
-    "ctem_case.sla_breached",
-    "ctem_case.validation_finished",
-)
+_CASE_EVENT_NAMES: tuple[str, ...] = ("ctem_case.opened", "ctem_case.reopened", "ctem_case.sla_breached")
 
 
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
@@ -2831,7 +2826,7 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "severity, sla_due_at). The case is the record of this loop: read it first with "
+            "state). The case is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
             "it owned by you when no open item has that key; when one is open, add a note "
@@ -2840,10 +2835,6 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
             "record_ctem_case_validation, the ticket with record_ctem_case_ticket, notes "
             "with update_ctem_case. On ctem_case.sla_breached: add a note to that work item "
             "and to the case naming the breach and the next step, and raise its priority. "
-            "On ctem_case.validation_finished: an OpenAEV result the case waits on arrived "
-            "(the openaev block names the simulation or finding); read it in OpenAEV, write it "
-            "on the case with record_ctem_case_validation (passed, not_exposed or failed) and "
-            "move the case's work item to its next step. "
             "Never keep an open item only in shared state. End with the case id, its state "
             "and the next step."
         ),
@@ -2855,52 +2846,6 @@ CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
-
-# ── OpenAEV events into the CTEM loop (CTEM-15, #918) ──
-# Provisions the OpenAEV triggers whose deliveries move the loop with no model
-# call: the webhook route records a path 8 signal on a scenario score
-# degradation (services/ctem_signal_listeners.py) and raises
-# ``ctem_case.validation_finished`` on the cases a finished simulation or a
-# changed finding concerns (services/ctem_openaev_events.py). The fleet's work
-# then starts from the case events above, so this assignment's own filter
-# drops every delivery: it never starts a run of its own.
-CTEM_OPENAEV_LOOP_EVENTS: tuple[str, ...] = (
-    "simulation_finished",
-    "finding_updated",
-    "finding_deleted",
-    "scenario_score_degraded",
-)
-#: A key no OpenAEV delivery carries: the trigger provisions and listens, never runs.
-CTEM_LISTEN_ONLY_FILTER: dict[str, Any] = {"_ctem_listen_only": {"exists": True}}
-CTEM_F2_OPENAEV_ASSIGNMENT: dict[str, Any] = {
-    **_CTEM_F2_COMMON,
-    "name": "OpenAEV results into cases",
-    "description": (
-        "Listens to OpenAEV: a finished simulation or a changed finding moves the CTEM case it "
-        "concerns, a degraded scenario score records a regression signal. No run of its own."
-    ),
-    "trigger_type": "integration_event",
-    # Created by the seed, never saved before exact matching: marked exact, and
-    # the four events it listens to are its selection, so the trigger card
-    # names each of them (UX round 1 of #925, B1 and B2).
-    "trigger_config": {
-        "provider": "openaev",
-        "events": list(CTEM_OPENAEV_LOOP_EVENTS),
-        "event_matching": "exact",
-        "provision": {
-            "fleet": _CTEM_F2_FLEET,
-            "purpose": "Loop results",
-            "events": list(CTEM_OPENAEV_LOOP_EVENTS),
-        },
-        "filter": CTEM_LISTEN_ONLY_FILTER,
-    },
-    "prompt": (
-        "This assignment only listens: its filter drops every OpenAEV delivery and the CTEM "
-        "case events start the work. If a delivery reached you, answer that nothing is to do."
-    ),
-}
-CTEM_F2_ASSIGNMENTS.append(CTEM_F2_OPENAEV_ASSIGNMENT)
-BUILTIN_ASSIGNMENTS.append(CTEM_F2_OPENAEV_ASSIGNMENT)
 
 # ── CTEM fleet F1 assignments (dev-docs/ctem-fleets.md s.4.1, issue #9114) ──
 _F1_ORCHESTRATOR = "ctem-threat-response-orchestrator"
