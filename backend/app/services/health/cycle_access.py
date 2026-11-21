@@ -202,7 +202,7 @@ async def evidence_links(
                 await db.execute(select(AssignmentRun.agent_id).where(AssignmentRun.id == ref_id))
             ).scalar_one_or_none()
             if await agent_chats_readable(agent_id):
-                href = f"/runs/{ref_id}"
+                href = f"/operations/executions/{ref_id}"
         elif kind == "flow_run":
             flow_id = (await db.execute(select(FlowRun.flow_id).where(FlowRun.id == ref_id))).scalar_one_or_none()
             target = await resolve_target(db, user, user_group_ids, "flow", flow_id) if flow_id else None

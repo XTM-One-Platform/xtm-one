@@ -943,7 +943,7 @@ export default function TaskHistory({
 
   const itemKey = (item: ExecutionItem) => item.run.id;
   const openItem = (item: ExecutionItem) =>
-    navigate(item.kind === "flow" ? `/flows/${item.run.flow_id}/builder?run=${item.run.id}` : `/runs/${item.run.id}`);
+    navigate(item.kind === "flow" ? `/flows/${item.run.flow_id}/builder?run=${item.run.id}` : `/operations/executions/${item.run.id}`);
 
   // layout="fixed" with the widths of EXECUTION_COLUMN_WIDTHS: the Run title takes what is
   // left and the long texts truncate with the DS tooltip, so the list never scrolls

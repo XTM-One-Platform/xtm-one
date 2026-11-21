@@ -112,7 +112,7 @@ function NoteEntry({
         {note.runId &&
           (run?.accessible ? (
             <Link
-              to={`/runs/${note.runId}`}
+              to={`/operations/executions/${note.runId}`}
               className="inline-flex items-center gap-1 font-mono-plex text-accent hover:underline"
               aria-label={t_i18n("Open the run")}
             >

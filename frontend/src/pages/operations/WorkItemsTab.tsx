@@ -996,7 +996,7 @@ export default function WorkItemsTab({
               {scheduled?.scheduled.run_id && (
                 <Tip content={t_i18n("View the run")}>
                   <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                    <Link to={`/runs/${scheduled.scheduled.run_id}`} aria-label={t_i18n("View the run")}>
+                    <Link to={`/operations/executions/${scheduled.scheduled.run_id}`} aria-label={t_i18n("View the run")}>
                       <History className="h-3.5 w-3.5" />
                     </Link>
                   </Button>

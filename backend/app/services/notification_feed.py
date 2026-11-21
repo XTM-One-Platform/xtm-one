@@ -154,7 +154,7 @@ def present_run(run: Any) -> NotificationItem | None:
             id=str(run.id),
             kind="hitl",
             created_at=created,
-            route=f"/runs/{run.id}",
+            route=f"/operations/executions/{run.id}",
             title=title,
             subtitle=run.agent_name,
             summary=run.human_input_question,
@@ -168,7 +168,7 @@ def present_run(run: Any) -> NotificationItem | None:
         id=str(run.id),
         kind="run",
         created_at=created,
-        route=f"/runs/{run.id}",
+        route=f"/operations/executions/{run.id}",
         title=title,
         subtitle=run.agent_name,
         summary=preview,
@@ -230,7 +230,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         return NotificationItem(kind=kind, route=route, subtitle=activity.agent_name or subtitle, **base, **extra)
 
     assignment_id = _str(metadata, "assignment_id")
-    assignment_route = f"/assignments/{assignment_id}" if _is_uuid(assignment_id) else None
+    assignment_route = f"/agents/assignments/{assignment_id}" if _is_uuid(assignment_id) else None
     if activity_type in AUTH_FAILURE_ACTIVITY_TYPES:
         return item("auth_failure", assignment_route or "/integrations", "Integration")
     if activity_type in STALE_REFERENCE_ACTIVITY_TYPES:
@@ -278,7 +278,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         run_id = _str(metadata, "run_id")
         conversation_id = _str(metadata, "conversation_id")
         if _is_uuid(run_id):
-            route = f"/runs/{run_id}"
+            route = f"/operations/executions/{run_id}"
         elif _is_uuid(conversation_id):
             route = f"/chat?c={conversation_id}"
         else:
@@ -289,7 +289,7 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
     if source == "run_action_request":
         # Someone who cannot answer a paused run asked its owner to act: the run.
         run_id = _str(metadata, "run_id")
-        return item("run_action_request", f"/runs/{run_id}" if _is_uuid(run_id) else "/operations", "Run")
+        return item("run_action_request", f"/operations/executions/{run_id}" if _is_uuid(run_id) else "/operations", "Run")
     if source == "builtin_tools_outside_allowlist":
         # A release shipped tools an agent's allowlist leaves out (#12192): its
         # Tooling section, where each one is added in one click.

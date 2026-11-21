@@ -79,7 +79,7 @@ _MAX_ARGUMENT_VALUE = 200
 _MAX_REASON = 500
 _MAX_ANSWER = 4000
 
-_RUN_PATH = re.compile(r"/runs/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?")
+_RUN_PATH = re.compile(r"/operations/executions/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?")
 _STATUSES = frozenset(
     {"pending", "delayed", "running", "awaiting_human", "completed", "failed", "skipped"}
 )
@@ -139,7 +139,7 @@ def parse_link(url: object) -> LinkTarget | None:
 
 def page_url(target: LinkTarget) -> str:
     """The web page of *target*, built from the platform's address and the id only."""
-    return f"{_page_base()}/runs/{target.id}"
+    return f"{_page_base()}/operations/executions/{target.id}"
 
 
 # --- Card pieces -------------------------------------------------------------

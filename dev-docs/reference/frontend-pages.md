@@ -188,8 +188,8 @@ clicking it, or navigate by URL.
 | Prompts | `/prompts` | `usePrompts`, `useCreatePrompt` |
 | Prompt Detail | `/prompts/:id/:tab?` | `usePrompt`, `useUpdatePrompt`, `useDeletePrompt` |
 | Templates | `/templates`, `/templates/new`, `/templates/:id/:tab?` | `useTemplateContainers`, `useImportTemplateContainer`, `useCreateTemplateContainer`, `useTemplateContainer`, `useDeleteTemplateContainer`, `useDuplicateTemplateContainer`, `useExportTemplateContainer` |
-| Assignment Detail | `/assignments/:id/:tab?` | `useAssignment`, `useUpdateAssignment`, `useAssignmentRuns`, `useTriggerAssignment`, `useIntegrations`, `useChannelBots` |
-| Run Detail | `/runs/:id` | `useAssignmentRunDetail`, `useDescendantRuns`, `useRespondToHumanInput`, `useDismissRun` |
+| Assignment Detail | `/agents/assignments/:id/:tab?` | `useAssignment`, `useUpdateAssignment`, `useAssignmentRuns`, `useTriggerAssignment`, `useIntegrations`, `useChannelBots` |
+| Run Detail | `/operations/executions/:id` | `useAssignmentRunDetail`, `useDescendantRuns`, `useRespondToHumanInput`, `useDismissRun` |
 | Evaluations (admin) | `/evaluations`, `/evaluations/new`, `/evaluations/:id/:tab?`, `/evaluations/runs/:id`, `/evaluations/:evaluationId/compare` | `useEvaluations`, `useCreateEvaluation`, `useEvaluation`, `useEvaluationRuns`, `useTriggerEvaluation`, `useEvaluationRun`, `useMultipleEvaluationRuns` |
 | Datasets (admin) | `/evaluations/datasets`, `/evaluations/datasets/:id/:tab?` | `useDatasets`, `useCreateDataset`, `useImportDatasetZip`, `useDataset`, `useUpdateDataset`, `useDeleteDataset` |
 | Audit Logs (admin) | `/logs` | `useAuditLogs`, `useAuditLogActions`, `useAuditLogEntityTypes`, `useUsers` |

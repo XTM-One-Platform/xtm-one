@@ -258,7 +258,7 @@ export function AssignmentExecutionRow({
   // The row shows the status, the line, the agent and the run id; "+N" counts the rest.
   const hiddenFacts = Math.max(0, facts.length - 3 - (line && line.tone !== "warning" ? 1 : 0));
   const canDelete = !run.is_company_managed || isAdmin;
-  const open = () => navigate(`/runs/${run.id}`);
+  const open = () => navigate(`/operations/executions/${run.id}`);
   const answerPanelId = `execution-answer-${run.id}`;
 
   return (

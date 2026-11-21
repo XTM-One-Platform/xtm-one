@@ -65,7 +65,7 @@ describe("DoneForYouCard", () => {
     navigate.mockClear();
     card({ runs: [run("r1")] });
     fireEvent.click(screen.getByRole("button", { name: /^Briefing r1,/ }));
-    expect(navigate).toHaveBeenCalledWith("/runs/r1", expect.anything());
+    expect(navigate).toHaveBeenCalledWith("/operations/executions/r1", expect.anything());
   });
 
   it("clusters a busy day and lists it on click", () => {

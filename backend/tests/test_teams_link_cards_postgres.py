@@ -402,7 +402,7 @@ async def test_the_queried_link_reads_nothing_from_the_database(world):
             {
                 "type": "invoke",
                 "name": "composeExtension/queryLink",
-                "value": {"url": f"{(cards._page_base())}/runs/{world.runs['private'].id}"},
+                "value": {"url": f"{(cards._page_base())}/operations/executions/{world.runs['private'].id}"},
                 "from": {"id": "29:owner", "aadObjectId": "aad-owner"},
             }
         ).encode()

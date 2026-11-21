@@ -95,7 +95,7 @@ export function TaskExecutionLine({ task, nowMs }: { task: SubAgentTask; nowMs?:
           <span>{t_i18n("Run")}</span>
           {runId ? (
             <Link
-              to={`/runs/${runId}`}
+              to={`/operations/executions/${runId}`}
               onClick={(e) => e.stopPropagation()}
               className="font-mono text-accent hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               title={runId}

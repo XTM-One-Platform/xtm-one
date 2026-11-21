@@ -505,7 +505,7 @@ export default function Traces() {
             <TraceScopeChip
               icon={Zap}
               label={scopedAssignment?.name ?? t_i18n("Assignment {id}", { id: shortId(assignmentId) })}
-              to={`/assignments/${encodeURIComponent(assignmentId)}`}
+              to={`/agents/assignments/${encodeURIComponent(assignmentId)}`}
               removeLabel={t_i18n("Remove the assignment scope")}
               onRemove={() => updateParams({ [ASSIGNMENT_TRACE_PARAM]: "" })}
             />
@@ -514,7 +514,7 @@ export default function Traces() {
             <TraceScopeChip
               icon={Play}
               label={t_i18n("Run {id}", { id: shortId(assignmentRunId) })}
-              to={`/runs/${encodeURIComponent(assignmentRunId)}`}
+              to={`/operations/executions/${encodeURIComponent(assignmentRunId)}`}
               removeLabel={t_i18n("Remove the run scope")}
               onRemove={() => updateParams({ [ASSIGNMENT_RUN_TRACE_PARAM]: "" })}
             />

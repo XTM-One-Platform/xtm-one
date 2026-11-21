@@ -426,7 +426,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
                 return (
                   <Link
                     key={wf.id}
-                    to={`/assignments/${wf.id}`}
+                    to={`/agents/assignments/${wf.id}`}
                     className={cn(
                       "flex items-center justify-between rounded-sm border px-4 py-3 cursor-pointer transition-all hover:bg-elevation-hover",
                       isWfRunning ? "border-accent/30 bg-accent/[0.03]" : isActive ? "border-elevation-subtle-soft bg-elevation-hover" : "border-elevation-subtle-soft opacity-50",

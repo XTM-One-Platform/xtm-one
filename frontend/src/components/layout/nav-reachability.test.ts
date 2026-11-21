@@ -237,7 +237,7 @@ test("every destination is a route of App.tsx, behind the guard the table record
 test("no route redirects or aliases a former address; an unknown one is not found (#797)", () => {
   const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
   const routes = appRoutes();
-  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?"]) {
+  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?", "/runs/:id", "/assignments/:id/:tab?"]) {
     assert.equal(routes.find((route) => route.path === retired), undefined, `${retired} is not a route`);
   }
   // The only redirects left are access guards (home, or the login page): never one page aliasing another.

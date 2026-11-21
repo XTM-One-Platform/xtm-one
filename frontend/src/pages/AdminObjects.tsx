@@ -78,8 +78,8 @@ const OBJECT_TYPE_CONFIG: Record<PlatformObjectType, { label: string; icon: Reac
   variable: { label: "Variable", icon: Braces, route: "/connections/variables/:id" },
   // Channel bots are configured on one Settings tab, which scrolls to this one.
   channel_bot: { label: "Channel Bot", icon: Radio, route: "/settings/integrations/channels?bot=:id" },
-  assignment: { label: "Assignment", icon: ClipboardList, route: "/assignments/:id" },
-  assignment_run: { label: "Assignment Run", icon: Play, route: "/runs/:id" },
+  assignment: { label: "Assignment", icon: ClipboardList, route: "/agents/assignments/:id" },
+  assignment_run: { label: "Assignment Run", icon: Play, route: "/operations/executions/:id" },
   report: { label: "Report", icon: ScrollText, route: "/reports/:id" },
   conversation: { label: "Conversation", icon: MessagesSquare, route: null },
   file: { label: "File", icon: File, route: null },

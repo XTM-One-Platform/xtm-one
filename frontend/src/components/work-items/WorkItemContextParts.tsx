@@ -134,7 +134,7 @@ export function WorkItemHoldingRunLink({ run }: { run: WorkItemHoldingRun }) {
   const label = t_i18n("run {id}", { id: short });
   const name =
     run.kind === "run" ? (
-      <Link to={`/runs/${run.id}`} onClick={stop} className="inline-flex items-center gap-1 font-mono text-accent hover:underline">
+      <Link to={`/operations/executions/${run.id}`} onClick={stop} className="inline-flex items-center gap-1 font-mono text-accent hover:underline">
         <History className="h-3 w-3 shrink-0" />
         {label}
       </Link>
@@ -636,7 +636,7 @@ export function WorkItemOriginLink({ origin }: { origin: WorkItemContext["origin
     const run = origin.run;
     if (!run.accessible || !run.id) return hidden(<History className="h-3 w-3" />, t_i18n("a run you cannot open"));
     return (
-      <Link to={`/runs/${run.id}`} onClick={stop} className={linkClass}>
+      <Link to={`/operations/executions/${run.id}`} onClick={stop} className={linkClass}>
         <History className="h-3 w-3 shrink-0" />
         <span className="truncate">{run.name ?? t_i18n("Agent run")}</span>
       </Link>

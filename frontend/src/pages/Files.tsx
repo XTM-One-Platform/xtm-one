@@ -132,7 +132,7 @@ function groupFiles(files: RepositoryFile[], t: (s: string) => string): FileGrou
       key = `run:${file.assignment_run_id}`;
       title = file.run_label ?? t("Run");
       subtitle = file.agent_name;
-      href = `/runs/${file.assignment_run_id}`;
+      href = `/operations/executions/${file.assignment_run_id}`;
     } else {
       key = `other:${file.source}`;
       title = sourceLabel(file.source, t);
@@ -172,7 +172,7 @@ function FileRow({
     file.context === "conversation" && file.conversation_id
       ? `/chat?c=${file.conversation_id}`
       : file.context === "run" && file.assignment_run_id
-        ? `/runs/${file.assignment_run_id}`
+        ? `/operations/executions/${file.assignment_run_id}`
         : null;
   const contextLabel =
     file.context === "conversation"

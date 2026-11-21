@@ -151,7 +151,7 @@ export function DoneForYouCard({ events, runs, digests, fleetRuns, aiLockReason,
   };
 
   const openPoint = (point: DfyPoint) => {
-    if (point.runId) navigate(`/runs/${point.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
+    if (point.runId) navigate(`/operations/executions/${point.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
   };
 
   const tip = (point: DfyPoint) => {

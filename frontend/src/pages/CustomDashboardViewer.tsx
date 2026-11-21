@@ -164,7 +164,7 @@ export default function CustomDashboardViewer() {
             {data.assignment_run_id && (
               <>
                 {" · "}
-                <Link to={`/runs/${data.assignment_run_id}`} className="text-accent hover:underline">
+                <Link to={`/operations/executions/${data.assignment_run_id}`} className="text-accent hover:underline">
                   {t_i18n("Refreshed by a scheduled run")}
                 </Link>
               </>

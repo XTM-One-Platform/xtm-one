@@ -67,12 +67,12 @@ def _activity(activity_type="notification", **metadata):
 @pytest.mark.parametrize(
     ("activity", "kind", "route"),
     [
-        (_activity("assignment_auth_failure", assignment_id=UUID_A), "auth_failure", f"/assignments/{UUID_A}"),
+        (_activity("assignment_auth_failure", assignment_id=UUID_A), "auth_failure", f"/agents/assignments/{UUID_A}"),
         (_activity("assignment_auth_quarantine"), "auth_failure", "/integrations"),
         (
             _activity("assignment_stale_reference_pause", assignment_id=UUID_A),
             "stale_reference",
-            f"/assignments/{UUID_A}",
+            f"/agents/assignments/{UUID_A}",
         ),
         (_activity("assignment_continuation_refused"), "continuation_refused", "/assignments"),
         (
@@ -112,12 +112,12 @@ def _activity(activity_type="notification", **metadata):
         (
             _activity(notification_source="work_item", run_id=UUID_B, conversation_id=UUID_A),
             "reminder",
-            f"/runs/{UUID_B}",
+            f"/operations/executions/{UUID_B}",
         ),
         (
             _activity(notification_source="work_item", run_id=UUID_B, conversation_id=UUID_A, escalated=True),
             "reminder",
-            f"/runs/{UUID_B}",
+            f"/operations/executions/{UUID_B}",
         ),
         (_activity(notification_source="work_item", conversation_id=UUID_A), "reminder", f"/chat?c={UUID_A}"),
         (
@@ -129,7 +129,7 @@ def _activity(activity_type="notification", **metadata):
         (_activity(notification_source="work_item"), "reminder", "/operations"),
         (_activity(notification_source="agent", path="/dashboards/x"), "agent_message", "/dashboards/x"),
         (_activity(notification_source="agent", path="//evil.example"), "agent_message", "/"),
-        (_activity(notification_source="run_action_request", run_id=UUID_A), "run_action_request", f"/runs/{UUID_A}"),
+        (_activity(notification_source="run_action_request", run_id=UUID_A), "run_action_request", f"/operations/executions/{UUID_A}"),
         (_activity(notification_source="run_action_request", run_id="../x"), "run_action_request", "/operations"),
     ],
 )
@@ -159,7 +159,7 @@ def _run(status="completed", question=None, summary="The weekly brief found 3 ne
 
 def test_a_run_waiting_on_a_human_is_urgent_and_unread_until_answered():
     item = present_run(_run("awaiting_human", question="Approve isolating 3 gateways?"))
-    assert (item.kind, item.route, item.run_id) == ("hitl", f"/runs/{RUN_ID}", RUN_ID)
+    assert (item.kind, item.route, item.run_id) == ("hitl", f"/operations/executions/{RUN_ID}", RUN_ID)
     assert is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed={item.id}) is True
 
 

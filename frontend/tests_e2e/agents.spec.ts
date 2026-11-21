@@ -762,10 +762,10 @@ test.describe.serial('Agents — Observability access (non-admin owner)', () => 
     const ratingRow = page.locator('tr', { hasText: 'Wrong totals in the digest' });
     await expect(ratingRow).toBeVisible();
     await expect(ratingRow.getByRole('link')).toHaveCount(1);
-    await expect(ratingRow.getByRole('link')).toHaveAttribute('href', `/runs/${RUN_ID}`);
+    await expect(ratingRow.getByRole('link')).toHaveAttribute('href', `/operations/executions/${RUN_ID}`);
     await expect(ratingRow.getByRole('link', { name: 'Wrong totals in the digest' })).toHaveCount(0);
     await ratingRow.getByText('Wrong totals in the digest', { exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/runs/${RUN_ID}`));
+    await expect(page).toHaveURL(new RegExp(`/operations/executions/${RUN_ID}`));
   });
 
   for (const decision of [

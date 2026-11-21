@@ -3331,8 +3331,8 @@ def seed_frictions(token: str, agent: str, base: str) -> dict[str, dict[str, str
         raise RuntimeError(f"seed_frictions.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
     runs = json.loads(out.read_text())
     return {
-        "run with frictions": {"id": runs["settled"], "url": f"{base}/runs/{runs['settled']}"},
-        "run with a live friction ledger": {"id": runs["live"], "url": f"{base}/runs/{runs['live']}"},
+        "run with frictions": {"id": runs["settled"], "url": f"{base}/operations/executions/{runs['settled']}"},
+        "run with a live friction ledger": {"id": runs["live"], "url": f"{base}/operations/executions/{runs['live']}"},
     }
 
 
@@ -3469,12 +3469,12 @@ def seed_roi_records(token: str, base: str) -> dict[str, dict[str, str]]:
     # Back-dated weekly history, so the Value page's trend draws with no override (#10067).
     log(f"seeded ROI trend weeks: {rows.get('trend_weeks', 0)}")
     seeded = {
-        f"ROI review run ({outcome})": {"id": run, "url": f"{base}/runs/{run}"}
+        f"ROI review run ({outcome})": {"id": run, "url": f"{base}/operations/executions/{run}"}
         for outcome, run in rows["runs"].items()
     }
     seeded["ROI review work item"] = {"id": item, "url": f"{base}/tasks/work-items/{item}"}
     seeded["ROI review agent"] = {"id": agent, "url": f"{base}/agents/{agent}"}
-    seeded["ROI review assignment"] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+    seeded["ROI review assignment"] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
     return seeded
 
 
@@ -4239,7 +4239,7 @@ def seed_concierge_signals(token: str, agent: str, base: str) -> dict[str, dict[
         f"concierge cycles ({len(rows['cycles'])} new)": {"id": ",".join(rows["cycles"]),
                                                          "url": f"{base}/concierge/cycles"},
         "concierge flow target": {"id": rows["flow"], "url": f"{base}/flows/{rows['flow']}/builder"},
-        "concierge assignment target": {"id": assignment, "url": f"{base}/assignments/{assignment}"},
+        "concierge assignment target": {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"},
     }
 
 
@@ -5508,7 +5508,7 @@ def seed_ctem_fleet_event_runs(token: str, base: str) -> tuple[dict[str, dict[st
         if gaps:
             skipped[label] = f"run {fleet['run']} read back with {', '.join(gaps)}"
             continue
-        seeded[label] = {"id": fleet["run"], "url": f"{base}/runs/{fleet['run']}"}
+        seeded[label] = {"id": fleet["run"], "url": f"{base}/operations/executions/{fleet['run']}"}
     return seeded, skipped
 
 
@@ -5860,7 +5860,7 @@ def seed_suite_registrations(token: str, base: str) -> tuple[dict[str, dict[str,
                 "trigger_type": "integration_event",
                 "trigger_config": {"provider": provider, "event": listed[0]["event"], "integration_id": integration},
             }))
-            seeded[entity] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+            seeded[entity] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped[entity] = str(exc)[:600]
     return seeded, skipped
@@ -6388,7 +6388,7 @@ def seed_provisioning_states(
             )
         json.loads(out.read_text())
         for kind, assignment in created.items():
-            seeded[f"provisioning {kind}"] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+            seeded[f"provisioning {kind}"] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["provisioning states"] = str(exc)[:600]
     return seeded, skipped
@@ -6501,7 +6501,7 @@ def seed_channel_assignment(token: str, base: str, seeded: dict[str, dict[str, s
         "prompt": "Post the digest of the channel.", "trigger_type": "manual", "trigger_config": {},
     }))
     return {f"channel assignment ({', '.join(sorted(config))} receive and publish)": {
-        "id": assignment, "url": f"{base}/assignments/{assignment}",
+        "id": assignment, "url": f"{base}/agents/assignments/{assignment}",
     }}
 
 
@@ -6643,7 +6643,7 @@ def seed_event_integrations(token: str, base: str) -> tuple[dict[str, dict[str, 
                     "provider": spec["body"]["provider"], "event": spec["event"], "integration_id": integration,
                 },
             }))
-            seeded[entity] = {"id": assignment, "url": f"{base}/assignments/{assignment}"}
+            seeded[entity] = {"id": assignment, "url": f"{base}/agents/assignments/{assignment}"}
             if spec["event"] == "new_email" and "email event trigger" not in skipped:
                 seeded["email event trigger"] = seeded[entity]
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal

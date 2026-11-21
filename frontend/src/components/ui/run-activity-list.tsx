@@ -374,7 +374,7 @@ export function RunActivityList({
         emptyLabel={t_i18n("No runs match your filters.")}
         noResultsLabel={review === "unreviewed" ? t_i18n("No run waits for an ROI review.") : t_i18n("No runs matching your search.")}
         emptyContent={emptyState}
-        onRowClick={(run) => navigate(`/runs/${run.id}`)}
+        onRowClick={(run) => navigate(`/operations/executions/${run.id}`)}
         // A run waiting for a person unfolds its question under the row, with Answer, Approve and Dismiss.
         expandedRow={(run) =>
           runHitlState(run).isHitlPending ? (

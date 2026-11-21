@@ -1027,7 +1027,7 @@ export default function RunDetail() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {run.assignment_id && (
-              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => navigate(`/assignments/${run.assignment_id}`)}>
+              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => navigate(`/agents/assignments/${run.assignment_id}`)}>
                 <Zap className="h-3.5 w-3.5" /> {t_i18n("View Assignment")}
               </Button>
             )}
@@ -1053,7 +1053,7 @@ export default function RunDetail() {
               </Tip>
             )}
             {run.parent_run_id && (
-              <Button variant="default" size="sm" className="gap-1.5" onClick={() => navigate(`/runs/${run.parent_run_id}`)}>
+              <Button variant="default" size="sm" className="gap-1.5" onClick={() => navigate(`/operations/executions/${run.parent_run_id}`)}>
                 <CornerLeftUp className="h-3.5 w-3.5" /> {t_i18n("Parent Run")}
               </Button>
             )}
@@ -1500,7 +1500,7 @@ export default function RunDetail() {
                       onSuccess: (newRun) => {
                         toast({ title: t_i18n("Follow-up run created"), variant: "success" });
                         setFollowupPrompt("");
-                        navigate(`/runs/${newRun.id}`);
+                        navigate(`/operations/executions/${newRun.id}`);
                       },
                       onError: (err) => {
                         toast({ title: err.message || t_i18n("Failed to create follow-up"), variant: "error" });
@@ -1633,7 +1633,7 @@ export default function RunDetail() {
                     <div
                       key={desc.id}
                       className="group flex items-center gap-3 p-3 rounded-sm cursor-pointer hover:bg-elevation-hover transition-colors"
-                      onClick={() => navigate(`/runs/${desc.id}`)}
+                      onClick={() => navigate(`/operations/executions/${desc.id}`)}
                     >
                       <DelegationIndent depth={depth} />
                       <SIcon className={cn("h-4 w-4 shrink-0", cfg.color, descRunning && "animate-spin")} />

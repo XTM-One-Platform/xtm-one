@@ -23,7 +23,7 @@ const FEED: NotificationFeed = {
       id: RUN,
       kind: "hitl",
       created_at: new Date().toISOString(),
-      route: `/runs/${RUN}`,
+      route: `/operations/executions/${RUN}`,
       title: "Containment",
       subtitle: "Remediation planner",
       summary: "Approval required before running: isolate_host",

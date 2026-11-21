@@ -813,7 +813,7 @@ def test_the_lab_seeds_the_friction_runs_through_the_backends_interpreter_and_lo
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_frictions"])
-    for part in ("'/work-items'", "'seed_frictions.py'", "sys.executable", "env=seed_script_env()", "/runs/",
+    for part in ("'/work-items'", "'seed_frictions.py'", "sys.executable", "env=seed_script_env()", "/operations/executions/",
                  "'run with frictions'", "'run with a live friction ledger'", "stderr_summary(process.stderr)"):
         assert part in helper, part
     # Started by path, the script has .xtm-one/lab on sys.path, not its cwd: ``app`` comes from PYTHONPATH.
@@ -1375,7 +1375,7 @@ def test_the_lab_seeds_the_ctem_fleet_event_runs_and_logs_each_fleet():
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_ctem_fleet_event_runs"])
     for part in ("'seed_ctem_fleet_event_runs.py'", "sys.executable", "env=seed_script_env()",
-                 "CTEM fleet event run: ", "/assignments/runs/", "/activity", "agentic_steps", "/runs/"):
+                 "CTEM fleet event run: ", "/assignments/runs/", "/activity", "agentic_steps", "/operations/executions/"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_ctem_fleet_event_runs(token, base)" in seed and "skipped['CTEM fleet event run']" in seed
@@ -1604,7 +1604,7 @@ def test_the_roi_seed_plans_one_run_per_review_outcome_and_a_work_item_record():
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     helper = ast.unparse(functions["seed_roi_records"])
     for part in ("'seed_roi_records.py'", "sys.executable", "env=seed_script_env()", "'/assignments'",
-                 "'/work-items'", "/complete", "stderr_summary(process.stderr)", "ROI review run", "/runs/"):
+                 "'/work-items'", "/complete", "stderr_summary(process.stderr)", "ROI review run", "/operations/executions/"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     assert "seed_roi_records(token, base)" in seed and "skipped['ROI review runs']" in seed
@@ -3135,7 +3135,7 @@ def test_the_lab_seeds_one_assignment_whose_agent_receives_and_publishes_on_slac
     helper = ast.unparse(functions["seed_channel_assignment"])
     for part in ("'receive_enabled': True", "'publish_enabled': True", "'receive_channels': [first]",
                  "'publish_channels': [first]", "'channel_config': config", "'/channel-bots/{bot}/channels'",
-                 "f'/agents/{agent}'", "'/assignments'", "/assignments/{assignment}", "receive and publish"):
+                 "f'/agents/{agent}'", "'/assignments'", "/agents/assignments/{assignment}", "receive and publish"):
         assert part in helper, part
     seed = ast.unparse(functions["seed_entities"])
     call = "seed_channel_assignment(token, base, seeded)"
@@ -3470,7 +3470,7 @@ def test_the_lab_serves_an_openapi_spec_listing_every_auth_kind_and_seeds_an_int
 
 def test_the_seeded_routes_are_routes_of_the_frontend():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
-    for route in ("/runs/:id", "/fleets/:fleetId", "/tools/:id", "/templates/:id", "/investigation-packs/:id",
+    for route in ("/operations/executions/:id", "/fleets/:fleetId", "/tools/:id", "/templates/:id", "/investigation-packs/:id",
                   "/connections/relays/:id",
                   "/evaluations/datasets/:id", "/evaluations/:evaluationId/compare", "/evaluations/:id", "/ctem/:stage",
                   "/tasks/workspaces/:workspaceId", "/tasks/work-items/:itemId", "/tasks/value", "/users-and-groups/users/:id",

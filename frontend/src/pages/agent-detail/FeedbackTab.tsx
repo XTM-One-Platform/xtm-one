@@ -56,7 +56,7 @@ function targetLink(item: AgentAnnotationItem, agentId: string): string | null {
   if (item.target_type === "message") {
     return item.conversation_id ? `/agents/${agentId}/chats/${item.conversation_id}` : null;
   }
-  if (item.target_type === "assignment_run") return `/runs/${item.target_id}`;
+  if (item.target_type === "assignment_run") return `/operations/executions/${item.target_id}`;
   return null;
 }
 
