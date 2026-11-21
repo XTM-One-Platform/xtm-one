@@ -851,7 +851,9 @@ describe("the work item detail", () => {
 
   it("opens a folded note when keyboard focus enters it, so focus never lands in hidden text (#776, UX round 2 B1)", () => {
     const para = "This sentence makes the note long enough to be folded in the activity timeline. ".repeat(12);
-    openDialog(item({ description: `2026-11-20 23:22Z: ${para}\n\nSee [the run log](https://example.com/log) below the fold.\n\nRead the brief.` }));
+    // The link sits in the note's own paragraph, past the fold: the oldest note keeps its
+    // first paragraph only (splitDescription), a second paragraph would be the brief.
+    openDialog(item({ description: `2026-11-20 23:22Z: ${para}See [the run log](https://example.com/log) below the fold.\n\nRead the brief.` }));
     const body = screen.getByTestId("work-item-note-body");
     expect(body.getAttribute("data-folded")).toBe("true");
     const link = within(body).getByRole("link", { name: /the run log/ });
