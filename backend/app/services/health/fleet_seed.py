@@ -254,7 +254,9 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
         prompt=(
             "List the Platform Health cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "
-            "and everything skipped with its reason. Use the cycles' own figures and statuses; a cycle that "
+            "and everything skipped with its reason. Add a Modules part for the module investigation cycles: "
+            "cycles run, recommendations attached, agentic findings opened and resolved, and the Module Analyst's "
+            "spend against its own ceiling. Use the cycles' own figures and statuses; a cycle that "
             "is not completed is never reported as completed. Write in the language the trigger names (`language`)."
         ),
         show_in_digest=True,
@@ -496,6 +498,18 @@ async def _ensure_fleet(db: AsyncSession, agents: dict[str, Agent], owner_id: uu
     ).scalar_one_or_none()
     if member is not None and fleet.orchestrator_agent_id != orchestrator.id:
         await set_orchestrator(db, fleet, orchestrator.id)
+    # No generic weekly fleet health check on this fleet (#974): Platform Health
+    # checks itself, and the copy an earlier boot seeded (born off, never run)
+    # made the read-only fleet read "Not set up" forever.
+    from app.services.fleets import drop_fleet_health_check
+
+    await drop_fleet_health_check(db, orchestrator.id)
+    # Its About page (#974): written at seed and rewritten when the shipped text changes.
+    from app.agents.builtin_fleet_docs import PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED
+    from app.services.fleet_docs import seed_documentation
+
+    await db.flush()
+    await seed_documentation(db, fleet, PLATFORM_HEALTH_DOC, PLATFORM_HEALTH_STRUCTURED)
     return fleet
 
 
