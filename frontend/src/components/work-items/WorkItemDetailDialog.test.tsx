@@ -21,15 +21,10 @@ vi.mock("@/hooks/useAuth", () => ({
 const workItemQuery = vi.hoisted(() => ({ current: { data: undefined as unknown, isLoading: false, isError: false } }));
 const complete = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
 const answerMutation = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
-const askMutation = vi.hoisted(() => ({
-  mutateAsync: vi.fn(async () => ({ item: {}, agent: { id: "agent-1", name: "Notion Agent" }, via: "run" })),
-  isPending: false,
-}));
 vi.mock("@/hooks/api/useWorkItemApi", () => ({
   useWorkItem: () => workItemQuery.current,
   useCompleteWorkItem: () => complete,
   useAnswerWorkItem: () => answerMutation,
-  useAskWorkItem: () => askMutation,
   useCancelScheduledWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
   useRescheduleScheduledWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -96,11 +91,11 @@ function item(overrides: Partial<WorkItem> = {}): WorkItem {
   };
 }
 
-function openDialog(data: WorkItem, actions = {}, onClose: () => void = () => {}) {
+function openDialog(data: WorkItem, actions = {}) {
   workItemQuery.current = { data, isLoading: false, isError: false };
   return renderWithProviders(
     <MemoryRouter>
-      <WorkItemDetailDialog itemId={data.id} onClose={onClose} actionsFor={() => actions} />
+      <WorkItemDetailDialog itemId={data.id} onClose={() => {}} actionsFor={() => actions} />
     </MemoryRouter>,
   );
 }
@@ -354,69 +349,32 @@ describe("the work item detail", () => {
       logged.mockRestore();
     });
 
-    it("Explain opens the owner agent's chat with the message sent on arrival, and closes the dialog (#774)", () => {
+    it("opens a chat with the owner agent, the Explain message in the composer, never sent", () => {
       sessionStorage.clear();
-      const onClose = vi.fn();
-      openDialog(waiting({ ask }), { answer: true }, onClose);
+      openDialog(waiting({ ask }), { answer: true });
       const ask_agent = screen.getByTestId("work-item-ask-agent");
       expect(within(ask_agent).getByTestId("work-item-ask-freshness").textContent).toContain("Last activity");
-      expect(ask_agent.textContent).toContain("are sent to Notion Agent");
+      expect(ask_agent.textContent).toContain("Opens a chat with Notion Agent");
       fireEvent.click(within(ask_agent).getByTestId("work-item-ask-agent-explain"));
       const draft = sessionStorage.getItem("copilot:chat-input-draft:new") ?? "";
       expect(draft).toContain(item().id);
       expect(draft).toContain("Explain in plain words");
       expect(sessionStorage.getItem("copilot:chat-input-draft:agent")).toBe("agent-1");
-      expect(sessionStorage.getItem("copilot:chat-input-draft:autosend")).toBe("1");
-      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.getItem("copilot:chat-input-draft:autosend")).toBeNull();
     });
 
-    it("Re-check is sent to the item's agent, no chat, toast and the dialog closes (#774)", async () => {
+    it("asks the creator to re-check when the owner cannot be opened, and says so when neither can", () => {
       sessionStorage.clear();
-      askMutation.mutateAsync.mockClear();
-      const onClose = vi.fn();
-      openDialog(waiting({ ask }), { answer: true }, onClose);
+      const hidden = { id: null, name: null, icon: null, accessible: false };
+      openDialog(waiting({ ask, context: context({ owner_agent: hidden }) }), { answer: true });
       fireEvent.click(screen.getByTestId("work-item-ask-agent-recheck"));
-      expect(askMutation.mutateAsync).toHaveBeenCalledWith({ id: item().id, action: "recheck", text: undefined });
-      expect(await screen.findByText("Sent to Notion Agent")).toBeTruthy();
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(sessionStorage.getItem("copilot:chat-input-draft:new")).toBeNull();
-    });
-
-    it("It's solved takes an optional line, then sends it with the action (#774)", async () => {
-      askMutation.mutateAsync.mockClear();
-      const onClose = vi.fn();
-      openDialog(waiting({ ask }), { answer: true }, onClose);
-      fireEvent.click(screen.getByTestId("work-item-ask-agent-solved"));
-      expect(askMutation.mutateAsync).not.toHaveBeenCalled();
-      const form = screen.getByTestId("work-item-ask-solved-form");
-      fireEvent.change(within(form).getByRole("textbox"), { target: { value: "key rotated" } });
-      fireEvent.click(screen.getByTestId("work-item-ask-solved-send"));
-      expect(askMutation.mutateAsync).toHaveBeenCalledWith({ id: item().id, action: "solved", text: "key rotated" });
-      await screen.findByText("Sent to Notion Agent");
-      expect(onClose).toHaveBeenCalledTimes(1);
-    });
-
-    it("disables the sends while one waits for the agent, and says so", () => {
-      const at = new Date().toISOString();
-      openDialog(waiting({ ask, payload: { _ask: { at } }, last_activity_at: at }), { answer: true });
-      expect((screen.getByTestId("work-item-ask-agent-recheck") as HTMLButtonElement).disabled).toBe(true);
-      expect(screen.getByTestId("work-item-ask-effect").textContent).toContain("Already sent, waiting for Notion Agent");
-    });
-
-    it("a decision option answer closes the dialog (#774)", async () => {
-      const onClose = vi.fn();
-      openDialog(waiting({ ask }), { answer: true }, onClose);
-      fireEvent.click(within(screen.getByTestId("work-item-decision")).getAllByTestId("work-item-decision-option")[0]);
-      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    });
-
-    it("sends to the agent it cannot open, without Explain, and says why", () => {
-      const hidden = { id: "agent-9", name: "Desk", icon: null, accessible: false };
+      expect(sessionStorage.getItem("copilot:chat-input-draft:new")).toContain("close it as obsolete");
+      expect(sessionStorage.getItem("copilot:chat-input-draft:agent")).toBe("agent-2");
+      cleanup();
       openDialog(waiting({ ask, context: context({ owner_agent: hidden, created_by_agent: hidden }) }), { answer: true });
       const ask_agent = screen.getByTestId("work-item-ask-agent");
-      expect(screen.queryByTestId("work-item-ask-agent-explain")).toBeNull();
-      expect(screen.getByTestId("work-item-ask-agent-recheck")).toBeTruthy();
-      expect(ask_agent.textContent).toContain("so Explain is not offered");
+      expect(within(ask_agent).queryAllByRole("button")).toHaveLength(0);
+      expect(ask_agent.textContent).toContain("You cannot open the agent behind this work item");
       cleanup();
       openDialog(waiting({ ask, context: context({ owner_agent: null, created_by_agent: null }) }), { answer: true });
       const no_agent = screen.getByTestId("work-item-ask-agent");
@@ -493,7 +451,7 @@ describe("the work item detail", () => {
     const blockers = screen.getByTestId("work-item-blockers");
     const link = blockers.querySelector("a");
     expect(link?.textContent).toContain("Ship the migration");
-    expect(link?.getAttribute("href")).toBe(`/operations/work-items?item=${blockerId}`);
+    expect(link?.getAttribute("href")).toBe(`/tasks/work-items/${blockerId}`);
     expect(blockers.textContent).toContain("a work item you cannot open");
     expect(waitsForSomeone("blocked_on_items")).toBe(false);
   });
