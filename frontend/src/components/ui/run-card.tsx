@@ -33,6 +33,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * The expand chevron is only rendered when a run has children, keeping rows
  * without sub-runs flush left with no wasted space.
  */
+import { workItemPath } from "@/lib/task-routes";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bot, CalendarClock, Trash2, ChevronRight, ChevronDown, GitBranch, Wrench } from "lucide-react";
@@ -341,7 +342,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
                 {scheduledItemId ? (
                   <Tip content={t_i18n("Run of a scheduled work item: a one-off action, with no assignment.")}>
                     <Link
-                      to={`/operations/work-items?item=${scheduledItemId}`}
+                      to={workItemPath(scheduledItemId)}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={t_i18n("Scheduled")}
                       className="inline-flex shrink-0 items-center rounded-sm text-default-secondary hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
@@ -399,7 +400,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
                 <div className="flex items-center gap-1.5">
                   <Tip content={t_i18n("Run of a scheduled work item: a one-off action, with no assignment.")}>
                     <Link
-                      to={`/operations/work-items?item=${scheduledItemId}`}
+                      to={workItemPath(scheduledItemId)}
                       onClick={(e) => e.stopPropagation()}
                       data-testid="scheduled-run-badge"
                     >

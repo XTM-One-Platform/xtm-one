@@ -20,15 +20,16 @@ const ONE_ROW_PX = 40;
 const LISTS = [
   // On the shared DataTable (#9378, #11894) the Executions filter row is the toolbar lead that
   // holds the Status pill (the right group may take a line of its own, so the toolbar is not measured).
-  { tab: 'executions', row: 'executions-status-lead' },
-  { tab: 'background-tasks', row: 'background-tasks-filter-row' },
+  { tab: 'executions', path: '/operations/executions', row: 'executions-status-lead' },
+  { tab: 'background-tasks', path: '/operations/background-tasks', row: 'background-tasks-filter-row' },
   // Work items and Shared state carry their Status filter in the toolbar lead: the lead is
   // the filter row, and the DataTable moves its right group (total, page size, view) to a
   // line of its own when that lead crowds it (leadCrowds), so the toolbar is not measured.
-  { tab: 'work-items', row: 'work-items-filter-row' },
-  { tab: 'state', row: 'shared-state-filter-row' },
+  // Work items moved to the Tasks page (#775): the same list, measured on its new route.
+  { tab: 'work-items', path: '/tasks/work-items', row: 'work-items-filter-row' },
+  { tab: 'shared-state', path: '/operations/shared-state', row: 'shared-state-filter-row' },
   // On the shared DataTable (slice 8b, #9378) the Worksets filter row is the table's toolbar.
-  { tab: 'worksets', row: 'data-table-toolbar' },
+  { tab: 'worksets', path: '/operations/worksets', row: 'data-table-toolbar' },
 ] as const;
 
 async function listHeaderHeight(page: Page): Promise<number> {
@@ -63,10 +64,10 @@ test.describe('Operations list: header and filter row budget', () => {
   });
 
   for (const width of [1440, 1024]) {
-    for (const { tab, row } of LISTS) {
+    for (const { tab, path, row } of LISTS) {
       test(`the ${tab} list draws one filter row at ${width} px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 900 });
-        await page.goto(`/operations/${tab}`);
+        await page.goto(path);
         expect(await filterRowHeight(page, row)).toBeLessThanOrEqual(ONE_ROW_PX);
       });
     }

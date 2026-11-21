@@ -38,6 +38,6 @@ describe("workspace-owned knowledge bases", () => {
       </MemoryRouter>,
     );
     const link = screen.getByRole("link", { name: "Managed by workspace Launch" });
-    expect(link.getAttribute("href")).toBe("/workspaces/w-1");
+    expect(link.getAttribute("href")).toBe("/tasks/workspaces/w-1");
   });
 });

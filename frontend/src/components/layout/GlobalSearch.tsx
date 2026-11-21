@@ -34,6 +34,7 @@ import { useClickOutside } from "@/hooks/useClickOutside";
 import { useSearch, MIN_SEARCH_LENGTH, type SearchType } from "@/hooks/api/useSearchApi";
 import { useCommands } from "@/lib/commands/CommandsProvider";
 import { resolveCommands } from "@/lib/commands/registry";
+import { matchCommands } from "@/lib/commands/flatten";
 import type { CommandDef } from "@/lib/commands/types";
 import type { LucideIcon } from "lucide-react";
 import { SEARCH_TYPE_VIEW, searchPageHref, type LibraryIconName } from "@/lib/search-types";
@@ -165,10 +166,8 @@ export function GlobalSearch() {
   const rows = useMemo<Row[]>(() => {
     const needle = term.trim().toLowerCase();
     if (mode === "command") {
-      return resolveCommands(context)
-        .filter((command) => !command.children)
-        .filter((command) => `${command.category} ${command.title} ${command.id} ${(command.keywords ?? []).join(" ")}`
-          .toLowerCase().includes(needle))
+      // A parent's children are listed in its place ("Tasks: Work Items"), never dropped (#785, B2).
+      return matchCommands(resolveCommands(context), needle)
         .map((command: CommandDef) => {
           const gated = command.requires === "agenticAI" && !context.agenticAI;
           return {

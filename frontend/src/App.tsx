@@ -101,7 +101,7 @@ const Traces = lazyWithRetry(() => import("@/pages/Traces"));
 const TraceSessions = lazyWithRetry(() => import("@/pages/TraceSessions"));
 const TraceDetail = lazyWithRetry(() => import("@/pages/TraceDetail"));
 const Analytics = lazyWithRetry(() => import("@/pages/Analytics"));
-const Value = lazyWithRetry(() => import("@/pages/Value"));
+const Tasks = lazyWithRetry(() => import("@/pages/Tasks"));
 const ValueMethodology = lazyWithRetry(() => import("@/pages/ValueMethodology"));
 const Skills = lazyWithRetry(() => import("@/pages/Skills"));
 const SkillDetail = lazyWithRetry(() => import("@/pages/SkillDetail"));
@@ -733,11 +733,23 @@ export default function App() {
         <Route path="/knowledge/documents" element={<Page><KnowledgeDocuments /></Page>} />
         <Route path="/knowledge/new" element={<Page><NewKnowledgeBase /></Page>} />
         <Route path="/knowledge/:id/:tab?" element={<Page><KnowledgeBaseDetail /></Page>} />
-        <Route path="/operations/:tab?" element={<Page><Operations /></Page>} />
-        {/* Legacy routes consolidated into Operations (preserve query params) */}
-        <Route path="/tasks" element={<LegacyRedirect to="/operations/executions" />} />
-        <Route path="/background-tasks" element={<LegacyRedirect to="/operations/background-tasks" />} />
-        <Route path="/work-items" element={<LegacyRedirect to="/operations/work-items" />} />
+        {/* Operations: what is running or past, one route per tab (#775). */}
+        <Route path="/operations" element={<Page><Operations /></Page>} />
+        <Route path="/operations/executions" element={<Page><Operations /></Page>} />
+        <Route path="/operations/background-tasks" element={<Page><Operations /></Page>} />
+        <Route path="/operations/shared-state" element={<Page><Operations /></Page>} />
+        <Route path="/operations/worksets" element={<Page><Operations /></Page>} />
+        {/* Tasks: what to do and follow, one route per tab, the paths of the menu (#775).
+            No alias serves the former paths: every link is built by lib/task-routes.ts. */}
+        <Route path="/tasks" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/work-items" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/work-items/:itemId" element={<Page><Tasks /></Page>} />
+        {/* The methodology (#9836 R7b): every user, both modes, linked from every "How this is computed". */}
+        <Route path="/tasks/value/methodology" element={<Page><ValueMethodology /></Page>} />
+        {/* The Value report (#9836 R5b): every user, both modes; it shows the Community Edition upgrade path itself. */}
+        <Route path="/tasks/value/:tab?" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/workspaces" element={<Page><Tasks /></Page>} />
+        <Route path="/tasks/workspaces/:workspaceId/:tab?" element={<Page><WorkspaceProject /></Page>} />
         <Route path="/runs/:id" element={<Page><RunDetail /></Page>} />
         <Route path="/assignments/:id/:tab?" element={<Page><AssignmentDetail /></Page>} />
         <Route path="/skills" element={<Page><Skills /></Page>} />
@@ -751,8 +763,6 @@ export default function App() {
         <Route path="/tools/:id/:tab?" element={<Page><CustomToolDetail /></Page>} />
         <Route path="/variables" element={<Page><Variables /></Page>} />
         <Route path="/variables/:id" element={<Page><Variables /></Page>} />
-        <Route path="/workspaces" element={<LegacyRedirect to="/operations/workspaces" />} />
-        <Route path="/workspaces/:workspaceId/:tab?" element={<Page><WorkspaceProject /></Page>} />
         <Route path="/prompts" element={<Page><Prompts /></Page>} />
         <Route path="/prompts/:id/:tab?" element={<Page><PromptDetail /></Page>} />
         {/* The packs API answers 403 while DEEP_INVESTIGATION is off. */}
@@ -782,10 +792,6 @@ export default function App() {
         <Route path="/objects" element={<AdminRoute><Page><AdminObjects /></Page></AdminRoute>} />
         <Route path="/intents" element={<XtmOneRoute><Page><Intents /></Page></XtmOneRoute>} />
         <Route path="/analytics/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />
-        {/* The Value page (#9836 R5b): every user, both modes; the page itself shows the Community Edition upgrade path. */}
-        {/* The methodology (#9836 R7b): every user, both modes, linked from every "How this is computed". */}
-        <Route path="/value/methodology" element={<Page><ValueMethodology /></Page>} />
-        <Route path="/value/:tab?" element={<Page><Value /></Page>} />
         <Route path="/traces" element={<AdminRoute><Page><Traces /></Page></AdminRoute>} />
         <Route path="/trace-sessions" element={<AdminRoute><Page><TraceSessions /></Page></AdminRoute>} />
         <Route path="/traces/sessions" element={<AdminRoute><LegacyRedirect to="/trace-sessions" /></AdminRoute>} />

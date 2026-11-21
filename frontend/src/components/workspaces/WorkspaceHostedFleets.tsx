@@ -23,6 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * followed by their names. A fleet the reader cannot see is counted, never
  * named ("and 1 fleet you cannot see"): it still blocks the delete.
  */
+import { workspacePath } from "@/lib/task-routes";
 import { Boxes } from "lucide-react";
 
 import { FleetWorkspaceChip } from "@/components/workspaces/FleetWorkspaceChip";
@@ -43,7 +44,7 @@ export function WorkspaceHostedFleets({
   const total = hostedFleetCount(workspace);
   if (total === 0) return null;
   const hidden = total - fleets.length;
-  const from = { path: `/workspaces/${workspace.id}`, label: "Back to the workspace" };
+  const from = { path: workspacePath(workspace.id), label: "Back to the workspace" };
 
   if (total === 1 && fleets.length === 1) {
     const fleet = fleets[0];

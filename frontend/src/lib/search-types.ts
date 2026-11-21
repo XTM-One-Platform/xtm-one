@@ -5,6 +5,7 @@
  * type: its label (English, translated by the caller), its library icon and
  * the route of one hit. One table, so the typeahead and the page never differ.
  */
+import { workItemPath } from "./task-routes.ts";
 import type { ComponentProps } from "react";
 import type { Icon } from "@filigran/design-system";
 import type { SearchHit, SearchType } from "@/hooks/api/useSearchApi";
@@ -32,7 +33,7 @@ export const SEARCH_TYPE_VIEW: Record<SearchType, SearchTypeView> = {
   conversation: { plural: "Conversations", singular: "Conversation", icon: "quote", href: (hit) => `/chat?c=${hit.id}` },
   work_item: {
     plural: "Work items", singular: "Work item", icon: "circle-check",
-    href: (hit) => `/operations/work-items?item=${hit.id}`,
+    href: (hit) => workItemPath(hit.id),
   },
   knowledge_base: { plural: "Knowledge bases", singular: "Knowledge base", icon: "database", href: by("/knowledge") },
   knowledge_document: {

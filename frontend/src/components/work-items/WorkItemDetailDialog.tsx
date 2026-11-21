@@ -440,7 +440,7 @@ function Timeline({ item }: { item: WorkItem }) {
   );
 }
 
-function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
+function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemActions; onClose: () => void }) {
   const { t_i18n } = useFormatter();
   const context = item.context;
   const scheduled = isScheduledItem(item) ? item : null;
@@ -489,10 +489,10 @@ function Body({ item, actions }: { item: WorkItem; actions: WorkItemActions }) {
       </DialogHeader>
 
       <div className="max-h-[62vh] space-y-5 overflow-y-auto pr-1" data-testid="work-item-detail">
-        {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} />}
+        {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} onAnswered={onClose} />}
         {!deciding && !scheduled && offersAskTheAgent(item) && (
           <section className="rounded-sm border border-elevation-subtle p-3" data-testid="work-item-ask-agent-section">
-            <WorkItemAskAgent item={item} bordered={false} />
+            <WorkItemAskAgent item={item} bordered={false} onDone={onClose} />
           </section>
         )}
         <Facts item={item} context={context} />
@@ -610,7 +610,7 @@ export function WorkItemDetailDialog({
             <Skeleton className="h-24 w-full" />
           </div>
         ) : item ? (
-          <Body item={item} actions={actionsFor(item)} />
+          <Body item={item} actions={actionsFor(item)} onClose={onClose} />
         ) : (
           <EmptyState
             icon={ListTodo}

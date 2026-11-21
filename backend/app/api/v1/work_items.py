@@ -44,7 +44,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_agentic_ai
 from app.api.v1.helpers import (
     combine_scopes,
     fleet_filter,
@@ -815,6 +815,42 @@ async def answer_work_item(
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found")
     return item
+
+
+class WorkItemAsk(BaseModel):
+    action: Literal["recheck", "solved", "do"]
+    # It's solved: what changed, in the person's words (optional).
+    text: str | None = None
+
+
+@router.post("/{work_item_id}/ask")
+async def ask_work_item(
+    work_item_id: str,
+    body: WorkItemAsk,
+    user: User = Depends(get_current_user),
+    _agentic_gate: None = Depends(require_agentic_ai),
+) -> dict:
+    """Send Re-check, It's solved or Do it to the item's agent (#774): a stamped
+    note, then its inbox or a run of the agent takes the item now
+    (``work_item.ask_work_item``). Answers ``{item, agent, via}``."""
+    try:
+        sent = await work_item_service.ask_work_item(
+            work_item_id,
+            user_id=str(user.id),
+            action=body.action,
+            text=body.text,
+            asked_by=getattr(user, "full_name", None) or getattr(user, "email", None),
+            writer=person_writer(is_admin=user.is_admin),
+        )
+    except CompanyManagedWriteRefusedError as exc:
+        raise _refused(exc) from exc
+    except ScheduledWorkItemError as exc:
+        raise _scheduled_refusal(exc) from exc
+    except work_item_service.WorkItemAskRefusedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if sent is None:
+        raise HTTPException(status_code=404, detail="Work item not found")
+    return sent
 
 
 @router.post("/{work_item_id}/requeue")

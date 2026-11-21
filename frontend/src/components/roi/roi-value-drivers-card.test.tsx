@@ -57,7 +57,7 @@ describe("the Top value drivers card", () => {
     render();
     const links = screen.getAllByTestId("home-value-driver");
     expect(links.map((link) => link.getAttribute("href"))).toEqual(["/agents/a-2", "/agents/a-1"]);
-    expect(screen.getByTestId("home-value-drivers-all").getAttribute("href")).toBe("/value/agents");
+    expect(screen.getByTestId("home-value-drivers-all").getAttribute("href")).toBe("/tasks/value/agents");
   });
 
   it("draws a deleted agent named and unlinked", () => {
@@ -71,7 +71,7 @@ describe("the Top value drivers card", () => {
     state.report = { isError: false, refetch: () => undefined, data: { currency: "EUR", agents: [] } };
     render();
     expect(screen.getByText("No value recorded yet")).toBeTruthy();
-    expect(screen.getByText("Declare a unit of work").closest("a")?.getAttribute("href")).toBe("/value/methodology");
+    expect(screen.getByText("Declare a unit of work").closest("a")?.getAttribute("href")).toBe("/tasks/value/methodology");
   });
 
   it("draws the empty state compact, so it fits the body of the widget at its minimum height (h6)", () => {
