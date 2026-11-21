@@ -440,7 +440,8 @@ class TicketingSync(BaseModel):
 
     #: When a case gets its ticket: when it passes Mobilize and is P1 or P2, P1 only, or by hand.
     create_on: Literal["mobilize_p1_p2", "mobilize_p1", "manual"] = "mobilize_p1_p2"
-    #: The Jira issue type, or the ServiceNow table (``incident``, ``change_request``, ``sn_vul_vulnerable_item``...).
+    #: The Jira issue type, or the ServiceNow table (``incident``, ``change_request`` or ``problem``,
+    #: ``ctem_ticketing.SERVICENOW_TABLES``; another table is refused at save).
     record_type: str = Field(default="", max_length=80)
     #: Labels (Jira) or the category (ServiceNow) every ticket carries.
     labels: list[str] = Field(default_factory=list, max_length=20)

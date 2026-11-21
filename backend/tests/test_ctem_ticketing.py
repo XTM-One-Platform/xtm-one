@@ -150,6 +150,84 @@ def test_status_mapping_customer_map_first_then_categories(name, category, custo
     assert tk.map_status(name, status_map=custom, category=category) == expected
 
 
+@pytest.mark.parametrize(
+    ("table", "state", "expected"),
+    [
+        ("incident", "6", "done"),
+        ("incident", "3", "in_progress"),
+        ("change_request", "3", "done"),
+        ("change_request", "4", "cancelled"),
+        ("change_request", "-1", "in_progress"),
+        ("change_request", "-5", "open"),
+        ("problem", "106", "done"),
+        ("problem", "101", "open"),
+    ],
+)
+def test_servicenow_states_are_read_per_table(table, state, expected):
+    assert tk.map_status(state, table=table) == expected
+
+
+def _servicenow(table: str) -> tuple[tk.ServiceNowAdapter, list[tuple[str, dict]]]:
+    adapter = tk.ServiceNowAdapter("https://sn.example", {}, table)
+    calls: list[tuple[str, dict]] = []
+
+    async def _call(method, url, action, **kwargs):
+        calls.append((method, kwargs))
+        if method == "get":
+            return [{"sys_id": "abc", "number": "CHG001", "state": "-1"}]
+        return {"sys_id": "abc", "number": "CHG001", "state": kwargs["json"].get("state", "")}
+
+    adapter._call = _call  # type: ignore[method-assign]
+    return adapter, calls
+
+
+@pytest.mark.parametrize(
+    ("table", "status", "written"),
+    [
+        ("change_request", "done", "3"),
+        ("change_request", "cancelled", "4"),
+        ("incident", "done", "6"),
+        ("problem", "done", "106"),
+    ],
+)
+async def test_servicenow_writes_the_state_of_its_table(table, status, written):
+    adapter, calls = _servicenow(table)
+    draft = tk.draft_of(_case(severity="P1"), SYNC, provider="servicenow")
+    remote = await adapter.update("CHG001", draft, status=status)
+    assert calls[-1][0] == "patch"
+    assert calls[-1][1]["json"]["state"] == written
+    assert remote.status == status
+
+
+def test_servicenow_refuses_a_table_it_does_not_map():
+    with pytest.raises(tk.TicketingError):
+        tk.ServiceNowAdapter("https://sn.example", {}, "sn_vul_vulnerable_item")
+
+
+class _IntegrationSession:
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+
+    async def get(self, model, key):
+        return type("Integration", (), {"provider": self.provider})()
+
+
+def _profile(record_type: str):
+    from app.services.organization_context import OrganizationProfile
+
+    return OrganizationProfile(
+        ticketing=TicketingTarget(integration=str(uuid.uuid4()), sync=TicketingSync(record_type=record_type))
+    )
+
+
+async def test_settings_save_refuses_an_unknown_servicenow_table_only():
+    problem = await tk.target_problem(_IntegrationSession("servicenow"), _profile("sn_vul_vulnerable_item"))
+    assert problem and "record_type" in problem
+    assert await tk.target_problem(_IntegrationSession("servicenow"), _profile("change_request")) is None
+    assert await tk.target_problem(_IntegrationSession("servicenow"), _profile("")) is None
+    assert await tk.target_problem(_IntegrationSession("jira"), _profile("Bug")) is None
+
+
 def test_create_rule_follows_the_settings():
     assert tk.should_create(_case(severity="P1"), SYNC)
     assert tk.should_create(_case(severity="P2"), SYNC)

@@ -134,20 +134,53 @@ _CATEGORY_STATUS: tuple[tuple[str, str], ...] = (
 )
 #: Jira status category keys (``statusCategory.key``).
 _JIRA_CATEGORY = {"new": "open", "indeterminate": "in_progress", "done": "done"}
-#: ServiceNow incident and change state numbers.
-_SERVICENOW_STATE = {"1": "open", "2": "in_progress", "3": "in_progress", "6": "done", "7": "done", "8": "cancelled"}
+#: ServiceNow ``state`` numbers read, per table: each table numbers its states its own way
+#: (a change_request closes at 3 and cancels at 4, a problem resolves at 106).
+_SERVICENOW_STATES: dict[str, dict[str, str]] = {
+    "incident": {"1": "open", "2": "in_progress", "3": "in_progress", "6": "done", "7": "done", "8": "cancelled"},
+    "change_request": {
+        "-5": "open",
+        "-4": "in_progress",
+        "-3": "in_progress",
+        "-2": "in_progress",
+        "-1": "in_progress",
+        "0": "in_progress",
+        "3": "done",
+        "4": "cancelled",
+    },
+    "problem": {
+        "101": "open",
+        "102": "in_progress",
+        "103": "in_progress",
+        "104": "in_progress",
+        "106": "done",
+        "107": "done",
+    },
+}
+#: The ``state`` written per case ticket status, per table.
+_SERVICENOW_STATE_OF: dict[str, dict[str, str]] = {
+    "incident": {"open": "1", "in_progress": "2", "done": "6", "cancelled": "8"},
+    "change_request": {"open": "-5", "in_progress": "-1", "done": "3", "cancelled": "4"},
+    "problem": {"open": "101", "in_progress": "104", "done": "106", "cancelled": "107"},
+}
+#: The ServiceNow tables the sync knows; another table is refused at settings save.
+SERVICENOW_TABLES: tuple[str, ...] = tuple(_SERVICENOW_STATES)
 
 
-def map_status(name: str, *, status_map: dict[str, str] | None = None, category: str = "") -> str:
-    """The case ticket status of a system status *name* (customer map, then category, then the name)."""
+def map_status(name: str, *, status_map: dict[str, str] | None = None, category: str = "", table: str = "") -> str:
+    """The case ticket status of a system status *name* (customer map, then category, then the name).
+
+    *table* is the ServiceNow table whose state numbers *name* is read with (``incident`` when empty).
+    """
     raw = (name or "").strip()
     for key, value in (status_map or {}).items():
         if key.strip().lower() == raw.lower() and value in case_loop.TICKET_STATUSES:
             return value
     if category in _JIRA_CATEGORY:
         return _JIRA_CATEGORY[category]
-    if raw in _SERVICENOW_STATE:
-        return _SERVICENOW_STATE[raw]
+    states = _SERVICENOW_STATES.get(table or "incident", {})
+    if raw in states:
+        return states[raw]
     lowered = raw.lower()
     for needle, status in _CATEGORY_STATUS:
         if needle in lowered:
@@ -561,8 +594,6 @@ class ServiceNowAdapter:
     """ServiceNow on the Table API helpers (``integrations/providers/servicenow/_common.py``)."""
 
     provider: ClassVar[str] = "servicenow"
-    #: The case ticket status to the incident or change ``state`` written.
-    _STATE_OF = {"open": "1", "in_progress": "2", "done": "6", "cancelled": "8"}
 
     def __init__(
         self,
@@ -576,6 +607,11 @@ class ServiceNowAdapter:
         self.base = base
         self.headers = headers
         self.table = table or "incident"
+        if self.table not in SERVICENOW_TABLES:
+            raise TicketingError(
+                f"the ServiceNow table {self.table!r} has no ticketing sync",
+                fix=f"choose one of {', '.join(SERVICENOW_TABLES)} in the ticketing settings",
+            )
         self.group = group
         self.status_map = status_map or {}
 
@@ -597,7 +633,7 @@ class ServiceNowAdapter:
         return RemoteTicket(
             key=str(rec.get("number") or sys_id),
             url=record_url(self.base, self.table, sys_id),
-            status=map_status(state, status_map=self.status_map),
+            status=map_status(state, status_map=self.status_map, table=self.table),
             external_status=state,
         )
 
@@ -652,7 +688,7 @@ class ServiceNowAdapter:
         body = self._body(draft)
         body.pop("correlation_id", None)
         if status:
-            body["state"] = self._STATE_OF[status]
+            body["state"] = _SERVICENOW_STATE_OF[self.table][status]
         rec = await self._call("patch", self._url(await self._sys_id(key)), f"update {key}", json=body)
         return self._remote(rec if isinstance(rec, dict) else {"number": key})
 
@@ -922,7 +958,12 @@ async def apply_inbound_status(
         remote = RemoteTicket(
             key=key,
             url=str(ticket.get("url") or ""),
-            status=map_status(status_name, status_map=dict(getattr(sync, "status_map", {}) or {}), category=category),
+            status=map_status(
+                status_name,
+                status_map=dict(getattr(sync, "status_map", {}) or {}),
+                category=category,
+                table=(getattr(sync, "record_type", "") or "incident") if provider == "servicenow" else "",
+            ),
             external_status=status_name,
         )
         # The status is given (``remote``): pull_ticket_status reads only the adapter's provider name.
@@ -1015,10 +1056,37 @@ async def adapter_for(db: AsyncSession, profile: Any) -> TicketingAdapter | str:
     base, user, password = parse_servicenow_token(token)
     if not base:
         return "the ServiceNow integration has no instance URL"
+    if (record_type or "incident") not in SERVICENOW_TABLES:
+        return f"the ServiceNow table {record_type!r} has no ticketing sync"
     return ServiceNowAdapter(
         base,
         build_servicenow_headers(user, password),
         record_type or "incident",
         group=project,
         status_map=status_map,
+    )
+
+
+async def target_problem(db: AsyncSession, profile: Any) -> str | None:
+    """Why the profile's ticketing settings cannot be saved, or ``None`` (the settings save calls it).
+
+    A ServiceNow target takes only a table the sync maps (``SERVICENOW_TABLES``): the
+    state numbers differ per table, so another table would read and write wrong states.
+    """
+    from app.models.integration import Integration
+
+    target = getattr(profile, "ticketing", None)
+    integration_id = (getattr(target, "integration", "") or "").strip()
+    record_type = (getattr(getattr(target, "sync", None), "record_type", "") or "").strip()
+    if not integration_id or not record_type:
+        return None
+    try:
+        integration = await db.get(Integration, uuid.UUID(integration_id))
+    except ValueError:
+        return None
+    if integration is None or integration.provider != "servicenow" or record_type in SERVICENOW_TABLES:
+        return None
+    return (
+        f"ticketing.sync.record_type: the ServiceNow table {record_type!r} has no ticketing sync; "
+        f"use one of {', '.join(SERVICENOW_TABLES)}"
     )

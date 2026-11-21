@@ -9,7 +9,7 @@ The system is the ticketing target of the organization context (`OrganizationPro
 | Field | Default | Meaning |
 |---|---|---|
 | `create_on` | `mobilize_p1_p2` | A case gets its ticket when it passes Mobilize and is P1 or P2; `mobilize_p1`; `manual` (by hand per case). |
-| `record_type` | Jira `Task`, ServiceNow `incident` | The Jira issue type, or the ServiceNow table. |
+| `record_type` | Jira `Task`, ServiceNow `incident` | The Jira issue type, or the ServiceNow table: `incident`, `change_request` or `problem` (`SERVICENOW_TABLES`); the settings save answers 422 for another table, since each table numbers its states its own way. |
 | `labels` | `[]` | Labels (Jira) or the category (ServiceNow, first label); `xtm-ctem` is always added. |
 | `priority_map` | Jira P1 Highest, P2 High, P3 Medium; ServiceNow urgency 1, 2, 3 | Case severity to the system's priority value. |
 | `status_map` | `{}` | The system's status name to a case ticket status, read before the default categories. |
@@ -25,7 +25,7 @@ The settings live on Settings > Organization > Identity and risk, card "Ticketin
 | Provider | Correlation | Status read | Inbound |
 |---|---|---|---|
 | Jira | label `xtm-ctem-<16 hex>` | `statusCategory` (new, indeterminate, done) | a verified Jira webhook delivery (`jira_webhooks.dispatch_delivery`) moves the case at once (`ctem_ticketing.apply_jira_delivery`); the scheduled pull is the safety net |
-| ServiceNow | `correlation_id` | `state` (1 New, 2 In Progress, 3 On Hold, 6 Resolved, 7 Closed, 8 Canceled) | polled by the case sweep (no outbound webhook needed) |
+| ServiceNow | `correlation_id` | `state`, per table (`_SERVICENOW_STATES` read, `_SERVICENOW_STATE_OF` written): incident 1 New, 2 In Progress, 3 On Hold, 6 Resolved, 7 Closed, 8 Canceled (writes 1, 2, 6, 8); change_request -5 New, -4 to 0 in progress, 3 Closed, 4 Canceled (writes -5, -1, 3, 4); problem 101 New, 102 to 104 in progress, 106 Resolved, 107 Closed (writes 101, 104, 106, 107) | polled by the case sweep (no outbound webhook needed) |
 
 ## 3. Case side
 
