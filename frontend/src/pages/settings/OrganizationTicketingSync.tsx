@@ -114,6 +114,7 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
         >
           <Input
             id={`${idPrefix}-record-type`}
+            aria-labelledby={settingsFieldLabelId(`${idPrefix}-record-type`)}
             aria-describedby={settingsFieldHintId(`${idPrefix}-record-type`)}
             placeholder={defaults.record_type}
             value={sync.record_type}
@@ -128,6 +129,7 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
         >
           <Input
             id={`${idPrefix}-labels`}
+            aria-labelledby={settingsFieldLabelId(`${idPrefix}-labels`)}
             aria-describedby={settingsFieldHintId(`${idPrefix}-labels`)}
             placeholder="ctem, security"
             value={sync.labels.join(", ")}
@@ -143,6 +145,7 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
           >
             <Input
               id={`${idPrefix}-priority-${severity}`}
+              aria-labelledby={settingsFieldLabelId(`${idPrefix}-priority-${severity}`)}
               aria-describedby={settingsFieldHintId(`${idPrefix}-priority-${severity}`)}
               placeholder={defaults.priority[severity]}
               value={sync.priority_map[severity] ?? ""}
