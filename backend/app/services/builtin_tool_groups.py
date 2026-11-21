@@ -409,6 +409,18 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         health_only=True,
         core=("get_flow_diagnosis", "get_assignment_path", "get_flow_shadow"),
     ),
+    BuiltinToolGroup(
+        id="health_modules",
+        name="Health Modules",
+        tagline="Investigate registered modules and recommend on their findings",
+        detail="Platform Health's Module Analyst: reads the open findings of a registered OpenCTI, OpenAEV or OpenCRQ with the recommendations already attached, and attaches its own recommendation to each finding the module reads explain. Never writes to a module. Works only inside a Platform Health run.",
+        category="observability",
+        icon="Stethoscope",
+        gate="health",
+        agent_keyed=True,
+        health_only=True,
+        core=("list_module_findings",),
+    ),
 )
 
 

@@ -39,6 +39,7 @@ def test_every_concierge_group_is_gated():
         "health_diagnosis",
         "health_experiments",
         "flow_lab",
+        "health_modules",
     } <= _CONCIERGE_GROUPS
 
 

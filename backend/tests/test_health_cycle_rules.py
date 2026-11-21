@@ -204,10 +204,13 @@ def test_assignment_keys_cover_every_schedule():
 
 
 def test_the_module_analyst_is_seeded_with_no_module_write_and_no_handover():
-    """Section 12.3: the member carries no tool group that writes; nobody hands it work."""
+    """Section 12.3: the member carries no tool group that writes a module; nobody hands it work.
+
+    ``health_modules`` writes inside XTM One only (recommendations on findings, section 12.4).
+    """
     spec = next(s for s in fleet_seed.FLEET_AGENTS if s.role == "module_analyst")
     assert spec.disable_chat and spec.handovers == ()
-    assert set(spec.builtin_tool_ids) <= {fleet_seed.IMPROVEMENTS_GROUP}
+    assert set(spec.builtin_tool_ids) <= {"health_modules", fleet_seed.IMPROVEMENTS_GROUP}
     assert not set(spec.builtin_tool_ids) & fleet_seed.NON_CONSENT_TOOL_GROUPS
     assert all(spec.slug not in {t for t, _ in s.handovers} for s in fleet_seed.FLEET_AGENTS)
     assert fleet_seed.ASSIGNMENT_BY_KEY["module_analyst"].agent_slug == spec.slug

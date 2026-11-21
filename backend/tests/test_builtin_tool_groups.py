@@ -60,8 +60,8 @@ def test_one_group_per_catalog_id():
     # steward, 22 with its quality diagnosis and experiments, 23 with its Flow
     # Lab, 24 with its orchestrator, 25 with organization profile editing (#11594), 26 with
     # the grounded STIX extraction, its own group so Threat Intelligence never carries it,
-    # 27 with user administration (#250).
-    assert len(_IDS) == len(set(_IDS)) == 27
+    # 27 with user administration (#250), 28 with the Module Analyst's (#101 S14).
+    assert len(_IDS) == len(set(_IDS)) == 28
     assert set(_IDS) == set(catalog)
 
 
@@ -78,7 +78,7 @@ def test_health_only_groups_are_the_specialists_suites():
     from app.services.health.fleet_seed import FLEET_AGENTS
 
     health_only = {g.id for g in BUILTIN_TOOL_GROUPS if g.health_only}
-    assert health_only == {"memory_steward", "health_diagnosis", "health_experiments", "flow_lab"}
+    assert health_only == {"memory_steward", "health_diagnosis", "health_experiments", "flow_lab", "health_modules"}
     for group in BUILTIN_TOOL_GROUPS:
         if group.health_only:
             assert group.gate == "health" and group.agent_keyed, group.id
@@ -136,6 +136,7 @@ def test_every_function_is_stamped_with_its_group_source():
     group that lists it, the narrowest grant.
     """
     from app.services import builtin_tools as bt
+    from app.services.builtin_tools.health_modules import build_health_module_tools
     from app.services.builtin_tools.roi import build_roi_tools
 
     owner: dict[str, str] = {}
@@ -162,6 +163,7 @@ def test_every_function_is_stamped_with_its_group_source():
         "health_diagnosis": bt.build_health_diagnosis_tools("")[0],
         "health_experiments": bt.build_health_experiment_tools("")[0],
         "flow_lab": bt.build_flow_lab_tools("")[0],
+        "health_modules": build_health_module_tools("")[0],
     }
     for group_id, definitions in built.items():
         for definition in definitions:
