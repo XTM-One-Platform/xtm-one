@@ -9,9 +9,11 @@
  * gate fails on any other `nav` named "On this page", its attributes on one line
  * or on several, and on a hand-written scroll margin under the header.
  */
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+
+import { pickCurrentSection } from "@/components/ui/section-index";
 
 const SRC = join(process.cwd(), "src");
 const OWNER = join(SRC, "components", "ui", "section-index.tsx");
@@ -67,4 +69,26 @@ it("SectionIndex sticks below the header and marks the current entry", () => {
   expect(source).toMatch(/aria-current=\{isCurrent \? "location" : undefined\}/);
   // The horizontal bar lands a jump below its measured height, never a fixed guess.
   expect(source).toMatch(/scroll-mt-\[calc\(var\(--fds-header-height,68px\)_\+_var\(--section-bar-height,49px\)_\+_1rem\)\]/);
+});
+
+describe("pickCurrentSection (#794 UX r2 B1)", () => {
+  const page = { bandTop: 140, viewportBottom: 1117, atTop: false, atBottom: false };
+
+  it("is the first section at the top, even when its top is below the band", () => {
+    expect(pickCurrentSection({ ...page, tops: [429, 700, 1500], atTop: true })).toBe(0);
+  });
+
+  it("is the last section whose top passed the band", () => {
+    expect(pickCurrentSection({ ...page, tops: [-900, 100, 900] })).toBe(1);
+    expect(pickCurrentSection({ ...page, tops: [200, 900, 1500] })).toBe(0);
+  });
+
+  it("is the last section in view at the bottom, when short last sections never reach the band", () => {
+    // The UX Director's measure at 1728x1117: Alerts at 652 px, Companion pets at 814 px.
+    expect(pickCurrentSection({ ...page, tops: [-1844, -1573, -773, 652, 814], atBottom: true })).toBe(4);
+  });
+
+  it("has none without sections", () => {
+    expect(pickCurrentSection({ ...page, tops: [] })).toBe(-1);
+  });
 });

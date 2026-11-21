@@ -138,57 +138,64 @@ describe("HealthSection read view", () => {
     expect(screen.queryByRole("heading", { name: "Platform Health" })).toBeNull();
   });
 
-  it("moves the bar's current entry with the scroll, over the four groups (UX r1 B1)", async () => {
-    // The bar observes the groups it jumps to: drawn before the settings load, it observed the
-    // pets section alone and "Status and scope" stayed current whatever the reader scrolled to.
-    const observers: { callback: IntersectionObserverCallback; targets: Element[] }[] = [];
-    class ScrollObserver {
-      readonly targets: Element[] = [];
-      constructor(callback: IntersectionObserverCallback) {
-        observers.push({ callback, targets: this.targets });
-      }
-      observe(target: Element) {
-        this.targets.push(target);
-      }
-      unobserve() {}
-      disconnect() {}
-      takeRecords() {
-        return [];
-      }
-    }
-    vi.stubGlobal("IntersectionObserver", ScrollObserver);
+  it("moves the bar's current entry with the scroll, the short last groups included (UX r1 and r2 B1)", async () => {
+    // r1: the bar observed the pets section alone. r2: an observer band under the header never
+    // saw Alerts and Companion pets, which are short and cannot scroll up into it. The bar now
+    // reads the groups' positions on every scroll; this drives that geometry, the one the UX
+    // Director measured at 1728x1117 (Alerts at 652 px, pets at 814 px at the bottom).
+    renderSection();
+    await screen.findByTestId("health.analysis");
+    const bar = screen.getByRole("navigation", { name: "On this page" });
+    const current = () => within(bar).getByRole("link", { current: "location" }).textContent;
+    const scroller = (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+    const ids = ["health-settings-status", "health-settings-spend", "health-settings-checks", "health-settings-alerts", "health-settings-pets"];
+    const tops = [429, 700, 1500, 2925, 3087];
+    let scrollTop = 0;
+    const restore: (() => void)[] = [];
+    const define = (el: object, key: string, get: () => unknown) => {
+      Object.defineProperty(el, key, { configurable: true, get });
+      restore.push(() => delete (el as Record<string, unknown>)[key]);
+    };
+    define(scroller, "scrollTop", () => scrollTop);
+    define(scroller, "scrollHeight", () => 3390);
+    define(scroller, "clientHeight", () => 1117);
+    ids.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (!el) throw new Error(`no group ${id}`);
+      define(el, "getBoundingClientRect", () => () => ({ top: tops[i] - scrollTop }) as DOMRect);
+    });
+    const scrollTo = (y: number) => {
+      scrollTop = y;
+      act(() => {
+        document.dispatchEvent(new Event("scroll"));
+      });
+    };
     try {
-      renderSection();
-      await screen.findByTestId("health.analysis");
-      const observer = observers.find((o) => o.targets.length > 1);
-      if (!observer) throw new Error("the bar observes no section");
-      expect(observer.targets.map((el) => el.id)).toEqual([
-        "health-settings-status",
-        "health-settings-spend",
-        "health-settings-checks",
-        "health-settings-alerts",
-        "health-settings-pets",
-      ]);
-      const bar = screen.getByRole("navigation", { name: "On this page" });
-      const current = () => within(bar).getByRole("link", { current: "location" }).textContent;
+      scrollTo(0);
       expect(current()).toBe("Status and scope");
-      for (const [id, title] of [
-        ["health-settings-spend", "Spend limits"],
-        ["health-settings-checks", "Health checks"],
-        ["health-settings-alerts", "Alerts"],
-        ["health-settings-status", "Status and scope"],
-      ]) {
-        const target = document.getElementById(id);
-        act(() => {
-          observer.callback(
-            [{ target, isIntersecting: true, boundingClientRect: { top: 150 } } as unknown as IntersectionObserverEntry],
-            observer as unknown as IntersectionObserver,
-          );
-        });
-        expect(current()).toBe(title);
-      }
+      scrollTo(600);
+      expect(current()).toBe("Spend limits");
+      scrollTo(1400);
+      expect(current()).toBe("Health checks");
+      // The bottom of the page: Alerts and pets are on screen and never reach the band.
+      scrollTo(2273);
+      expect(current()).toBe("Companion pets");
+      // A click on Alerts lands at the bottom and stays current while the jump scrolls.
+      act(() => {
+        within(bar).getByRole("link", { name: "Alerts" }).click();
+      });
+      scrollTo(2273);
+      expect(current()).toBe("Alerts");
+      // The reader scrolls back up: the bar follows again, Status and scope at the top.
+      act(() => {
+        document.dispatchEvent(new Event("wheel"));
+      });
+      scrollTo(1400);
+      expect(current()).toBe("Health checks");
+      scrollTo(0);
+      expect(current()).toBe("Status and scope");
     } finally {
-      vi.unstubAllGlobals();
+      restore.forEach((undo) => undo());
     }
   });
 
