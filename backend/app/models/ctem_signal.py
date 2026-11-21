@@ -66,9 +66,7 @@ class CtemSignal(Base):
         CheckConstraint(_in("trigger_path", TRIGGER_PATHS), name="ck_ctem_signals_path_valid"),
         CheckConstraint(_in("lens", LENSES), name="ck_ctem_signals_lens_valid"),
         CheckConstraint(_in("state", SIGNAL_STATES), name="ck_ctem_signals_state_valid"),
-        CheckConstraint(
-            "state <> 'case_opened' OR case_id IS NOT NULL", name="ck_ctem_signals_case_opened_has_case"
-        ),
+        CheckConstraint("state <> 'case_opened' OR case_id IS NOT NULL", name="ck_ctem_signals_case_opened_has_case"),
         Index("ix_ctem_signals_org_state", "organization_id", "state"),
         Index("ix_ctem_signals_org_path", "organization_id", "trigger_path"),
     )

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.api.deps import get_current_user
 from app.api.v1 import ctem_signals as api_module
@@ -307,8 +307,6 @@ def client(store, monkeypatch):
     async def _db():
         yield _Db()
 
-    from fastapi import Request
-
     async def _user(request: Request):
         uid = request.headers.get("X-User", ALICE)
         return SimpleNamespace(id=uuid.UUID(uid), is_admin=uid == ADMIN)
@@ -449,7 +447,9 @@ async def test_the_tool_records_one_signal_for_each_of_the_12_paths_idempotently
     assert tuple(d.name for d in defs) == CTEM_SIGNAL_TOOL_NAMES
     for path, provider, kind, ref in ONE_PER_PATH:
         out = json.loads(
-            await call("record_ctem_signal", trigger_path=path, source_provider=provider, subject_kind=kind, subject_ref=ref)
+            await call(
+                "record_ctem_signal", trigger_path=path, source_provider=provider, subject_kind=kind, subject_ref=ref
+            )
         )
         assert out["created"] is True and out["signal"]["recorded_via"] == "tool"
     again = json.loads(
@@ -476,8 +476,12 @@ async def test_the_tool_refuses_a_bad_field_and_scopes_the_list_to_the_user(tool
     _, alice = tools(ALICE)
     _, bob = tools(BOB)
     _, admin = tools(ADMIN)
-    refused = await alice("record_ctem_signal", trigger_path="nope", source_provider="m", subject_kind="asset", subject_ref="a")
+    refused = await alice(
+        "record_ctem_signal", trigger_path="nope", source_provider="m", subject_kind="asset", subject_ref="a"
+    )
     assert refused.startswith("Refused: trigger_path")
-    await alice("record_ctem_signal", trigger_path="blind_spot", source_provider="m", subject_kind="asset", subject_ref="a")
+    await alice(
+        "record_ctem_signal", trigger_path="blind_spot", source_provider="m", subject_kind="asset", subject_ref="a"
+    )
     assert json.loads(await bob("list_ctem_signals"))["total"] == 0
     assert json.loads(await admin("list_ctem_signals"))["total"] == 1

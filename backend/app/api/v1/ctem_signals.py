@@ -152,9 +152,7 @@ async def get_ctem_signal(
 ) -> dict[str, Any]:
     """One signal the caller may see; 404 otherwise."""
     _require_xtm_one()
-    row = await signals.get_signal(
-        db, signal_id, organization_id=await _organization_id(db), recorded_by=_reader(user)
-    )
+    row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=_reader(user))
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
     return signals.to_dict(row)

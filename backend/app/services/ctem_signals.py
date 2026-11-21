@@ -182,7 +182,8 @@ async def record_signal(
     ).returning(row.id, row.seen_count)
     signal_id, seen = (await db.execute(statement)).one()
     stored = await db.get(CtemSignal, signal_id, populate_existing=True)
-    assert stored is not None
+    if stored is None:  # the row was just written in this transaction
+        raise RuntimeError(f"CTEM signal {signal_id} not readable after its upsert")
     return stored, seen == 1
 
 

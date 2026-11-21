@@ -38,7 +38,14 @@ async def _database() -> AsyncIterator[async_sessionmaker]:
 
 
 async def _org(session, name: str) -> uuid.UUID:
-    org = Organization(id=uuid.uuid4(), name=name, role="primary" if name == "A" else "tracked")
+    # The store keys on the organization id alone, not on its role.
+    primary = name == "A"
+    org = Organization(
+        id=uuid.uuid4(),
+        name=name,
+        role="primary" if primary else "tracked",
+        relationship=None if primary else "customer",
+    )
     session.add(org)
     await session.flush()
     return org.id
@@ -71,7 +78,11 @@ async def test_the_same_key_twice_is_one_row_with_last_seen_moved_forward_only()
         )
         await session.commit()
         older, _ = await signals.record_signal(
-            session, organization_id=org, signal=_leak(observed_at=T0 - timedelta(days=1)), recorded_via="api", recorded_by="u3"
+            session,
+            organization_id=org,
+            signal=_leak(observed_at=T0 - timedelta(days=1)),
+            recorded_via="api",
+            recorded_by="u3",
         )
         await session.commit()
         rows = (await session.execute(select(CtemSignal))).scalars().all()
@@ -107,7 +118,9 @@ async def test_two_organizations_never_share_or_see_each_others_signals():
     async with _database() as sessions, sessions() as session:
         org_a = await _org(session, "A")
         org_b = await _org(session, "B")
-        a, _ = await signals.record_signal(session, organization_id=org_a, signal=_leak(), recorded_via="api", recorded_by="u1")
+        a, _ = await signals.record_signal(
+            session, organization_id=org_a, signal=_leak(), recorded_via="api", recorded_by="u1"
+        )
         b, created_b = await signals.record_signal(
             session, organization_id=org_b, signal=_leak(), recorded_via="api", recorded_by="u1"
         )
@@ -138,14 +151,16 @@ async def test_list_filters_by_state_path_lens_and_recorder():
         row = (await session.execute(select(CtemSignal).where(CtemSignal.trigger_path == "blind_spot"))).scalar_one()
         row.state = "to_validate"
         await session.commit()
-        outside, n_outside, counts = await signals.list_signals(session, organization_id=org, recorded_by=None, lens="outside")
+        outside, n_outside, counts = await signals.list_signals(
+            session, organization_id=org, recorded_by=None, lens="outside"
+        )
         validating, n_val, _ = await signals.list_signals(
             session, organization_id=org, recorded_by=None, state="to_validate"
         )
         vulns, _, _ = await signals.list_signals(
             session, organization_id=org, recorded_by=None, trigger_path="new_vulnerability"
         )
-        u1, n_u1, _ = await signals.list_signals(session, organization_id=org, recorded_by="u1")
+        _, n_u1, _ = await signals.list_signals(session, organization_id=org, recorded_by="u1")
     assert n_outside == 2 and {r.trigger_path for r in outside} == {"new_exposure", "stale_asset"}
     assert counts["new"] == 2 and counts["to_validate"] == 0
     assert n_val == 1 and validating[0].subject_ref == "runner-7"
@@ -157,7 +172,9 @@ async def test_the_constraints_refuse_an_unknown_path_and_a_case_opened_signal_w
     async with _database() as sessions:
         async with sessions() as session:
             org = await _org(session, "A")
-            row, _ = await signals.record_signal(session, organization_id=org, signal=_leak(), recorded_via="api", recorded_by="u")
+            row, _ = await signals.record_signal(
+                session, organization_id=org, signal=_leak(), recorded_via="api", recorded_by="u"
+            )
             await session.commit()
             row.state = "case_opened"
             with pytest.raises(IntegrityError):

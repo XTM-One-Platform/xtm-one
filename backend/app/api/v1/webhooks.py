@@ -199,9 +199,8 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_signal_listeners
+from app.services import ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
-from app.services import github_token_installations
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
     queue_busy_pushed_event,

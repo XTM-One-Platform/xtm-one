@@ -106,7 +106,9 @@ def upgrade() -> None:
         sa.CheckConstraint(_in("trigger_path", _PATHS), name="ck_ctem_signals_path_valid"),
         sa.CheckConstraint(_in("lens", _LENSES), name="ck_ctem_signals_lens_valid"),
         sa.CheckConstraint(_in("state", _STATES), name="ck_ctem_signals_state_valid"),
-        sa.CheckConstraint("state <> 'case_opened' OR case_id IS NOT NULL", name="ck_ctem_signals_case_opened_has_case"),
+        sa.CheckConstraint(
+            "state <> 'case_opened' OR case_id IS NOT NULL", name="ck_ctem_signals_case_opened_has_case"
+        ),
         if_not_exists=True,
     )
     op.create_index("ix_ctem_signals_org_state", _SIGNALS, ["organization_id", "state"], if_not_exists=True)
