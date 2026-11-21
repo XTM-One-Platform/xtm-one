@@ -19,7 +19,7 @@ const VIEWPORTS = [
 ];
 const LIST_PAGES: Array<{ path: string; view?: string }> = [
   { path: '/presentations', view: 'presentations' },
-  { path: '/users' },
+  { path: '/users-and-groups/users' },
   { path: '/observability/traces' },
 ];
 

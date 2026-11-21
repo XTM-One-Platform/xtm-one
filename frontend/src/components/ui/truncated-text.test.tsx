@@ -65,7 +65,7 @@ describe("TruncatedText", () => {
   it("a cut text inside a link opens the tooltip when the link takes the focus", async () => {
     cutEverything();
     render(
-      <a href="/users/1">
+      <a href="/users-and-groups/users/1">
         <TruncatedText text={LONG} />
       </a>,
     );

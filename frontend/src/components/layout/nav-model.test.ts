@@ -260,15 +260,15 @@ test("Connections is one family row: Browser profiles, Variables, Relays (#9301 
 });
 
 test("Users and groups is one family row for administrators only (#9301 N3b)", () => {
-  const row = adminLeaf(true, false, "/users");
+  const row = adminLeaf(true, false, "/users-and-groups");
   assert.ok(row && row.kind === "leaf");
   assert.equal(row.label, "Users and groups");
-  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [["/users", "Users"], ["/groups", "Groups"]]);
+  assert.deepEqual(row.family?.map((member) => [member.to, member.label]), [["/users-and-groups", "Users"], ["/users-and-groups/groups", "Groups"]]);
   const sections = resolveNav(FLAGS, true);
-  for (const path of ["/users", "/users/u-1", "/groups", "/groups/g-1", "/groups/new"]) {
-    assert.equal(activeNavPath(sections, path), "/users", path);
+  for (const path of ["/users-and-groups", "/users-and-groups/users/u-1", "/users-and-groups/groups", "/users-and-groups/groups/g-1", "/users-and-groups/groups/new"]) {
+    assert.equal(activeNavPath(sections, path), "/users-and-groups", path);
   }
-  assert.equal(adminLeaf(false, true, "/users"), undefined, "a group manager gets no Users and groups row");
+  assert.equal(adminLeaf(false, true, "/users-and-groups"), undefined, "a group manager gets no Users and groups row");
 });
 
 test("no nav entry or palette destination opens one integration's page", () => {

@@ -146,7 +146,7 @@ describe("Cost breakdown by agent", () => {
     const owner = screen.getByText("Ann Example").closest("[title]") as HTMLElement;
     expect(owner.getAttribute("title")).toBe("Ann Example\nann@example.com");
     expect(owner.closest("a")).toBeNull();
-    expect(screen.queryAllByRole("link").some((el) => el.getAttribute("href") === "/users/u1")).toBe(false);
+    expect(screen.queryAllByRole("link").some((el) => el.getAttribute("href") === "/users-and-groups/users/u1")).toBe(false);
   });
 
   it("reads its filters back from the URL under its own prefix", () => {

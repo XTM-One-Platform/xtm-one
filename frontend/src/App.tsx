@@ -234,7 +234,7 @@ function TermsGate({ children }: { children: React.ReactNode }) {
  * functional admin controls.
  *
  * Pages that have legitimate non-admin content are deliberately NOT guarded —
- * e.g. `/groups` and `/intents`, whose list endpoints use `get_current_user`
+ * e.g. `/users-and-groups/groups` and `/intents`, whose list endpoints use `get_current_user`
  * (group names are visible for sharing; intents are listable by all). Those
  * pages hide their admin *controls* via `isAdmin` instead of redirecting.
  *
@@ -758,12 +758,12 @@ export default function App() {
         <Route path="/videos/media" element={<FeatureFlagGate flag="VIDEO_STUDIO"><Page><VideoStudio /></Page></FeatureFlagGate>} />
         <Route path="/files" element={<Page><Files /></Page>} />
         <Route path="/search" element={<Page><Search /></Page>} />
-        <Route path="/users" element={<AdminRoute><Page><Users /></Page></AdminRoute>} />
-        <Route path="/users/new" element={<AdminRoute><Page><NewUser /></Page></AdminRoute>} />
-        <Route path="/users/:id/:tab?" element={<AdminRoute><Page><UserDetail /></Page></AdminRoute>} />
-        <Route path="/groups" element={<Page><Groups /></Page>} />
-        <Route path="/groups/new" element={<AdminRoute><Page><NewGroup /></Page></AdminRoute>} />
-        <Route path="/groups/:id/:tab?" element={<AdminRoute><Page><GroupDetail /></Page></AdminRoute>} />
+        <Route path="/users-and-groups" element={<AdminRoute><Page><Users /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/users/new" element={<AdminRoute><Page><NewUser /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/users/:id/:tab?" element={<AdminRoute><Page><UserDetail /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/groups" element={<Page><Groups /></Page>} />
+        <Route path="/users-and-groups/groups/new" element={<AdminRoute><Page><NewGroup /></Page></AdminRoute>} />
+        <Route path="/users-and-groups/groups/:id/:tab?" element={<AdminRoute><Page><GroupDetail /></Page></AdminRoute>} />
         <Route path="/objects" element={<AdminRoute><Page><AdminObjects /></Page></AdminRoute>} />
         <Route path="/intents" element={<XtmOneRoute><Page><Intents /></Page></XtmOneRoute>} />
         <Route path="/observability/:tab?" element={<AnalyticsRoute><Page><Analytics /></Page></AnalyticsRoute>} />

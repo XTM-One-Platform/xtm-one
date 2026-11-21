@@ -75,15 +75,15 @@ export default function GroupDetail() {
   const deleteGroup = useDeleteGroup();
   const [ConfirmEl, confirm] = useConfirm();
 
-  if (isLoading) return <DetailPageSkeleton backTo="/groups" backLabel="Back to Groups" tabs={TABS.length} descriptionLines={1} actions={1} />;
+  if (isLoading) return <DetailPageSkeleton backTo="/users-and-groups/groups" backLabel="Back to Groups" tabs={TABS.length} descriptionLines={1} actions={1} />;
   if (!group) return (
     <NotFoundState
       icon={UsersRound}
       title="Group not found"
       description="This group may have been deleted or doesn't exist."
       actionLabel="View All Groups"
-      onAction={() => navigate("/groups")}
-      backTo="/groups"
+      onAction={() => navigate("/users-and-groups/groups")}
+      backTo="/users-and-groups/groups"
       backLabel="Back to Groups"
     />
   );
@@ -96,7 +96,7 @@ export default function GroupDetail() {
     });
     if (ok) {
       await deleteGroup.mutateAsync(id);
-      navigate("/groups");
+      navigate("/users-and-groups/groups");
     }
   };
 
@@ -105,7 +105,7 @@ export default function GroupDetail() {
       {ConfirmEl}
 
       <EntityPageHeader
-        backTo="/groups"
+        backTo="/users-and-groups/groups"
         backLabel="Back to Groups"
         icon={UsersRound}
         title={group.name}
@@ -440,7 +440,7 @@ function MembersSection({ groupId }: { groupId: string }) {
         rows={data?.items ?? []}
         columns={columns}
         rowKey={(m) => m.id}
-        rowHref={(m) => `/users/${m.user_id}`}
+        rowHref={(m) => `/users-and-groups/users/${m.user_id}`}
         layout="fixed"
         urlKey={MEMBERS_URL_KEY}
         storageKey={MEMBERS_STORAGE_KEY}

@@ -117,8 +117,8 @@ const REACHABILITY: readonly Reach[] = [
   // (#9301 UX r1 A4, r2 A5). Intents are XTM One mode only (#445): the route
   // sits behind XtmOneRoute, which is a mode guard, not a role guard.
   { to: "/intents", roles: ADMIN, lock: "ai", guard: "none", xtmOneOnly: true },
-  { to: "/users", roles: ADMIN, guard: "AdminRoute" },
-  { to: "/groups", roles: ADMIN, guard: "none" },
+  { to: "/users-and-groups", roles: ADMIN, guard: "AdminRoute" },
+  { to: "/users-and-groups/groups", roles: ADMIN, guard: "none" },
   { to: "/objects", roles: ADMIN, guard: "AdminRoute" },
   { to: "/logs", roles: ADMIN, guard: "AdminRoute" },
   { to: "/settings", roles: ADMIN, guard: "AdminRoute" },
@@ -237,7 +237,7 @@ test("every destination is a route of App.tsx, behind the guard the table record
 test("no route redirects or aliases a former address; an unknown one is not found (#797)", () => {
   const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
   const routes = appRoutes();
-  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays"]) {
+  for (const retired of ["/flows/fleets/*", "/concierge/*", "/traces/sessions", "/profile/runners", "/public/*", "/analytics/:tab?", "/traces", "/trace-sessions", "/browser-profiles", "/variables", "/relays", "/users", "/users/:id/:tab?", "/groups", "/groups/:id/:tab?"]) {
     assert.equal(routes.find((route) => route.path === retired), undefined, `${retired} is not a route`);
   }
   // The only redirects left are access guards (home, or the login page): never one page aliasing another.

@@ -370,12 +370,14 @@ export const NAV_SECTIONS: NavSection[] = [
       /* Platform Health (#101 S1): a translated label, never the administrator's name. */
       aiLeaf("/health", Compass, "Platform Health", (f) => f.health),
       /* One family row (#9301 N3b): one subject, two pages, routes and route
-         guards unchanged (/users behind AdminRoute, /groups not; r2 A5). */
+         guards unchanged (Users behind AdminRoute, Groups not; r2 A5). The
+         Users list is the bare entry, a user and the groups under their tab
+         (#797 S2). */
       {
-        ...leaf("/users", Users, "Users and groups"),
+        ...leaf("/users-and-groups", Users, "Users and groups"),
         family: [
-          { to: "/users", icon: User, label: "Users" },
-          { to: "/groups", icon: Users, label: "Groups" },
+          { to: "/users-and-groups", icon: User, label: "Users" },
+          { to: "/users-and-groups/groups", icon: Users, label: "Groups" },
         ],
       },
       /* Database, not Boxes: the cube is the Fleets row's (N2d). */

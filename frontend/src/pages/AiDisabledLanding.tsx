@@ -89,7 +89,7 @@ function AiDisabledLanding() {
         byGroup ? (
           isAdmin ? (
             <Button size="lg" className="gap-2" asChild>
-              <Link to="/groups">
+              <Link to="/users-and-groups/groups">
                 <Users className="h-4 w-4" />
                 {t_i18n("Review your groups")}
               </Link>

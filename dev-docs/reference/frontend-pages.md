@@ -206,12 +206,12 @@ clicking it, or navigate by URL.
 | XTM One Desktop | `/desktop` | `useDesktopRunner` |
 | Runner Detail | `/runners/:id` | `useRunner` |
 | Relays | `/connections/relays`, `/connections/relays/:id/:tab?` | `useRelayGroups`, `useCreateRelayGroup`, `useRelayMeta`, `useRelaysEnabled`, `useRelayGroup` |
-| Users (admin) | `/users` | `useUsers` |
-| User Detail (admin) | `/users/:id/:tab?` | `useUser`, `useUpdateUserRole`, `useToggleUserActive`, `useDeleteUser`, `useUserStats` |
-| New User (admin) | `/users/new` | `useCreateUser`, `useAuthConfig` |
-| Groups | `/groups` | `useGroups`, `useCreateGroup`, `useDeleteGroup` |
-| Group Detail (admin) | `/groups/:id/:tab?` | `useGroup`, `useUpdateGroup`, `useDeleteGroup`, `useAddGroupMembers`, `useRemoveGroupMember` |
-| New Group (admin) | `/groups/new` | `useCreateGroup` |
+| Users (admin; the default tab of Users and groups, #797 S2: no alias of `/users`, `/groups`) | `/users-and-groups` | `useUsers` |
+| User Detail (admin) | `/users-and-groups/users/:id/:tab?` | `useUser`, `useUpdateUserRole`, `useToggleUserActive`, `useDeleteUser`, `useUserStats` |
+| New User (admin) | `/users-and-groups/users/new` | `useCreateUser`, `useAuthConfig` |
+| Groups | `/users-and-groups/groups` | `useGroups`, `useCreateGroup`, `useDeleteGroup` |
+| Group Detail (admin) | `/users-and-groups/groups/:id/:tab?` | `useGroup`, `useUpdateGroup`, `useDeleteGroup`, `useAddGroupMembers`, `useRemoveGroupMember` |
+| New Group (admin) | `/users-and-groups/groups/new` | `useCreateGroup` |
 | Presentation Viewer (outside AppLayout) | `/presentations/:id` | `usePresentation`, `usePresentationPresence` |
 | Speaker view / notes handout | `/presentations/:id/speaker`, `/presentations/:id/notes` | `usePresentation` |
 | Public deck (public link, no session) | `/public/presentations/:token` | `usePublicPresentation`, `useDownloadPublicPresentationPdf` |

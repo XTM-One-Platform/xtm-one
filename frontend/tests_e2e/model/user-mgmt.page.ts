@@ -4,7 +4,7 @@ export class UserManagementPage {
   constructor(private readonly page: Page) {}
 
   async gotoList(): Promise<void> {
-    await this.page.goto('/users');
+    await this.page.goto('/users-and-groups');
     await this.page.getByRole('heading', { name: /Users/i }).waitFor({ state: 'visible' });
   }
 
