@@ -10,10 +10,27 @@ type Translate = (text: string, values?: Record<string, string | number>) => str
 
 /**
  * Kinds unread until answered (`UNREAD_UNTIL_ANSWERED_KINDS` on the server):
- * marking one read does nothing, so neither surface offers it, and opening
- * one writes no read state.
+ * "Mark all read" leaves them unread, so it is not offered for them alone.
+ * Opening or dismissing one entry reads it (#901), see `readsOnOpen`.
  */
 export const UNREAD_UNTIL_ANSWERED: ReadonlySet<NotificationKind> = new Set<NotificationKind>(["hitl", "work_item_waiting"]);
+
+/**
+ * Whether opening an entry marks it read: every unread entry, a pinned one
+ * included, even when its target can no longer be opened (#901). The bell and
+ * the companion inbox both call it, so the two cannot drift.
+ */
+export function readsOnOpen(item: Pick<NotificationItem, "unread">): boolean {
+  return item.unread;
+}
+
+/**
+ * Whether the bell badge takes the alert style: an approval still unread, never
+ * the mere presence of an approval entry already read (#901).
+ */
+export function hasUnreadApproval(items: ReadonlyArray<Pick<NotificationItem, "kind" | "unread">>): boolean {
+  return items.some((item) => item.unread && item.kind === "hitl");
+}
 
 /**
  * The line under a notification's title. A waiting work item's subtitle is a

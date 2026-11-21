@@ -42,8 +42,9 @@ export function useDismissNotification() {
         feed
           ? {
               ...feed,
-              items: feed.items.map((item) => (item.id === id && item.kind !== "hitl" ? { ...item, unread: false } : item)),
-              unread_count: feed.items.filter((item) => item.unread && (item.id !== id || item.kind === "hitl")).length,
+              // Any entry its recipient opens or dismisses is read, a pinned one included (#901).
+              items: feed.items.map((item) => (item.id === id ? { ...item, unread: false } : item)),
+              unread_count: feed.items.filter((item) => item.unread && item.id !== id).length,
             }
           : feed,
       );

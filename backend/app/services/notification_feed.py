@@ -324,10 +324,12 @@ def _parse_time(value: str) -> datetime | None:
 
 
 def is_unread(item: NotificationItem, *, read_at: datetime | None, dismissed: set[str]) -> bool:
-    if item.kind in UNREAD_UNTIL_ANSWERED_KINDS:
-        return True
+    # Any entry its recipient dismissed or opened is read (#901); a decision
+    # still waiting stays listed, and "Mark all read" leaves it unread.
     if item.id in dismissed:
         return False
+    if item.kind in UNREAD_UNTIL_ANSWERED_KINDS:
+        return True
     created = _parse_time(item.created_at)
     return read_at is None or (created is not None and created > read_at)
 
