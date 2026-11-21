@@ -32,6 +32,8 @@ import {
   traceStatusLabelKey,
 } from "@/lib/trace-utils";
 import { BACKEND_FETCH_LIMIT } from "@/lib/constants";
+import { isTraceScopeId } from "@/lib/trace-links";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { exactCompactCost, formatCompactCost, formatShortDateTime } from "@/lib/utils";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useFormatter } from "@/i18n";
@@ -43,8 +45,11 @@ export default function TraceDetail() {
   const [searchParams] = useSearchParams();
   const { id } = useParams<{ id: string }>();
   const requestedSessionId = searchParams.get("session_id");
-  const { data: trace, isLoading: isTraceLoading, error: traceError } = useTrace(id ?? "");
-  const { data: spans, isLoading: isSpansLoading } = useTraceSpans(id ?? "", { enabled: !!id });
+  // Only a trace id is looked up: a segment such as `sessions` (the former
+  // `/traces/sessions`) names a list endpoint of the API, not a trace (#822).
+  const traceId = id && isTraceScopeId(id) ? id : "";
+  const { data: trace, isLoading: isTraceLoading, error: traceError } = useTrace(traceId);
+  const { data: spans, isLoading: isSpansLoading } = useTraceSpans(traceId, { enabled: !!traceId });
   const activeSessionId = requestedSessionId ?? trace?.conversation_id ?? null;
   const sessionExplorerQuery = useTraceSessionExplorer(
     activeSessionId ?? "",
@@ -85,6 +90,7 @@ export default function TraceDetail() {
   const backTo = requestedSessionId ? "/observability/sessions" : "/observability/traces";
   const backLabel = requestedSessionId ? "Back to Sessions" : "Back to Traces";
 
+  if (!traceId) return <RouteNotFound />;
   if (isTraceLoading) return <PageSkeleton cards={4} />;
 
   if (!trace || traceError) {
