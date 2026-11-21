@@ -32,8 +32,11 @@ interface StoredMessageFacts {
   scheduled_outcome?: { run_id?: string | null } | null;
 }
 
-/** The trailing link to its run a scheduled outcome is stored with, relative or absolute. */
-const SCHEDULED_RUN_LINK = /\n*\[View the run\]\((?:https?:\/\/[^\s)]+)?\/runs\/[^\s)]+\)\s*$/;
+/**
+ * The trailing link to its run a scheduled outcome is stored with, relative or absolute:
+ * /operations/executions/:id since #797, /runs/:id in the messages stored before.
+ */
+const SCHEDULED_RUN_LINK = /\n*\[View the run\]\((?:https?:\/\/[^\s)]+)?\/(?:operations\/executions|runs)\/[^\s)]+\)\s*$/;
 
 /**
  * A scheduled outcome without its trailing run link: the page draws the run as
