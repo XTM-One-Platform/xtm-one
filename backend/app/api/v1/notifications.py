@@ -22,6 +22,7 @@ from app.models.user import User
 from app.services.notification_feed import (
     FEED_WINDOW,
     MAX_DISMISSED_IDS,
+    WORK_ITEM_WAITING_PREFIX,
     build_feed,
     load_read_state,
     save_read_state,
@@ -29,8 +30,11 @@ from app.services.notification_feed import (
 
 router = APIRouter()
 
-#: A notification id: a run's or an activity's UUID.
-NotificationId = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[0-9a-fA-F-]{1,64}$")]
+#: A notification id, in every form the feed emits: a run's or an activity's
+#: UUID, or a waiting work item's ``work_item:<uuid>`` (#901).
+NotificationId = Annotated[
+    str, Field(min_length=1, max_length=74, pattern=rf"^({WORK_ITEM_WAITING_PREFIX})?[0-9a-fA-F-]{{1,64}}$")
+]
 
 
 class NotificationItemResponse(BaseModel):
