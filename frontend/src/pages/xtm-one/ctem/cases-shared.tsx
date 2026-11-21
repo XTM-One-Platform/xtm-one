@@ -55,19 +55,23 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 /** Higher first: the sort value of a priority. */
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
-/** The DS icon a state carries beside its Chip, where its colour alone is shared. */
+/**
+ * The DS icon a state carries inside its Chip (the Chip's own startIcon, so the
+ * chip keeps the left edge and baseline of its siblings), where its colour
+ * alone is shared (UX round 2 of #857, B1).
+ */
 const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
 
 export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();
-  const chip = <Chip label={t_i18n(CASE_STATE_LABEL[state])} severity={CASE_STATE_SEVERITY[state]} className="shrink-0" />;
   const icon = CASE_STATE_ICON[state];
-  if (!icon) return chip;
   return (
-    <span className="inline-flex shrink-0 items-center gap-1" data-testid={`ctem-case-state-${state}`}>
-      <Icon name={icon} size={16} className="shrink-0 text-feedback-success-primary" aria-hidden />
-      {chip}
-    </span>
+    <Chip
+      label={t_i18n(CASE_STATE_LABEL[state])}
+      severity={CASE_STATE_SEVERITY[state]}
+      className="shrink-0"
+      startIcon={icon ? <Icon name={icon} size={16} aria-hidden /> : undefined}
+    />
   );
 }
 

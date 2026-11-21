@@ -207,9 +207,10 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 - **One colour per state, everywhere** (board, list badge, case page, widget),
   through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
   needs attention `medium` (alert), in progress `info`, mitigated, watching
-  `low` with the DS `eye` icon beside the Chip and the
-  `feedback-success-tertiary` segment on every counts bar (#857, UX round 1
-  B3: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
+  `low` with the DS `eye` icon as the Chip's own `startIcon` (inside the chip,
+  same left edge and baseline as its siblings) and the
+  `feedback-success-tertiary` segment on every counts bar (#857, UX rounds 1
+  B3 and 2 B1: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
   `feedback-success-primary` segment), accepted risk `neutral`. AI purple is never used on Cases (it is
   the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
