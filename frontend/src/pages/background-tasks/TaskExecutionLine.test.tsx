@@ -45,7 +45,7 @@ describe("TaskExecutionLine", () => {
     expect(line).not.toBeNull();
     expect(line?.getAttribute("data-no-live-execution")).toBeNull();
     expect(screen.getByText("Execution running")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "12345678" }).getAttribute("href")).toBe("/runs/1234567890abcdef");
+    expect(screen.getByRole("link", { name: "12345678" }).getAttribute("href")).toBe("/operations/executions/1234567890abcdef");
     expect(screen.getByText("abcdef01")).toBeTruthy();
     expect(screen.getByText(/Last progress 5 minutes ago/)).toBeTruthy();
     expect(screen.queryByText("No live execution")).toBeNull();

@@ -211,7 +211,7 @@ to the run it started and the run to its outcome when the run records it
 (C1 slice 1 handover rule). A legend row under the title names the dot
 colours (module event, automation run, outcome, needs attention) and the
 dashed link ("started"). Hover gives a card with the run name, agent, time
-and outcome; click opens `/runs/:id`. The 7 d / 30 d toggle is a 32 px
+and outcome; click opens `/operations/executions/:id`. The 7 d / 30 d toggle is a 32 px
 segmented control. The card is sized to its lanes (no empty band).
 "All executions" opens `/operations/executions`. Replaces Live Activity,
 Latest Results & Digests and Fleet timeline on the first two screens; their
@@ -394,7 +394,7 @@ from Customize (the widget stays in the registry and in saved layouts).
 | X2 | Vertical switcher (cyber, FIMI, fraud) | Value band top line | n/a |
 | X3 | `DashboardNotices` region | Kept above the value band | n/a |
 | X4 | Auto-generation of a missing briefing on first open | Kept, unchanged | n/a |
-| X5 | Deep links: `/ctem/:stage`, `/briefing`, `/agents/:id`, `/agents/new`, `/operations/executions`, `/operations/executions?filter=digests`, `/runs/:id`, `/integrations`, `/integrations/new?provider=`, `/settings/platform#xtm-hub`, `/chat`, `/flows/fleets`, module deep links (`ctemDeepLink`, `ctemBestDeepLink`) | All kept; added `/value`, `/value/methodology`, `/operations/work-items` | n/a |
+| X5 | Deep links: `/ctem/:stage`, `/briefing`, `/agents/:id`, `/agents/new`, `/operations/executions`, `/operations/executions?filter=digests`, `/operations/executions/:id`, `/integrations`, `/integrations/new?provider=`, `/settings/platform#xtm-hub`, `/chat`, `/flows/fleets`, module deep links (`ctemDeepLink`, `ctemBestDeepLink`) | All kept; added `/value`, `/value/methodology`, `/operations/work-items` | n/a |
 
 Stage page parity rows (what the v1 stage card shows, kept on `/ctem/:stage`;
 most already exist on the page, V4 adds the missing ones):

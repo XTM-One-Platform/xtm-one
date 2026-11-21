@@ -99,7 +99,7 @@ export function ComingUpCard({ agent }: { agent: Agent }) {
                 s={entry.schedule}
                 nowMs={nowMs}
                 zone={zone}
-                onClick={() => navigate(`/assignments/${entry.schedule.assignment_id}`)}
+                onClick={() => navigate(`/agents/assignments/${entry.schedule.assignment_id}`)}
               />
             ),
           )

@@ -41,13 +41,13 @@ def _platform_address(monkeypatch):
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
-        (f"https://xtm.example.com/one/runs/{RUN_ID}", RUN_ID),
-        (f"https://xtm.example.com/one/runs/{RUN_ID}/", RUN_ID),
-        (f"https://XTM.Example.com:443/one/runs/{RUN_ID}", RUN_ID),
-        (f"https://xtm.example.com/one/runs/{RUN_ID}?tab=log#top", RUN_ID),
-        (f"https://xtm.example.com/one/runs/{str(RUN_ID).upper()}", RUN_ID),
-        (f"https://api.example.com/runs/{RUN_ID}", RUN_ID),
-        (f"  https://xtm.example.com/one/runs/{RUN_ID}  ", RUN_ID),
+        (f"https://xtm.example.com/one/operations/executions/{RUN_ID}", RUN_ID),
+        (f"https://xtm.example.com/one/operations/executions/{RUN_ID}/", RUN_ID),
+        (f"https://XTM.Example.com:443/one/operations/executions/{RUN_ID}", RUN_ID),
+        (f"https://xtm.example.com/one/operations/executions/{RUN_ID}?tab=log#top", RUN_ID),
+        (f"https://xtm.example.com/one/operations/executions/{str(RUN_ID).upper()}", RUN_ID),
+        (f"https://api.example.com/operations/executions/{RUN_ID}", RUN_ID),
+        (f"  https://xtm.example.com/one/operations/executions/{RUN_ID}  ", RUN_ID),
     ],
     ids=["frontend", "trailing-slash", "case-and-default-port", "query-and-fragment", "upper-id", "base-url", "spaces"],
 )
@@ -58,21 +58,21 @@ def test_a_run_page_of_ours_unfurls(url, expected):
 @pytest.mark.parametrize(
     "url",
     [
-        f"https://xtm.example.com/runs/{RUN_ID}",  # outside the base path
-        f"https://xtm.example.com/onex/runs/{RUN_ID}",  # a sibling path
-        f"https://xtm.example.com.evil.test/one/runs/{RUN_ID}",  # lookalike host
-        f"https://evil.test/one/runs/{RUN_ID}",
-        f"http://xtm.example.com/one/runs/{RUN_ID}",  # another scheme
-        f"https://xtm.example.com:8443/one/runs/{RUN_ID}",  # another port
-        f"https://user@xtm.example.com/one/runs/{RUN_ID}",  # userinfo
-        f"https://xtm.example.com/one/runs/{RUN_ID}/log",
-        "https://xtm.example.com/one/runs/not-a-uuid",
+        f"https://xtm.example.com/operations/executions/{RUN_ID}",  # outside the base path
+        f"https://xtm.example.com/onex/operations/executions/{RUN_ID}",  # a sibling path
+        f"https://xtm.example.com.evil.test/one/operations/executions/{RUN_ID}",  # lookalike host
+        f"https://evil.test/one/operations/executions/{RUN_ID}",
+        f"http://xtm.example.com/one/operations/executions/{RUN_ID}",  # another scheme
+        f"https://xtm.example.com:8443/one/operations/executions/{RUN_ID}",  # another port
+        f"https://user@xtm.example.com/one/operations/executions/{RUN_ID}",  # userinfo
+        f"https://xtm.example.com/one/operations/executions/{RUN_ID}/log",
+        "https://xtm.example.com/one/operations/executions/not-a-uuid",
         "https://xtm.example.com/one/agents/123",
-        f"javascript:https://xtm.example.com/one/runs/{RUN_ID}",
+        f"javascript:https://xtm.example.com/one/operations/executions/{RUN_ID}",
         "",
         None,
         42,
-        "https://xtm.example.com/one/runs/" + "a" * 3000,
+        "https://xtm.example.com/one/operations/executions/" + "a" * 3000,
     ],
     ids=[
         "outside-base-path",
@@ -97,7 +97,9 @@ def test_anything_else_does_not_unfurl(url):
 
 
 def test_the_open_link_is_built_from_the_platform_address_and_the_id_only():
-    assert cards.page_url(cards.LinkTarget("run", RUN_ID)) == f"https://xtm.example.com/one/runs/{RUN_ID}"
+    assert (
+        cards.page_url(cards.LinkTarget("run", RUN_ID)) == f"https://xtm.example.com/one/operations/executions/{RUN_ID}"
+    )
 
 
 # --- The posted card -------------------------------------------------------------
@@ -123,7 +125,11 @@ def test_the_posted_card_is_the_same_for_every_run():
     }
     assert "userIds" not in content["refresh"]
     assert content["actions"] == [
-        {"type": "Action.OpenUrl", "title": "Open in XTM One", "url": f"https://xtm.example.com/one/runs/{RUN_ID}"}
+        {
+            "type": "Action.OpenUrl",
+            "title": "Open in XTM One",
+            "url": f"https://xtm.example.com/one/operations/executions/{RUN_ID}",
+        }
     ]
 
 
@@ -274,7 +280,7 @@ def test_a_hostile_value_is_never_markdown_nor_a_url(hostile):
         for block in _of_type(card, "TextBlock"):
             assert hostile.split()[0] not in block["text"]
         urls = [node["url"] for node in _walk(card) if "url" in node]
-        assert urls == [f"https://xtm.example.com/one/runs/{RUN_ID}"]
+        assert urls == [f"https://xtm.example.com/one/operations/executions/{RUN_ID}"]
         for inline in (inline for block in _of_type(card, "RichTextBlock") for inline in block["inlines"]):
             assert inline["type"] == "TextRun"
             assert "\n" not in inline["text"]
@@ -539,7 +545,9 @@ async def test_a_pasted_link_unfurls_without_reading_anything():
         patch("app.core.database.async_session") as sessions,
     ):
         response = await teams_messages(
-            _invoke("composeExtension/queryLink", {"url": f"https://xtm.example.com/one/runs/{RUN_ID}"})
+            _invoke(
+                "composeExtension/queryLink", {"url": f"https://xtm.example.com/one/operations/executions/{RUN_ID}"}
+            )
         )
 
     assert response.status_code == 200
@@ -553,7 +561,9 @@ async def test_a_link_that_is_not_ours_gets_no_card():
         patch("app.channels.teams._get_teams_app_id", new=AsyncMock(return_value="app-123")),
         patch("app.channels.teams._verify_botframework_jwt", return_value=True),
     ):
-        response = await teams_messages(_invoke("composeExtension/queryLink", {"url": "https://evil.test/runs/x"}))
+        response = await teams_messages(
+            _invoke("composeExtension/queryLink", {"url": "https://evil.test/operations/executions/x"})
+        )
 
     assert response.status_code == 200
     assert response.body == b""

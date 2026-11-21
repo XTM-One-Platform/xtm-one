@@ -249,7 +249,7 @@ export function FleetPendingApprovals({ fleetId }: { fleetId: string }) {
             open === run.id ? (
               <div data-testid="fleet-pending-decision" className="space-y-3">
                 <Button variant="outline" size="sm" className="h-8 content-compact" asChild>
-                  <Link to={`/runs/${run.id}`} data-testid="fleet-pending-open-run">
+                  <Link to={`/operations/executions/${run.id}`} data-testid="fleet-pending-open-run">
                     {t_i18n("Open run")}
                   </Link>
                 </Button>

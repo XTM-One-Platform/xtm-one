@@ -96,7 +96,7 @@ export function FleetTimelineCard({
   const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
   const open = (entry: TimelineEntry) =>
-    navigate(`/runs/${entry.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
+    navigate(`/operations/executions/${entry.runId}`, { state: { backTo: "/", backLabel: "Back to Command Center" } });
 
   return (
     <Card className="h-full overflow-hidden flex flex-col">

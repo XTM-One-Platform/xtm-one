@@ -317,7 +317,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
             windowHours={Number(windowKey)}
             nowMs={nowMs}
             activeAgentIds={activeAgentIds}
-            onSelect={(id) => navigate(`/assignments/${id}`)}
+            onSelect={(id) => navigate(`/agents/assignments/${id}`)}
             onSelectOneOff={openOneOff}
           />
         </CardContent>
@@ -351,7 +351,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
           items={scheduled}
           nowMs={nowMs}
           zone={zone}
-          onOpen={(id) => navigate(`/assignments/${id}`)}
+          onOpen={(id) => navigate(`/agents/assignments/${id}`)}
         />
         <InventorySection
           title={t_i18n("Event-driven")}
@@ -359,7 +359,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
           items={eventDriven}
           nowMs={nowMs}
           zone={zone}
-          onOpen={(id) => navigate(`/assignments/${id}`)}
+          onOpen={(id) => navigate(`/agents/assignments/${id}`)}
         />
         <InventorySection
           title={t_i18n("Manual")}
@@ -367,7 +367,7 @@ export function ScheduleView({ agentIds = null, agentId = null, onClearAgent, fl
           items={manual}
           nowMs={nowMs}
           zone={zone}
-          onOpen={(id) => navigate(`/assignments/${id}`)}
+          onOpen={(id) => navigate(`/agents/assignments/${id}`)}
         />
       </div>
     </div>

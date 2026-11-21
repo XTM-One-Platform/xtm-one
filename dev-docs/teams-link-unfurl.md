@@ -18,7 +18,7 @@ Turn an XTM One link pasted in Teams into an Adaptive Card that shows each viewe
 
 ### Goals
 
-- G1. A pasted link to an assignment run (`/runs/:id`) unfurls into a card rendered for each viewer: agent, assignment, status, timing and, when the run is `awaiting_human`, what it is waiting for. A viewer without access sees that they have none, and nothing about the run.
+- G1. A pasted link to an assignment run (`/operations/executions/:id`) unfurls into a card rendered for each viewer: agent, assignment, status, timing and, when the run is `awaiting_human`, what it is waiting for. A viewer without access sees that they have none, and nothing about the run.
 - G2. From that card, a person with the right to respond approves or rejects each pending tool call, or answers a free-text question (`request_human_input`), without leaving Teams.
 - G3. The card stays current: once someone decides, or the run moves on, every viewer sees the new state the next time Teams refreshes the card.
 - G4. Every action goes through the same access rule, the same locking and the same audit trail as the web app's respond endpoint.
@@ -58,9 +58,9 @@ Both rules are the web's rules. They are not re-spelled for Teams: the card read
 
 | Link | Phase | Card | Actions |
 |---|---|---|---|
-| `/runs/:id` (assignment run) | v1 | Agent, assignment, status, trigger, started / duration; when `awaiting_human`: the question, or each pending tool call: with its arguments for a responder (secrets masked as on the web, `redact_known_secrets_for_display`), its name only for a reader (`redact_proposals`) | Approve / Reject per call (with an optional reason), or an answer box for `request_human_input`; always "Open in XTM One" |
+| `/operations/executions/:id` (assignment run) | v1 | Agent, assignment, status, trigger, started / duration; when `awaiting_human`: the question, or each pending tool call: with its arguments for a responder (secrets masked as on the web, `redact_known_secrets_for_display`), its name only for a reader (`redact_proposals`) | Approve / Reject per call (with an optional reason), or an answer box for `request_human_input`; always "Open in XTM One" |
 | `/agents/:id/chats/:conversationId` and `/chat?c=<id>`, with a pending approval | v1.1 | Agent, conversation title, the gated calls; read rule: the owner, `conversation_shares` grants, or anyone signed in when `link_access` is `org_read` (made for links pasted in Teams) | Approve / Reject, resumed through `chat_approval_resume` (a turn that ended at the gate) or `push_approval_decision` (a turn still waiting) |
-| `/assignments/:id`, `/agents/:id` | Later | Read-only summary: last run, schedule, agent description | "Open in XTM One" |
+| `/agents/assignments/:id`, `/agents/:id` | Later | Read-only summary: last run, schedule, agent description | "Open in XTM One" |
 | Agent account replies, runner commands, flow runs awaiting a decision | Later | As runs | Their existing approve endpoints, through the same extraction pattern |
 
 A link unfurls only when its origin and path prefix are XTM One's own `BASE_URL` (including `BASE_PATH`), and the id parses as a UUID. Any other link gets no response, and Teams falls back to its default preview.
@@ -205,7 +205,7 @@ Decisions D6 and D7. A viewer who is an XTM One user can ask, from the card, for
 ## 12. Rollout
 
 1. Spike on the 1.3 / 1.4 question (section 11), with a throwaway bot. It decides between the target design and the `Action.Submit` fallback.
-2. v1: `/runs/:id` cards, read and act; respond service extraction; the link handler in the Setup Guide's manifest example; user docs for admins (re-upload the app). Action requests on runs, with the request entity and its bell notification.
+2. v1: `/operations/executions/:id` cards, read and act; respond service extraction; the link handler in the Setup Guide's manifest example; user docs for admins (re-upload the app). Action requests on runs, with the request entity and its bell notification.
 3. v1.1: chat conversations with a pending approval, with share requests on them.
 4. Phase 2: bot-posted run notifications use the card (section 10).
 

@@ -725,8 +725,8 @@ export default function App() {
         <Route path="/tasks/value/:tab?" element={<Page><Tasks /></Page>} />
         <Route path="/tasks/workspaces" element={<Page><Tasks /></Page>} />
         <Route path="/tasks/workspaces/:workspaceId/:tab?" element={<Page><WorkspaceProject /></Page>} />
-        <Route path="/runs/:id" element={<Page><RunDetail /></Page>} />
-        <Route path="/assignments/:id/:tab?" element={<Page><AssignmentDetail /></Page>} />
+        <Route path="/operations/executions/:id" element={<Page><RunDetail /></Page>} />
+        <Route path="/agents/assignments/:id/:tab?" element={<Page><AssignmentDetail /></Page>} />
         <Route path="/skills" element={<Page><Skills /></Page>} />
         <Route path="/skills/:id/:tab?" element={<Page><SkillDetail /></Page>} />
         <Route path="/mcp-servers" element={<Page><MCPServers /></Page>} />

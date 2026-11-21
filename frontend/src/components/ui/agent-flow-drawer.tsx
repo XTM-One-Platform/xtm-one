@@ -138,7 +138,7 @@ function DrawerBody({
     outcome: r.outcome,
     title: r.assignment_name ?? t_i18n("Agent activity"),
     timestamp: r.completed_at ?? r.started_at ?? r.created_at,
-    href: `/runs/${r.id}`,
+    href: `/operations/executions/${r.id}`,
   }));
 
   return (

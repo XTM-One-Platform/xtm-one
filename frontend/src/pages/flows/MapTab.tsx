@@ -587,7 +587,7 @@ export default function MapTab() {
         // into the one-line activity feed row.
         summary: r.result_summary ? summaryPreview(r.result_summary, 200) || undefined : undefined,
         timestamp: r.completed_at ?? r.started_at ?? r.created_at,
-        href: `/runs/${r.id}`,
+        href: `/operations/executions/${r.id}`,
       });
     }
 
@@ -610,7 +610,7 @@ export default function MapTab() {
           agentIconMap.get(d.parent_agent_id) ??
           agentIconMap.get(d.target_agent_id),
         timestamp: d.completed_at ?? d.started_at ?? d.created_at,
-        href: runId ? `/runs/${runId}` : undefined,
+        href: runId ? `/operations/executions/${runId}` : undefined,
       });
     }
 
@@ -669,7 +669,7 @@ export default function MapTab() {
     agents,
     activeAgentIds,
     onOpenAgent: (id) => navigate(`/agents/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
-    onOpenRun: (id) => navigate(`/runs/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
+    onOpenRun: (id) => navigate(`/operations/executions/${id}`, { state: { backTo: "/flows", backLabel: "Back to Agentic Flow" } }),
   });
 
   return (

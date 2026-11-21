@@ -45,7 +45,7 @@ const RECENT_VIDEOS = { limit: RECENT_WINDOW, offset: 0 };
 /** Where a file is opened from the hub: its conversation or run, else the list. */
 function fileHref(file: RepositoryFile): string {
   if (file.context === "conversation" && file.conversation_id) return `/chat?c=${file.conversation_id}`;
-  if (file.context === "run" && file.assignment_run_id) return `/runs/${file.assignment_run_id}`;
+  if (file.context === "run" && file.assignment_run_id) return `/operations/executions/${file.assignment_run_id}`;
   return "/files";
 }
 
@@ -121,7 +121,7 @@ export default function Work() {
       items: runItems,
       isLoading: runs.isLoading,
       count: runCount.data?.count,
-      detailTo: (item) => `/runs/${item.id}`,
+      detailTo: (item) => `/operations/executions/${item.id}`,
     },
     "/presentations": {
       description: "Decks and pages your agents generated: yours, shared with you, and published to the company. Present, share, export.",

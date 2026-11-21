@@ -130,7 +130,7 @@ export default function TraceDetail() {
           ) : null}
           {trace.assignment_run_id ? (
             <Badge variant="outline">
-              <Link to={`/runs/${trace.assignment_run_id}`} className="hover:underline">
+              <Link to={`/operations/executions/${trace.assignment_run_id}`} className="hover:underline">
                 {t_i18n("Run: {id}...", { id: trace.assignment_run_id.slice(0, 8) })}
               </Link>
             </Badge>

@@ -56,7 +56,7 @@ function pathLink(path: ResourceExposurePath): string | null {
     case "agent":
       return `/agents/${id}`;
     case "assignment":
-      return `/assignments/${id}`;
+      return `/agents/assignments/${id}`;
     case "flow":
       return `/flows/${id}/builder`;
     case "knowledge_base":

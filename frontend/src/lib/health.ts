@@ -217,6 +217,6 @@ export function healthTargetHref(type: HealthTargetType | null, id: string | nul
   if (!id) return null;
   if (type === "agent") return `/agents/${id}`;
   if (type === "flow") return `/flows/${id}/builder`;
-  if (type === "assignment") return `/assignments/${id}`;
+  if (type === "assignment") return `/agents/assignments/${id}`;
   return null;
 }

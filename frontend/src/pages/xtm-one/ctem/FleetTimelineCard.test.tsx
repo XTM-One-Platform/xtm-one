@@ -55,7 +55,7 @@ function page(
                 <FleetTimelineCard timeline={timeline} isLoading={false} licensed={lock.licensed} lockReason={lock.lockReason} />
               }
             />
-            <Route path="/runs/:id" element={<LocationBackButton to={-1} label="Back" />} />
+            <Route path="/operations/executions/:id" element={<LocationBackButton to={-1} label="Back" />} />
             <Route path="/fleets" element={<p>Fleets tab</p>} />
           </Routes>
         </MemoryRouter>

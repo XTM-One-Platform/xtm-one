@@ -362,7 +362,7 @@ describe("Work Items list rows", () => {
       expect(row.textContent).not.toContain("Post the digest");
       expect(row.textContent).not.toContain("Sent");
       expect(within(row).getByLabelText("View the run").getAttribute("href")).toBe(
-        "/runs/99999999-8888-7777-6666-555555555555",
+        "/operations/executions/99999999-8888-7777-6666-555555555555",
       );
     } finally {
       ITEMS = MIXED;

@@ -145,7 +145,7 @@ function DescendantRow({ run, depth, onDelete }: { run: RunCardRun; depth: numbe
   return (
     <div
       className="group flex items-center gap-3 py-2 pr-0 rounded-sm cursor-pointer hover:bg-elevation-hover transition-colors"
-      onClick={(e) => { e.stopPropagation(); navigate(`/runs/${run.id}`); }}
+      onClick={(e) => { e.stopPropagation(); navigate(`/operations/executions/${run.id}`); }}
     >
       {/* Visual indent spacer with vertical connection line */}
       <div className="w-6 self-stretch flex justify-center shrink-0">
@@ -583,7 +583,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
           isDelegation && "border-accent/10",
           className,
         )}
-        onClick={() => navigate(`/runs/${run.id}`)}
+        onClick={() => navigate(`/operations/executions/${run.id}`)}
       >
         <CardContent className={compact ? "p-3" : "p-4"}>{inner}</CardContent>
       </Card>
@@ -599,7 +599,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
         isDelegation && "bg-accent/[0.02]",
         className,
       )}
-      onClick={() => navigate(`/runs/${run.id}`)}
+      onClick={() => navigate(`/operations/executions/${run.id}`)}
     >
       {inner}
     </div>

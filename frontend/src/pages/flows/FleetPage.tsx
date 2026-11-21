@@ -304,7 +304,7 @@ export default function FleetPage() {
     agents,
     activeAgentIds,
     onOpenAgent: openAgent,
-    onOpenRun: (id) => navigate(`/runs/${id}`, { state: { backTo: `/fleets/${fleetId}`, backLabel: "Back to the fleet" } }),
+    onOpenRun: (id) => navigate(`/operations/executions/${id}`, { state: { backTo: `/fleets/${fleetId}`, backLabel: "Back to the fleet" } }),
   });
 
   // Handovers are edited from the home members only: a ghost belongs to

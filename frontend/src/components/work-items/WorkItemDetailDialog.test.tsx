@@ -239,7 +239,7 @@ describe("the work item detail", () => {
       }),
     );
     const [taken, leftOut] = screen.getAllByTestId("work-item-inbox");
-    expect(taken.querySelector("a")?.getAttribute("href")).toBe("/assignments/as-1");
+    expect(taken.querySelector("a")?.getAttribute("href")).toBe("/agents/assignments/as-1");
     expect(taken.textContent).toContain("takes this item");
     expect(leftOut.textContent).toContain("a flow you cannot open");
     expect(leftOut.textContent).toContain("leaves this item out");
@@ -446,7 +446,7 @@ describe("the work item detail", () => {
     const holder = screen.getByTestId("work-item-holding-run");
     expect(holder.textContent).toContain("run 2f8112bc");
     expect(holder.textContent).toContain("alive");
-    expect(holder.querySelector("a")?.getAttribute("href")).toBe(`/runs/${runId}`);
+    expect(holder.querySelector("a")?.getAttribute("href")).toBe(`/operations/executions/${runId}`);
   });
 
   it("says the holding run ended with its status, and shows the latest claim note", () => {
@@ -863,7 +863,7 @@ describe("the work item detail", () => {
     expect(notes).toHaveLength(1);
     expect(screen.getByTestId("work-item-note-author").textContent).toBe("Developer");
     // The run is a link named by its first 8 characters, never the uuid inline.
-    expect(notes[0].querySelector(`a[href="/runs/${run}"]`)?.textContent).toContain("8f240eba");
+    expect(notes[0].querySelector(`a[href="/operations/executions/${run}"]`)?.textContent).toContain("8f240eba");
     const body = screen.getByTestId("work-item-note-body");
     expect(body.textContent).not.toContain(run);
     expect(body.textContent).not.toContain("(run");
@@ -964,7 +964,7 @@ describe("the work item detail", () => {
     }
     const name = screen.getByText(longName);
     expect(name.className).toContain("truncate");
-    expect(name.closest("a")?.getAttribute("href")).toBe("/runs/run-9");
+    expect(name.closest("a")?.getAttribute("href")).toBe("/operations/executions/run-9");
     // The person stays in its own column, truncated too.
     const facts = screen.getByTestId("work-item-facts");
     expect(within(facts).getByText("you").className).toContain("truncate");

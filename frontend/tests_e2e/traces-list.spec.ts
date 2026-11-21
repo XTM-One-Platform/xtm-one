@@ -430,7 +430,7 @@ test.describe('Traces list — assignment and run scope', () => {
 
     await expect(page.getByText('Scoped to:')).toBeVisible();
     const chip = page.getByRole('link', { name: SCOPED_ASSIGNMENT.name, exact: true });
-    await expect(chip).toHaveAttribute('href', new RegExp(`/assignments/${SCOPED_ASSIGNMENT.id}$`));
+    await expect(chip).toHaveAttribute('href', new RegExp(`/agents/assignments/${SCOPED_ASSIGNMENT.id}$`));
     await expect(page.getByRole('button', { name: 'Remove the assignment scope' })).toBeVisible();
     await expect
       .poll(() => requestedUrls.some((url) => listParams(url).get('assignment_id') === SCOPED_ASSIGNMENT.id))
@@ -513,7 +513,7 @@ test.describe('Traces list — assignment and run scope', () => {
     await page.goto(`/observability/traces?assignment_run_id=${SCOPED_RUN_ID}&status=error`);
 
     const chip = page.getByRole('link', { name: 'Run 9f2e1a3b…', exact: true });
-    await expect(chip).toHaveAttribute('href', new RegExp(`/runs/${SCOPED_RUN_ID}$`));
+    await expect(chip).toHaveAttribute('href', new RegExp(`/operations/executions/${SCOPED_RUN_ID}$`));
     await expect
       .poll(() =>
         requestedUrls.some((url) => {

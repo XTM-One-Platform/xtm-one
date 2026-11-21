@@ -90,7 +90,7 @@ test.describe.serial('Assignments — create and configure trigger', () => {
       await apiCtx.dispose();
     }
 
-    await page.goto(`/assignments/${assignmentId}`);
+    await page.goto(`/agents/assignments/${assignmentId}`);
 
     // Wait for the detail page to render (header title).
     await expect(page.getByRole('heading', { name: 'Dry Run Assignment' })).toBeVisible({ timeout: 15_000 });

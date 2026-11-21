@@ -44,7 +44,7 @@ describe("a scheduled outcome in the web chat", () => {
     );
     const action = screen.getByTestId("scheduled-outcome-run");
     expect(action.textContent).toBe("View the run");
-    expect(action.getAttribute("href")).toBe("/runs/r-1");
+    expect(action.getAttribute("href")).toBe("/operations/executions/r-1");
     expect(action.getAttribute("target")).toBeNull();
     expect(screen.queryByTestId("wake-turn-marker")).toBeNull();
   });

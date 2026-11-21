@@ -419,7 +419,7 @@ export default function BackgroundTasks({
 
   // A run's task opens the run; a chat's task has no page of its own.
   const openTask = (task: SubAgentTask) => {
-    if (task.assignment_run_id) navigate(`/runs/${task.assignment_run_id}`);
+    if (task.assignment_run_id) navigate(`/operations/executions/${task.assignment_run_id}`);
   };
 
   const statusLabels: Record<TaskStatus, string> = {
@@ -540,7 +540,7 @@ export default function BackgroundTasks({
     const StatusIcon = cfg.icon;
     const selected = selectedIds.has(task.task_id);
     const runId = task.assignment_run_id;
-    const openRun = runId ? () => navigate(`/runs/${runId}`) : undefined;
+    const openRun = runId ? () => navigate(`/operations/executions/${runId}`) : undefined;
     const parentName = task.parent_agent_name || t_i18n("Unknown agent");
     const targetName = task.target_agent_name || t_i18n("Unknown agent");
     const title = taskTitle(task);

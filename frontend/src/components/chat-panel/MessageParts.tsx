@@ -106,7 +106,7 @@ function ScheduledOutcomeAction({ runId }: { runId: string }) {
   return (
     <div className="mt-1.5">
       <Button asChild variant="outline" size="sm" className="gap-1.5">
-        <Link to={`/runs/${runId}`} data-testid="scheduled-outcome-run">
+        <Link to={`/operations/executions/${runId}`} data-testid="scheduled-outcome-run">
           <Icon name="history" size={16} aria-hidden />
           {t_i18n("View the run")}
         </Link>

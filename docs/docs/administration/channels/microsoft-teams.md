@@ -106,7 +106,7 @@ Chat and group chat messaging is not governed by channel whitelists — those co
 
 ## Pasted XTM One links
 
-A link to an assignment run (`<your XTM One address>/runs/<id>`) pasted in a Teams chat or channel turns into a card. The manifest declares it in `composeExtensions` with a `link` message handler whose `domains` is your XTM One host, the same host as `validDomains`; the `Setup Guide` template includes it.
+A link to an assignment run (`<your XTM One address>/operations/executions/<id>`) pasted in a Teams chat or channel turns into a card. The manifest declares it in `composeExtensions` with a `link` message handler whose `domains` is your XTM One host, the same host as `validDomains`; the `Setup Guide` template includes it.
 
 - The posted card names nothing: no run, agent or status. Each person who views it then gets their own version, rendered with their XTM One access, and Teams shows it to them alone.
 - Someone who cannot see the run reads "This run doesn't exist or you don't have access to it", which is also what a link to a run that does not exist shows. A Teams user whose email matches no active XTM One user is asked to sign in with it.
