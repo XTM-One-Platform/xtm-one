@@ -43,7 +43,6 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "update_ctem_case",
     "record_ctem_case_validation",
     "record_ctem_case_ticket",
-    "sync_ctem_case_ticket",
 )
 _SOURCE = "builtin:ctem_cases"
 #: The built-in agents that carry the tools (design section 8): the two loop
@@ -213,6 +212,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         evidence: str = "",
         note: str = "",
         exploitation: list[dict[str, Any]] | None = None,
+        gate: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -259,6 +259,18 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 if exploitation is not None:
                     case_loop.record_exploitation(db, case, exploitation, actor=agent_id)
+                if gate is not None:
+                    if not isinstance(gate, dict):
+                        raise rules.CaseRuleError("gate must be an object with key and outcome")
+                    case_loop.record_gate(
+                        db,
+                        case,
+                        key=str(gate.get("key") or ""),
+                        outcome=str(gate.get("outcome") or ""),
+                        by=str(gate.get("by") or ""),
+                        option=str(gate.get("option") or ""),
+                        actor=agent_id,
+                    )
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
                 return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
@@ -343,39 +355,6 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case ticket failed", exc_info=True)
             return "Error: the ticket reference could not be recorded right now. Say so; nothing was changed."
 
-    async def _sync_ticket(case_id: str, create: bool = False) -> str:
-        """#917 slice 4: the Mobilization role works the ticket through the sync layer only."""
-        from app.core.config import settings as app_settings
-        from app.core.database import async_session
-        from app.services import ctem_case_loop as case_loop
-        from app.services import ctem_ticketing
-
-        wanted = _uuid(case_id)
-        if wanted is None:
-            return "case_id must be the id list_ctem_cases answers."
-        try:
-            async with async_session() as db:
-                org_id, vertical = await _context(db)
-                if org_id is None or scope is None:
-                    return f"No case {case_id}."
-                shown = await _shown(db, wanted, org_id, vertical)
-                if shown is None:
-                    return f"No case {case_id}."
-                pending = case_loop.PendingEvents()
-                answer = await ctem_ticketing.sync_one(
-                    db,
-                    shown[0],
-                    create=bool(create),
-                    events=pending,
-                    base_url=getattr(app_settings, "frontend_url", "") or "",
-                )
-                await db.commit()
-                await case_loop.publish_pending(pending)
-                return _dump(answer)
-        except Exception:
-            logger.warning("CTEM case ticket sync failed", exc_info=True)
-            return "Error: the ticket could not be synced right now. Say so; the scheduled sync retries it."
-
     executor = CallableToolExecutor()
     executor.register("list_ctem_cases", _list)
     executor.register("get_ctem_case", _get)
@@ -383,7 +362,6 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
     executor.register("update_ctem_case", _update)
     executor.register("record_ctem_case_validation", _validation)
     executor.register("record_ctem_case_ticket", _ticket)
-    executor.register("sync_ctem_case_ticket", _sync_ticket)
     state_enum = {"type": "string", "enum": list(_STATES)}
     definitions = [
         ToolDefinition(
@@ -439,7 +417,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step. in_progress needs an owner; resolved needs evidence "
+                "reading of the triage step, or a loop gate passed or waited. in_progress needs an owner; "
+                "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
             ),
@@ -467,6 +446,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             },
                             "required": ["asset", "techniques"],
                         },
+                    },
+                    "gate": {
+                        "type": "object",
+                        "description": (
+                            "A gate of the fleet's catalog: passed automatically (by: level or pin), "
+                            "waited, or answered (by: who, option)."
+                        ),
+                        "properties": {
+                            "key": {"type": "string", "description": "The gate key, e.g. ctem.mobilize."},
+                            "outcome": {"type": "string", "enum": ["passed_automatically", "waited", "answered"]},
+                            "by": {"type": "string"},
+                            "option": {"type": "string"},
+                        },
+                        "required": ["key", "outcome"],
                     },
                 },
                 "required": ["case_id"],
@@ -514,24 +507,6 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "status": {"type": "string", "enum": ["open", "in_progress", "done", "cancelled"]},
                 },
                 "required": ["case_id", "integration", "key"],
-            },
-            source=_SOURCE,
-        ),
-        ToolDefinition(
-            name="sync_ctem_case_ticket",
-            description=(
-                "Create or sync the remediation ticket of a CTEM case in the organization's declared ticketing "
-                "system (one ticket per case, found again on a retry). create=true opens it when missing (the "
-                "Mobilize gate). Without create it pushes the case state or pulls the ticket status. Answers "
-                "the ticket, its sync state, or why no ticketing is connected."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "case_id": {"type": "string"},
-                    "create": {"type": "boolean", "description": "Open the ticket when the case has none."},
-                },
-                "required": ["case_id"],
             },
             source=_SOURCE,
         ),

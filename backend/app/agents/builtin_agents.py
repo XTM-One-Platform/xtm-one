@@ -2750,6 +2750,34 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
     },
     {
         **_CTEM_F2_COMMON,
+        "name": "Vulnerability flagged in a PIR",
+        "description": (
+            "Triages a vulnerability that OpenCTI flags in one of the organization's PIRs, once its "
+            "live PIR score reaches the prioritization policy's threshold for vulnerabilities "
+            "(70 by default, editable in Settings), checked before any model call."
+        ),
+        "trigger_type": "integration_event",
+        "trigger_config": {
+            "provider": "opencti",
+            "pir_min_score": "policy",
+            "provision": {
+                "fleet": _CTEM_F2_FLEET,
+                "purpose": "Vulnerability flagged in a PIR",
+                "mode": "pir_playbook",
+                "entity_types": ["Vulnerability"],
+                "organization_context": ["pir_ids"],
+                "pir_min_score": 1,
+            },
+        },
+        "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
+            priority=(
+                "The vulnerability is flagged in an organization PIR at or above the policy's threshold "
+                "(read live before this run): rank it above an unflagged CVE of the same score."
+            )
+        ),
+    },
+    {
+        **_CTEM_F2_COMMON,
         "name": "Vulnerability sighted",
         "description": "Triages, at higher priority, a vulnerability sighted in the organization's data.",
         "trigger_type": "integration_event",
@@ -2812,8 +2840,6 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.reopened",
     "ctem_case.sla_breached",
     "ctem_case.validation_finished",
-    # #917: the case's ticket reached done in the declared ticketing system.
-    "ctem_case.retest_requested",
 )
 
 
@@ -2839,17 +2865,15 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
             "it owned by you when no open item has that key; when one is open, add a note "
             "to it and stop, never a second loop), set the case in_progress, run your loop "
             "and write every result on the case: the validation with "
-            "record_ctem_case_validation, the ticket with sync_ctem_case_ticket, notes "
+            "record_ctem_case_validation, the ticket with record_ctem_case_ticket, notes "
             "with update_ctem_case. On ctem_case.sla_breached: add a note to that work item "
             "and to the case naming the breach and the next step, and raise its priority. "
             "On ctem_case.validation_finished: an OpenAEV result the case waits on arrived "
             "(the openaev block names the simulation or finding); read it in OpenAEV, write it "
             "on the case with record_ctem_case_validation (passed, not_exposed or failed) and "
             "move the case's work item to its next step. "
-            "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
-            "item and run the case's re-test; write it with record_ctem_case_validation (kind "
-            "retest): the case closes on the re-test, never on the ticket. Never keep an "
-            "open item only in shared state. End with the case id, its state and the next step."
+            "Never keep an open item only in shared state. End with the case id, its state "
+            "and the next step."
         ),
     }
 
@@ -2948,6 +2972,42 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "STIX id as source): the scope gate opens or joins its case, and the "
             "case event runs the loop. End with the relevance verdict and the "
             "signal id."
+        ),
+    },
+    {
+        **_F1_RUN,
+        "name": "Threat activity flagged in a PIR",
+        "description": (
+            "When OpenCTI flags an intrusion set, a threat actor, a campaign or a malware in one of "
+            "the organization's PIRs and its live PIR score reaches the prioritization policy's "
+            "threshold for threat activity (75 by default, editable in Settings), opens a threat "
+            "response case. The score is checked before any model call."
+        ),
+        "trigger_type": "integration_event",
+        "trigger_config": {
+            "provider": "opencti",
+            "pir_min_score": "policy",
+            "provision": {
+                "fleet": "Threat response",
+                "purpose": "Threat activity flagged in a PIR",
+                "mode": "pir_playbook",
+                "entity_types": [
+                    "Intrusion-Set",
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Campaign",
+                    "Malware",
+                ],
+                "organization_context": ["pir_ids"],
+                "pir_min_score": 1,
+            },
+        },
+        "prompt": (
+            "OpenCTI flagged the entity in the trigger below in an organization PIR, at or above the "
+            "policy's threshold (read live before this run). Score its relevance and stop with the "
+            "reason when it is not relevant. When it is, record it with record_ctem_signal "
+            "(trigger_path relevant_threat, its STIX id as source): the scope gate opens or joins its "
+            "case. End with the relevance verdict and the signal id."
         ),
     },
     {

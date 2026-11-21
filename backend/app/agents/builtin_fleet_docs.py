@@ -52,6 +52,7 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **New relevant threat**: an OpenCTI creation of an Intrusion Set, a Campaign or a Report.\n"
+        "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR; the run starts when its live PIR score reaches the policy threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
         "- **Case opened or reopened**: a CTEM case on a threat, credential leak or third-party path is "
@@ -87,6 +88,7 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
     "triggers": (
         "- **New KEV or EPSS jump**: an OpenCTI creation or update of a Vulnerability.\n"
         "- **Vulnerability on software we run**: an OpenCTI has relationship to a Vulnerability whose source is in the tech stack or the profile assets, checked before any model call.\n"
+        "- **Vulnerability flagged in a PIR**: OpenCTI flags a Vulnerability in an organization PIR; the run starts when its live PIR score reaches the policy threshold (70 by default, Settings).\n"
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
         "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
@@ -408,8 +410,6 @@ _TICKET_TOOLS = [
     {"name": "create_jira_issue"},
     {"name": "create_servicenow_incident"},
     {"name": "create_servicenow_change"},
-    # #917: the Mobilization role opens a case's ticket through the sync layer.
-    {"name": "sync_ctem_case_ticket", "when": {"create": ["true"]}},
 ]
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
@@ -473,6 +473,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "filter": "An intrusion set, a campaign or a report is created",
         },
         {
+            "module": "opencti",
+            "name": "Threat activity flagged in a PIR",
+            "filter": "Threat activity is flagged in an organization PIR",
+            "detail": "Kept when its live PIR score reaches the policy threshold (75 by default)",
+        },
+        {
             "module": "schedule",
             "name": "Weekly threat sweep",
             "filter": "Mondays at 07:00",
@@ -530,6 +536,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "runs_min": 4,
             "runs_max": 30,
         },
+        {
+            "trigger": "Threat activity flagged in a PIR",
+            "basis": "One run per flag at or above the policy threshold",
+            "runs_min": 0,
+            "runs_max": 20,
+        },
         {"trigger": "Weekly threat sweep", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
         {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
@@ -546,6 +558,12 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "name": "Vulnerability on software we run",
             "filter": "Software, an infrastructure or a system in the profile has a vulnerability",
             "detail": "Kept only when the source is in the tech stack or the profile assets",
+        },
+        {
+            "module": "opencti",
+            "name": "Vulnerability flagged in a PIR",
+            "filter": "A vulnerability is flagged in an organization PIR",
+            "detail": "Kept when its live PIR score reaches the policy threshold (70 by default)",
         },
         {
             "module": "opencti",
@@ -597,6 +615,12 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
             "basis": "One run per vulnerability on software in the profile",
             "runs_min": 0,
             "runs_max": 40,
+        },
+        {
+            "trigger": "Vulnerability flagged in a PIR",
+            "basis": "One run per flag at or above the policy threshold",
+            "runs_min": 0,
+            "runs_max": 20,
         },
         {"trigger": "Vulnerability sighted", "basis": "One run per sighting", "runs_min": 0, "runs_max": 20},
         {"trigger": "Daily backlog pass", "basis": "One run a day", "runs_min": 28, "runs_max": 31},
