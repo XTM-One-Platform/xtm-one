@@ -19947,7 +19947,6 @@
   "Due date from the SLA": "Due date from the SLA",
   "When a case gets its ticket in the ticketing system.": "When a case gets its ticket in the ticketing system.",
   "The Jira issue type or the ServiceNow table. Empty: {value}.": "The Jira issue type or the ServiceNow table. Empty: {value}.",
-  "Every ticket carries them, separated by commas.": "Every ticket carries them, separated by commas.",
   "Priority for {severity} cases": "Priority for {severity} cases",
   "Empty: {value}.": "Empty: {value}.",
   "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.": "A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.",
@@ -19957,6 +19956,7 @@
   "Map a status": "Map a status",
   "A ticket moved to done starts the case's re-test; the case closes on the re-test, never on the ticket.": "A ticket moved to done starts the case's re-test; the case closes on the re-test, never on the ticket.",
   "When a failed re-test reopens the case.": "When a failed re-test reopens the case.",
+  "Every ticket carries them.": "Every ticket carries them.",
   "The ticket's due date is the case's SLA due date.": "The ticket's due date is the case's SLA due date.",
   "CTEM case sync": "CTEM case sync",
   "How CTEM cases open, update and close their tickets. A change applies to the next sync.": "How CTEM cases open, update and close their tickets. A change applies to the next sync.",
@@ -19979,5 +19979,13 @@
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
   "P1 case opened by the loop: {sla}": "P1 case opened by the loop: {sla}",
   "P1 case opened by the loop": "P1 case opened by the loop",
-  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}"
+  "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}": "{count, plural, one {# mitigated, watching} other {# mitigated, watching}}",
+  "When the CTEM case sync opens the ticket of a case. Example: at Mobilize, for P1 and P2 cases. Used by the Mobilization role through ctem.mobilize; a case never gets a ticket without it. Empty: at Mobilize, for P1 and P2 cases.": "When the CTEM case sync opens the ticket of a case. Example: at Mobilize, for P1 and P2 cases. Used by the Mobilization role through ctem.mobilize; a case never gets a ticket without it. Empty: at Mobilize, for P1 and P2 cases.",
+  "The kind of record each ticket is. Example: Task or Bug in Jira, incident or change_request in ServiceNow. Used by the CTEM case sync when it opens a ticket. Empty: the default named under the field.": "The kind of record each ticket is. Example: Task or Bug in Jira, incident or change_request in ServiceNow. Used by the CTEM case sync when it opens a ticket. Empty: the default named under the field.",
+  "Labels put on every ticket the CTEM case sync opens, to find them in the ticketing system. Example: ctem, security. Empty: tickets carry no label.": "Labels put on every ticket the CTEM case sync opens, to find them in the ticketing system. Example: ctem, security. Empty: tickets carry no label.",
+  "The ticket priority for a case of this severity, as the ticketing system names it. Example: Highest in Jira, 1 in ServiceNow. Used by the CTEM case sync on create and update. Empty: the default named under the field.": "The ticket priority for a case of this severity, as the ticketing system names it. Example: Highest in Jira, 1 in ServiceNow. Used by the CTEM case sync on create and update. Empty: the default named under the field.",
+  "Your own ticket status names mapped to the case ticket status. Example: Jira Ready for QA to Done. Read by the CTEM case sync before the system's own status categories. Empty: the system's categories alone decide (To Do, In Progress, Done; New, In Progress, Resolved).": "Your own ticket status names mapped to the case ticket status. Example: Jira Ready for QA to Done. Read by the CTEM case sync before the system's own status categories. Empty: the system's categories alone decide (To Do, In Progress, Done; New, In Progress, Resolved).",
+  "Whether a ticket moved to done asks for the case's re-test. Example: the owner closes the ticket, the re-test runs, the case resolves only if it passes. Used by the CTEM case sync. Off: a done ticket changes nothing on the case.": "Whether a ticket moved to done asks for the case's re-test. Example: the owner closes the ticket, the re-test runs, the case resolves only if it passes. Used by the CTEM case sync. Off: a done ticket changes nothing on the case.",
+  "What the CTEM case sync does with the ticket when a failed re-test reopens its case. Example: reopen the same ticket, or open a new one linked to it. Default: reopen the same ticket.": "What the CTEM case sync does with the ticket when a failed re-test reopens its case. Example: reopen the same ticket, or open a new one linked to it. Default: reopen the same ticket.",
+  "Whether the ticket's due date is the case's SLA due date. Example: a P1 case due in 24 hours gives a ticket due the same day. Used by the CTEM case sync on create and update. Off: tickets carry no due date.": "Whether the ticket's due date is the case's SLA due date. Example: a P1 case due in 24 hours gives a ticket due the same day. Used by the CTEM case sync on create and update. Off: tickets carry no due date."
 }

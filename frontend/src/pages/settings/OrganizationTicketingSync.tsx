@@ -15,11 +15,14 @@
  */
 import { Icon } from "@filigran/design-system";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, SettingsFieldGrid, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
+import { TagInput } from "@/components/ui/tag-input";
 import { useFormatter } from "@/i18n";
 import { CASE_SEVERITIES, CASE_TICKET_STATUSES, type CaseTicketStatus, type TicketingSync, ticketingDefaults, ticketingSyncOf } from "@/lib/organization-profile";
 
@@ -44,6 +47,30 @@ const TICKET_STATUS_LABELS = {
   cancelled: "Cancelled (ticket)",
 } as const satisfies Record<CaseTicketStatus, string>;
 
+/**
+ * The info bubble of each field, the same text in read and edit mode: what it
+ * is, a real example, what uses it (the CTEM case sync of ctem.mobilize) and
+ * what happens when it is empty. @i18n-keys
+ */
+const FIELD_INFO = {
+  create_on:
+    "When the CTEM case sync opens the ticket of a case. Example: at Mobilize, for P1 and P2 cases. Used by the Mobilization role through ctem.mobilize; a case never gets a ticket without it. Empty: at Mobilize, for P1 and P2 cases.",
+  record_type:
+    "The kind of record each ticket is. Example: Task or Bug in Jira, incident or change_request in ServiceNow. Used by the CTEM case sync when it opens a ticket. Empty: the default named under the field.",
+  labels:
+    "Labels put on every ticket the CTEM case sync opens, to find them in the ticketing system. Example: ctem, security. Empty: tickets carry no label.",
+  priority:
+    "The ticket priority for a case of this severity, as the ticketing system names it. Example: Highest in Jira, 1 in ServiceNow. Used by the CTEM case sync on create and update. Empty: the default named under the field.",
+  status_map:
+    "Your own ticket status names mapped to the case ticket status. Example: Jira Ready for QA to Done. Read by the CTEM case sync before the system's own status categories. Empty: the system's categories alone decide (To Do, In Progress, Done; New, In Progress, Resolved).",
+  done_retest:
+    "Whether a ticket moved to done asks for the case's re-test. Example: the owner closes the ticket, the re-test runs, the case resolves only if it passes. Used by the CTEM case sync. Off: a done ticket changes nothing on the case.",
+  on_reopen:
+    "What the CTEM case sync does with the ticket when a failed re-test reopens its case. Example: reopen the same ticket, or open a new one linked to it. Default: reopen the same ticket.",
+  due_sla:
+    "Whether the ticket's due date is the case's SLA due date. Example: a P1 case due in 24 hours gives a ticket due the same day. Used by the CTEM case sync on create and update. Off: tickets carry no due date.",
+} as const;
+
 interface Props {
   /** The stored sync; absent on an older profile (the defaults apply). */
   sync: TicketingSync | undefined;
@@ -56,6 +83,7 @@ interface Props {
 
 export function OrganizationTicketingSync({ sync: stored, provider, editing, onChange, idPrefix }: Props) {
   const { t_i18n } = useFormatter();
+  const info = (key: keyof typeof FIELD_INFO) => t_i18n(FIELD_INFO[key]);
   const sync = ticketingSyncOf(stored);
   const defaults = ticketingDefaults(provider);
   const set = (patch: Partial<TicketingSync>) => onChange({ ...sync, ...patch });
@@ -68,14 +96,32 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
   if (!editing) {
     return (
       <SettingsReadGrid data-testid="settings.organization.ticketing-sync">
-        <SettingsReadField label={t_i18n("Ticket for a case")} value={t_i18n(CREATE_ON_LABELS[sync.create_on])} />
-        <SettingsReadField label={t_i18n("Record type")} value={sync.record_type || t_i18n("Default: {value}", { value: defaults.record_type })} />
-        <SettingsReadField label={t_i18n("Labels")} value={sync.labels.join(", ")} />
-        <SettingsReadField label={t_i18n("Priority by severity")} value={priorityLine} />
-        <SettingsReadField label={t_i18n("Status mapping")} value={statusLine} wide />
-        <SettingsReadField label={t_i18n("Done asks for the re-test")} value={t_i18n(sync.done_starts_retest ? "On" : "Off")} />
-        <SettingsReadField label={t_i18n("Case reopened")} value={t_i18n(ON_REOPEN_LABELS[sync.on_reopen])} />
-        <SettingsReadField label={t_i18n("Due date from the SLA")} value={t_i18n(sync.due_date_from_sla ? "On" : "Off")} />
+        <SettingsReadField label={t_i18n("Ticket for a case")} info={info("create_on")} value={t_i18n(CREATE_ON_LABELS[sync.create_on])} />
+        <SettingsReadField
+          label={t_i18n("Record type")}
+          info={info("record_type")}
+          value={sync.record_type || t_i18n("Default: {value}", { value: defaults.record_type })}
+        />
+        <SettingsReadField
+          label={t_i18n("Labels")}
+          info={info("labels")}
+          value={
+            sync.labels.length > 0 && (
+              <span className="flex flex-wrap gap-1.5">
+                {sync.labels.map((label) => (
+                  <Badge key={label} variant="secondary" className="font-normal content-base">
+                    {label}
+                  </Badge>
+                ))}
+              </span>
+            )
+          }
+        />
+        <SettingsReadField label={t_i18n("Priority by severity")} info={info("priority")} value={priorityLine} />
+        <SettingsReadField label={t_i18n("Status mapping")} info={info("status_map")} value={statusLine} wide />
+        <SettingsReadField label={t_i18n("Done asks for the re-test")} info={info("done_retest")} value={t_i18n(sync.done_starts_retest ? "On" : "Off")} />
+        <SettingsReadField label={t_i18n("Case reopened")} info={info("on_reopen")} value={t_i18n(ON_REOPEN_LABELS[sync.on_reopen])} />
+        <SettingsReadField label={t_i18n("Due date from the SLA")} info={info("due_sla")} value={t_i18n(sync.due_date_from_sla ? "On" : "Off")} />
       </SettingsReadGrid>
     );
   }
@@ -95,6 +141,7 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
           id={`${idPrefix}-create-on`}
           label={t_i18n("Ticket for a case")}
           helper={t_i18n("When a case gets its ticket in the ticketing system.")}
+          info={info("create_on")}
         >
           <SearchableSelect
             id={`${idPrefix}-create-on`}
@@ -108,9 +155,27 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
           />
         </SettingsField>
         <SettingsField
+          id={`${idPrefix}-on-reopen`}
+          label={t_i18n("Case reopened")}
+          helper={t_i18n("When a failed re-test reopens the case.")}
+          info={info("on_reopen")}
+        >
+          <SearchableSelect
+            id={`${idPrefix}-on-reopen`}
+            aria-labelledby={settingsFieldLabelId(`${idPrefix}-on-reopen`)}
+            aria-describedby={settingsFieldHintId(`${idPrefix}-on-reopen`)}
+            searchable="auto"
+            sort={false}
+            options={(Object.keys(ON_REOPEN_LABELS) as TicketingSync["on_reopen"][]).map((value) => ({ value, label: t_i18n(ON_REOPEN_LABELS[value]) }))}
+            value={sync.on_reopen}
+            onValueChange={(value) => set({ on_reopen: value as TicketingSync["on_reopen"] })}
+          />
+        </SettingsField>
+        <SettingsField
           id={`${idPrefix}-record-type`}
           label={t_i18n("Record type")}
           helper={t_i18n("The Jira issue type or the ServiceNow table. Empty: {value}.", { value: defaults.record_type })}
+          info={info("record_type")}
         >
           <Input
             id={`${idPrefix}-record-type`}
@@ -121,27 +186,13 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
             onChange={(e) => set({ record_type: e.target.value })}
           />
         </SettingsField>
-        <SettingsField
-          id={`${idPrefix}-labels`}
-          label={t_i18n("Labels")}
-          helper={t_i18n("Every ticket carries them, separated by commas.")}
-          wide
-        >
-          <Input
-            id={`${idPrefix}-labels`}
-            aria-labelledby={settingsFieldLabelId(`${idPrefix}-labels`)}
-            aria-describedby={settingsFieldHintId(`${idPrefix}-labels`)}
-            placeholder="ctem, security"
-            value={sync.labels.join(", ")}
-            onChange={(e) => set({ labels: e.target.value.split(",").map((label) => label.trimStart()) })}
-          />
-        </SettingsField>
         {CASE_SEVERITIES.map((severity) => (
           <SettingsField
             key={severity}
             id={`${idPrefix}-priority-${severity}`}
             label={t_i18n("Priority for {severity} cases", { severity })}
             helper={t_i18n("Empty: {value}.", { value: defaults.priority[severity] })}
+            info={info("priority")}
           >
             <Input
               id={`${idPrefix}-priority-${severity}`}
@@ -153,11 +204,27 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
             />
           </SettingsField>
         ))}
+        <SettingsField id={`${idPrefix}-labels`} label={t_i18n("Labels")} helper={t_i18n("Every ticket carries them.")} info={info("labels")} wide>
+          {/* Ticketing labels are case-sensitive and owned by the ticketing system: kept as typed, no platform tag suggestions. */}
+          <TagInput
+            id={`${idPrefix}-labels`}
+            aria-labelledby={settingsFieldLabelId(`${idPrefix}-labels`)}
+            aria-describedby={settingsFieldHintId(`${idPrefix}-labels`)}
+            placeholder={t_i18n("Add label…")}
+            value={sync.labels}
+            onChange={(labels) => set({ labels })}
+            preserveCase
+            suggestFromPlatformTags={false}
+          />
+        </SettingsField>
       </SettingsFieldGrid>
 
       <div className="space-y-2" data-testid="settings.organization.ticketing-status-map">
         <div className="space-y-1">
-          <p className="content-base font-semibold text-default-primary">{t_i18n("Status mapping")}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="content-base font-semibold text-default-primary">{t_i18n("Status mapping")}</p>
+            <InfoTip content={<div className="max-w-xs content-compact">{info("status_map")}</div>} label={t_i18n("About this field")} />
+          </div>
           <p className="content-compact text-default-secondary">
             {t_i18n("A ticket status name to the case ticket status. Read first; unmapped names follow the system's own categories.")}
           </p>
@@ -194,25 +261,15 @@ export function OrganizationTicketingSync({ sync: stored, provider, editing, onC
         id={`${idPrefix}-done-retest`}
         label={t_i18n("Done asks for the re-test")}
         helper={t_i18n("A ticket moved to done starts the case's re-test; the case closes on the re-test, never on the ticket.")}
+        info={info("done_retest")}
         checked={sync.done_starts_retest}
         onCheckedChange={(checked) => set({ done_starts_retest: checked })}
       />
-      <SettingsField id={`${idPrefix}-on-reopen`} label={t_i18n("Case reopened")} helper={t_i18n("When a failed re-test reopens the case.")}>
-        <SearchableSelect
-          id={`${idPrefix}-on-reopen`}
-          aria-labelledby={settingsFieldLabelId(`${idPrefix}-on-reopen`)}
-          aria-describedby={settingsFieldHintId(`${idPrefix}-on-reopen`)}
-          searchable="auto"
-          sort={false}
-          options={(Object.keys(ON_REOPEN_LABELS) as TicketingSync["on_reopen"][]).map((value) => ({ value, label: t_i18n(ON_REOPEN_LABELS[value]) }))}
-          value={sync.on_reopen}
-          onValueChange={(value) => set({ on_reopen: value as TicketingSync["on_reopen"] })}
-        />
-      </SettingsField>
       <SettingsSwitchField
         id={`${idPrefix}-due-sla`}
         label={t_i18n("Due date from the SLA")}
         helper={t_i18n("The ticket's due date is the case's SLA due date.")}
+        info={info("due_sla")}
         checked={sync.due_date_from_sla}
         onCheckedChange={(checked) => set({ due_date_from_sla: checked })}
       />
