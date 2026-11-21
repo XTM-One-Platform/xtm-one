@@ -20017,7 +20017,7 @@
   "Restricted asset": "制限された資産",
   "Techniques in attack order": "攻撃順のテクニック",
   "Recorded how it would be exploited": "想定される悪用方法を記録しました",
-  "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.": "CTEM ケース同期が書き込めるのは incident、change_request、problem テーブルのみです。いずれかを選択してください。",
+  "The table {value} has no ticketing sync. Pick incident, change_request or problem.": "テーブル {value} はチケット同期に対応していません。incident、change_request、problem のいずれかを選択してください。",
   "Break-fix: restore something that is broken.": "障害対応: 壊れたものを復旧します。",
   "Planned change: a fix rolled out under change control.": "計画変更: 変更管理のもとで展開する修正です。",
   "Root cause: the cause behind repeated incidents.": "根本原因: 繰り返し発生するインシデントの原因です。"

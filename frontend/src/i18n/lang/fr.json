@@ -20017,7 +20017,7 @@
   "Restricted asset": "Actif restreint",
   "Techniques in attack order": "Techniques dans l’ordre de l’attaque",
   "Recorded how it would be exploited": "A enregistré comment elle serait exploitée",
-  "The CTEM case sync writes only to the incident, change_request or problem table. Pick one of them.": "La synchronisation des cas CTEM écrit uniquement dans la table incident, change_request ou problem. Choisissez-en une.",
+  "The table {value} has no ticketing sync. Pick incident, change_request or problem.": "La table {value} n'a pas de synchronisation de tickets. Choisissez incident, change_request ou problem.",
   "Break-fix: restore something that is broken.": "Réparation : rétablir ce qui est cassé.",
   "Planned change: a fix rolled out under change control.": "Changement planifié : un correctif déployé sous contrôle des changements.",
   "Root cause: the cause behind repeated incidents.": "Cause racine : la cause d’incidents répétés."
