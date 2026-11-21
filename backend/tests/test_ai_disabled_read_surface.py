@@ -1533,6 +1533,9 @@ _NON_AI_MODULES: dict[str, str] = {
     # case grouped from OpenCTI / OpenAEV data. Rules and writes, no model
     # call, like the posture the cases come from.
     "ctem_cases.py": "CTEM cases: deterministic grouping and state changes; no model call",
+    # CTEM signals (#826): a person records a change in exposure; an idempotent
+    # row write, no model call, like the cases it feeds.
+    "ctem_signals.py": "CTEM signals: deterministic idempotent record; no model call",
 }
 
 # Helpers that enforce the gate themselves, so a route delegating to one is
