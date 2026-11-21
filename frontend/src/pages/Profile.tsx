@@ -3,6 +3,7 @@
 import { IconButton, Spinner } from "@filigran/design-system";
 import { platformOrigin } from "@/lib/base-path";
 import { useState, useMemo, useRef } from "react";
+import { useParams } from "react-router-dom";
 import { User as UserIcon, Shield, Mail, Key, Pencil, Save, Lock, Check, Copy, Trash2, Fingerprint, Bot, Wrench, RotateCcw, Code, Server, BookOpen, KeyRound, Terminal, Radio, MessageSquare, X, Globe, BarChart3, Info, ExternalLink, Brain, ChevronDown, ChevronRight, Zap, Palette, Languages, UserCog, Sparkles, Smartphone } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +53,8 @@ import { MyMemoryConsolidations } from "@/pages/profile/MemoryConsolidations";
 import { AgentAccountsSection } from "@/pages/profile/agent-accounts/AgentAccountsSection";
 import { PhonesSection } from "@/pages/profile/PhonesSection";
 import { ToolApprovalList } from "@/pages/tools/ToolApprovalList";
+import { isProfileTab, type ProfileTab } from "@/pages/profile/profile-tabs";
+import RouteNotFound from "@/pages/RouteNotFound";
 import { useToolApprovals } from "@/hooks/api/useToolApprovals";
 import { hitlGlyph } from "@/lib/hitl";
 import { cn, toggleArrayItem, formatCompactNumber, formatQuotaLimit, mergeSandboxIntoAgenticCount, QUOTA_NOT_APPLICABLE_LABEL, validatePassword, MIN_PASSWORD_LENGTH, pluralize } from "@/lib/utils";
@@ -60,7 +63,7 @@ import { applyTheme, effectiveTheme } from "@/hooks/useThemeEffect";
 import { useFormatter, AVAILABLE_LANGUAGES, LANGUAGE_AUTO, languageLabel } from "@/i18n";
 import { formatTimeAgo } from "@/lib/relative-time";
 
-type Tab = "overview" | "approvals" | "channels" | "phones" | "agent-accounts" | "memory" | "quotas" | "api-keys" | "mcp";
+type Tab = ProfileTab;
 
 export default function Profile() {
   const { data: user, isLoading } = useMe();
@@ -69,6 +72,7 @@ export default function Profile() {
   const { t_i18n } = useFormatter();
   const isXtmOne = useIsXtmOne();
   const [tab] = useTabParam<Tab>("overview");
+  const { tab: tabSegment } = useParams<{ tab?: string }>();
   // Linked phones belong to the mobile companion: no tab while it is off.
   const companionEnabled = useFeatureFlag("MOBILE_COMPANION");
   /* Approvals are opt-in: the tab appears once an agent asks before running
@@ -127,6 +131,9 @@ export default function Profile() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
+  // A segment that names no tab (the former `runners` included) is not found,
+  // before the profile header renders: no redirect, no empty page (#822).
+  if (!isProfileTab(tabSegment)) return <RouteNotFound />;
   if (isLoading || !user) return <PageSkeleton cards={2} />;
 
   const startEditing = () => {
