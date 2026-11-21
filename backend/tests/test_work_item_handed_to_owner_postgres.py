@@ -11,6 +11,7 @@ at creation with the owner agent's name, never written and dropped.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 
@@ -26,7 +27,7 @@ from tests.test_work_item_workspace_scope_postgres import (
 pytestmark = pytest.mark.integration
 
 
-async def _private_agent(session, owner, *, name: str, shared_with=None):
+async def _private_agent(session: Any, owner: Any, *, name: str, shared_with: list[Any] | None = None) -> Any:
     agent = await _make_agent(session, name=name)
     agent.user_id = owner.id
     agent.is_company_managed = False
@@ -35,7 +36,7 @@ async def _private_agent(session, owner, *, name: str, shared_with=None):
     return agent
 
 
-async def _fleet(session, owner, home_agent, *, name: str):
+async def _fleet(session: Any, owner: Any, home_agent: Any, *, name: str) -> Any:
     from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
     from app.models.workspace import Workspace
 
@@ -58,7 +59,7 @@ async def _fleet(session, owner, home_agent, *, name: str):
     return fleet
 
 
-async def _hand(*, creator, creating_agent, owner_agent, title: str) -> dict:
+async def _hand(*, creator: Any, creating_agent: Any, owner_agent: Any, title: str) -> dict[str, Any]:
     return await wi_service.create_work_item(
         title=title,
         user_id=str(creator.id),
@@ -83,7 +84,9 @@ async def test_a_shared_owner_agent_reads_lists_and_claims_the_hand_off() -> Non
             item = await _hand(creator=creator, creating_agent=creating, owner_agent=owner, title="shared")
             reader = agent_writer(is_company_managed=False, agent_id=owner.id)
             read = await wi_service.get_work_item(item["id"], user_id=str(holder.id), reader=reader)
-            listed = await wi_service.list_work_items(user_id=str(holder.id), reader=reader, owner_agent_id=str(owner.id))
+            listed = await wi_service.list_work_items(
+                user_id=str(holder.id), reader=reader, owner_agent_id=str(owner.id)
+            )
             claimed = await wi_service.claim_work_item(
                 item["id"], agent_id=str(owner.id), user_id=str(holder.id), writer=reader
             )

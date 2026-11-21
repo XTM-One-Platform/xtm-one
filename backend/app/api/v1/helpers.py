@@ -3443,7 +3443,7 @@ def visible_to_user_column_clause(model_cls: type[VisibilityQueryable], user_id_
     )
 
 
-def shared_with_user_column_clause(model_cls: type[VisibilityQueryable], user_id_column: Any):
+def shared_with_user_column_clause(model_cls: type[VisibilityQueryable], user_id_column: Any) -> Any:
     """:func:`visible_to_user_column_clause` without the administrator tier.
 
     The entity is the person's own, company-managed and not narrowed, or

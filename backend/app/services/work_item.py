@@ -1033,7 +1033,7 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
        ``connected`` member.
 
     Nothing else widens: the same check refuses the hand-off at creation
-    (:func:`refuse_unreachable_owner`), so an item no tier gives its owner
+    (:func:`_refuse_unreachable_owner`), so an item no tier gives its owner
     is never written.
     """
     if actor is None or actor.agent_id is None:
@@ -1054,11 +1054,7 @@ def _creator_may_open_agent(user_column: Any, agent_id: Any) -> Any:
     from app.api.v1.helpers import shared_with_user_column_clause
     from app.models.agent import Agent
 
-    return (
-        select(Agent.id)
-        .where(Agent.id == agent_id, shared_with_user_column_clause(Agent, user_column))
-        .exists()
-    )
+    return select(Agent.id).where(Agent.id == agent_id, shared_with_user_column_clause(Agent, user_column)).exists()
 
 
 def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
@@ -1108,7 +1104,7 @@ class OwnerAgentUnreachableError(ValueError):
     """A work item handed to an agent its owner runs could never read (#858)."""
 
 
-async def refuse_unreachable_owner(
+async def _refuse_unreachable_owner(
     db: Any,
     *,
     owner_agent_id: uuid.UUID | None,
@@ -2181,7 +2177,7 @@ async def create_work_item(
         # tasks that other people's agents then pick up and act on — no
         # permission gained on paper, everyone else's fleet steered.
         # A hand-off its owner agent could never read is refused here (#858).
-        await refuse_unreachable_owner(
+        await _refuse_unreachable_owner(
             db,
             owner_agent_id=owner_uuid,
             user_id=user_uuid,

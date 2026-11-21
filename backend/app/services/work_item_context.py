@@ -403,7 +403,7 @@ class _Lookup:
             )
         return out
 
-    def agent(self, agent_id: object, *, named: bool = False) -> dict | None:
+    def agent(self, agent_id: object, *, named: bool = False) -> dict[str, object] | None:
         aid = _uuid(agent_id)
         if aid is None:
             return None
