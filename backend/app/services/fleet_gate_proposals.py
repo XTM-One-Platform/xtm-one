@@ -315,7 +315,8 @@ async def fleet_effective_gates(db: Any, fleet_id: Any) -> tuple[str, list[dict[
     person applied through ``PUT /fleets/{id}/autonomy``). A custom fleet still
     at ``NULL`` keeps acting on its declared gates alone, today's behaviour, so
     the deploy adds no pause anywhere. A built-in fleet acts on its seeded
-    catalog alone (its configuration ships with the platform).
+    catalog alone (its configuration ships with the platform), plus the gates
+    a person added to it (``Fleet.customer_gates``, #916).
     """
     from sqlalchemy import select
 
@@ -330,14 +331,15 @@ async def fleet_effective_gates(db: Any, fleet_id: Any) -> tuple[str, list[dict[
                 Fleet.documentation,
                 Fleet.approval_pins,
                 Fleet.is_builtin,
+                Fleet.customer_gates,
             ).where(Fleet.id == fleet_id)
         )
     ).first()
     if row is None:
         return None
-    level, stored, documentation, pins, is_builtin = row
+    level, stored, documentation, pins, is_builtin, customer = row
     computed = None if is_builtin or pins is None else (await fleet_configuration(db, fleet_id)).proposals()
-    return effective_level(level), effective_gates(stored, documentation, computed, pins)
+    return effective_level(level), effective_gates(stored, documentation, computed, pins, customer)
 
 
 async def fleets_gated_action_counts(db: Any, fleets: Iterable[Any]) -> dict[Any, int]:
@@ -402,6 +404,7 @@ async def fleets_gated_action_counts(db: Any, fleets: Iterable[Any]) -> dict[Any
                 getattr(fleet, "documentation", None),
                 computed,
                 getattr(fleet, "approval_pins", None),
+                getattr(fleet, "customer_gates", None),
             )
         )
     return counts
