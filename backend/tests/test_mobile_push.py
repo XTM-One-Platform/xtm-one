@@ -161,13 +161,16 @@ def _run(status="completed", question=None, summary="The weekly brief found 3 ne
     )
 
 
-def test_a_run_waiting_on_a_human_is_urgent_and_unread_until_answered_or_dismissed() -> None:
+def test_a_run_waiting_on_a_human_is_urgent_and_unread_until_answered() -> None:
     item = present_run(_run("awaiting_human", question="Approve isolating 3 gateways?"))
     assert item is not None
     assert (item.kind, item.route, item.run_id) == ("hitl", f"/operations/executions/{RUN_ID}", RUN_ID)
+    assert item.awaiting_answer is True
     assert is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set()) is True
-    # #901: the person who opened or dismissed it has read it.
-    assert is_unread(item, read_at=None, dismissed={item.id}) is False
+    # #991: opening or dismissing it never reads a decision still waiting.
+    assert is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed={item.id}) is True
+    # Answered, the run is no longer awaiting_human: an ordinary entry.
+    assert present_run(_run(summary="Approved, 3 gateways isolated.")).awaiting_answer is False
 
 
 def test_a_finished_run_shows_its_marker_free_summary():
