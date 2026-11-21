@@ -89,7 +89,10 @@ async def mark_notifications_read(
     now = datetime.now(UTC)
     current_read_at, current_dismissed = await load_read_state(db, user.id)
     if body.read_at is None and not body.dismissed_ids:
-        await save_read_state(db, user.id, read_at=now, dismissed=[])
+        # The dismissed ids are kept: they hold the read state of the kinds a
+        # read marker never reads (a waiting decision, a HITL pause), so a
+        # bulk read never unreads an entry read one by one before it (#901, UX B4).
+        await save_read_state(db, user.id, read_at=now, dismissed=current_dismissed)
     else:
         imported = body.read_at
         if imported is not None:
