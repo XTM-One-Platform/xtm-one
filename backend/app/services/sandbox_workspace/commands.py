@@ -535,6 +535,25 @@ def is_node_dir(command: ResolvedCommand, entries: dict[str, Any]) -> bool:
     return node_lock_dir(command, entries) is not None
 
 
+def keep_vanished_checkouts(removals: list[str]) -> tuple[list[str], list[str]]:
+    """*removals* without every checkout whose record is among them, and those checkout roots.
+
+    A command's read-back lists as removed what the container no longer holds. A checkout whose
+    own record (``.xtm-checkout.json``) went with it was not removed by the command: the container
+    lost its tree (a restart, a resumed run's stale baseline). Saving that removal deleted a whole
+    checkout from the workspace (10,094 files after a resumed backend-unit run); it is kept instead,
+    and the answer names it. A file removed inside a checkout whose record is still there stays a removal.
+    """
+    from app.services.sandbox_workspace.eviction import checkout_roots
+    from app.services.sandbox_workspace.paths import is_under
+
+    vanished = checkout_roots(removals)
+    if not vanished:
+        return removals, []
+    kept = [path for path in removals if not any(is_under(path, root) for root in vanished)]
+    return kept, vanished
+
+
 def staged_entries(entries: dict[str, Any], cwd: str) -> tuple[dict[str, Any], str]:
     """The part of the workspace a command of *cwd* is staged with, and the checkout root it was cut to.
 
@@ -2661,6 +2680,7 @@ async def _wait_and_finish(
                 else:
                     outcome.report = parse_report(command.report, raw.decode("utf-8", errors="replace"))
         readback = ""
+        vanished: list[str] = []
         if not lost:
             readback_started = time.monotonic()
             try:
@@ -2671,6 +2691,7 @@ async def _wait_and_finish(
             except Exception as exc:
                 readback = f"stage read-back, {time.monotonic() - readback_started:.0f} s: {format_exception_message(exc)}"
             else:
+                scanned.removals, vanished = keep_vanished_checkouts(scanned.removals)
                 await commit_scan(workspace, scanned, call, bytes_read=bytes_read)
         if run.get("cache_key") and outcome.exit_code == 0 and not outcome.timed_out:
             await _cache_store(sandbox, command, run["cache_key"], run_id, outcome.seconds)
@@ -2756,6 +2777,12 @@ async def _wait_and_finish(
             f"{len(survivors)} process(es) it started outlived the kill of its process tree (pids "
             f"{', '.join(str(pid) for pid in survivors[:5])}): the container was discarded with them, the next "
             "command starts a new one."
+        )
+    if vanished:
+        notes.append(
+            f"Kept in the workspace: {', '.join(display(root) for root in vanished[:5])}/ "
+            "(its checkout record was gone from the container when the command ended, so the whole checkout was "
+            "missing there, not removed by the command; nothing of it was deleted)."
         )
     if readback:
         notes.append(f"What the command changed under the workspace could not be read back ({readback}).")

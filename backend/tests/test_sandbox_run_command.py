@@ -1890,6 +1890,26 @@ async def test_an_empty_listing_on_exit_0_is_tried_once_more():
     assert sandbox.commands.runs == 2
 
 
+def test_a_checkout_gone_with_its_record_is_never_saved_as_removed():
+    """The read-back of a container that lost a whole checkout (record included) keeps it in the workspace."""
+    removals = [
+        "co/.xtm-checkout.json",
+        "co/backend/app.py",
+        "co/README.md",
+        "other/.xtm-checkout.json-not-a-record",
+        "loose.txt",
+    ]
+    kept, vanished = commands.keep_vanished_checkouts(removals)
+    assert vanished == ["co"]
+    assert kept == ["other/.xtm-checkout.json-not-a-record", "loose.txt"]
+
+
+def test_a_file_removed_inside_a_checkout_that_keeps_its_record_stays_a_removal():
+    kept, vanished = commands.keep_vanished_checkouts(["co/backend/old.py", "co/tests/test_old.py"])
+    assert vanished == []
+    assert kept == ["co/backend/old.py", "co/tests/test_old.py"]
+
+
 async def test_an_empty_listing_twice_names_the_second_try_and_the_stderr():
     sandbox = _listing_sandbox([b"", b""], stderr="OSError: disk full")
     with pytest.raises(RuntimeError) as raised:
