@@ -598,8 +598,10 @@ def build_sub_agent_tools(
             parent_agent_id=parent_agent_id,
             status=status or None,
         )
+        # The FULL id: check_task_status / get_task_result take a whole UUID,
+        # so a shortened id here could not be passed on (#966).
         parts = [
-            f"• {t['task_id'][:8]}... | {t['status']} | "
+            f"• {t['task_id']} | {t['status']} | "
             f"{t['task_description'][:120]}"
             + (f" | {t['held_reason']}" if t.get("held_reason") else "")
             # A pending / running task names its run and whether its execution
@@ -618,8 +620,7 @@ def build_sub_agent_tools(
                     conversation_ref=safe_uuid(conversation_id),
                 )
         parts += [
-            f"• {p['delegation_id'][:8]}... | running | delegated to partner "
-            f"'{p['partner']}' — still working there"
+            f"• {p['delegation_id']} | running | delegated to partner '{p['partner']}' — still working there"
             for p in partner
         ]
         if not parts:

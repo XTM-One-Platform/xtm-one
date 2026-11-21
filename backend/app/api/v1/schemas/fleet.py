@@ -684,6 +684,28 @@ class FleetRunEntry(BaseModel):
     trigger_type: str | None = None
     trigger_provider: str | None = None
     trigger_event: str | None = None
+    #: The CTEM case the run works on, when a case event started it (#915). An
+    #: id only: the case is read through ``GET /ctem-cases/{id}``, per viewer.
+    case_id: str | None = None
+
+
+class CaseRunEntry(BaseModel):
+    """One run working on a CTEM case (#915), for the case page."""
+
+    id: str
+    agent_id: str
+    agent_name: str | None = None
+    status: str
+    created_at: str
+    completed_at: str | None
+    outcome: str = "other"
+
+
+class CaseRunsResponse(BaseModel):
+    """The runs the caller may see that a CTEM case's events started, oldest first."""
+
+    case_id: str
+    runs: list[CaseRunEntry]
 
 
 class FleetActivityResponse(BaseModel):

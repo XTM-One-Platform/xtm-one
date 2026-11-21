@@ -105,9 +105,16 @@ class CaseFix:
 
 @dataclass
 class PendingEvents:
-    """Platform events to raise after the caller's commit, in order."""
+    """Platform events to raise after the caller's commit, in order.
+
+    ``verticals`` names the verticals whose case membership changed (a case
+    opened, a signal joined one): their cached viewer views are dropped after
+    the commit, so the case shows on the board and its page at once instead of
+    after the view TTL.
+    """
 
     items: list[tuple[str, dict[str, Any], str]] = field(default_factory=list)
+    verticals: set[str] = field(default_factory=set)
     #: Live frames for the web app (``ctem_case_update``, CTEM-03-UI #892): ids and states only.
     frames: list[dict[str, str]] = field(default_factory=list)
 
@@ -271,6 +278,7 @@ async def open_from_signal(
     signal.case_id = case.id
     signal.updated_at = now
     if events is not None:
+        events.verticals.add(vertical)
         events.frame(case, "created" if created else "signal", now)
     if created and events is not None:
         events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
@@ -496,6 +504,52 @@ def record_exploitation(
     return case
 
 
+#: What happened at a gate of the fleet's approval catalog (CTEM-34, #916).
+GATE_OUTCOMES: tuple[str, ...] = ("passed_automatically", "waited", "answered")
+
+
+def record_gate(
+    db: AsyncSession,
+    case: CtemCase,
+    *,
+    key: str,
+    outcome: str,
+    by: str = "",
+    option: str = "",
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write a loop gate on the case's history (CTEM-34, #916): passed automatically, waited or answered.
+
+    *key* is a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``);
+    *by* names what let it run (the autonomy level or the pin) or who answered;
+    *option* the option chosen. One ``gate`` event: ``from`` the key, ``to`` the
+    outcome, ``reason`` the by, ``evidence`` the option, so the loop trace shows
+    every gate, never hides an automatic pass. Never moves the case state. The
+    caller commits.
+    """
+    from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
+
+    key = (key or "").strip()
+    if key not in CTEM_GATE_KEYS:
+        raise rules.CaseRuleError(f"unknown gate {key!r}: one of {', '.join(CTEM_GATE_KEYS)}")
+    if outcome not in GATE_OUTCOMES:
+        raise rules.CaseRuleError(f"unknown gate outcome {outcome!r}: one of {', '.join(GATE_OUTCOMES)}")
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "gate",
+            now or datetime.now(UTC),
+            from_value=key,
+            to_value=outcome,
+            reason=(by or "").strip()[:300] or None,
+            evidence=(option or "").strip()[:300] or None,
+        )
+    )
+    return case
+
+
 def breached(case: CtemCase, now: datetime) -> bool:
     """True the first time an open case is past its SLA (the escalation is raised once)."""
     due = rules.as_utc(case.sla_due_at)
@@ -598,9 +652,18 @@ async def sweep_due() -> bool:
 
 
 async def publish_pending(events: PendingEvents | None) -> int:
-    """Raise the collected case events and live frames (after the commit); how many events were published."""
+    """Drop the stale viewer views, then raise the live frames and the collected case events (after the commit); how many events were published.
+
+    The views go first: a web app that refetches on a live frame reads the case at once.
+    """
     if not events:
         return 0
+    if events.verticals:
+        from app.services.ctem_cases_view import forget_all_views
+
+        for vertical in sorted(events.verticals):
+            await forget_all_views(vertical)
+        events.verticals.clear()
     if events.frames:
         from app.services.ctem_loop_stream import publish_case_updates
 

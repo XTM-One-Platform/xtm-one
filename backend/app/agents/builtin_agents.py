@@ -2750,6 +2750,34 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
     },
     {
         **_CTEM_F2_COMMON,
+        "name": "Vulnerability flagged in a PIR",
+        "description": (
+            "Triages a vulnerability that OpenCTI flags in one of the organization's PIRs, once its "
+            "live PIR score reaches the prioritization policy's threshold for vulnerabilities "
+            "(70 by default, editable in Settings), checked before any model call."
+        ),
+        "trigger_type": "integration_event",
+        "trigger_config": {
+            "provider": "opencti",
+            "pir_min_score": "policy",
+            "provision": {
+                "fleet": _CTEM_F2_FLEET,
+                "purpose": "Vulnerability flagged in a PIR",
+                "mode": "pir_playbook",
+                "entity_types": ["Vulnerability"],
+                "organization_context": ["pir_ids"],
+                "pir_min_score": 1,
+            },
+        },
+        "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
+            priority=(
+                "The vulnerability is flagged in an organization PIR at or above the policy's threshold "
+                "(read live before this run): rank it above an unflagged CVE of the same score."
+            )
+        ),
+    },
+    {
+        **_CTEM_F2_COMMON,
         "name": "Vulnerability sighted",
         "description": "Triages, at higher priority, a vulnerability sighted in the organization's data.",
         "trigger_type": "integration_event",
@@ -2944,6 +2972,42 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "STIX id as source): the scope gate opens or joins its case, and the "
             "case event runs the loop. End with the relevance verdict and the "
             "signal id."
+        ),
+    },
+    {
+        **_F1_RUN,
+        "name": "Threat activity flagged in a PIR",
+        "description": (
+            "When OpenCTI flags an intrusion set, a threat actor, a campaign or a malware in one of "
+            "the organization's PIRs and its live PIR score reaches the prioritization policy's "
+            "threshold for threat activity (75 by default, editable in Settings), opens a threat "
+            "response case. The score is checked before any model call."
+        ),
+        "trigger_type": "integration_event",
+        "trigger_config": {
+            "provider": "opencti",
+            "pir_min_score": "policy",
+            "provision": {
+                "fleet": "Threat response",
+                "purpose": "Threat activity flagged in a PIR",
+                "mode": "pir_playbook",
+                "entity_types": [
+                    "Intrusion-Set",
+                    "Threat-Actor-Group",
+                    "Threat-Actor-Individual",
+                    "Campaign",
+                    "Malware",
+                ],
+                "organization_context": ["pir_ids"],
+                "pir_min_score": 1,
+            },
+        },
+        "prompt": (
+            "OpenCTI flagged the entity in the trigger below in an organization PIR, at or above the "
+            "policy's threshold (read live before this run). Score its relevance and stop with the "
+            "reason when it is not relevant. When it is, record it with record_ctem_signal "
+            "(trigger_path relevant_threat, its STIX id as source): the scope gate opens or joins its "
+            "case. End with the relevance verdict and the signal id."
         ),
     },
     {

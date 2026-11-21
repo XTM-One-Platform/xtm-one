@@ -1530,6 +1530,9 @@ _NON_AI_MODULES: dict[str, str] = {
     # A registered platform's access notice: one email from a fixed template,
     # no model call. A platform with AI off still adds people to it.
     "platform_access_notices.py": "access notice emails from a fixed template; no model call",
+    # Cross-platform keys, identity and the user-token exchange: signatures
+    # over a registered platform's verified user, no model call.
+    "xtm_auth.py": "cross-platform keys and user-token exchange; no model call",
     # Inbound delivery only. Every dispatch it can reach is gated downstream:
     # assignments in ``assignment_engine.trigger_assignment`` /
     # ``trigger_or_queue_assignment``, flows in
