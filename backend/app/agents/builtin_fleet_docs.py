@@ -405,6 +405,8 @@ _TICKET_TOOLS = [
     {"name": "create_jira_issue"},
     {"name": "create_servicenow_incident"},
     {"name": "create_servicenow_change"},
+    # #917: the Mobilization role opens a case's ticket through the sync layer.
+    {"name": "sync_ctem_case_ticket", "when": {"create": ["true"]}},
 ]
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared

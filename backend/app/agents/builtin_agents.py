@@ -2807,7 +2807,13 @@ BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 # fleet takes the vulnerability and exposure paths, the threat fleet the
 # threat and supply-chain ones, so a case starts exactly one fleet run.
 CTEM_THREAT_CASE_PATHS: tuple[str, ...] = ("relevant_threat", "credential_leak", "third_party_event")
-_CASE_EVENT_NAMES: tuple[str, ...] = ("ctem_case.opened", "ctem_case.reopened", "ctem_case.sla_breached")
+_CASE_EVENT_NAMES: tuple[str, ...] = (
+    "ctem_case.opened",
+    "ctem_case.reopened",
+    "ctem_case.sla_breached",
+    # #917: the case's ticket reached done in the declared ticketing system.
+    "ctem_case.retest_requested",
+)
 
 
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
@@ -2832,11 +2838,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
             "it owned by you when no open item has that key; when one is open, add a note "
             "to it and stop, never a second loop), set the case in_progress, run your loop "
             "and write every result on the case: the validation with "
-            "record_ctem_case_validation, the ticket with record_ctem_case_ticket, notes "
+            "record_ctem_case_validation, the ticket with sync_ctem_case_ticket, notes "
             "with update_ctem_case. On ctem_case.sla_breached: add a note to that work item "
             "and to the case naming the breach and the next step, and raise its priority. "
-            "Never keep an open item only in shared state. End with the case id, its state "
-            "and the next step."
+            "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
+            "item and run the case's re-test; write it with record_ctem_case_validation (kind "
+            "retest): the case closes on the re-test, never on the ticket. Never keep an "
+            "open item only in shared state. End with the case id, its state and the next step."
         ),
     }
 
