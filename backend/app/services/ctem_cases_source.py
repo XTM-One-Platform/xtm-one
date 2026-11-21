@@ -305,9 +305,25 @@ def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
                 cve=value if value.upper().startswith("CVE-") else None,
                 assets=assets,
                 first_seen_at=_when(f.get("finding_created_at") or f.get("base_created_at")),
+                **_finding_lifecycle(f),
             )
         )
     return out
+
+
+#: OpenAEV finding statuses (CTEM-14) as the case reads them.
+_FINDING_STATUSES = {"OPEN": "open", "NOT_REPRODUCED": "not_reproduced", "RESOLVED": "resolved"}
+
+
+def _finding_lifecycle(f: dict[str, Any]) -> dict[str, Any]:
+    """The re-test status of a finding, feature-detected: an OpenAEV without the lifecycle answers none."""
+    status = _FINDING_STATUSES.get(str(f.get("finding_status") or "").upper())
+    tested = _when(f.get("finding_last_tested"))
+    return {
+        "retest_status": status,
+        "last_tested_at": tested.isoformat() if tested else None,
+        "retest_pending": bool(f.get("finding_retest_inject_id")),
+    }
 
 
 async def _read_opencti(

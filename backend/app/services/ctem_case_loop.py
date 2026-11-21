@@ -504,6 +504,52 @@ def record_exploitation(
     return case
 
 
+#: What happened at a gate of the fleet's approval catalog (CTEM-34, #916).
+GATE_OUTCOMES: tuple[str, ...] = ("passed_automatically", "waited", "answered")
+
+
+def record_gate(
+    db: AsyncSession,
+    case: CtemCase,
+    *,
+    key: str,
+    outcome: str,
+    by: str = "",
+    option: str = "",
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write a loop gate on the case's history (CTEM-34, #916): passed automatically, waited or answered.
+
+    *key* is a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``);
+    *by* names what let it run (the autonomy level or the pin) or who answered;
+    *option* the option chosen. One ``gate`` event: ``from`` the key, ``to`` the
+    outcome, ``reason`` the by, ``evidence`` the option, so the loop trace shows
+    every gate, never hides an automatic pass. Never moves the case state. The
+    caller commits.
+    """
+    from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
+
+    key = (key or "").strip()
+    if key not in CTEM_GATE_KEYS:
+        raise rules.CaseRuleError(f"unknown gate {key!r}: one of {', '.join(CTEM_GATE_KEYS)}")
+    if outcome not in GATE_OUTCOMES:
+        raise rules.CaseRuleError(f"unknown gate outcome {outcome!r}: one of {', '.join(GATE_OUTCOMES)}")
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "gate",
+            now or datetime.now(UTC),
+            from_value=key,
+            to_value=outcome,
+            reason=(by or "").strip()[:300] or None,
+            evidence=(option or "").strip()[:300] or None,
+        )
+    )
+    return case
+
+
 def breached(case: CtemCase, now: datetime) -> bool:
     """True the first time an open case is past its SLA (the escalation is raised once)."""
     due = rules.as_utc(case.sla_due_at)

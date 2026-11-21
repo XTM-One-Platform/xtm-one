@@ -248,6 +248,18 @@ async def test_list_integration_tools_reports_each_tools_access():
     assert "Unknown provider 'nope'" in unknown.content
 
 
+@pytest.mark.asyncio
+async def test_list_integration_tools_honours_a_read_only_declaration() -> None:
+    """A hunt declared read_only is a read whatever its verb, as the catalog
+    badge and a read-only binding already say."""
+    _definitions, executor = _builder()
+
+    result = await _call(executor, "list_integration_tools", provider="defender")
+
+    assert "  - run_defender_hunting_query [read]" in result.content
+    assert "  - create_defender_indicator [write]" in result.content
+
+
 CISO = str(uuid.uuid4())
 BARE = str(uuid.uuid4())
 

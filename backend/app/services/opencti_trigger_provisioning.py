@@ -1028,9 +1028,7 @@ def bound_opencti_integration_id(assignment: Any, agent: Any) -> str | None:
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, str, str] | str:
     """``(gql, integration_id, base_url, secret)`` or the reason it cannot be built."""
     from app.core.security import configured_secret
-    from app.integrations.providers.opencti._common import _client, _graphql
     from app.models.integration import Integration
-    from app.services.integration_tools import _get_token
     from app.services.vault import reveal_json_field
 
     integration_id = bound_opencti_integration_id(assignment, agent)
@@ -1054,7 +1052,27 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
     if user_id is None:
         logger.warning("OpenCTI provisioning of assignment %s skipped: %s", assignment.id, NO_RUN_AS_REASON)
         return NO_RUN_AS_REASON
-    token = await _get_token(db, integration_id, "opencti", user_id=str(user_id) if user_id else None, integ=integration)
+    connection = await integration_gql(db, integration, user_id)
+    if isinstance(connection, str):
+        return connection
+    gql, api_base = connection
+    return gql, integration_id, api_base, secret
+
+
+async def integration_gql(db: Any, integration: Any, user_id: Any, *, timeout: int = 30) -> tuple[Gql, str] | str:
+    """``(gql, base_url)`` on one OpenCTI integration for ``user_id``, or the reason it cannot be built.
+
+    The caller hands the integration a trigger is bound to (the assignment's or
+    its agent's binding, or the one the receiver authenticated): provisioning
+    here, and the CTEM-08 PIR score rule, which re-reads a delivered entity's
+    live score with the same integration (services/ctem_trigger_rules.py).
+    """
+    from app.integrations.providers.opencti._common import _client, _graphql
+    from app.services.integration_tools import _get_token
+
+    token = await _get_token(
+        db, str(integration.id), "opencti", user_id=str(user_id) if user_id else None, integ=integration
+    )
     if not token or "||" not in token:
         return "no OpenCTI token could be resolved for the integration"
     api_base, _, api_token = token.partition("||")
@@ -1070,10 +1088,10 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
         headers = attach_probe(headers, api_base)
 
     async def gql(query: str, variables: dict | None = None) -> tuple[dict, str | None]:
-        async with _client(headers, timeout=30) as client:
+        async with _client(headers, timeout=timeout) as client:
             return await _graphql(client, api_base, headers, query, variables)
 
-    return gql, integration_id, api_base, secret
+    return gql, api_base
 
 
 def _with_state(trigger_config: dict, state: dict | None) -> dict:
