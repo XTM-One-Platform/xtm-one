@@ -116,8 +116,32 @@ async def test_the_list_answers_the_cases_and_every_state_count(api):
         response = await client.get("/api/v1/ctem-cases", params={"state": "needs_attention"})
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["counts"] == {"needs_attention": 1, "in_progress": 0, "resolved": 0, "accepted_risk": 0}
+    assert body["counts"] == {"needs_attention": 1, "in_progress": 0, "mitigated_watching": 0, "resolved": 0, "accepted_risk": 0}
     assert [c["title"] for c in body["cases"]] == ["Upgrade Apache Tomcat to 9.0.98"]
+
+
+async def test_a_case_carries_its_loop_fields(api):
+    """trigger path, severity, SLA, scenarios, tickets, validations and resolution are read back (#857)."""
+    api.case.trigger_path = "new_exposure"
+    api.case.severity = "P2"
+    api.case.sla_due_at = NOW
+    api.case.risk_scenario_ids = ["rs-1"]
+    api.case.validations = [{"provider": "openaev", "kind": "validation", "ref": "sim-1", "result": "passed"}]
+    api.case.validation_plan = True
+    api.case.resolution_kind = "not_exposed"
+    async with api.client as client:
+        response = await client.get("/api/v1/ctem-cases", params={"state": "needs_attention"})
+    assert response.status_code == 200, response.text
+    row = response.json()["cases"][0]
+    assert row["trigger_path"] == "new_exposure"
+    assert row["severity"] == "P2"
+    assert row["sla_due_at"] == NOW.isoformat()
+    assert row["sla_breached_at"] is None
+    assert row["risk_scenario_ids"] == ["rs-1"]
+    assert row["tickets"] == []
+    assert row["validations"][0]["ref"] == "sim-1"
+    assert row["validation_plan"] is True
+    assert row["resolution_kind"] == "not_exposed"
 
 
 async def test_the_list_without_an_organization_is_empty_never_404(api, monkeypatch):
@@ -132,7 +156,7 @@ async def test_the_list_without_an_organization_is_empty_never_404(api, monkeypa
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["cases"] == []
-    assert body["counts"] == {"needs_attention": 0, "in_progress": 0, "resolved": 0, "accepted_risk": 0}
+    assert body["counts"] == {"needs_attention": 0, "in_progress": 0, "mitigated_watching": 0, "resolved": 0, "accepted_risk": 0}
     assert body["details_unavailable"] == []
 
 
