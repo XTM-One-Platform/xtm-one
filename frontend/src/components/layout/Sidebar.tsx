@@ -72,6 +72,10 @@ import xtmHubWordmark from "@/assets/products/xtm-hub.svg";
 import xtmHubWordmarkLight from "@/assets/products/xtm-hub-light.svg";
 import opencrqWordmark from "@/assets/products/opencrq.svg";
 import opencrqWordmarkLight from "@/assets/products/opencrq-light.svg";
+import xtmOneWordmark from "@/assets/products/xtm-one.svg";
+import xtmOneWordmarkLight from "@/assets/products/xtm-one-light.svg";
+import xtmOneMark from "@/assets/products/xtm-one-mark.svg";
+import xtmOneMarkLight from "@/assets/products/xtm-one-mark-light.svg";
 import { MadeByFiligran } from "./MadeByFiligran";
 import { NavRowBody } from "./NavRowBody";
 import {
@@ -326,6 +330,19 @@ const SUITE_WORDMARKS: Record<SuiteProduct, { dark: string; light: string }> = {
   xtm_hub: { dark: xtmHubWordmark, light: xtmHubWordmarkLight },
 };
 
+/**
+ * XTM One's own lockup in the header and the switcher, emblem and wordmark in
+ * the emblem's one purple: #A47AF0 (purple-300, the Figma emblem colour) on
+ * dark, #651FE5 (the `.light` --color-filigran-ia-primary, purple-500) on
+ * light. An exception for product logos and switchers only (Sam, 21 Nov 2026,
+ * #964). Every other surface draws the bundled public/ files, the Figma
+ * lockup (wordmark #F2F2F3 dark, #18191B light).
+ */
+const XTM_ONE_HEADER = {
+  logo: { dark: xtmOneWordmark, light: xtmOneWordmarkLight },
+  mark: { dark: xtmOneMark, light: xtmOneMarkLight },
+} as const;
+
 function suiteLogo(product: SuiteProduct, mode: "light" | "dark") {
   return <img src={SUITE_WORDMARKS[product][mode]} alt="" className="h-auto w-full object-contain" />;
 }
@@ -467,15 +484,21 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     }));
   }, [registrations, hubRegistration, isAdmin, isXtm, colorMode, t_i18n]);
 
+  /* The bundled logo is in use while the backend names its light variant; an
+     operator's own logo and mark are drawn as uploaded. */
+  const bundledXtmOne = isXtm && Boolean(platformConfig?.platform_logo_light);
+  const headerLogoSrc = bundledXtmOne ? XTM_ONE_HEADER.logo[colorMode] : logoSrc;
+  const headerMarkSrc = bundledXtmOne && platformConfig?.platform_emblem_light ? XTM_ONE_HEADER.mark[colorMode] : emblemSrc;
+
   const brandLogo = (
-    <img src={logoSrc} alt={platformName} className="h-7 min-w-0 object-contain" />
+    <img src={headerLogoSrc} alt={platformName} className="h-7 min-w-0 object-contain" />
   );
   /* The rail is 48px wide: a wordmark squeezed into its 28px square is an
      unreadable strip, so the rail shows the mark alone. With no mark to show
      (an operator's logo and no favicon), the logo is cropped to its leading
      square, which is where a wordmark carries its mark. */
-  const brandMark = emblemSrc ? (
-    <img src={emblemSrc} alt="" className="size-7 object-contain" />
+  const brandMark = headerMarkSrc ? (
+    <img src={headerMarkSrc} alt="" className="size-7 object-contain" />
   ) : (
     <img src={logoSrc} alt="" className="size-7 max-w-none object-cover object-left" />
   );
