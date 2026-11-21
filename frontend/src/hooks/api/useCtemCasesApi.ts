@@ -149,6 +149,8 @@ export interface CtemCaseBulkResult {
 export interface CtemRecomputeResult {
   applied: boolean;
   missing?: string[];
+  /** Issues kept out of every case: the declared tech stack version is outside their ranges (CTEM-11). */
+  not_affected?: number;
   [key: string]: unknown;
 }
 
