@@ -325,9 +325,6 @@ class FleetResponse(BaseModel):
     automations: FleetAutomationsResponse | None = None
     #: The newest run of a home member the caller may see; ``null`` = never run.
     last_run_at: str | None = None
-    #: The Platform Health fleet only (#974): what starts it and what it covers, from
-    #: Settings > Platform Health; ``null`` on every other fleet.
-    health_starts: FleetHealthStartsResponse | None = None
     created_at: str
     updated_at: str
 
@@ -510,24 +507,6 @@ class FleetMemberHealthResponse(BaseModel):
     recent_interruptions: int = 0
     open_work_items: int
     stale_work_items: int
-
-
-class FleetHealthStartsResponse(BaseModel):
-    """What starts the Platform Health fleet (#974, ``fleet_views.HealthFleetStarts``):
-    its Settings schedules and signals, never its ``manual`` assignments."""
-
-    #: A signal pass is on: an investigation starts on an event.
-    events: bool = False
-    #: The schedules switched on in Settings > Platform Health.
-    schedules: int = 0
-    #: The soonest next start of those schedules (ISO 8601); ``null`` when none is on.
-    next_run_at: str | None = None
-    #: The modules it covers, XTM One modes only (``xtm_one`` then the registered ones).
-    modules: list[str] = Field(default_factory=list)
-    #: Where an administrator switches and schedules it.
-    settings_route: str = ""
-    #: Platform Health is on in Settings; off, ``next_run_at`` is ``null`` (nothing starts).
-    active: bool = True
 
 
 class FleetAutomationsResponse(BaseModel):
@@ -931,6 +910,10 @@ class FleetApprovalGatesResponse(BaseModel):
     existing_approvals: list[dict] = Field(default_factory=list)
     #: Whether the reader may write the catalog (a manager of a custom fleet).
     editable: bool = False
+    #: Gates a person added to a built-in fleet (#916, CTEM-34), kept across seed upgrades.
+    customer_gates: list[dict[str, object]] = Field(default_factory=list)
+    #: Whether the reader may add gates to a built-in fleet (its manager): ``PUT approval-gates`` writes them.
+    customer_gates_editable: bool = False
     #: The fleet's level and the gates it acts on (#10153): declared + computed,
     #: each with ``source``, ``pin``, ``tools``, ``gated`` and ``by_level``
     #: (``fleet_autonomy.gate_catalog``), so the cursor previews every step.
