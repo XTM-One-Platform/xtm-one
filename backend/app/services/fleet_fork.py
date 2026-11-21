@@ -59,6 +59,7 @@ from app.models.agent import Agent
 from app.models.fleet import FLEET_DEFAULT_ICON, FLEET_ROLE_CONNECTED, FLEET_ROLE_MEMBER, Fleet, FleetMember
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.services.fleet_autonomy import customer_gates_of
 from app.services.fleets import (
     FleetActionRefusedError,
     add_connected,
@@ -317,7 +318,13 @@ async def fork_fleet(
         budget_config=lower_budget_to_ceiling(source.budget_config, user=user) if source.budget_config else None,
         max_iterations=clamp_max_iterations(source.max_iterations) if source.max_iterations is not None else None,
         # The approval gate catalog is configuration (#10000): the fork gates what its source gates.
-        approval_gates=[dict(g) for g in source.approval_gates] if isinstance(source.approval_gates, list) else None,
+        # Gates a person added to a built-in source (#916) join the fork's own catalog.
+        approval_gates=(
+            [dict(g) for g in source.approval_gates]
+            + [dict(g) for g in customer_gates_of(getattr(source, "customer_gates", None))]
+            if isinstance(source.approval_gates, list)
+            else None
+        ),
         # The fork keeps its source's pins, and with them whether the computed catalog is on (#10153);
         # its level is a new fleet's (create_fleet), never raised from the source's.
         approval_pins=dict(source.approval_pins) if isinstance(source.approval_pins, dict) else None,

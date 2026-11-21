@@ -260,11 +260,17 @@ def fleet_gates(approval_gates: Any, documentation: Any) -> list[Mapping[str, An
     return _structured_gates(documentation)
 
 
+def customer_gates_of(value: Any) -> list[Mapping[str, Any]]:
+    """The valid entries of a stored ``Fleet.customer_gates`` value (#916): the gates a person added to a built-in fleet."""
+    return [g for g in value if isinstance(g, Mapping) and g.get("key")] if isinstance(value, list) else []
+
+
 def effective_gates(
     approval_gates: Any,
     documentation: Any,
     computed: Iterable[Mapping[str, Any]] | None = None,
     pins: Any = None,
+    customer: Any = None,
 ) -> list[dict[str, Any]]:
     """The gates the level acts on (#10153 C1): the declared ones, then the computed ones, each with its pin.
 
@@ -273,12 +279,19 @@ def effective_gates(
     configuration (``fleet_gate_proposals.propose_gates``, custom fleets only),
     added when no declared gate has the same key, so accepting a proposal
     never changes what waits. ``source`` says where each gate comes from
-    (``stored``, ``documentation``, ``computed``); ``pin`` is the stored
-    per-action override of :func:`clean_pins`, when there is one.
+    (``stored``, ``documentation``, ``customer``, ``computed``); ``pin`` is the
+    stored per-action override of :func:`clean_pins`, when there is one.
+    *customer* is ``Fleet.customer_gates`` (#916): gates a person added to a
+    built-in fleet, read after its seeded ones; a key the seed declares keeps
+    the seeded gate (a pin moves that one).
     """
     declared_source = "stored" if isinstance(approval_gates, list) else "documentation"
     out: list[dict[str, Any]] = [dict(g, source=declared_source) for g in fleet_gates(approval_gates, documentation)]
     keys = {str(g.get("key") or "") for g in out}
+    for gate in customer_gates_of(customer):
+        if str(gate.get("key")) not in keys:
+            out.append(dict(gate, source="customer"))
+            keys.add(str(gate.get("key")))
     for gate in computed or ():
         if isinstance(gate, Mapping) and str(gate.get("key") or "") not in keys:
             out.append(dict(gate, source="computed"))

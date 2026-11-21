@@ -89,6 +89,11 @@ def _fmt_signin(s: dict[str, Any]) -> str:
     )
 
 
+def _target_name(t: dict[str, Any]) -> str:
+    """A target resource's name: a user target carries its UPN, often no display name."""
+    return t.get("displayName") or t.get("userPrincipalName") or t.get("id") or "?"
+
+
 def _fmt_audit(a: dict[str, Any]) -> str:
     initiator = a.get("initiatedBy", {}) or {}
     actor = initiator.get("user", {}) or initiator.get("app", {}) or {}
@@ -97,8 +102,10 @@ def _fmt_audit(a: dict[str, Any]) -> str:
         or actor.get("displayName")
         or "system"
     )
-    targets = a.get("targetResources", []) or []
-    target = targets[0].get("displayName", "?") if targets else "?"
+    targets = [t for t in (a.get("targetResources", []) or []) if isinstance(t, dict)]
+    target = _target_name(targets[0]) if targets else "?"
+    if len(targets) > 1:
+        target += f" (+{len(targets) - 1} more)"
     return (
         f"- {dt(a.get('activityDateTime'))} | {a.get('activityDisplayName', '?')} "
         f"({a.get('result', '?')})\n"

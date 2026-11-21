@@ -1004,7 +1004,10 @@ OpenCTI pass in `services/opencti_trigger_provisioning.py`) creates in
 OpenCTI, under the bound integration's identity, a Generic webhook notifier
 posting to `/api/hooks/integrations/<integration>/assignments/<assignment>`
 with `X-OpenCTI-Token` set to the integration's `webhook_secret` (no secret:
-nothing is provisioned, the state says why), and a live knowledge trigger with
+nothing is provisioned, the state says why; a platform-managed integration,
+which the registration writes without one, gets a secret generated and stored
+in its extra config by the first pass that needs it,
+`trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
 `x_opencti_score` gte) and that notifier. Both are named
 `XTM One - <fleet> - <purpose>`.
@@ -1050,6 +1053,15 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   or System to Vulnerability, whatever KEV or EPSS. The OpenCTI signal
   listener records the source in the signal's `evidence.software`, so the
   scope gate resolves the signal to that product.
+- Checked at save time (#970): create and update (REST and the agent
+  builder tools) run the provider's `read_provision_spec` on the trigger as
+  it will be saved (`trigger_provisioning.provision_spec_error`) and refuse
+  an unusable block with the pass's own message, never 15 minutes later.
+  `organization_context` is a list of profile field names (`["pir_ids"]`,
+  any of `pir_ids`, `regions`, `sector`): the values are read from the
+  primary organization profile, so an object such as `{"pir_ids": [...]}` is
+  refused. A subset of the profile PIRs is not supported: the playbook
+  listens to every PIR of the profile; narrow the PIRs in the profile.
 - Trigger rule "PIR score thresholds" (CTEM-08):
   `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
   to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
@@ -1920,7 +1932,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 | `PATCH /fleets/{id}` `autonomy_level` | `full_gates`, `medium`, `low` (built-in fleet default, #10005), `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
 | `GET /fleets/{id}/approval-gates` | The approval gate catalog the level acts on (`Fleet.approval_gates`, else the documentation's gates; #10000), the gates proposed from the members' configuration (`services/fleet_gate_proposals.py`: one gate per bound integration and impact class naming its write tools, read-only bindings and tool scoping honoured; impact table: read never gated, mark or draft `low`, send, reply, forward, delete, isolate, payment or signature `destructive`, every other write `high`) and the approvals that exist outside the level (agent and automation human in the loop, tool-call approval). Also `autonomy_level`, `effective_catalog` (every gate the level acts on with `source` stored, documentation or computed, `pin`, `tools`, `gated` and `by_level`: the cursor's before-click preview) and `computed_catalog_on` (#10153). No model call, no quota (#10014) | whoever sees the fleet | allowed |
 | `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes them too since #916, kept across seed upgrades: the seed never writes them). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
-| `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys); a built-in fleet is refused (the seed writes its catalog). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
+| `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys). On a built-in fleet (#916) the body is the gates added to the seeded catalog, stored in `Fleet.customer_gates` (customer layer, never written by the seed, so kept across upgrades; read after the seeded gates, source `customer`, pinned like any gate); a seeded key is refused (422: pin it instead). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
 | `POST /fleets/{id}/enable` | Enable fleet (S4b): every automation that is off switches on (seeded, paused by a person, by Pause all), never one an emergency stop holds; the seeded fleet automations run as `run_as_user_id` (the caller by default, another user an administrator's choice). All or nothing: 400 while the run-as user misses a module an automation needs (`fleet_run_as.missing_providers`), 409 when nothing is off or during an emergency stop. `dry_run` answers the plan (each automation, its modules, what is missing) for the setup dialog. Audit `fleet_enable` | whoever manages the fleet; a built-in fleet an administrator | refused (`require_agentic_ai`): it starts new AI work |
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
 | `POST /fleets/{id}/resume` | Resume: exactly the `fleet_pause` ones switch back on; 409 during an emergency stop. Audit `fleet_resume` | as Enable | allowed |

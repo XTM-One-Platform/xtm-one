@@ -313,7 +313,8 @@ describe("the work item detail", () => {
       expect(card.textContent).toContain("Recommended");
       expect(within(card).getByTestId("work-item-decision-deadline")).toBeTruthy();
       const buttons = within(card).getAllByTestId("work-item-decision-option");
-      expect(buttons.map((b) => b.textContent)).toEqual(["Starter", "Enterprise"]);
+      const labels = within(card).getAllByTestId("work-item-decision-option-label");
+      expect(labels.map((b) => b.textContent)).toEqual(["Starter", "Enterprise"]);
       // The card comes before the facts and the description is folded.
       const detail = screen.getByTestId("work-item-detail");
       expect(detail.firstElementChild).toBe(card);
@@ -375,8 +376,104 @@ describe("the work item detail", () => {
       expect(context.querySelector("a")?.getAttribute("href")).toBe("https://example.com/review");
       expect(context.querySelectorAll("p")).toHaveLength(2);
       const buttons = within(card).getAllByTestId("work-item-decision-option");
-      expect(buttons.map((b) => b.textContent)).toEqual(["Enterprise", "Starter"]);
+      expect(within(card).getAllByTestId("work-item-decision-option-label").map((b) => b.textContent)).toEqual([
+        "Enterprise",
+        "Starter",
+      ]);
+      expect(buttons[0].closest("[data-testid=work-item-decision-tile]")?.getAttribute("data-recommended")).toBe("true");
       expect(within(card).queryByTestId("work-item-decision-fallback")).toBeNull();
+    });
+
+    // #842, J.1: every option a full-width tile, label then effect, one Recommended pill.
+    it("renders every option as a full-width tile of equal width, label over effect", () => {
+      openDialog(
+        waiting({
+          ask: {
+            question: "Pick one",
+            options: [
+              { key: "A", label: "Go", effect: "Recommended: posts the prepared comment now." },
+              { key: "B", label: "Edit first", effect: "opens the comment for changes" },
+              { key: "C", label: "No" },
+            ],
+            recommendation: "A",
+          },
+        }),
+        { answer: true },
+      );
+      const card = screen.getByTestId("work-item-decision");
+      expect(within(card).getByTestId("work-item-decision-options").className).toContain("grid-cols-1");
+      const tiles = within(card).getAllByTestId("work-item-decision-option");
+      expect(tiles).toHaveLength(3);
+      // Equal widths: every tile is a block button spanning its single-column cell.
+      const widths = new Set(tiles.map((tile) => tile.className.split(" ").filter((c) => /^(w-|max-w-|flex-1|shrink)/.test(c)).join(" ")));
+      expect([...widths]).toEqual(["w-full"]);
+      for (const tile of tiles) expect(tile.tagName).toBe("BUTTON");
+      // One pill, on the recommended tile only; the agent's own "Recommended:" prefix is dropped.
+      expect(within(card).getAllByTestId("work-item-decision-recommended")).toHaveLength(1);
+      const effects = within(card).getAllByTestId("work-item-decision-effect");
+      expect(effects[0].textContent).toBe("posts the prepared comment now.");
+      expect(card.textContent?.match(/Recommended/g)).toHaveLength(1);
+      // The effect is the tile's description for a screen reader.
+      expect(tiles[0].getAttribute("aria-describedby")).toBe(effects[0].id);
+    });
+
+    it("clamps a clipped effect to 3 lines with Show more, outside the tile button", () => {
+      const effect = "This option does a long list of things the reader may want in full. ".repeat(5);
+      // The clamped span is cut: 72 px of text in a 54 px box.
+      const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(72);
+      const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(54);
+      try {
+        openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
+          answer: true,
+        });
+        const shown = screen.getByTestId("work-item-decision-effect");
+        expect(shown.getAttribute("data-clamped")).toBe("true");
+        const more = screen.getByRole("button", { name: "Show more" });
+        expect(more.closest("[data-testid=work-item-decision-option]")).toBeNull();
+        fireEvent.click(more);
+        expect(shown.getAttribute("data-clamped")).toBeNull();
+        expect(screen.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+        expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      } finally {
+        height.mockRestore();
+        client.mockRestore();
+      }
+    });
+
+    it("shows no Show more for a long effect that fits in 3 lines (UX r1 B1 on #973)", () => {
+      // 255 characters that fit: scrollHeight equals clientHeight (54 px).
+      const effect = "This option does a long list of things the reader may want. ".repeat(5).slice(0, 255);
+      const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(54);
+      const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(54);
+      try {
+        openDialog(waiting({ ask: { question: "Pick one", options: [{ key: "A", label: "Go", effect }, { key: "B", label: "No" }] } }), {
+          answer: true,
+        });
+        expect(screen.getByTestId("work-item-decision-effect").getAttribute("data-clamped")).toBeNull();
+        expect(within(screen.getByTestId("work-item-decision")).queryByRole("button", { name: "Show more" })).toBeNull();
+      } finally {
+        height.mockRestore();
+        client.mockRestore();
+      }
+    });
+
+    it("folds the free-text answer behind Answer differently when the ask has options", () => {
+      openDialog(waiting({ ask }), { answer: true });
+      const folded = screen.getByTestId("work-item-decision-free-text");
+      expect(folded.tagName).toBe("DETAILS");
+      expect(folded.hasAttribute("open")).toBe(false);
+      expect(within(folded).getByText("Answer differently")).toBeTruthy();
+    });
+
+    it("names the agent that asks, when the reader may see it", () => {
+      openDialog(
+        waiting({
+          ask,
+          context: context({ owner_agent: { id: "a1", name: "Developer", icon: null, accessible: true } }),
+        }),
+        { answer: true },
+      );
+      expect(screen.getByTestId("work-item-decision-asker").textContent).toBe("Asked by Developer");
     });
 
     it("shows the brief, its links and the incomplete line when the ask is missing, not the bare title", () => {
@@ -612,6 +709,27 @@ describe("the work item detail", () => {
     expect(why.querySelector('[data-blocked-ref="o/r: deploy.yml"]')).toBeTruthy();
     expect(why.querySelector('[data-blocked-ref="o/r#8"]')).toBeNull();
     expect(screen.queryByText("Mark done")).toBeNull();
+  });
+
+  // #842, J.2: one sentence per kind, and the pull request sentence follows release_on.
+  it("says merged, not merged or closed, when every pull request waits for its merge", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        blocked_on_refs: [
+          { repo: "o/r", kind: "pull_request", number: 7, release_on: "merged" },
+          { repo: "o/r", kind: "pull_request", number: 9, release_on: "merged" },
+        ],
+        context: context({ pickup: { ...context().pickup, state: "waiting_for_refs", auto_cancel_at: null } }),
+      }),
+      { close: vi.fn() },
+    );
+    const sentences = screen.getAllByTestId("work-item-ref-release");
+    expect(sentences).toHaveLength(1);
+    expect(sentences[0].textContent).toBe("A pull request releases it once merged.");
+    const why = screen.getByTestId("work-item-blocked-why");
+    expect(why.querySelector('[data-blocked-ref="o/r#7"]')).toBeTruthy();
+    expect(why.querySelector('[data-blocked-ref="o/r#9"]')).toBeTruthy();
   });
 
   it("reads Waiting for a decision on an item waiting for a person, Mark done kept", () => {

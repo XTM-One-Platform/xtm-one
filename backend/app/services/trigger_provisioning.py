@@ -57,6 +57,59 @@ async def maintain_trigger_provisioning(db: Any) -> None:
             await db.rollback()
 
 
+def provision_spec_error(trigger_type: object, trigger_config: object) -> str | None:
+    """Why the ``provision`` block of a trigger as it will be saved cannot be provisioned, else ``None``.
+
+    Read at save time by every create and update path, so a block the
+    scheduler pass would refuse is refused before it is stored, with the same
+    message, instead of minutes later in the provisioning state.
+    """
+    if trigger_type != "integration_event" or not isinstance(trigger_config, dict):
+        return None
+    provider = trigger_config.get("provider")
+    if provider not in _PROVISIONERS:
+        return None
+    module = _module(provider)
+    read_spec = getattr(module, "read_provision_spec", None)
+    spec_error = getattr(module, "ProvisionSpecError", None)
+    if read_spec is None or spec_error is None:
+        return None
+    try:
+        read_spec(trigger_config)
+    except spec_error as exc:
+        return f"Invalid trigger_config: {exc}"
+    return None
+
+
+async def receiver_secret(integration: Any) -> str | None:
+    """The ``webhook_secret`` a provisioned notifier sends to the receiver, ``None`` when there is none.
+
+    A platform-managed integration (written by the platform registration,
+    which carries no secret) gets one generated and stored in its extra
+    config the first time a provisioning pass needs it; the registration
+    keeps it (``registration_editable_extra_fields``) and the receiver reads it
+    from the same place. Any other integration keeps the secret its admin set.
+    The caller commits. Raises when the stored config or secret cannot be read.
+    """
+    import json
+    import secrets
+
+    from app.core.security import configured_secret, decrypt_json, encrypt_value
+    from app.services.vault import reveal_json_field
+
+    extra = await reveal_json_field(integration, "extra_config_enc") if integration.extra_config_enc else None
+    secret = configured_secret((extra if isinstance(extra, dict) else {}).get("webhook_secret"))
+    if secret or getattr(integration, "auth_type", None) != "platform_managed":
+        return secret
+    stored = decrypt_json(integration.extra_config_enc) if integration.extra_config_enc else {}
+    if not isinstance(stored, dict):
+        return None
+    secret = secrets.token_urlsafe(32)
+    integration.extra_config_enc = encrypt_value(json.dumps({**stored, "webhook_secret": secret}))
+    logger.info("Generated the receiver secret of platform-managed integration %s", integration.id)
+    return secret
+
+
 async def deprovision_assignment(db: Any, assignment: Any) -> None:
     """Remove what was provisioned for *assignment* in its source platform (best effort)."""
     config = getattr(assignment, "trigger_config", None)
