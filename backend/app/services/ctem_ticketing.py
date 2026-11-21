@@ -37,7 +37,7 @@ from typing import Any, ClassVar, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import CtemCase
+from app.models.ctem_case import OPEN_STATES, CtemCase
 from app.services import ctem_case_loop as case_loop
 
 logger = logging.getLogger(__name__)
@@ -198,6 +198,34 @@ def target_status(case: CtemCase) -> str | None:
     return None
 
 
+def _when(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def needs_reopen(case: CtemCase, ticket: dict[str, Any]) -> bool:
+    """Whether a closed ticket must reopen: the case is open again after the sync closed it,
+    or a re-test failed after the ticket reached done.
+
+    A ticket done while its case waits for the re-test is not reopened: that is
+    the normal path (ticket done, re-test asked, the case closes on its result).
+    """
+    if case.state not in OPEN_STATES or ticket.get("status") not in ("done", "cancelled"):
+        return False
+    if (ticket.get("sync") or {}).get("closed_by_case"):
+        return True
+    closed_at = _when(ticket.get("at"))
+    for validation in reversed(list(case.validations or [])):
+        if not isinstance(validation, dict) or validation.get("result") != "failed":
+            continue
+        failed_at = _when(validation.get("at"))
+        return failed_at is not None and (closed_at is None or failed_at > closed_at)
+    return False
+
+
 def managed_ticket(case: CtemCase) -> dict[str, Any] | None:
     """The ticket the sync manages on *case* (the newest one carrying a sync record)."""
     for ticket in reversed(list(case.tickets or [])):
@@ -285,7 +313,7 @@ async def push_case_state(
     if ticket is None:
         return outcome
     wanted = target_status(case)
-    reopen = case.state in case_loop.OPEN_STATES and ticket.get("status") in ("done", "cancelled")
+    reopen = needs_reopen(case, ticket)
     correlation = (ticket.get("sync") or {}).get("correlation") or correlation_of(case)
     draft = draft_of(case, sync, base_url=base_url, provider=adapter.provider)
     try:
@@ -317,7 +345,14 @@ async def push_case_state(
         url=remote.url or ticket.get("url"),
         status=remote.status,
         now=now,
-        sync=_sync_record("in_sync", now, adapter, correlation, external_status=remote.external_status),
+        sync=_sync_record(
+            "in_sync",
+            now,
+            adapter,
+            correlation,
+            external_status=remote.external_status,
+            closed_by_case=bool(wanted) and not reopen,
+        ),
     )
     outcome.updated = True
     return outcome
@@ -359,13 +394,21 @@ async def pull_ticket_status(
         url=remote.url or ticket.get("url"),
         status=remote.status,
         now=now,
-        sync=_sync_record("in_sync", now, adapter, correlation, external_status=remote.external_status),
+        sync=_sync_record(
+            "in_sync",
+            now,
+            adapter,
+            correlation,
+            external_status=remote.external_status,
+            closed_by_case=bool((ticket.get("sync") or {}).get("closed_by_case"))
+            and remote.status in ("done", "cancelled"),
+        ),
     )
     outcome.updated = before != remote.status
     if (
         outcome.updated
         and remote.status == "done"
-        and case.state in case_loop.OPEN_STATES
+        and case.state in OPEN_STATES
         and getattr(sync, "done_starts_retest", True)
     ):
         outcome.retest_requested = True
@@ -621,6 +664,120 @@ class ServiceNowAdapter:
         return self._remote(row)
 
 
+# --- The scheduled pass (services/autonomous.py, after the case sweep) --------
+
+#: Raised when a ticket reaches done on a case still worked: the fleets start the re-test.
+CASE_RETEST_REQUESTED = "ctem_case.retest_requested"
+#: Cases one pass syncs at most.
+SYNC_BATCH = 200
+#: The case states that mean the case passed Mobilize (an owner works it). CTEM-34's
+#: one Mobilize decision moves a case there; with the fleet on autonomous it is automatic.
+MOBILIZED_STATES: tuple[str, ...] = ("in_progress",)
+
+
+#: The cadence of the ticketing pass when ``CTEM_TICKETING_SYNC_SECONDS`` is not set.
+DEFAULT_SYNC_SECONDS = 300
+
+
+def sync_seconds() -> int:
+    """``CTEM_TICKETING_SYNC_SECONDS`` (at least 60), else every five minutes."""
+    import os
+
+    try:
+        value = int(os.environ.get("CTEM_TICKETING_SYNC_SECONDS") or DEFAULT_SYNC_SECONDS)
+    except ValueError:
+        value = DEFAULT_SYNC_SECONDS
+    return max(60, value)
+
+
+async def sync_due() -> bool:
+    """Take the sync slot for this cadence window; True when this tick runs it (or Redis is unavailable)."""
+    try:
+        from app.core.redis import redis_client
+
+        client = await redis_client()
+        return bool(await client.set("ctem:ticketing:sync", "1", nx=True, ex=sync_seconds()))
+    except Exception:  # no Redis: every tick syncs; the sync is idempotent
+        return True
+
+
+async def sync_cases(
+    db: AsyncSession,
+    *,
+    events: case_loop.PendingEvents | None = None,
+    base_url: str = "",
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Sync every case of the primary organization with its ticketing target. The caller commits.
+
+    Creates the ticket of a mobilized case the settings ask one for, pulls the
+    status of every managed ticket (ServiceNow has no push: this is its
+    inbound), and pushes the case state to the ticket when they disagree. No
+    ticketing declared: nothing to do, counted as ``not_connected``.
+    """
+    from sqlalchemy import select
+
+    from app.services import organization_context as oc
+
+    now = now or datetime.now(UTC)
+    counts = {"created": 0, "pulled": 0, "pushed": 0, "retest": 0, "errors": 0, "not_connected": 0}
+    row = await oc.current_version(db)
+    if row is None:
+        counts["not_connected"] = 1
+        return counts
+    profile = oc.parse_profile(row.profile)
+    adapter = await adapter_for(db, profile)
+    if isinstance(adapter, str):
+        counts["not_connected"] = 1
+        return counts
+    sync = profile.ticketing.sync
+    integration = profile.ticketing.integration
+    cases = (
+        (
+            await db.execute(
+                select(CtemCase)
+                .where(CtemCase.organization_id == row.organization_id)
+                .order_by(CtemCase.updated_at.desc())
+                .limit(SYNC_BATCH)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for case in cases:
+        ticket = managed_ticket(case)
+        if ticket is None:
+            if case.state in MOBILIZED_STATES and should_create(case, sync):
+                outcome = await ensure_ticket(
+                    db, case, adapter, sync, integration=integration, base_url=base_url, now=now
+                )
+                counts["created"] += int(outcome.created)
+                counts["errors"] += int(bool(outcome.error))
+            continue
+        wanted = target_status(case)
+        if (wanted and ticket.get("status") != wanted) or needs_reopen(case, ticket):
+            outcome = await push_case_state(db, case, adapter, sync, base_url=base_url, now=now)
+            counts["pushed"] += int(outcome.updated or outcome.created)
+            counts["errors"] += int(bool(outcome.error))
+            continue
+        outcome = await pull_ticket_status(db, case, adapter, sync, now=now)
+        counts["pulled"] += 1
+        counts["errors"] += int(bool(outcome.error))
+        if outcome.retest_requested:
+            counts["retest"] += 1
+            if events is not None:
+                events.add(
+                    CASE_RETEST_REQUESTED,
+                    case_loop.case_data(
+                        case,
+                        ticket_integration=(managed_ticket(case) or {}).get("integration"),
+                        ticket_key=(managed_ticket(case) or {}).get("key"),
+                    ),
+                    f"{CASE_RETEST_REQUESTED}:{case.id}:{(managed_ticket(case) or {}).get('at', now.isoformat())}",
+                )
+    return counts
+
+
 #: The providers the sync knows, by integration provider key. A new ticketing
 #: provider adds its adapter here and documents it in dev-docs/ctem-ticketing.md.
 ADAPTERS: dict[str, type] = {"jira": JiraAdapter, "servicenow": ServiceNowAdapter}
@@ -644,7 +801,9 @@ async def adapter_for(db: AsyncSession, profile: Any) -> TicketingAdapter | str:
         return "the declared ticketing integration no longer exists"
     if integration.provider not in ADAPTERS:
         return f"{integration.provider} has no ticketing sync yet"
-    sync = target.sync
+    sync = getattr(target, "sync", None)
+    status_map = dict(getattr(sync, "status_map", {}) or {})
+    record_type = getattr(sync, "record_type", "") or ""
     owner = str(integration.user_id) if integration.user_id else None
     token = await _get_token(db, integration_id, integration.provider, user_id=owner, integ=integration)
     if not token:
@@ -655,7 +814,7 @@ async def adapter_for(db: AsyncSession, profile: Any) -> TicketingAdapter | str:
         base, access = parse_jira_token(token)
         if not base or not access:
             return "the Jira integration has no site or token"
-        return JiraAdapter(base, jira_headers(access), project, status_map=dict(sync.status_map))
+        return JiraAdapter(base, jira_headers(access), project, status_map=status_map)
     from app.integrations.providers.servicenow._common import build_servicenow_headers, parse_servicenow_token
 
     base, user, password = parse_servicenow_token(token)
@@ -664,7 +823,7 @@ async def adapter_for(db: AsyncSession, profile: Any) -> TicketingAdapter | str:
     return ServiceNowAdapter(
         base,
         build_servicenow_headers(user, password),
-        sync.record_type or "incident",
+        record_type or "incident",
         group=project,
-        status_map=dict(sync.status_map),
+        status_map=status_map,
     )

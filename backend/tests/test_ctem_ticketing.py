@@ -237,6 +237,88 @@ async def test_no_ticketing_declared_is_a_reason_not_an_error():
     assert await tk.adapter_for(FakeSession(), profile) == tk.NOT_CONNECTED
 
 
+class _SyncSession(FakeSession):
+    def __init__(self, cases: list[CtemCase]) -> None:
+        super().__init__()
+        self.cases = cases
+
+    async def execute(self, _statement):
+        cases = self.cases
+        return type("R", (), {"scalars": lambda self: type("S", (), {"all": lambda s: list(cases)})()})()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_pass_creates_pulls_pushes_and_raises_the_retest_once(monkeypatch):
+    from app.services import ctem_case_loop as case_loop
+    from app.services import organization_context as oc
+
+    org = uuid.uuid4()
+    mobilized = _case(organization_id=org, severity="P1")
+    waiting = _case(organization_id=org, severity="P1", state="needs_attention")
+    low = _case(organization_id=org, severity="P3")
+    adapter = FakeAdapter()
+    row = type("V", (), {"organization_id": org, "profile": {"ticketing": {"integration": "i", "project": "ITS"}}})()
+
+    async def _current(db, organization_id=None):
+        return row
+
+    async def _adapter(db, profile):
+        return adapter
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(tk, "adapter_for", _adapter)
+    db = _SyncSession([mobilized, waiting, low])
+    events = case_loop.PendingEvents()
+    counts = await tk.sync_cases(db, events=events, now=NOW)
+    assert counts["created"] == 1 and adapter.created == 1
+    assert waiting.tickets == [] and low.tickets == []
+    adapter.tickets["ITS-1"] = tk.RemoteTicket(key="ITS-1", url="u", status="done", external_status="Done")
+    counts = await tk.sync_cases(db, events=events, now=NOW)
+    assert counts["retest"] == 1
+    assert [name for name, _data, _id in events.items] == [tk.CASE_RETEST_REQUESTED]
+    assert events.items[0][1]["ticket_key"] == "ITS-1"
+    counts = await tk.sync_cases(db, events=events, now=NOW)
+    assert counts["retest"] == 0 and len(events.items) == 1
+    mobilized.state = "resolved"
+    counts = await tk.sync_cases(db, events=events, now=NOW)
+    assert counts["pushed"] == 0  # already done: nothing to push
+    # The re-test failed after the ticket was done: the case reopens, so does the ticket.
+    mobilized.state = "needs_attention"
+    mobilized.validations = [{"result": "failed", "at": (NOW + timedelta(minutes=5)).isoformat()}]
+    later = NOW + timedelta(minutes=10)
+    counts = await tk.sync_cases(db, events=events, now=later)
+    assert counts["pushed"] == 1 and adapter.tickets["ITS-1"].status == "open"
+
+
+def test_a_done_ticket_waiting_for_its_retest_is_not_reopened():
+    case = _case(state="in_progress")
+    done = {"key": "ITS-1", "status": "done", "at": NOW.isoformat(), "sync": {"state": "in_sync"}}
+    assert not tk.needs_reopen(case, done)
+    closed_by_case = {**done, "sync": {"state": "in_sync", "closed_by_case": True}}
+    assert tk.needs_reopen(case, closed_by_case)
+    old_failure = _case(validations=[{"result": "failed", "at": (NOW - timedelta(hours=1)).isoformat()}])
+    assert not tk.needs_reopen(old_failure, done)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_pass_with_no_ticketing_does_nothing(monkeypatch):
+    from app.services import organization_context as oc
+
+    async def _none(db, organization_id=None):
+        return None
+
+    monkeypatch.setattr(oc, "current_version", _none)
+    counts = await tk.sync_cases(_SyncSession([_case()]), now=NOW)
+    assert counts == {"created": 0, "pulled": 0, "pushed": 0, "retest": 0, "errors": 0, "not_connected": 1}
+
+
+def test_retest_event_is_declared_platform_wide():
+    from app.services import platform_events
+
+    assert tk.CASE_RETEST_REQUESTED in platform_events.PLATFORM_EVENTS
+    assert tk.CASE_RETEST_REQUESTED in platform_events.PLATFORM_WIDE_EVENTS
+
+
 def test_sync_settings_default_and_parse_from_a_saved_profile():
     target = TicketingTarget.model_validate({"integration": "abc", "project": "ITS"})
     assert target.sync.create_on == "mobilize_p1_p2"

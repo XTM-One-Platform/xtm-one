@@ -34,6 +34,12 @@ The system is the ticketing target of the organization context (`OrganizationPro
 - A resolved case moves its ticket to done, an accepted risk to cancelled, a reopened case reopens it (or opens a linked one).
 - No ticketing declared: `adapter_for` answers `No ticketing connected` and the case links to the settings; never an error.
 
-## 4. Gates
+## 4. Schedule and events
+
+The autonomous tick runs `ctem_ticketing.sync_cases` once per `CTEM_TICKETING_SYNC_SECONDS` (default 300, minimum 60, Redis slot `ctem:ticketing:sync`), after the case sweep. Per case of the primary organization (newest 200): a mobilized case (`in_progress`) with no managed ticket gets one when `create_on` asks for it; a case whose state asks the ticket to close (resolved: done, accepted risk: cancelled) or to reopen pushes it; every other managed ticket is pulled. Reopen is decided by `needs_reopen`: the sync closed the ticket for the case (`closed_by_case`), or a failed re-test is newer than the ticket's done; a ticket done while the case waits for its re-test is left done.
+
+A pull that moves a ticket to done on an open case raises `ctem_case.retest_requested` (platform-wide, the case fields with `ticket_integration` and `ticket_key`) once; the fleets run the re-test and the case closes on its result.
+
+## 5. Gates
 
 Creating and updating tickets is a step of the Mobilization role, behind the fleet's gate catalog (`ticket.create`, `ticket.update`) and the case's one Mobilize decision: with the fleet on autonomous, tickets are created with no decision.
