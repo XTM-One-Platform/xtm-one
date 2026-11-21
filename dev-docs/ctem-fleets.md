@@ -1004,7 +1004,10 @@ OpenCTI pass in `services/opencti_trigger_provisioning.py`) creates in
 OpenCTI, under the bound integration's identity, a Generic webhook notifier
 posting to `/api/hooks/integrations/<integration>/assignments/<assignment>`
 with `X-OpenCTI-Token` set to the integration's `webhook_secret` (no secret:
-nothing is provisioned, the state says why), and a live knowledge trigger with
+nothing is provisioned, the state says why; a platform-managed integration,
+which the registration writes without one, gets a secret generated and stored
+in its extra config by the first pass that needs it,
+`trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
 `x_opencti_score` gte) and that notifier. Both are named
 `XTM One - <fleet> - <purpose>`.
@@ -1051,6 +1054,15 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   listener records the source in the signal's `evidence.software`, so the
   scope gate resolves the signal to that product. The PIR score thresholds
   of the same item build on the PIR playbook mode below (CTEM-05).
+- Checked at save time (#970): create and update (REST and the agent
+  builder tools) run the provider's `read_provision_spec` on the trigger as
+  it will be saved (`trigger_provisioning.provision_spec_error`) and refuse
+  an unusable block with the pass's own message, never 15 minutes later.
+  `organization_context` is a list of profile field names (`["pir_ids"]`,
+  any of `pir_ids`, `regions`, `sector`): the values are read from the
+  primary organization profile, so an object such as `{"pir_ids": [...]}` is
+  refused. A subset of the profile PIRs is not supported: the playbook
+  listens to every PIR of the profile; narrow the PIRs in the profile.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
   playbook instead of a live trigger. OpenCTI flags an entity in a PIR
