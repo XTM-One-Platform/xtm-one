@@ -7,6 +7,9 @@
  * rules). Each open column carries its exact count, the ageing bar (one blue
  * ramp, section 7.0), the overdue line and its three highest-priority cases.
  * Drawn only from the cases the caller sees (#11613); nothing is sampled.
+ * CTEM-03-UI (#892): each top case shows its severity, the SLA countdown and
+ * the reopened or escalated mark; the `ctem_case_update` frame re-reads the
+ * list, so a card moves column live, and the countdown ticks every minute.
  */
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -17,11 +20,13 @@ import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
+import { useNow } from "@/hooks/useTick";
 import { CTEM_CASE_STATES, useCtemCases, type CtemCaseState, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { cn } from "@/lib/utils";
 import { BOARD_COLUMN_SURFACE, BOARD_GRID, DAY, OVERDUE_TEXT, ageBands, daysSince, topCases } from "./cases-board";
+import { CaseLoopLine, CaseSeverityChip } from "./case-loop";
 import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip, useCasesEmptyLabel } from "./cases-shared";
 
 const PERIODS = ["7", "30", "90"] as const;
@@ -78,6 +83,7 @@ function TopCase({ c, owner, now }: { c: CtemCaseSummary; owner: string | null; 
       >
         <TruncatedText text={c.title} className="content-base font-medium" />
         <span className="flex min-w-0 items-center gap-2 content-caption text-default-secondary">
+          <CaseSeverityChip severity={c.severity} />
           <CasePriorityChip priority={c.priority} />
           <span className="whitespace-nowrap">
             {t_i18n("{count, plural, one {# issue} other {# issues}}", { count: c.open_issue_count })}
@@ -87,6 +93,7 @@ function TopCase({ c, owner, now }: { c: CtemCaseSummary; owner: string | null; 
             <CaseOwner name={owner} />
           </span>
         </span>
+        <CaseLoopLine c={c} now={now} />
       </Link>
     </li>
   );
@@ -112,7 +119,8 @@ export function CasesBoard() {
   const { data, isLoading, isError, refetch } = useCtemCases({ throwOnError: false });
   const [periodKey, setPeriodKey] = useState<Period>("30");
   const period = Number(periodKey);
-  const [now] = useState(() => Date.now());
+  // The SLA countdown moves without a reload (CTEM-03-UI, #892).
+  const now = useNow(60_000);
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   // A product that could not be read never yields the all-clear line (#12139).

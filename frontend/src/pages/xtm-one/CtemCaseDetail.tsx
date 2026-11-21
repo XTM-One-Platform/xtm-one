@@ -34,8 +34,12 @@ import {
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
+import { useNow } from "@/hooks/useTick";
+import { CaseLoopLine, CaseSeverityChip } from "./ctem/case-loop";
+import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -88,6 +92,18 @@ const EVENT_LABEL: Record<string, string> = {
   merged: "Merged cases",
   // The store writes `merge` (ctem_cases_store.merge_cases, S5c).
   merge: "Merged cases",
+  // The loop (CTEM-03, #857; shown by CTEM-03-UI, #892).
+  signal: "A signal joined the case",
+  validation: "Recorded a validation",
+  sla_breached: "Escalated: SLA breached",
+};
+
+/** The result word of a validation history row, translated where drawn. */
+const VALIDATION_RESULT_LABEL: Record<string, string> = {
+  passed: "Passed",
+  not_exposed: "Not exposed",
+  failed: "Failed",
+  pending: "Pending",
 };
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
@@ -108,6 +124,8 @@ export default function CtemCaseDetail() {
   const [evidence, setEvidence] = useState("");
   const [expiry, setExpiry] = useState(inDays(90));
   const [formError, setFormError] = useState<string | null>(null);
+  // The SLA countdown of the header moves without a reload (#892).
+  const now = useNow(60_000);
 
   const actorIds = useMemo(() => {
     const ids = new Set<string>();
@@ -294,8 +312,10 @@ export default function CtemCaseDetail() {
         crumbExtras={
           <>
             <CaseStateChip state={kase.state} />
+            <CaseSeverityChip severity={kase.severity} />
             <CasePriorityChip priority={kase.priority} />
             <CaseOwner name={ownerName} />
+            <CaseLoopLine c={kase} now={now} />
           </>
         }
         title={kase.title}
@@ -351,6 +371,8 @@ export default function CtemCaseDetail() {
           {t_i18n("{products} did not answer: details of its issues are unavailable.", { products: kase.details_unavailable.join(", ") })}
         </p>
       )}
+
+      <CaseOpenedBy caseId={kase.id} />
 
       <Card>
         <CardHeader>
@@ -416,6 +438,7 @@ export default function CtemCaseDetail() {
                 <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
+                {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
                 {e.at && (
@@ -428,6 +451,9 @@ export default function CtemCaseDetail() {
           </ol>
         </CardContent>
       </Card>
+
+      {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
+      <LoopTraceDialog />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">

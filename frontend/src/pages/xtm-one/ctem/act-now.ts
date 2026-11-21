@@ -14,7 +14,7 @@ import { CTEM_STAGE_KEYS } from "@/lib/constants";
 /** Where a row comes from: it ranks the rows, decides Ask AI and the generic
  *  notice. Not drawn on the row: "Module" on every rule row said nothing
  *  (#11213). */
-export type ActNowSource = "briefing" | "stage" | "module" | "work_item" | "approval" | "setup" | "agent";
+export type ActNowSource = "briefing" | "stage" | "module" | "work_item" | "approval" | "setup" | "agent" | "case";
 
 export interface ActNowRow {
   id: string;
@@ -104,6 +104,7 @@ const ELSEWHERE: ReadonlySet<ActNowSource> = new Set(["briefing", "stage", "agen
 
 /** Rank of a source when two rows share a priority: what a person owes first. */
 const SOURCE_ORDER: Record<ActNowSource, number> = {
+  case: -1,
   work_item: 0,
   approval: 1,
   module: 2,
@@ -224,4 +225,16 @@ export function actNowAskAiPrompt(t_i18n: Translate, row: Pick<ActNowRow, "title
  *  100, KEV 95, failed expectations 90, detection gap 80, stack 50). What
  *  waits on the reader comes first: a person blocks a run or a work item until
  *  they answer. */
-export const ACT_NOW_PRIORITY = { work_item: 98, approval: 97 } as const;
+export const ACT_NOW_PRIORITY = { case_p1: 99, work_item: 98, approval: 97 } as const;
+
+/** The open P1 cases Act now lists, most urgent SLA first (CTEM-03-UI, #892): a
+ *  P1 case opened by the loop is what to do first, above what waits on the
+ *  reader. Two at most, so the queue keeps room for the rest. */
+export const ACT_NOW_CASE_MAX = 2;
+
+export function actNowP1Cases<T extends { state: string; severity?: string | null; sla_due_at?: string | null }>(cases: readonly T[]): T[] {
+  return cases
+    .filter((c) => c.severity === "P1" && (c.state === "needs_attention" || c.state === "in_progress"))
+    .sort((a, b) => (a.sla_due_at ?? "\uffff").localeCompare(b.sla_due_at ?? "\uffff"))
+    .slice(0, ACT_NOW_CASE_MAX);
+}
