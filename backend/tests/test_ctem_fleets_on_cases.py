@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+from types import ModuleType
+from typing import Any
 
 from app.agents.builtin_agents import (
     BUILTIN_AGENTS,
@@ -28,11 +30,11 @@ _PERSONAS = pathlib.Path(__file__).resolve().parents[1] / "app/agents/seed_data/
 _ORCHESTRATORS = ("ctem-vuln-prioritization-orchestrator", "ctem-threat-response-orchestrator")
 
 
-def _agent(slug: str) -> dict:
+def _agent(slug: str) -> dict[str, Any]:
     return next(a for a in BUILTIN_AGENTS if a["slug"] == slug)
 
 
-def test_the_case_assignment_is_a_valid_platform_event_trigger():
+def test_the_case_assignment_is_a_valid_platform_event_trigger() -> None:
     for assignment in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT):
         assert assignment in BUILTIN_ASSIGNMENTS
         assert assignment["trigger_type"] == "platform_event"
@@ -48,7 +50,7 @@ def test_the_case_assignment_is_a_valid_platform_event_trigger():
     assert CTEM_F2_CASE_ASSIGNMENT["agent_slug"] == "ctem-vuln-prioritization-orchestrator"
 
 
-def test_every_trigger_path_starts_exactly_one_fleet_run():
+def test_every_trigger_path_starts_exactly_one_fleet_run() -> None:
     assert set(CTEM_THREAT_CASE_PATHS) <= set(TRIGGER_PATHS)
     for path in TRIGGER_PATHS:
         payload = {"case_id": "c", "trigger_path": path}
@@ -60,16 +62,16 @@ def test_every_trigger_path_starts_exactly_one_fleet_run():
         assert len(heard) == 1, (path, heard)
 
 
-def test_the_case_events_carry_the_routing_key():
+def test_the_case_events_carry_the_routing_key() -> None:
     assert "trigger_path" in platform_events._CTEM_CASE_KEYS
     assert "case_id" in platform_events._CTEM_CASE_KEYS
 
 
-def test_the_orchestrators_hold_the_case_and_signal_tools():
+def test_the_orchestrators_hold_the_case_and_signal_tools() -> None:
     assert set(_ORCHESTRATORS) <= CTEM_CASE_AGENT_SLUGS
 
 
-def test_the_prompts_make_the_case_the_record():
+def test_the_prompts_make_the_case_the_record() -> None:
     for assignment in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT):
         prompt = assignment["prompt"]
         assert "get_ctem_case" in prompt and "record_ctem_case_validation" in prompt
@@ -82,7 +84,7 @@ def test_the_prompts_make_the_case_the_record():
         assert "case_id" in assignment["prompt"] and "record_ctem_case_validation" in assignment["prompt"]
 
 
-def test_no_open_item_lives_only_in_shared_state():
+def test_no_open_item_lives_only_in_shared_state() -> None:
     for slug in _ORCHESTRATORS:
         persona = (_PERSONAS / f"{slug}.md").read_text()
         assert "counters only" in persona and "get_ctem_case" in persona, slug
@@ -93,12 +95,12 @@ def test_no_open_item_lives_only_in_shared_state():
             assert "Read ctem:f2:state" not in prompt and "already open in ctem:f1:state" not in prompt
 
 
-def test_each_role_binds_the_modules_it_needs():
+def test_each_role_binds_the_modules_it_needs() -> None:
     assert set(_agent("ctem-vuln-triage-analyst")["integration_template_bindings"]) >= {"opencti", "openaev"}
     assert set(_agent("ctem-remediation-coordinator")["integration_template_bindings"]) >= {"openaev", "opencrq"}
 
 
-def _migration():
+def _migration() -> ModuleType:
     path = next(pathlib.Path(__file__).resolve().parents[1].glob("alembic/versions/c891ctemfleetcase1_*.py"))
     spec = importlib.util.spec_from_file_location("c891ctemfleetcase1", path)
     assert spec and spec.loader
@@ -107,7 +109,7 @@ def _migration():
     return module
 
 
-def test_the_migration_keeps_counters_only():
+def test_the_migration_keeps_counters_only() -> None:
     module = _migration()
     value = {
         "open": [{"cve": "CVE-1"}, {"cve": "CVE-2"}],
@@ -119,12 +121,17 @@ def test_the_migration_keeps_counters_only():
         "counters": {"resolved": 4, "note": "x"},
     }
     kept, opened, dropped = module.counters_only(value)
-    assert kept == {"last_pass": "2026-11-20T06:00:00Z", "cve_triaged": 12, "cve_validated": 3, "counters": {"resolved": 4}}
+    assert kept == {
+        "last_pass": "2026-11-20T06:00:00Z",
+        "cve_triaged": 12,
+        "cve_validated": 3,
+        "counters": {"resolved": 4},
+    }
     assert opened == 2 and dropped == ["closed", "flag", "open"]
     assert module.counters_only({"cve_triaged": 1}) == ({"cve_triaged": 1}, 0, [])
 
 
-def test_the_migration_matches_the_two_fleet_keys_only():
+def test_the_migration_matches_the_two_fleet_keys_only() -> None:
     module = _migration()
     assert module.is_fleet_state_key("ctem:f1:state")
     assert module.is_fleet_state_key("workspace:abc:ctem:f2:state")

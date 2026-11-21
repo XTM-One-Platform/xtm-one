@@ -86,7 +86,7 @@ def test_the_new_agents_are_seeded_once():
     assert all(slugs.count(a["slug"]) == 1 for a in CTEM_FLEET_AGENTS)
 
 
-def test_the_spec_assignments_live_on_the_orchestrator():
+def test_the_spec_assignments_live_on_the_orchestrator() -> None:
     assignments = _f1_assignments()
     # The three of the spec, plus the case loop (#891).
     assert set(assignments) == {"New relevant threat", "Weekly threat sweep", "Re-test due", "Case opened or reopened"}

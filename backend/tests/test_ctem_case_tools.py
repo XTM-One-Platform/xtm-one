@@ -136,7 +136,7 @@ def test_only_the_ctem_remediation_agents_are_offered_the_tools(monkeypatch):
     assert not offers_ctem_case_tools("ctem-remediation-coordinator", is_builtin=True)
 
 
-def test_the_case_tools_are_defined(env):
+def test_the_case_tools_are_defined(env: SimpleNamespace) -> None:
     assert tuple(d.name for d in env.defs) == CTEM_CASE_TOOL_NAMES
 
 
@@ -248,12 +248,14 @@ def test_module_is_wired_to_the_tool_names():
 # ── #891: the validation and ticket references an agent writes on a case ──
 
 
-async def test_a_passing_retest_resolves_the_case_and_raises_resolved(env, monkeypatch):
+async def test_a_passing_retest_resolves_the_case_and_raises_resolved(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from app.services import ctem_case_loop
 
-    published: list = []
+    published: list[str] = []
 
-    async def _publish(pending):
+    async def _publish(pending: ctem_case_loop.PendingEvents) -> None:
         published.extend(name for name, _data, _id in pending.items)
 
     monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
@@ -273,7 +275,7 @@ async def test_a_passing_retest_resolves_the_case_and_raises_resolved(env, monke
     assert {"validation", "state"} <= kinds
 
 
-async def test_a_validation_without_its_reference_is_refused(env):
+async def test_a_validation_without_its_reference_is_refused(env: SimpleNamespace) -> None:
     answer = await env.call(
         "record_ctem_case_validation", case_id=str(env.case.id), provider="openaev", ref="", result="passed"
     )
@@ -283,10 +285,14 @@ async def test_a_validation_without_its_reference_is_refused(env):
     )
 
 
-async def test_a_ticket_reference_is_written_once_and_updated_in_place(env):
+async def test_a_ticket_reference_is_written_once_and_updated_in_place(env: SimpleNamespace) -> None:
     first = json.loads(
         await env.call(
-            "record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="ITS-12", url="https://j/ITS-12"
+            "record_ctem_case_ticket",
+            case_id=str(env.case.id),
+            integration="jira",
+            key="ITS-12",
+            url="https://j/ITS-12",
         )
     )
     assert first["updated"]["state"] == "needs_attention"

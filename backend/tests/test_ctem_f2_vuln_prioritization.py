@@ -70,7 +70,7 @@ def test_the_triage_analyst_counts_cve_assessed():
     assert (decl.unit, decl.count_path) == ("cve_assessed", "findings")
 
 
-def test_the_assignments_are_on_the_orchestrator():
+def test_the_assignments_are_on_the_orchestrator() -> None:
     assert all(a in BUILTIN_ASSIGNMENTS for a in CTEM_F2_ASSIGNMENTS)
     by_name = {a["name"]: a for a in CTEM_F2_ASSIGNMENTS}
     # The four of the spec, plus the case loop (#891).

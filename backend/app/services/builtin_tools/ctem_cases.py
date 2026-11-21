@@ -283,7 +283,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
-                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                if org_id is None or scope is None:
+                    return f"No case {case_id}."
+                shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
                 await case_loop.record_validation(
@@ -319,7 +321,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
-                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                if org_id is None or scope is None:
+                    return f"No case {case_id}."
+                shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
                 case_loop.record_ticket(
@@ -417,15 +421,18 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="record_ctem_case_validation",
             description=(
-                "Write a validation or re-test result on a CTEM case: the OpenAEV simulation, scenario or "
-                "atomic test id and its result. passed or not_exposed resolves the case (mitigation_only: "
+                "Write a validation or re-test result on a CTEM case: the validation module's simulation, "
+                "scenario or test id and its result. passed or not_exposed resolves the case (mitigation_only: "
                 "mitigated, watching, the re-test stays on); failed reopens a resolved case; pending only records."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "case_id": {"type": "string"},
-                    "provider": {"type": "string", "description": "Where the test ran, e.g. openaev."},
+                    "provider": {
+                        "type": "string",
+                        "description": "The integration the test ran on, by its provider key.",
+                    },
                     "ref": {"type": "string", "description": "The run, simulation or scenario id."},
                     "result": {"type": "string", "enum": ["passed", "not_exposed", "failed", "pending"]},
                     "kind": {"type": "string", "description": "validation or retest (default retest)."},
@@ -446,7 +453,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 "type": "object",
                 "properties": {
                     "case_id": {"type": "string"},
-                    "integration": {"type": "string", "description": "e.g. jira or servicenow."},
+                    "integration": {"type": "string", "description": "The ticketing integration, by its provider key."},
                     "key": {"type": "string", "description": "The ticket key or number."},
                     "url": {"type": "string"},
                     "status": {"type": "string", "enum": ["open", "in_progress", "done", "cancelled"]},

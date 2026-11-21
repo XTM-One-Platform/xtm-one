@@ -24,6 +24,7 @@ own credentials are resolved at runtime.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.agents.ctem_ai_security import AI_SECURITY_AGENTS, AI_SECURITY_ASSIGNMENTS
 from app.agents.ctem_third_party_risk import THIRD_PARTY_RISK_AGENTS, THIRD_PARTY_RISK_ASSIGNMENTS
@@ -2781,7 +2782,7 @@ CTEM_THREAT_CASE_PATHS: tuple[str, ...] = ("relevant_threat", "credential_leak",
 _CASE_EVENT_NAMES: tuple[str, ...] = ("ctem_case.opened", "ctem_case.reopened", "ctem_case.sla_breached")
 
 
-def _case_assignment(common: dict, *, fleet_key: str, paths_filter: dict) -> dict:
+def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
     return {
         **common,
         "name": "Case opened or reopened",
@@ -2812,7 +2813,7 @@ def _case_assignment(common: dict, *, fleet_key: str, paths_filter: dict) -> dic
     }
 
 
-CTEM_F2_CASE_ASSIGNMENT: dict = _case_assignment(
+CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     _CTEM_F2_COMMON, fleet_key="ctem:f2", paths_filter={"not_in": list(CTEM_THREAT_CASE_PATHS)}
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
@@ -2902,7 +2903,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
     },
 ]
 
-CTEM_F1_CASE_ASSIGNMENT: dict = _case_assignment(
+CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     _F1_RUN, fleet_key="ctem:f1", paths_filter={"in": list(CTEM_THREAT_CASE_PATHS)}
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
