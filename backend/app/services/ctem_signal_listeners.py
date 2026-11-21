@@ -174,7 +174,6 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
     row, fields = found
     from app.core.database import async_session
     from app.services import ctem_signals
-    from app.services.ctem_loop_stream import publish_signal_update
     from app.services.organizations import get_primary
 
     try:
@@ -182,7 +181,7 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             primary = await get_primary(db)
             if primary is None:
                 return False
-            row_written, _created = await ctem_signals.record_signal(
+            signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
                 signal=ctem_signals.SignalInput(
@@ -198,8 +197,10 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 recorded_via="listener",
                 recorded_by=ctem_signals.SYSTEM_ACTOR,
             )
+            from app.services import ctem_scope_gate_store
+
+            await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
             await db.commit()
-            await publish_signal_update(db, row_written)
             return True
     except Exception:
         logger.warning("CTEM signal from a %s %s delivery not recorded", provider, event_key, exc_info=True)
