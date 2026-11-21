@@ -19814,5 +19814,9 @@
   "The digest lists warning and critical findings.": "ダイジェストには警告と重大な検出事項を含めます。",
   "The digest lists critical findings only.": "ダイジェストには重大な検出事項のみを含めます。",
   "Emails the recipients below about health findings.": "以下の受信者にヘルスの検出事項をメールで送信します。",
-  "One email a day with the open findings.": "未解決の検出事項を含むメールを1日1通。"
+  "One email a day with the open findings.": "未解決の検出事項を含むメールを1日1通。",
+  "Status and scope": "ステータスと範囲",
+  "Spend limits": "支出の上限",
+  "Health checks": "ヘルスチェック",
+  "Alerts": "アラート"
 }
