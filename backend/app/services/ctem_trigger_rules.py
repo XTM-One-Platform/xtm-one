@@ -177,10 +177,9 @@ async def _live_gql(db: Any, trigger_config: object, agent: Any, receiver_integr
     """A GraphQL caller on the trigger's OpenCTI integration, or the reason it cannot be built."""
     import uuid
 
-    from app.integrations.providers.opencti._common import _client, _graphql
     from app.models.integration import Integration
     from app.services.integration_credentials import agent_acting_user_id
-    from app.services.integration_tools import _get_token
+    from app.services.opencti_trigger_provisioning import integration_gql
     from app.services.trigger_integration_access import trigger_integration_id
 
     integration_id = receiver_integration_id or trigger_integration_id(trigger_config, agent)
@@ -192,21 +191,12 @@ async def _live_gql(db: Any, trigger_config: object, agent: Any, receiver_integr
         integration = None
     if integration is None or integration.provider != "opencti":
         return "no OpenCTI integration to read the live PIR score with"
-    acting = agent_acting_user_id(agent)
-    token = await _get_token(
-        db, str(integration.id), "opencti", user_id=str(acting) if acting else None, integ=integration
-    )
-    if not token or "||" not in token:
+    # The token goes through the provisioner's sanctioned resolver (the tool
+    # funnel's credential gate), on the one integration this trigger is bound to.
+    connection = await integration_gql(db, integration, agent_acting_user_id(agent), timeout=15)
+    if isinstance(connection, str):
         return "no OpenCTI token to read the live PIR score with"
-    base, _, api_token = token.partition("||")
-    base = base.strip().rstrip("/")
-    headers = {"Authorization": f"Bearer {api_token.strip()}", "Content-Type": "application/json"}
-
-    async def gql(query: str, variables: dict[str, Any] | None = None) -> tuple[dict[str, Any], str | None]:
-        async with _client(headers, timeout=15) as client:
-            return await _graphql(client, base, headers, query, variables)
-
-    return gql
+    return connection[0]
 
 
 async def live_pir_scores(gql: Any, entity_id: str, pir_ids: list[str]) -> dict[str, float | None]:
