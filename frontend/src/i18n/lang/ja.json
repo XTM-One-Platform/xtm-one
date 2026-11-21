@@ -15808,7 +15808,6 @@
   "Units of work": "作業単位",
   "Rates by role": "ロール別単価",
   "Answer by {date}": "{date} までに回答",
-  "Answer differently": "別の回答をする",
   "Answer sent": "回答を送信しました",
   "The work item is back with its agent, with your answer.": "作業項目はあなたの回答とともにエージェントに戻りました。",
   "Failed to send the answer": "回答を送信できませんでした",
@@ -19833,8 +19832,6 @@
   "It waits for the changes below and goes back to {agent} by itself once every one of them is released: nothing to do.": "下の変更をすべて待っています。すべて解放されると自動的に {agent} に戻ります。操作は不要です。",
   "It waits for a person's decision and goes back to {agent} by itself once the decision card is answered.": "担当者の判断を待っています。判断カードに回答されると自動的に {agent} に戻ります。",
   "A pull request releases it once merged or closed.": "プルリクエストがマージまたはクローズされると解放されます。",
-  "A pull request releases it once merged.": "プルリクエストがマージされると解放されます。",
-  "A pull request releases it once closed.": "プルリクエストがクローズされると解放されます。",
   "An issue releases it once closed.": "Issue がクローズされると解放されます。",
   "A deployment releases it once the change runs in production.": "変更が本番環境で稼働するとデプロイによって解放されます。",
   "A workflow releases it at its next successful run.": "ワークフローの次回の実行が成功すると解放されます。",
@@ -19989,6 +19986,7 @@
   "Escalated: SLA breached": "エスカレーション: SLA 超過",
   "Not exposed": "露出なし",
   "Reopened: re-test failed": "再オープン: 再テスト失敗",
+  "Closed on passing re-test": "再テスト合格でクローズ",
   "Escalated": "エスカレーション",
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, other {残り {shown} 分}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, other {残り {shown} 時間}}",
@@ -20004,5 +20002,10 @@
   "Restricted asset": "制限された資産",
   "Techniques in attack order": "攻撃順のテクニック",
   "Recorded how it would be exploited": "想定される悪用方法を記録しました",
-  "Asked by {agent}": "{agent} からの質問"
+  "Re-test queued": "再テスト待機中",
+  "Re-test passed in {provider} on {date}": "{date} に {provider} で再テストに合格",
+  "Re-test passed on {date}": "{date} に再テストに合格",
+  "Not reproduced": "再現なし",
+  "Reproduced": "再現あり",
+  "Not re-tested yet": "未再テスト"
 }
