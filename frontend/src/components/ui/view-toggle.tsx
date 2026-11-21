@@ -20,12 +20,18 @@ interface ViewToggleProps {
   className?: string;
 }
 
-/** Labels are catalog keys. @i18n-keys */
-const OPTIONS = [
-  { key: "grid", label: "Grid view", icon: LayoutGrid },
-  { key: "list", label: "List view", icon: List },
-  { key: "graph", label: "Graph view", icon: Network },
-] as const;
+/** The label of each view, a catalog key. @i18n-keys */
+const LABELS = {
+  grid: "Grid view",
+  list: "List view",
+  graph: "Graph view",
+} as const satisfies Record<ViewMode, string>;
+
+const OPTIONS: readonly { key: ViewMode; icon: React.ElementType }[] = [
+  { key: "grid", icon: LayoutGrid },
+  { key: "list", icon: List },
+  { key: "graph", icon: Network },
+];
 
 const DEFAULT_MODES: readonly ViewMode[] = ["grid", "list"];
 
@@ -37,8 +43,9 @@ export function ViewToggle({ value, onChange, modes = DEFAULT_MODES, className }
       aria-label={t_i18n("View mode")}
       className={cn("flex gap-1 rounded-sm bg-elevation-hover p-0.5 items-center", className)}
     >
-      {OPTIONS.filter((option) => modes.includes(option.key)).map(({ key, label, icon: Icon }) => {
+      {OPTIONS.filter((option) => modes.includes(option.key)).map(({ key, icon: Icon }) => {
         const isActive = key === value;
+        const label = LABELS[key];
         return (
           <Tip key={key} content={t_i18n(label)}>
             <button
