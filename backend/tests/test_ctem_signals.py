@@ -109,6 +109,57 @@ def test_listeners_cover_the_paths_whose_events_exist_today():
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
 
+OCTI_EXT = "extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba"
+
+
+def test_a_pir_playbook_delivery_records_pir_ids_and_score_only() -> None:
+    # The body of a PIR playbook delivery as read in the lab on OpenCTI master.
+    payload = {
+        "type": "update",
+        "xtm_source": "pir_playbook",
+        "message": "Update 2 elements in `x` internal-relationship",
+        "data": {
+            "type": "malware",
+            "id": "malware--1",
+            "name": "x",
+            "extensions": {
+                OCTI_EXT: {
+                    "pir_information": [
+                        {"pir_id": "pir-b", "pir_score": 33, "last_pir_score_date": "2026-11-21T17:49:39Z"},
+                        {"pir_id": "pir-a", "pir_score": 100, "last_pir_score_date": "2026-11-21T17:48:43Z"},
+                        {"pir_id": "pir-c", "pir_score": True},
+                    ],
+                    "pir_explanation": [{"criterion": "not kept"}],
+                }
+            },
+        },
+    }
+    found = listeners.match("opencti", "update", payload)
+    assert found is not None
+    row, fields = found
+    assert row.trigger_path == "relevant_threat"
+    assert fields["evidence"]["pir"] == [
+        {"pir_id": "pir-a", "score_at_delivery": 100},
+        {"pir_id": "pir-b", "score_at_delivery": 33},
+    ]
+    assert "not kept" not in json.dumps(fields)
+
+
+def test_pir_information_outside_a_pir_playbook_delivery_is_not_read() -> None:
+    payload = {
+        "type": "update",
+        "data": {
+            "type": "malware",
+            "id": "malware--1",
+            "name": "x",
+            "extensions": {OCTI_EXT: {"pir_information": [{"pir_id": "pir-a", "pir_score": 100}]}},
+        },
+    }
+    found = listeners.match("opencti", "update", payload)
+    assert found is not None
+    assert "pir" not in found[1]["evidence"]
+
+
 def test_an_opencti_vulnerability_delivery_is_a_path_1_signal():
     payload = {
         "type": "create",

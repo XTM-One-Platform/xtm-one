@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -25,6 +26,7 @@ class FakeOpenCTI:
         self.sectors = sectors or []
         self.notifiers: dict[str, dict] = {}
         self.triggers: dict[str, dict] = {}
+        self.playbooks: dict[str, dict[str, Any]] = {}
         self.calls: list[str] = []
         self._next = 0
 
@@ -34,7 +36,7 @@ class FakeOpenCTI:
 
     async def __call__(self, query: str, variables: dict | None = None):
         v = variables or {}
-        op = query.split("(")[0].split()[-1]
+        op = query.split("(")[0].split("{")[0].split()[-1]
         self.calls.append(op)
         if op == "XtmLabels":
             nodes = [{"id": i, "value": name} for name, i in self.labels.items() if v["search"].lower() in name.lower()]
@@ -44,9 +46,45 @@ class FakeOpenCTI:
             rows = self.countries if root == "countries" else self.sectors
             # OpenCTI's search is fuzzy: answer every row, the caller matches exactly.
             return {root: {"edges": [{"node": n} for n in rows]}}, None
+        if op == "XtmMe":
+            return {"me": {"id": "user-xtm"}}, None
+        if op == "XtmPlaybook":
+            p = self.playbooks.get(v["id"])
+            if not p:
+                return {"playbook": None}, None
+            definition = json.dumps({"nodes": p["nodes"], "links": []})
+            return {
+                "playbook": {
+                    "id": v["id"],
+                    "name": p["name"],
+                    "playbook_running": p["running"],
+                    "playbook_definition": definition,
+                }
+            }, None
+        if op == "XtmPlaybookAdd":
+            pid = self._id()
+            self.playbooks[pid] = {"name": v["input"]["name"], "nodes": [], "running": False}
+            return {"playbookAdd": {"id": pid}}, None
+        if op == "XtmNodeAdd":
+            nid = self._id()
+            i = v["input"]
+            self.playbooks[v["id"]]["nodes"].append(
+                {
+                    "id": nid,
+                    "component_id": i["component_id"],
+                    "configuration": i["configuration"],
+                    "parent": i.get("parentNodeId"),
+                }
+            )
+            return {"playbookAddNode": nid}, None
+        if op == "XtmPlaybookRun":
+            self.playbooks[v["id"]]["running"] = v["input"][0]["value"] == ["true"]
+            return {"playbookFieldPatch": {"id": v["id"]}}, None
         if op == "XtmFind":
-            root = "notifiers" if "notifiers(" in query else "triggersKnowledge"
-            store = self.notifiers if root == "notifiers" else self.triggers
+            root = (
+                "notifiers" if "notifiers(" in query else "playbooks" if "playbooks(" in query else "triggersKnowledge"
+            )
+            store = self.notifiers if root == "notifiers" else self.playbooks if root == "playbooks" else self.triggers
             nodes = [{"id": k, "name": o["name"]} for k, o in store.items()]
             return {root: {"edges": [{"node": n} for n in nodes]}}, None
         if op == "XtmNotifier":
@@ -76,7 +114,13 @@ class FakeOpenCTI:
                 self.triggers[v["id"]][e["key"]] = e["value"] if e["key"] == "notifiers" else e["value"][0]
             return {"triggerKnowledgeFieldPatch": {"id": v["id"]}}, None
         if op == "XtmDelete":
-            store = self.triggers if "triggerKnowledgeDelete" in query else self.notifiers
+            store = (
+                self.triggers
+                if "triggerKnowledgeDelete" in query
+                else self.playbooks
+                if "playbookDelete" in query
+                else self.notifiers
+            )
             if store.pop(v["id"], None) is None:
                 return {}, "Object not found"
             return {}, None
@@ -444,3 +488,103 @@ async def test_an_unresolved_region_or_sector_is_an_error_and_nothing_is_created
     assert state["status"] == "error"
     assert "regions ['JP']" in state["error"] and "sector ['Energy']" in state["error"]
     assert not octi.triggers and not octi.notifiers
+
+
+PIR_CONFIG: dict[str, Any] = {
+    "provider": "opencti",
+    "event": "create",
+    "provision": {
+        "fleet": "Threat response",
+        "purpose": "PIR flags",
+        "mode": "pir_playbook",
+        "organization_context": ["pir_ids"],
+        "pir_min_score": 70,
+    },
+}
+
+
+def _pir_spec() -> dict[str, Any]:
+    spec = prov.read_provision_spec(PIR_CONFIG)
+    assert spec is not None
+    return dict(spec, pir_ids=["pir-2", "pir-1"])
+
+
+def test_pir_playbook_mode_needs_the_profile_pirs_and_a_known_mode() -> None:
+    assert _pir_spec()["mode"] == "pir_playbook"
+    trigger_spec = prov.read_provision_spec(SPEC_CONFIG)
+    assert trigger_spec is not None and trigger_spec["mode"] == "trigger"
+    provision: dict[str, Any] = dict(PIR_CONFIG["provision"])
+    no_pirs = {**PIR_CONFIG, "provision": {**provision, "organization_context": []}}
+    with pytest.raises(prov.ProvisionSpecError, match="must name pir_ids"):
+        prov.read_provision_spec(no_pirs)
+    unknown = {**PIR_CONFIG, "provision": {**provision, "mode": "stream"}}
+    with pytest.raises(prov.ProvisionSpecError, match=r"provision\.mode"):
+        prov.read_provision_spec(unknown)
+
+
+def test_pir_playbook_nodes_listen_to_the_profile_pirs_and_notify_the_integration_user() -> None:
+    entry, notify = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm")
+    # Items as OpenCTI's PIR listener reads them (pir.value), never bare ids.
+    assert entry["inPirFilters"] == [{"value": "pir-1"}, {"value": "pir-2"}]
+    assert entry["create"] is True and entry["update"] is True
+    assert entry["delete"] is False and entry["create_rel"] is False
+    score = json.loads(entry["filters"])["filters"][0]
+    assert score == {"key": ["pir_score"], "values": ["70"], "operator": "gte", "mode": "or"}
+    assert notify == {"notifiers": ["notifier-1"], "authorized_members": [{"value": "user-xtm"}]}
+
+
+def test_pir_webhook_template_keys_each_change_on_the_pir_information() -> None:
+    template = prov.PIR_WEBHOOK_TEMPLATE
+    assert "data[0].notification_id" in template and "notification.id" not in template
+    assert "pir_information" in template.split('"type"')[0]
+    assert '"xtm_source": "pir_playbook"' in template
+
+
+@pytest.mark.asyncio
+async def test_reconcile_pir_playbook_creates_a_running_playbook_then_is_idempotent() -> None:
+    octi = FakeOpenCTI()
+    state = await prov.reconcile(octi, _pir_spec(), None, url=URL, secret="s")
+    assert state["status"] == "provisioned", (state.get("error"), octi.calls)
+    assert state["mode"] == "pir_playbook"
+    assert not octi.triggers and len(octi.notifiers) == 1
+    playbook = octi.playbooks[state["playbook_id"]]
+    assert playbook["running"] and playbook["name"] == "XTM One - Threat response - PIR flags"
+    entry, notify = playbook["nodes"]
+    assert (entry["component_id"], notify["component_id"]) == (prov.PIR_ENTRY_COMPONENT, prov.NOTIFIER_COMPONENT)
+    assert notify["parent"] == entry["id"]
+    assert json.loads(notify["configuration"])["notifiers"] == [state["notifier_id"]]
+    template = json.loads(octi.notifiers[state["notifier_id"]]["notifier_configuration"])["template"]
+    assert template == prov.PIR_WEBHOOK_TEMPLATE
+
+    octi.calls.clear()
+    again = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
+    assert again["playbook_id"] == state["playbook_id"]
+    assert not [c for c in octi.calls if c.endswith(("Add", "Patch", "Delete", "Run"))]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_pir_playbook_rebuilds_an_edited_or_stopped_playbook() -> None:
+    octi = FakeOpenCTI()
+    state = await prov.reconcile(octi, _pir_spec(), None, url=URL, secret="s")
+    octi.playbooks[state["playbook_id"]]["running"] = False
+    rebuilt = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
+    assert rebuilt["playbook_id"] != state["playbook_id"] and list(octi.playbooks) == [rebuilt["playbook_id"]]
+    assert octi.playbooks[rebuilt["playbook_id"]]["running"]
+
+    octi.playbooks[rebuilt["playbook_id"]]["nodes"][0]["configuration"] = "{}"
+    again = await prov.reconcile(octi, _pir_spec(), rebuilt, url=URL, secret="s")
+    assert list(octi.playbooks) == [again["playbook_id"]] and again["playbook_id"] != rebuilt["playbook_id"]
+
+
+@pytest.mark.asyncio
+async def test_switching_mode_swaps_the_trigger_and_the_playbook_and_remove_deletes_all() -> None:
+    octi = FakeOpenCTI()
+    trigger_spec = dict(_pir_spec(), mode="trigger")
+    as_trigger = await prov.reconcile(octi, trigger_spec, None, url=URL, secret="s")
+    assert len(octi.triggers) == 1 and not octi.playbooks
+    as_playbook = await prov.reconcile(octi, _pir_spec(), as_trigger, url=URL, secret="s")
+    assert not octi.triggers and len(octi.playbooks) == 1
+    back = await prov.reconcile(octi, trigger_spec, as_playbook, url=URL, secret="s")
+    assert len(octi.triggers) == 1 and not octi.playbooks
+    assert await prov.remove(octi, {**back, "playbook_id": as_playbook["playbook_id"]}) is None
+    assert not octi.triggers and not octi.playbooks and not octi.notifiers
