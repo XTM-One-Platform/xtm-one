@@ -147,7 +147,7 @@ type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
 function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
   const { t_i18n } = useFormatter();
   if (issue.not_affected || issue.source !== "opencti") return null;
-  const unknownDeclared = issue.declared_version_known === false && issue.installed_version;
+  const unknownDeclared = issue.declared_version_known === false ? issue.installed_version : null;
   return (
     <span className="flex flex-col" data-testid="ctem-case-issue-version">
       <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
@@ -158,7 +158,7 @@ function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
         <span className="content-compact text-default-secondary">{t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })}</span>
       )}
       {unknownDeclared && (
-        <span className="content-compact text-default-secondary">{t_i18n("Version {version} not known to OpenCTI", { version: issue.installed_version })}</span>
+        <span className="content-compact text-default-secondary">{t_i18n("Version {version} not known to OpenCTI", { version: unknownDeclared })}</span>
       )}
     </span>
   );
@@ -338,7 +338,7 @@ export default function CtemCaseDetail() {
       cell: (r) => (isRestrictedIssue(r.issue) ? null : <IssueVersion issue={r.issue} />),
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.fixed_version ?? "~")),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.fixed_version ?? "")),
-      hideBelow: "2xl",
+      hideBelow: "xl",
       hideable: true,
     },
     {
