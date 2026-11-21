@@ -313,6 +313,61 @@ async def test_scheduled_pass_with_no_ticketing_does_nothing(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_the_mobilization_tool_path_opens_one_ticket_on_create_and_needs_ticketing(monkeypatch):
+    """#917 slice 4: sync_one is the only way the Mobilization role touches a ticket."""
+    from app.services import organization_context as oc
+
+    org = uuid.uuid4()
+    case = _case(organization_id=org, severity="P3", state="needs_attention")
+    adapter = FakeAdapter()
+    row = type("V", (), {"organization_id": org, "profile": {"ticketing": {"integration": "i", "project": "ITS"}}})()
+
+    async def _current(db, organization_id=None):
+        return row
+
+    async def _adapter(db, profile):
+        return adapter
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(tk, "adapter_for", _adapter)
+    # Without create, a P3 case not yet mobilized gets no ticket.
+    answer = await tk.sync_one(FakeSession(), case, now=NOW)
+    assert answer["connected"] and answer["ticket"] is None and adapter.created == 0
+    # The Mobilize decision: create opens it once, a retry finds it again.
+    answer = await tk.sync_one(FakeSession(), case, create=True, now=NOW)
+    assert answer["action"] == "created" and answer["ticket"]["key"] == "ITS-1"
+    again = await tk.sync_one(FakeSession(), case, create=True, now=NOW)
+    assert again["action"] == "pulled" and adapter.created == 1
+    # A resolved case is never given a new ticket by create.
+    closed = _case(organization_id=org, state="resolved")
+    assert (await tk.sync_one(FakeSession(), closed, create=True, now=NOW))["ticket"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_mobilization_tool_path_without_ticketing_is_a_reason(monkeypatch):
+    from app.services import organization_context as oc
+
+    async def _none(db, organization_id=None):
+        return None
+
+    monkeypatch.setattr(oc, "current_version", _none)
+    answer = await tk.sync_one(FakeSession(), _case(), create=True, now=NOW)
+    assert answer == {"connected": False, "reason": tk.NOT_CONNECTED, "settings": tk.SETTINGS_PATH}
+
+
+def test_mobilize_gates_the_ticket_creation_through_the_layer_only():
+    from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED, CTEM_MOBILIZE_GATE
+    from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL
+    from app.services.fleet_autonomy import gated_tool_rules, rule_matches
+
+    gates = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]["gates"]
+    rules = [r for r in gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates) if r["name"] == "sync_ctem_case_ticket"]
+    assert [r["key"] for r in rules] == [CTEM_MOBILIZE_GATE]
+    assert rule_matches(rules[0], "sync_ctem_case_ticket", {"case_id": "c", "create": True})
+    assert not rule_matches(rules[0], "sync_ctem_case_ticket", {"case_id": "c"})
+
+
+@pytest.mark.asyncio
 async def test_a_jira_status_event_moves_its_case_at_once_and_asks_the_retest_once(monkeypatch):
     from app.services import ctem_case_loop as case_loop
     from app.services import organization_context as oc

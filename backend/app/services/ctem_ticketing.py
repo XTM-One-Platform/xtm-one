@@ -256,6 +256,8 @@ class SyncOutcome:
     retest_requested: bool = False
     error: str = ""
     notes: list[str] = field(default_factory=list)
+    #: The step :func:`sync_case` took: ``created``, ``pushed``, ``pulled`` or ``none``.
+    action: str = "none"
 
 
 async def ensure_ticket(
@@ -745,28 +747,106 @@ async def sync_cases(
         .all()
     )
     for case in cases:
-        ticket = managed_ticket(case)
-        if ticket is None:
-            if case.state in MOBILIZED_STATES and should_create(case, sync):
-                outcome = await ensure_ticket(
-                    db, case, adapter, sync, integration=integration, base_url=base_url, now=now
-                )
-                counts["created"] += int(outcome.created)
-                counts["errors"] += int(bool(outcome.error))
-            continue
-        wanted = target_status(case)
-        if (wanted and ticket.get("status") != wanted) or needs_reopen(case, ticket):
-            outcome = await push_case_state(db, case, adapter, sync, base_url=base_url, now=now)
+        outcome = await sync_case(
+            db, case, adapter, sync, integration=integration, base_url=base_url, events=events, now=now
+        )
+        if outcome.action == "created":
+            counts["created"] += int(outcome.created)
+        elif outcome.action == "pushed":
             counts["pushed"] += int(outcome.updated or outcome.created)
-            counts["errors"] += int(bool(outcome.error))
-            continue
-        outcome = await pull_ticket_status(db, case, adapter, sync, now=now)
-        counts["pulled"] += 1
+        elif outcome.action == "pulled":
+            counts["pulled"] += 1
         counts["errors"] += int(bool(outcome.error))
-        if outcome.retest_requested:
-            counts["retest"] += 1
-            _raise_retest(events, case, now)
+        counts["retest"] += int(outcome.retest_requested)
     return counts
+
+
+async def sync_case(
+    db: AsyncSession,
+    case: CtemCase,
+    adapter: TicketingAdapter,
+    sync: Any,
+    *,
+    integration: str,
+    base_url: str = "",
+    events: case_loop.PendingEvents | None = None,
+    now: datetime | None = None,
+    create: bool = False,
+) -> SyncOutcome:
+    """One sync step on *case*, the one the scheduled pass and the Mobilization tool share. The caller commits.
+
+    No managed ticket: create it when the case passed Mobilize and the settings
+    ask one (or *create*, the Mobilization role's explicit call, which an open
+    case only takes). A case state the ticket must follow: push it. Otherwise
+    pull the ticket's status, and a ticket that reached done queues the re-test.
+    """
+    now = now or datetime.now(UTC)
+    ticket = managed_ticket(case)
+    if ticket is None:
+        wanted_create = case.state in MOBILIZED_STATES and should_create(case, sync)
+        if create and case.state in OPEN_STATES:
+            wanted_create = True
+        if not wanted_create:
+            return SyncOutcome(notes=["no ticket asked for this case"])
+        outcome = await ensure_ticket(db, case, adapter, sync, integration=integration, base_url=base_url, now=now)
+        outcome.action = "created"
+        return outcome
+    wanted = target_status(case)
+    if (wanted and ticket.get("status") != wanted) or needs_reopen(case, ticket):
+        outcome = await push_case_state(db, case, adapter, sync, base_url=base_url, now=now)
+        outcome.action = "pushed"
+        return outcome
+    outcome = await pull_ticket_status(db, case, adapter, sync, now=now)
+    outcome.action = "pulled"
+    if outcome.retest_requested:
+        _raise_retest(events, case, now)
+    return outcome
+
+
+async def sync_one(
+    db: AsyncSession,
+    case: CtemCase,
+    *,
+    create: bool = False,
+    events: case_loop.PendingEvents | None = None,
+    base_url: str = "",
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Sync one case now with the declared ticketing target, for the Mobilization role's tool. The caller commits.
+
+    Answers what was done and the case's ticket with its sync state. No
+    ticketing declared: ``connected`` false with the reason and the settings
+    link, never an error.
+    """
+    from app.services import organization_context as oc
+
+    row = await oc.current_version(db)
+    if row is None or row.organization_id != case.organization_id:
+        return {"connected": False, "reason": NOT_CONNECTED, "settings": SETTINGS_PATH}
+    profile = oc.parse_profile(row.profile)
+    adapter = await adapter_for(db, profile)
+    if isinstance(adapter, str):
+        return {"connected": False, "reason": adapter, "settings": SETTINGS_PATH}
+    outcome = await sync_case(
+        db,
+        case,
+        adapter,
+        profile.ticketing.sync,
+        integration=profile.ticketing.integration,
+        base_url=base_url,
+        events=events,
+        now=now,
+        create=create,
+    )
+    return {
+        "connected": True,
+        "action": outcome.action,
+        "created": outcome.created,
+        "retest_requested": outcome.retest_requested,
+        "error": outcome.error,
+        "notes": outcome.notes,
+        "ticket": managed_ticket(case),
+    }
 
 
 def _raise_retest(events: case_loop.PendingEvents | None, case: CtemCase, now: datetime) -> None:

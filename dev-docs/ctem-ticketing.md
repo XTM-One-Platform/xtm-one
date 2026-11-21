@@ -44,4 +44,8 @@ Inbound status (`apply_inbound_status`): a status an event carries for a ticket 
 
 ## 5. Gates
 
-Creating and updating tickets is a step of the Mobilization role, behind the fleet's gate catalog (`ticket.create`, `ticket.update`) and the case's one Mobilize decision: with the fleet on autonomous, tickets are created with no decision.
+Opening a case's ticket is the gate `ctem.mobilize` of the CTEM gate catalog (#916, `dev-docs/ctem-fleets.md` section 11): the tool rule `sync_ctem_case_ticket` with `create: true` sits beside the free-form ticketing tools under that one key, so one Mobilize decision per case covers it, and with the fleet on autonomous it runs with no decision. A sync without `create` (push the case state, pull the ticket status) changes nothing the case has not already decided and is not gated; the scheduled pass is not gated either, since it only creates the ticket of a case already past Mobilize (`in_progress`).
+
+## 6. Agents
+
+The Mobilization role works the ticket through this layer only, never through a free-form ticketing tool call. The tool `sync_ctem_case_ticket` (`services/builtin_tools/ctem_cases.py`, on the CTEM case agents) calls `ctem_ticketing.sync_one` for one case. `sync_one` takes the same single step as the scheduled pass (`sync_case`): create when asked, push or pull otherwise. It answers the ticket with its sync state, or `connected: false` with the reason and the settings link when no ticketing is declared. The persona `ctem-remediation-coordinator.md` says so, and the two loop orchestrators' "Case opened or reopened" assignment also hears `ctem_case.retest_requested`: it runs the case's re-test, and the case closes on that result, never on the ticket.

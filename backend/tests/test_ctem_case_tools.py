@@ -309,3 +309,26 @@ async def test_a_ticket_reference_is_written_once_and_updated_in_place(env: Simp
     assert (
         await env.call("record_ctem_case_ticket", case_id=str(env.case.id), integration="jira", key="A", status="x")
     ).startswith("Refused:")
+
+
+async def test_the_ticket_sync_tool_goes_through_the_layer(env: SimpleNamespace, monkeypatch) -> None:
+    """#917 slice 4: sync_ctem_case_ticket calls ctem_ticketing.sync_one for the case the user sees."""
+    from app.services import ctem_case_loop, ctem_ticketing
+
+    seen: dict = {}
+
+    async def _sync_one(db, case, *, create=False, events=None, base_url="", now=None):
+        seen.update(case=case.id, create=create)
+        return {"connected": False, "reason": ctem_ticketing.NOT_CONNECTED, "settings": ctem_ticketing.SETTINGS_PATH}
+
+    async def _publish(_pending) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_ticketing, "sync_one", _sync_one)
+    monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
+    body = json.loads(await env.call("sync_ctem_case_ticket", case_id=str(env.case.id), create=True))
+    assert body["connected"] is False and body["reason"] == ctem_ticketing.NOT_CONNECTED
+    assert seen == {"case": env.case.id, "create": True}
+    assert "No case" in await env.call("sync_ctem_case_ticket", case_id=str(uuid.uuid4()))
+    _, other = env.tools_for(str(uuid.uuid4()))
+    assert "No case" in await other("sync_ctem_case_ticket", case_id=str(env.case.id))
