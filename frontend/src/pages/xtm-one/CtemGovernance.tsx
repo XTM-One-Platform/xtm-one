@@ -474,10 +474,11 @@ export default function CtemGovernance() {
         </HeroCard>
       </div>
 
-      <HeroCard title={t_i18n("Loop measures")} testId="ctem-governance-loop">
-        <p className="content-caption text-default-secondary">
-          {t_i18n("How fast the loop runs, read from the history of the cases you can see")}
-        </p>
+      <HeroCard
+        title={t_i18n("Loop measures")}
+        hint={t_i18n("How fast the loop runs, read from the history of the cases you can see")}
+        testId="ctem-governance-loop"
+      >
         <LoopMeasures />
       </HeroCard>
     </div>
