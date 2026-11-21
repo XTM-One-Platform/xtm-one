@@ -140,7 +140,8 @@ export function ModuleInvestigationLine({ module, investigation }: { module: Hea
           onClick={run}
           data-testid={`health-investigate-${module}`}
         >
-          {investigate.isPending ? <Spinner size="sm" tone="inherit" /> : <Icon name="sparkles" size={16} aria-hidden />}
+          {investigate.isPending && <Spinner size="sm" tone="inherit" />}
+          {!investigate.isPending && <Icon name="sparkles" size={16} aria-hidden />}
           {t_i18n("Investigate now")}
         </Button>
       </AiDisabledTip>

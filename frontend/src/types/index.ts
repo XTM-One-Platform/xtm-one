@@ -16420,7 +16420,7 @@ export interface HealthLastInvestigation {
 }
 
 /** What "Investigate now" did on one registration: started, or the refusal code of `start_cycle`. */
-export interface HealthModuleInvestigationStart {
+interface HealthModuleInvestigationStart {
   registration_id: string;
   cycle_id: string | null;
   run_id: string | null;
@@ -16434,7 +16434,7 @@ export interface HealthModuleInvestigation {
 }
 
 /** One read the Module Analyst made to back a recommendation. */
-export interface HealthAnalystEvidence {
+interface HealthAnalystEvidence {
   tool?: string;
   object_ids?: string[];
   values?: Record<string, unknown>;
