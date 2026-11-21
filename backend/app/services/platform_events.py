@@ -466,6 +466,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_VALIDATION_KEYS,
     },
+    "ctem_case.retest_requested": {
+        "description": (
+            "The remediation ticket of an open CTEM case reached done in the declared ticketing system "
+            "(services/ctem_ticketing.py): run the re-test; the case closes on its result, never on the ticket. "
+            "Payload: the case fields, ticket_integration, ticket_key. Heard only by readers of the case."
+        ),
+        "filter_keys": _CTEM_CASE_KEYS,
+    },
     "timer.due": {
         "description": (
             "A timer an agent armed with arm_timer reached its due time (services/platform_timers.py): "
@@ -498,6 +506,7 @@ VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
         "ctem_case.resolved",
         "ctem_case.sla_breached",
         "ctem_case.validation_finished",
+        "ctem_case.retest_requested",
     }
 )
 

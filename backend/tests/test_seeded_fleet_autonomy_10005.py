@@ -60,10 +60,18 @@ def test_at_low_only_destructive_gates_wait(slug):
 
 
 def test_at_low_only_the_mobilize_tickets_pause_in_the_tool_path():
-    """#916: the OpenAEV launches run at Low; the remediation tickets wait for the one Mobilize decision."""
+    """#916: the OpenAEV launches run at Low; the remediation tickets wait for the one Mobilize decision.
+
+    #917 adds sync_ctem_case_ticket: its create=true call opens the case ticket under the same gate.
+    """
     gates = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
     rules = gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)
-    assert {r["name"] for r in rules} == {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change"}
+    assert {r["name"] for r in rules} == {
+        "create_jira_issue",
+        "create_servicenow_incident",
+        "create_servicenow_change",
+        "sync_ctem_case_ticket",
+    }
     assert {r["key"] for r in rules} == {"ctem.mobilize"}
 
 

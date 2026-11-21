@@ -26,7 +26,7 @@ from app.services.fleet_autonomy import AUTONOMY_LEVELS, effective_gates, gate_c
 from app.services.fleets import BUILTIN_FLEET_WRITABLE_FIELDS, ensure_builtin_fleet_writable
 
 _LOOP_FLEETS = ("ctem-threat-response", "ctem-vuln-prioritization", "ctem-ai-security", "ctem-third-party-risk")
-_TICKET_TOOLS = {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change"}
+_TICKET_TOOLS = {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change", "sync_ctem_case_ticket"}
 
 
 def _gates(slug: str) -> list[dict]:

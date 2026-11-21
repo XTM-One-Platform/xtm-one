@@ -35,6 +35,7 @@ from app.integrations.http import (
     AutoRefreshClient,
     RefreshFn,
     clip_text,
+    is_not_found_error,
     safe_request,
 )
 from app.integrations.http import (
@@ -1721,7 +1722,7 @@ def _annotate_not_found(err: str) -> str:
     feature flag is off. A bare "not found" therefore sends the agent hunting
     for a wrong id when the real cause is permissions or a disabled feature.
     """
-    if "404" not in err:
+    if not is_not_found_error(err):
         return err
     return (
         f"{err} In OpenAEV a 404 can mean three different things: the entity "
@@ -1739,7 +1740,7 @@ _TENANT_IN_PATH = re.compile(r"/api/tenants/([^/?]+)")
 
 def _annotate_cross_tenant_404(err: str | None, path_or_url: str) -> str | None:
     """A tenant-scoped request sees only its tenant: an ID from another one also answers 404."""
-    if not err or "404" not in err:
+    if not err or not is_not_found_error(err):
         return err
     match = _TENANT_IN_PATH.search(path_or_url)
     if not match:
@@ -3003,6 +3004,7 @@ __all__ = [
     "fmt_asset_group_members",
     "inject_carries_relations",
     "inject_targets_line",
+    "is_not_found_error",
     "json_answer",
     "logger",
     "mirror_content_targets",
