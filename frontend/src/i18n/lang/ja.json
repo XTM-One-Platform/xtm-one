@@ -17592,6 +17592,7 @@
   "Crown jewel links": "重要資産とのリンク",
   "Decision owner": "判断の責任者",
   "EPSS minimum": "EPSS の最小値",
+  "PIR score minimum: vulnerabilities": "PIR スコアの最小値: 脆弱性",
   "Enterprise knowledge": "企業ナレッジ",
   "Expires on": "有効期限",
   "Expires soon": "まもなく期限切れ",
@@ -20014,5 +20015,12 @@
   "Re-test passed on {date}": "{date} に再テストに合格",
   "Not reproduced": "再現なし",
   "Reproduced": "再現あり",
-  "Not re-tested yet": "未再テスト"
+  "Not re-tested yet": "未再テスト",
+  "PIR score minimum: threat activity": "PIR スコアの最小値: 脅威活動",
+  "0 to 100. A vulnerability flagged in a PIR starts a fleet run at this score. Default: 70.": "0 から 100。PIR でフラグが付いた脆弱性は、このスコアでフリートの実行を開始します。既定値: 70。",
+  "0 to 100. An intrusion set, campaign or malware flagged in a PIR starts a fleet run at this score. Default: 75.": "0 から 100。PIR でフラグが付いた侵入セット、キャンペーン、マルウェアは、このスコアでフリートの実行を開始します。既定値: 75。",
+  "Type a whole number from 0 to 100, or leave it empty for the default.": "0 から 100 の整数を入力するか、既定値を使う場合は空欄にしてください。",
+  "Trigger rule": "トリガールール",
+  "Vulnerability on software we run: {software}": "当社で稼働しているソフトウェアの脆弱性: {software}",
+  "Flagged in a PIR at score {score}": "PIR でスコア {score} としてフラグ付け"
 }
