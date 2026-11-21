@@ -19927,5 +19927,12 @@
   "Unknown, threshold {threshold}": "不明、しきい値 {threshold}",
   "{criticality}, at or above {threshold}": "{criticality}、{threshold} 以上",
   "{criticality}, below {threshold}": "{criticality}、{threshold} 未満",
-  "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "シグナル: 受信 {total} 件、確認済み {confirmed} 件、スコープ内 {inScope} 件、ケース化 {cases} 件、ウォッチリスト {watchlist} 件"
+  "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "シグナル: 受信 {total} 件、確認済み {confirmed} 件、スコープ内 {inScope} 件、ケース化 {cases} 件、ウォッチリスト {watchlist} 件",
+  "Version (optional)": "バージョン(任意)",
+  "Changed the target version": "目標バージョンを変更しました",
+  "Not affected": "影響なし",
+  "Version {version} is outside the affected ranges": "バージョン {version} は影響範囲外です",
+  "Not affected: version {version} is outside the affected ranges": "影響なし: バージョン {version} は影響範囲外です",
+  "Fixed version unknown: no source names the version that fixes these issues. Declare the version you run in Settings > Organization > Tech stack, or connect an enrichment provider.": "修正バージョン不明: これらの問題を修正するバージョンを示すソースがありません。設定 > 組織 > 技術スタックで使用中のバージョンを宣言するか、エンリッチメントプロバイダーを接続してください。",
+  "{count, plural, one {# issue is not affected by the version you run.} other {# issues are not affected by the version you run.}}": "{count, plural, other {# 件の問題は使用中のバージョンの影響を受けません。}}"
 }
