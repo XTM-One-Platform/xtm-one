@@ -378,8 +378,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A connected OpenCTI, OpenAEV or OpenCRQ platform reported a version other than the one recorded, "
             "on its registration heartbeat (once per platform and upgrade; not on a first registration): wait "
             "for a module upgrade instead of polling its version. Payload: provider, platform_identifier, "
-            "integration_id, previous_version, version, first_seen_at. Platform-wide: heard by every "
-            "subscriber whatever its scope."
+            "integration_id, previous_version, version, first_seen_at. Also raised when a connector of a "
+            "connected OpenCTI reports another version (read every 5 minutes while a subscriber exists): "
+            "the payload then adds component_kind, component_id, component_name, component_slug. "
+            "Platform-wide: heard by every subscriber whatever its scope."
         ),
         "filter_keys": (
             "provider",
@@ -388,6 +390,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "previous_version",
             "version",
             "first_seen_at",
+            "component_kind",
+            "component_id",
+            "component_name",
+            "component_slug",
         ),
     },
     "platform.default_model_route.changed": {

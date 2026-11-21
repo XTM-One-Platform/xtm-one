@@ -43,7 +43,12 @@ Trigger types an assignment accepts today: `schedule`, `webhook`,
 (`agent_builder.ASSIGNMENT_TRIGGER_TYPES`). `platform_event` covers
 `work_item.*`, `run.*`, `platform.release.deployed` and, for a module's
 upgrade, `integration.version.changed` (a registered platform's heartbeat
-reporting a new version, `services/integration_versions.py`; #584).
+reporting a new version, `services/integration_versions.py`; #584; and a
+connector of a registered OpenCTI reporting another `version`, read every
+5 minutes by the autonomous tick while a subscriber exists, as a
+subscriber's run-as user, the payload adding `component_kind`,
+`component_id`, `component_name`, `component_slug`:
+`services/integration_component_versions.py`).
 The version itself is read on demand by `manage_openaev_settings` action
 `version`, `get_opencti_platform_version` (GraphQL `about { version }`) and
 `get_opencrq_platform_version` (the public tRPC `health` procedure).
