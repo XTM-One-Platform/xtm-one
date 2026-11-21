@@ -82,6 +82,10 @@ export interface PrioritizationPolicy {
   min_crown_jewel_criticality: string;
   exclusions: { kind: string; value: string; reason: string }[];
   accepted_risks: { subject: string; scope: string; owner: string; expires_on: string; reason: string }[];
+  /** CTEM-08: the live PIR score (0 to 100) a flagged vulnerability must reach before a fleet run starts. Backend default 70. */
+  pir_min_score_vulnerability?: number;
+  /** CTEM-08: the same for threat activity (intrusion set, campaign, malware...). Backend default 75. */
+  pir_min_score_threat?: number;
 }
 
 export interface KnowledgeLink {
