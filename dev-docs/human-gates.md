@@ -28,38 +28,24 @@ message carries resolves (section 9, I.7).
 | 4 | Flow Ask-user node | `flow_runner._exec_ask_user` (title, question) | park `{kind: human, question, released, response, responded_by}` in `FlowRun.state.waiting` | `POST /flows/runs/{id}/respond`, `response` text | flow builder run panel | `flow_hitl` (activity row) |
 | 5 | Work-item decision | `needs_human` + `ask` (`work_item_ask.py`) | `work_items.ask` {question, context, options, recommendation, deadline}; recipient in `waits_for_user_id` (`work_item_recipient.py`) | `POST /work-items/{id}/answer`, `{option, text}` | `WorkItemDecisionCard` in the work item dialog; Tasks > Work Items "Waiting for me" (`/tasks/work-items`) | `work_item_waiting` |
 
-CTEM loop gates (#916, CTEM-34) are a decision source, not a sixth gate: the
-`ctem.*` keys of a CTEM fleet's approval catalog (`dev-docs/ctem-fleets.md`
-section 11) wait through gate 2 (their tools: the OpenAEV launches, the
-ticket tools) or gate 5 (a `needs_human` work item with an ask), with the
-gate key as the decision's source. No CTEM-specific card, endpoint, table,
-bell kind or channel message; the G2 migration carries them like any other.
-
-Fleet gates are sources of decisions 2 and 5, never a gate of their own: a
-fleet's approval gate catalog (`dev-docs/ctem-fleets.md` section 11) decides at
-its autonomy level and pins which gated actions wait, and a waiting one is a
-tool approval (2) or a work-item decision (5) carrying the gate key. The CTEM
-loop gates (`ctem.validation.non_readonly`, `ctem.analyst_review`,
-`ctem.remediation.decision`, `ctem.mobilize`, `ctem.production_change`,
-`ctem.accept_risk`, `ctem.close_without_retest`; #916, CTEM-34) follow it: no
-CTEM-specific card, endpoint, table, bell kind or channel message. Out of the
-box one of them waits, `ctem.mobilize`, one decision per case; the G2
-migration backfills them like any other.
+Fleet gates are a source of decisions 2 and 5, never a gate of their own: a
+gate of a fleet's approval catalog (`dev-docs/ctem-fleets.md` section 11) that
+waits at the fleet's autonomy level and pins pauses its tools through gate 2,
+or asks through gate 5 (a `needs_human` work item with an ask) when it has no
+tool, with the gate key as the decision's source. The CTEM loop fleets (#916,
+CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
+`ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,
+`ctem.production_change`, `ctem.accept_risk`, `ctem.close_without_retest`);
+out of the box only `ctem.mobilize` waits, one decision per case. A built-in
+fleet takes pins and added gates in its customer layer, kept across seed
+upgrades. No CTEM-specific card, endpoint, table, bell kind or channel
+message; the G2 migration backfills them like any other.
 
 Adjacent gates, in scope for the card (B) but not for the router at first:
 chat inline approvals (`request_approval`, general chat pause), runner
 shell-command approvals (`RunnerApprovalCard`, `RunnersSection`), and run
 action requests (`access_requests.py`, bell `run_action_request`: someone who
 cannot answer a paused run asks its owner).
-
-Fleet gates are a source of these decisions, not a sixth gate: a gate of a
-fleet's approval catalog that waits at the fleet's autonomy level and pins
-pauses its tools through gate 2, or asks through gate 5 when it has no tool.
-The CTEM loop fleets (#916, CTEM-34; `dev-docs/ctem-fleets.md` section 11)
-declare one key per loop stage (`ctem.validation.non_readonly` to
-`ctem.close_without_retest`); out of the box only `ctem.mobilize` waits, one
-decision per case. The gate key is the decision's source: no CTEM-specific
-card, endpoint, table, bell kind or channel message.
 
 What diverges, read on main:
 

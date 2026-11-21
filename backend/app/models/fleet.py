@@ -195,6 +195,13 @@ class Fleet(VisibilityColumns, Base):
     #: custom fleet; NULL keeps a legacy custom fleet on its declared gates
     #: until a person applies a level through ``PUT /fleets/{id}/autonomy``.
     approval_pins: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
+    #: Gates a person added to a built-in fleet (#916, CTEM-34): the customer
+    #: layer of its catalog, same shape as ``approval_gates``, read after the
+    #: seeded gates (``fleet_autonomy.effective_gates``). The seed never writes
+    #: it, so an added gate survives every upgrade. NULL = none added.
+    customer_gates: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True, default=None
+    )
     #: Where the fleet's instructions (persona, guardrails, skills) put it on
     #: the four-level scale, between-step positions allowed (#10168, B2-I of
     #: #10000; ``fleet_autonomy.INSTRUCTIONS_POSITIONS``). Never a platform
