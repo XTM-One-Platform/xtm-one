@@ -19928,5 +19928,7 @@
   "Unknown, threshold {threshold}": "Unknown, threshold {threshold}",
   "{criticality}, at or above {threshold}": "{criticality}, at or above {threshold}",
   "{criticality}, below {threshold}": "{criticality}, below {threshold}",
-  "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist"
+  "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist": "Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist",
+  "Back to Case": "Back to Case",
+  "Ran a fleet step on this case": "Ran a fleet step on this case"
 }

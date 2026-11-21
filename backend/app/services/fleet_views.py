@@ -1042,6 +1042,46 @@ def run_case_id(object_type: str | None, object_id: str | None) -> str | None:
         return None
 
 
+def case_run_clause(case_id: uuid.UUID):
+    """The ``AssignmentRun`` rows a CTEM case event started for *case_id* (#915):
+    the event's object, read key by key from ``trigger_context``."""
+    from app.models.assignment import AssignmentRun
+
+    return (AssignmentRun.trigger_context["object_type"].as_string() == CASE_OBJECT_TYPE) & (
+        AssignmentRun.trigger_context["object_id"].as_string() == str(case_id)
+    )
+
+
+async def case_runs(db: AsyncSession, case_id: uuid.UUID, *, run_scope, limit: int) -> list[tuple]:
+    """The runs the caller may see that work on one CTEM case, oldest first (#915):
+    ``(id, agent_id, agent_name, status, created_at, completed_at, outcome)``,
+    for the case page that interleaves them with the case history. Any fleet's
+    runs: a case is worked by whichever fleet its event reached."""
+    from app.models.assignment import AssignmentRun
+
+    rows = (
+        await db.execute(
+            select(
+                AssignmentRun.id,
+                AssignmentRun.agent_id,
+                Agent.name,
+                AssignmentRun.status,
+                AssignmentRun.created_at,
+                AssignmentRun.completed_at,
+                AssignmentRun.error,
+            )
+            .join(Agent, Agent.id == AssignmentRun.agent_id)
+            .where(case_run_clause(case_id), run_scope)
+            .order_by(AssignmentRun.created_at.desc(), AssignmentRun.id.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        (run_id, agent_id, name, status, created_at, completed_at, run_outcome(status, error))
+        for (run_id, agent_id, name, status, created_at, completed_at, error) in reversed(rows)
+    ]
+
+
 async def recent_runs(
     db: AsyncSession, agent_ids: Sequence[uuid.UUID], *, run_scope, limit: int
 ) -> list[tuple]:

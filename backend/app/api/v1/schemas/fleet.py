@@ -645,6 +645,25 @@ class FleetRunEntry(BaseModel):
     case_id: str | None = None
 
 
+class CaseRunEntry(BaseModel):
+    """One run working on a CTEM case (#915), for the case page."""
+
+    id: str
+    agent_id: str
+    agent_name: str | None = None
+    status: str
+    created_at: str
+    completed_at: str | None
+    outcome: str = "other"
+
+
+class CaseRunsResponse(BaseModel):
+    """The runs the caller may see that a CTEM case's events started, oldest first."""
+
+    case_id: str
+    runs: list[CaseRunEntry]
+
+
 class FleetActivityResponse(BaseModel):
     """What the fleet's members did lately: their runs the caller may see and
     the caller's delegations from or to a member, newest first."""

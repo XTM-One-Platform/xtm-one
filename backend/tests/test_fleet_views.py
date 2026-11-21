@@ -20,6 +20,7 @@ from app.services.fleet_views import (
     NODE_MEMBER,
     AgentFacts,
     assemble_fleet_graph,
+    case_run_clause,
     fleet_node_id,
     fleet_scope_clause,
     fleet_tree,
@@ -39,6 +40,14 @@ def test_a_run_started_by_a_case_event_names_its_case_and_nothing_else_does():
     assert run_case_id("ctem_case", None) is None
     assert run_case_id("ctem_case", "not-a-uuid") is None
     assert run_case_id(None, None) is None
+
+
+def test_the_case_run_clause_reads_the_event_object_of_the_run():
+    """#915: the case page reads the runs whose trigger object is that case, by key, never the whole JSON."""
+    case_id = uuid.uuid4()
+    sql = str(case_run_clause(case_id).compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    assert "object_type" in sql and "ctem_case" in sql
+    assert "object_id" in sql and str(case_id) in sql
 
 
 def _fleet(orchestrator: uuid.UUID | None = None, name: str = "CEO Office") -> Fleet:
