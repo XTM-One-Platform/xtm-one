@@ -32,6 +32,7 @@ import {
   useUpdateCtemCase,
   type CtemCaseIssue,
   type CtemCaseUpdate,
+  type CtemCaseVisibleIssue,
 } from "@/hooks/api/useCtemCasesApi";
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
@@ -41,6 +42,7 @@ import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip } from "./ctem/case-loop";
+import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -90,6 +92,8 @@ const EVENT_LABEL: Record<string, string> = {
   created: "Created the case",
   issue_added: "Added an issue",
   issue_closed: "Closed an issue",
+  // The folded upgrade target moved (CTEM-11, #894; shown by #928).
+  retargeted: "Changed the target version",
   state: "Changed the state to",
   owner: "Changed the owner",
   due: "Changed the due date",
@@ -135,6 +139,31 @@ const RUN_OUTCOME_VARIANTS: Partial<Record<TimelineOutcome, "success" | "warning
 
 type DialogKind = "start" | "resolve" | "accept" | "reopen" | "split" | null;
 
+/**
+ * The fixed version of one issue and where OpenCTI's knowledge came from (CTEM-11, #946; shown by #928):
+ * the remediating Software, else the course of action, else "unknown"; a declared version OpenCTI
+ * holds no Software of is named, never guessed.
+ */
+function IssueVersion({ issue }: { issue: CtemCaseVisibleIssue }) {
+  const { t_i18n } = useFormatter();
+  if (issue.not_affected || issue.source !== "opencti") return null;
+  const unknownDeclared = issue.declared_version_known === false && issue.installed_version;
+  return (
+    <span className="flex flex-col" data-testid="ctem-case-issue-version">
+      <span>{issue.fixed_version ?? t_i18n("Unknown")}</span>
+      {issue.fixed_version && issue.fixed_by && (
+        <span className="content-compact text-default-secondary">{t_i18n("Matched on Software {software}", { software: issue.fixed_by })}</span>
+      )}
+      {issue.fixed_version && !issue.fixed_by && issue.course_of_action_name && (
+        <span className="content-compact text-default-secondary">{t_i18n("Named by {courseOfAction}", { courseOfAction: issue.course_of_action_name })}</span>
+      )}
+      {unknownDeclared && (
+        <span className="content-compact text-default-secondary">{t_i18n("Version {version} not known to OpenCTI", { version: issue.installed_version })}</span>
+      )}
+    </span>
+  );
+}
+
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -171,6 +200,8 @@ export default function CtemCaseDetail() {
     () => (kase?.issues ?? []).map((issue, i) => ({ key: isRestrictedIssue(issue) ? `restricted-${i}` : `${issue.source}:${issue.external_id}`, issue })),
     [kase],
   );
+  // Members OpenCTI relates to none of the declared versions (CTEM-11, #946; shown by #928), from the viewer's own read.
+  const notAffectedOf = (r: IssueRow) => (isRestrictedIssue(r.issue) || r.issue.open || !r.issue.not_affected ? undefined : r.issue.installed_version || undefined);
 
   if (isNotFoundError(error)) {
     return (
@@ -302,11 +333,32 @@ export default function CtemCaseDetail() {
       hideable: true,
     },
     {
+      key: "version",
+      header: "Fixed version",
+      cell: (r) => (isRestrictedIssue(r.issue) ? null : <IssueVersion issue={r.issue} />),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.fixed_version ?? "~")),
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.fixed_version ?? "")),
+      hideBelow: "2xl",
+      hideable: true,
+    },
+    {
       key: "state",
       header: "State",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.open ? t_i18n("Open") : t_i18n("Closed")),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? 2 : r.issue.open ? 0 : 1),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : "closed"),
+      cell: (r) => {
+        if (isRestrictedIssue(r.issue)) return null;
+        if (r.issue.open) return t_i18n("Open");
+        const version = notAffectedOf(r);
+        return version ? (
+          <span className="flex flex-col" data-testid="ctem-case-not-affected">
+            <span>{t_i18n("Not affected")}</span>
+            <span className="content-compact text-default-secondary">{t_i18n("OpenCTI relates no vulnerability to version {version}", { version })}</span>
+          </span>
+        ) : (
+          t_i18n("Closed")
+        );
+      },
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? 3 : r.issue.open ? 0 : notAffectedOf(r) ? 2 : 1),
+      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.open ? "open" : notAffectedOf(r) ? "not affected" : "closed"),
     },
   ];
 
@@ -401,6 +453,12 @@ export default function CtemCaseDetail() {
         />
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
+
+      {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
+        <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
+          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version. Declare the version you run in Settings > Organization > Tech stack.")}
+        </p>
+      )}
 
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
@@ -503,6 +561,7 @@ export default function CtemCaseDetail() {
                 <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
+                {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
                 {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
