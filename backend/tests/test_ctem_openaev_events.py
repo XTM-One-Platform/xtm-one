@@ -155,6 +155,41 @@ async def test_route_raises_one_event_per_waiting_case(monkeypatch: pytest.Monke
     assert await aev.route(db, "asset_created", _delivery("asset_created", "ASSET", "sim-1")) == []
 
 
+def test_one_live_frame_per_case_moved_ids_and_states_only() -> None:
+    """CTEM-15-UI (#956): the case page re-reads at once, the frame carries no title or evidence."""
+    from datetime import UTC, datetime
+
+    at = datetime(2026, 11, 21, 18, 0, tzinfo=UTC)
+    pending = [
+        (
+            aev.CASE_VALIDATION_FINISHED,
+            {"case_id": "c1", "state": "in_progress", "openaev": {"resource_id": "x"}},
+            "e1",
+        ),
+        (aev.CASE_VALIDATION_FINISHED, {"case_id": "c1", "state": "in_progress"}, "e2"),
+        (aev.CASE_VALIDATION_FINISHED, {"case_id": "c2", "state": "resolved"}, "e3"),
+        (aev.CASE_VALIDATION_FINISHED, {"state": "resolved"}, "e4"),
+    ]
+    frames = aev.case_frames(pending, at)
+    assert frames == [
+        {
+            "type": "ctem_case_update",
+            "case_id": "c1",
+            "state": "in_progress",
+            "event_kind": aev.HISTORY_KIND,
+            "at": at.isoformat(),
+        },
+        {
+            "type": "ctem_case_update",
+            "case_id": "c2",
+            "state": "resolved",
+            "event_kind": aev.HISTORY_KIND,
+            "at": at.isoformat(),
+        },
+    ]
+    assert aev.case_frames([], at) == []
+
+
 async def test_an_unverified_delivery_moves_nothing() -> None:
     assert (
         await aev.note_event("simulation_finished", _delivery("simulation_finished", "SIMULATION", "s"), verified=False)

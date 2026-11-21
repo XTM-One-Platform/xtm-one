@@ -9,9 +9,12 @@
  * say the same thing in the same words.
  */
 import { Chip, Icon } from "@filigran/design-system";
-import type { CtemCasePriority, CtemCaseSeverity, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
+import { isRestrictedIssue, type CtemCaseIssue, type CtemCasePriority, type CtemCaseSeverity, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
+import { cn } from "@/lib/utils";
 import { CasePriorityChip } from "./cases-shared";
 
 type Translate = (id: string, values?: Record<string, string | number>) => string;
@@ -59,14 +62,99 @@ export function slaSentence(countdown: NonNullable<ReturnType<typeof slaCountdow
   return t_i18n(SLA_SENTENCES[countdown.late ? "late" : "left"][countdown.unit], values);
 }
 
-/** The loop marks of a case: reopened by a failed re-test, escalated past its SLA. */
+/**
+ * The loop marks of a case: reopened by a failed re-test, escalated past its
+ * SLA, closed on a passing re-test (CTEM-14-UI: resolved, and its latest
+ * validation is a re-test that passed; `closedAt` and `closedProvider` say
+ * when and where, never the run's internal reference: UX round 1 on #962, B3).
+ */
 export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" | "sla_breached_at">): {
   reopened: boolean;
   escalated: boolean;
+  closedOnRetest: boolean;
+  closedAt: string | null;
+  closedProvider: string | null;
 } {
   const open = OPEN_STATES.has(c.state);
   const last = c.validations?.length ? c.validations[c.validations.length - 1] : undefined;
-  return { reopened: open && last?.result === "failed", escalated: open && Boolean(c.sla_breached_at) };
+  const closedOnRetest = c.state === "resolved" && last?.kind === "retest" && (last.result === "passed" || last.result === "not_exposed");
+  return {
+    reopened: open && last?.result === "failed",
+    escalated: open && Boolean(c.sla_breached_at),
+    closedOnRetest,
+    closedAt: closedOnRetest && last ? last.at : null,
+    closedProvider: closedOnRetest && last ? (PROVIDER_NAMES[last.provider] ?? null) : null,
+  };
+}
+
+/** Product names of the validation providers a case can carry. */
+const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI" };
+
+/** The re-test words of an OpenAEV member of a case (CTEM-14-UI). @i18n-keys */
+const RETEST_LABELS = {
+  queued: "Re-test queued",
+  notReproduced: "Not reproduced",
+  resolved: "Resolved",
+  reproduced: "Reproduced",
+  notRetested: "Not re-tested yet",
+} as const;
+
+type RetestState = keyof typeof RETEST_LABELS;
+
+/**
+ * The colour of each re-test state (UX round 1 on #962, B4): still exploitable
+ * reads high, waiting reads neutral or info, fixed reads low (the healthy tone).
+ */
+const RETEST_TONE: Record<RetestState, "high" | "info" | "neutral" | "low"> = {
+  reproduced: "high",
+  queued: "info",
+  notRetested: "neutral",
+  notReproduced: "low",
+  resolved: "low",
+};
+
+/** The lifecycle order the column sorts by, in every language (advisory A2). */
+const RETEST_RANK: Record<RetestState, number> = { queued: 0, reproduced: 1, notRetested: 2, notReproduced: 3, resolved: 4 };
+
+/**
+ * The re-test state of an OpenAEV member of a case (CTEM-14-UI): a queued
+ * re-test first, then the finding's lifecycle status. Null for a member whose
+ * source carries no lifecycle (OpenCTI, a signal, an OpenAEV older than the
+ * lifecycle).
+ */
+function retestState(issue: CtemCaseIssue): RetestState | null {
+  if (isRestrictedIssue(issue)) return null;
+  if (issue.retest_pending) return "queued";
+  if (issue.retest_status === "not_reproduced") return "notReproduced";
+  if (issue.retest_status === "resolved") return "resolved";
+  if (issue.retest_status === "open") return issue.last_tested_at ? "reproduced" : "notRetested";
+  return null;
+}
+
+/** The sort rank of a member in the Re-test column; members with no lifecycle last. */
+export function retestRank(issue: CtemCaseIssue): number {
+  const state = retestState(issue);
+  return state ? RETEST_RANK[state] : 99;
+}
+
+/** Whether a case's Re-test column has anything to show (UX round 1 on #962, B1). */
+export function hasRetestData(issues: readonly CtemCaseIssue[]): boolean {
+  return issues.some((issue) => retestState(issue) !== null);
+}
+
+/** The re-test chip of a member, nothing for a member with no lifecycle. */
+export function RetestChip({ issue }: { issue: CtemCaseIssue }) {
+  const { t_i18n } = useFormatter();
+  const state = retestState(issue);
+  if (!state) return null;
+  return <Chip label={t_i18n(RETEST_LABELS[state])} severity={RETEST_TONE[state]} className="shrink-0" data-testid="ctem-case-issue-retest" />;
+}
+
+/** The sentence behind "Closed on passing re-test": where and when, in words. */
+function closedSentence(provider: string | null, date: string | null, t_i18n: Translate): string {
+  if (provider && date) return t_i18n("Re-test passed in {provider} on {date}", { provider, date });
+  if (date) return t_i18n("Re-test passed on {date}", { date });
+  return t_i18n("Closed on passing re-test");
 }
 
 function CaseSeverityChip({ severity }: { severity: CtemCaseSeverity | null | undefined }) {
@@ -89,9 +177,10 @@ export function CaseUrgencyChip({ severity, priority }: { severity: CtemCaseSeve
  */
 export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
   const { t_i18n, intl } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
   const marks = caseLoopMarks(c);
   const countdown = OPEN_STATES.has(c.state) ? slaCountdown(c.sla_due_at, now) : null;
-  if (!countdown && !marks.reopened && !marks.escalated) return null;
+  if (!countdown && !marks.reopened && !marks.escalated && !marks.closedOnRetest) return null;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 content-caption" data-testid="ctem-case-loop-line">
       {countdown && (
@@ -110,6 +199,24 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
           <Icon name="circle-alert" size={16} aria-hidden />
           {t_i18n("Escalated")}
         </span>
+      )}
+      {marks.closedOnRetest && (
+        <Tip
+          content={closedSentence(
+            marks.closedProvider,
+            marks.closedAt ? intl.formatDate(marks.closedAt, { dateStyle: "medium" }) : null,
+            t_i18n,
+          )}
+        >
+          <span
+            tabIndex={tabIndex}
+            className={cn("flex items-center gap-1 text-default-primary", TIP_WRAP_FOCUS_RING)}
+            data-testid="ctem-case-closed-on-retest"
+          >
+            <Icon name="circle-check" size={16} aria-hidden />
+            {t_i18n("Closed on passing re-test")}
+          </span>
+        </Tip>
       )}
     </span>
   );

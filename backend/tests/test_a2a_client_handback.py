@@ -818,3 +818,23 @@ class TestPartnerWorkIsInTheListTheModelReachesFor:
         request for completed or failed tasks has no partner half."""
         listing = self._tools(monkeypatch, partner=[self._delegation()])
         assert "Acme" not in await listing(status="completed")
+
+    async def test_every_id_is_listed_whole(self, monkeypatch):
+        """check_task_status and get_task_result take a whole UUID: an id
+        shortened in the listing could not be passed on (#966)."""
+        delegation = self._delegation()
+        task_id = str(uuid.uuid4())
+        listed = await self._tools(
+            monkeypatch,
+            partner=[delegation],
+            sub_agents=[
+                {
+                    "task_id": task_id,
+                    "status": "running",
+                    "task_description": "local work",
+                }
+            ],
+        )()
+        assert task_id in listed
+        assert delegation["delegation_id"] in listed
+        assert "..." not in listed

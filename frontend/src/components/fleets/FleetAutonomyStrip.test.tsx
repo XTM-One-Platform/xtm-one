@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
 vi.mock("@/hooks/api/useFleetApi", () => ({
   useFleetDocumentation: () => ({ data: { autonomy_level: "medium", autonomy_catalog: api.catalog } }),
   useSetFleetAutonomy: () => ({ mutateAsync: api.mutateAsync, isPending: false }),
+  useSetFleetGatePins: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useFleetApprovalGates: () => ({ data: api.gates, isLoading: false, isError: false, refetch: vi.fn() }),
   useSetFleetApprovalGates: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSetFleetInstructionsPosition: () => ({ mutateAsync: vi.fn(), isPending: false }),
