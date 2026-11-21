@@ -35,7 +35,7 @@ import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/comp
 import { StatCard } from "@/components/ui/stat-card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { ModuleAnalysisSummary } from "@/components/health/ModuleAnalysisSummary";
+import { ModuleAnalysisSummary, analysisRowFor } from "@/components/health/ModuleAnalysisSummary";
 import {
   useDismissHealthFindings,
   useHealthAnalysis,
@@ -583,7 +583,8 @@ export function HealthOverviewTab() {
             iconClassName={card.critical ? "text-feedback-error-primary" : card.warning ? "text-feedback-warning-primary" : undefined}
             footer={
               // The outcome of the module's analysis (#961): administrators, modules with open findings.
-              isAdmin ? (
+              // No row to show, no footer: a card never carries an empty divider (UX round 1 B1 on #965).
+              isAdmin && analysisRowFor(card.module, card.critical + card.warning + card.info > 0, analysis.data) ? (
                 <ModuleAnalysisSummary
                   module={card.module}
                   hasOpenFindings={card.critical + card.warning + card.info > 0}

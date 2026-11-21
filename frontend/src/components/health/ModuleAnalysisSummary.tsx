@@ -16,14 +16,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * The outcome of a module's analysis on its Platform Health card (#961, dev-docs/platform-health.md
  * section 6): the first line of the routing model's summary, expandable to the whole text, with the
- * time it was written. A module with no open finding shows nothing; a refused or failed analysis
- * shows one muted line saying why. Analyse now sits in the card's actions menu, disabled and
+ * time it was written. A module with no open finding shows nothing, and its card no footer at all
+ * (the overview asks analysisRowFor before passing one); a refused or failed analysis shows one
+ * muted line saying why. The whole summary opens in a popover, never in place: a card of the grid
+ * keeps its height (UX round 1 B2 on #965). Analyse now sits in the card's actions menu, disabled and
  * explained while AI or the analysis is off. Administrators only: the overview mounts it for the
  * "all" scope. One AI block per card: the Module Analyst's line joins this block, never a second one.
  */
-import { useId, useState } from "react";
 import { Icon } from "@filigran/design-system";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { useRunHealthAnalysis } from "@/hooks/api/useHealthApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
@@ -49,6 +51,20 @@ const ANALYSIS_REASON_LABELS = {
 
 function analysisReasonLabel(reason: string | null, t: (key: string) => string): string {
   return t((ANALYSIS_REASON_LABELS as Record<string, string>)[reason ?? ""] ?? ANALYSIS_REASON_LABELS.model_error);
+}
+
+/**
+ * The analysis row a module card shows, or null when the card shows no AI block: no open finding,
+ * the analysis off or not loaded, or no row for the module. The overview passes a card footer only
+ * when this answers a row, so a card with nothing to say carries no empty divider (UX round 1 B1).
+ */
+export function analysisRowFor(
+  module: HealthModule,
+  hasOpenFindings: boolean,
+  overview: HealthAnalysisOverview | undefined,
+): HealthModuleAnalysis | null {
+  if (!hasOpenFindings || !overview?.enabled) return null;
+  return overview.modules.find((row) => row.module === module) ?? null;
 }
 
 /** The first non-empty line of a summary: its headline, the first fix. */
@@ -95,11 +111,9 @@ function AnalysisActions({
   );
 }
 
-function Outcome({ analysis }: { analysis: HealthModuleAnalysis | undefined }) {
+function Outcome({ module, analysis }: { module: HealthModule; analysis: HealthModuleAnalysis }) {
   const { t_i18n } = useFormatter();
-  const [expanded, setExpanded] = useState(false);
-  const bodyId = useId();
-  if (!analysis?.status) {
+  if (!analysis.status) {
     return (
       <p className="content-compact text-default-secondary" data-testid="health-analysis-never">
         {t_i18n("Not analysed yet")}
@@ -115,34 +129,35 @@ function Outcome({ analysis }: { analysis: HealthModuleAnalysis | undefined }) {
   }
   const headline = summaryHeadline(analysis.summary);
   const more = analysis.summary.trim() !== headline;
+  const asOf = analysis.analysed_at ? (
+    <span className="inline-flex items-center gap-1">
+      {t_i18n("As of")} <DateTimeCell value={analysis.analysed_at} />
+    </span>
+  ) : null;
   return (
     <div className="min-w-0 space-y-1">
-      {expanded ? (
-        <p id={bodyId} className="whitespace-pre-line content-compact text-default-primary" data-testid="health-analysis-summary">
-          {analysis.summary.trim()}
-        </p>
-      ) : (
-        <p className="line-clamp-2 content-compact text-default-primary" data-testid="health-analysis-headline">
-          {headline}
-        </p>
-      )}
+      <p className="line-clamp-2 content-compact text-default-primary" data-testid="health-analysis-headline">
+        {headline}
+      </p>
       <div className="flex flex-wrap items-center gap-x-2 content-caption text-default-secondary">
-        {analysis.analysed_at ? (
-          <span className="inline-flex items-center gap-1">
-            {t_i18n("As of")} <DateTimeCell value={analysis.analysed_at} />
-          </span>
-        ) : null}
+        {asOf}
         {more ? (
-          <button
-            type="button"
-            className="rounded-sm text-accent underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-focus"
-            aria-expanded={expanded}
-            aria-controls={expanded ? bodyId : undefined}
-            onClick={() => setExpanded((open) => !open)}
-            data-testid="health-analysis-expand"
+          // The whole summary and its order of fixes open in the shared popover, never in place.
+          <InfoPopover
+            label={t_i18n("Show more")}
+            icon={t_i18n("Show more")}
+            heading={t_i18n("AI summary")}
+            headingClassName="content-compact"
+            headingAside={<span className="content-compact text-default-secondary">{t_i18n(HEALTH_MODULE_LABELS[module])}</span>}
+            width={384}
+            triggerClassName="rounded-sm text-accent underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-focus"
+            popoverClassName="p-3"
+            triggerTestId="health-analysis-expand"
+            popoverTestId="health-analysis-summary"
           >
-            {expanded ? t_i18n("Show less") : t_i18n("Show more")}
-          </button>
+            <p className="whitespace-pre-line content-compact text-default-primary">{analysis.summary.trim()}</p>
+            {asOf ? <div className="mt-2 content-caption text-default-secondary">{asOf}</div> : null}
+          </InfoPopover>
         ) : null}
       </div>
     </div>
@@ -165,9 +180,8 @@ export function ModuleAnalysisSummary({
   const { t_i18n } = useFormatter();
   const run = useRunHealthAnalysis();
   // Analysis off: there is no outcome to show, and the settings say why.
-  if (!hasOpenFindings || !overview?.enabled) return null;
-  const analysis = overview.modules.find((row) => row.module === module);
-  if (!analysis) return null;
+  const analysis = analysisRowFor(module, hasOpenFindings, overview);
+  if (!analysis || !overview) return null;
   return (
     <section className="space-y-1.5" aria-label={t_i18n("AI summary")} data-testid={`health-analysis-${module}`}>
       <div className="flex items-center justify-between gap-2">
@@ -177,7 +191,7 @@ export function ModuleAnalysisSummary({
         </span>
         <AnalysisActions module={module} overview={overview} run={run} />
       </div>
-      <Outcome analysis={analysis} />
+      <Outcome module={module} analysis={analysis} />
       {run.isError ? (
         <p role="alert" className="content-compact text-feedback-error-primary">
           {t_i18n("The analysis could not be started.")}

@@ -475,9 +475,11 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   Settings > Platform Health, next to the ceilings, never on the Health page (#961).
 - Where the outcome shows (#961, 21 Nov 2026): on each module card of the Health page, one
   "AI summary" block (`components/health/ModuleAnalysisSummary.tsx`, the `StatCard` footer):
-  the first line of `summary` (the headline, the first fix), expandable to the whole text
-  and the order of fixes, with "As of <time>". A module with no open finding, or the
-  analysis off, shows no block; a refused or failed analysis shows one muted line with its
+  the first line of `summary` (the headline, the first fix), clamped to two lines, with
+  "As of <time>"; Show more opens the whole text and the order of fixes in the shared
+  `InfoPopover`, never in place, so the cards of a grid row keep one height and the footer
+  is pinned to the card bottom. A module with no open finding, or the analysis off, shows
+  no block and its card no footer (`analysisRowFor` decides it in the overview); a refused or failed analysis shows one muted line with its
   reason in plain words, never a success badge. Analyse now is the item of the card's
   actions menu, disabled with its reason while AI is off, the analysis is off or a ceiling
   is cleared. Administrators only (overview scope `all`). The former full-width Analysis

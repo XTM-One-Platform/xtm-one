@@ -17,7 +17,7 @@ vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
   useAiEnabled: () => flags.aiEnabled,
 }));
 
-import { ModuleAnalysisSummary, summaryHeadline } from "./ModuleAnalysisSummary";
+import { ModuleAnalysisSummary, analysisRowFor, summaryHeadline } from "./ModuleAnalysisSummary";
 
 const ROW: HealthModuleAnalysis = {
   module: "xtm_one",
@@ -57,14 +57,25 @@ describe("ModuleAnalysisSummary", () => {
     expect(summaryHeadline("")).toBe("");
   });
 
-  it("shows the headline of a completed analysis, expandable to the whole summary", () => {
+  it("shows the headline of a completed analysis, the whole summary in a popover, never in place", () => {
     render(overview());
     expect(screen.getByTestId("health-analysis-headline").textContent).toBe("Two agents exceed their quota.");
     expect(screen.queryByTestId("health-analysis-summary")).toBeNull();
     expect(screen.getByText("As of")).toBeTruthy();
     fireEvent.click(screen.getByTestId("health-analysis-expand"));
-    expect(screen.getByTestId("health-analysis-summary").textContent).toContain("2. Retire the idle agent.");
+    const dialog = screen.getByRole("dialog", { name: "AI summary" });
+    expect(dialog.textContent).toContain("2. Retire the idle agent.");
+    // The card keeps its clamped headline: the summary is not written into the card (UX round 1 B2 on #965).
+    expect(screen.getByTestId("health-analysis-xtm_one").textContent).not.toContain("Retire the idle agent");
     expect(screen.getByTestId("health-analysis-expand").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("answers no row, so the card gets no footer, for a module with no open finding or the analysis off", () => {
+    expect(analysisRowFor("xtm_one", false, overview())).toBeNull();
+    expect(analysisRowFor("xtm_one", true, overview({}, { enabled: false }))).toBeNull();
+    expect(analysisRowFor("xtm_one", true, undefined)).toBeNull();
+    expect(analysisRowFor("opencti", true, overview())).toBeNull();
+    expect(analysisRowFor("xtm_one", true, overview())?.module).toBe("xtm_one");
   });
 
   it("offers no expand for a one-line summary", () => {
