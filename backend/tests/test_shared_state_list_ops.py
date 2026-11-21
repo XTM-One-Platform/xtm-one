@@ -946,6 +946,68 @@ async def test_tool_passes_unique_by_and_reads_back_the_replaced_count(monkeypat
     assert 'list "prs": 0 appended, 2 removed, 1 replaced, 1 item(s) now' in result.content
 
 
+def test_unique_by_reports_what_a_replacement_overwrote() -> None:
+    # Another run wrote item 7 (count, note) after this caller read no match.
+    value = {"gaps": [{"id": "g7", "count": 3, "note": "x", "state": "queued"}]}
+    replaced: dict[str, list[dict[str, object]]] = {}
+    out, changes = apply_list_ops(
+        value,
+        append={"gaps": [{"id": "g7", "state": "open"}, {"id": "g8"}]},
+        unique_by={"gaps": "id"},
+        replaced_items=replaced,
+    )
+    assert out["gaps"] == [{"id": "g7", "state": "open"}, {"id": "g8"}]
+    assert changes == {"gaps": {"appended": 1, "removed": 0, "replaced": 1}}
+    assert replaced == {"gaps": [{"identity": {"id": "g7"}, "lost": ["count", "note"], "changed": ["state"]}]}
+
+
+def test_an_identical_unique_by_item_records_no_replacement() -> None:
+    replaced: dict[str, list[dict[str, object]]] = {}
+    apply_list_ops(
+        {"prs": [{"number": 1}]}, append={"prs": [{"number": 1}]}, unique_by={"prs": "number"}, replaced_items=replaced
+    )
+    assert replaced == {}
+
+
+@pytest.mark.asyncio
+async def test_upsert_answers_the_replaced_items(monkeypatch):
+    state = _state({"prs": [{"number": 5, "hold": True}]})
+    session = _Session(state)
+    monkeypatch.setattr("app.core.database.async_session", lambda: session)
+    out = await shared_state_service.upsert_state(
+        user_id=str(uuid.uuid4()),
+        key="open-prs",
+        append={"prs": [{"number": 5}]},
+        unique_by={"prs": "number"},
+        writer=COMPANY_AGENT,
+    )
+    assert out["replaced_items"] == {"prs": [{"identity": {"number": 5}, "lost": ["hold"], "changed": []}]}
+
+
+@pytest.mark.asyncio
+async def test_tool_reads_back_the_fields_a_replacement_dropped(monkeypatch):
+    async def _upsert(**kwargs):
+        return {
+            "key": kwargs["key"],
+            "value": {"prs": [{"number": 5}]},
+            "notes": [],
+            "list_changes": {"prs": {"appended": 0, "removed": 0, "replaced": 1}},
+            "replaced_items": {"prs": [{"identity": {"number": 5}, "lost": ["hold", "runs"], "changed": []}]},
+        }
+
+    monkeypatch.setattr(shared_state_service, "upsert_state", _upsert)
+    _, executor = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
+    result = await _call(
+        executor,
+        "set_shared_state",
+        key="open-prs",
+        append_json='{"prs": [{"number": 5}]}',
+        unique_by_json='{"prs": "number"}',
+    )
+    assert not result.is_error
+    assert 'replaced {"number": 5}: fields dropped hold, runs; fields changed none' in result.content
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("raw", ['{"prs": 3}', '{"prs": ""}', '{"prs": []}', '["number"]'])
 async def test_tool_refuses_a_bad_unique_by_before_any_write(monkeypatch, raw):
