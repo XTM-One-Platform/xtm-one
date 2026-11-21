@@ -257,7 +257,11 @@ def register(client: OvhClient, executor: CallableToolExecutor) -> list[ToolDefi
         if err:
             return err
         rule = rule if isinstance(rule, dict) else {}
-        if rule.get("action") != "deny" or any(rule.get(k) for k in ("source", "sourcePort", "destinationPort")):
+        if (
+            rule.get("action") != "deny"
+            or rule.get("protocol") != "ipv4"
+            or any(rule.get(k) for k in ("source", "sourcePort", "destinationPort"))
+        ):
             return f"Error: rule {_BLOCK_SEQUENCE} of {target} is not the deny-all rule block_ovhcloud_ip writes; nothing removed."
         _, err = await client.request("DELETE", rule_path, f"remove rule {_BLOCK_SEQUENCE} of {target}")
         if err:

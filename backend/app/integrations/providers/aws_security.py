@@ -85,6 +85,16 @@ _CLOUDTRAIL_TARGET_PREFIX = "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131
 _EC2_API_VERSION = "2016-11-15"
 _EC2_INSTANCE_ID = re.compile(r"^i-[0-9a-f]{8,17}$")
 _ISOLATION_TAG = "xtm-one:isolated-from-groups"
+# EC2 accepts only these characters in a security group description, 255 at most.
+_SG_DESCRIPTION_UNSUPPORTED = re.compile(r"[^a-zA-Z0-9 ._\-:/()#,@\[\]+=&;{}!$*]")
+_SG_DESCRIPTION_MAX = 255
+
+
+def _sg_description(text: str) -> str:
+    """Fit free text to the EC2 security group description charset, cut without an ellipsis."""
+    cleaned = " ".join(_SG_DESCRIPTION_UNSUPPORTED.sub(" ", text).split())
+    return cleaned[:_SG_DESCRIPTION_MAX].rstrip()
+
 
 # Security Hub ASFF workflow statuses accepted by BatchUpdateFindings.
 _WORKFLOW_STATUSES = ("NEW", "NOTIFIED", "RESOLVED", "SUPPRESSED")
@@ -1214,7 +1224,7 @@ def build_tools(
             "CreateSecurityGroup",
             {
                 "GroupName": f"xtm-isolation-{iid}-{stamp}",
-                "GroupDescription": _trunc(f"Isolation of {iid}: {reason}", 250),
+                "GroupDescription": _sg_description(f"Isolation of {iid}: {reason}"),
                 "VpcId": network["vpc_id"],
                 "TagSpecification.1.ResourceType": "security-group",
                 "TagSpecification.1.Tag.1.Key": _ISOLATION_TAG,
@@ -1246,6 +1256,7 @@ def build_tools(
             f"({', '.join(network['groups']) or 'none'}) were replaced by {group_id}, "
             "which allows no traffic in or out. Connections already tracked may "
             "persist until they close. Undo: release_aws_ec2_instance_isolation."
+            f"\nReason: {reason.strip()}"
         )
 
     async def release_aws_ec2_instance_isolation(instance_id: str) -> str:

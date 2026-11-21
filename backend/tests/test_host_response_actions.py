@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 from typing import Any
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs
@@ -216,6 +217,27 @@ async def test_isolation_replaces_the_groups_and_records_them(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_isolation_fits_the_reason_to_the_group_description_charset(monkeypatch):
+    calls, executor = _aws(
+        monkeypatch,
+        {
+            "DescribeInstances": _instance_xml(["sg-a"]),
+            "CreateSecurityGroup": f"<CreateSecurityGroupResponse {_NS}><groupId>sg-iso</groupId></CreateSecurityGroupResponse>",
+        },
+    )
+    reason = "l'hôte beacons\nto C2 " + "x" * 300
+
+    out = await executor.handler("isolate_aws_ec2_instance")(instance_id="i-0abc12345678", reason=reason)
+
+    create = next(c for c in calls if c["Action"][0] == "CreateSecurityGroup")
+    description = create["GroupDescription"][0]
+    assert len(description) <= 255 and "…" not in description
+    assert re.fullmatch(r"[a-zA-Z0-9 ._\-:/()#,@\[\]+=&;{}!$*]+", description)
+    assert description.startswith("Isolation of i-0abc12345678: l h te beacons to C2 ")
+    assert reason.strip() in out
+
+
+@pytest.mark.asyncio
 async def test_isolation_refuses_a_bad_id_and_a_multi_interface_instance(monkeypatch):
     calls, executor = _aws(monkeypatch, {"DescribeInstances": _instance_xml(["sg-a"], enis=2)})
     isolate = executor.handler("isolate_aws_ec2_instance")
@@ -322,5 +344,9 @@ async def test_unblock_removes_only_the_deny_all_rule(ovh):
 
     requests.clear()
     routes[("GET", rule)] = {"action": "deny", "protocol": "tcp", "sequence": 0, "destinationPort": "eq 22"}
+    out = await unblock(ip_block="203.0.113.0/28", ip="203.0.113.4")
+    assert out.startswith("Error") and _writes(requests) == []
+
+    routes[("GET", rule)] = {"action": "deny", "protocol": "udp", "sequence": 0}
     out = await unblock(ip_block="203.0.113.0/28", ip="203.0.113.4")
     assert out.startswith("Error") and _writes(requests) == []
