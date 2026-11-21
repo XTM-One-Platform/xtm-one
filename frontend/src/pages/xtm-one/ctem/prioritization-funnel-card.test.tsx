@@ -16,6 +16,7 @@ import {
   PrioritizationFunnelCard,
   PrioritizationFunnelPlaceholder,
   PrioritizationFunnelWithCases,
+  signalGateCounts,
 } from "./PrioritizationFunnel";
 import { SAMPLE_FUNNEL, withCasesLayer } from "./prioritization-funnel";
 
@@ -25,6 +26,11 @@ vi.mock("@/hooks/api/useCtemCasesApi", () => ({
     casesRead.options.push(options);
     return casesRead.value;
   },
+}));
+
+const signalsRead = vi.hoisted(() => ({ value: { data: undefined } as { data: unknown; isError?: boolean } }));
+vi.mock("@/hooks/api/useCtemSignalsApi", () => ({
+  useRecentCtemSignals: () => signalsRead.value,
 }));
 
 const NO_OPENAEV: CtemFunnel = {
@@ -225,6 +231,33 @@ describe("the cases layer", () => {
     expect(screen.queryByRole("link", { name: /^Needs attention:/ })).toBeNull();
     expect(screen.queryByTestId("ctem-flow-cases-closed")).toBeNull();
     casesRead.value = { data: undefined };
+  });
+});
+
+// #874: the two gates of the loop as numbers under the funnel, "10 flagged, 3 real".
+describe("the gate counts", () => {
+  it("counts signals in, confirmed, in scope and cases from the counts by state", () => {
+    expect(signalGateCounts({ new: 1, to_validate: 2, discarded: 1, watchlist: 3, confirmed: 1, case_opened: 2 })).toEqual({
+      total: 10,
+      confirmed: 6,
+      inScope: 3,
+      cases: 2,
+      watchlist: 3,
+    });
+  });
+
+  it("draws the line under the stage funnel, and nothing before the signals API answers", () => {
+    casesRead.value = { data: undefined };
+    signalsRead.value = { data: undefined };
+    const { unmount } = draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.queryByTestId("ctem-funnel-gate-counts")).toBeNull();
+    unmount();
+    signalsRead.value = { data: { total: 3, counts: { to_validate: 1, watchlist: 1, confirmed: 1 }, signals: [] } };
+    draw(<PrioritizationFunnelWithCases funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
+    expect(screen.getByTestId("ctem-funnel-gate-counts").textContent).toBe(
+      "Gates: 3 signals in, 2 confirmed, 1 in scope, 0 cases (1 on the watchlist)",
+    );
+    signalsRead.value = { data: undefined };
   });
 });
 

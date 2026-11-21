@@ -59,6 +59,27 @@ const REASON_SENTENCE = {
 } as const;
 const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 
+/**
+ * What would make a stopped signal a case, per `reason_code` (#874, Sam: "even
+ * if the signal is ignored, we should understand why"). Built from the same
+ * params as the reason; an in-scope or unknown code has no next step. @i18n-keys
+ */
+const NEXT_STEP = {
+  subject_unresolved: "Becomes a case once it is matched to an asset, a crown jewel or the tech stack",
+  contradicted_by_evidence: "Becomes a case if a new sighting is not contradicted by its source",
+  contradicted_by_signals: "Becomes a case if a new sighting is not contradicted by the other signals",
+  excluded_by_policy: "Becomes a case if the policy exclusion is removed",
+  accepted_risk: "Becomes a case when the accepted risk ends on {until}",
+  score_below_policy: "Becomes a case if {score} reaches {minimum}",
+  internet_exposure_required: "Becomes a case if an internet-facing asset holds it",
+  crown_jewel_below_policy: "Becomes a case if a crown jewel at or above {minimum} holds it",
+  no_risk_scenario: "Becomes a case once a risk scenario holds it",
+  risk_scenario_unreadable: "Becomes a case once OpenCRQ can be read and a risk scenario holds it",
+  criticality_unknown: "Becomes a case once an asset at or above {threshold} holds it",
+  below_scope_threshold: "Becomes a case if criticality rises to {threshold}",
+} as const;
+const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
+
 /** The level words a record carries (criticality, threshold, confidence), translated before they fill a sentence. */
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 const LEVEL_PARAMS = new Set(["criticality", "threshold", "minimum", "confidence"]);
@@ -119,6 +140,15 @@ export function decisionSentence(
   if (!decision || (!decision.reason_code && !decision.outcome)) return t_i18n("Waiting for reconcile");
   const sentence = decision.reason_code ? REASON_SENTENCES[decision.reason_code] : undefined;
   if (!sentence) return t_i18n("Reason not available in this version");
+  return t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay));
+}
+
+/** The record's params, words translated and dates formatted, for a sentence. */
+function sentenceParams(
+  decision: CtemDecisionRecord,
+  t_i18n: Translate,
+  formatDay: (iso: string) => string,
+): Record<string, string | number> {
   const params: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(decision.reason_params ?? {})) {
     if (LEVEL_PARAMS.has(key)) params[key] = levelLabel(value, t_i18n);
@@ -126,7 +156,21 @@ export function decisionSentence(
     else if (key === "until" && typeof value === "string" && value) params[key] = formatDay(value);
     else params[key] = value;
   }
-  return t_i18n(sentence, params);
+  return params;
+}
+
+/**
+ * What would make a stopped signal a case, or null when the signal is not
+ * stopped (in scope, waiting, or a code this version does not know).
+ */
+export function nextStepSentence(
+  decision: CtemDecisionRecord | null | undefined,
+  t_i18n: Translate,
+  formatDay: (iso: string) => string = (iso) => iso,
+): string | null {
+  if (!decision?.reason_code || decision.outcome === "case") return null;
+  const sentence = NEXT_STEPS[decision.reason_code];
+  return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
 
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
@@ -137,19 +181,40 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
   const reconcile = decision.reconcile ?? {};
   const scope = decision.scope ?? null;
   const checks = (decision.policy_checks ?? []).map((c) => policyCheckLabel(c.rule, c.passed, t_i18n)).join(", ");
-  const lenses = Array.isArray(reconcile.lenses) ? reconcile.lenses.filter(Boolean).map((lens) => lensLabel(lens, t_i18n)).join(", ") : "";
+  const lensList = Array.isArray(reconcile.lenses) ? reconcile.lenses.filter(Boolean) : [];
+  const lenses = lensList.length
+    ? t_i18n("{lenses} ({count, plural, one {# lens} other {# lenses agree}})", {
+        lenses: lensList.map((lens) => lensLabel(lens, t_i18n)).join(", "),
+        count: lensList.length,
+      })
+    : "";
+  // Asset matched or not (#874): a decided record says "None matched", never an empty row.
+  const matched = list(reconcile.assets) || (decision.reconcile ? t_i18n("None matched") : "");
   const rows: { label: string; value: string }[] = [
     { label: t_i18n("Lenses"), value: lenses },
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
-    { label: t_i18n("Matched assets"), value: list(reconcile.assets) },
+    { label: t_i18n("Matched assets"), value: matched },
     { label: t_i18n("Crown jewels"), value: list(reconcile.crown_jewels_named) },
     { label: t_i18n("Tech stack"), value: list(reconcile.tech_stack) },
-    { label: t_i18n("Criticality"), value: level(scope?.criticality) },
+    { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     { label: t_i18n("Scope threshold"), value: level(scope?.threshold) },
     { label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },
     { label: t_i18n("Policy checks"), value: checks },
   ];
   return rows.filter((row) => row.value);
+}
+
+/** The criticality found, against the threshold X of the scope gate (#874). */
+function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n: Translate): string {
+  if (!scope) return "";
+  const threshold = scope.threshold ? String(levelLabel(scope.threshold, t_i18n)) : "";
+  if (!scope.criticality) return threshold ? t_i18n("Unknown, threshold {threshold}", { threshold }) : "";
+  const found = String(levelLabel(scope.criticality, t_i18n));
+  if (!threshold) return found;
+  const rank = (value: string | null | undefined) => ["low", "medium", "high", "critical"].indexOf(String(value));
+  return rank(scope.criticality) >= rank(scope.threshold)
+    ? t_i18n("{criticality}, at or above {threshold}", { criticality: found, threshold })
+    : t_i18n("{criticality}, below {threshold}", { criticality: found, threshold });
 }
 
 export function DecisionReason({
@@ -163,13 +228,20 @@ export function DecisionReason({
   showInputs?: boolean;
 }) {
   const { t_i18n, intl } = useFormatter();
+  const formatDay = (iso: string) => formatDayIntl(intl, iso);
   const inputs = showInputs ? decisionInputs(decision, t_i18n) : [];
+  const next = showInputs ? nextStepSentence(decision, t_i18n, formatDay) : null;
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
         <SignalStateChip state={state} />
-        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n, (iso) => formatDayIntl(intl, iso))}</span>
+        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n, formatDay)}</span>
       </div>
+      {next && (
+        <p className="content-compact text-default-primary" data-testid="ctem-decision-next-step">
+          {next}
+        </p>
+      )}
       {inputs.length > 0 && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 content-caption" data-testid="ctem-decision-inputs">
           {inputs.map((input) => (
