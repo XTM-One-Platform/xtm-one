@@ -196,6 +196,20 @@ def _named(tool: str, handler: Callable[..., Awaitable[Any]]) -> Callable[..., A
     return run
 
 
+def _search_result(text: str, records: list[dict[str, Any]]) -> ToolResult:
+    """A search answer: *text* for the model, the records listed as its structured value.
+
+    An assignment's gate check (``non_empty`` / ``empty`` / a path condition)
+    tests the structured value, never the text: "Found 0 tickets" is a
+    non-empty string, and a text-only answer left the check unevaluated, so the
+    run went ahead on an empty pipeline. Nothing found is ``[]``.
+    """
+    structured = [
+        {"id": r.get("id"), "properties": dict(r.get("properties") or {})} for r in records if isinstance(r, dict)
+    ]
+    return ToolResult(tool_call_id="", content=text, structured=structured)
+
+
 def _is_read(method: str, url: str) -> bool:
     """A request that reads (safe to retry on a transient gateway error)."""
     return method.lower() == "get" or url.endswith(("/search", "/batch/read"))
@@ -800,7 +814,7 @@ def build_tools(
         after: str = "",
         properties: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter contacts with optional sorting and structured filters."""
         extra = [n for n in split_names(properties) if n not in _CONTACT_PROPS.split(",")]
         body = _build_search_body(
@@ -826,7 +840,7 @@ def build_tools(
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
         note = "" if raw_values else activity.labels_note("contacts")
-        return text + (f"\n{note}" if note and results else "")
+        return _search_result(text + (f"\n{note}" if note and results else ""), results)
 
     async def create_hubspot_contact(
         email: str,
@@ -946,7 +960,7 @@ def build_tools(
         after: str = "",
         properties: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter companies with optional sorting and structured filters."""
         extra = [n for n in split_names(properties) if n not in _COMPANY_PROPS.split(",")]
         body = _build_search_body(
@@ -990,7 +1004,7 @@ def build_tools(
         )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
-        return text
+        return _search_result(text, results)
 
     async def create_hubspot_company(
         name: str,
@@ -1154,7 +1168,7 @@ def build_tools(
         after: str = "",
         properties: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter deals with optional sorting and structured filters."""
         default_props = _DEAL_PROPS.split(",")
         extra = split_names(properties)
@@ -1209,7 +1223,7 @@ def build_tools(
         )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
-        return text
+        return _search_result(text, results)
 
     async def create_hubspot_deal(
         dealname: str,
@@ -1761,7 +1775,7 @@ def build_tools(
         count: int = 10,
         after: str = "",
         raw_values: bool = False,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search and filter support tickets with optional sorting and structured filters."""
         body = _build_search_body(
             properties=_TICKET_PROPS.split(","),
@@ -1809,7 +1823,7 @@ def build_tools(
         )
         if err:
             text += f"\nStopped early: {err.splitlines()[0]}"
-        return text
+        return _search_result(text, results)
 
     async def get_hubspot_ticket(ticket_id: str, associations: str = "", raw_values: bool = False) -> str:
         """Get detailed information about a specific HubSpot ticket."""
