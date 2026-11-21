@@ -574,6 +574,60 @@ describe("the work item detail", () => {
     expect(close).toHaveBeenCalledWith(expect.objectContaining({ status: "blocked" }), "cancelled");
   });
 
+  // #861: an item that waits only for references is released by the platform:
+  // never "Blocked: not picked up", one sentence per kind it waits for.
+  it("reads Waiting for a change on an item waiting for references, with one sentence per kind", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        blocked_on_refs: [
+          { repo: "o/r", kind: "pull_request", number: 7, release_on: "merged_or_closed" },
+          { repo: "o/r", kind: "deployment", number: 7, release_on: "deployed" },
+          { repo: "o/r", kind: "workflow_run", workflow: "deploy.yml", release_on: "succeeded" },
+          { repo: "o/r", kind: "issue", number: 8, release_on: "closed", state: "closed" },
+        ],
+        context: context({ pickup: { ...context().pickup, state: "waiting_for_refs", auto_cancel_at: null } }),
+      }),
+      { close: vi.fn() },
+    );
+    expect(screen.getByTestId("work-item-pickup").textContent).toContain("Waiting for a change");
+    expect(screen.queryByText(/not picked up/)).toBeNull();
+    expect(screen.getByTestId("work-item-blocked-status").getAttribute("data-kind")).toBe("waiting");
+    // The closed issue is satisfied: its sentence is left out.
+    const kinds = screen.getAllByTestId("work-item-ref-release").map((el) => el.getAttribute("data-kind"));
+    expect(kinds).toEqual(["pull_request", "deployment", "workflow_run"]);
+    const why = screen.getByTestId("work-item-blocked-why");
+    expect(why.querySelector('[data-blocked-ref="o/r: deploy.yml"]')).toBeTruthy();
+    expect(why.querySelector('[data-blocked-ref="o/r#8"]')).toBeNull();
+    expect(screen.queryByText("Mark done")).toBeNull();
+  });
+
+  it("reads Waiting for a decision on an item waiting for a person, Mark done kept", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        needs_human: true,
+        context: context({ pickup: { ...context().pickup, state: "waiting_for_person", auto_cancel_at: null } }),
+      }),
+      { close: vi.fn() },
+    );
+    expect(screen.getByTestId("work-item-pickup").textContent).toContain("Waiting for a decision");
+    expect(screen.queryByText(/not picked up/)).toBeNull();
+    expect(screen.getByText("Mark done")).toBeTruthy();
+  });
+
+  it("keeps Blocked: not picked up on a legacy item that waits for a reason only", () => {
+    openDialog(
+      item({
+        status: "blocked",
+        blocked_reason: "waits for the partner",
+        context: context({ pickup: { ...context().pickup, state: "blocked", auto_cancel_at: null } }),
+      }),
+    );
+    expect(screen.getByTestId("work-item-pickup").textContent).toContain("Blocked: not picked up");
+    expect(screen.getByTestId("work-item-blocked-status").getAttribute("data-kind")).toBe("action");
+  });
+
   it("keeps Blocked on N items and Mark done when a dependency was cancelled", () => {
     openDialog(
       item({

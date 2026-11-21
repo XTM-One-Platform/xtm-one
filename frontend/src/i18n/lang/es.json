@@ -13060,6 +13060,8 @@
   "Delayed run at {when}": "Ejecución diferida el {when}",
   "Next run in the trigger's time zone, then in UTC": "Próxima ejecución en la zona horaria del disparador y luego en UTC",
   "Blocked on other items": "Bloqueado por otros elementos",
+  "Waiting for a change": "Esperando un cambio",
+  "Waiting for a decision": "Esperando una decisión",
   "It waits for the items below and goes back to the queue by itself once every one of them is done or one is cancelled.": "Espera a los elementos de abajo y vuelve solo a la cola cuando todos están terminados o uno se cancela.",
   "Blocked on {count, plural, one {# item} other {# items}}": "Bloqueado por {count, plural, one {# elemento} other {# elementos}}",
   "Waits for {count, plural, one {# item} other {# items}}": "Espera a {count, plural, one {# elemento} other {# elementos}}",
@@ -19817,5 +19819,14 @@
   "Page not found": "Página no encontrada",
   "No page answers this address. The menu on the left lists every page.": "Ninguna página responde a esta dirección. El menú de la izquierda enumera todas las páginas.",
   "Go to Home": "Ir al inicio",
-  "Back to Home": "Volver al inicio"
+  "Back to Home": "Volver al inicio",
+  "It waits for the changes below and goes back to {agent} by itself once every one of them is released: nothing to do.": "Espera los cambios de abajo y vuelve solo a {agent} en cuanto cada uno se libera: no hay nada que hacer.",
+  "It waits for a person's decision and goes back to {agent} by itself once the decision card is answered.": "Espera la decisión de una persona y vuelve solo a {agent} en cuanto se responde la tarjeta de decisión.",
+  "A pull request releases it once merged or closed.": "Una pull request lo libera al fusionarse o cerrarse.",
+  "An issue releases it once closed.": "Una issue lo libera al cerrarse.",
+  "A deployment releases it once the change runs in production.": "Un despliegue lo libera en cuanto el cambio se ejecuta en producción.",
+  "A workflow releases it at its next successful run.": "Un workflow lo libera en su próxima ejecución correcta.",
+  "Deployment": "Despliegue",
+  "Workflow run": "Ejecución de workflow",
+  "Goes back to the queue by itself once what it waits for is released: nothing to do.": "Vuelve solo a la cola en cuanto se libera lo que espera: no hay nada que hacer."
 }

@@ -89,6 +89,8 @@ import {
   blockedReason,
   blockedWithoutReason,
   pendingBlockedRefs,
+  REF_RELEASE_EXPLANATIONS,
+  refKindsOf,
   canClose,
   offersMarkDone,
   cancelledBlockers,
@@ -238,6 +240,8 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
           pickup.state === "automatic" ||
           pickup.state === "waiting_until_due" ||
           pickup.state === "blocked_on_items" ||
+          pickup.state === "waiting_for_refs" ||
+          pickup.state === "waiting_for_person" ||
           pickup.state === "waiting_for_ci"
             ? "border-feedback-success-primary/30 bg-feedback-success-primary/5"
             : "border-feedback-alert-primary/30 bg-feedback-alert-primary/5",
@@ -256,6 +260,12 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
             date: pickup.available_at ? formatShortDateTime(pickup.available_at) : "",
             count: waitingPullRequestCount(pickup),
           })}
+          {pickup.state === "waiting_for_refs" &&
+            refKindsOf(pendingBlockedRefs(item)).map((kind) => (
+              <span key={kind} className="block" data-testid="work-item-ref-release" data-kind={kind}>
+                {t_i18n(REF_RELEASE_EXPLANATIONS[kind])}
+              </span>
+            ))}
           {pickup.state === "waiting_for_ci" && item.status === "blocked" && (
             <>
               {" "}
