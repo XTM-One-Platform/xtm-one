@@ -13870,6 +13870,7 @@
   "Audit": "Audit",
   "Data Platform & Lakehouse": "Data Platform & Lakehouse",
   "ERP": "ERP",
+  "Finance": "Finance",
   "Agent to Agent (A2A)": "Agent to Agent (A2A)",
   "No integrations match your filters": "No integrations match your filters",
   "Try a different search term or remove some filters to browse the full catalog.": "Try a different search term or remove some filters to browse the full catalog.",
@@ -20158,6 +20159,11 @@
   "Not reproduced": "Not reproduced",
   "Reproduced": "Reproduced",
   "Not re-tested yet": "Not re-tested yet",
+  "Spend Management": "Spend Management",
+  "Payable created": "Payable created",
+  "Payable prepared for accounting": "Payable prepared for accounting",
+  "Settlement created": "Settlement created",
+  "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk (the create_spendesk_webhook tool) pointing to the webhook URL shown below.": "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk (the create_spendesk_webhook tool) pointing to the webhook URL shown below.",
   "DealHub quote set as primary": "DealHub quote set as primary",
   "DealHub quote submitted for approval": "DealHub quote submitted for approval",
   "DealHub quote approved": "DealHub quote approved",
@@ -20384,6 +20390,5 @@
   "Attached on {date}": "Attached on {date}",
   "Attached the treatment plan": "Attached the treatment plan",
   "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.",
-  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "A plan exists in OpenCRQ: restricted to OpenCRQ readers",
-  "Finance": "Finance"
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "A plan exists in OpenCRQ: restricted to OpenCRQ readers"
 }
