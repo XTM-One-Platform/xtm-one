@@ -40,7 +40,7 @@ export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null
                 data-testid="ctem-case-treatment-plan-link"
               >
                 <span className="truncate" title={name ?? undefined}>{name}</span>
-                <Icon name="external-link" size={16} className="shrink-0" aria-hidden="true" />
+                <Icon name="external-link" size={16} className="shrink-0" />
                 <span className="sr-only">{t_i18n("Open in OpenCRQ")}</span>
               </a>
             ) : (

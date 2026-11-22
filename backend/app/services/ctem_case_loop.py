@@ -602,7 +602,7 @@ def record_treatment_plan(
     url = str(plan.get("url") or "").strip()
     match = _PLAN_URL.match(url) if url else None
     if url and (match is None or match.group(1).lower() != plan_id):
-        raise rules.CaseRuleError("treatment_plan.url must be the OpenCRQ page of that plan (.../treatment-plans/<id>)")
+        raise rules.CaseRuleError("treatment_plan.url must be the OpenCRQ page of that plan (its treatment-plans page)")
     name = str(plan.get("name") or "").strip()[:300]
     if (
         previous

@@ -622,7 +622,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step, a loop gate passed or waited, or the OpenCRQ treatment plan of "
+                "reading of the triage step, a loop gate passed or waited, or the risk treatment plan of "
                 "the decision. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
@@ -670,8 +670,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "treatment_plan": {
                         "type": "object",
                         "description": (
-                            "The OpenCRQ treatment plan create_opencrq_treatment_plan answered for this case: "
-                            "its id, name and Link url."
+                            "The risk treatment plan the remediation decision created for this case, as the "
+                            "plan tool answered it: its id, name and Link url."
                         ),
                         "properties": {
                             "id": {"type": "string"},
