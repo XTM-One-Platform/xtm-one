@@ -514,6 +514,17 @@ export function useApplyOrganizationImport() {
 
 export type SyncFrequency = "hourly" | "daily" | "weekly";
 
+export type SyncDirection = "inbound" | "outbound";
+
+/** Per section and platform, the directions a sync may take and why outbound is not offered (#1134 S3). */
+export interface SyncDirectionSupport {
+  section: ImportSectionKey;
+  source: ImportSourceKey;
+  directions: SyncDirection[];
+  /** Why outbound is not offered; empty when it is. */
+  reason: string;
+}
+
 /** An import saved with a schedule (#11913); section "all" is the Sync all schedule that runs every other one. */
 export interface OrganizationSync {
   id: string;
@@ -524,6 +535,13 @@ export interface OrganizationSync {
   remove_gone: boolean;
   /** The source ids this sync never imports (#1134); omitted in a body: the stored list is kept. */
   excluded_external_ids?: string[];
+  /**
+   * inbound: the platform is the master; outbound: the XTM One list is (#1134 S3).
+   * Omitted in a body: the stored direction is kept, so an edit never resets an outbound sync.
+   */
+  direction?: SyncDirection;
+  /** Outbound: how many platform rows this sync created and keeps in step. */
+  outbound_count?: number;
   frequency: SyncFrequency;
   hour: number;
   minute: number;
@@ -541,7 +559,7 @@ export interface OrganizationSync {
 
 export type OrganizationSyncBody = Pick<
   OrganizationSync,
-  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "excluded_external_ids" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
+  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "excluded_external_ids" | "direction" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
 >;
 
 const SYNCS = [...KEY, "syncs"] as const;
@@ -554,6 +572,18 @@ export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
     queryKey: [...SYNCS, scope],
     queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
     // The list says its own failure with a retry; it never takes the page down.
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** The direction support matrix the sync dialog offers (#1134 S3); read only while the dialog is open. */
+export function useOrganizationSyncDirections(enabled: boolean) {
+  return useQuery<SyncDirectionSupport[]>({
+    queryKey: [...SYNCS, "directions"],
+    queryFn: () => api.get("/organization-context/syncs/directions"),
+    enabled,
+    staleTime: Infinity,
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
   });
