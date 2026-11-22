@@ -46,7 +46,13 @@ SEVERITIES = ("critical", "warning", "info")
 STATUS_OPEN = "open"
 STATUS_RESOLVED = "resolved"
 STATUS_DISMISSED = "dismissed"
+#: A failure read fewer than ``engine.OPEN_AFTER_FAILS`` times in a row: not open, not scored,
+#: not listed, never alerted (#958). A passing read deletes it.
+STATUS_PENDING = "pending"
+#: The statuses a reader may list (the API filter); ``pending`` is internal to the engine.
 STATUSES = (STATUS_OPEN, STATUS_RESOLVED, STATUS_DISMISSED)
+#: Every status a row may hold (the check constraint).
+ROW_STATUSES = (*STATUSES, STATUS_PENDING)
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -63,7 +69,7 @@ class HealthCheckFinding(Base):
         CheckConstraint(_in("module", MODULES), name="ck_health_check_findings_module_valid"),
         CheckConstraint(_in("category", CATEGORIES), name="ck_health_check_findings_category_valid"),
         CheckConstraint(_in("severity", SEVERITIES), name="ck_health_check_findings_severity_valid"),
-        CheckConstraint(_in("status", STATUSES), name="ck_health_check_findings_status_valid"),
+        CheckConstraint(_in("status", ROW_STATUSES), name="ck_health_check_findings_status_valid"),
         Index("ix_health_check_findings_module_status", "module", "status"),
         Index("ix_health_check_findings_check", "check_id"),
     )
@@ -87,6 +93,12 @@ class HealthCheckFinding(Base):
     doc_link: Mapped[str] = mapped_column(String(512), nullable=False, default="", server_default=sa.text("''"))
     #: Consecutive passing reads of an open finding; two resolve it.
     pass_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=sa.text("0"))
+    #: Consecutive failing reads of a finding that is not open; ``OPEN_AFTER_FAILS`` open it (#958).
+    fail_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=sa.text("0"))
+    #: When the current open episode began; the alert window is measured from it (#958).
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When the immediate alert of the current open episode went out; ``None`` until then (#958).
+    alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_seen: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=sa.text("now()")
     )

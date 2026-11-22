@@ -127,3 +127,78 @@ def test_the_command_and_service_containers_take_the_mirror() -> None:
         source = (REPO_ROOT / "backend" / "app" / "services" / "sandbox_workspace" / name).read_text(encoding="utf-8")
         assert "egress_allow_list=command_egress()" in source, name
         assert "**command_env()" in source, name
+
+
+class _FakeExecd:
+    """Records the options of each command the code starts in the container."""
+
+    def __init__(self) -> None:
+        self.envs: list[dict[str, str]] = []
+
+    async def run(self, _command: str, *, opts) -> None:
+        self.envs.append(dict(opts.envs or {}))
+
+
+class _FakeFiles:
+    async def create_directories(self, _entries) -> None:
+        return None
+
+    async def write_file(self, _path: str, _data) -> None:
+        return None
+
+
+class _FakeSandbox:
+    def __init__(self) -> None:
+        self.commands = _FakeExecd()
+        self.files = _FakeFiles()
+
+
+async def test_a_command_process_gets_the_mirror_variables(mirror: SetMirror) -> None:
+    # A pooled container (poolRef) does not hand the create's env to the process execd starts: the
+    # mirror's variables must travel with the command itself, or corepack goes to repo.yarnpkg.com.
+    from types import SimpleNamespace
+
+    from app.services.sandbox_workspace import commands
+
+    mirror("http://registry-mirror.ns.svc.cluster.local:8080")
+    sandbox = _FakeSandbox()
+    command = SimpleNamespace(argv=("yarn", "install"), env=(), cwd="", timeout=60, report_path=None)
+
+    await commands._start(sandbox, command, "run1", {})
+
+    (env,) = sandbox.commands.envs
+    assert env["COREPACK_NPM_REGISTRY"] == "http://registry-mirror.ns.svc.cluster.local:8080/npm"
+    assert env["YARN_NPM_REGISTRY_SERVER"] == "http://registry-mirror.ns.svc.cluster.local:8080/npm"
+    assert env["COREPACK_ENABLE_NETWORK"] == "1"
+    assert env["CI"] == commands.SAFE_ENV["CI"]
+
+
+async def test_a_command_without_a_mirror_keeps_the_safe_env_alone(mirror: SetMirror) -> None:
+    from types import SimpleNamespace
+
+    from app.services.sandbox_workspace import commands
+
+    mirror("")
+    sandbox = _FakeSandbox()
+    command = SimpleNamespace(argv=("yarn",), env=(), cwd="", timeout=60, report_path=None)
+
+    await commands._start(sandbox, command, "run1", {})
+
+    assert sandbox.commands.envs == [commands.SAFE_ENV]
+
+
+async def test_a_service_process_gets_the_mirror_variables(mirror: SetMirror) -> None:
+    from types import SimpleNamespace
+
+    from app.services.sandbox_workspace import services
+
+    mirror("https://mirror.example.com")
+    sandbox = _FakeSandbox()
+    spec = SimpleNamespace(name="web", argv=("yarn", "dev"), cwd="", env=(("PORT", "3000"),))
+    resolved = SimpleNamespace(checkout="repo")
+
+    await services._launch(sandbox, resolved, spec)
+
+    (env,) = sandbox.commands.envs
+    assert env["COREPACK_NPM_REGISTRY"] == "https://mirror.example.com/npm"
+    assert env["PORT"] == "3000"

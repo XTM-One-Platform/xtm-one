@@ -32,11 +32,14 @@ import { useFormatter } from "@/i18n";
 import type { HealthAlertEmailSettings, HealthSettings } from "@/types";
 
 import { BlockTitle, type BlockProps } from "./health-block";
+import { NumberField } from "./HealthTriggerBlocks";
 
 const MailGlyph = ({ className }: { className?: string }) => <Icon name="mail" size={16} className={className} aria-hidden />;
 
 /** The most recipients the server accepts (`MAX_ALERT_RECIPIENTS`). */
 const MAX_ALERT_RECIPIENTS = 20;
+/** The bounds of `alert_after_minutes` the server accepts (0 to a day). */
+const ALERT_AFTER_MAX_MINUTES = 24 * 60;
 
 /** The English label of each minimum severity. @i18n-keys */
 const SEVERITY_LABELS = {
@@ -68,8 +71,9 @@ function invalidRecipients(recipients: string[]): string[] {
 
 /** Whether the alert emails of the draft can be saved (Save stays off otherwise). */
 export function alertEmailsValid(draft: HealthSettings): boolean {
-  const { enabled, recipients } = draft.alert_emails;
-  return invalidRecipients(recipients).length === 0 && recipients.length <= MAX_ALERT_RECIPIENTS && (!enabled || recipients.length > 0);
+  const { enabled, recipients, alert_after_minutes: after } = draft.alert_emails;
+  const afterValid = after === undefined || (Number.isInteger(after) && after >= 0 && after <= ALERT_AFTER_MAX_MINUTES);
+  return afterValid && invalidRecipients(recipients).length === 0 && recipients.length <= MAX_ALERT_RECIPIENTS && (!enabled || recipients.length > 0);
 }
 
 export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
@@ -92,10 +96,12 @@ export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
     enabled: t_i18n("On: Platform Health emails the recipients below about its findings, from the platform sender. Off: nothing is sent. Nothing is sent either while the platform email (SMTP) is not configured."),
     recipients: t_i18n("The addresses that receive the alert emails, e.g. soc@example.com. Up to {max}; press Enter or a comma after each.", { max: MAX_ALERT_RECIPIENTS }),
     severity: t_i18n("The lowest severity the daily digest lists, e.g. Warning and above. An immediate email is sent for critical findings only, whatever this says."),
-    immediate: t_i18n("On: one email per critical finding as soon as a health pass opens it, sent once per finding. Off: critical findings wait for the digest."),
+    immediate: t_i18n("On: one email per critical finding once it has stayed open for the delay below, sent once each time it opens. A finding a restart opens resolves before and sends nothing. Off: critical findings wait for the digest."),
+    after: t_i18n("How long a critical finding must stay open before its email goes out, e.g. 15 minutes: a restart of XTM One or of a module resolves before and sends nothing. 0 sends it at the pass that opens it."),
     digest: t_i18n("On: one email a day (UTC) listing the open findings at or above the minimum severity, sent only when there is at least one. Off: no digest."),
   };
   const severityLabel = t_i18n(SEVERITY_LABELS[alerts.min_severity]);
+  const afterMinutes = alerts.alert_after_minutes ?? 15;
   return (
     <div data-testid="settings.health.alert-emails">
       <BlockTitle
@@ -118,6 +124,9 @@ export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
                 />
                 <SettingsReadField label={t_i18n("Minimum severity")} info={info.severity} value={severityLabel} />
                 <SettingsReadField label={t_i18n("Critical findings at once")} info={info.immediate} value={alerts.immediate ? t_i18n("On") : t_i18n("Off")} />
+                {alerts.immediate && (
+                  <NumberField label={t_i18n("Send after")} info={info.after} unit={t_i18n("minutes")} value={afterMinutes} min={0} max={ALERT_AFTER_MAX_MINUTES} editing={false} onChange={() => undefined} />
+                )}
                 <SettingsReadField label={t_i18n("Daily digest")} info={info.digest} value={alerts.digest ? t_i18n("On") : t_i18n("Off")} />
               </>
             )}
@@ -171,11 +180,23 @@ export function AlertEmailsBlock({ draft, editing, onChange }: BlockProps) {
                 <SettingsSwitchField
                   id={`${fieldId}-immediate`}
                   label={t_i18n("Critical findings at once")}
-                  helper={t_i18n("One email per new critical finding.")}
+                  helper={t_i18n("One email per critical finding that stays open.")}
                   info={info.immediate}
                   checked={alerts.immediate}
                   onCheckedChange={(immediate) => set({ immediate })}
                 />
+                {alerts.immediate && (
+                  <NumberField
+                    label={t_i18n("Send after")}
+                    info={info.after}
+                    unit={t_i18n("minutes")}
+                    value={afterMinutes}
+                    min={0}
+                    max={ALERT_AFTER_MAX_MINUTES}
+                    editing
+                    onChange={(alert_after_minutes) => set({ alert_after_minutes })}
+                  />
+                )}
                 <SettingsSwitchField
                   id={`${fieldId}-digest`}
                   label={t_i18n("Daily digest")}

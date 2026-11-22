@@ -50,6 +50,7 @@ import app.models.custom_tool_source
 import app.models.dashboard_widget_pack
 import app.models.dataset
 import app.models.dataset_version
+import app.models.decision
 import app.models.department
 import app.models.embedding
 import app.models.evaluation
