@@ -11,6 +11,9 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useNow } from "@/hooks/useTick";
 import { caseDueFlags } from "./ctem/cases-due";
+import { caseAttention, caseOpenedAt } from "./ctem/case-attention";
+import { CasesAttentionBand } from "./ctem/CasesAttentionBand";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -102,7 +105,25 @@ export default function CtemCases() {
       onError: (error) => toast({ title: t_i18n("Recompute failed"), description: error.message, variant: "error" }),
     });
 
+  const DAY_MS = 24 * 3600 * 1000;
+  const ageDays = (c: CtemCaseSummary) => {
+    const opened = caseOpenedAt(c);
+    return opened ? Math.max(0, Math.floor((now - Date.parse(opened)) / DAY_MS)) : null;
+  };
+
   const columns: DataTableColumn<CtemCaseSummary>[] = [
+    {
+      // The default sort (#1176): one explained score, the band above names its reasons.
+      key: "attention",
+      header: "Attention",
+      align: "right",
+      hint: t_i18n("Priority, KEV, crown jewels touched, due date, owner and age, added up. Resolved cases and accepted risks score 0."),
+      cell: (c) => formatCount(intl.locale, caseAttention(c, now).score),
+      sortValue: (c) => caseAttention(c, now).score,
+      csv: (c) => caseAttention(c, now).score,
+      firstSort: "desc",
+      hideable: true,
+    },
     {
       key: "priority",
       header: "Priority",
@@ -162,6 +183,29 @@ export default function CtemCases() {
       hideable: true,
     },
     {
+      key: "assets",
+      header: "Assets",
+      align: "right",
+      cell: (c) => formatCount(intl.locale, c.asset_count),
+      sortValue: (c) => c.asset_count,
+      csv: (c) => c.asset_count,
+      firstSort: "desc",
+      hideBelow: "6xl",
+      hideable: true,
+    },
+    {
+      key: "signals",
+      header: "Signals",
+      align: "right",
+      hint: t_i18n("Signals that opened or joined the case."),
+      cell: (c) => formatCount(intl.locale, c.signal_count ?? 0),
+      sortValue: (c) => c.signal_count ?? 0,
+      csv: (c) => c.signal_count ?? 0,
+      firstSort: "desc",
+      hideBelow: "6xl",
+      hideable: true,
+    },
+    {
       key: "owner",
       header: "Owner",
       cell: (c) => <span className="block max-w-[12rem]"><CaseOwner name={ownerName(c.owner_user_id)} /></span>,
@@ -184,6 +228,38 @@ export default function CtemCases() {
       hideable: true,
     },
     {
+      key: "created",
+      header: "Created",
+      cell: (c) => <DateTimeCell value={caseOpenedAt(c)} />,
+      sortValue: (c) => caseOpenedAt(c) ?? "",
+      csv: (c) => caseOpenedAt(c) ?? "",
+      hideBelow: "6xl",
+      hideable: true,
+    },
+    {
+      key: "age",
+      header: "Age",
+      align: "right",
+      cell: (c) => {
+        const days = ageDays(c);
+        return days === null ? "-" : <span className="whitespace-nowrap">{t_i18n("{days, plural, one {# day} other {# days}}", { days })}</span>;
+      },
+      sortValue: (c) => ageDays(c) ?? -1,
+      csv: (c) => ageDays(c) ?? "",
+      firstSort: "desc",
+      hideable: true,
+    },
+    {
+      key: "last_change",
+      header: "Last change",
+      cell: (c) => <DateTimeCell value={c.updated_at ?? c.state_since} />,
+      sortValue: (c) => c.updated_at ?? c.state_since ?? "",
+      csv: (c) => c.updated_at ?? c.state_since ?? "",
+      firstSort: "desc",
+      hideBelow: "6xl",
+      hideable: true,
+    },
+    {
       key: "state",
       header: "State",
       // The chip sets the width (never cut, never a fixed 14rem that scrolls the
@@ -199,7 +275,6 @@ export default function CtemCases() {
     <div className="space-y-6">
       {/* The one CTEM header band (#11660): the definition behind the "i". */}
       <CtemPageHeader
-        back={{ to: "/ctem/remediation", label: "Back to Remediation" }}
         title={t_i18n("Cases")}
         hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
         hintLabel={t_i18n("About cases")}
@@ -209,6 +284,8 @@ export default function CtemCases() {
           </Button>
         }
       />
+
+      <CasesAttentionBand cases={cases} now={now} />
 
       <SegmentedFilter<StateTab>
         selection="radio"
@@ -246,7 +323,7 @@ export default function CtemCases() {
             />
           ),
         }}
-        defaultSort={{ key: "priority", direction: "desc" }}
+        defaultSort={{ key: "attention", direction: "desc" }}
         defaultPageSize={25}
         searchFields={(c) => [c.title, c.product_label, c.fixed_version]}
         searchPlaceholder={t_i18n("Search fix, product or version")}
