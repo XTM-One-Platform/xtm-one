@@ -35,8 +35,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 SEEDED_BY = {"seeded_by": "lab"}
-#: The built-in CTEM fleets, by slug (``app/agents/builtin_fleets.py``, ``ctem_ai_security.py``).
-FLEETS: tuple[str, ...] = ("ctem-threat-response", "ctem-vuln-prioritization", "ctem-ai-security", "ctem-posture")
+#: The built-in CTEM fleets, by slug (``app/agents/builtin_fleets.py``, ``ctem_ai_security.py``):
+#: the generic CTEM loop and two of its use cases (CTEM-31, #1048).
+FLEETS: tuple[str, ...] = ("ctem-loop", "ctem-vuln-prioritization", "ctem-ai-security")
 #: The trigger types that make a run event-driven, the integration event first.
 EVENT_TRIGGERS: tuple[str, ...] = ("integration_event", "platform_event")
 #: Members the orchestrator consults in the seeded trace.

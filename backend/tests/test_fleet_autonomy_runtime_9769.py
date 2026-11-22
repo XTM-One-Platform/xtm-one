@@ -75,7 +75,7 @@ def test_an_unknown_level_reads_as_full_human_gates():
 
 
 def test_a_simulation_launch_pauses_until_autonomous_and_a_read_never_does():
-    gates = [g for g in _gates("ctem-threat-response") if g.get("key") == "ctem.validation.non_readonly"]
+    gates = [g for g in _gates("ctem-loop") if g.get("key") == "ctem.validation.non_readonly"]
     assert gates, "the threat response fleet declares the validation gate"
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
