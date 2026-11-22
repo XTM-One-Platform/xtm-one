@@ -65,10 +65,10 @@ const SLOT_STATE_VARIANTS = {
   unavailable: "outline",
 } as const;
 
-export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
+export function FleetCapabilitySlotsCard({ fleet, defaultOpen = false }: { fleet: Fleet; /** Expanded on mount (the setup wizard's Integrations step, #1151). */ defaultOpen?: boolean }) {
   const { t_i18n } = useFormatter();
   const { data, isLoading, error } = useFleetCapabilitySlots(fleet.id);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   if (isLoading || error || !data || data.members.length === 0) return null;
   const slots = data.members.flatMap((member) => member.slots);
   const connected = slots.filter((slot) => slot.state === "filled").length;
