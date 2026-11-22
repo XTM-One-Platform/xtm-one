@@ -569,6 +569,63 @@ def record_gate(
     return case
 
 
+#: An OpenCRQ treatment plan page: ``https://host/<tenant>/treatment-plans/<uuid>`` (CTEM-18-UI, #1068).
+_PLAN_URL = re.compile(r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/treatment-plans/([0-9a-fA-F-]{36})$")
+
+
+def record_treatment_plan(
+    db: AsyncSession,
+    case: CtemCase,
+    plan: dict[str, Any],
+    previous: dict[str, Any] | None = None,
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Attach the OpenCRQ treatment plan a remediation decision created to the case (CTEM-18-UI, #1068).
+
+    *plan* is ``{id, name, url}`` as ``create_opencrq_treatment_plan`` answered it:
+    the id a UUID, the url the plan's OpenCRQ page for that id. One
+    ``treatment_plan`` event: ``to`` the plan id, ``reason`` the name,
+    ``evidence`` the url; the view serves the name and the url only to a viewer
+    who reads OpenCRQ. *previous* is the plan already attached (the newest
+    event): the same plan again writes nothing. Never moves the case state. The
+    caller commits.
+    """
+    if not isinstance(plan, dict):
+        raise rules.CaseRuleError("treatment_plan must be an object with id, name and url")
+    plan_id = str(plan.get("id") or "").strip().lower()
+    try:
+        uuid.UUID(plan_id)
+    except ValueError:
+        raise rules.CaseRuleError("treatment_plan.id must be the OpenCRQ plan UUID") from None
+    url = str(plan.get("url") or "").strip()
+    match = _PLAN_URL.match(url) if url else None
+    if url and (match is None or match.group(1).lower() != plan_id):
+        raise rules.CaseRuleError("treatment_plan.url must be the OpenCRQ page of that plan (.../treatment-plans/<id>)")
+    name = str(plan.get("name") or "").strip()[:300]
+    if (
+        previous
+        and previous.get("id") == plan_id
+        and previous.get("name") == (name or None)
+        and previous.get("url") == (url or None)
+    ):
+        return case
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "treatment_plan",
+            now or datetime.now(UTC),
+            from_value=(previous or {}).get("id"),
+            to_value=plan_id,
+            reason=name or None,
+            evidence=url or None,
+        )
+    )
+    return case
+
+
 def breached(case: CtemCase, now: datetime) -> bool:
     """True the first time an open case is past its SLA (the escalation is raised once)."""
     due = rules.as_utc(case.sla_due_at)

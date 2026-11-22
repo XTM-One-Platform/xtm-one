@@ -215,6 +215,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         note: str = "",
         exploitation: list[dict[str, Any]] | None = None,
         gate: dict[str, Any] | None = None,
+        treatment_plan: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -272,6 +273,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         by=str(gate.get("by") or ""),
                         option=str(gate.get("option") or ""),
                         actor=agent_id,
+                    )
+                if treatment_plan is not None:
+                    history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    case_loop.record_treatment_plan(
+                        db, case, treatment_plan, view_of.treatment_plan_of(history), actor=agent_id
                     )
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
@@ -616,7 +622,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step, or a loop gate passed or waited. in_progress needs an owner; "
+                "reading of the triage step, a loop gate passed or waited, or the OpenCRQ treatment plan of "
+                "the decision. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -659,6 +666,19 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "option": {"type": "string"},
                         },
                         "required": ["key", "outcome"],
+                    },
+                    "treatment_plan": {
+                        "type": "object",
+                        "description": (
+                            "The OpenCRQ treatment plan create_opencrq_treatment_plan answered for this case: "
+                            "its id, name and Link url."
+                        ),
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                        },
+                        "required": ["id"],
                     },
                 },
                 "required": ["case_id"],
