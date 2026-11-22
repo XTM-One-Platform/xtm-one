@@ -63,7 +63,7 @@ const PENDING: Record<string, number> = {
   "src/components/traces": 10,
   "src/components/ui": 84,
   "src/components/video-studio": 19,
-  "src/components/work-items": 4,
+  "src/components/work-items": 3,
   "src/components/workspaces": 8,
   "src/dev": 1,
   "src/hooks": 1,
