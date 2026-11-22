@@ -160,6 +160,48 @@ def test_the_decided_card_keeps_the_object_buttons() -> None:
     assert err is None and parsed is not None
 
 
+async def test_the_sent_cards_are_replaced_in_the_recipient_language() -> None:
+    """``update_sent_cards`` words the kept object buttons in the recipient's language."""
+    from contextlib import asynccontextmanager
+
+    from app.services import decision_graph_cards as cards
+
+    derived = {"question": "Merge it?", "options": [{"key": "A", "label": "Merge"}], "links": source_links(PR)}
+    row = _decision(
+        ask=derived,
+        status="answered",
+        answer={"option": "A"},
+        answered_at=datetime(2026, 11, 22, 1, 0, tzinfo=UTC),
+        recipient=f"user:{ALICE}",
+    )
+    sent = {"via": cards.VIA, "message_id": "7", "chat_id": "19:abc@thread.v2", "integration": "i"}
+
+    class _Db:
+        async def get(self, model: Any, key: Any) -> Any:
+            return row
+
+        async def scalar(self, stmt: Any) -> str:
+            return "fr-fr"  # User.language as stored
+
+        async def execute(self, stmt: Any) -> Any:
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [sent]))
+
+    seen: list[dict[str, Any]] = []
+
+    @asynccontextmanager
+    async def factory(sender: Any, integration: str):
+        async def call(tool: str, arguments: dict[str, Any]) -> tuple[bool, str]:
+            seen.append(arguments)
+            return True, "updated"
+
+        yield call
+
+    await cards.update_sent_cards(_Db(), DID, answered_by_name="Alice", caller=factory)
+    assert seen, "the sent card was not updated"
+    titles = [a["title"] for a in seen[0]["card"]["actions"]]
+    assert titles == [notice("card_link_pull_request", "fr", number="20153")]
+
+
 def test_a_decided_card_without_links_still_has_no_button() -> None:
     row = _decision(ask=_ask(links=[]), status="cancelled")
     assert "actions" not in links.decided_card(row, None)
