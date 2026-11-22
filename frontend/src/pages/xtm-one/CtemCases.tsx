@@ -14,6 +14,7 @@ import { caseDueFlags } from "./ctem/cases-due";
 import { CASE_CREATED_RANGES, CASE_CREATED_RANGE_LABEL, caseCreatedRanges } from "./ctem/cases-created-range";
 import { caseAttention, caseOpenedAt } from "./ctem/case-attention";
 import { CasesAttentionBand } from "./ctem/CasesAttentionBand";
+import { useCaseAttentionWeights } from "./ctem/useCaseAttentionWeights";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
@@ -69,6 +70,7 @@ export default function CtemCases() {
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const now = useNow();
+  const weights = useCaseAttentionWeights();
   const ownerIds = useMemo(() => [...new Set(cases.map((c) => c.owner_user_id).filter((id): id is string => Boolean(id)))], [cases]);
   const { data: owners } = useUserDirectoryByIds(ownerIds);
   const ownerName = (id: string | null) => (id ? (owners?.find((o) => o.id === id)?.full_name ?? null) : null);
@@ -92,9 +94,9 @@ export default function CtemCases() {
       header: "Attention",
       align: "right",
       hint: t_i18n("Priority, KEV, crown jewels touched, due date, owner and age, added up. Resolved cases and accepted risks score 0."),
-      cell: (c) => formatCount(intl.locale, caseAttention(c, now).score),
-      sortValue: (c) => caseAttention(c, now).score,
-      csv: (c) => caseAttention(c, now).score,
+      cell: (c) => formatCount(intl.locale, caseAttention(c, now, weights).score),
+      sortValue: (c) => caseAttention(c, now, weights).score,
+      csv: (c) => caseAttention(c, now, weights).score,
       firstSort: "desc",
       hideable: true,
     },
@@ -272,7 +274,7 @@ export default function CtemCases() {
         actions={<CasesFreshness freshness={data?.freshness} now={now} />}
       />
 
-      <CasesAttentionBand cases={cases} now={now} />
+      <CasesAttentionBand cases={cases} now={now} weights={weights} />
 
       <SegmentedFilter<StateTab>
         selection="radio"
