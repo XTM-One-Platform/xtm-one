@@ -202,8 +202,11 @@ export default function CtemCases() {
       sortValue: (c) => c.signal_count ?? 0,
       csv: (c) => c.signal_count ?? 0,
       firstSort: "desc",
+      // Off by default so every default column fits at 1728 and 1080 (UX round 1 on #1182, B1);
+      // the Columns picker brings it back.
       hideBelow: "6xl",
       hideable: true,
+      defaultHidden: true,
     },
     {
       key: "owner",
@@ -247,7 +250,10 @@ export default function CtemCases() {
       sortValue: (c) => ageDays(c) ?? -1,
       csv: (c) => ageDays(c) ?? "",
       firstSort: "desc",
+      // Created already says it (UX round 1 on #1182, B1 and A2): off by default, never below 6xl.
+      hideBelow: "6xl",
       hideable: true,
+      defaultHidden: true,
     },
     {
       key: "last_change",

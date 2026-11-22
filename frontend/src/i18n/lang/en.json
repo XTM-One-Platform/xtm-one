@@ -20590,11 +20590,10 @@
   "Open cases ranked by priority, KEV, crown jewels touched, due date, owner and age. The line under each case says why it ranks there.": "Open cases ranked by priority, KEV, crown jewels touched, due date, owner and age. The line under each case says why it ranks there.",
   "How cases are ranked": "How cases are ranked",
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}",
+  "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, one {# KEV} other {# KEV}}",
   "{count, plural, one {# crown jewel touched} other {# crown jewels touched}}": "{count, plural, one {# crown jewel touched} other {# crown jewels touched}}",
   "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}",
   "No owner": "No owner",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}",
-  "Assign an owner": "Assign an owner",
-  "Set a due date": "Set a due date",
   "Open the case": "Open the case"
 }

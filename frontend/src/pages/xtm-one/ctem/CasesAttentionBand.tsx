@@ -5,11 +5,17 @@
  * the highest attention score (ctem/case-attention.ts), each with the one-line
  * why and the next action. The band reads the same rows as the table; it is
  * absent when no case is open.
+ *
+ * The next action is the control it names (UX round 1 on #1182, B3): "Assign owner"
+ * and "Set due date" open the Cases bulk dialog for that one case, with the same
+ * labels; "Open the case" links to it.
  */
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
+import { CasesBulkActions } from "./CasesBulkActions";
 import { CasePriorityChip } from "./cases-shared";
 import { CtemWidgetHeader } from "./CtemWidgetHeader";
 import { rankByAttention, type CaseAttentionReason, type CaseNextAction } from "./case-attention";
@@ -17,10 +23,10 @@ import { rankByAttention, type CaseAttentionReason, type CaseNextAction } from "
 /** How many cases the band shows. */
 const ATTENTION_BAND_SIZE = 3;
 
-const NEXT_ACTION_LABEL: Record<CaseNextAction, string> = {
-  assign: "Assign an owner",
-  set_due: "Set a due date",
-  open_case: "Open the case",
+/** The bulk dialog a next action opens; "open_case" is a link. */
+const NEXT_ACTION_DIALOG: Partial<Record<CaseNextAction, "assign" | "due">> = {
+  assign: "assign",
+  set_due: "due",
 };
 
 export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; now: number }) {
@@ -31,7 +37,10 @@ export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; n
   const reasonText = (r: CaseAttentionReason): string | null => {
     switch (r.kind) {
       case "kev":
-        return t_i18n("{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}", { count: r.count, assets: r.assets });
+        // No asset known: the KEV count alone, never "on 0 assets" (UX round 1 on #1182, B2).
+        return r.assets > 0
+          ? t_i18n("{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}", { count: r.count, assets: r.assets })
+          : t_i18n("{count, plural, one {# KEV} other {# KEV}}", { count: r.count });
       case "crown_jewel":
         return t_i18n("{count, plural, one {# crown jewel touched} other {# crown jewels touched}}", { count: r.count });
       case "overdue":
@@ -63,20 +72,23 @@ export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; n
               <li key={kase.id} className="flex items-center gap-3 py-2" data-testid="ctem-cases-attention-row">
                 <CasePriorityChip priority={kase.priority} />
                 <div className="min-w-0 flex-1">
-                  <Link to={`/ctem/cases/${kase.id}`} className="block truncate font-medium hover:underline">
-                    {kase.title}
+                  {/* A cut title or why line is named whole by a tooltip (B4). */}
+                  <Link to={`/ctem/cases/${kase.id}`} className="block min-w-0 font-medium hover:underline">
+                    <TruncatedText text={kase.title} />
                   </Link>
-                  <p className="truncate content-caption text-default-secondary" data-testid="ctem-cases-attention-why">
-                    {why}
-                  </p>
+                  <div className="content-caption text-default-secondary" data-testid="ctem-cases-attention-why">
+                    <TruncatedText text={why} />
+                  </div>
                 </div>
-                <Link
-                  to={`/ctem/cases/${kase.id}`}
-                  className="whitespace-nowrap content-compact text-accent hover:underline"
-                  data-testid="ctem-cases-attention-next"
-                >
-                  {t_i18n(NEXT_ACTION_LABEL[attention.next])}
-                </Link>
+                <div className="shrink-0" data-testid="ctem-cases-attention-next">
+                  {NEXT_ACTION_DIALOG[attention.next] ? (
+                    <CasesBulkActions cases={[kase]} only={NEXT_ACTION_DIALOG[attention.next]} onDone={() => undefined} />
+                  ) : (
+                    <Link to={`/ctem/cases/${kase.id}`} className="whitespace-nowrap content-compact text-accent hover:underline">
+                      {t_i18n("Open the case")}
+                    </Link>
+                  )}
+                </div>
               </li>
             );
           })}
