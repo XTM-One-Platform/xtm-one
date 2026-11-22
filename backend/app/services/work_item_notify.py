@@ -520,8 +520,6 @@ async def agent_graph_caller(item: Any, integration_ref: str) -> AsyncIterator[G
     agent_id = item.created_by_agent_id or item.owner_agent_id
     if agent_id is None:
         raise NotifyError("no agent created or owns the item, so none may send its notification")
-    if await _send_decision_card(item, spec):
-        return
     async with async_session() as db:
         agent = await _usable_agent(db, item, agent_id)
         integration_id = await _resolve_integration(db, item, integration_ref)
@@ -573,7 +571,12 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
     members"); the text then goes to the account's own chat (``48:notes``)
     through ``send_microsoft_chat_message``. A refusal no retry fixes raises
     :class:`PermanentNotifyError`.
+
+    An item that waits for a decision goes as the bot's card first when the
+    bot is in the target (#842 S9, :func:`_send_decision_card`).
     """
+    if (item.created_by_agent_id or item.owner_agent_id) is not None and await _send_decision_card(item, spec):
+        return
     async with agent_graph_caller(item, str(spec["integration"])) as _call:
         tool, arguments = _tool_call(spec, text, subject=str(getattr(item, "title", "") or ""))
         sent, content = await _call(tool, arguments)
