@@ -46,7 +46,6 @@ import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
-import { CaseAttackPath } from "./ctem/CaseAttackPath";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
 import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
@@ -62,7 +61,7 @@ import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
-import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
+import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -123,8 +122,6 @@ const EVENT_LABEL: Record<string, string> = {
   sla_breached: "Escalated: SLA breached",
   // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
   exploitation: "Recorded how it would be exploited",
-  // The attack-path reach of the affected asset, read from OpenCRQ by triage (CTEM-23-UI, #1289).
-  attack_path: "Recorded the attack path",
   // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
   source_event: "OpenAEV result received",
   // The case ticket (CTEM-19, #917; shown by CTEM-19-UI, #1032): created, or its status moved.
@@ -588,8 +585,6 @@ export default function CtemCaseDetail() {
 
         <CaseExploitation entries={kase.exploitation} />
 
-        <CaseAttackPath reading={kase.attack_path} />
-
         <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} personName={personName} />
 
         <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
@@ -745,7 +740,7 @@ export default function CtemCaseDetail() {
       </Card>
 
       {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
-      <LoopTraceDialog />
+      <LegacySignalLinks />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">
