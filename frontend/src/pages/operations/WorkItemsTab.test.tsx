@@ -109,6 +109,7 @@ vi.mock("@/hooks/api/useWorkItemApi", () => ({
   useWorkItemCount: (_filters: unknown, deletableOnly?: boolean) => ({ data: { count: deletableOnly ? 1 : 2 } }),
   useStaleWorkItemCount: () => ({ data: { count: 0 } }),
   useWorkItemOwners: () => ({ data: [] }),
+  useWorkItemGraph: () => ({ data: undefined, isLoading: false }),
   useWorkItemStatusCounts: () => ({ data: { open: 3, claimed: 1, in_progress: 2, blocked: 4, done: 7, cancelled: 0 } }),
   useWorkItem: () => ({ data: undefined, isLoading: false, isError: false }),
   useDeleteWorkItem: () => idle,

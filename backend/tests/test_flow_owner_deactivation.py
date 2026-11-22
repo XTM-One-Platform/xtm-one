@@ -520,8 +520,11 @@ def test_every_path_that_starts_a_flow_run_applies_the_rule():
 
     assert "is_paused_by_deactivated_owner(" in _source(runs.start_sandbox_flow_run)
     # Releasing a parked run, and the run gate every queued run passes.
-    for route in (flow_runs.respond_flow_run, flow_runs.debug_flow_run):
+    # The Ask-user answer is held in answer_flow_park, the one path both the
+    # respond endpoint and the decisions router (#842 S2) go through.
+    for route in (flow_runs.answer_flow_park, flow_runs.debug_flow_run):
         assert "_refuse_if_run_flow_paused(" in _source(route), route.__name__
+    assert "answer_flow_park(" in _source(flow_runs.respond_flow_run)
     assert "is_flow_paused_by_deactivated_owner(" in _source(flow_runner.FlowWalker.run_burst)
     # What people see.
     assert "owner_not_deactivated(Flow)" in _source(flows.list_flows)

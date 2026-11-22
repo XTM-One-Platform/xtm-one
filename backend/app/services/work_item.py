@@ -4801,7 +4801,14 @@ async def answer_work_item(
         item.needs_human = None
         item.ask = None
         item.last_activity_at = now
-        await db.commit()
+        from app.models.decision_hooks import answer_actor
+
+        # The decisions row (#842, S2) records who answered by id, not by name.
+        token = answer_actor.set(uid)
+        try:
+            await db.commit()
+        finally:
+            answer_actor.reset(token)
     await publish_transition(wid, previous_status=previous_status, note=note)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
@@ -5024,6 +5031,32 @@ async def get_work_item(
         **same_red,
         "read_only": not _writable(reader, item, policies),
     }
+
+
+async def list_visible_work_items_by_ids(ids: Sequence[str], *, user_id: str | None) -> list[dict]:
+    """The items of *ids* the caller may read, serialized, in one query.
+
+    The graph view (``services/work_item_graph.py``) reads the blockers its
+    filter left out with it, so a chain never ends on an arrow to nothing.
+    An id that is not a UUID, or names an item the caller cannot see, is
+    dropped: the visibility is :func:`list_work_items`' own.
+    """
+    from app.core.database import async_session
+
+    wanted = [w for w in (safe_uuid(i) for i in ids) if w is not None]
+    if not wanted:
+        return []
+    uid = safe_uuid(user_id) if user_id else None
+    now = datetime.now(UTC)
+    async with async_session() as db:
+        readable, _ = await _workspace_tiers(db, user_id)
+        rows = (
+            (await db.execute(select(WorkItem).where(WorkItem.id.in_(wanted), _visible_clause(uid, readable))))
+            .scalars()
+            .all()
+        )
+        holders = await holding_runs(db, [getattr(i, "claimed_by_run_id", None) for i in rows])
+    return [serialize_work_item(i, now=now, holders=holders) for i in rows]
 
 
 async def _read_back(
