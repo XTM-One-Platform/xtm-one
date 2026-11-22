@@ -4018,27 +4018,27 @@ async def _test_integration(
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
-    # Rydoo mints a bearer from an API client (client credentials): the secret
-    # is in api_key_enc, the client id in extra_config. Validate by listing the
-    # company's branches (its legal entities).
-    if integration.provider == "rydoo":
-        from app.integrations.providers.rydoo import (
-            token_from_config as rydoo_token_from_config,
+    # Spendesk mints a bearer from a Public API client (client credentials):
+    # the secret is in api_key_enc, the environment and client id in
+    # extra_config. Validate by listing the organisation's entities.
+    if integration.provider == "spendesk":
+        from app.integrations.providers.spendesk import (
+            token_from_config as spendesk_token_from_config,
         )
-        from app.integrations.providers.rydoo import (
-            validate_connection as rydoo_validate,
+        from app.integrations.providers.spendesk import (
+            validate_connection as spendesk_validate,
         )
 
-        rydoo_extra: dict[str, object] = {}
+        spendesk_extra: dict[str, object] = {}
         if integration.extra_config_enc:
             with suppress(Exception):
                 decrypted = decrypt_json(integration.extra_config_enc)
-                rydoo_extra = decrypted if isinstance(decrypted, dict) else {}
-        rydoo_secret = (await reveal_field(integration, "api_key_enc")) or ""
+                spendesk_extra = decrypted if isinstance(decrypted, dict) else {}
+        spendesk_secret = (await reveal_field(integration, "api_key_enc")) or ""
         try:
-            ok, message = await rydoo_validate(rydoo_token_from_config(rydoo_secret, rydoo_extra))
+            ok, message = await spendesk_validate(spendesk_token_from_config(spendesk_secret, spendesk_extra))
         except Exception:
-            logger.debug("Rydoo connectivity check failed", exc_info=True)
+            logger.debug("Spendesk connectivity check failed", exc_info=True)
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
