@@ -25,6 +25,17 @@ vi.mock("@/hooks/useAuth", () => ({
 // compact one, which compact-toolbar.test.tsx covers.
 vi.mock("@/hooks/useCompactToolbar", () => ({ useCompactToolbar: () => false }));
 
+// The decision inbox read of "Waiting for me" (#842 S5): the read switch off by default, so
+// the view keeps the per-engine work items list; a test sets the pending or failed read.
+type WaitingRead = { data?: { enabled: boolean; reason: string | null; items: unknown[] }; isLoading: boolean; isError: boolean };
+const SWITCH_OFF: WaitingRead = { data: { enabled: false, reason: "off", items: [] }, isLoading: false, isError: false };
+let WAITING: WaitingRead = SWITCH_OFF;
+const WAITING_REFETCH = vi.fn();
+vi.mock("@/hooks/api/useDecisionApi", () => ({
+  useWaitingDecisions: () => ({ ...WAITING, refetch: WAITING_REFETCH }),
+  useAnswerDecision: () => ({ mutate: () => undefined, mutateAsync: async () => undefined, isPending: false }),
+}));
+
 const base = (overrides: Partial<WorkItem>): WorkItem =>
   ({
     id: "id",
@@ -906,6 +917,44 @@ describe("Work Items Waiting for me view, empty", () => {
     } finally {
       ITEMS = MIXED;
     }
+  });
+});
+
+// With the read switch on, "Waiting for me" is the decision inbox. Only a server answer
+// `enabled: false` falls back to the work items list: a pending read shows the inbox
+// skeleton and a failed one its error line with Retry, never the work items rows
+// (UX r2 B1 on #1081).
+describe("Work Items Waiting for me view, inbox read states", () => {
+  it("shows the inbox skeleton while the read is pending", () => {
+    WAITING = { data: undefined, isLoading: true, isError: false };
+    try {
+      renderTab("&view=waiting");
+      expect(screen.getByTestId("waiting-for-you")).toBeTruthy();
+      expect(screen.getAllByTestId("data-table-skeleton-row").length).toBeGreaterThan(0);
+      expect(screen.queryAllByTestId("work-item-row")).toHaveLength(0);
+    } finally {
+      WAITING = SWITCH_OFF;
+    }
+  });
+
+  it("shows the inbox error line with Retry when the read fails", () => {
+    WAITING = { data: undefined, isLoading: false, isError: true };
+    WAITING_REFETCH.mockClear();
+    try {
+      renderTab("&view=waiting");
+      const inbox = screen.getByTestId("waiting-for-you");
+      expect(inbox.textContent).toContain("Could not load what is waiting for you.");
+      expect(screen.queryAllByTestId("work-item-row")).toHaveLength(0);
+      fireEvent.click(within(inbox).getByRole("button", { name: "Retry" }));
+      expect(WAITING_REFETCH).toHaveBeenCalledTimes(1);
+    } finally {
+      WAITING = SWITCH_OFF;
+    }
+  });
+
+  it("keeps the work items list when the server says the read switch is off", () => {
+    renderTab("&view=waiting");
+    expect(screen.queryByTestId("waiting-for-you")).toBeNull();
   });
 });
 

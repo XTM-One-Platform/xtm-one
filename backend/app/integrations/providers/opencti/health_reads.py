@@ -2,7 +2,7 @@
 
 Today's OpenCTI tools reach connectors, feeds and playbooks only through the
 ``manage_*`` tools, whose names classify as writes, so the analyst's allow-list
-(``services/health/module_analyst.MODULE_ANALYST_TOOLS``) could not list them.
+(``services/health/module_analyst.MODULE_CHECKER_TOOLS``) could not list them.
 These three tools read the same objects and nothing else: no argument selects a
 mutation, no action switch exists.
 
