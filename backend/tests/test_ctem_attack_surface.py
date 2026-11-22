@@ -42,7 +42,11 @@ def _base(host: str, *ports: int, days_ago: int = 1, signalled: tuple[str, ...] 
     )
 
 
-def _diff(observations, baseline, profile=None):
+def _diff(
+    observations: list[surface.Observation],
+    baseline: dict[str, surface.Baseline],
+    profile: oc.OrganizationProfile | None = None,
+) -> list[surface.Finding]:
     return surface.diff(profile or _profile(), observations, baseline, now=NOW, provider="shodan")
 
 
@@ -66,15 +70,6 @@ def test_the_pass_is_off_by_default_and_stays_out_of_the_always_on_block() -> No
     dumped = oc.legacy_dump(profile)
     assert "address_ranges" not in dumped and "attack_surface" not in dumped
     assert "address_ranges" not in dict(oc.CONTRACT_FIELDS)
-
-
-async def test_the_settings_picker_reads_the_supported_providers() -> None:
-    """The Settings provider picker (#1140 slice 2) lists what the pass reads, so it grows with each reader."""
-    from app.api.v1.organization_context import list_attack_surface_providers
-
-    answer = await list_attack_surface_providers(_user=None)  # type: ignore[arg-type]
-    assert answer.providers == list(surface.SUPPORTED_PROVIDERS)
-    assert "shodan" in answer.providers
 
 
 # ── path 5: new exposure ────────────────────────────────────────────────
@@ -201,6 +196,148 @@ async def test_a_name_backed_only_by_mx_or_txt_records_is_not_dangling(monkeypat
     observed = await surface.ShodanSurfaceReader("k").observe(["corp.example"], [])
     dangling = sorted(o.host for o in observed if o.resolves is False)
     assert dangling == ["old.corp.example"]
+
+
+# The shape of a Search ASM Entities hit, as Google documents it for its SecOps integration
+# (docs.cloud.google.com/chronicle/docs/soar/marketplace-integrations/mandiant-asm), with the
+# ports filled in.
+_GTI_IP_ENTITY: dict[str, Any] = {
+    "id": "1",
+    "dynamic_id": "Intrigue::Entity::IpAddress#203.0.113.10",
+    "name": "203.0.113.10",
+    "type": "Intrigue::Entity::IpAddress",
+    "first_seen": "2026-11-01T01:44:46Z",
+    "last_seen": "2026-11-21T01:44:46Z",
+    "summary": {
+        "scoped": True,
+        "ports": {"count": 2, "tcp": [443, {"port": 8443}], "udp": None},
+        "resolutions": ["shop.corp.example", "cdn.other.example"],
+        "network": {"name": "EXAMPLE-02", "asn": "16509.0"},
+    },
+}
+
+
+def _gti_answers(*entities: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "/projects": {"success": True, "result": [{"id": 42, "name": "corp"}]},
+        "/search/entities/type:Intrigue::Entity::IpAddress": {"result": {"hits": list(entities)}},
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_gti_asm_reader_keeps_the_owned_names_of_in_scope_ip_entities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_projects: list[str] = []
+    out_of_scope = {
+        **_GTI_IP_ENTITY,
+        "name": "198.51.100.9",
+        "summary": {"scoped": False, "resolutions": ["x.corp.example"]},
+    }
+    in_range_unnamed = {**_GTI_IP_ENTITY, "name": "203.0.113.20", "summary": {"scoped": True, "ports": {"tcp": [22]}}}
+    elsewhere = {**_GTI_IP_ENTITY, "name": "192.0.2.5", "summary": {"scoped": True, "resolutions": ["a.other.example"]}}
+    answers = _gti_answers(_GTI_IP_ENTITY, out_of_scope, in_range_unnamed, elsewhere)
+
+    async def _get(self: Any, path: str, action: str, params: Any = None, project: str = "") -> Any:
+        if project:
+            seen_projects.append(project)
+        return answers.get(path, {})
+
+    monkeypatch.setattr(surface.GtiAsmSurfaceReader, "_get", _get)
+    observed = await surface.GtiAsmSurfaceReader("k").observe(["corp.example"], ["203.0.113.0/24"])
+    by_host = {o.host: o for o in observed}
+    assert sorted(by_host) == ["203.0.113.20", "shop.corp.example"]
+    assert by_host["shop.corp.example"].ip == "203.0.113.10"
+    assert [p.key for p in by_host["shop.corp.example"].ports] == ["443/tcp", "8443/tcp"]
+    assert [p.key for p in by_host["203.0.113.20"].ports] == ["22/tcp"]
+    assert seen_projects == ["42"]
+
+
+@pytest.mark.asyncio
+async def test_the_gti_asm_reader_follows_the_page_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = [
+        {"result": {"hits": [_GTI_IP_ENTITY], "next_page_token": "p2"}},
+        {
+            "result": {
+                "hits": [{**_GTI_IP_ENTITY, "name": "203.0.113.11", "summary": {"resolutions": ["api.corp.example"]}}]
+            }
+        },
+    ]
+    tokens: list[str] = []
+
+    async def _get(self: Any, path: str, action: str, params: Any = None, project: str = "") -> Any:
+        if path == "/projects":
+            return {"result": [{"id": "42"}]}
+        tokens.append((params or {}).get("page_token", ""))
+        return pages[len(tokens) - 1]
+
+    monkeypatch.setattr(surface.GtiAsmSurfaceReader, "_get", _get)
+    observed = await surface.GtiAsmSurfaceReader("k").observe(["corp.example"], [])
+    assert tokens == ["", "p2"]
+    assert sorted(o.host for o in observed) == ["api.corp.example", "shop.corp.example"]
+
+
+def test_observations_of_several_providers_merge_per_host() -> None:
+    shodan = [
+        _obs("shop.corp.example", "203.0.113.10", 443),
+        surface.Observation(host="old.corp.example", resolves=False),
+    ]
+    gti = [_obs("SHOP.corp.example", "203.0.113.10", 443, 8443), _obs("old.corp.example", "203.0.113.12", 80)]
+    merged = {o.host: o for o in surface.merge_observations([("shodan", shodan), ("gti", gti)])}
+    assert [p.key for p in merged["shop.corp.example"].ports] == ["443/tcp", "8443/tcp"]
+    assert merged["shop.corp.example"].providers == ["shodan", "gti"]
+    assert merged["old.corp.example"].resolves is True
+    baseline = {"shop.corp.example": _base("shop.corp.example", 443)}
+    found = surface.diff(_profile(), list(merged.values()), baseline, now=NOW, provider="shodan+gti")
+    new_port = [f for f in found if f.detail == "port:8443/tcp"]
+    assert new_port and new_port[0].evidence["providers"] == ["shodan", "gti"]
+
+
+@pytest.mark.asyncio
+async def test_a_merged_reader_fails_the_pass_when_one_provider_fails() -> None:
+    class _Ok:
+        provider = "shodan"
+
+        async def observe(self, domains: list[str], ranges: list[str]) -> list[surface.Observation]:
+            return [_obs("shop.corp.example", "203.0.113.10", 443)]
+
+    class _Down:
+        provider = "gti"
+
+        async def observe(self, domains: list[str], ranges: list[str]) -> list[surface.Observation]:
+            raise surface.SurfaceReadError("Google Threat Intelligence answered 503")
+
+    reader = surface.MergedSurfaceReader([_Ok(), _Down()])
+    assert reader.provider == "shodan+gti"
+    with pytest.raises(surface.SurfaceReadError):
+        await reader.observe(["corp.example"], [])
+
+
+def test_the_declared_integrations_are_read_once_each() -> None:
+    profile = _profile(attack_surface={"enabled": True, "integration": "a", "integrations": ["b", "a", " "]})
+    assert surface.declared_integrations(profile.attack_surface) == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_integration_is_skipped_and_the_others_are_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Reader:
+        provider = "gti"
+
+    async def _reader_of(db: Any, integration_id: str) -> Any:
+        return _Reader() if integration_id == "b" else "securityscorecard has no attack surface pass"
+
+    monkeypatch.setattr(surface, "_reader_of", _reader_of)
+    profile = _profile(attack_surface={"enabled": True, "integration": "a", "integrations": ["b"]})
+    reader = await surface.reader_for(object(), profile)  # type: ignore[arg-type]
+    assert getattr(reader, "provider", None) == "gti"
+    only_bad = _profile(attack_surface={"enabled": True, "integration": "a"})
+    assert await surface.reader_for(object(), only_bad) == "securityscorecard has no attack surface pass"  # type: ignore[arg-type]
+
+
+def test_every_connected_provider_is_either_read_or_named_with_its_reason() -> None:
+    assert set(surface.READERS) == set(surface.SUPPORTED_PROVIDERS)
+    assert not set(surface.READERS) & set(surface.NOT_SUPPORTED)
+    assert all(reason for reason in surface.NOT_SUPPORTED.values())
 
 
 # ── the schedule ────────────────────────────────────────────────────────
