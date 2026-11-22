@@ -20773,5 +20773,15 @@
   "CI/CD pipeline": "CI/CD pipeline",
   "Package registry": "Package registry",
   "Software package": "Software package",
-  "Other code asset": "Other code asset"
+  "Other code asset": "Other code asset",
+  "Attack path and blast radius": "Attack path and blast radius",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.",
+  "No attack path leaves this asset in the latest simulations.": "No attack path leaves this asset in the latest simulations.",
+  "Hops, nearest first": "Hops, nearest first",
+  "Proven": "Proven",
+  "Inferred": "Inferred",
+  "Simulation {id}": "Simulation {id}",
+  "Primary assets reached": "Primary assets reached",
+  "None: no business asset sits behind the assets reached.": "None: no business asset sits behind the assets reached.",
+  "Recorded the attack path": "Recorded the attack path"
 }
