@@ -25,7 +25,7 @@ from app.agents.seed import SEED_DATA_DIR
 from app.services.fleet_autonomy import AUTONOMY_LEVELS, effective_gates, gate_catalog, gated_tool_rules
 from app.services.fleets import BUILTIN_FLEET_WRITABLE_FIELDS, ensure_builtin_fleet_writable
 
-_LOOP_FLEETS = ("ctem-threat-response", "ctem-vuln-prioritization", "ctem-ai-security", "ctem-third-party-risk")
+_LOOP_FLEETS = ("ctem-loop", "ctem-vuln-prioritization", "ctem-ai-security", "ctem-third-party-risk")
 _TICKET_TOOLS = {"create_jira_issue", "create_servicenow_incident", "create_servicenow_change", "sync_ctem_case_ticket"}
 
 
@@ -51,7 +51,7 @@ def test_full_gates_waits_on_every_gate_and_autonomous_on_none(slug):
 
 
 def test_one_mobilize_decision_covers_the_tickets_of_its_case():
-    for slug in ("ctem-threat-response", "ctem-vuln-prioritization"):
+    for slug in ("ctem-loop", "ctem-vuln-prioritization"):
         mobilize = next(g for g in _gates(slug) if g["key"] == CTEM_MOBILIZE_GATE)
         assert {t["name"] for t in mobilize["tools"]} == _TICKET_TOOLS
         rules = gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug))

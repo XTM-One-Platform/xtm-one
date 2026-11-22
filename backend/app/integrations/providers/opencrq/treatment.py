@@ -639,7 +639,9 @@ def register(
         text = f"Created treatment plan '{values['name']}' (id: {plan_id})."
         if planned:
             text += f" {len(planned)} control move(s); OpenCRQ re-prices the plan."
-        return text
+        # CTEM-18-UI (#1068): the link the case records with update_ctem_case treatment_plan.
+        link = _grc_link(base_url, tenant or "", "treatment_plan", str(plan_id))
+        return f"{text}\n{link}" if link else text
 
     async def update_opencrq_treatment_plan(
         treatment_plan_id: str = "",

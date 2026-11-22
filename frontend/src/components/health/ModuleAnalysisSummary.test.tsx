@@ -39,6 +39,13 @@ function overview(row: Partial<HealthModuleAnalysis> = {}, rest: Partial<HealthA
     day: { tokens: 4763, cost_usd: "0.031852", reserved_tokens: 0 },
     month: { tokens: 9526, cost_usd: "0.063704", reserved_tokens: 0 },
     modules: [{ ...ROW, ...row }],
+    module_analyst: {
+      enabled: false,
+      ceilings_set: true,
+      ceilings: { cycle_tokens: 80000, day_tokens: 500000, day_cost_usd: "4", month_tokens: 10000000, month_cost_usd: "60" },
+      day: { tokens: 0, cost_usd: "0", reserved_tokens: 0 },
+      month: { tokens: 0, cost_usd: "0", reserved_tokens: 0 },
+    },
     ...rest,
   };
 }

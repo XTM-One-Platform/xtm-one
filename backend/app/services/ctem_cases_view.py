@@ -358,16 +358,47 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     issue = row.issue
     if issue is not None and not view.sees(issue):
         issue = RESTRICTED
+    # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
+    hidden = row.kind == "treatment_plan" and not view.opencrq
     return {
         "at": row.at.isoformat() if row.at else None,
         "actor": row.actor,
         "kind": row.kind,
         "issue": issue,
-        "from": row.from_value,
-        "to": row.to_value,
-        "reason": row.reason,
-        "evidence": row.evidence,
+        "from": None if hidden else row.from_value,
+        "to": None if hidden else row.to_value,
+        "reason": None if hidden else row.reason,
+        "evidence": None if hidden else row.evidence,
     }
+
+
+def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
+    """The treatment plan attached to the case: its newest ``treatment_plan`` event (#1068), whatever the order."""
+    plans = [row for row in events if row.kind == "treatment_plan" and row.at is not None]
+    newest = max(plans, key=lambda row: row.at) if plans else None
+    if newest is None or not newest.to_value:
+        return None
+    return {
+        "id": newest.to_value,
+        "name": newest.reason,
+        "url": newest.evidence,
+        "at": newest.at.isoformat() if newest.at else None,
+    }
+
+
+def treatment_plan_for(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any] | None:
+    """The case's treatment plan as this viewer may read it (#1068).
+
+    Whether a plan is attached, and when, goes to every viewer of the case; the
+    plan's id, name and OpenCRQ link only to a viewer whose own OpenCRQ read is
+    available (as the exploitation reading, #936), else ``restricted``.
+    """
+    plan = treatment_plan_of(events)
+    if plan is None:
+        return None
+    if not view.opencrq:
+        return {"restricted": True, "at": plan["at"]}
+    return {**plan, "restricted": False}
 
 
 def _rank(row: CtemCaseIssue, view: ViewerView) -> tuple:
@@ -397,6 +428,7 @@ def hydrate(
         + [{"restricted": True} for _ in range(restricted)],
         "history": [_event(e, view) for e in events],
         "exploitation": exploitation_for(case, view),
+        "treatment_plan": treatment_plan_for(events, view),
     }
 
 

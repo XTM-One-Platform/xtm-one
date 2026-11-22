@@ -569,12 +569,20 @@ reads Platform Health as a plain user unless it owns or is shared an agent.
 | `GET /api/v1/health...` | Administrator | Group manager, agent owner, plain user |
 |---|---|---|
 | `/name`, `/me/opt-out`, `/pets` | 200 | 200 |
-| `/overview`, `/findings` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
+| `/overview`, `/findings`, `/findings?agentic=` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
 | `/history` | 200 | 200, empty |
 | `/improvements`, `/cycles`, `/signals` without a target | 200 | 404 (one managed target only, `?agent_id=` or `?target_type=&target_id=`) |
 | `/settings`, `/budget`, `/schedules`, `/analysis`, `/me/companion`, `/me/activity` | 200 | 403 |
 
 `POST /analysis/{module}/run` is refused `ai_disabled` (403, `detail.code`) while AI is off.
+
+Module Analyst (S14e, section 12): a module card's `last_investigation` is filled for an
+administrator only, on OpenCTI, OpenAEV and OpenCRQ, so never in Copilot mode (no module
+card there); every other reader gets `null` on every card. `POST /modules/{module}/investigate`
+is an administrator's (403 for the three other roles in every mode); for an administrator it
+answers 404 in Copilot mode (the module is not present), 403 `ai_disabled` while AI is off,
+and in XTM One mode the analyst's own refusals of section 12.7 (409 `module_analyst_off`,
+`no_registration`) or 202.
 
 ### 8.2 Link guard (S13, pinned by `frontend/src/lib/health-link-guard.test.ts`)
 
@@ -588,6 +596,9 @@ improvements inbox, cycles list, profile opt-out) link only to the target's own 
 checks access itself. The guard lists every Health file with its audience: a new file fails
 until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
 its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).
+The Module Analyst surfaces are classified there as administrators' (S14e):
+`ModuleAnalystParts.tsx` through the Overview, `HealthModuleAnalystBlock.tsx` through the
+Settings section.
 
 ## 9. Platform email (SMTP) integration
 
@@ -918,7 +929,7 @@ decision written here).
 | S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2a the member's seed (`health-module-analyst`, no handover, assignment "Platform Health module investigation" that nothing starts yet), S14a-2b its triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i); shipped in two PRs: S14b-1 the server-only predicate `is_module_analyst_run` and the engine exemption (`exempt_module_analyst` on the run's quota trace metadata), `HealthModuleAnalystSettings` ceilings at the provisional defaults of 12.6, the `health_module_analyst_spend` ledger (`module_analyst_budget.py`, migration `h128healthmaspend01`), tests in `tests/test_health_module_analyst_budget*.py`; S14b-2 the reservation before every model call of the loop (`module_analyst_ceiling.py`: the run's provider wrapped by the engine when `is_module_analyst_run` holds; a refused call answers `budget_exhausted` with no tool call), the release from the fleet budget of `budget.py` (`open_cycle` gates the member's cycle on the switches and the licence only, `cycles._settle_cycle` marks its runs booked with nothing charged and never stops it at the fleet caps), tests in `tests/test_health_module_analyst_ceiling.py`; S14b-3 the lab measurement and the default ceiling of 12.6 | no |
 | S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now"; shipped in two PRs: S14c-1 the API (`FindingResponse.agentic` and `analyst_recommendation`, the newest `health_finding_recommendations` row; `GET /findings?agentic=`; `ModuleCard.last_investigation` for an administrator; `POST /modules/{module}/investigate`, administrators, `require_agentic_ai`, one on-demand cycle per active registration, `module_analyst_off` and `no_registration` refusals; `tests/test_health_module_analyst_page_api_postgres.py`), S14c-2 the page | S14c-1 no, S14c-2 yes |
-| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n | S14d-1 no, S14d-2 yes |
+| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n (`pages/settings/HealthModuleAnalystBlock.tsx`, the Module Analyst block of Spend limits, XTM One modes only, with its five ceilings in the section's draft and its day and month spend from `GET /analysis`; `CycleDigestView` shows a module cycle's recommendations by confidence, its agentic findings and its spend against its own ceiling; `module_analyst` in `HEALTH_SPECIALIST_LABELS`; `docs/docs/administration/health.md`) | S14d-1 no, S14d-2 yes |
 | S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |
 
 ## 13. Agentic module health checks (S15)

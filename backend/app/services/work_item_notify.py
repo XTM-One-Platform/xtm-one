@@ -497,6 +497,8 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
     agent_id = item.created_by_agent_id or item.owner_agent_id
     if agent_id is None:
         raise NotifyError("no agent created or owns the item, so none may send its notification")
+    if await _send_decision_card(item, spec):
+        return
     async with async_session() as db:
         agent = await _usable_agent(db, item, agent_id)
         integration_id = await _resolve_integration(db, item, str(spec["integration"]))
@@ -553,6 +555,46 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
                 ) from exc
     if not sent:
         raise _failure(content)
+
+
+async def _bot_target(spec: Mapping[str, Any]) -> dict[str, str] | None:
+    """The Teams bot's conversation for the ask's target, or ``None`` when the bot is not there."""
+    from app.services.decision_card_delivery import bot_conversation, personal_bot_conversation
+
+    if spec.get("channel") == "teams_channel":
+        return await bot_conversation(str(spec.get("channel_id") or ""))
+    if spec.get("chat_id"):
+        if spec["chat_id"] == SELF_CHAT_ID:
+            return None
+        return await bot_conversation(str(spec["chat_id"]))
+    return await personal_bot_conversation(str(spec.get("user") or ""))
+
+
+async def _send_decision_card(item: Any, spec: Mapping[str, Any]) -> bool:
+    """Send the item's open decision as the bot's card when the bot is in the target (#842, S9, I.2).
+
+    ``False`` (the text goes through the agent's account as before) when the
+    item waits for no decision, the bot is not in the target conversation, or
+    Teams did not take the card.
+    """
+    if not getattr(item, "needs_human", False):
+        return False
+    from app.core.database import async_session
+    from app.services.channel_notices import notice_language
+    from app.services.decision_card_delivery import open_decision, send_decision_card
+
+    try:
+        conversation = await _bot_target(spec)
+        if conversation is None:
+            return False
+        async with async_session() as db:
+            decision = await open_decision(db, "work_item", item.id)
+            if decision is None:
+                return False
+            return await send_decision_card(db, decision, conversation, viewer=None, language=notice_language())
+    except Exception as exc:
+        logger.warning("Work item %s: decision card not sent: %s", item.id, format_exception_message(exc))
+        return False
 
 
 async def _give_up_on_web(db: Any, item: Any, spec: Mapping[str, Any], error: str) -> None:

@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app.integrations.providers.github import build_tools
-from app.integrations.providers.github.issues import first_line
+from app.integrations.providers.github.issues import already_posted, first_line
 
 _SAFE_REQUEST = "app.integrations.providers.github._common.safe_request"
 API = "https://api.github.com/repos/acme/app"
@@ -64,14 +64,43 @@ def test_the_schema_declares_the_option_as_optional():
 @pytest.mark.asyncio
 async def test_a_comment_already_posted_is_named_and_not_posted_again():
     comment, _ = _tool()
-    fake = FakeGitHub([[_comment("Other"), _comment("**Verdict R2**\nlong body " + "x" * 5000, 2)]])
+    long_body = "**Verdict R2**\nlong body " + "x" * 5000
+    fake = FakeGitHub([[_comment("Other"), _comment(long_body + "  \r\n", 2)]])
     with patch(_SAFE_REQUEST, new=fake):
-        result = await comment(repo="acme/app", issue_number=7, body="**Verdict R2**\nnew", dedupe_first_line=True)
+        result = await comment(repo="acme/app", issue_number=7, body=long_body, dedupe_first_line=True)
 
     assert result.startswith("Not posted: comment by SamuelHassine on 2026-11-09T08:00:00Z")
     assert result.endswith("https://github.com/acme/app/pull/7#issuecomment-2")
     assert "long body" not in result
     assert fake.urls("post") == []
+
+
+def test_a_shared_first_line_alone_is_not_a_duplicate() -> None:
+    header = "UX-LOOP round=3 verdict=APPROVE new=0 repeat=0 ds_gap=0 self_check=missing"
+    assert not already_posted(f"{header}\n\nVerdict on head aaaa1111.", f"{header}\n\nVerdict on head bbbb2222.")
+    assert not already_posted(f"{header}\n\nBody.", f"{header}\n\nBody, longer.")
+    assert already_posted(f"{header}\r\n\r\nBody.  \n", f"\n{header}\n\nBody.")
+    # The attachment lines add_github_comment appends after the body.
+    assert already_posted(f"{header}\n\nBody.\n\n![shot](https://x/shot.png)", f"{header}\n\nBody.")
+    assert not already_posted("Other\n\nBody.", f"{header}\n\nBody.")
+    assert not already_posted("anything", "")
+
+
+@pytest.mark.asyncio
+async def test_a_verdict_for_a_new_head_is_posted_under_the_same_header() -> None:
+    comment, _ = _tool()
+    header = "UX-LOOP round=3 verdict=APPROVE new=0 repeat=0 ds_gap=0 self_check=missing"
+    fake = FakeGitHub([[_comment(f"{header}\n\nRound 3 on head aaaa1111.", 1)]])
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await comment(
+            repo="acme/app",
+            issue_number=7,
+            body=f"{header}\n\nRound 3 carried to head bbbb2222.",
+            dedupe_first_line=True,
+        )
+
+    assert result == "Comment added: https://github.com/acme/app/pull/7#new"
+    assert fake.urls("post") == [f"{API}/issues/7/comments"]
 
 
 @pytest.mark.asyncio
