@@ -1,4 +1,9 @@
-"""CTEM fleet F1, Threat-informed exposure response (dev-docs/ctem-fleets.md s.4.1, #9114)."""
+"""CTEM fleet F1, Threat-informed exposure response (dev-docs/ctem-fleets.md s.4.1, #9114).
+
+Since CTEM-31 (#1048) F1 is the core of the generic CTEM loop fleet (``ctem-loop``):
+its orchestrator is the loop root, its roles are the loop's own roles, and the
+posture and module-desk roles hang below it.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agents.builtin_agents import BUILTIN_AGENTS, BUILTIN_ASSIGNMENTS, CTEM_FLEET_AGENTS
+from app.agents.builtin_agents import BUILTIN_AGENTS, BUILTIN_ASSIGNMENTS, CTEM_FLEET_AGENTS, CTEM_LOOP_ROLE_LEADS
 from app.agents.builtin_fleets import BUILTIN_FLEETS
 from app.agents.builtin_roi_units import BUILTIN_ROI_UNITS
 from app.services.opencti_trigger_provisioning import read_provision_spec
@@ -14,10 +19,18 @@ from app.services.opencti_trigger_provisioning import read_provision_spec
 _SEED_DATA = Path(__file__).resolve().parents[1] / "app" / "agents" / "seed_data"
 _ORCH = "ctem-threat-response-orchestrator"
 _SHARED = ("ctem-threat-relevance-analyst", "ctem-risk-quantifier", "ctem-remediation-coordinator")
+_CORE_ROLES = {
+    "ctem-threat-relevance-analyst",
+    "openaev-scenario-creator",
+    "ctem-risk-quantifier",
+    "ctem-remediation-coordinator",
+    "opencti-threat-hunt-creator",
+    "opencti-detection-rule-converter",
+}
 
 
 def _fleet() -> dict:
-    (fleet,) = [f for f in BUILTIN_FLEETS if f["slug"] == "ctem-threat-response"]
+    (fleet,) = [f for f in BUILTIN_FLEETS if f["slug"] == "ctem-loop"]
     return fleet
 
 
@@ -46,7 +59,7 @@ def test_the_orchestrator_is_the_single_top_level_member():
 
 
 def test_the_spec_members_are_seeded_with_their_roles():
-    roles = {m["agent"]: m["role_label"] for m in _fleet()["members"]}
+    roles = {m["agent"]: m["role_label"] for m in _fleet()["members"] if m["agent"] in {_ORCH, *_CORE_ROLES}}
     assert roles == {
         _ORCH: "Orchestrator",
         "ctem-threat-relevance-analyst": "Relevance",
@@ -62,6 +75,7 @@ def test_the_orchestrator_delegates_to_its_direct_reports():
     orch = _agents()[_ORCH]
     direct = {m["agent"] for m in _fleet()["members"] if m.get("parent") == _ORCH}
     assert set(orch["handover_agent_slugs"]) == direct
+    assert set(CTEM_LOOP_ROLE_LEADS) <= direct
     assert set(orch["handover_type_slugs"].values()) == {"delegate"}
     # The blackboard and the approval queue of every environment write.
     assert {"shared_state", "work_items"} <= set(orch["builtin_tool_ids"])
