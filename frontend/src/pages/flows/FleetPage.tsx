@@ -68,7 +68,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useCallback, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RouteNotFound from "@/pages/RouteNotFound";
-import { Boxes, CopyPlus, Crown, GitFork, Lock, Settings2 } from "lucide-react";
+import { Boxes, CopyPlus, Crown, GitFork, ListChecks, Lock, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BuiltinBadge } from "@/components/ui/builtin-badge";
 import { ReadOnlyBadge } from "@/components/ui/read-only-badge";
@@ -80,7 +80,7 @@ import { EntityHeaderMoreActions, EntityHeaderWideOnly, EntityPageHeader } from 
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { FleetHeaderActions, FleetHeaderStatus } from "@/components/fleets/FleetHeaderControl";
 import { FleetAutonomyStrip } from "@/components/fleets/FleetAutonomyStrip";
-import { CTEM_LOOP_FLEET_SLUG, CtemLoopSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
+import { FleetSetupDialog } from "@/components/fleets/FleetSetupDialog";
 import { useMediaQuery } from "@/hooks/useCompactToolbar";
 import { useRailHold } from "@/hooks/useNavPrefs";
 import { canControlFleet } from "@/components/fleets/fleet-control";
@@ -185,6 +185,8 @@ export default function FleetPage() {
   // The section the settings open on: the ROI view's "Set the fleet default" lands on Outcomes (UX #9790 B1).
   const [settingsSection, setSettingsSection] = useState<"outcomes" | undefined>(undefined);
   const [forkOpen, setForkOpen] = useState(false);
+  // "Run setup again" (#1151): the one fleet setup, reachable from the menu once the fleet runs.
+  const [setupOpen, setSetupOpen] = useState(false);
   const { isAdmin } = useAuth();
   const aiOff = useAiActionDisabled();
   const aiOffReason = useAiDisabledReason();
@@ -447,6 +449,10 @@ export default function FleetPage() {
       disabledReason: aiOffReason ?? undefined,
     }]),
     { id: "settings", label: t_i18n("Settings"), icon: Settings2, onSelect: openSettings },
+    // The header's primary is "Set up" while nothing is on; once something runs, the setup stays here (#1151).
+    ...(canControlFleet(fleet, isAdmin) && (health?.automations?.enabled ?? 0) > 0
+      ? [{ id: "run-setup-again", label: t_i18n("Run setup again"), icon: ListChecks, onSelect: () => setSetupOpen(true) }]
+      : []),
   ];
   // ROI is its managers' tab: anyone else lands on the page's default, About,
   // the address replaced too (UX A1 on #10205).
@@ -586,11 +592,11 @@ export default function FleetPage() {
               </EntityHeaderWideOnly>
             )}
             <EntityHeaderMoreActions items={moreActions} always={aiOpen} />
-            {/* The guided setup on the CTEM loop fleet itself (#1087); the entry hides for non-admins. */}
-            {fleet.slug === CTEM_LOOP_FLEET_SLUG && <CtemLoopSetupEntry size="default" />}
+            {/* One setup per fleet (#1151): the primary opens it, the CTEM loop fleet's own guided setup included. */}
             <FleetHeaderActions
               fleetId={fleet.id}
               fleetName={fleet.name}
+              fleetSlug={fleet.slug}
               automations={health?.automations}
               canControl={canControlFleet(fleet, isAdmin)}
             />
@@ -606,6 +612,7 @@ export default function FleetPage() {
       {/* A fork whose source moved since: what changed, never applied to the copy (#9174). */}
       {provenance && <FleetSourceChangesNotice fleetId={fleet.id} source={provenance} />}
       {forkOpen && <ForkFleetDialog fleet={fleet} open={forkOpen} onOpenChange={setForkOpen} />}
+      <FleetSetupDialog fleetId={fleet.id} fleetName={fleet.name} fleetSlug={fleet.slug} open={setupOpen} onOpenChange={setSetupOpen} />
       <FleetSettingsPanel
         fleet={fleet}
         members={fleetMembers ?? []}
