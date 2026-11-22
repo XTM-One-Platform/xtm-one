@@ -103,6 +103,17 @@ def test_an_option_answer_is_recorded_on_the_decision() -> None:
     assert hooks.flow_transition(park, released) == ("answer", {"text": "B: later", "option": "B"}, "a@b")
 
 
+def test_a_released_park_offers_no_answerable_card() -> None:
+    """UX round 1, B1: once the answer is taken, the run panel shows no card."""
+    from app.api.v1.flow_runs import awaiting_human
+
+    park = {"waiting": {"kind": "human", "node": "n1", "question": "Go?", "ask": {"question": "Go?"}}}
+    assert awaiting_human(park)["question"] == "Go?"
+    assert awaiting_human({"waiting": {**park["waiting"], "released": True}}) == {}
+    assert awaiting_human({"waiting": {"kind": "breakpoint", "node": "n1"}}) == {}
+    assert awaiting_human(None) == {}
+
+
 def test_the_router_sends_a_flow_the_option_key_and_the_note() -> None:
     ask = {"question": "q", "options": OPTIONS}
     assert router.run_response(ask, "b", None) == "B"

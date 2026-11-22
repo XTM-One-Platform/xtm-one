@@ -61,6 +61,7 @@ from app.api.v1.schemas.flow import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.decision_hooks import open_flow_park
 from app.models.flow import (
     FLOW_STATUS_ACTIVE,
     FLOW_STATUS_DRAFT,
@@ -956,6 +957,16 @@ def _global_runs_query(
     return query
 
 
+def awaiting_human(state: dict[str, Any] | None) -> dict[str, Any]:
+    """The Ask-user park a person can still answer, else an empty dict.
+
+    A park whose answer was taken (``released``) is not answerable any more:
+    the run panel shows no card for it while the worker resumes the run, so a
+    second answer never meets the 409 of the respond route (#842, S6).
+    """
+    return state["waiting"] if state and open_flow_park(state) else {}
+
+
 @router.get("/runs/{run_id}", response_model=FlowRunDetailResponse)
 async def get_flow_run(
     run_id: str,
@@ -985,21 +996,10 @@ async def get_flow_run(
             else None
         ),
         step_mode=bool((run.state or {}).get("step_mode")),
-        awaiting_input_node_id=(
-            (run.state or {}).get("waiting", {}).get("node")
-            if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
-            else None
-        ),
-        awaiting_input_question=(
-            (run.state or {}).get("waiting", {}).get("question")
-            if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
-            else None
-        ),
+        awaiting_input_node_id=awaiting_human(run.state).get("node"),
+        awaiting_input_question=awaiting_human(run.state).get("question"),
         awaiting_input_ask=(
-            (run.state or {}).get("waiting", {}).get("ask")
-            if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
-            and not ((run.state or {}).get("waiting") or {}).get("released")
-            else None
+            awaiting_human(run.state).get("ask") if isinstance(awaiting_human(run.state).get("ask"), dict) else None
         ),
         steps=[
             FlowRunStepResponse(
