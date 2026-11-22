@@ -21,6 +21,8 @@ HEALTH_NAMES = (
     "get_opencti_platform_queues",
     "list_opencti_stream_consumers",
     "get_opencti_licence",
+    "get_opencti_data_health",
+    "get_opencti_error_rate",
 )
 
 
@@ -83,6 +85,10 @@ def test_no_query_of_the_reads_is_a_mutation():
         health_reads._STREAMS_QUERY,
         health_reads._STREAMS_QUERY_NO_CONSUMERS,
         health_reads._LICENCE_QUERY,
+        health_reads._SERIES_QUERY,
+        health_reads._DATA_TOTALS_QUERY,
+        health_reads._WORKS_QUERY,
+        health_reads._ERROR_RATE_QUERY,
         *(health_reads._feed_query(root) for root in health_reads._FEED_ROOTS.values()),
     ]
     assert all(q.startswith("query ") and "mutation" not in q for q in queries)
@@ -256,3 +262,56 @@ async def test_licence_answers_expiry_or_its_absence(monkeypatch: pytest.MonkeyP
 
     refused = _FakeGraphQL({"HealthLicence": ({}, "Forbidden access")})
     assert await _call(monkeypatch, refused, "get_opencti_licence") == "Licence: Forbidden access"
+
+
+async def test_data_health_counts_per_day_totals_and_works_in_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    series = [{"date": "2026-11-20T00:00:00.000Z", "value": 120}, {"date": "2026-11-21T00:00:00.000Z", "value": 0}]
+    totals = {
+        "stixCoreObjectsNumber": {"total": 5400, "count": 5400},
+        "stixCoreObjects": {"edges": [{"node": {"created_at": "2026-11-20T09:00:00Z"}}]},
+    }
+    works = [
+        {"status": "complete", "errors": [{"timestamp": "2026-11-21T01:00:00Z"}]},
+        {"status": "timeout", "errors": []},
+        {"status": "complete", "errors": []},
+    ]
+    fake = _FakeGraphQL(
+        {
+            "HealthDataSeries": ({"stixCoreObjectsTimeSeries": series}, None),
+            "HealthDataTotals": (totals, None),
+            "HealthWorks": ({"works": {"edges": [{"node": w} for w in works]}}, None),
+        }
+    )
+    out = await _call(monkeypatch, fake, "get_opencti_data_health")
+    assert "Objects created per day (120 in 2 days): 2026-11-20 120, 2026-11-21 0" in out
+    assert "Objects updated per day (120 in 2 days)" in out
+    assert "Objects in total: 5400, newest created 2026-11-20T09:00:00Z" in out
+    assert "Works (newest 3, platform-wide): 1 with errors, 1 timed out" in out
+    assert len(fake.queries) == 4
+    # Platform-wide: the works read never asks for the connector of a work.
+    assert "connector" not in health_reads._WORKS_QUERY
+
+
+async def test_data_health_keeps_going_past_a_refused_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeGraphQL({"HealthWorks": ({}, "Forbidden access")})
+    out = await _call(monkeypatch, fake, "get_opencti_data_health")
+    assert "Works: Forbidden access" in out
+    assert "Objects created per day (0 in 0 days): none" in out
+
+
+async def test_error_rate_reads_activity_errors_per_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[dict[str, Any] | None] = []
+
+    async def fake(
+        client: Any, base_url: str, headers: Any, query: str, variables: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], str | None]:
+        seen.append(variables)
+        return {"auditsTimeSeries": [{"date": "2026-11-21T00:00:00.000Z", "value": 7}]}, None
+
+    out = await _call(monkeypatch, fake, "get_opencti_error_rate")
+    assert out == "OpenCTI activity entries in error per day (7 in 1 days): 2026-11-21 7"
+    assert seen[0] is not None and seen[0]["filters"] == health_reads._ERROR_FILTER
+    assert set(seen[0]) == {"startDate", "endDate", "filters"}
+
+    refused = _FakeGraphQL({"HealthErrorRate": ({}, "Forbidden access")})
+    assert await _call(monkeypatch, refused, "get_opencti_error_rate") == "Error rate: Forbidden access"

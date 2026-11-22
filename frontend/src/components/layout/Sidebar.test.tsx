@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
-import { Home, Gauge, Settings, Sparkles } from "lucide-react";
 import type { NavSection } from "./nav-model";
 
 /**
@@ -19,7 +18,7 @@ import type { NavSection } from "./nav-model";
  */
 
 const sections: NavSection[] = [
-  { id: "main", entries: [{ kind: "leaf", to: "/", icon: Home, label: "Home" }] },
+  { id: "main", entries: [{ kind: "leaf", to: "/", icon: "house", label: "Home" }] },
   {
     id: "resources",
     // A label on a plain block, to prove the shell does not draw it.
@@ -29,13 +28,13 @@ const sections: NavSection[] = [
         kind: "group",
         id: "studio",
         label: "Agent Studio",
-        icon: Sparkles,
+        icon: "sparkles",
         to: "/agent-studio",
         children: [
-          { kind: "leaf", to: "/knowledge", icon: Home, label: "Knowledge" },
-          { kind: "leaf", to: "/prompts", icon: Home, label: "Prompts" },
+          { kind: "leaf", to: "/knowledge", icon: "book-text", label: "Knowledge" },
+          { kind: "leaf", to: "/prompts", icon: "file-text", label: "Prompts" },
           // A locked row of a group: dimmed and marked, still a live link.
-          { kind: "leaf", to: "/intents", icon: Home, label: "Intents", locked: true, lockReason: "ai_disabled" },
+          { kind: "leaf", to: "/intents", icon: "zap", label: "Intents", locked: true, lockReason: "ai_disabled" },
         ],
       },
     ],
@@ -44,8 +43,8 @@ const sections: NavSection[] = [
     id: "observability",
     label: "Observability",
     collapsible: true,
-    icon: Gauge,
-    entries: [{ kind: "leaf", to: "/observability/traces", icon: Settings, label: "Traces" }],
+    icon: "activity",
+    entries: [{ kind: "leaf", to: "/observability/traces", icon: "list-tree", label: "Traces" }],
   },
 ];
 

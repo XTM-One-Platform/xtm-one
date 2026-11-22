@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { Tabs, TabsList, TabsTrigger } from "@filigran/design-system";
+import { Icon, Tabs, TabsList, TabsTrigger, type IconName } from "@filigran/design-system";
 import { cn, escapeRegExp } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
 import { useCommandSections } from "@/lib/commands/CommandsProvider";
@@ -74,9 +74,20 @@ export interface DetailTab<T extends string> {
   key: T;
   label: string;
   icon?: React.ElementType;
+  /** A design system icon name, drawn by its `Icon` at 16 px (a nav family's
+   *  members); wins over `icon`. */
+  glyph?: IconName;
   to?: string;
   trailing?: React.ReactNode;
   testId?: string;
+}
+
+/** A tab's glyph: a design system name drawn by its `Icon` (16 px, its
+ *  smallest size), else the component as it was. */
+function tabGlyph(tab: Pick<DetailTab<string>, "icon" | "glyph">, className: string) {
+  if (tab.glyph) return <Icon name={tab.glyph} size={16} />;
+  const Glyph = tab.icon;
+  return Glyph ? <Glyph className={className} aria-hidden /> : undefined;
 }
 
 /**
@@ -293,12 +304,12 @@ export function DetailTabs<T extends string>({ tabs, active, onChange, searchFor
           "More tabs" menu beside the list. The list keeps its
           horizontal scroll only for a bar too narrow for even one tab. */}
       <TabsList aria-label={ariaLabel} data-testid={testId} className={kept === null ? "overflow-x-auto" : "max-w-full overflow-x-auto"}>
-        {shown.map(({ key, label, icon: TabIcon, trailing, testId: tabTestId }) => {
+        {shown.map(({ key, label, icon: TabIcon, glyph, trailing, testId: tabTestId }) => {
           /* Legacy: with `onChange`, the trigger is the control itself and the
              library renders its own icon slot. */
           if (onChange) {
             return (
-              <TabsTrigger key={key} value={key} className={TAB_TRIGGER_CLASS} data-testid={tabTestId} icon={TabIcon ? <TabIcon className="size-3.5" /> : undefined}>
+              <TabsTrigger key={key} value={key} className={TAB_TRIGGER_CLASS} data-testid={tabTestId} icon={tabGlyph({ icon: TabIcon, glyph }, "size-3.5")}>
                 {t_i18n(label)}
                 {trailing}
               </TabsTrigger>
@@ -312,7 +323,7 @@ export function DetailTabs<T extends string>({ tabs, active, onChange, searchFor
           return (
             <TabsTrigger key={key} value={key} className={TAB_TRIGGER_CLASS} data-testid={tabTestId} asChild>
               <Link to={hrefFor(key)} aria-current={key === active ? "page" : undefined}>
-                {TabIcon && <TabIcon className="size-3.5 shrink-0" aria-hidden />}
+                {tabGlyph({ icon: TabIcon, glyph }, "size-3.5 shrink-0")}
                 {t_i18n(label)}
                 {trailing}
               </Link>
@@ -325,10 +336,11 @@ export function DetailTabs<T extends string>({ tabs, active, onChange, searchFor
       <OverflowMenu
         label={t_i18n("More tabs")}
         className="shrink-0"
-        items={overflow.map(({ key, label, icon }) => ({
+        items={overflow.map(({ key, label, icon, glyph }) => ({
           id: `tab-${key}`,
           label: t_i18n(label),
           icon,
+          glyph,
           onSelect: () => {
             focusAfterPick.current = key;
             if (onChange) onChange(key);

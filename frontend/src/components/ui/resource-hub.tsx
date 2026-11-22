@@ -12,7 +12,8 @@
  * away.
  */
 import { Link } from "react-router-dom";
-import { ArrowRight, Lock, Plus, type LucideIcon } from "lucide-react";
+import { ArrowRight, Lock, Plus } from "lucide-react";
+import { Icon, type IconName } from "@filigran/design-system";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,8 @@ export interface HubResource {
   gatedCreate?: boolean;
   /** Whether creating it needs AI. Defaults to true — declare the exemption. */
   requiresAi?: boolean;
-  icon: LucideIcon;
+  /** The design system glyph of the sidebar entry the card stands for. */
+  icon: IconName;
   /** English label, translated here (matches the sidebar entry). */
   label: string;
   /** One line on what the resource is for. */
@@ -97,7 +99,6 @@ function newestUpdate(items: HubItem[] | undefined): string | null {
 
 function ResourceCard({ resource }: { resource: HubResource }) {
   const { t_i18n } = useFormatter();
-  const Icon = resource.icon;
   const count = resource.count ?? resource.items?.length ?? 0;
   /* A locked card fetches nothing: no count and no date, never a false 0. */
   const lastUpdate = resource.locked ? null : newestUpdate(resource.items);
@@ -107,7 +108,7 @@ function ResourceCard({ resource }: { resource: HubResource }) {
       <CardContent className="flex h-full flex-col p-4">
         <Link to={resource.to} className="group flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-accent/10">
-            <Icon className="h-5 w-5 text-accent" />
+            <Icon name={resource.icon} size={20} className="text-accent" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 content-base font-medium">
@@ -187,7 +188,7 @@ function ResourceCard({ resource }: { resource: HubResource }) {
 /** A featured call-to-action card, rendered first when a hub declares one. */
 interface HubFeature {
   to: string;
-  icon: LucideIcon;
+  icon: IconName;
   label: string;
   description: string;
   gated?: boolean;
@@ -198,13 +199,12 @@ interface HubFeature {
 
 function FeatureCard({ feature }: { feature: HubFeature }) {
   const { t_i18n } = useFormatter();
-  const Icon = feature.icon;
   const card = (
     <Link to={feature.to} className="block h-full">
       <Card className="h-full border-accent/30 bg-accent/[0.04] transition-colors hover:bg-accent/[0.08]">
         <CardContent className="flex h-full items-center gap-3 p-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-accent/15">
-            <Icon className="h-5 w-5 text-accent" />
+            <Icon name={feature.icon} size={20} className="text-accent" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 content-base font-medium">
@@ -229,7 +229,7 @@ interface RecentEntry {
   updated_at: string;
   to: string;
   typeLabel: string;
-  icon: LucideIcon;
+  icon: IconName;
 }
 
 function RecentlyModified({ resources }: { resources: HubResource[] }) {
@@ -258,7 +258,6 @@ function RecentlyModified({ resources }: { resources: HubResource[] }) {
       <Card className="border-elevation-subtle">
         <CardContent className="p-0">
           {entries.map((entry, index) => {
-            const Icon = entry.icon;
             return (
               <Link
                 key={entry.key}
@@ -268,7 +267,7 @@ function RecentlyModified({ resources }: { resources: HubResource[] }) {
                   index > 0 && "border-t border-elevation-subtle-soft",
                 )}
               >
-                <Icon className="h-3.5 w-3.5 shrink-0 text-default-secondary" />
+                <Icon name={entry.icon} size={16} className="text-default-secondary" />
                 <span className="truncate">{entry.name}</span>
                 <span className="ml-auto shrink-0 content-compact text-default-secondary">{entry.typeLabel}</span>
                 <span className="w-16 shrink-0 text-right content-compact tabular-nums text-default-secondary">

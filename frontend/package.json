@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@filigran/chatbot": "7.0.0",
-    "@filigran/design-system": "1.9.0",
+    "@filigran/design-system": "1.10.0",
     "@fontsource/elms-sans": "5.3.0",
     "@fontsource/geologica": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
