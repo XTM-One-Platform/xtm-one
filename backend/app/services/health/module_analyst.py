@@ -243,6 +243,36 @@ async def _module_registrations(db: AsyncSession, excluded: Iterable[uuid.UUID])
     return [(row.id, str(row.platform_identifier)) for row in rows if row.id not in skip]
 
 
+async def checker_reads(db: AsyncSession) -> dict[str, list[tuple[str, uuid.UUID]]]:
+    """The integrations each module checker reads, by checker role (section 13.8, the fleet's Data flow).
+
+    ``{checker role: [(provider, integration id)]}`` from the active module registrations
+    with their integration: what a round of that checker is wired to at run start. No
+    binding is written; the read is configuration only, no run, no model.
+    """
+    from app.models.platform_registration import PlatformRegistration
+    from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
+
+    rows = (
+        await db.execute(
+            select(PlatformRegistration.platform_identifier, PlatformRegistration.integration_id)
+            .where(
+                PlatformRegistration.platform_identifier.in_(MODULE_PROVIDERS),
+                PlatformRegistration.status == "active",
+                PlatformRegistration.integration_id.is_not(None),
+            )
+            .order_by(PlatformRegistration.id)
+        )
+    ).all()
+    reads: dict[str, list[tuple[str, uuid.UUID]]] = {}
+    for provider, integration_id in rows:
+        role = CHECKER_ROLE_BY_PROVIDER.get(str(provider))
+        pair = (str(provider), integration_id)
+        if role is not None and pair not in reads.get(role, []):
+            reads.setdefault(role, []).append(pair)
+    return reads
+
+
 async def active_registrations(db: AsyncSession, provider: str, excluded: Iterable[uuid.UUID] = ()) -> list[uuid.UUID]:
     """The active registrations of *provider* the analyst may investigate ("Investigate now", section 12.7)."""
     return [rid for rid, identifier in await _module_registrations(db, excluded) if identifier == provider]
