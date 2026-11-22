@@ -33,8 +33,8 @@ import { ORGANIZATION_SETUP_PATH } from "@/components/layout/organization-setup-
 import { useRecordCtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { useCtemLoopSetupStatus, useFleet } from "@/hooks/api/useFleetApi";
 import { useRecordSetupStep } from "@/hooks/api/useOrganizationContextApi";
+import { StepBar } from "@/components/ui/step-bar";
 import { useFormatter } from "@/i18n";
-import { cn } from "@/lib/utils";
 
 import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
@@ -153,35 +153,21 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
         <DialogContent size="lg" data-testid="ctem-loop-setup">
           <DialogHeader>
             <DialogTitle>{t_i18n("Set up the CTEM loop")}</DialogTitle>
-            <DialogDescription>
-              {t_i18n("Step {current} of {total}: {title}", { current: index + 1, total: SETUP_STEPS.length, title: t_i18n(SETUP_STEP_TITLES[step]) })}
-            </DialogDescription>
+            {/* The step's name is the h3 below: the description names the position only (UX r1 A2). */}
+            <DialogDescription>{t_i18n("Step {current} of {total}", { current: index + 1, total: SETUP_STEPS.length })}</DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
-            <ol className="flex items-center gap-2" aria-label={t_i18n("Setup steps")}>
-              {SETUP_STEPS.map((key, i) => {
-                const state = stepOf(status.data, key)?.state;
-                return (
-                  <li key={key} className="flex-1">
-                    <button
-                      type="button"
-                      aria-label={t_i18n("Step {current} of {total}: {title}", { current: i + 1, total: SETUP_STEPS.length, title: t_i18n(SETUP_STEP_TITLES[key]) })}
-                      aria-current={key === step ? "step" : undefined}
-                      onClick={() => setCurrent(key)}
-                      className="w-full py-2"
-                      data-testid={`ctem-loop-setup-dot-${key}`}
-                    >
-                      <span
-                        className={cn(
-                          "block h-1.5 w-full rounded-full transition-colors",
-                          key === step ? "bg-accent" : isSettled(state) ? "bg-accent opacity-60" : "bg-elevation-hover",
-                        )}
-                      />
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
+            {/* The shared step bar of the new agent wizard (UX r1 B1): tooltips, hit area and aria-current in one place. */}
+            <StepBar
+              ariaLabel={t_i18n("Setup steps")}
+              testIdPrefix="ctem-loop-setup-dot"
+              steps={SETUP_STEPS.map((key) => ({
+                key,
+                title: t_i18n(SETUP_STEP_TITLES[key]),
+                state: key === step ? "current" : isSettled(stepOf(status.data, key)?.state) ? "settled" : "todo",
+              }))}
+              onSelect={(i) => setCurrent(SETUP_STEPS[i])}
+            />
             <h3 className="text-lg font-semibold">{t_i18n(SETUP_STEP_TITLES[step])}</h3>
             <p className="content-base text-default-secondary">{t_i18n(SETUP_STEP_INTROS[step])}</p>
             {status.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The setup state could not be read. You can still go through the steps.")}</p>}
@@ -230,7 +216,8 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
               </div>
             )}
             {step === "gates" && fleet.data && (
-              <FleetAutonomyStrip fleetId={fleet.data.id} level={fleet.data.autonomy_level} canManage isAdmin />
+              // The level choice alone (UX r1 B3): what waits now and the per-action lists stay on the fleet page.
+              <FleetAutonomyStrip fleetId={fleet.data.id} level={fleet.data.autonomy_level} canManage isAdmin compact />
             )}
             {step === "preview" && (
               <p className="content-compact" data-testid="ctem-loop-setup-preview">
