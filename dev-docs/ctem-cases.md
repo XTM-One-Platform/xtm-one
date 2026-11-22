@@ -202,8 +202,21 @@ for any other case or when no asset runs the product:
 
 Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
-An asset already on the fixed version leaving the case's scope, and the case
-page, are later slices of #1252.
+
+**Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
+an upgrade case with a known fixed version, open or resolved, is checked
+against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
+asset running the product runs the fixed version or later (`all_on_fixed`: at
+least one asset on it, none below, none `unknown` or unreadable), the case
+leaves the scope. An open case resolves with the evidence "every asset running
+the product runs the fixed version or later (asset inventory)" and resolution
+kind `fixed`; a resolved case is not reopened by member issues that stay open
+at source (OpenCTI still relates the CVE to a version nobody runs). The
+members are left as the source reports them. A case with a validation plan
+still closes only on its passing validation (#857); a case whose fixed version
+is unknown never leaves the scope on the inventory; an asset that falls back
+below the fix (or a new one running an old version) brings the case back
+through the usual reopen rule. The case page is the next slice of #1252.
 
 ### 4.3 Recompute
 
@@ -324,15 +337,26 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 ### 7.0 Shared visual language (UX round 1 B4, B5, B7; round 2 B1)
 
-- **One colour per state, everywhere** (board, list badge, case page, widget),
-  through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
-  needs attention `medium` (alert), in progress `info`, mitigated, watching
-  `low` with the DS `eye` icon as the Chip's own `startIcon` (inside the chip,
-  same left edge and baseline as its siblings) and the
-  `feedback-success-tertiary` segment on every counts bar (#857, UX rounds 1
-  B3 and 2 B1: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
-  `feedback-success-primary` segment), accepted risk `neutral`. AI purple is never used on Cases (it is
-  the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
+- **One colour per state and per priority, everywhere** (board, list badge,
+  case page, widget, signal state of the loop trace), through the shared
+  outlined `ToneBadge` (`components/ui/tone-badge.tsx`), the hot hues of Work
+  items and Tasks (whose page-local badges have no visible edge and are not on
+  `ToneBadge` yet), never the pastel severity tiles of the DS `Chip` (Sam,
+  22 Nov 2026, #1267): states needs attention orange, in progress blue,
+  mitigated, watching yellow with the DS `eye` icon inside the badge, resolved
+  green, accepted risk neutral; priorities critical red, high orange, medium
+  yellow, low green; loop severity P1 red, P2 orange, P3 yellow. Each tone is a
+  /10 wash of the hue, an edge and a label in its `-tertiary` token (4.5:1 text,
+  3:1 edge on every elevation surface in both themes, guard
+  `tests_unit/tone-badge-contrast.test.ts`). No CTEM page draws a state,
+  priority, severity or signal state with the DS `Chip`, a tone map typed other
+  than `HotTone`, or a `Badge` coloured from the feedback tokens (guard
+  `tests_unit/ctem-tone-badge-guard.test.ts`; the stage assessment "Out of
+  date" badge is an orange `ToneBadge`). Counts bar segments take the same
+  hue (needs attention `feedback-warning-primary`, in progress
+  `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
+  `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
+  colour only): crown jewels are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
 - **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One
@@ -507,34 +531,6 @@ then the existing AI assessment and facts grid unchanged.
   "No open exposure on your stack", or the products that could not be read
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
-
-### 7.2bis Attention score and its points (#1176)
-
-The list's default sort, its "Act on this first" band and the case page's
-"Why this case needs attention now" read one explained score
-(`frontend/src/pages/xtm-one/ctem/case-attention.ts`): the points of each
-reason are added, and each reason is named in the why line. A reason whose
-points are set to 0 adds nothing and is not named (the age when its points per
-day or its cap is 0). Resolved cases and accepted risks score 0.
-
-The points are the organization's, profile field `case_attention`
-(`CaseAttentionWeights` in `services/organization_context.py`, an exposure
-field: never in the agent block or the legacy dump), set by an administrator
-with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
-`PUT /organization-context`). Defaults, each from 0 to 100:
-
-| Reason | Field | Default |
-|---|---|---|
-| Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
-| At least one KEV issue | `kev` | 15 |
-| At least one crown jewel touched | `crown_jewel` | 15 |
-| SLA breached or due date passed | `overdue` | 20 |
-| Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
-| No owner | `no_owner` | 5 |
-| Per day open, capped at `age_max` (default 10) | `age_per_day` | 1 |
-
-A profile saved before the field reads the defaults; every profile save of
-the Settings form carries it whole.
 
 ### 7.3 Case page `/ctem/cases/:id`
 
