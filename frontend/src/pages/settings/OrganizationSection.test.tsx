@@ -907,6 +907,25 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Set Payments to Critical (criticality) in OpenCRQ")).toBeTruthy();
   });
 
+  it("names an OpenCRQ-only level (very_high) in words on the pushed line", async () => {
+    post.mockResolvedValue({
+      applied: false,
+      plan: {
+        linked: [],
+        pushed_to_opencrq: [{ opencrq_asset_id: "a-3", name: "Ledger", criticality: "very_high" }],
+        pulled_from_opencrq: [],
+        ambiguous: [],
+        not_in_opencrq: [],
+      },
+      errors: [],
+      version: 3,
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    expect(await screen.findByText("Set Ledger to Very high in OpenCRQ")).toBeTruthy();
+    expect(screen.queryByText(/very_high/)).toBeNull();
+  });
+
   it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {
     get.mockImplementation(async (path: string) =>
       path === "/organizations" || path === "/integrations"
@@ -936,10 +955,31 @@ describe("OrganizationSection", () => {
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
     expect(await screen.findByText("Link Payments to its OpenCRQ asset")).toBeTruthy();
-    expect(screen.getByText("Add Ledger, very high in OpenCRQ, as a critical crown jewel")).toBeTruthy();
+    expect(screen.getByText("Add Ledger from OpenCRQ as a crown jewel")).toBeTruthy();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
     fireEvent.click(screen.getByRole("button", { name: /Apply/ }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: true }));
+  });
+
+  it("proposes the import for an empty profile and never says the two agree while in_sync is false (#1134 S2)", async () => {
+    post.mockResolvedValue({
+      applied: false,
+      plan: {
+        linked: [],
+        pushed_to_opencrq: [],
+        pulled_from_opencrq: [{ opencrq_asset_id: "a-9", name: "Billing" }],
+        ambiguous: [],
+        not_in_opencrq: [],
+        in_sync: false,
+      },
+      errors: [],
+      version: null,
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    expect(await screen.findByText("Add Billing from OpenCRQ as a crown jewel")).toBeTruthy();
+    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
+    expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
   });
 
   it("opens the form on the draft from the platforms, names each source, and saves it as a draft version", async () => {

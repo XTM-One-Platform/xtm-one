@@ -35,6 +35,7 @@ import {
   type ImportSectionKey,
   type OrganizationSync,
   type OrganizationSyncBody,
+  type OrganizationSyncScope,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { filtersSummary } from "@/lib/organization-import-filters";
@@ -82,12 +83,21 @@ const bodyOf = (sync: OrganizationSync, patch: Partial<OrganizationSyncBody> = {
   ...patch,
 });
 
-export function OrganizationSyncsCard() {
+interface CardProps {
+  /**
+   * The sections this card lists (#1134 S2): "profile" (crown jewels, PIRs) in Settings,
+   * "inventory" (assets, asset groups, tech stack, AI systems) on the Inventory page, "" every sync.
+   * The Sync all schedule shows in each. Settings keeps "" until the Inventory page mounts its own.
+   */
+  scope?: OrganizationSyncScope;
+}
+
+export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
   const { t_i18n, locale, intl } = useFormatter();
   const { toast } = useToast();
   const [ConfirmEl, confirm] = useConfirm();
   const scheduleLabel = useScheduleLabel();
-  const { data: syncs = [], isLoading, isError, refetch } = useOrganizationSyncs();
+  const { data: syncs = [], isLoading, isError, refetch } = useOrganizationSyncs(scope);
   const create = useCreateOrganizationSync();
   const update = useUpdateOrganizationSync();
   const remove = useDeleteOrganizationSync();
@@ -326,8 +336,8 @@ export function OrganizationSyncsCard() {
           searchPlaceholder={t_i18n("Search...")}
           filters={filters}
           exportName="organization-syncs"
-          urlKey="osy_"
-          storageKey="settings-organization-syncs"
+          urlKey={scope ? `osy_${scope}_` : "osy_"}
+          storageKey={scope ? `settings-organization-syncs-${scope}` : "settings-organization-syncs"}
           isLoading={isLoading}
           isError={isError}
           onRetry={() => void refetch()}

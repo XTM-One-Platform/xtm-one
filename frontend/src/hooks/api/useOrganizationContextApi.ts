@@ -83,6 +83,8 @@ interface OpenCrqSyncPlan {
   pulled_from_opencrq: { opencrq_asset_id: string; name: string }[];
   ambiguous: string[];
   not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
+  /** Whether the profile and OpenCRQ agree (#1134 S2): the only answer that may say so; absent from an older backend. */
+  in_sync?: boolean;
 }
 
 export interface OpenCrqSyncResponse {
@@ -506,10 +508,13 @@ export type OrganizationSyncBody = Pick<
 
 const SYNCS = [...KEY, "syncs"] as const;
 
-export function useOrganizationSyncs() {
+/** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
+export type OrganizationSyncScope = "profile" | "inventory" | "";
+
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
   return useQuery<OrganizationSync[]>({
-    queryKey: SYNCS,
-    queryFn: () => api.get("/organization-context/syncs"),
+    queryKey: [...SYNCS, scope],
+    queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
     // The list says its own failure with a retry; it never takes the page down.
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
