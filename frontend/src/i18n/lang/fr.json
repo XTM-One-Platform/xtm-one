@@ -20193,12 +20193,12 @@
   "On: a finding passes only when its asset is marked internet-facing in the profile. Off: internet exposure is not checked. Read by the CTEM scope gate.": "Activé : un constat passe seulement si son actif est marqué exposé à Internet dans le profil. Désactivé : l'exposition à Internet n'est pas vérifiée. Lu par le filtre de périmètre CTEM.",
   "Confirm: {option}": "Confirmer : {option}",
   "Runs this call once. The tool asks again next time.": "Exécute cet appel une fois. L’outil redemandera la prochaine fois.",
-  "{count, plural, one {Runs this call once.} other {Runs these # calls once.}} The tool asks again next time.": "{count, plural, one {Exécute cet appel une fois.} other {Exécute ces # appels une fois.}} L’outil redemandera la prochaine fois.",
+  "{count, plural, one {Runs # call once.} other {Runs these # calls once.}} The tool asks again next time.": "{count, plural, one {Exécute # appel une fois.} other {Exécute ces # appels une fois.}} L’outil redemandera la prochaine fois.",
   "This needs your own consent: the action is run as you approve it now, and it cannot be undone.": "Votre propre consentement est requis : l’action est exécutée telle que vous l’approuvez maintenant, et elle est irréversible.",
   "Runs it now and stops asking you for this tool, scheduled runs included, until you revoke it in your profile.": "L’exécute maintenant et ne vous demande plus rien pour cet outil, exécutions planifiées comprises, jusqu’à révocation dans votre profil.",
   "“Approve always” saves a preference for you. That tool will then run without asking, including on scheduled runs nobody is watching, until you revoke it in your profile.": "« Toujours approuver » enregistre une préférence pour vous. Cet outil s’exécutera ensuite sans demander, y compris lors des exécutions planifiées que personne ne surveille, jusqu’à révocation dans votre profil.",
   "Does not run it. The agent is told, with your reason, and can adapt.": "Ne l’exécute pas. L’agent en est informé, avec votre raison, et peut s’adapter.",
   "Run “{tool}”?": "Exécuter « {tool} » ?",
-  "{count, plural, one {Run this action: {tools}?} other {Run these # actions: {tools}?}}": "{count, plural, one {Exécuter cette action : {tools} ?} other {Exécuter ces # actions : {tools} ?}}",
+  "{count, plural, one {Run # action: {tools}?} other {Run these # actions: {tools}?}}": "{count, plural, one {Exécuter # action : {tools} ?} other {Exécuter ces # actions : {tools} ?}}",
   "This action cannot be undone. Your reply is checked against the code before anything runs.": "Cette action est irréversible. Votre réponse est vérifiée par rapport au code avant toute exécution."
 }
