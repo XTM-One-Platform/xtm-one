@@ -70,9 +70,22 @@ export function sourceChangeNames(
   return { members, connected };
 }
 
-/** Show the notice only on a fork whose existing source changed. */
+/** The source changed and is still there: the structural diff applies. */
+export function sourceChanged(found: FleetSourceChanges): boolean {
+  return found.is_fork && found.source_exists && found.changed === true;
+}
+
+/**
+ * The seeded fleet that took over a retired built-in source (CTEM-31), on a
+ * fork only: a fork of a fleet folded into the generic CTEM loop names it.
+ */
+export function sourceSuccessor(found: FleetSourceChanges): NonNullable<FleetSourceChanges["successor"]> | null {
+  return found.is_fork && found.successor ? found.successor : null;
+}
+
+/** Show the notice on a fork whose existing source changed, or whose built-in source was retired into a successor. */
 export function showSourceChanges(found: FleetSourceChanges | undefined): found is FleetSourceChanges {
-  return !!found && found.is_fork && found.source_exists && found.changed === true;
+  return !!found && (sourceChanged(found) || sourceSuccessor(found) !== null);
 }
 
 /**

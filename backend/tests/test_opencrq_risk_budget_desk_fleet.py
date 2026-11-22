@@ -1,4 +1,8 @@
-"""Single-product seeded fleet M3: the OpenCRQ risk budget desk (#10593, epic #8975)."""
+"""Single-product seeded fleet M3: the OpenCRQ risk budget desk (#10593, epic #8975).
+
+Since CTEM-31 (#1048) the desk is the Risk desk role of the generic CTEM loop
+fleet: its agents and automations are unchanged, its fleet row is retired.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +10,12 @@ from pathlib import Path
 
 from app.agents import opencrq_risk_budget_desk as m3
 from app.agents.builtin_agents import ADMIN_OPT_IN_BUILTIN_ASSIGNMENTS, BUILTIN_AGENTS, BUILTIN_ASSIGNMENTS
-from app.agents.builtin_fleet_docs import BUILTIN_FLEET_DOCS, BUILTIN_FLEET_STRUCTURED
-from app.agents.builtin_fleets import BUILTIN_FLEETS
+from app.agents.builtin_fleet_docs import (
+    BUILTIN_FLEET_STRUCTURED,
+    OPENCRQ_RISK_BUDGET_DESK_DOC,
+    OPENCRQ_RISK_BUDGET_DESK_STRUCTURED,
+)
+from app.agents.builtin_fleets import BUILTIN_FLEETS, CTEM_LOOP_SLUG, RETIRED_FLEET_SUCCESSORS
 from app.agents.builtin_roi_units import BUILTIN_ROI_EXEMPT, BUILTIN_ROI_UNITS, EXEMPT_ORCHESTRATOR
 from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST
 from app.services import opencrq_job_events, roi
@@ -25,12 +33,16 @@ def _assignments() -> list[dict]:
     return [a for a in BUILTIN_ASSIGNMENTS if a["agent_slug"] == m3.ORCHESTRATOR]
 
 
-def test_the_fleet_is_seeded_in_xtm_one_and_dev_never_in_copilot():
+def test_the_desk_is_a_role_of_the_generic_loop_seeded_in_xtm_one_and_dev_never_in_copilot():
     from app.agents import fleet_seed
 
-    assert m3.RISK_BUDGET_DESK_FLEET in BUILTIN_FLEETS
-    assert m3.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")]
-    assert m3.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("dev")]
+    assert m3.RISK_BUDGET_DESK_FLEET not in BUILTIN_FLEETS
+    assert RETIRED_FLEET_SUCCESSORS[m3.FLEET_SLUG] == CTEM_LOOP_SLUG
+    loop = next(f for f in fleet_seed.fleets_for_mode("xtm_one") if f["slug"] == CTEM_LOOP_SLUG)
+    roles = {m["agent"]: m for m in loop["members"]}
+    assert set(roles) >= _NEW
+    role = roles[m3.ORCHESTRATOR]["role_label"]
+    assert role == "Risk desk"
     assert fleet_seed.fleets_for_mode("copilot") == []
     for slug in _NEW:
         assert _agents()[slug]["platform_targets"] == ["xtm_one", "dev"]
@@ -122,12 +134,13 @@ def test_units_count_each_scenario_each_case_and_one_pack():
 
 
 def test_register_writes_are_gated_and_nothing_waits_at_low():
-    structured = BUILTIN_FLEET_STRUCTURED[m3.FLEET_SLUG]
-    assert [g["key"] for g in structured["gates"]] == ["opencrq.register.write"]
-    assert structured["gates"][0]["impact"] == "high"
-    catalog = gate_catalog("low", structured["gates"])
-    assert [e["gated"] for e in catalog] == [False]
-    names = {r["name"] for r in gated_tool_rules("full_gates", structured["gates"])}
+    # In the loop the register writes are tools of ctem.remediation.decision (impact high).
+    gates = BUILTIN_FLEET_STRUCTURED[CTEM_LOOP_SLUG]["gates"]
+    decision = next(g for g in gates if g["key"] == "ctem.remediation.decision")
+    assert decision["impact"] == "high"
+    catalog = {e["key"]: e["gated"] for e in gate_catalog("low", gates)}
+    assert catalog["ctem.remediation.decision"] is False
+    names = {r["name"] for r in gated_tool_rules("full_gates", [decision])}
     assert names == {
         "create_opencrq_risk_scenario",
         "update_opencrq_risk_scenario",
@@ -141,10 +154,10 @@ def test_register_writes_are_gated_and_nothing_waits_at_low():
 
 
 def test_the_seeded_documentation_names_every_automation_and_the_known_limits():
-    doc = BUILTIN_FLEET_DOCS[m3.FLEET_SLUG]
+    doc = OPENCRQ_RISK_BUDGET_DESK_DOC
     for a in m3.RISK_BUDGET_DESK_ASSIGNMENTS:
         assert f"**{a['name']}**" in doc["triggers"]
-    structured = BUILTIN_FLEET_STRUCTURED[m3.FLEET_SLUG]
+    structured = OPENCRQ_RISK_BUDGET_DESK_STRUCTURED
     assert [t["name"] for t in structured["triggers"]] == [a["name"] for a in m3.RISK_BUDGET_DESK_ASSIGNMENTS]
     assert {p["check"] for p in structured["prerequisites"]} == {"integration:opencrq", "manual"}
     for section in ("purpose", "use_case", "flow", "objects_created", "prerequisites"):

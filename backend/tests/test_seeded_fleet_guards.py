@@ -106,7 +106,12 @@ def test_fleet_desks_are_reached_through_the_orchestrator_only(fleet):
         for m in fleet.get("members", [])
         if m["agent"] != fleet["orchestrator"] and "fleet" in (agents.get(m["agent"], {}).get("tags") or [])
     ]
-    chatty = [m["agent"] for m in desks if not agents[m["agent"]].get("disable_chat")]
+    # A role lead the generic fleet folded in that answers people in chat keeps it (CTEM-31):
+    # the posture lead answers where the organization stands, as before the fold.
+    answers_people = set(fleet.get("chat_members") or [])
+    chatty = [
+        m["agent"] for m in desks if not agents[m["agent"]].get("disable_chat") and m["agent"] not in answers_people
+    ]
     exposed = [m["agent"] for m in desks if m.get("exposed")]
     assert not chatty, f"set disable_chat on the fleet desks: {chatty}"
     assert not exposed, f"expose the orchestrator only, not: {exposed}"
