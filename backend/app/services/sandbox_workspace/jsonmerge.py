@@ -200,6 +200,38 @@ def conflicting_keys(base: str, ours: str, theirs: str) -> list[str]:
     return out
 
 
+def _removed(base: dict[str, Any], ours: dict[str, Any], theirs: dict[str, Any], prefix: str, out: list[str]) -> None:
+    for key, value in base.items():
+        if key not in theirs:
+            continue
+        name = f"{prefix}{key}"
+        if key not in ours:
+            out.append(name)
+        elif isinstance(value, dict) and isinstance(ours[key], dict) and isinstance(theirs[key], dict):
+            _removed(value, ours[key], theirs[key], f"{name}.", out)
+
+
+def removed_keys(base: str, ours: str, theirs: str) -> list[str]:
+    """The keys (dotted for a nested one) *base* and *theirs* hold that *ours* removed.
+
+    A three-way merge removes them without a conflict, as it should when the removal was meant; a branch that
+    wrote a stale copy of the file removes them too, so a merge answer names them for a check (#1095). Empty when a
+    side is not a JSON object or holds a key twice.
+    """
+    if any(len(text) > MAX_JSON_MERGE_BYTES for text in (base, ours, theirs)) or not base.strip():
+        return []
+    try:
+        sides = [_parse(text) for text in (base, ours, theirs)]
+    except _DuplicateKeyError:
+        return []
+    base_obj, ours_obj, theirs_obj = sides
+    if base_obj is None or ours_obj is None or theirs_obj is None:
+        return []
+    out: list[str] = []
+    _removed(base_obj, ours_obj, theirs_obj, "", out)
+    return out
+
+
 def merge_json_objects(base: str, ours: str, theirs: str, prefer: str | None = None) -> str | None:
     """*ours* and *theirs* merged from *base* key by key, written in their layout; ``None`` when not certain.
 

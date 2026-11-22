@@ -21,19 +21,29 @@ lenses disagree. Before this change none of that had a place to land.
 |---|---|---|---|
 | 1 | `new_vulnerability` | world | OpenCTI Vulnerability created or updated; OpenCTI `has` relationship to a Vulnerability (lens inside) |
 | 2 | `relevant_threat` | world | OpenCTI Intrusion Set, Threat Actor, Campaign or Malware created or updated |
-| 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants) |
+| 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants), `issue.sla.breached` (re-sights the issue's signal), `ci.gate.failed`, `scan.image.finished` with issues |
 | 4 | `proven_exploitable` | inside | tool and API |
 | 5 | `new_exposure` | outside | tool and API |
 | 6 | `stale_asset` | outside | tool and API |
 | 7 | `surface_drift` | outside | tool and API |
-| 8 | `mitigation_regression` | inside | tool and API |
+| 8 | `mitigation_regression` | inside | OpenAEV scenario score degraded (CTEM-15) |
 | 9 | `control_decay` | inside | tool and API |
-| 10 | `credential_leak` | world | tool and API |
+| 10 | `credential_leak` | world | Aikido `leaked_secret` issue (the secret is never stored) |
 | 11 | `third_party_event` | world | tool and API |
 | 12 | `blind_spot` | inside | tool and API |
 
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
+
+Aikido (CTEM-25): the code repository and container image of an issue (name
+and id) go to `evidence.assets`, so the scope gate resolves them to a profile
+asset row (source `aikido`, `external_id` the Aikido id) and to its crown
+jewel by the existing asset names; an unmapped repository is `to_validate`.
+A dependency issue that names its fixed version opens an upgrade case keyed
+and titled on that version (`upgrade:-/<package>@<version>`). An
+`issue.closed` records no signal: it closes the case member of the signals the
+issue recorded, and the last member closed resolves the case on a passing
+validation of kind `rescan` (`ctem_case_loop.close_signal_members`).
 
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 

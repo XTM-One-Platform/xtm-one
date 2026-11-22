@@ -32,6 +32,8 @@ interface WorkItemFilters {
   /** One status or several, comma-separated (`open,blocked`). */
   status?: WorkItemStatus | string;
   correlation_key?: string;
+  /** The items whose key starts with it (`GET /work-items?correlation_key_prefix=`). */
+  correlation_key_prefix?: string;
   open_only?: boolean;
   stale_only?: boolean;
   /** Only the items the platform runs at their time. */
@@ -66,6 +68,7 @@ function toCountQuery(filters: WorkItemFilters): string {
   if (filters.owner_agent_id) params.set("owner_agent_id", filters.owner_agent_id);
   if (filters.status) params.set("status", filters.status);
   if (filters.correlation_key) params.set("correlation_key", filters.correlation_key);
+  if (filters.correlation_key_prefix) params.set("correlation_key_prefix", filters.correlation_key_prefix);
   if (filters.open_only) params.set("open_only", "true");
   if (filters.stale_only) params.set("stale_only", "true");
   if (filters.scheduled_only) params.set("scheduled_only", "true");
