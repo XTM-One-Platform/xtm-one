@@ -73,8 +73,11 @@ export interface DecisionView {
   links?: readonly { label: string; url: string }[];
   /** Who asks, named only when the reader may see it. */
   asker?: string | null;
-  /** Free text: "auto" folds it behind the options when there are some; "none" offers none. */
-  freeText?: "auto" | "none";
+  /**
+   * Free text: "auto" folds it behind the options when there are some; "open" shows it unfolded
+   * under them (a page opened to write an answer); "none" offers none.
+   */
+  freeText?: "auto" | "open" | "none";
   freeTextLabel?: string;
   /** Under a folded "Technical details": what only agents read. */
   technical?: ReactNode;
@@ -386,7 +389,7 @@ export function DecisionCard({
       )}
 
       {canAnswer ? (
-        freeTextMode === "none" ? null : options.length > 0 ? (
+        freeTextMode === "none" ? null : options.length > 0 && freeTextMode === "auto" ? (
           // With options, free text is the exception: folded behind one line (J.1).
           <details data-testid={`${testId}-free-text`}>
             <DisclosureSummary>{t_i18n("Answer differently")}</DisclosureSummary>

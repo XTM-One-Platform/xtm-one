@@ -687,7 +687,7 @@ export default function NewIntegration() {
             </div>
             )}
 
-            {/* Webhook URL — only shown when user provides own creds (not admin-provisioned) */}
+            {/* Webhook URL — only for a provider with a webhook or hybrid event, when the user provides own creds (not admin-provisioned); a polling-only provider has nothing to configure */}
             {webhookEvents && !onAdminOAuthApp && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
