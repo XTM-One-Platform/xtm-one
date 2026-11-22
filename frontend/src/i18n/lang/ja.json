@@ -20841,5 +20841,19 @@
   "No check round since the last digest": "前回のダイジェスト以降、チェックラウンドはありません",
   "Failed most": "失敗の多いチェック",
   "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{registrations, plural, other {# 件の登録}}で{rounds, plural, other {# 回のラウンド}}",
-  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, other {# 件失敗}}、{warned, plural, other {# 件の警告}}"
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, other {# 件失敗}}、{warned, plural, other {# 件の警告}}",
+  "No grouping": "グループ化なし",
+  "Fix family": "修正の種類",
+  "Upgrade": "アップグレード",
+  "Patch": "パッチ",
+  "Course of action": "対応策",
+  "Close exposure": "露出の解消",
+  "Decommission": "廃止",
+  "Rotate credential": "認証情報のローテーション",
+  "Restore control": "制御の復元",
+  "Supplier action": "サプライヤー対応",
+  "Restore coverage": "カバレッジの復元",
+  "Unknown user": "不明なユーザー",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, other {# 行}}",
+  "Group by: {group}": "グループ化: {group}"
 }
