@@ -173,10 +173,14 @@ def convert(conversion: Conversion, data: bytes) -> Converted:
         raise
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise ImageError(f"{display(conversion.source)} is not an image Pillow reads ({exc}).") from None
+    has_alpha = image.mode in ("RGBA", "LA", "PA") or (image.mode == "P" and "transparency" in image.info)
     target_size = _fitted(image.size, conversion.max_width, conversion.max_height)
     if target_size != image.size:
+        if image.mode in ("P", "PA", "1"):
+            # Pillow resizes palette and bilevel images with nearest-neighbour whatever
+            # the filter asked: expand them first so LANCZOS applies.
+            image = image.convert("RGBA" if has_alpha else ("L" if image.mode == "1" else "RGB"))
         image = image.resize(target_size, Image.Resampling.LANCZOS)
-    has_alpha = image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info)
     options: dict[str, object] = {}
     if conversion.format == "JPEG":
         if image.mode != "RGB":

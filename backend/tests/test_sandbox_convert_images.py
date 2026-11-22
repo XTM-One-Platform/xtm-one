@@ -61,6 +61,18 @@ def test_convert_never_enlarges_and_jpeg_flattens_alpha():
     assert out.format == "JPEG" and out.size == (40, 20) and out.mode == "RGB"
 
 
+def test_convert_resizes_a_palette_image_with_lanczos_not_nearest_neighbour():
+    source = Image.new("RGB", (400, 200), (0, 0, 0))
+    source.paste((255, 0, 0), (0, 0, 201, 200))
+    out = io.BytesIO()
+    source.convert("P").save(out, "PNG")
+    [c] = images.parse([{"from": "s.png", "to": "t.png", "max_width": 100}])
+    result = _opened(images.convert(c, out.getvalue()).data)
+    assert result.size == (100, 50) and result.mode == "RGB"
+    # Nearest-neighbour keeps the two source colours only; LANCZOS blends the edge.
+    assert len(result.getcolors(maxcolors=10_000)) > 2
+
+
 def test_convert_refuses_what_is_not_an_image_and_an_animation():
     [c] = images.parse([{"from": "x.png", "to": "x.webp"}])
     with pytest.raises(images.ImageError, match="not an image"):
