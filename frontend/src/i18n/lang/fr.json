@@ -20619,5 +20619,14 @@
   "Choose how much the fleet does without asking a person. You can change it, and each gate, later on the fleet page.": "Choisissez ce que la flotte fait sans demander à une personne. Vous pourrez le modifier, ainsi que chaque validation, plus tard sur la page de la flotte.",
   "Who the automations run as, and which ones to switch on. An automation that needs a module this user has not connected stays off.": "Sous quel utilisateur s'exécutent les automatisations, et lesquelles activer. Une automatisation qui a besoin d'un module que cet utilisateur n'a pas connecté reste désactivée.",
   "What switches on when you confirm. Nothing is enabled before this step.": "Ce qui s'active quand vous confirmez. Rien n'est activé avant cette étape.",
-  "Run setup again": "Relancer la configuration"
+  "Run setup again": "Relancer la configuration",
+  "Typed": "Saisi",
+  "API": "API",
+  "Exclude from this sync": "Exclure de cette synchronisation",
+  "From {platform}, kept in sync: only the local fields can be edited here.": "Depuis {platform}, synchronisé : seuls les champs locaux sont modifiables ici.",
+  "From {platform}: only the local fields can be edited here.": "Depuis {platform} : seuls les champs locaux sont modifiables ici.",
+  "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Retirer # ligne synchronisée ?} other {Retirer # lignes synchronisées ?}}",
+  "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : la prochaine exécution de sa synchronisation, {when}, la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : la prochaine exécution de leur synchronisation, {when}, les ramène sauf si vous les excluez.}}",
+  "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : le prochain import la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : le prochain import les ramène sauf si vous les excluez.}}",
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}"
 }
