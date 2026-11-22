@@ -680,8 +680,8 @@ export default function NewIntegration() {
             </div>
             )}
 
-            {/* Webhook URL — only shown when user provides own creds (not admin-provisioned) */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && !onAdminOAuthApp && (
+            {/* Webhook URL — only for a provider with a webhook or hybrid event, when the user provides own creds (not admin-provisioned); a polling-only provider has nothing to configure */}
+            {selected.available_events.some((e) => e.mechanism !== "polling") && !isMicrosoft && !isSlack && !onAdminOAuthApp && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-default-secondary" />
