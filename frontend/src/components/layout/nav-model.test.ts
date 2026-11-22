@@ -28,6 +28,7 @@ const FLAGS: NavFlags = {
   dashboardStudio: true,
   evaluation: true,
   intents: true,
+  ctemCases: false,
 };
 
 const toolsGroup = (): NavGroup => {
@@ -51,6 +52,44 @@ test("the top block reads Home, Chat, the Orchestration group, then Work (#9301)
     primary.entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id)),
     ["/", "/chat", "agents", "work"],
   );
+});
+
+/* The callers set `ctemCases` from the mode (Sidebar.tsx, use-nav-group.ts), as `intents`. */
+const XTM_ONE: NavFlags = { ...FLAGS, xtmOne: true, ctemCases: true };
+
+test("Cases: a top-level row between Chat and Orchestration in XTM One mode only, open with AI off (#1135)", () => {
+  const xtmOne = XTM_ONE;
+  const top = (flags: NavFlags, isAdmin = true) =>
+    resolveNav(flags, isAdmin)[0].entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id));
+  assert.deepEqual(top(xtmOne), ["/", "/chat", "/ctem/cases", "agents", "work"], "XTM One mode, administrator");
+  assert.deepEqual(top(xtmOne, false), ["/", "/chat", "/ctem/cases", "agents", "work"], "XTM One mode, every user");
+  assert.deepEqual(top(FLAGS), ["/", "/chat", "agents", "work"], "Copilot mode: absent, not locked");
+  const cases = (flags: NavFlags) => resolveNav(flags, true)[0].entries.find((entry) => entry.kind === "leaf" && entry.to === "/ctem/cases");
+  for (const flags of [{ ...xtmOne, aiEnabled: false }, { ...xtmOne, aiLicensed: false }, { ...xtmOne, chat: false }]) {
+    const entry = cases(flags);
+    assert.ok(entry && !entry.locked, "listed and open: a read surface, no AI or licence lock");
+  }
+  assert.equal(cases(xtmOne)?.label, "Cases");
+  assert.notEqual(cases(xtmOne)?.icon, "briefcase", "briefcase is the Work group's glyph");
+});
+
+test("a case page lights Cases, the other CTEM pages still light Home (#1135)", () => {
+  const sections = resolveNav(XTM_ONE, true);
+  for (const pathname of ["/ctem/cases", "/ctem/cases/c-1", "/ctem/cases/c-1/history"]) {
+    assert.equal(activeNavPath(sections, pathname), "/ctem/cases", pathname);
+  }
+  for (const pathname of ["/ctem", "/ctem/discovery", "/ctem/governance", "/ctem/casesx", "/briefing"]) {
+    assert.equal(activeNavPath(sections, pathname), "/", pathname);
+  }
+});
+
+test("the palette lists Cases in XTM One mode only, found by CTEM and exposure cases (#1135)", () => {
+  const destination = (flags: NavFlags) => navDestinations(resolveNav(flags, false)).find((dest) => dest.to === "/ctem/cases");
+  const found = destination(XTM_ONE);
+  assert.ok(found, "listed in XTM One mode");
+  assert.equal(found.label, "Cases");
+  assert.deepEqual(found.keywords, ["CTEM", "Exposure cases"]);
+  assert.equal(destination(FLAGS), undefined, "never in Copilot mode");
 });
 
 test("the Orchestration group opens its hub, like Agent Studio, and holds Agents, Fleets, Agentic Flow and, for administrators, Intents (N2c, N2d)", () => {

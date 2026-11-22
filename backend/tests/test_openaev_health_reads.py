@@ -9,13 +9,17 @@ from typing import Any
 
 import pytest
 
+from app.integrations.providers.openaev import _common as openaev_common
 from app.integrations.providers.openaev import build_tools, health_reads
 from app.services.health import module_analyst
 from app.services.tool_classification import infer_tool_type
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOKEN = "https://demo.openaev.io||test-token"
-HEALTH_NAMES = ("get_openaev_platform_health", "list_openaev_expectations_due")
+GET_NAMES = ("get_openaev_platform_health", "list_openaev_expectations_due")
+SEARCH_NAMES = ("get_openaev_data_health", "get_openaev_error_rate")
+HEALTH_NAMES = GET_NAMES + SEARCH_NAMES
+SEARCH_PATHS = {"/api/scenarios/search", "/api/exercises/search", "/api/atomic-testings/search"}
 
 
 class _Resp:
@@ -32,11 +36,14 @@ class _FakeApi:
     def __init__(self, answers: dict[str, tuple[Any, str | None]]) -> None:
         self.answers = answers
         self.calls: list[tuple[str, str]] = []
+        self.bodies: list[dict[str, Any]] = []
 
     async def __call__(
         self, base_url: str, headers: Any, method: str, path: str, action: str, **kwargs: Any
     ) -> tuple[_Resp | None, str | None]:
         self.calls.append((method, path))
+        if "json" in kwargs:
+            self.bodies.append(kwargs["json"])
         body, err = self.answers.get(path, (None, "404 not found"))
         return (None, err) if err else (_Resp(body), None)
 
@@ -65,9 +72,78 @@ async def test_every_request_of_the_reads_is_a_get(monkeypatch: pytest.MonkeyPat
     fake = _FakeApi(
         {"/api/settings": ({}, None), "/api/tenant-settings": ({}, None), "/api/injects/expectations": ([], None)}
     )
-    for name in HEALTH_NAMES:
+    for name in GET_NAMES:
         await _call(monkeypatch, fake, name)
     assert fake.calls and all(method == "get" for method, _ in fake.calls)
+
+
+class _Counts(_FakeApi):
+    """Answers every search with ``totalElements`` from ``count(path, filters)``."""
+
+    def __init__(self, count: Any) -> None:
+        super().__init__({})
+        self.count = count
+
+    async def __call__(
+        self, base_url: str, headers: Any, method: str, path: str, action: str, **kwargs: Any
+    ) -> tuple[_Resp | None, str | None]:
+        await super().__call__(base_url, headers, method, path, action, **kwargs)
+        filters = (kwargs["json"].get("filterGroup") or {}).get("filters", [])
+        value = self.count(path, filters)
+        return (None, value) if isinstance(value, str) else (_Resp({"totalElements": value, "content": []}), None)
+
+
+async def test_the_search_reads_post_size_one_searches_with_known_operators(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _Counts(lambda path, filters: 3)
+    for name in SEARCH_NAMES:
+        await _call(monkeypatch, fake, name)
+    assert fake.calls and all(m == "post" and p in SEARCH_PATHS for m, p in fake.calls)
+    assert all(body["size"] == 1 for body in fake.bodies)
+    for body in fake.bodies:
+        if "filterGroup" in body:
+            assert openaev_common._validate_filter_group(body["filterGroup"]) == ""
+
+
+async def test_data_health_counts_totals_weekly_updates_and_stuck_simulations(monkeypatch: pytest.MonkeyPatch) -> None:
+    def count(path: str, filters: list[dict[str, Any]]) -> int:
+        keys = {f["key"]: f for f in filters}
+        if "exercise_status" in keys:
+            return 2 if keys["exercise_status"]["values"] == ["RUNNING"] else 1
+        if not filters:
+            return 40
+        return 6 if len(filters) == 1 else 9
+
+    out = await _call(monkeypatch, _Counts(count), "get_openaev_data_health")
+    assert "Scenarios: total 40; updated last 7 days 6, weekly mean of the 3 weeks before 3.0" in out
+    assert "Atomic testings: total 40" in out
+    assert "Simulations running over 24 h past their end: 2" in out
+    assert "Simulations canceled in the last 24 h: 1" in out
+    assert "not exposed by the OpenAEV search API" in out
+
+
+async def test_data_health_keeps_going_past_a_refused_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    def count(path: str, filters: list[dict[str, Any]]) -> Any:
+        return "403 forbidden" if path == "/api/scenarios/search" else 5
+
+    out = await _call(monkeypatch, _Counts(count), "get_openaev_data_health")
+    assert "Scenarios: 403 forbidden" in out
+    assert "Simulations: total 5" in out
+
+
+async def test_error_rate_counts_errors_per_day_with_the_mean(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[list[dict[str, Any]]] = []
+
+    def count(path: str, filters: list[dict[str, Any]]) -> int:
+        seen.append(filters)
+        return len(seen)
+
+    out = await _call(monkeypatch, _Counts(count), "get_openaev_error_rate")
+    assert len(seen) == 7
+    assert all(f[0] == {"key": "inject_status", "operator": "eq", "values": ["ERROR", "PARTIAL"]} for f in seen)
+    assert "7-day daily mean 4.0; today 7" in out
+    assert "not exposed by the OpenAEV API" in out
+    out = await _call(monkeypatch, _Counts(lambda path, filters: "403 forbidden"), "get_openaev_error_rate")
+    assert out == "OpenAEV error rate: 403 forbidden"
 
 
 async def test_platform_health_answers_version_licence_services_and_links(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -3,8 +3,9 @@
 """The outside lens, first version (CTEM-26, #1110): the attack surface pass.
 
 An opt-in, scheduled pass reads the outside view of the organization's owned
-domains and address ranges from a connected attack-surface provider (Shodan
-first), keeps one observation per public host
+domains and address ranges from every connected attack-surface provider the
+profile declares (``READERS``: Shodan, Google Threat Intelligence ASM), merges
+them into one observation per public host
 (``models/ctem_surface_observation.py``) and diffs it, in code, against the
 previous pass and against the profile. Each difference is a signal of the
 outside lens (``services/ctem_signals.record_signal``, recorded by ``system``):
@@ -40,8 +41,15 @@ from app.models.ctem_surface_observation import CtemSurfaceObservation
 
 logger = logging.getLogger(__name__)
 
-#: The providers the pass can read today, by integration provider name.
-SUPPORTED_PROVIDERS: tuple[str, ...] = ("shodan",)
+#: The providers the pass can read today, by integration provider name (``READERS`` builds them).
+SUPPORTED_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
+#: Providers XTM One connects that cannot fill an observation, with the reason (``dev-docs/ctem-attack-surface.md``).
+NOT_SUPPORTED: dict[str, str] = {
+    "securityscorecard": "the API answers scores and findings per issue type, not a host inventory with its open ports",
+    "socradar": "the digital asset list carries names and monitoring state, no open ports; its response shape is not recorded yet",
+    "domaintools": "DNS and WHOIS history only: no open ports, and its view is the registrar's, not the reachable surface",
+    "rapid7": "InsightVM assets are the inside scan of managed assets, not the outside view",
+}
 #: The source label of a pass signal.
 SOURCE = "attack_surface"
 
@@ -68,6 +76,8 @@ class Observation:
     dns_target: str = ""
     #: False for a name the provider lists with no record behind it.
     resolves: bool = True
+    #: The providers that saw the host in this pass (set by ``merge_observations``).
+    providers: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -174,6 +184,8 @@ def diff(
             data["dns_target"] = obs.dns_target
         if obs.cert_names:
             data["cert_names"] = obs.cert_names[:20]
+        if len(obs.providers) > 1:
+            data["providers"] = obs.providers
         data.update(extra)
         return data
 
@@ -496,37 +508,221 @@ class ShodanSurfaceReader:
                 obs.cert_names = list(dict.fromkeys([*obs.cert_names, *[c for c in cert_names if c]]))
 
 
+# ── the provider reader: Google Threat Intelligence ASM ────────────────
+
+#: Pages read per project and projects read per pass: a bounded cost per pass.
+_GTI_MAX_PAGES = 10
+_GTI_MAX_PROJECTS = 5
+_GTI_IP_ENTITY = "Intrigue::Entity::IpAddress"
+
+
+def _gti_ports(summary: dict[str, Any]) -> list[Port]:
+    """The open ports of an ASM IP entity (``summary.ports.tcp`` / ``udp``: a list, or null)."""
+    raw_ports = summary.get("ports")
+    ports: dict[str, Any] = raw_ports if isinstance(raw_ports, dict) else {}
+    out: list[Port] = []
+    for transport in ("tcp", "udp"):
+        for item in ports.get(transport) or []:
+            raw = item.get("port") if isinstance(item, dict) else item
+            try:
+                port = Port(int(str(raw)), transport)
+            except (TypeError, ValueError):
+                continue
+            if port.key not in {p.key for p in out}:
+                out.append(port)
+    return out
+
+
+class GtiAsmSurfaceReader:
+    """The outside view from Google Threat Intelligence ASM: the in-scope IP entities of the
+    account's ASM projects, each with its open ports and the names that resolve to it.
+
+    ASM discovers the surface from its own seeds; the reader keeps what falls under the
+    profile's owned domains or address ranges. ASM lists no unresolved name, so path 6
+    "resolves to nothing" comes from DNS-reading providers only.
+    """
+
+    provider = "gti"
+
+    def __init__(self, api_key: str):
+        from app.integrations.providers.gti._common import build_gti_headers
+
+        self._headers = build_gti_headers(api_key)
+
+    async def _get(self, path: str, action: str, params: dict[str, Any] | None = None, project: str = "") -> Any:
+        from app.core.egress import egress_client
+        from app.integrations.http import DEFAULT_TIMEOUT, safe_request
+        from app.integrations.providers.gti._common import GTI_ASM_API
+
+        headers = {**self._headers, "PROJECT-ID": project} if project else self._headers
+        async with egress_client(timeout=DEFAULT_TIMEOUT) as client:
+            resp, err = await safe_request(
+                client,
+                "get",
+                f"{GTI_ASM_API}{path}",
+                "Google Threat Intelligence",
+                action,
+                headers=headers,
+                params=params,
+            )
+        if err or resp is None:
+            raise SurfaceReadError(err or f"Google Threat Intelligence did not answer to {action}")
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise SurfaceReadError(f"Google Threat Intelligence answered a non-JSON body to {action}") from exc
+
+    async def observe(self, domains: list[str], ranges: list[str]) -> list[Observation]:
+        from urllib.parse import quote
+
+        from app.integrations.providers.gti.asm import _next_token, _result_list
+
+        projects = _result_list(await self._get("/projects", "list the ASM projects"))
+        hosts: dict[str, Observation] = {}
+        path = f"/search/entities/{quote(f'type:{_GTI_IP_ENTITY}', safe=':')}"
+        for project in projects[:_GTI_MAX_PROJECTS]:
+            project_id = str(project.get("id") or "").strip()
+            if not project_id.isdigit():
+                continue
+            token = ""
+            for _ in range(_GTI_MAX_PAGES):
+                params: dict[str, Any] = {"page_size": 100}
+                if token:
+                    params["page_token"] = token
+                payload = await self._get(
+                    path, f"search the IP entities of ASM project {project_id}", params, project_id
+                )
+                for entity in _result_list(payload):
+                    self._entity(entity, domains, ranges, hosts)
+                token = _next_token(payload) or ""
+                if not token:
+                    break
+        return list(hosts.values())
+
+    @staticmethod
+    def _entity(entity: dict[str, Any], domains: list[str], ranges: list[str], hosts: dict[str, Observation]) -> None:
+        raw_summary = entity.get("summary")
+        summary: dict[str, Any] = raw_summary if isinstance(raw_summary, dict) else {}
+        if summary.get("scoped") is False:
+            return
+        ip = str(entity.get("name") or "").strip()
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return
+        names = [host_key(n) for n in summary.get("resolutions") or [] if _owned_domain(host_key(n), domains)]
+        if not names:
+            if not _in_ranges(ip, ranges):
+                return
+            names = [ip]
+        ports = _gti_ports(summary)
+        for name in names:
+            obs = hosts.setdefault(name, Observation(host=name))
+            obs.ip = obs.ip or ip
+            for port in ports:
+                if port.key not in {p.key for p in obs.ports}:
+                    obs.ports.append(port)
+
+
 class SurfaceReadError(RuntimeError):
     """The provider could not be read; the pass records nothing and keeps the baseline."""
 
 
-async def reader_for(db: AsyncSession, profile: Any) -> SurfaceReader | str:
-    """The reader of the declared provider integration, or the reason there is none.
+#: The reader of each supported provider, built from the integration's credential.
+READERS: dict[str, Any] = {"shodan": ShodanSurfaceReader, "gti": GtiAsmSurfaceReader}
 
-    The credential is the integration owner's, as the CTEM ticketing sync does:
-    the integration was declared by someone holding the profile edit right, and
-    the token only reads the outside view of the owned domains and ranges.
-    """
+
+def merge_observations(per_reader: list[tuple[str, list[Observation]]]) -> list[Observation]:
+    """One observation per host across providers: ports and certificate names joined, the
+    first address and DNS target kept, resolving when any provider saw it resolve."""
+    merged: dict[str, Observation] = {}
+    for provider, observations in per_reader:
+        for obs in observations:
+            host = host_key(obs.host)
+            if not host:
+                continue
+            into = merged.get(host)
+            if into is None:
+                into = merged[host] = Observation(host=host, resolves=obs.resolves)
+            elif obs.resolves:
+                into.resolves = True
+            into.ip = into.ip or obs.ip
+            into.dns_target = into.dns_target or obs.dns_target
+            for port in obs.ports:
+                if port.key not in {p.key for p in into.ports}:
+                    into.ports.append(port)
+            into.cert_names = list(dict.fromkeys([*into.cert_names, *obs.cert_names]))
+            if provider not in into.providers:
+                into.providers.append(provider)
+    return list(merged.values())
+
+
+class MergedSurfaceReader:
+    """Several providers read as one: every reader must answer, else the pass records nothing
+    (a partial view would age the hosts only the failed provider sees into path 6)."""
+
+    def __init__(self, readers: list[SurfaceReader]):
+        self.readers = readers
+        self.provider = "+".join(r.provider for r in readers)[:40]
+
+    async def observe(self, domains: list[str], ranges: list[str]) -> list[Observation]:
+        per_reader = [(r.provider, await r.observe(domains, ranges)) for r in self.readers]
+        return merge_observations(per_reader)
+
+
+def declared_integrations(surface: Any) -> list[str]:
+    """The integration ids of the pass, each once: ``integration`` then ``integrations``."""
+    ids = [getattr(surface, "integration", "") or "", *(getattr(surface, "integrations", None) or [])]
+    return list(dict.fromkeys(i.strip() for i in ids if i and i.strip()))
+
+
+async def _reader_of(db: AsyncSession, integration_id: str) -> SurfaceReader | str:
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
 
-    surface = getattr(profile, "attack_surface", None)
-    integration_id = (getattr(surface, "integration", "") or "").strip()
-    if not integration_id:
-        return "no attack surface provider is declared in the profile"
     try:
         integration = await db.get(Integration, uuid.UUID(integration_id))
     except ValueError:
         return f"the attack surface provider {integration_id!r} is not an integration id"
     if integration is None:
-        return "the declared attack surface integration no longer exists"
-    if integration.provider not in SUPPORTED_PROVIDERS:
-        return f"{integration.provider} has no attack surface pass yet"
+        return f"the attack surface integration {integration_id} no longer exists"
+    build = READERS.get(integration.provider)
+    if build is None:
+        why = NOT_SUPPORTED.get(integration.provider)
+        return f"{integration.provider} has no attack surface pass" + (f": {why}" if why else " yet")
     owner = str(integration.user_id) if integration.user_id else None
     token = await _get_token(db, integration_id, integration.provider, user_id=owner, integ=integration)
     if not token:
-        return "no credential could be resolved for the attack surface integration"
-    return ShodanSurfaceReader(str(token).strip())
+        return f"no credential could be resolved for the {integration.provider} attack surface integration"
+    reader: SurfaceReader = build(str(token).strip())
+    return reader
+
+
+async def reader_for(db: AsyncSession, profile: Any) -> SurfaceReader | str:
+    """The reader of the declared provider integrations, or the reason there is none.
+
+    The credential is each integration owner's, as the CTEM ticketing sync does:
+    the integration was declared by someone holding the profile edit right, and
+    the token only reads the outside view of the owned domains and ranges. A
+    declared integration that cannot be read is skipped with its reason logged;
+    the pass runs on the others.
+    """
+    ids = declared_integrations(getattr(profile, "attack_surface", None))
+    if not ids:
+        return "no attack surface provider is declared in the profile"
+    readers: list[SurfaceReader] = []
+    reasons: list[str] = []
+    for integration_id in ids:
+        reader = await _reader_of(db, integration_id)
+        if isinstance(reader, str):
+            reasons.append(reader)
+        else:
+            readers.append(reader)
+    if not readers:
+        return "; ".join(reasons)
+    for reason in reasons:
+        logger.warning("CTEM attack surface pass: an integration is skipped: %s", reason)
+    return readers[0] if len(readers) == 1 else MergedSurfaceReader(readers)
 
 
 # ── the schedule ────────────────────────────────────────────────────────

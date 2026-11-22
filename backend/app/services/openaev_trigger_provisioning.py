@@ -47,6 +47,10 @@ simulations, injects and findings. The events map to triggers as follows
 * ``scenario_score_degraded``: resource ``SCENARIO``, ``SCORE_DEGRADATION``
   (OpenAEV's semantic event, valid on scenarios only): a mitigation that was
   proven no longer holds, a path 8 signal of the CTEM loop.
+* ``critical_asset_reached``: resource ``SIMULATION``, ``CRITICAL_ASSET_REACHED``
+  (CTEM-13): a finished simulation's attack path reached an asset of high or
+  very high criticality, a path 4 signal. Optional (:data:`OPTIONAL_EVENTS`):
+  an OpenAEV that refuses it keeps the other triggers.
 
 Every object is named ``XTM One - <fleet> - <purpose>``; a trigger adds
 `` - <event>``, which is how the receiver names the event of a delivery
@@ -97,7 +101,11 @@ EVENTS: dict[str, tuple[str, str, str | None, tuple[str, ...]]] = {
     "asset_stale": ("ASSET", "UPDATE", "asset_status", ("STALE",)),
     "vulnerability_created": ("VULNERABILITY", "CREATE", None, ()),
     "scenario_score_degraded": ("SCENARIO", "SCORE_DEGRADATION", None, ()),
+    "critical_asset_reached": ("SIMULATION", "CRITICAL_ASSET_REACHED", None, ()),
 }
+#: Events an older OpenAEV may not know: a refused trigger is recorded as unsupported and
+#: never fails the assignment's other triggers (``critical_asset_reached``: CTEM-13).
+OPTIONAL_EVENTS: frozenset[str] = frozenset({"critical_asset_reached"})
 
 #: ``(method, path, json)`` -> ``(status, body)``; the body is ``None`` on 404.
 Api = Callable[[str, str, Any], Awaitable[Any]]
@@ -281,14 +289,20 @@ async def reconcile(
     try:
         notifier_id = await _ensure_notifier(api, state.get("notifier_id"), notifier_body(name, url, secret))
         trigger_ids: dict[str, str] = {}
+        unsupported: list[str] = []
         for event in spec["events"]:
-            trigger_ids[event] = await _ensure_trigger(api, held.get(event), trigger_body(spec, event, notifier_id))
+            try:
+                trigger_ids[event] = await _ensure_trigger(api, held.get(event), trigger_body(spec, event, notifier_id))
+            except OpenAEVApiError:
+                if event not in OPTIONAL_EVENTS:
+                    raise
+                unsupported.append(event)
         for event, stale_id in held.items():
             if event not in trigger_ids and stale_id:
                 await api("delete", f"/api/notification-triggers/{stale_id}", None)
     except Exception as exc:  # one assignment never breaks the pass
         return {**state, "status": "error", "error": str(exc)[:500], "checked_at": stamp}
-    return {
+    out: dict[str, Any] = {
         "status": "provisioned",
         "error": None,
         "name": name,
@@ -297,6 +311,10 @@ async def reconcile(
         "fingerprint": fingerprint(name, ",".join(spec["events"]), url),
         "checked_at": stamp,
     }
+    if unsupported:
+        # The OpenAEV instance predates these events: retried at the next check.
+        out["unsupported_events"] = unsupported
+    return out
 
 
 async def remove(api: Api, state: dict[str, Any]) -> str | None:
