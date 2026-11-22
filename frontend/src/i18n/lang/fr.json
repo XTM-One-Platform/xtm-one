@@ -20534,5 +20534,7 @@
   "No collaboration instruction": "Aucune consigne de collaboration",
   "Search capabilities, members, integrations...": "Rechercher fonctionnalités, membres, intégrations...",
   "No capability slot": "Aucun emplacement de fonctionnalité",
-  "No slot matches the search and filters": "Aucun emplacement ne correspond à la recherche et aux filtres"
+  "No slot matches the search and filters": "Aucun emplacement ne correspond à la recherche et aux filtres",
+  "Freshness": "Fraîcheur",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsolète : non vu par OpenAEV au-delà du seuil du tenant"
 }
