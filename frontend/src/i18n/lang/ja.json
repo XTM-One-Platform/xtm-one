@@ -20696,5 +20696,10 @@
   "The evidence health pass finds a supporting asset with no evidence": "証跡ヘルスパスが証跡のない支援資産を検出した",
   "Not computed yet": "未計算",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, other {{products} は {time} に応答しませんでした。ケースは変更されていません。}}",
-  "Open the {product} integration": "{product} の連携を開く"
+  "Open the {product} integration": "{product} の連携を開く",
+  "Agentic checks": "エージェントによるチェック",
+  "No check round yet": "チェックはまだ実行されていません",
+  "Show the checks": "チェックを表示",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
 }
