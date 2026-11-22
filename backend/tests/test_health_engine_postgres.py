@@ -66,6 +66,23 @@ async def test_a_failure_is_one_row_resolved_after_two_passes_and_reopened_on_re
 
 
 @pytest.mark.asyncio
+async def test_a_pending_failure_is_neither_scored_nor_open_and_a_pass_drops_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#958: one failing read is a pending row the score and the open counts never see."""
+    monkeypatch.setattr(engine, "OPEN_AFTER_FAILS", 2)
+    async with _temp_database("he_pending") as sessions, sessions() as db:
+        assert (await record_results(db, [_fail(severity="critical")], now=T0))["opened"] == 0
+        assert (await engine.open_counts(db))["agents"]["critical"] == 0
+        assert (await engine.module_scores(db))[0]["agents"] == 100
+        await record_results(db, [_fail(False)], now=T0 + timedelta(minutes=15))
+        assert await db.scalar(select(func.count()).select_from(HealthCheckFinding)) == 0
+        await record_results(db, [_fail(severity="critical")], now=T0 + timedelta(minutes=30))
+        assert (await record_results(db, [_fail(severity="critical")], now=T0 + timedelta(minutes=45)))["opened"] == 1
+        row = (await db.execute(select(HealthCheckFinding))).scalar_one()
+        assert (row.status, row.opened_at, row.alerted_at) == (STATUS_OPEN, T0 + timedelta(minutes=45), None)
+        assert (await engine.module_scores(db))[0]["agents"] == 75
+
+
+@pytest.mark.asyncio
 async def test_a_dismissed_finding_stays_silent_until_its_expiry():
     async with _temp_database("he_dismiss") as sessions, sessions() as db:
         await record_results(db, [_fail()], now=T0)
