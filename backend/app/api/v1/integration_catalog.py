@@ -29,6 +29,7 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
+from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -5016,7 +5017,14 @@ PROVIDER_CATALOG = {
         "auth_type": "api_key",
         "supported_auth_types": ["api_key"],
         "fields": ["api_key"],
-        "extra_fields": {"instance_host": "DealHub API host (api.dealhub.io when empty)"},
+        "extra_fields": {
+            "instance_host": "DealHub API host (api.dealhub.io when empty)",
+            "webhook_token": "Webhook token (real-time quote events; several tokens separated by commas while rotating)",
+        },
+        # Quote events: DealHub webhooks (Token authentication) in real time,
+        # polling of the quote statuses every 15 minutes as the fallback
+        # (services/dealhub_events.py).
+        "available_events": _dealhub_catalog_events(),
         "setup_guide": {
             "title": "DealHub API token",
             "url": "https://developers.dealhub.io/docs/authentication-overview",
@@ -5025,6 +5033,7 @@ PROVIDER_CATALOG = {
                 "Paste the token in the 'API key' field.",
                 "Leave 'DealHub API host' empty for api.dealhub.io, or set your instance's host (a name under dealhub.io).",
                 "Click 'Test Connection': it reads the account's active users.",
+                "Optional, real-time quote events: generate a long random token and paste it in 'Webhook token'; in DealHub, System Settings > API Settings > Webhooks, add a webhook whose URL is this integration's webhook URL ({base_url}/api/hooks/integrations/<integration id>), select the quote events and the Token authentication type with the same token. Without it, the events are polled every 15 minutes.",
             ],
             "permissions": [
                 {
