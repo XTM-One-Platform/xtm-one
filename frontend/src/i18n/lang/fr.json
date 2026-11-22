@@ -20738,5 +20738,19 @@
   "No check round yet": "Aucune série de contrôles pour l’instant",
   "Show the checks": "Voir les contrôles",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# non exécuté} other {# non exécutés}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# réussi} other {# réussis}}, {warned, plural, one {# avertissement} other {# avertissements}}, {failed, plural, one {# en échec} other {# en échec}}"
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# réussi} other {# réussis}}, {warned, plural, one {# avertissement} other {# avertissements}}, {failed, plural, one {# en échec} other {# en échec}}",
+  "Running versions": "Versions en service",
+  "this product": "ce produit",
+  "No asset in the inventory reports {product}: the running versions come from the assets (Intune, Defender, an SBOM, OpenAEV).": "Aucun actif de l'inventaire ne signale {product} : les versions en service viennent des actifs (Intune, Defender, un SBOM, OpenAEV).",
+  "{count, plural, =0 {No asset is below {version}} one {# asset still below {version}} other {# assets still below {version}}}": "{count, plural, =0 {Aucun actif sous {version}} one {# actif encore sous {version}} other {# actifs encore sous {version}}}",
+  "{count, plural, =0 {No asset runs {version} or later yet} one {# asset runs {version} or later} other {# assets run {version} or later}}": "{count, plural, =0 {Aucun actif n'est encore en {version} ou plus} one {# actif en {version} ou plus} other {# actifs en {version} ou plus}}",
+  "{count, plural, one {# asset runs a version that cannot be compared} other {# assets run a version that cannot be compared}}": "{count, plural, =0 {Aucun actif avec une version non comparable} one {# actif avec une version non comparable} other {# actifs avec une version non comparable}}",
+  "{count, plural, one {# more version not listed} other {# more versions not listed}}": "{count, plural, =0 {Aucune autre version} one {# autre version non listée} other {# autres versions non listées}}",
+  "No version": "Aucune version",
+  "Below the fixed version": "Sous la version corrigée",
+  "On the fixed version or later": "Version corrigée ou ultérieure",
+  "Cannot be compared": "Non comparable",
+  "SBOM": "SBOM",
+  "CSV import": "Import CSV",
+  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "L'inventaire des actifs signale {product} sur {assets, plural, one {# actif} other {# actifs}} en {versions, plural, one {# version} other {# versions}}."
 }
