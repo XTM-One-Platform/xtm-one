@@ -169,39 +169,107 @@ def answer_links(
     ]
 
 
-def link_card(decision: Decision, recipient_id: uuid.UUID, surface: str) -> dict[str, Any]:
-    """The Adaptive Card a Graph message posted as a user carries: ``Action.OpenUrl`` only.
+def _source_url(decision: Decision) -> str | None:
+    """The page of the decision's source in XTM One, absolute; ``None`` when the row names none."""
+    from app.services.decision_links import decision_link
 
-    The same content as the web card (question, context, the recommended
-    option named, deadline); each option is one link that answers it in one
-    click from the recipient's session. ``providers/microsoft/_cards.py``
-    ``parse_card`` accepts it as is.
-    """
-    ask = decision.ask or {}
-    body: list[dict[str, Any]] = [
+    source_type = getattr(decision, "source_type", None)
+    source_id = getattr(decision, "source_id", None)
+    if not source_type or not source_id:
+        return None
+    try:
+        route = decision_link(str(source_type), source_id)
+    except ValueError:
+        return None
+    return settings.frontend_url.rstrip("/") + route
+
+
+def _option_row(option: dict[str, Any], recommended: bool, language: str | None) -> dict[str, Any]:
+    """One option of the link card as the web card shows it: label, effect, the recommended one highlighted."""
+    from app.services.channel_notices import notice
+
+    items: list[dict[str, Any]] = []
+    if recommended:
+        items.append(
+            {
+                "type": "TextBlock",
+                "text": notice("card_recommended", language).upper(),
+                "size": "Small",
+                "weight": "Bolder",
+                "color": "Good",
+                "spacing": "None",
+            }
+        )
+    items.append(
         {
             "type": "TextBlock",
-            "text": _question(ask, None),
+            "text": f"**{option.get('key')}.** {option.get('label') or option.get('key')}"[:300],
+            "wrap": True,
+            "spacing": "None",
+        }
+    )
+    if option.get("effect"):
+        items.append(
+            {
+                "type": "TextBlock",
+                "text": str(option["effect"])[:600],
+                "wrap": True,
+                "isSubtle": True,
+                "spacing": "None",
+            }
+        )
+    return {
+        "type": "Container",
+        "style": "good" if recommended else "emphasis",
+        "spacing": "Small",
+        "items": items,
+    }
+
+
+def link_card(
+    decision: Decision,
+    recipient_id: uuid.UUID,
+    surface: str,
+    language: str | None = None,
+    kicker: str | None = None,
+) -> dict[str, Any]:
+    """The Adaptive Card a Graph message posted as a user carries: ``Action.OpenUrl`` only.
+
+    The layout of the in-app ``DecisionCard``: the kicker (where the decision
+    comes from), the question, the context, one row per option (label and
+    effect, the recommended one highlighted), the deadline, then one button
+    per option, "Answer with text" and "Open in XTM One". Each option button
+    answers it in one click from the recipient's session. Its words are in
+    *language* (en, fr, es, ja). ``providers/microsoft/_cards.py``
+    ``parse_card`` accepts it as is.
+    """
+    from app.services.channel_notices import notice
+
+    ask = decision.ask or {}
+    body: list[dict[str, Any]] = []
+    if kicker:
+        body.append({"type": "TextBlock", "text": kicker[:120], "size": "Small", "weight": "Bolder", "isSubtle": True})
+    body.append(
+        {
+            "type": "TextBlock",
+            "text": _question(ask, language),
             "weight": "Bolder",
             "size": "Medium",
             "wrap": True,
-        },
-    ]
+            "spacing": "None" if kicker else "Default",
+        }
+    )
     if ask.get("context"):
         body.append({"type": "TextBlock", "text": str(ask["context"])[:1500], "wrap": True, "isSubtle": True})
     recommended = str(ask.get("recommendation") or "")
     for option in ask.get("options") or []:
-        line = f"**{option.get('label') or option.get('key')}**"
-        if recommended and str(option.get("key")) == recommended:
-            line += " (recommended)"
-        if option.get("effect"):
-            line += f": {option['effect']}"
-        body.append({"type": "TextBlock", "text": line[:600], "wrap": True, "spacing": "Small"})
+        if option.get("key"):
+            body.append(_option_row(option, bool(recommended) and str(option.get("key")) == recommended, language))
     if decision.deadline is not None:
         body.append(
             {
                 "type": "TextBlock",
-                "text": f"Answer before {decision.deadline:%Y-%m-%d %H:%M} UTC",
+                "text": f"{notice('card_label_deadline', language)}: {decision.deadline:%Y-%m-%d %H:%M} UTC",
                 "isSubtle": True,
                 "wrap": True,
             }
@@ -213,8 +281,10 @@ def link_card(decision: Decision, recipient_id: uuid.UUID, surface: str) -> dict
             "url": link["url"],
             **({"style": "positive"} if recommended and link["key"] == recommended else {}),
         }
-        for link in answer_links(decision, recipient_id, surface)
+        for link in answer_links(decision, recipient_id, surface, language)
     ]
+    if (source := _source_url(decision)) is not None:
+        actions.append({"type": "Action.OpenUrl", "title": notice("card_open", language), "url": source})
     return {
         "type": "AdaptiveCard",
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
