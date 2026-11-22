@@ -24,10 +24,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * while the fleet's members, handovers and gates stay locked. The card is not
  * shown when no member's role declares a slot.
  *
- * Compact (UX round 1 of #994, B3/B4): one bar styled like Fleet defaults,
- * a one-line summary of the connected slots, expanded on click into one row
- * per member with its slots inline, so the Members table stays on the first
- * screen.
+ * Capabilities first (#1128): the card opens expanded on the shared DataTable,
+ * one row per member x slot (capability icon and label, member and role,
+ * status, bound integrations with their provider logo, the bind action),
+ * searchable, filtered by status and capability, Not bound first, paged by
+ * the table so the Members table below stays close. Pure logic:
+ * `capability-slots-table.ts`. Also embedded by the CTEM loop setup dialog:
+ * its props stay `{ fleet }`.
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -36,49 +39,166 @@ import { Icon } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
+import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
-import {
-  useBindFleetSlot,
-  useFleetCapabilitySlots,
-  useUnbindFleetSlot,
-  type Fleet,
-  type FleetCapabilitySlot,
-  type FleetMemberSlots,
-} from "@/hooks/api/useFleetApi";
+import { useBindFleetSlot, useFleetCapabilitySlots, useUnbindFleetSlot, type Fleet } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
 
+import {
+  CAPABILITIES_OPEN_BY_DEFAULT,
+  SLOT_STATE_LABELS,
+  SLOT_STATE_VARIANTS,
+  capabilityIcon,
+  capabilityOptions,
+  capabilitySlotRows,
+  slotCounts,
+  slotRowSearchFields,
+  slotStateRank,
+  type CapabilitySlotRow,
+} from "./capability-slots-table";
 import { fleetRefusalMessage } from "./fleet-refusals";
 
-/** The words of a slot's state, short and plain (13bis.10). @i18n-keys */
-const SLOT_STATE_LABELS = {
-  filled: "Connected",
-  empty: "Not bound",
-  unavailable: "None connected",
-} as const;
-
-/** A slot that can be bound but is not reads as a warning, apart from "None connected" (UX r1 A1). */
-const SLOT_STATE_VARIANTS = {
-  filled: "success",
-  empty: "warning",
-  unavailable: "outline",
-} as const;
+/** Ten rows a page: the Members table stays one short scroll away (no nested scroll box). */
+const SLOTS_PAGE_SIZE = 10;
 
 export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, t_text } = useFormatter();
+  const { toast } = useToast();
   const { data, isLoading, error } = useFleetCapabilitySlots(fleet.id);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(CAPABILITIES_OPEN_BY_DEFAULT);
+  const bind = useBindFleetSlot(fleet.id);
+  const unbind = useUnbindFleetSlot(fleet.id);
   if (isLoading || error || !data || data.members.length === 0) return null;
-  const slots = data.members.flatMap((member) => member.slots);
-  const connected = slots.filter((slot) => slot.state === "filled").length;
+  const rows = capabilitySlotRows(data.members);
+  if (rows.length === 0) return null;
+  const { connected, total } = slotCounts(data.members);
+  const busy = bind.isPending || unbind.isPending;
+  const refused = (err: Error) =>
+    toast({ title: t_i18n("The binding could not be changed"), description: fleetRefusalMessage(err, t_i18n), variant: "error" });
   const help = fleet.is_builtin
     ? t_i18n("Connect your tools to each member. Your bindings are kept by every release; the members and their handovers stay the product's.")
     : t_i18n("Connect your tools to each member.");
+  const integrationName = (integration: { name: string; provider: string }) => integration.name || integration.provider;
+
+  const columns: DataTableColumn<CapabilitySlotRow>[] = [
+    {
+      key: "capability",
+      header: "Capability",
+      sortValue: (row) => t_text(row.slot.label),
+      csv: (row) => t_text(row.slot.label),
+      cell: (row) => (
+        <span className="flex min-w-0 items-center gap-2">
+          <Icon name={capabilityIcon(row.slot.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
+          <span className="truncate">{t_text(row.slot.label)}</span>
+        </span>
+      ),
+    },
+    {
+      key: "member",
+      header: "Member",
+      sortValue: (row) => row.member.name,
+      csv: (row) => row.member.name,
+      cell: (row) => (
+        <span className="block min-w-0">
+          <span className="block max-w-[240px] truncate font-medium">{row.member.name || t_i18n("Unknown agent")}</span>
+          {row.member.role_label && <span className="block max-w-[240px] truncate content-caption text-default-secondary">{row.member.role_label}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortValue: slotStateRank,
+      csv: (row) => t_i18n(SLOT_STATE_LABELS[row.slot.state]),
+      cell: (row) => (
+        <Badge variant={SLOT_STATE_VARIANTS[row.slot.state]} className="whitespace-nowrap">
+          {t_i18n(SLOT_STATE_LABELS[row.slot.state])}
+        </Badge>
+      ),
+    },
+    {
+      key: "integration",
+      header: "Integration",
+      hideable: true,
+      interactive: true,
+      csv: (row) => row.slot.bound.map(integrationName).join(", "),
+      cell: (row) => (
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {row.slot.bound.map((integration) => (
+            <span
+              key={integration.integration_id}
+              className="group inline-flex max-w-[220px] items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5"
+              data-testid={`slot-bound-${row.key}`}
+            >
+              <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />
+              <span className="truncate" title={integrationName(integration)}>
+                {integrationName(integration)}
+              </span>
+              {row.member.can_edit && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                  disabled={busy}
+                  aria-label={t_i18n("Unbind {name}", { name: integrationName(integration) })}
+                  onClick={() =>
+                    unbind.mutate(
+                      { memberId: row.member.member_id, capability: row.slot.capability, integrationId: integration.integration_id },
+                      { onError: refused },
+                    )
+                  }
+                >
+                  <Icon name="x" size={16} aria-hidden />
+                </Button>
+              )}
+            </span>
+          ))}
+        </span>
+      ),
+    },
+  ];
+
+  // The bind action of a row: its last column, which never opens the row (the member's agent).
+  const bindAction = (row: CapabilitySlotRow) => {
+        if (!row.member.can_edit) return null;
+        if (row.slot.candidates.length > 0)
+          return (
+            <SearchableSelect
+              aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(row.slot.label) })}
+              options={row.slot.candidates.map((candidate) => ({
+                value: candidate.integration_id,
+                label: integrationName(candidate),
+                keywords: [candidate.provider],
+                icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
+              }))}
+              searchable="auto"
+              value=""
+              disabled={busy}
+              placeholder={t_i18n("Bind an integration")}
+              onValueChange={(integrationId) => {
+                if (integrationId)
+                  bind.mutate({ memberId: row.member.member_id, capability: row.slot.capability, integrationId }, { onError: refused });
+              }}
+              className="w-[200px]"
+            />
+          );
+        if (row.slot.state === "unavailable")
+          return (
+            <Link to="/integrations" className="content-caption text-accent">
+              {t_i18n("Connect one")}
+            </Link>
+          );
+        return null;
+  };
+
   return (
     <Card data-testid="fleet-capability-slots">
       <CardContent className="space-y-3 p-4">
-        {/* The Fleet defaults bar's header: icon, 12 px title, one-line summary (UX r1 B4). */}
+        {/* The Fleet defaults bar's header: icon, 12 px title, one-line summary (UX r1 B4 of #994). */}
         <div className="flex items-start gap-2">
           <Icon name="network" size={16} className="shrink-0 text-default-secondary" aria-hidden />
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
@@ -87,7 +207,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
               <InfoTip label={t_i18n("What capability slots are")} content={help} />
             </h3>
             <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-capability-slots-summary">
-              {t_i18n("{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}", { connected, total: slots.length })}
+              {t_i18n("{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}", { connected, total })}
             </span>
           </div>
           <Button
@@ -103,101 +223,43 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
           </Button>
         </div>
         {open && (
-          <ul id="fleet-capability-slots-rows">
-            {data.members.map((member) => (
-              <MemberSlots key={member.member_id} fleetId={fleet.id} member={member} />
-            ))}
-          </ul>
+          <div id="fleet-capability-slots-rows">
+            <DataTable
+              rows={rows}
+              columns={columns}
+              rowKey={(row) => row.key}
+              rowHref={(row) => `/agents/${row.member.agent_id}`}
+              rowActions={bindAction}
+              rowActionsWidth={216}
+              defaultSort={{ key: "status", direction: "asc" }}
+              searchFields={(row) => slotRowSearchFields(row, t_text(row.slot.label))}
+              searchPlaceholder={t_i18n("Search capabilities, members, integrations...")}
+              filters={[
+                {
+                  key: "status",
+                  label: "Status",
+                  values: (row) => [row.slot.state],
+                  // An ordinal scale: what is left to bind first.
+                  ordered: true,
+                  options: (["empty", "unavailable", "filled"] as const).map((state) => ({ value: state, label: t_i18n(SLOT_STATE_LABELS[state]) })),
+                },
+                {
+                  key: "capability",
+                  label: "Capability",
+                  values: (row) => [row.slot.capability],
+                  options: capabilityOptions(rows).map((option) => ({ value: option.value, label: t_text(option.label) })),
+                },
+              ]}
+              defaultPageSize={SLOTS_PAGE_SIZE}
+              emptyLabel={t_i18n("No capability slot")}
+              noResultsLabel={t_i18n("No slot matches the search and filters")}
+              framed={false}
+              rowLines={2}
+              rowTestId="fleet-capability-slot-row"
+            />
+          </div>
         )}
       </CardContent>
     </Card>
-  );
-}
-
-/** One row per member: name and role on the left, its slots inline across the width. */
-function MemberSlots({ fleetId, member }: { fleetId: string; member: FleetMemberSlots }) {
-  const { t_i18n } = useFormatter();
-  return (
-    <li aria-label={member.name} className="grid gap-2 border-t border-elevation-subtle py-2 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[220px_minmax(0,1fr)]">
-      <div className="min-w-0">
-        <Link to={`/agents/${member.agent_id}`} className="block truncate content-compact font-medium hover:underline">
-          {member.name || t_i18n("Unknown agent")}
-        </Link>
-        {member.role_label && <span className="block truncate content-caption text-default-secondary">{member.role_label}</span>}
-      </div>
-      <ul className="flex min-w-0 flex-wrap gap-x-4 gap-y-2">
-        {member.slots.map((slot) => (
-          <SlotRow key={slot.capability} fleetId={fleetId} member={member} slot={slot} />
-        ))}
-      </ul>
-    </li>
-  );
-}
-
-function SlotRow({ fleetId, member, slot }: { fleetId: string; member: FleetMemberSlots; slot: FleetCapabilitySlot }) {
-  // The slot's label comes from the API: translated when the catalog holds it, shown as is otherwise.
-  const { t_i18n, t_text } = useFormatter();
-  const { toast } = useToast();
-  const bind = useBindFleetSlot(fleetId);
-  const unbind = useUnbindFleetSlot(fleetId);
-  const busy = bind.isPending || unbind.isPending;
-  const refused = (error: Error) =>
-    toast({ title: t_i18n("The binding could not be changed"), description: fleetRefusalMessage(error, t_i18n), variant: "error" });
-
-  return (
-    <li className="flex flex-wrap items-center gap-2 content-compact" data-testid={`slot-${member.member_id}-${slot.capability}`}>
-      <span className="shrink-0">{t_text(slot.label)}</span>
-      <Badge variant={SLOT_STATE_VARIANTS[slot.state]} className="shrink-0">
-        {t_i18n(SLOT_STATE_LABELS[slot.state])}
-      </Badge>
-      {slot.bound.map((integration) => (
-        <span key={integration.integration_id} className="inline-flex max-w-[220px] items-center gap-1 rounded-sm bg-elevation-hover px-1.5 py-0.5">
-          <span className="truncate" title={integration.name || integration.provider}>
-            {integration.name || integration.provider}
-          </span>
-          {member.can_edit && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
-              disabled={busy}
-              aria-label={t_i18n("Unbind {name}", { name: integration.name || integration.provider })}
-              onClick={() =>
-                unbind.mutate(
-                  { memberId: member.member_id, capability: slot.capability, integrationId: integration.integration_id },
-                  { onError: refused },
-                )
-              }
-            >
-              <Icon name="x" size={16} aria-hidden />
-            </Button>
-          )}
-        </span>
-      ))}
-      {member.can_edit && slot.candidates.length > 0 && (
-        <SearchableSelect
-          aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(slot.label) })}
-          options={slot.candidates.map((candidate) => ({
-            value: candidate.integration_id,
-            label: candidate.name || candidate.provider,
-            keywords: [candidate.provider],
-          }))}
-          searchable="auto"
-          value=""
-          disabled={busy}
-          placeholder={t_i18n("Bind an integration")}
-          onValueChange={(integrationId) => {
-            if (integrationId) bind.mutate({ memberId: member.member_id, capability: slot.capability, integrationId }, { onError: refused });
-          }}
-          className="w-[200px] shrink-0"
-        />
-      )}
-      {slot.state === "unavailable" && member.can_edit && (
-        <Link to="/integrations" className="content-caption text-accent hover:underline">
-          {t_i18n("Connect one")}
-        </Link>
-      )}
-    </li>
   );
 }

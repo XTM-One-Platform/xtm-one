@@ -20459,5 +20459,12 @@
   "Kept as a fingerprint only, never the value": "Se guarda solo como huella, nunca el valor",
   "Named in": "Citado en",
   "Organization criticality": "Criticidad de la organización",
-  "From {source}": "Desde {source}"
+  "From {source}": "Desde {source}",
+  "Context: {value}": "Contexto: {value}",
+  "Scope: {value}": "Alcance: {value}",
+  "Collaboration instruction set": "Instrucción de colaboración definida",
+  "No collaboration instruction": "Sin instrucción de colaboración",
+  "Search capabilities, members, integrations...": "Buscar funcionalidades, miembros, integraciones...",
+  "No capability slot": "Ningún espacio de funcionalidad",
+  "No slot matches the search and filters": "Ningún espacio coincide con la búsqueda y los filtros"
 }
