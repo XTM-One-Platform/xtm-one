@@ -13,6 +13,8 @@
 
 """``POST /decisions/{id}/answer``: one answer path for every human gate (#842, S2).
 
+``GET /decisions/waiting``: the "Waiting for you" inbox read (S5).
+
 The id is ``run:<uuid>``, ``flow_run:<uuid>``, ``work_item:<uuid>`` or a
 ``decisions`` row id; the answer goes to the engine's own answer function
 (:mod:`app.services.decision_router`), so the old endpoints and this one apply
@@ -23,7 +25,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +59,22 @@ async def backfill_status(
 
     conn = await db.connection()
     return await conn.run_sync(lambda sync_conn: read_switch(sync_conn))
+
+
+@router.get("/waiting")
+async def waiting(
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The "Waiting for you" inbox (S5): the caller's open decisions across every source.
+
+    ``enabled`` is false, with its reason, while the read switch is off; the
+    readers then keep their per-engine views.
+    """
+    from app.services.decision_inbox import waiting_for
+
+    return await waiting_for(db, user, limit=limit)
 
 
 @router.post("/{decision_id}/answer")
