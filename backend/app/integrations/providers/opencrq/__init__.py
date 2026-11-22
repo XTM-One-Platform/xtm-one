@@ -35,13 +35,15 @@ The provider is split by domain:
 * ``threats``      - the threat catalog, threats relevant to a risk
                      scenario, and threats citing a CVE.
 * ``treatment``    - risk treatment plans and budget reviews, with their
-                     simulated loss reduction and return.
+                     simulated loss reduction and return; creates and
+                     updates a plan and its control moves (CTEM-18).
 * ``control_validation`` - control posture proven by attack simulations.
 * ``dashboard``    - the risk dashboard (exposure, tolerance, top controls,
                      active threats).
 * ``connectors``   - connector health and syncs.
 
-The tools of the last six modules are read-only.
+The tools of the last six modules are read-only, except the treatment plan
+writes of ``treatment``.
 
 Token format passed by the dispatcher: ``base_url||api_token`` (the
 ``extra_config`` base_url is prepended by ``_get_token`` in

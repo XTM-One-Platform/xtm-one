@@ -49,6 +49,14 @@ function counts(values: Record<string, number> | null, unavailable: boolean, t: 
   return entries.map(([key, n]) => `${t(healthReasonLabel(key))} ${n}`).join(" · ");
 }
 
+/** A Module Analyst cycle's recommendations: the total attached, then by confidence (`digest._recommendations`). */
+function attached(values: Record<string, number> | null, unavailable: boolean, t: (key: string) => string) {
+  if (unavailable || values === null) return counts(values, unavailable, t);
+  const { attached: total = 0, ...byConfidence } = values;
+  const detail = counts(byConfidence, false, t);
+  return total > 0 ? `${total} · ${detail}` : "0";
+}
+
 export function DigestStatusBadge({ status }: { status: HealthDigest["status"] | "open" }) {
   const { t_i18n } = useFormatter();
   return (
@@ -73,13 +81,29 @@ export function CycleDigestView({ digest }: { digest: HealthDigest }) {
             value={counts(digest.consolidations, missing.has("consolidations"), t_i18n)}
           />
         )}
+        {digest.specialist === "module_analyst" && (
+          <>
+            <Figure
+              label={t_i18n("Recommendations attached")}
+              value={attached(digest.recommendations ?? null, missing.has("recommendations"), t_i18n)}
+            />
+            <Figure
+              label={t_i18n("Agentic findings")}
+              value={counts(digest.agentic_findings ?? null, missing.has("agentic_findings"), t_i18n)}
+            />
+          </>
+        )}
         {digest.specialist !== "memory_steward" && (
           <>
-            <Figure label={t_i18n("Findings")} value={counts(digest.findings, missing.has("findings"), t_i18n)} />
-            <Figure
-              label={t_i18n("Experiments")}
-              value={counts(digest.experiments, missing.has("experiments"), t_i18n)}
-            />
+            {digest.specialist !== "module_analyst" && (
+              <>
+                <Figure label={t_i18n("Findings")} value={counts(digest.findings, missing.has("findings"), t_i18n)} />
+                <Figure
+                  label={t_i18n("Experiments")}
+                  value={counts(digest.experiments, missing.has("experiments"), t_i18n)}
+                />
+              </>
+            )}
             <Figure
               label={t_i18n("Proposals")}
               value={
@@ -99,7 +123,7 @@ export function CycleDigestView({ digest }: { digest: HealthDigest }) {
           </>
         )}
         <Figure
-          label={t_i18n("Budget spent")}
+          label={digest.budget.ledger === "module_analyst" ? t_i18n("Spent on the Module Analyst ceiling") : t_i18n("Budget spent")}
           value={t_i18n("{tokens} tokens · ${cost}", {
             tokens: n(digest.budget.spent_tokens),
             cost: Number(digest.budget.spent_cost_usd).toFixed(2),

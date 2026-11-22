@@ -627,6 +627,7 @@ APPROVE on its head.
 | S12 | Health alert emails | yes |
 | S13 | Consistency and polish pass (Sam, 19 Nov 2026): role matrix (admin, group manager, agent owner, plain user) x mode (Copilot, XTM One, `ai_disabled`) for every Health surface written here and each cell pinned by a test (visible <=> openable <=> API 200); an automated guard walking every in-app link of the Health surfaces per role; one compact Settings section; display quality (empty states, score formula, trends, evidence, links, vocabulary, i18n, dark and light, a11y); UX Director full-journey review per role in the lab, APPROVE closes the program; matrix and before/after captures in the PR body | yes |
 | S14 | Module Analyst (section 12, Sam, 21 Nov 2026): agentic read-only investigation of every registered OpenCTI, OpenAEV and OpenCRQ, recommendations on findings, outside agentic quota under its own ceiling; sub-slices S14a to S14e (section 12.10) | yes |
+| S15 | Agentic module health checks (section 13, Sam, 22 Nov 2026): one health checker per module with its check playbook skill and module tooling, a daily check round independent of findings delegated by the orchestrator, a check report per module on the Health page, agentic findings per failed check; sub-slices S15a to S15f (section 13.10) | yes |
 
 Companion (Sam, 19 Nov 2026, ahead of S8): the companion, its profile card and
 `/health/me/{companion,activity}` exist only for who can open Platform Health. While
@@ -650,6 +651,22 @@ Decided by Sam, 21 Nov 2026:
   the registered modules, outside agentic quota, under its own daily and monthly ceiling
   in Spend limits. This reverses the "extra cap, never a bypass" rule of
   `services/health/budget.py` for this member only (section 12.5).
+
+Decided by Sam, 22 Nov 2026:
+
+- Agentic module health checks (section 13): **the check is the product**. "People don't
+  need an analysis of the findings, it's useful but we need agentic health checks for the
+  modules, so the fleet needs tooling to actually go into OpenCTI / OpenAEV / OpenCRQ and do
+  checks beyond the findings and the health the modules are declaring." Section 13
+  supersedes the finding-centric framing of section 12: a recommendation on a declared
+  finding stays, as one output of a check round among others. What S14 shipped (the member,
+  the triggers, the quota exemption, the ceiling ledger, the recommendation and agentic
+  finding store) is kept and reused; nothing is reverted.
+- Agentic module checks scope: **modules and their own data only**. "Don't put any third
+  party or connector checks like drata or cve etc. It's focused on the modules. It's only
+  health of the modules and the data itself, + integrations but 'generic' like logs etc.
+  Remove everything related to third parties." Third-party and connector checks are out of
+  scope of section 13 (13.4).
 
 ## 12. Module Analyst: agentic module checks (S14)
 
@@ -873,7 +890,8 @@ decision written here).
   every tool outside `MODULE_ANALYST_TOOLS` is withheld and refused by name. Any other
   run, Copilot mode or an inactive registration gets no module tool.
 - The orchestrator does not delegate to the analyst; it starts only from its own
-  triggers.
+  triggers. **Superseded by section 13.2 (S15):** the orchestrator delegates the module
+  round to the module health checkers.
 
 ### 12.9 Acceptance pinned by tests
 
@@ -900,5 +918,267 @@ decision written here).
 | S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2a the member's seed (`health-module-analyst`, no handover, assignment "Platform Health module investigation" that nothing starts yet), S14a-2b its triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i); shipped in two PRs: S14b-1 the server-only predicate `is_module_analyst_run` and the engine exemption (`exempt_module_analyst` on the run's quota trace metadata), `HealthModuleAnalystSettings` ceilings at the provisional defaults of 12.6, the `health_module_analyst_spend` ledger (`module_analyst_budget.py`, migration `h128healthmaspend01`), tests in `tests/test_health_module_analyst_budget*.py`; S14b-2 the reservation before every model call of the loop (`module_analyst_ceiling.py`: the run's provider wrapped by the engine when `is_module_analyst_run` holds; a refused call answers `budget_exhausted` with no tool call), the release from the fleet budget of `budget.py` (`open_cycle` gates the member's cycle on the switches and the licence only, `cycles._settle_cycle` marks its runs booked with nothing charged and never stops it at the fleet caps), tests in `tests/test_health_module_analyst_ceiling.py`; S14b-3 the lab measurement and the default ceiling of 12.6 | no |
 | S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now"; shipped in two PRs: S14c-1 the API (`FindingResponse.agentic` and `analyst_recommendation`, the newest `health_finding_recommendations` row; `GET /findings?agentic=`; `ModuleCard.last_investigation` for an administrator; `POST /modules/{module}/investigate`, administrators, `require_agentic_ai`, one on-demand cycle per active registration, `module_analyst_off` and `no_registration` refusals; `tests/test_health_module_analyst_page_api_postgres.py`), S14c-2 the page | S14c-1 no, S14c-2 yes |
-| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n | S14d-1 no, S14d-2 yes |
+| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n (`pages/settings/HealthModuleAnalystBlock.tsx`, the Module Analyst block of Spend limits, XTM One modes only, with its five ceilings in the section's draft and its day and month spend from `GET /analysis`; `CycleDigestView` shows a module cycle's recommendations by confidence, its agentic findings and its spend against its own ceiling; `module_analyst` in `HEALTH_SPECIALIST_LABELS`; `docs/docs/administration/health.md`) | S14d-1 no, S14d-2 yes |
 | S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |
+
+## 13. Agentic module health checks (S15)
+
+Decided by Sam, 22 Nov 2026 (section 11). Section 12 built a member that explains the
+findings a module declares; with no finding it has nothing meaningful to do, and its ten
+read tools cannot see what a Filigran engineer checks by hand. Section 13 makes the
+**agentic check** the product: on every registered OpenCTI, OpenAEV and OpenCRQ the fleet
+runs a named list of checks every day, findings or not, each with the evidence it read and
+a pass, warn or fail verdict, and opens a finding for what the module itself does not
+declare. The checks cover the health of the module, the health of its own data, and
+integrations only generically (platform errors, failing internal jobs counted platform-wide,
+the link between Filigran modules); no check reads a third party or a specific connector
+(Sam, 22 Nov 2026, 13.4). The deterministic checks of sections 4.3 to 4.5 stay as they are; the
+recommendation on a declared finding (section 12.4) stays as one output of a round.
+
+Reused from S14 unchanged: the cycle model (target type `module`, one open cycle per
+registration), the triggers and debounce of 12.2, the two read locks of 12.3, the
+`health_finding_recommendations` store and `record_agentic_finding` of 12.4, the quota
+exemption and the ceiling ledger of 12.5. Superseded: the finding-centric prompt of the
+`module_analyst` assignment, the single member, "the orchestrator does not delegate"
+(12.8), the 12.3 "what it looks at" table (replaced by the playbooks of 13.4).
+
+### 13.1 One health checker per module
+
+Three members replace the Module Analyst, one per module, so each carries one skill and
+one tool set and the graph shows which module it works on:
+
+| Slug | Name | Role | Skill | Reads |
+|---|---|---|---|---|
+| `health-opencti-checker` | OpenCTI Health Checker | `opencti_checker` | `health-opencti-checks` | the OpenCTI registration's integration |
+| `health-openaev-checker` | OpenAEV Health Checker | `openaev_checker` | `health-openaev-checks` | the OpenAEV registration's integration |
+| `health-opencrq-checker` | OpenCRQ Health Checker | `opencrq_checker` | `health-opencrq-checks` | the OpenCRQ registration's integration |
+
+Why three and not one member with three skills: a member's tool set is fixed at run start
+and the allow-list is per provider (12.3); a single member would hold every provider's
+tools and every playbook in one prompt, cost more per round, and draw as one node with no
+visible module. Three members cost nothing when a module is not registered (no cycle).
+
+Migration: the seeded `health-module-analyst` agent row is renamed in place to
+`health-opencti-checker` (`former_slugs`, as S1 did for the Concierge), so its cycles,
+recommendations, spend rows and agentic findings keep their history; the two other members
+are seeded new. `identity.HealthRole` keeps `module_analyst` as an alias read on old rows.
+`is_module_analyst_run` (12.5) becomes `is_module_checker_run`: true for a run of the seeded
+assignment of any of the three members, decided from the database at run start, as before.
+
+### 13.2 The orchestrator delegates the module round
+
+- **Daily module round.** A new orchestrator assignment `module_round` (schedule key
+  `module_round` in `cycles.SCHEDULE_KEYS`, once per UTC day) lists the active module
+  registrations and hands each to its module's checker (handover `delegate`), one cycle per
+  registration. It replaces the `daily` branch of `module_analyst_tick` (12.8). It runs with
+  zero open findings: the round is the check list, not the findings.
+- **Finding-set change** (12.2) and **on demand** ("Run checks now" on the module card,
+  administrators) start the module's checker directly, with the same debounce and ceiling.
+- The orchestrator's handovers gain the three checkers; the fleet graph, Members and Data
+  flow draw them as delegates of the orchestrator (13.8). Delegation is a handover only: the
+  checker's run is a seeded assignment of the checker, so the quota exemption of 12.5 holds
+  and the orchestrator's own run stays metered as today.
+
+### 13.3 Check playbooks as built-in skills
+
+Each checker's skill (`builtin_agents.py` skill rows, content in
+`agents/seed_data/skill/health-<module>-checks.md`, bound at seed as the Quality Analyst's
+is) is a playbook: a numbered list of named checks, each with
+
+- **id** (`<module>.agentic.<check>`, stable: it is the finding's check id),
+- **read**: the tools and arguments, and the values taken from the result,
+- **rule**: pass, warn, fail thresholds, written as numbers (defaults below, editable later
+  as section 7 thresholds; S15 ships them as constants of the playbook),
+- **recommendation**: what the administrator does on warn or fail, in the module's terms.
+
+A check whose tool is not available on the module's version is reported `not_run` with the
+reason, never guessed. The checker runs every check of its playbook in one cycle, in order,
+and records the report (13.6) at the end, a partial report when the ceiling stops it.
+
+### 13.4 Check lists (first version)
+
+Scope (Sam, 22 Nov 2026, section 11): the checks read **the module and its own data**, and
+integrations only in a generic way. No check reads, names or counts a specific connector,
+feed, collector, injector, executor or third-party data source; there is no per-connector
+split anywhere. Each list has three parts: module-native health, data health of the
+module's own objects, and generic integration health.
+
+**OpenCTI** (`health-opencti-checks`):
+
+| Check | Reads | Fail / warn (defaults) |
+|---|---|---|
+| `platform_version_licence` | platform version, licence expiry, settings sanity (base URL set) | licence under 30 days warn, 7 days fail; version behind the range XTM One supports fail; a missing setting warn |
+| `managers_running` | platform managers (rule engine, retention, expiration, history, notification, sync) | an enabled manager not running fail |
+| `background_tasks` | background tasks: state, progress, errors | in progress over 24 h warn; any in error in 24 h warn, over 10 fail |
+| `workers_and_queues` | platform workers and the platform queues as a whole (total messages now and 1 h ago) | total over 100,000 and growing warn, over 1,000,000 fail; no worker consuming fail |
+| `streams` | live stream collections and their consumers: lag | lag over 1 h warn, 6 h fail |
+| `playbooks_executing` | native playbooks: running flag, last executions | last 10 executions over 50% failed fail; running with no execution for 24 h and messages queued warn |
+| `stale_drafts` | drafts not touched for 30 days | over 20 warn |
+| `data_volume_growth` | objects created in the last 24 h, platform-wide, vs the 7-day daily mean | under 25% of the mean warn, 0 with a non-zero mean fail |
+| `data_freshness` | the newest object creation and update times, platform-wide | no object created or updated for 24 h on a platform with a non-zero 7-day mean fail |
+| `data_completeness` | the module's own objects without author or without marking, relationships whose source or target no longer exists, where the API exposes them | over 5% of the sampled objects warn, over 20% fail; not exposed: `not_run` |
+| `platform_errors` | platform error log entries and error rate of the last 24 h (activity and audit errors) vs the 7-day mean | rate over 2 x the mean warn, over 5 x fail |
+| `works_in_error` | works in error in the last 24 h, counted platform-wide, never per source | over 10% of the works warn, over 30% fail |
+
+**OpenAEV** (`health-openaev-checks`):
+
+| Check | Reads | Fail / warn (defaults) |
+|---|---|---|
+| `platform_version_licence` | platform version, licence, settings sanity | as OpenCTI |
+| `simulations_state` | simulations failed, or running past their end | any failed in 24 h warn, running 24 h past end fail |
+| `scenarios_scheduled` | scenarios with a schedule and their last start | a scheduled start missed by over 1 h fail |
+| `expectations_due` | expectations past their due time without result | over 10% warn, over 30% fail |
+| `findings_flowing` | findings created in the last 7 days vs the previous 7, platform-wide | 0 after a non-zero week warn |
+| `data_volume_growth` | simulations, scenarios, assets and findings created in the last 7 days vs the 4-week weekly mean | under 25% of the mean warn |
+| `data_completeness` | scenarios with no inject, simulations with no target, assets in no asset group, injects with no expectation, where the API exposes them | over 10% warn, over 30% fail; not exposed: `not_run` |
+| `data_consistency` | assets duplicated by hostname or IP, as the module exposes them | any duplicate warn |
+| `platform_errors` | platform error log entries and failed internal jobs in the last 24 h, platform-wide | rate over 2 x the 7-day mean warn, over 5 x fail |
+| `module_link` | the configured link to the Filigran module it reads (OpenCTI): configured and last successful call | configured and failing fail |
+
+**OpenCRQ** (`health-opencrq-checks`):
+
+| Check | Reads | Fail / warn (defaults) |
+|---|---|---|
+| `platform_version` | platform version vs the version XTM One supports | behind the supported range fail |
+| `jobs_state` | jobs failed or stuck, platform-wide | any failed in 24 h warn, running over 6 h fail |
+| `crq_run_fresh` | CRQ run history: last successful run and its age | over 7 days warn, 30 days fail, none fail |
+| `scenario_inputs` | risk scenarios missing a TEF input or a financial profile | any warn, over 25% fail |
+| `data_completeness` | risk scenarios never scored, or scored before their inputs last changed | any warn, over 25% fail |
+| `data_volume_growth` | risk scenarios and CRQ runs created in the last 30 days vs the previous 30 | 0 after a non-zero month warn |
+| `platform_errors` | failed internal jobs and platform error entries in the last 24 h, platform-wide | rate over 2 x the 7-day mean warn, over 5 x fail |
+| `module_link` | the configured links to the Filigran modules it reads (OpenCTI, OpenAEV): configured and last successful call | configured and failing fail |
+
+`module_link` is our reading of "integrations, generic": a link between two Filigran modules
+is not a third party. It reads the configured flag and the last call result only, never the
+linked module's data. Dropped at the first word otherwise.
+
+Out of scope by decision (Sam, 22 Nov 2026), and not to be added back by a playbook edit:
+connector, feed, collector, injector and executor liveness, queues, works, syncs or versions
+read per component, ingestion per connector, and the freshness of third-party data sources
+(compliance tools, vulnerability feeds and the like). The deterministic checks of sections
+4.3 to 4.5 are not changed by this section.
+
+The lists grow by playbook edits within this scope; a check added needs its tool on the
+allow-list first.
+
+### 13.5 Tools
+
+The two locks of 12.3 stay: the registration's integration under the read-only binding, and
+`MODULE_ANALYST_TOOLS` (renamed `MODULE_CHECKER_TOOLS`, one tuple per provider). Each tool
+added is a read tool the classifier reads as a read (test (k) of 12.9). No tool on the
+list reads a specific connector, feed, collector, injector, executor or third-party data
+source (13.4 scope).
+
+- **Removed from the S14 allow-list:** `list_opencti_connector_states`,
+  `list_opencti_feed_states`, `query_openaev_connectors`, `list_opencrq_connectors`,
+  `list_opencrq_connector_syncs`. Kept: `get_opencti_platform_version`,
+  `list_opencti_playbook_states`, `get_opencrq_platform_version`, `list_opencrq_jobs`,
+  `get_opencrq_job`. The tools themselves stay in their providers for the other agents.
+- **Existing read tools added to the allow-list:** OpenCTI `get_opencti_entity_stats`,
+  `query_opencti_activity`, `list_opencti_drafts`; OpenAEV `search_openaev_exercises`,
+  `get_openaev_exercise`, `search_openaev_scenarios`, `search_openaev_findings`,
+  `search_openaev_assets`, `search_openaev_asset_groups`; OpenCRQ
+  `list_opencrq_crq_run_history`, `get_opencrq_crq_run`, `get_opencrq_crq_settings`,
+  `list_opencrq_risk_scenarios`, `get_opencrq_tef_input`, `get_opencrq_financial_profile`.
+- **New read-only health tools** (`providers/<module>/health_reads.py`, the S14a-2b-3
+  pattern), where the existing tools cannot read the data or classify as writes. Every
+  count is platform-wide; none takes or returns a connector id:
+  - OpenCTI: `list_opencti_background_tasks` (state, progress, errors),
+    `get_opencti_managers` (platform managers and their running flag),
+    `get_opencti_platform_queues` (workers and total queued messages, platform-wide),
+    `list_opencti_stream_consumers` (live collections, consumers, lag),
+    `get_opencti_licence` (expiry, settings sanity fields), `get_opencti_data_health`
+    (objects created and updated per day over 7 days, newest times, works in error
+    counted platform-wide, sampled completeness and dangling relationships where exposed),
+    `get_opencti_error_rate` (platform error entries per day over 7 days).
+  - OpenAEV: `get_openaev_platform_health` (version, licence, settings sanity, the
+    OpenCTI link: configured and last call result), `list_openaev_expectations_due`,
+    `get_openaev_data_health` (objects created per week over 4 weeks, scenarios with no
+    inject, simulations with no target, assets in no group, injects with no expectation,
+    duplicate assets, where exposed), `get_openaev_error_rate` (error entries and failed
+    internal jobs per day over 7 days).
+  - OpenCRQ: `get_opencrq_data_health` (scenarios never scored or scored before their
+    inputs changed, objects created per 30 days), `get_opencrq_platform_health` (error
+    entries and failed jobs per day over 7 days, the links to OpenCTI and OpenAEV:
+    configured and last call result).
+  Each S15b tool names in its docstring the module query it runs and the module version it
+  needs; a module that lacks the query answers `not_run` for the checks that need it.
+
+### 13.6 The check report
+
+- **Store.** A new `health_module_check_reports` row per cycle (migration): registration
+  id, cycle id, started and finished, counts (passed, warn, failed, not run), and one entry
+  per check (id, verdict, evidence: tool, arguments, object ids, values, read time, the
+  recommendation on warn and fail). Written by a new health tool `record_module_check_report`
+  (checker only, inside its own cycle on its own registration, one report per cycle, a
+  second call replaces it), the guard of `record_finding_recommendation`.
+- **Agentic findings.** Each warn or fail opens or refreshes a finding
+  `<module>.agentic.<check>` through `record_agentic_finding` (severity warning or
+  critical), carrying the evidence and the recommendation; a check that passes resolves
+  its open agentic finding in the same cycle (no 7-day wait, which stays only for a check
+  that was `not_run`). Agentic findings count in the module score like any other.
+- **Recommendations on declared findings** (12.4) stay: after the checks, the checker
+  reads the module's open deterministic findings and attaches a recommendation to each one
+  the checks explain.
+
+### 13.7 Triggers, quota, ceiling
+
+- On by default in XTM One mode; off in Copilot mode, under `ai_disabled`, when Platform
+  Health is off, and per registration (`excluded_registration_ids`), as 12.1.
+  `HealthSettings.module_analyst` keeps its name in storage (no settings migration) and is
+  labelled "Module health checks" in Spend limits.
+- Outside agentic quota under the S14 ceiling (12.5), one ledger for the three checkers.
+- **Default ceiling, to re-measure (S15d).** A round reads more than the S14 quiet cycle
+  (about 22,600 tokens): estimated 45,000 to 65,000 tokens per module per round with 8 to
+  12 checks (OpenCTI 12, OpenAEV 10, OpenCRQ 8; the per-connector reads are gone, the
+  data-health reads are aggregates). Provisional defaults, until the lab measurement replaces them here: per-cycle cap
+  **150,000 tokens**, **1,000,000 tokens and 8 USD a day, 20,000,000 tokens and 120 USD a
+  month**. The measurement runs the three rounds in the lab with zero open findings and
+  with one induced fault per module, and writes the figures in this section.
+
+### 13.8 Where it shows
+
+- **Health page, module card:** "Agentic checks: 9 passed, 2 warn, 1 fail, last run
+  <time>" with a link to the report; "Run checks now" for an administrator (replaces
+  "Investigate now"). The report view lists every check with its verdict, evidence and
+  recommendation; a failed check links to its agentic finding.
+- **Cycles:** each round is a `HealthCycle` of the checker titled with the module and the
+  registration (closes advisory A1 of #1025 round 1), its digest the report counts.
+- **Weekly digest:** the "Modules" part gains, per module, the round counts of the week
+  and the checks that failed most.
+- **Fleet:** About, graph, Members and Data flow show the three checkers as delegates of
+  the orchestrator, their skills, and as inputs the module integrations they read (the
+  registrations' integrations, drawn read-only).
+- Access as 12.7 (administrators); the access matrix and link guard of 8.1 and 8.2 gain the
+  report route and files.
+
+### 13.9 Acceptance pinned by tests
+
+- (l) XTM One mode, Platform Health on, an OpenCTI, an OpenAEV and an OpenCRQ registered,
+  zero open findings: the daily `module_round` delegates one cycle per registration with no
+  admin action, each run calls its module's tools and records a report with every check of
+  its playbook (backend test, stubbed model and integrations; lab retest at deploy).
+- (m) A stubbed module-native fault per module (OpenCTI: an enabled manager not running;
+  OpenAEV: a scheduled scenario whose start was missed; OpenCRQ: a failed job) yields a fail verdict and an open `<module>.agentic.<check>` finding with its
+  recommendation; the next round with the fault removed resolves it.
+- (n) The seeded fleet: the orchestrator holds a `delegate` handover to each checker, each
+  checker holds its skill, and the fleet graph payload draws the edges.
+- (h), (i), (j), (k) of 12.9 extended to the three checkers: no agentic quota counter
+  moves, the ceiling stops the round, nothing starts in Copilot mode, off or `ai_disabled`,
+  every allow-listed tool classifies as a read and a write by name is refused.
+- (o) Scope: no tool of `MODULE_CHECKER_TOOLS` and no check id of the three playbooks
+  names a connector, feed, collector, injector, executor or third-party source (a
+  deny-list of name fragments over the tuple and the seeded skill content), and no new
+  health tool accepts a connector id argument.
+
+### 13.10 Sub-slices (`Refs #101 (S15x of the plan)`)
+
+| Slice | Content | UI |
+|---|---|---|
+| S15 spec | This section | no |
+| S15a | Members: rename in place and two new checkers, roles, `is_module_checker_run`, orchestrator `module_round` and handovers, playbook skills (seed data), tests (n) and the 12.9 extensions | no |
+| S15b | Tools: allow-list widened, new read-only health tools per provider, classifier and snapshot tests, `backend-snapshots` regenerated | no |
+| S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
+| S15d | Lab measurement and default ceiling written in 13.7 | no |
+| S15e | Health page: module card counts, report view, "Run checks now", Cycles title, weekly digest part, docs and i18n | yes |
+| S15f | Fleet surfaces (About, graph, Members, Data flow inputs), access matrix and link guard, UX Director journey review | yes |

@@ -28,7 +28,7 @@ The settings are one section. A bar at its top (**On this page**) jumps to its f
 | Group | Blocks |
 |---|---|
 | Status and scope | Status (enable, name), scope |
-| Spend limits | Budget, analysis |
+| Spend limits | Budget, analysis, Module Analyst (XTM One modes) |
 | Health checks | Schedule, signals, module thresholds, durations, dry-run |
 | Alerts | Alert emails |
 
@@ -152,7 +152,13 @@ The checks above are deterministic and never call a model. The **analysis** is a
 
 Administrators switch the analysis on and set its four ceilings under **Settings > Automations > Platform Health > Analysis**. The **Platform Health** page shows an **Analysis** panel under the score history: today's and this month's spend against each ceiling, then each module's latest analysis (its explanation, or why it did not run: *Ceiling reached*, *Ceiling not set*, AI off, no routing model) and an **Analyse now** action, unavailable while AI is off or a ceiling is cleared.
 
-The API is `GET /api/v1/health/analysis` (the latest analysis per module, the ceilings and the spend) and `POST /api/v1/health/analysis/{module}/run` (an analysis now), both for administrators.
+The API is `GET /api/v1/health/analysis` (the latest analysis per module, the ceilings and the spend, and the Module Analyst's ceilings and spend under `module_analyst`) and `POST /api/v1/health/analysis/{module}/run` (an analysis now), both for administrators.
+
+### Module Analyst spend limits
+
+In the XTM One modes, the **Module Analyst** investigates each registered OpenCTI, OpenAEV and OpenCRQ read-only when its findings change and once a day, and attaches recommendations to the findings. It has its own ceilings, outside the agentic quota and outside the Platform Health budget above: tokens per cycle, tokens and dollars per UTC day and per calendar month. Its calls are traced as **Platform Health** and never counted in agentic quotas.
+
+Administrators switch it on or off and set its five ceilings in the **Module Analyst** block of **Settings > Agents and automations > Platform Health > Spend limits**, next to the analysis; the block shows today's and this month's spend against them. The defaults are **80,000 tokens per cycle, 500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD a month**: a quiet cycle measured about 22,600 tokens per module. A model call that would cross a ceiling is refused and the cycle stops with what it has written; a ceiling cleared to no value refuses every call.
 
 ## Digest
 
@@ -162,19 +168,20 @@ Each cycle ends with a digest built from what the cycle actually did:
 - the findings, new and already known;
 - the experiments, by outcome;
 - the proposals filed, applied and rolled back, and how many are unmeasured;
-- the budget spent;
+- the budget spent (for a Module Analyst cycle, against its own ceiling);
+- for a Module Analyst cycle, the recommendations it attached, by confidence, and the agentic findings of its module opened and resolved;
 - everything skipped or not completed, with the reason (budget reached, a run that failed, experiments skipped).
 
 A cycle reads **Completed** only when its run completed with nothing skipped. Otherwise it reads **Partly completed**, **Budget reached**, **Failed** or **Cancelled**. A figure that could not be read is shown as *Unavailable*, never as 0. The orchestrator's own report, written in the platform language, is shown under the figures.
 
-The weekly digest assignment summarizes the cycles closed since the previous one; its result appears in the dashboard's latest results.
+The weekly digest assignment summarizes the cycles closed since the previous one, with a **Modules** part for the Module Analyst (cycles run, recommendations attached, agentic findings opened and resolved, spend against its ceiling); its result appears in the dashboard's latest results.
 
 ## The Platform Health page
 
 Administrators find every proposal, cycle and signal on the **Platform Health** page (`/health`):
 
 - **Improvements**: every proposal, filtered by type and status, with its measured result, the number of writes simulated during its experiment, and its evidence. Evidence the viewer may not open is counted, not linked.
-- **Cycles**: every cycle and its digest.
+- **Cycles**: every cycle and its digest; a Module Analyst cycle is listed as **Module Analyst**.
 - **Signals**: the signals currently crossed, and whether each started an investigation.
 
 Managers see the proposals and cycles of the agents and flows they manage on those pages (see [Platform Health](../usage/health.md)).
