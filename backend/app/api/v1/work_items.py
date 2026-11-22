@@ -314,6 +314,47 @@ async def count_work_items_by_status(
     )
 
 
+@router.get("/graph")
+async def work_items_graph(
+    owner_agent_id: str | None = None,
+    status: str | None = None,
+    correlation_key: str | None = None,
+    open_only: bool = False,
+    stale_only: bool = False,
+    search: str | None = None,
+    scheduled_only: bool = False,
+    ownership: str | None = None,
+    vis: str | None = None,
+    workspace: str | None = None,
+    fleet: str | None = None,
+    waiting_for_me: bool = False,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """The Graph view of Tasks > Work Items: ``{nodes, edges, truncated}``
+    for the list's filters, read with the list's visibility
+    (``services/work_item_graph.py``): the items, the visible items they
+    wait for outside the filter, their references and the people they wait
+    for. Declared before ``GET /{work_item_id}``."""
+    from app.services import work_item_graph
+
+    return await work_item_graph.read_graph(
+        user_id=str(user.id),
+        viewer=user,
+        filters={
+            "ownership": resolve_list_ownership(vis, ownership),
+            "scope": _workspace_scope(workspace, fleet),
+            "owner_agent_id": owner_agent_id,
+            "status": status,
+            "correlation_key": correlation_key,
+            "open_only": open_only,
+            "stale_only": stale_only,
+            "search": search,
+            "scheduled_only": scheduled_only,
+            "waiting_for_me": waiting_for_me,
+        },
+    )
+
+
 @router.get("/owners")
 async def list_work_item_owners(
     status: str | None = None,
