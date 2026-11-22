@@ -23,12 +23,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * dry-run plan and Confirm as the fleet page.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ORGANIZATION_SETUP_PATH } from "@/components/layout/organization-setup-path";
+import { useRecordCtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { useCtemLoopSetupStatus, useFleet } from "@/hooks/api/useFleetApi";
 import { useRecordSetupStep } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
@@ -53,7 +55,9 @@ import {
   nextStep,
   openingStep,
   previousStep,
+  signalTracePath,
   stepOf,
+  testSignal,
   type SetupStepKey,
 } from "./ctem-loop-setup";
 
@@ -67,13 +71,19 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
   const record = useRecordSetupStep();
   const [current, setCurrent] = useState<SetupStepKey | null>(null);
   const [enableOpen, setEnableOpen] = useState(false);
+  // After the last step: the end screen with "Send a test signal" (slice 4).
+  const [finished, setFinished] = useState(false);
+  const sendTest = useRecordCtemSignal();
+  const navigate = useNavigate();
   const fleetId = status.data?.fleet_id ?? null;
   const fleet = useFleet(open ? fleetId : null);
 
   // Open on the step the server says to resume on, once per opening.
   useEffect(() => {
-    if (!open) setCurrent(null);
-    else if (current === null && status.data) setCurrent(openingStep(status.data));
+    if (!open) {
+      setCurrent(null);
+      setFinished(false);
+    } else if (current === null && status.data) setCurrent(openingStep(status.data));
   }, [open, current, status.data]);
 
   const step = current ?? SETUP_STEPS[0];
@@ -88,10 +98,54 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
         onSuccess: () => {
           const next = nextStep(step);
           if (next) setCurrent(next);
-          else onOpenChange(false);
+          else setFinished(true);
         },
       },
     );
+
+  // The end of the setup: the command center with the loop trace of the first
+  // signal, sent now through the real intake when nothing has arrived yet.
+  const sendTestSignal = () =>
+    sendTest.mutate(testSignal(new Date()), {
+      onSuccess: ({ signal }) => {
+        onOpenChange(false);
+        navigate(signalTracePath(signal.id));
+      },
+    });
+
+  if (open && finished) {
+    return (
+      <Dialog open onOpenChange={(next) => !next && onOpenChange(false)}>
+        <DialogContent size="md" data-testid="ctem-loop-setup-done">
+          <DialogHeader>
+            <DialogTitle>{t_i18n("The CTEM loop is set up")}</DialogTitle>
+            <DialogDescription>
+              {t_i18n("Every signal now goes through reconcile and the scope gate, and the command center shows where each one stands.")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-2 content-base">
+            <p>{t_i18n("Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.")}</p>
+            {sendTest.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The test signal could not be recorded.")}</p>}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" className="mr-auto" disabled={sendTest.isPending} onClick={() => { onOpenChange(false); navigate("/"); }}>
+              {t_i18n("Open the command center")}
+            </Button>
+            <Button
+              className="gap-1.5"
+              disabled={sendTest.isPending}
+              aria-busy={sendTest.isPending || undefined}
+              onClick={sendTestSignal}
+              data-testid="ctem-loop-setup-test-signal"
+            >
+              <Send className="h-4 w-4" aria-hidden />
+              {t_i18n("Send a test signal")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <>

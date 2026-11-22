@@ -158,6 +158,30 @@ export function useProposeSignalScope() {
   });
 }
 
+/** The body of `POST /ctem-signals` (`SignalCreate` in backend/app/api/v1/ctem_signals.py). */
+export interface CtemSignalCreate {
+  trigger_path: string;
+  lens?: CtemLens;
+  source: { provider: string; external_id?: string };
+  subject: { kind: string; ref: string; label?: string };
+  observed_at?: string;
+  evidence?: Record<string, unknown>;
+  dedupe_key?: string;
+}
+
+/**
+ * Record one signal through the real intake (`POST /ctem-signals`): the
+ * reconcile and scope gate run on it and the stream frame shows it moving.
+ * Used by "Send a test signal" at the end of the guided setup (#1087).
+ */
+export function useRecordCtemSignal() {
+  const qc = useQueryClient();
+  return useMutation<{ created: boolean; signal: CtemSignal }, Error, CtemSignalCreate>({
+    mutationFn: (body) => api.post("/ctem-signals", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+  });
+}
+
 /** One signal; one the caller cannot read is a 404 the loop trace shows as "not available". */
 export function useCtemSignal(id: string | undefined) {
   return useQuery<CtemSignal>({

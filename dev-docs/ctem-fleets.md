@@ -2299,3 +2299,15 @@ Settings > Organization in setup mode, Ecosystem embeds
 `FleetCapabilitySlotsCard`, Gates embeds `FleetAutonomyStrip`, and Enable opens
 `FleetEnableDialog` (dry-run plan, run estimate, Confirm). The step order, copy
 and fact readers are pure functions in `components/fleets/ctem-loop-setup.ts`.
+
+The end (slice 4): after the last step the dialog shows "The CTEM loop is set
+up" with two actions. "Send a test signal" records one signal through the real
+intake (`POST /api/v1/ctem-signals`, path `new_vulnerability`, provider
+`manual`, evidence `{test: true, origin: "ctem-loop-setup"}`, a dedupe key per
+send: `testSignal` in `ctem-loop-setup.ts`), so reconcile and the scope gate run
+on it, then opens the command center on its loop trace (`/?loop=signal:<id>`).
+"Open the command center" goes there without a signal. The setup is always
+reachable again through `CtemLoopSetupEntry` ("Set up the CTEM loop"): in the
+command center hero and in the header of the CTEM loop fleet page (slug
+`ctem-loop`), shown to an XTM One administrator only, never while
+impersonating (`showsCtemLoopSetupEntry`).

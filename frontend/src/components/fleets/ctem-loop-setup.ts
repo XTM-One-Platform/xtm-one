@@ -19,6 +19,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * /fleets/setup/ctem-loop`; each step is recorded on its own through `PUT
  * /organization-context/setup-prompt/steps`, so leaving midway loses nothing.
  */
+import type { CtemSignalCreate } from "@/hooks/api/useCtemSignalsApi";
 import type { FleetSetupStatus, FleetSetupStep } from "@/hooks/api/useFleetApi";
 
 export type SetupStepKey = FleetSetupStep["key"];
@@ -111,6 +112,30 @@ export function ecosystemSlots(step: FleetSetupStep | undefined): Record<Ecosyst
     scanner: pick(raw.scanner),
     notification: pick(raw.notification),
   };
+}
+
+/**
+ * The test signal "Send a test signal" records at the end of the setup: a new
+ * vulnerability seen through the world lens, marked as a test in its evidence,
+ * with a dedupe key of its own so every send is a new row the loop processes.
+ * It goes through the real intake, reconcile and scope gate: no fake state.
+ */
+export function testSignal(now: Date): CtemSignalCreate {
+  const stamp = now.toISOString();
+  return {
+    trigger_path: "new_vulnerability",
+    lens: "world",
+    source: { provider: "manual", external_id: `setup-test-${stamp}` },
+    subject: { kind: "vulnerability", ref: "CVE-0000-0001", label: "Test signal from the CTEM loop setup" },
+    observed_at: stamp,
+    evidence: { test: true, origin: "ctem-loop-setup" },
+    dedupe_key: `ctem-loop-setup-test:${stamp}`,
+  };
+}
+
+/** The command center with the loop trace of one signal open (`?loop=signal:<id>`). */
+export function signalTracePath(signalId: string): string {
+  return `/?loop=${encodeURIComponent(`signal:${signalId}`)}`;
 }
 
 /** A number fact, 0 when absent or not a number. */

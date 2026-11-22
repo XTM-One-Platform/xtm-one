@@ -13,10 +13,36 @@ import {
   nextStep,
   openingStep,
   previousStep,
+  signalTracePath,
   stepOf,
+  testSignal,
 } from "./ctem-loop-setup";
+import { showsCtemLoopSetupEntry } from "./CtemLoopSetupEntry";
 
 const step = (key: FleetSetupStep["key"], facts: Record<string, unknown> = {}, state: FleetSetupStep["state"] = "todo"): FleetSetupStep => ({ key, state, facts });
+
+describe("ctem-loop-setup end (slice 4)", () => {
+  it("builds a test signal for the real intake, marked as a test, a new dedupe key per send", () => {
+    const a = testSignal(new Date("2026-11-22T06:30:00Z"));
+    const b = testSignal(new Date("2026-11-22T06:31:00Z"));
+    expect(a.trigger_path).toBe("new_vulnerability");
+    expect(a.lens).toBe("world");
+    expect(a.subject.kind).toBe("vulnerability");
+    expect(a.evidence).toMatchObject({ test: true, origin: "ctem-loop-setup" });
+    expect(a.dedupe_key).not.toBe(b.dedupe_key);
+  });
+
+  it("opens the command center on the signal's loop trace", () => {
+    expect(signalTracePath("abc-1")).toBe("/?loop=signal%3Aabc-1");
+  });
+
+  it("shows the setup entry to an XTM One administrator only, never while impersonating", () => {
+    expect(showsCtemLoopSetupEntry(true, true, false)).toBe(true);
+    expect(showsCtemLoopSetupEntry(false, true, false)).toBe(false);
+    expect(showsCtemLoopSetupEntry(true, false, false)).toBe(false);
+    expect(showsCtemLoopSetupEntry(true, true, true)).toBe(false);
+  });
+});
 
 describe("ctem-loop-setup", () => {
   it("walks the six steps of organization_setup_prompt.STEPS in order, each with a title and an intro", () => {
