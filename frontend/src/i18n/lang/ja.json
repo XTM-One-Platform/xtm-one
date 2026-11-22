@@ -20804,5 +20804,22 @@
   "Two records with different values of an earlier identifier never merge on a later one. The IP address never merges by itself.": "上位の識別子の値が異なる2つのレコードは、下位の識別子で統合されません。IPアドレスだけでは統合されません。",
   "Keep at least one identifier on, or every record stays an asset of its own.": "識別子を少なくとも1つ有効にしてください。無効の場合、各レコードは別々の資産になります。",
   "Source of each field": "各フィールドのソース",
-  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "フィールドには、順序の中で値を持つ最初のソースの値が表示されます。環境、グループ、説明、業務サービスは担当者のみが設定します。"
+  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "フィールドには、順序の中で値を持つ最初のソースの値が表示されます。環境、グループ、説明、業務サービスは担当者のみが設定します。",
+  "Keep apart": "分けたままにする",
+  "Merge into one asset": "1つの資産に統合",
+  "Assets merged into one": "資産を1つに統合しました",
+  "The assets were not merged": "資産は統合されませんでした",
+  "Merge these assets?": "これらの資産を統合しますか？",
+  "Their source records become one asset, whatever their identifiers say. The merge is audited and lasts across syncs.": "識別子に関係なく、ソースレコードは1つの資産になります。統合は監査され、同期をまたいで保持されます。",
+  "{count, plural, one {# component imported} other {# components imported}}": "{count, plural, other {#件のコンポーネントをインポートしました}}",
+  "The SBOM was not imported": "SBOMはインポートされませんでした",
+  "The two records are kept apart": "2つのレコードは分けたままになります",
+  "The records were not split": "レコードは分割されませんでした",
+  "No open case on this asset.": "この資産に未解決のケースはありません。",
+  "Crown jewels it supports": "支えている重要資産",
+  "No crown jewel names this asset.": "この資産を指定している重要資産はありません。",
+  "SBOM file": "SBOMファイル",
+  "Import SBOM": "SBOMをインポート",
+  "Keep these two records apart?": "この2つのレコードを分けたままにしますか？",
+  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "識別子に関係なく、2つの資産になります。分割は監査され、同期をまたいで保持されます。"
 }

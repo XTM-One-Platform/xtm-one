@@ -20804,5 +20804,22 @@
   "Two records with different values of an earlier identifier never merge on a later one. The IP address never merges by itself.": "Deux enregistrements dont un identifiant précédent diffère ne fusionnent jamais sur un identifiant suivant. L'adresse IP ne fusionne jamais seule.",
   "Keep at least one identifier on, or every record stays an asset of its own.": "Gardez au moins un identifiant actif, sinon chaque enregistrement reste un actif distinct.",
   "Source of each field": "Source de chaque champ",
-  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "Un champ affiche la valeur de la première source de son ordre qui la connaît. L'environnement, le groupe, la description et le service métier sont saisis par une personne uniquement."
+  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "Un champ affiche la valeur de la première source de son ordre qui la connaît. L'environnement, le groupe, la description et le service métier sont saisis par une personne uniquement.",
+  "Keep apart": "Garder séparés",
+  "Merge into one asset": "Fusionner en un seul actif",
+  "Assets merged into one": "Actifs fusionnés en un seul",
+  "The assets were not merged": "Les actifs n'ont pas été fusionnés",
+  "Merge these assets?": "Fusionner ces actifs ?",
+  "Their source records become one asset, whatever their identifiers say. The merge is audited and lasts across syncs.": "Leurs enregistrements sources deviennent un seul actif, quels que soient leurs identifiants. La fusion est auditée et persiste d'une synchronisation à l'autre.",
+  "{count, plural, one {# component imported} other {# components imported}}": "{count, plural, one {# composant importé} other {# composants importés}}",
+  "The SBOM was not imported": "Le SBOM n'a pas été importé",
+  "The two records are kept apart": "Les deux enregistrements sont gardés séparés",
+  "The records were not split": "Les enregistrements n'ont pas été séparés",
+  "No open case on this asset.": "Aucun cas ouvert sur cet actif.",
+  "Crown jewels it supports": "Joyaux de la couronne qu'il soutient",
+  "No crown jewel names this asset.": "Aucun joyau de la couronne ne cite cet actif.",
+  "SBOM file": "Fichier SBOM",
+  "Import SBOM": "Importer un SBOM",
+  "Keep these two records apart?": "Garder ces deux enregistrements séparés ?",
+  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "Ils deviennent deux actifs, quels que soient leurs identifiants. La séparation est auditée et persiste d'une synchronisation à l'autre."
 }
