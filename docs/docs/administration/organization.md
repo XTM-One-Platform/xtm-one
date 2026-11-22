@@ -144,6 +144,10 @@ When your assets carry their installed software (from a sync or an import), the 
 
 An SBOM (software bill of materials) lists what an application or a container image is made of. An administrator can import one on an asset with `POST /api/v1/organization-context/assets/{asset_id}/sbom` (a CycloneDX JSON or SPDX JSON file in the `file` field): its components join the asset's software with the source `sbom`, with their CPE and package URL when the SBOM gives them, and with the component that bundles them (the NGINX inside an ingress controller image, for example). A component without a version is listed as `unknown`. Importing the same SBOM again replaces what it gave; another SBOM on the same asset adds to it. The SBOM stays with the asset when a sync merges it with another record. A file over 10,000 components is refused: split it per application or image.
 
+### How one asset is matched across sources
+
+The same device read from two sources (an endpoint manager and OpenAEV, for example) is one asset when they share a strong identifier: hardware serial, cloud resource id, managed device id, MAC address, FQDN or hostname, in that order by default. An IP address alone never merges two assets. Each field shows the value of the source that ranks first for it (by default the endpoint manager or EDR for the operating system and software, OpenCRQ for criticality, OpenAEV for exposure), and every source's value is kept. An administrator can change the order of the identifiers, leave one out, or change the source order of a field in the profile's `asset_identity` part; `GET /api/v1/organization-context/assets/identity` shows the saved settings, the defaults and what applies.
+
 ## AI systems inventory
 
 The AI systems inventory lists the AI your organization runs or exposes, so that AI security work knows what to test. `Add an AI system` adds a row with:

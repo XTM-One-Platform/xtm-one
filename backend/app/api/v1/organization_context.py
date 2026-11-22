@@ -415,6 +415,38 @@ async def list_canonical_assets(
     return CanonicalAssetsPage(**vars(page))
 
 
+@router.get("/assets/identity")
+async def read_asset_identity(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """How assets are matched and which source each field shows: the saved settings, the defaults, the effective.
+
+    Saved with the profile (``asset_identity``, administrators, ``PUT /organization-context``).
+    """
+    from app.services import organization_asset_identity as identity
+    from app.services.organization_asset_store import identity_settings
+    from app.services.organization_context import current_version
+
+    version = await current_version(db, None)
+    profile = (version.profile if version is not None else None) or {}
+    key_order, precedence = identity_settings(profile)
+    return {
+        "saved": {"key_order": list(key_order), "precedence": {k: list(v) for k, v in precedence.items()}},
+        "defaults": {
+            "key_order": list(identity.DEFAULT_KEY_ORDER),
+            "weak_keys": sorted(identity.WEAK_KINDS),
+            "precedence": {k: list(v) for k, v in identity.DEFAULT_PRECEDENCE.items()},
+            "fallback_precedence": list(identity.FALLBACK_PRECEDENCE),
+            "local_fields": sorted(identity.DEFAULT_LOCAL_FIELDS),
+        },
+        "effective": {
+            "key_order": list(key_order or identity.DEFAULT_KEY_ORDER),
+            "precedence": {k: list(v) for k, v in {**identity.DEFAULT_PRECEDENCE, **precedence}.items()},
+        },
+    }
+
+
 @router.get("/assets/by-software", response_model=CanonicalAssetsPage)
 async def list_assets_of_software(
     product: str = Query(..., min_length=1, max_length=200),

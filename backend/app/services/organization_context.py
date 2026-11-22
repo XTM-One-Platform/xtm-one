@@ -154,6 +154,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "evidence_health",
     # Cases recompute interval (#1216): read by the scheduled cases pass, never dumped into the always-on block.
     "cases_recompute",
+    # Asset identity and field precedence (#1178): read by the asset store, never dumped into the always-on block.
+    "asset_identity",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -615,6 +617,43 @@ class CasesRecompute(BaseModel):
     interval_minutes: int = Field(default=15, ge=5, le=24 * 60)
 
 
+class AssetIdentity(BaseModel):
+    """How the asset store matches one asset across sources and which source a field shows (#1178).
+
+    Empty keeps the defaults of ``organization_asset_identity``: every strong key in its default
+    order, and ``DEFAULT_PRECEDENCE`` per field. Set in CTEM > Inventory (Sources panel).
+    """
+
+    model_config = _Strict
+
+    #: The strong keys, most reliable first; a key left out never merges (empty: the default order).
+    key_order: list[Literal["serial", "cloud_resource_id", "device_id", "mac", "fqdn", "hostname"]] = Field(
+        default_factory=list, max_length=6
+    )
+    #: Per field, the sources or source classes in order (``*`` any other); a field left out keeps its default.
+    precedence: dict[
+        Annotated[str, Field(min_length=1, max_length=80)],
+        list[Annotated[str, Field(min_length=1, max_length=80)]],
+    ] = Field(default_factory=dict, max_length=50)
+
+    @field_validator("key_order")
+    @classmethod
+    def _distinct_keys(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(value))
+
+    @field_validator("precedence")
+    @classmethod
+    def _clean_precedence(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for name, order in value.items():
+            cleaned = list(dict.fromkeys(s.strip().lower() for s in order if s.strip()))
+            if len(cleaned) > 20:
+                raise ValueError(f"precedence of {name!r} names more than 20 sources")
+            if cleaned:
+                out[name.strip().lower()] = cleaned
+        return out
+
+
 def normalize_address_ranges(value: list[str]) -> list[str]:
     """CIDR blocks in their network form, each once (a bare address is its /32 or /128)."""
     import ipaddress
@@ -682,6 +721,8 @@ class OrganizationProfile(BaseModel):
     evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
     #: How often the shared CTEM cases are recomputed with no user action.
     cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
+    #: How one asset is matched across sources and which source each field shows (#1178).
+    asset_identity: AssetIdentity = Field(default_factory=AssetIdentity)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.

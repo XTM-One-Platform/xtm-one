@@ -78,6 +78,7 @@ def canonical_rows(
     rows: Sequence[Mapping[str, Any]],
     *,
     precedence: Mapping[str, Sequence[str]] | None = None,
+    key_order: Sequence[str] | None = None,
     decisions: identity.Decisions | None = None,
     sboms: Mapping[identity.RecordRef, Sequence[identity.SourceRecord]] | None = None,
 ) -> list[dict[str, Any]]:
@@ -89,11 +90,15 @@ def canonical_rows(
     *sboms* maps a source record to the SBOM documents imported on it (source
     ``sbom``): their software joins the asset holding that record, whatever it
     was merged with; an SBOM on a record no longer present is left out.
+    *key_order* and *precedence* are the organization's ``asset_identity``
+    settings (:func:`identity_settings`); empty keeps the engine's defaults.
     """
     sboms = sboms or {}
     records = [identity.section_record("assets", row, index=i) for i, row in enumerate(rows)]
     out: list[dict[str, Any]] = []
-    for thing in identity.match_records(records, decisions=decisions):
+    for thing in identity.match_records(
+        records, key_order=tuple(key_order or identity.DEFAULT_KEY_ORDER), decisions=decisions
+    ):
         fields = identity.resolve_fields(thing.records, precedence=precedence)
         name = fields.get("name")
         out.append(
@@ -122,6 +127,21 @@ def canonical_rows(
     return out
 
 
+def identity_settings(profile: Mapping[str, Any] | None) -> tuple[tuple[str, ...], dict[str, tuple[str, ...]]]:
+    """The key order and per-field precedence the profile's ``asset_identity`` sets (empty: the defaults).
+
+    A stored value that no longer parses keeps the defaults rather than failing a rebuild.
+    """
+    from app.services.organization_context import AssetIdentity
+
+    raw = (profile or {}).get("asset_identity") or {}
+    try:
+        settings = AssetIdentity.model_validate(raw)
+    except ValueError:
+        settings = AssetIdentity()
+    return tuple(settings.key_order), {k: tuple(v) for k, v in settings.precedence.items()}
+
+
 async def _current(db: AsyncSession, organization_id: uuid.UUID | None) -> OrganizationContextVersion | None:
     from app.services.organization_context import current_version
 
@@ -143,7 +163,14 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     # Two first reads racing would both rebuild: the second waits for the first's transaction.
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"organization_assets:{org}"})
     rows = [row for row in (version.profile or {}).get("assets_exposure") or [] if isinstance(row, Mapping)]
-    things = canonical_rows(rows, decisions=await load_decisions(db, org), sboms=await load_sboms(db, org))
+    key_order, precedence = identity_settings(version.profile)
+    things = canonical_rows(
+        rows,
+        key_order=key_order,
+        precedence=precedence,
+        decisions=await load_decisions(db, org),
+        sboms=await load_sboms(db, org),
+    )
     # An asset whose canonical key is unchanged keeps its id across rebuilds, so an id
     # read from the API before an unrelated profile save still answers afterwards.
     known: dict[str, uuid.UUID] = {
