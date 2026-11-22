@@ -54,6 +54,15 @@ class SyncRefusedError(ValueError):
     """A sync definition the API refuses (an unknown section, source or schedule)."""
 
 
+#: Most source ids one sync may exclude.
+MAX_EXCLUSIONS = 1000
+
+
+def clean_exclusions(ids: list[str]) -> list[str]:
+    """Source ids stripped, deduplicated in order, empty ones dropped, bounded (#1134)."""
+    return [i for i in dict.fromkeys(str(v).strip()[:200] for v in ids) if i][:MAX_EXCLUSIONS]
+
+
 def zone(name: str) -> ZoneInfo:
     """The time zone *name*, or UTC when it is unknown."""
     try:
@@ -88,7 +97,8 @@ def define(
     source: str = "",
     filters: dict[str, Any] | None = None,
     batch_type: str = "",
-    remove_gone: bool = False,
+    remove_gone: bool = True,
+    excluded_external_ids: list[str] | None = None,
     frequency: str = "daily",
     hour: int = 6,
     minute: int = 0,
@@ -117,6 +127,10 @@ def define(
     sync.filters = {} if all_sections else dict(filters or {})
     sync.batch_type = "" if all_sections else (batch_type or "")[:64]
     sync.remove_gone = False if all_sections else bool(remove_gone)
+    if excluded_external_ids is not None:
+        sync.excluded_external_ids = [] if all_sections else clean_exclusions(excluded_external_ids)
+    elif getattr(sync, "excluded_external_ids", None) is None:
+        sync.excluded_external_ids = []
     sync.frequency = frequency
     sync.hour, sync.minute, sync.weekday = hour, minute, weekday
     sync.timezone = timezone
@@ -235,9 +249,12 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             filters=sync.filters or {},
             batch_type=sync.batch_type,
             remove_gone=sync.remove_gone,
+            excluded_ids=list(getattr(sync, "excluded_external_ids", None) or []),
+            sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        result["removed"] = len(plan.gone) if plan.remove_gone else 0
+        result["removed"] = (len(plan.gone) if plan.remove_gone else 0) + len(plan.excluded_removed)
+        result["excluded"] = len(plan.excluded)
         if plan.error:
             result["error"] = plan.error[:500]
             if _pausing(plan.error):

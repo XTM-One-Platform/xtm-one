@@ -133,8 +133,6 @@ OPENAEV_PLATFORMS: tuple[str, ...] = (
     "Internal",
     "Unknown",
 )
-#: Rows a person wrote: an import never overwrites them.
-HAND_SOURCES: frozenset[str] = frozenset({"manual", "csv", "api"})
 #: Entities read at most per import (the source's own count is still reported).
 MAX_ROWS = 1000
 #: Rows of the preview sample.
@@ -192,6 +190,12 @@ class ImportPlan:
     gone: list[str] = field(default_factory=list)
     #: True when the administrator chose to remove the ``gone`` rows (default: they are kept).
     remove_gone: bool = False
+    #: Rows the source returned that the sync excludes (its ``excluded_external_ids``, #1134).
+    excluded: list[str] = field(default_factory=list)
+    #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
+    excluded_removed: list[str] = field(default_factory=list)
+    #: The sync writing the plan, stamped as ``sync_id`` on its rows (empty: a one-off import).
+    sync_id: str = ""
     #: Rows that took the batch type (no category in the source).
     batch_typed: int = 0
     sample: list[dict[str, Any]] = field(default_factory=list)
@@ -211,11 +215,13 @@ class ImportPlan:
                 "unchanged": len(self.unchanged),
                 "skipped": len(self.skipped),
                 "gone": len(self.gone),
+                "excluded": len(self.excluded),
             },
             "new": self.new[:SAMPLE_SIZE],
             "updated": self.updated[:SAMPLE_SIZE],
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
+            "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
             "sample": self.sample,
@@ -324,7 +330,7 @@ def openaev_ai_system(asset: dict[str, Any]) -> AiSystem | None:
     if not name or not asset_id:
         return None
     exposure = "public" if asset.get("asset_internet_facing") is True else "internal"
-    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, openaev_asset_id=asset_id[:100])  # type: ignore[arg-type]
+    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, source="openaev", external_id=asset_id[:200])  # type: ignore[arg-type]
 
 
 def _lower(value: Any) -> str:
@@ -401,20 +407,43 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
     asset_id = str(asset.get("id") or "")
     if not name or not asset_id:
         return None
-    return CrownJewel(name=name[:200], criticality=FROM_OPENCRQ[level], opencrq_asset_id=asset_id[:100])  # type: ignore[arg-type]
+    return CrownJewel(name=name[:200], criticality=FROM_OPENCRQ[level], source="opencrq", external_id=asset_id[:200])  # type: ignore[arg-type]
 
 
 # ── Merge (no I/O) ────────────────────────────────────────────────────
 
 
+#: section -> (profile field, the row's name attribute, most rows the field holds, the fields a person may
+#: set on a synced row that the source does not send: kept across runs as local enrichment, #1134).
+SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
+    "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
+    "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
+    "ai_systems": ("ai_systems", "name", 200, ("owner",)),
+    "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
+    "tech_stack": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
+}
+#: Fields kept from the stored row whatever the source sends: the source never owns them.
+_ALWAYS_LOCAL: frozenset[str] = frozenset({"business_service", "asset_names"})
+
+
 def plan_import(
-    profile: OrganizationProfile, section: str, source: str, read: ReadResult, *, remove_gone: bool = False
+    profile: OrganizationProfile,
+    section: str,
+    source: str,
+    read: ReadResult,
+    *,
+    remove_gone: bool = False,
+    excluded_ids: list[str] | None = None,
+    sync_id: str = "",
 ) -> ImportPlan:
     """What importing *read* into *section* would do to *profile* (no I/O, *profile* untouched).
 
-    Rows this source wrote before that the read no longer returns are listed in
-    ``gone``; they are kept unless *remove_gone*. A truncated or failed read
-    never removes anything: the rows past the cut are not known to be gone.
+    Every list section is keyed on ``source`` + ``external_id`` (#1134). Rows
+    this source wrote before that the read no longer returns are listed in
+    ``gone``; they are removed when *remove_gone* (a sync's default since
+    #1134). A truncated or failed read never removes anything: the rows past
+    the cut are not known to be gone. A row whose id is in *excluded_ids* (the
+    sync's exclusion list) is neither added nor kept.
     """
     plan = ImportPlan(
         section=section,
@@ -425,18 +454,11 @@ def plan_import(
         error=read.error,
         remove_gone=remove_gone and not read.truncated and not read.error,
         batch_typed=read.batch_typed,
+        sync_id=sync_id[:64],
     )
     draft = profile.model_copy(deep=True)
-    if section == "assets":
-        _merge_assets(draft, "assets_exposure", read.rows, source, plan)
-    elif section == "asset_groups":
-        _merge_assets(draft, "asset_groups", read.rows, source, plan)
-    elif section == "ai_systems":
-        _merge_keyed(draft, "ai_systems", "openaev_asset_id", read.rows, plan)
-    elif section == "crown_jewels":
-        _merge_keyed(draft, "crown_jewels", "opencrq_asset_id", read.rows, plan)
-    elif section == "tech_stack":
-        _merge_tech_stack(draft, read.rows, plan)
+    if section in SOURCED_FIELDS:
+        _merge_sourced(draft, section, read.rows, source, plan, {str(i) for i in excluded_ids or [] if str(i)})
     elif section == "pirs":
         _merge_pirs(draft, read.rows, plan)
     plan.sample = [
@@ -446,92 +468,67 @@ def plan_import(
     return plan
 
 
-def _merge_assets(
-    draft: OrganizationProfile,
-    attr: Literal["assets_exposure", "asset_groups"],
-    rows: list[AssetEntry] | list[AssetGroupEntry],
-    source: str,
-    plan: ImportPlan,
+def _merge_sourced(
+    draft: OrganizationProfile, section: str, rows: list[Any], source: str, plan: ImportPlan, excluded: set[str]
 ) -> None:
+    """Merge *rows* of *source* into a list section keyed on ``source`` + ``external_id`` (#1134).
+
+    A row of this source updates its stored row, the local enrichment fields
+    (:data:`SOURCED_FIELDS`) kept when the source sends none; a new row named
+    like a row a person, an agent or another source wrote is skipped (never
+    overwritten); a row of the sync's exclusion list is left out, and so is
+    its stored copy.
+    """
+    attr, name_key, cap, local = SOURCED_FIELDS[section]
     current: list[Any] = list(getattr(draft, attr))
-    by_key = {(a.source, a.external_id): i for i, a in enumerate(current) if a.external_id}
-    names = {a.name.casefold(): a for a in current}
+    by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if r.external_id}
+    names = {getattr(r, name_key).casefold() for r in current}
+    stamp = {"sync_id": plan.sync_id} if plan.sync_id else {}
+    read_ids: set[str] = set()
     for row in rows:
+        name = getattr(row, name_key)
+        read_ids.add(row.external_id)
+        if row.external_id in excluded:
+            plan.excluded.append(name)
+            continue
         index = by_key.get((source, row.external_id))
         if index is not None:
             before = current[index]
-            # Fields a person may have set on an imported row are kept when the source has none.
             kept = {
-                "environment": row.environment or before.environment,
-                "owner": row.owner or before.owner,
-                "tech_stack": row.tech_stack or before.tech_stack,
+                f: getattr(before, f)
+                for f in local
+                if f in _ALWAYS_LOCAL or (not getattr(row, f) and getattr(before, f))
             }
-            if isinstance(row, AssetEntry):
-                kept["group"] = row.group or before.group
-            else:
-                kept["description"] = row.description or before.description
-            merged = row.model_copy(update=kept)
+            merged = row.model_copy(update={**kept, "sync_id": plan.sync_id or before.sync_id})
             if merged == before:
-                plan.unchanged.append(row.name)
+                plan.unchanged.append(name)
             else:
                 current[index] = merged
-                plan.updated.append(row.name)
+                plan.updated.append(name)
             continue
-        if row.name.casefold() in names:
-            plan.skipped.append(row.name)
+        if name.casefold() in names:
+            plan.skipped.append(name)
             continue
-        current.append(row)
-        names[row.name.casefold()] = row
-        plan.new.append(row.name)
+        current.append(row.model_copy(update=stamp))
+        names.add(name.casefold())
+        plan.new.append(name)
+    dropped: set[int] = set()
+    if excluded:
+        stored = [r for r in current if r.source == source and r.external_id in excluded]
+        plan.excluded_removed = [getattr(r, name_key) for r in stored]
+        dropped |= {id(r) for r in stored}
     if not plan.truncated and not plan.error:
-        read_ids = {row.external_id for row in rows}
-        gone = [a for a in current if a.source == source and a.external_id and a.external_id not in read_ids]
-        plan.gone = [a.name for a in gone]
-        if plan.remove_gone and gone:
-            dropped = {id(a) for a in gone}
-            current = [a for a in current if id(a) not in dropped]
-    setattr(draft, attr, current[:5000])
-
-
-def _merge_keyed(draft: OrganizationProfile, attr: str, key: str, rows: list[Any], plan: ImportPlan) -> None:
-    current = list(getattr(draft, attr))
-    by_key = {getattr(r, key): i for i, r in enumerate(current) if getattr(r, key)}
-    names = {r.name.casefold() for r in current}
-    for row in rows:
-        index = by_key.get(getattr(row, key))
-        if index is not None:
-            before = current[index]
-            merged = row.model_copy(update={"owner": row.owner or before.owner})
-            if attr == "crown_jewels":
-                merged = merged.model_copy(
-                    update={"business_service": before.business_service, "asset_names": before.asset_names}
-                )
-            if merged == before:
-                plan.unchanged.append(row.name)
-            else:
-                current[index] = merged
-                plan.updated.append(row.name)
-            continue
-        if row.name.casefold() in names:
-            plan.skipped.append(row.name)
-            continue
-        current.append(row)
-        names.add(row.name.casefold())
-        plan.new.append(row.name)
-    setattr(draft, attr, current[:200])
-
-
-def _merge_tech_stack(draft: OrganizationProfile, rows: list[TechStackEntry], plan: ImportPlan) -> None:
-    current = list(draft.tech_stack)
-    names = {t.product.casefold() for t in current}
-    for row in rows:
-        if row.product.casefold() in names:
-            plan.unchanged.append(row.product)
-            continue
-        current.append(row)
-        names.add(row.product.casefold())
-        plan.new.append(row.product)
-    draft.tech_stack = current[:500]
+        gone = [
+            r
+            for r in current
+            if r.source == source and r.external_id and r.external_id not in read_ids and id(r) not in dropped
+        ]
+        plan.gone = [getattr(r, name_key) for r in gone]
+        if plan.remove_gone:
+            dropped |= {id(r) for r in gone}
+    if dropped:
+        current = [r for r in current if id(r) not in dropped]
+    setattr(draft, attr, current[:cap])
 
 
 def _merge_pirs(draft: OrganizationProfile, rows: list[dict[str, str]], plan: ImportPlan) -> None:
@@ -746,7 +743,10 @@ async def _read_openaev(
             product = str(item.get("asset_name") or item.get("security_platform_name") or "").strip()
             if product and product.casefold() not in seen:
                 seen.add(product.casefold())
-                rows.append(TechStackEntry(product=product[:200]))
+                # A product is keyed on its name: several security platforms may run one product.
+                rows.append(
+                    TechStackEntry(product=product[:200], source="openaev", external_id=product.casefold()[:200])
+                )
         read.rows = rows
         return read
     return ReadResult(error=f"OpenAEV cannot feed {section}")
@@ -1067,6 +1067,8 @@ async def preview_import(
     filters: dict[str, Any],
     batch_type: str = "",
     remove_gone: bool = False,
+    excluded_ids: list[str] | None = None,
+    sync_id: str = "",
 ) -> tuple[ImportPlan, int | None]:
     """The import plan over the current profile, and the version it starts from (writes nothing)."""
     from app.services import organization_context as org_context
@@ -1076,7 +1078,7 @@ async def preview_import(
     read = await read_source(
         db, user_id=user_id, section=section, source=source, filters=filters, batch_type=batch_type
     )
-    plan = plan_import(base, section, source, read, remove_gone=remove_gone)
+    plan = plan_import(base, section, source, read, remove_gone=remove_gone, excluded_ids=excluded_ids, sync_id=sync_id)
     return plan, (current.version if current else None)
 
 
@@ -1086,6 +1088,8 @@ def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str,
     basis = f"import of {plan.section}: {len(plan.new)} new, {len(plan.updated)} updated"
     if plan.gone:
         basis += f", {len(plan.gone)} no longer in the source ({'removed' if plan.remove_gone else 'kept'})"
+    if plan.excluded:
+        basis += f", {len(plan.excluded)} excluded by the sync"
     basis += f"; read {datetime.now(UTC).strftime('%Y-%m-%dT%H:%MZ')}"
     if used:
         basis += f"; filters {used}"[:400]

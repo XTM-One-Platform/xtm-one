@@ -661,6 +661,26 @@ retest of the slice. Not in S9b: the run HITL, tool approval and flow Ask-user
 sources send no link card yet (their notify paths are S9's), and Google Chat as
 a user is S11.
 
+The agent's own send: the coordination tool `send_decision_card(work_item_id,
+chat_id | team_id + channel_id, integration)`
+(`services/decision_graph_card_tool.py`, `decision_graph_cards.send_agent_card`)
+lets a run post the link card of a needs_human item it can read to a Teams chat
+or channel. It posts as the calling agent through its own Microsoft integration,
+under the same `agent_graph_caller` rules. The item needs no `payload.notify`,
+so its end sends no text. This is how a fleet's `work_item.needs_human` listener
+DMs a decision. The send records the same `notified` event, so the message turns
+into the decided card whichever channel closes the decision. A second send to
+the same target answers the message already there. A test item reaches only
+`WORK_ITEM_NOTIFY_TEST_RECIPIENTS` or `48:notes`. The link card has the
+`DecisionCard` layout: a kicker (source and agent), the question, the context,
+one row per option with its effect (the recommended row highlighted), the
+deadline, the option buttons, "Answer with text" and "Open in XTM One". It is
+written in the recipient's language (en, fr, es, ja). A letter typed back in a
+Teams chat posted as a user or an agent account does not answer the decision:
+the platform receives no chat message there (only a channel bot's chats reach
+`/api/channels/teams`), so the buttons are the answer path. The I.5 typed reply
+holds for the bot card of the Teams app.
+
 S11, as built (slice 1, backend): `services/google_chat_decision_cards.py`
 renders the decision as one `cardsV2` message (header with the source and the
 agent, question, context, options with their effects and the recommendation,
