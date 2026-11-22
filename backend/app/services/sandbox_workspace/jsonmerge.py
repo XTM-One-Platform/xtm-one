@@ -235,6 +235,38 @@ def removed_keys(base: str, ours: str, theirs: str) -> list[str]:
     return out
 
 
+def _dropped(sides: list[dict[str, Any]], resolved: dict[str, Any], prefix: str, out: list[str]) -> None:
+    for key in sides[0]:
+        if not all(key in side for side in sides[1:]):
+            continue
+        name = f"{prefix}{key}"
+        if key not in resolved:
+            out.append(name)
+        elif isinstance(resolved[key], dict) and all(isinstance(side[key], dict) for side in sides):
+            _dropped([side[key] for side in sides], resolved[key], f"{name}.", out)
+
+
+def dropped_keys(resolved: str, *sides: str) -> list[str]:
+    """The keys (dotted for a nested one) every one of *sides* holds that *resolved* does not.
+
+    A merge of two sides never removes a key both of them hold: a resolution written by hand from a stale
+    copy of a catalog does, silently (#1311: a merge of main lost 18 catalog keys that way). Empty when a text is not a
+    JSON object, holds a key twice or is over the size the merge parses.
+    """
+    texts = (resolved, *sides)
+    if not sides or any(len(text) > MAX_JSON_MERGE_BYTES for text in texts):
+        return []
+    try:
+        parsed = [_parse(text) for text in texts]
+    except _DuplicateKeyError:
+        return []
+    if any(value is None for value in parsed):
+        return []
+    out: list[str] = []
+    _dropped([value or {} for value in parsed[1:]], parsed[0] or {}, "", out)
+    return out
+
+
 def merge_json_objects(
     base: str, ours: str, theirs: str, prefer: str | None = None, *, ref_first: bool = False
 ) -> str | None:
