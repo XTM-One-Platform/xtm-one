@@ -1769,12 +1769,19 @@ export function useMoveFleetMember(fleetId: string) {
   });
 }
 
-export function useFleetHealth(fleetId: string | null | undefined) {
+/**
+ * A fleet's health. With `optional`, the health only enriches another view (the
+ * case page's empty states): any failure stays on the query, no retry, and the
+ * caller renders without it instead of the page's ErrorBoundary.
+ */
+export function useFleetHealth(fleetId: string | null | undefined, options: { optional?: boolean } = {}) {
   return useQuery<FleetHealth>({
-    queryKey: [...KEY, "health", fleetId],
+    // Its own cache entry when optional, so a tolerated error never reaches a strict read.
+    queryKey: [...KEY, "health", fleetId, ...(options.optional ? ["optional"] : [])],
     queryFn: () => api.get(`/fleets/${fleetId}/health`),
     enabled: !!fleetId,
     ...FLEET_QUERY_POLICY,
+    ...(options.optional ? { throwOnError: false, retry: false } : {}),
     refetchInterval: 30_000,
   });
 }

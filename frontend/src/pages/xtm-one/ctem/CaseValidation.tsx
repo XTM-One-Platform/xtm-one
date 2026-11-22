@@ -26,6 +26,7 @@ import {
   safeModeOf,
   validationDecisionKey,
 } from "./case-validation";
+import { CaseSectionReason } from "./CaseSectionReason";
 
 /** The result word of a validation reference, translated where drawn. @i18n-keys */
 const RESULT_LABEL = {
@@ -74,7 +75,10 @@ export function CaseValidation({
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {rows.length === 0 && !gate && (
-          <p className="text-default-secondary">{t_i18n("Not validated yet: the fleet requests read-only checks in OpenAEV once the case is prioritized.")}</p>
+          <CaseSectionReason
+            own={t_i18n("Not validated yet: the fleet requests read-only checks in OpenAEV once the case is prioritized.")}
+            testId="ctem-case-validation-empty"
+          />
         )}
         {gate && (
           <div className="flex flex-wrap items-baseline gap-x-2" data-testid="ctem-case-validation-gate">
