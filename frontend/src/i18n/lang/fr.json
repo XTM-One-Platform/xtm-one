@@ -5008,6 +5008,7 @@
   "Saving…": "Enregistrement…",
   "Scan this QR code with Google Authenticator, Microsoft Authenticator, KeePassXC, 1Password, Bitwarden, or any other authenticator app, then enter the 6-digit code it shows.": "Scannez ce QR code avec Google Authenticator, Microsoft Authenticator, KeePassXC, 1Password, Bitwarden ou toute autre application d'authentification, puis saisissez le code à 6 chiffres affiché.",
   "Schedule": "Planification",
+  "Sections fed": "Sections alimentées",
   "Schedule (Cron Expression)": "Planification (expression Cron)",
   "Schedule (Cron)": "Planification (Cron)",
   "Scheduled": "Planifié",

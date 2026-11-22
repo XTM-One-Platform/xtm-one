@@ -5008,6 +5008,7 @@
   "Saving…": "保存中…",
   "Scan this QR code with Google Authenticator, Microsoft Authenticator, KeePassXC, 1Password, Bitwarden, or any other authenticator app, then enter the 6-digit code it shows.": "Google Authenticator、Microsoft Authenticator、KeePassXC、1Password、Bitwarden などの認証アプリでこの QR コードをスキャンし、表示された 6 桁のコードを入力してください。",
   "Schedule": "スケジュール",
+  "Sections fed": "反映先のセクション",
   "Schedule (Cron Expression)": "スケジュール（Cron式）",
   "Schedule (Cron)": "スケジュール (Cron)",
   "Scheduled": "スケジュール",
