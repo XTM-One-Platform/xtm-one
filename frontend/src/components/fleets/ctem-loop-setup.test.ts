@@ -8,7 +8,6 @@ import {
   SETUP_STEP_TITLES,
   connectedModules,
   countFact,
-  ecosystemSlots,
   isSettled,
   loopRuns,
   nextStep,
@@ -93,19 +92,12 @@ describe("ctem-loop-setup", () => {
       steps: [
         step("organization", { crown_jewels: 3, tech_stack: "x" }),
         step("modules", { connected: ["opencrq", "opencti", "other"] }),
-        step("ecosystem", { slots: { ticketing: "filled", scanner: "empty", edr_xdr: "weird" } }),
       ],
     };
     expect(countFact(stepOf(status, "organization"), "crown_jewels")).toBe(3);
     expect(countFact(stepOf(status, "organization"), "tech_stack")).toBe(0);
     expect(connectedModules(stepOf(status, "modules"))).toEqual(["opencti", "opencrq"]);
     expect(connectedModules(undefined)).toEqual([]);
-    expect(ecosystemSlots(stepOf(status, "ecosystem"))).toEqual({
-      edr_xdr: "unavailable",
-      ticketing: "filled",
-      scanner: "empty",
-      notification: "unavailable",
-    });
     expect(stepOf(status, "enable")).toBeUndefined();
   });
 });

@@ -23,8 +23,10 @@ containers ``sandbox_run_command`` and ``sandbox_start_service`` create
 - the mirror host in their egress allow-list, on top of
   ``OPENSANDBOX_NETWORK_ALLOW``, and nothing else: the public registries stay
   out of the list, so an install reaches them only through the mirror;
-- the registry variables of npm, Yarn (classic and Berry), corepack, pip and
-  uv pointing at the mirror, with the offline switches the dev images bake
+- the registry variables of npm, Yarn (classic and Berry), corepack, pip,
+  uv and Poetry (``POETRY_PYPI_MIRROR_URL``, read by the
+  poetry-plugin-pypi-mirror the toolchain-python image installs) pointing at
+  the mirror, with the offline switches the dev images bake
   (``PIP_NO_INDEX``, ``UV_OFFLINE``, ``YARN_ENABLE_NETWORK``) turned off;
 - Maven pointed at the mirror: :func:`write_maven_settings` writes a settings
   file with one mirror of every repository (``mirrorOf *``) to ``/maven/``,
@@ -63,7 +65,7 @@ def command_egress() -> frozenset[str]:
 
 
 def command_env() -> dict[str, str]:
-    """The registry variables of npm, Yarn, corepack, pip and uv for the mirror; ``{}`` when none is set."""
+    """The registry variables of npm, Yarn, corepack, pip, uv and Poetry for the mirror; ``{}`` when none is set."""
     url = _url()
     if not url:
         return {}
@@ -83,6 +85,8 @@ def command_env() -> dict[str, str]:
         "PIP_NO_INDEX": "0",
         "UV_DEFAULT_INDEX": pypi,
         "UV_OFFLINE": "false",
+        # Poetry reads neither of the above: poetry-plugin-pypi-mirror (toolchain-python) swaps pypi.org for it.
+        "POETRY_PYPI_MIRROR_URL": pypi,
         # Maven (3.9 reads MAVEN_ARGS): the settings write_maven_settings puts in the container.
         "MAVEN_ARGS": f"--global-settings {MAVEN_SETTINGS_PATH}",
     }

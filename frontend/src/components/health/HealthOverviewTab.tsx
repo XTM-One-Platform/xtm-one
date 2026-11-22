@@ -37,6 +37,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { ModuleAnalysisSummary, analysisRowFor } from "@/components/health/ModuleAnalysisSummary";
 import { ANALYST_MODULES, AnalystRecommendationBlock, ModuleAnalystBlock } from "@/components/health/ModuleAnalystParts";
+import { ModuleCheckReportLine } from "@/components/health/ModuleCheckReport";
 import {
   useDismissHealthFindings,
   useHealthAnalysis,
@@ -406,7 +407,13 @@ export function HealthOverviewTab() {
     const analysedAt = row?.analysed_at ? Date.parse(row.analysed_at) : Number.NaN;
     const summaryIsNewer = row !== null && (Number.isNaN(investigatedAt) || analysedAt > investigatedAt);
     if (investigated) {
-      return <ModuleAnalystBlock module={card.module} investigation={investigation} showSummary={summaryIsNewer} hasOpenFindings={hasOpenFindings} overview={analysis.data} />;
+      // The agentic checks line (#101 S15e, section 13.6) under the card's one AI block: stored reports, no model.
+      return (
+        <div className="space-y-3">
+          <ModuleAnalystBlock module={card.module} investigation={investigation} showSummary={summaryIsNewer} hasOpenFindings={hasOpenFindings} overview={analysis.data} />
+          <ModuleCheckReportLine module={card.module} />
+        </div>
+      );
     }
     return row ? <ModuleAnalysisSummary module={card.module} hasOpenFindings={hasOpenFindings} overview={analysis.data} /> : undefined;
   };

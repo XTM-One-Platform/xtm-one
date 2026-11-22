@@ -43,6 +43,8 @@ SYSTEM_ACTOR = "system"
 DEFAULT_MAX_ACCEPTANCE = timedelta(days=90)
 #: Evidence recorded when every member issue closed at source.
 CLOSED_AT_SOURCE = "every member issue closed at source"
+#: The evidence of an upgrade case the asset inventory shows fixed on every asset (#1252).
+FIXED_IN_INVENTORY = "every asset running the product runs the fixed version or later (asset inventory)"
 
 _SPACES = re.compile(r"\s+")
 
@@ -243,6 +245,9 @@ class CaseSnapshot:
     members: dict[str, bool] = field(default_factory=dict)
     #: A case with a validation plan never resolves on absence at source (#857).
     validation_plan: bool = False
+    #: An upgrade case whose product the asset inventory shows on the fixed version or later on every
+    #: asset that runs it (#1252): it leaves the open cases even while its issues stay open at source.
+    fixed_in_inventory: bool = False
 
 
 @dataclass
@@ -364,7 +369,13 @@ def plan_recompute(
         after.update({m: True for m in plan.add + plan.reopen})
         after.update({m: False for m in plan.resolve})
         any_open = any(after.values())
-        if after and not any_open and case.state in ("needs_attention", "in_progress") and not case.validation_plan:
+        if case.fixed_in_inventory and case.id not in retarget:
+            # No asset is left below the fix: the case resolves (a validation plan still needs its proof)
+            # and is never reopened by issues that stay open at source on a version nobody runs.
+            if case.state in ("needs_attention", "in_progress") and not case.validation_plan:
+                plan.new_state = "resolved"
+                plan.evidence = FIXED_IN_INVENTORY
+        elif after and not any_open and case.state in ("needs_attention", "in_progress") and not case.validation_plan:
             plan.new_state = "resolved"
             plan.evidence = CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":

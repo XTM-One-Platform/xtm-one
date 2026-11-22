@@ -100,6 +100,7 @@ from app.api.v1.schemas.fleet import (
     FleetBulkOutcome,
     FleetBulkResponse,
     FleetCapabilitySlotsResponse,
+    FleetCapabilityTypeSet,
     FleetCardResponse,
     FleetControlResponse,
     FleetCostResponse,
@@ -148,6 +149,7 @@ from app.api.v1.schemas.fleet import (
     FleetSetupStep,
     FleetSharedStateHygieneResponse,
     FleetSlotBind,
+    FleetSlotSet,
     FleetSourceChange,
     FleetSourceChangesResponse,
     FleetSpecApply,
@@ -912,19 +914,99 @@ async def _connected_integrations(db: AsyncSession, user: User, user_group_ids: 
     ]
 
 
-def _slot_model(state: Any) -> Any:
-    from app.api.v1.schemas.fleet import FleetCapabilitySlot, FleetSlotIntegration
+def _slot_ref(i: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetSlotIntegration
 
-    def _ref(i: Any) -> FleetSlotIntegration:
-        return FleetSlotIntegration(integration_id=i.integration_id, provider=i.provider, name=i.name)
+    return FleetSlotIntegration(integration_id=i.integration_id, provider=i.provider, name=i.name)
+
+
+def _builtin_model(builtin: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetSlotBuiltin
+
+    if builtin is None:
+        return None
+    return FleetSlotBuiltin(key=builtin.key, label=builtin.label, always_on=builtin.always_on)
+
+
+def _slot_model(state: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetCapabilitySlot
 
     return FleetCapabilitySlot(
         capability=state.capability,
         label=state.label,
         state=state.state,
-        bound=[_ref(i) for i in state.bound],
-        candidates=[_ref(i) for i in state.candidates],
+        bound=[_slot_ref(i) for i in state.bound],
+        candidates=[_slot_ref(i) for i in state.candidates],
+        builtin=_builtin_model(state.builtin),
     )
+
+
+def _type_models(members: list[FleetMemberSlots], connected: list[Any]) -> list[Any]:
+    """The member slots grouped by capability (#1201): one row per type."""
+    from app.api.v1.schemas.fleet import FleetCapabilityType, FleetCapabilityTypeMember
+    from app.services.fleet_capability_slots import (
+        BUILTIN_OPTIONS,
+        IntegrationRef,
+        SlotState,
+        TypeMember,
+        type_states,
+    )
+
+    by_id = {i.integration_id: i for i in connected}
+
+    def _ref(i: Any) -> IntegrationRef:
+        return by_id.get(i.integration_id) or IntegrationRef(
+            integration_id=i.integration_id, provider=i.provider, name=i.name
+        )
+
+    pairs = [
+        (
+            TypeMember(
+                member_id=m.member_id,
+                agent_id=m.agent_id,
+                name=m.name,
+                role_label=m.role_label,
+                can_edit=m.can_edit,
+                bound=[],
+                custom=False,
+            ),
+            [
+                SlotState(
+                    capability=s.capability,
+                    label=s.label,
+                    state=s.state,
+                    bound=[_ref(i) for i in s.bound],
+                    candidates=[_ref(i) for i in s.candidates],
+                    builtin=BUILTIN_OPTIONS.get(s.capability),
+                )
+                for s in m.slots
+            ],
+        )
+        for m in members
+    ]
+    return [
+        FleetCapabilityType(
+            capability=t.capability,
+            label=t.label,
+            state=t.state,
+            choice=[_slot_ref(i) for i in t.choice],
+            candidates=[_slot_ref(i) for i in t.candidates],
+            members=[
+                FleetCapabilityTypeMember(
+                    member_id=m.member_id,
+                    agent_id=m.agent_id,
+                    name=m.name,
+                    role_label=m.role_label,
+                    can_edit=m.can_edit,
+                    bound=[_slot_ref(i) for i in m.bound],
+                    custom=m.custom,
+                )
+                for m in t.members
+            ],
+            builtin=_builtin_model(t.builtin),
+        )
+        for t in type_states(pairs)
+    ]
 
 
 async def _member_slots(
@@ -994,7 +1076,7 @@ async def get_fleet_capability_slots(
         for r in rows
         if r.agent_id in agents
     ]
-    return FleetCapabilitySlotsResponse(fleet_id=str(fleet.id), members=members)
+    return FleetCapabilitySlotsResponse(fleet_id=str(fleet.id), members=members, types=_type_models(members, connected))
 
 
 async def _slot_member_agent(
@@ -1124,6 +1206,122 @@ async def unbind_fleet_member_slot(
     await db.refresh(agent)
     connected = await _connected_integrations(db, user, user_group_ids)
     return await _member_slots(db, user, user_group_ids, row, agent, connected)
+
+
+def _wanted_integrations(integration_ids: list[str], connected: list[Any]) -> list[Any]:
+    """The connected integrations *integration_ids* name, in order; 404 on one not connected."""
+    by_id = {i.integration_id: i for i in connected}
+    out: list[Any] = []
+    for raw in dict.fromkeys(integration_ids):
+        integration = by_id.get(str(parse_uuid(raw, label="integration_id")))
+        if integration is None:
+            raise HTTPException(status_code=404, detail="Integration not found or not connected")
+        out.append(integration)
+    return out
+
+
+@router.put("/{fleet_id}/members/{member_id}/slots/{capability}", response_model=FleetMemberSlots)
+async def set_fleet_member_slot(
+    fleet_id: str,
+    member_id: str,
+    capability: str,
+    body: FleetSlotSet,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetMemberSlots:
+    """Bind exactly these integrations on one member's slot: an override or a reset to the fleet choice (#1201).
+
+    The capability's other bindings on that agent are removed, every other
+    provider's binding is kept. Same checks as a one-click bind.
+    """
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import SlotBindingRefusedError, bindings_set
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    wanted = _wanted_integrations(body.integration_ids, connected)
+    try:
+        agent.integration_bindings = bindings_set(
+            row.role_label,
+            capability,
+            agent.integration_bindings,
+            wanted,
+            PROVIDER_CATALOG,
+            company_managed_only=bool(agent.is_company_managed),
+        )
+    except SlotBindingRefusedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    await _audit_slot_change(
+        db, user, agent, verb="Set", capability=capability, integration_id=",".join(i.integration_id for i in wanted)
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return await _member_slots(db, user, user_group_ids, row, agent, connected)
+
+
+@router.put("/{fleet_id}/capabilities/{capability}", response_model=FleetCapabilitySlotsResponse)
+async def set_fleet_capability(
+    fleet_id: str,
+    capability: str,
+    body: FleetCapabilityTypeSet,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _gate: None = Depends(require_agentic_ai_licensed),
+) -> FleetCapabilitySlotsResponse:
+    """The fleet choice of a capability, written on every member slot of that type (#1201).
+
+    Each member the reader may edit gets exactly *integration_ids* on that
+    slot (same checks as a one-click bind, the company-managed rule per
+    agent). A member whose slot is custom keeps its override unless
+    *override_custom*. Every check runs before the first write: one refusal
+    writes nothing. A built-in option is never stored: an empty list leaves
+    only it active.
+    """
+    from app.api.v1.integration_catalog import PROVIDER_CATALOG
+    from app.services.fleet_capability_slots import (
+        CAPABILITIES,
+        SlotBindingRefusedError,
+        bindings_set,
+        members_to_write,
+    )
+
+    if capability not in CAPABILITIES:
+        raise HTTPException(status_code=422, detail=f"Unknown capability '{capability}'.")
+    view = await get_fleet_capability_slots(fleet_id, user=user, db=db, _gate=None)
+    state = next((t for t in view.types if t.capability == capability), None)
+    if state is None:
+        raise HTTPException(status_code=422, detail=f"No member of this fleet has a '{capability}' slot.")
+    user_group_ids = await get_user_group_ids(db, user.id)
+    connected = await _connected_integrations(db, user, user_group_ids)
+    wanted = _wanted_integrations(body.integration_ids, connected)
+    targets = members_to_write(state, override_custom=body.override_custom)
+    planned: list[tuple[Agent, dict[str, list[str]]]] = []
+    for member_id in targets:
+        row, agent = await _slot_member_agent(db, user, user_group_ids, fleet_id, member_id)
+        try:
+            planned.append(
+                (
+                    agent,
+                    bindings_set(
+                        row.role_label,
+                        capability,
+                        agent.integration_bindings,
+                        wanted,
+                        PROVIDER_CATALOG,
+                        company_managed_only=bool(agent.is_company_managed),
+                    ),
+                )
+            )
+        except SlotBindingRefusedError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=f"{agent.name}: {exc.detail}") from None
+    joined = ",".join(i.integration_id for i in wanted)
+    for agent, bindings in planned:
+        agent.integration_bindings = bindings
+        await _audit_slot_change(db, user, agent, verb="Set", capability=capability, integration_id=joined)
+    await db.commit()
+    return await get_fleet_capability_slots(fleet_id, user=user, db=db, _gate=None)
 
 
 @router.post("/{fleet_id}/members/{member_id}/instruction-draft", response_model=FleetMemberInstructionDraftResponse)
@@ -3319,8 +3517,14 @@ async def get_ctem_loop_setup_status(
     fleet_facts = status_mod.LoopFleetFacts()
     if fleet is not None:
         slot_view = await get_fleet_capability_slots(str(fleet.id), user=user, db=db, _gate=None)
+        # The Ecosystem step counts the customer's own tools: a built-in option
+        # (#1201) fills a slot without connecting anything, so it is left out here.
         slots = status_mod.slot_summary(
-            [{"capability": s.capability, "state": s.state} for s in m.slots] for m in slot_view.members
+            [
+                {"capability": s.capability, "state": status_mod.external_slot_state(s.bound, s.candidates)}
+                for s in m.slots
+            ]
+            for m in slot_view.members
         )
         level = effective_level(fleet.autonomy_level)
         gates = effective_gates(

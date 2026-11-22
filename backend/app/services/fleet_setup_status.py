@@ -98,6 +98,13 @@ class SetupStatus:
     resume_on: str | None
 
 
+def external_slot_state(bound: Sequence[Any], candidates: Sequence[Any]) -> str:
+    """A slot's state from its integrations alone: a built-in option (#1201) does not count."""
+    if bound:
+        return "filled"
+    return "empty" if candidates else "unavailable"
+
+
 def slot_summary(member_slots: Iterable[Iterable[Mapping[str, Any]]]) -> dict[str, str]:
     """The best state of each ecosystem capability across the fleet's members.
 

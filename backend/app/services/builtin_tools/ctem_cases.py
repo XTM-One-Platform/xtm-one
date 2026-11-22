@@ -169,7 +169,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
                     return f"No case {case_id}."
-                return _dump(shown[2])
+                from app.services import ctem_case_versions as case_versions
+
+                # The versions the case's product runs on the assets (#1252).
+                return _dump({**shown[2], "running_versions": await case_versions.for_case(db, shown[0])})
         except Exception:
             logger.warning("CTEM case read failed", exc_info=True)
             return "Error: the case could not be read right now. Say so; do not guess it."

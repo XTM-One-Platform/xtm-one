@@ -423,18 +423,19 @@ function ResetOnboardingCard() {
   };
 
   return (
-    <SettingsCard
-      icon={RotateCcw}
-      title={t_i18n("Onboarding")}
-      description={t_i18n("Show the guided setup again on the next sign-in or page load, as after a fresh install.")}
-      action={
-        <Button variant="outline" onClick={handleReset} disabled={reset.isPending}>
-          {t_i18n("Reset onboarding")}
-        </Button>
-      }
-    >
+    <>
+      <SettingsCard
+        icon={RotateCcw}
+        title={t_i18n("Onboarding")}
+        description={t_i18n("Show the guided setup again now, as after a fresh install.")}
+        action={
+          <Button variant="outline" onClick={handleReset} disabled={reset.isPending}>
+            {t_i18n("Reset onboarding")}
+          </Button>
+        }
+      />
       {ConfirmEl}
-    </SettingsCard>
+    </>
   );
 }
 
