@@ -107,11 +107,22 @@ def _section(text: dict[str, Any]) -> dict[str, Any]:
     return {"type": "section", "text": text}
 
 
+_ZWSP = "\u200b"
+
+
 def _bold_runs(template: str, **values: str) -> dict[str, Any]:
     """A catalog sentence with its ``{name}`` values in bold, each value escaped (never formatted raw)."""
     escaped = _escape(template)
     for key, value in values.items():
-        escaped = escaped.replace("{" + key + "}", f"*{_escape(value)}*")
+        slot = "{" + key + "}"
+        while slot in escaped:
+            at = escaped.index(slot)
+            before, after = escaped[:at], escaped[at + len(slot) :]
+            # Slack reads *bold* only at a word boundary: next to a letter (a Japanese sentence has no
+            # spaces) a zero-width space makes one, else the asterisks show (UX round 1 of #1086, ja).
+            lead = _ZWSP if before[-1:].isalnum() else ""
+            tail = _ZWSP if after[:1].isalnum() else ""
+            escaped = f"{before}{lead}*{_escape(value)}*{tail}{after}"
     return {"type": "mrkdwn", "text": escaped, "verbatim": True}
 
 

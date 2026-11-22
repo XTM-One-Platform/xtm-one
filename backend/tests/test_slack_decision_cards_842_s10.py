@@ -125,6 +125,14 @@ def test_an_open_card_says_whom_it_waits_for_and_escapes_ask_text():
     assert question["text"]["text"] == "*Ship the fix tonight?*"
 
 
+def test_bold_next_to_japanese_text_gets_a_word_boundary_and_english_stays_plain():
+    """Slack reads *bold* at a word boundary only: the ja source line showed its asterisks (UX round 1 of #1086)."""
+    ja = cards.render_slack_decision(_view(), "ja")["blocks"][1]["elements"][0]["text"]
+    assert "\u200b*" in ja or "*\u200b" in ja
+    en = cards.render_slack_decision(_view(), "en")["blocks"][1]["elements"][0]["text"]
+    assert "\u200b" not in en
+
+
 def test_each_option_keeps_its_own_line():
     """The options list was folded onto one line by ``_clip`` (seen in the render lab, UX round 1 of #1086)."""
     message = cards.render_slack_decision(_view(), "en")
