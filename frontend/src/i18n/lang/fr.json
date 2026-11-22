@@ -20295,5 +20295,11 @@
   "Ticket status": "Statut du ticket",
   "Re-test started: the ticket is done": "Re-test lancé : le ticket est terminé",
   "Ticket created": "Ticket créé",
-  "{from} to {to}": "{from} vers {to}"
+  "{from} to {to}": "{from} vers {to}",
+  "Treatment plan": "Plan de traitement",
+  "Unnamed plan": "Plan sans nom",
+  "Attached on {date}": "Rattaché le {date}",
+  "Attached the treatment plan": "A rattaché le plan de traitement",
+  "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "Pas encore de plan de traitement : la décision de remédiation en écrit un dans OpenCRQ quand OpenCRQ est connecté.",
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "Un plan existe dans OpenCRQ : réservé aux lecteurs d'OpenCRQ"
 }

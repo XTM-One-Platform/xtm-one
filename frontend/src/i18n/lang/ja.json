@@ -20295,5 +20295,11 @@
   "Ticket status": "チケットのステータス",
   "Re-test started: the ticket is done": "再テスト開始: チケットが完了しました",
   "Ticket created": "チケットを作成しました",
-  "{from} to {to}": "{from} から {to}"
+  "{from} to {to}": "{from} から {to}",
+  "Treatment plan": "対応計画",
+  "Unnamed plan": "名前のない計画",
+  "Attached on {date}": "{date} に紐付け",
+  "Attached the treatment plan": "対応計画を紐付けました",
+  "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "対応計画はまだありません。OpenCRQ が接続されていると、修復の決定が OpenCRQ に計画を作成します。",
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "OpenCRQ に計画があります。OpenCRQ の閲覧者のみ表示できます"
 }
