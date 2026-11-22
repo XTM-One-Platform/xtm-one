@@ -244,6 +244,25 @@ def test_every_outcome_carries_a_reason_code_the_frontend_translates():
             _profile(internet_exposure_required=True), _facts(lens="inside", ref="db-1"), today=TODAY
         ),
         "risk_scenario_unreadable": gate.decide(_profile(require_risk_scenario=True), _facts(), today=TODAY),
+        # CTEM-29: a third party nothing depends on, a leaked credential of a disabled account.
+        "no_dependency": gate.decide(
+            _profile(),
+            gate.SignalFacts(
+                trigger_path="third_party_event", lens="world", subject_kind="third_party", subject_ref="Unrelated Ltd"
+            ),
+            today=TODAY,
+        ),
+        "account_disabled": gate.decide(
+            _profile(),
+            gate.SignalFacts(
+                trigger_path="credential_leak",
+                lens="world",
+                subject_kind="identity",
+                subject_ref="jdoe@corp.example",
+                evidence={"account_disabled": True},
+            ),
+            today=TODAY,
+        ),
     }
     for code, decision in cases.items():
         assert decision.record["reason_code"] == code, decision.reason
