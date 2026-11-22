@@ -619,6 +619,7 @@ ee:
   - backend/app/services/integration_invalid_notice.py
   # Added on main since the audit (2026-11-12)
   - backend/app/services/jira_events.py
+  - backend/app/services/pennylane_events.py
   - backend/app/services/jira_webhooks.py
   - backend/app/services/wordsmith_webhooks.py
   - backend/app/services/teams_late_reply.py
@@ -723,9 +724,9 @@ ce:
   - backend/app/integrations/providers/opencrq  # a connector
   - backend/app/integrations/providers/opencti  # a connector
   - backend/app/integrations/providers/ovhcloud  # a connector
+  - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
-  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector

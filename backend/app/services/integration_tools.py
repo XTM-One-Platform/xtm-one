@@ -137,6 +137,7 @@ from app.integrations.providers.opencrq.procedure_manifest import PROBE, Manifes
 from app.integrations.providers.opencti import build_tools as opencti_tools
 from app.integrations.providers.ovhcloud import build_tools as ovhcloud_tools
 from app.integrations.providers.pagerduty import build_tools as pagerduty_tools
+from app.integrations.providers.pennylane import build_tools as pennylane_tools
 from app.integrations.providers.perk import build_tools as perk_tools
 from app.integrations.providers.picus import build_tools as picus_tools
 from app.integrations.providers.planhat import build_tools as planhat_tools
@@ -153,7 +154,6 @@ from app.integrations.providers.recorded_future import (
     build_tools as recorded_future_tools,
 )
 from app.integrations.providers.rss import build_tools as rss_tools
-from app.integrations.providers.rydoo import build_tools as rydoo_tools
 from app.integrations.providers.securityscorecard import (
     build_tools as securityscorecard_tools,
 )
@@ -999,6 +999,7 @@ PROVIDER_TOOLS = {
     "filigran_ai": filigran_ai_tools,
     "hubspot": hubspot_tools,
     "drata": drata_tools,
+    "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
     "wordsmith": wordsmith_tools,
@@ -1048,7 +1049,6 @@ PROVIDER_TOOLS = {
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
     "airwallex": airwallex_tools,
-    "rydoo": rydoo_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1129,6 +1129,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "docusign",
         "doppel",
         "drata",
+        "pennylane",
         "facebook",
         "figma",
         "flashpoint",
@@ -1149,7 +1150,6 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "openaev",
         "opencti",
         "perk",
-        "rydoo",
         "servicenow",
         "slack",
         "tanium",
@@ -2988,27 +2988,6 @@ async def _get_token(
         airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return airwallex_token_from_config(airwallex_secret, airwallex_extra)
 
-    # --- Rydoo (OAuth2 client credentials, one company, branches as entities) ---
-    # The client secret is the API key column; the client id lives in
-    # extra_config. The provider gets ``client_id||client_secret``.
-    if provider == "rydoo":
-        from app.integrations.providers.rydoo import (
-            token_from_config as rydoo_token_from_config,
-        )
-
-        rydoo_extra = {}
-        if integ.extra_config_enc:
-            try:
-                rydoo_extra = await _reveal_extra(integ)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to decrypt extra_config for '%s' (rydoo): %s",
-                    integ.name,
-                    format_exception_message(exc),
-                )
-        rydoo_secret = (await reveal_field(integ, "api_key_enc")) or ""
-        return rydoo_token_from_config(rydoo_secret, rydoo_extra)
-
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
     # (admin.api.crowdsec.net) each use their own API key, both sent in the
@@ -4320,6 +4299,21 @@ async def _get_token(
         except Exception as exc:
             logger.warning(
                 "Failed to extract region from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
+                format_exception_message(exc),
+            )
+
+    # Pennylane: a firm token names the company of each request (X-Company-Id).
+    if provider == "pennylane" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            company_id = str(extra.get("company_id") or "").strip()
+            if company_id:
+                return f"{company_id}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract company_id from extra_config for '%s' (%s): %s",
                 integ.name,
                 provider,
                 format_exception_message(exc),
