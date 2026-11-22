@@ -20704,9 +20704,14 @@
   "Waiting for a fleet step, working this case since {since}.": "Waiting for a fleet step, working this case since {since}.",
   "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
   "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets",
-  "Agentic checks": "Agentic checks",
-  "No check round yet": "No check round yet",
-  "Show the checks": "Show the checks",
-  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# not run} other {# not run}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}"
+  "Add a sync": "Add a sync",
+  "Start with your sources": "Start with your sources",
+  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.",
+  "No sync yet": "No sync yet",
+  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, one {# sync} other {# syncs}}",
+  "Feeds no section yet": "Feeds no section yet",
+  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{section} from {source}: {count, plural, one {# row} other {# rows}}",
+  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.",
+  "The OpenCRQ sync failed": "The OpenCRQ sync failed",
+  "Sync with OpenCRQ now": "Sync with OpenCRQ now"
 }
