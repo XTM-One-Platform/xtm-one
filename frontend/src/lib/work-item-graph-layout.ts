@@ -64,7 +64,7 @@ export interface Size {
   height: number;
 }
 
-interface Box {
+export interface Box {
   x: number;
   y: number;
   width: number;
@@ -206,6 +206,23 @@ function layoutPart(
       return [id, { x: x - width / 2, y: y - height / 2 }] as const;
     })));
   }
+  // Force and radial draw each connected part on its own (UX r2 B1 on #1067):
+  // radial runs rings around the root of its part, never one row of the parts
+  // its root does not reach, and the parts are packed in shelves.
+  const components = connectedParts(ids, edges);
+  if (components.length > 1) {
+    const blocks = components.map((members) => {
+      const own = new Set(members);
+      const points = layoutPart(layout, members, edges.filter((edge) => own.has(edge.source) && own.has(edge.target)), sizeOf);
+      return { points, size: extentOf(points, sizeOf) };
+    });
+    const origins = packShelves(blocks.map((block) => block.size), NODE_SEP * 2);
+    const placed = new Map<string, { x: number; y: number }>();
+    blocks.forEach((block, i) => {
+      for (const [id, p] of block.points) placed.set(id, { x: origins[i].x + p.x, y: origins[i].y + p.y });
+    });
+    return placed;
+  }
   // Force and radial place centres: two centres at least a card's diagonal
   // apart can never overlap, whatever their sizes.
   const diagonal = Math.max(...ids.map((id) => Math.hypot(sizeOf(id).width, sizeOf(id).height)));
@@ -225,6 +242,75 @@ function layoutPart(
     const { width, height } = sizeOf(id);
     return [id, { x: p.x - width / 2, y: p.y - height / 2 }] as const;
   })));
+}
+
+/** The connected parts of a drawing, largest first, ties in id order. */
+function connectedParts(ids: readonly string[], edges: readonly { source: string; target: string }[]): string[][] {
+  const next = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const edge of edges) {
+    if (!next.has(edge.source) || !next.has(edge.target)) continue;
+    next.get(edge.source)!.push(edge.target);
+    next.get(edge.target)!.push(edge.source);
+  }
+  const seen = new Set<string>();
+  const parts: string[][] = [];
+  for (const id of [...ids].sort()) {
+    if (seen.has(id)) continue;
+    const part = [id];
+    seen.add(id);
+    for (let i = 0; i < part.length; i++) {
+      for (const other of next.get(part[i])!) {
+        if (!seen.has(other)) {
+          seen.add(other);
+          part.push(other);
+        }
+      }
+    }
+    parts.push(part);
+  }
+  return parts.sort((a, b) => b.length - a.length || (a[0] < b[0] ? -1 : 1));
+}
+
+/**
+ * Shelves: the top-left corner of each block, in rows about as wide as keeps the
+ * whole close to the canvas's shape, `gap` between two blocks.
+ */
+function packShelves(sizes: readonly Size[], gap: number, aspect = 16 / 9): { x: number; y: number }[] {
+  const area = sizes.reduce((sum, size) => sum + (size.width + gap) * (size.height + gap), 0);
+  const rowWidth = Math.max(Math.sqrt(area * aspect), ...sizes.map((size) => size.width));
+  const origins: { x: number; y: number }[] = [];
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+  for (const size of sizes) {
+    if (x > 0 && x + size.width > rowWidth) {
+      x = 0;
+      y += rowHeight + gap;
+      rowHeight = 0;
+    }
+    origins.push({ x, y });
+    x += size.width + gap;
+    rowHeight = Math.max(rowHeight, size.height);
+  }
+  return origins;
+}
+
+/**
+ * Where a floating edge meets two cards (force and radial, UX r2 B1 on #1067):
+ * the points where the line between their centres leaves each box, so the edge
+ * runs between the sides that face each other and never through its own cards.
+ */
+export function floatingEndpoints(source: Box, target: Box): { source: { x: number; y: number }; target: { x: number; y: number } } {
+  const border = (box: Box, toward: Box) => {
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const dx = toward.x + toward.width / 2 - cx;
+    const dy = toward.y + toward.height / 2 - cy;
+    if (dx === 0 && dy === 0) return { x: cx, y: cy };
+    const scale = Math.min(dx === 0 ? Infinity : box.width / 2 / Math.abs(dx), dy === 0 ? Infinity : box.height / 2 / Math.abs(dy));
+    return { x: cx + dx * scale, y: cy + dy * scale };
+  };
+  return { source: border(source, target), target: border(target, source) };
 }
 
 function normalise(points: Map<string, { x: number; y: number }>): Map<string, { x: number; y: number }> {
@@ -326,24 +412,14 @@ export function layoutWorkItemGraph(
   }
 
   // Shelves: rows of parts, each row as wide as the drawing's target width.
-  const area = parts.reduce((sum, part) => sum + (part.size.width + ZONE_GAP) * (part.size.height + ZONE_GAP), 0);
-  const rowWidth = Math.max(Math.sqrt(area * aspect), ...parts.map((part) => part.size.width));
+  const origins = packShelves(parts.map((part) => part.size), ZONE_GAP, aspect);
   const positions = new Map<string, { x: number; y: number }>();
   const zones: LaidOutGraph["zones"] = [];
-  let x = 0;
-  let y = 0;
-  let rowHeight = 0;
-  for (const part of parts) {
-    if (x > 0 && x + part.size.width > rowWidth) {
-      x = 0;
-      y += rowHeight + ZONE_GAP;
-      rowHeight = 0;
-    }
+  parts.forEach((part, i) => {
+    const { x, y } = origins[i];
     const inset = part.group ? { x: ZONE_PAD, y: ZONE_HEADER } : { x: 0, y: 0 };
     for (const [id, p] of part.points) positions.set(id, { x: x + inset.x + p.x, y: y + inset.y + p.y });
     if (part.group) zones.push({ x, y, width: part.size.width, height: part.size.height, group: part.group });
-    x += part.size.width + ZONE_GAP;
-    rowHeight = Math.max(rowHeight, part.size.height);
-  }
+  });
   return { positions, zones, edges, collapsed };
 }

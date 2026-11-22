@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   WORK_ITEM_GRAPH_LAYOUTS,
+  floatingEndpoints,
   graphGroups,
   groupItemCount,
   groupNodeId,
@@ -10,7 +11,7 @@ import {
   progressionEdge,
   type WorkItemGraphLayout,
 } from "./work-item-graph-layout.ts";
-import { focusChains } from "./work-item-graph.ts";
+import { drawnCounts, focusChains } from "./work-item-graph.ts";
 import type { WorkItemGraphEdge, WorkItemGraphItemNode, WorkItemGraphNode } from "../types/index.ts";
 
 function item(id: string, extra: Partial<WorkItemGraphItemNode> = {}): WorkItemGraphItemNode {
@@ -120,6 +121,55 @@ test("every layout draws every node with no two cards overlapping", () => {
       }
     }
   }
+});
+
+test("radial: each connected part is rings around its root, never one row of every card (UX r2 B1 on #1067)", () => {
+  const laid = layoutWorkItemGraph(nodes, edges, { layout: "radial", groups: [], sizeOf });
+  const tops = new Set(nodes.map((n) => centre(laid, n.id).y));
+  assert.ok(tops.size > 2, "the cards spread over several rows, not a single line");
+  // The program part (R, K1, K2) sits apart from the chain part: no card of one inside the other's extent row by row.
+  const chain = ["A", "B", "C", "D", "X", "ref:pr", "ref:dep", "person:u"].map((id) => centre(laid, id));
+  const program = ["R", "K1", "K2"].map((id) => centre(laid, id));
+  const box = (cards: ReturnType<typeof centre>[]) => ({
+    left: Math.min(...cards.map((c) => c.left)),
+    right: Math.max(...cards.map((c) => c.left + c.width)),
+    top: Math.min(...cards.map((c) => c.top)),
+    bottom: Math.max(...cards.map((c) => c.top + c.height)),
+  });
+  const a = box(chain);
+  const b = box(program);
+  assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top, "the two parts are packed apart");
+});
+
+test("a floating edge meets each card on the side facing the other, never inside either card", () => {
+  const left = { x: 0, y: 0, width: 260, height: 92 };
+  const right = { x: 600, y: 300, width: 260, height: 92 };
+  const ends = floatingEndpoints(left, right);
+  const onBorder = (p: { x: number; y: number }, b: typeof left) =>
+    (Math.abs(p.x - b.x) < 1e-6 || Math.abs(p.x - (b.x + b.width)) < 1e-6 || Math.abs(p.y - b.y) < 1e-6 || Math.abs(p.y - (b.y + b.height)) < 1e-6) &&
+    p.x >= b.x - 1e-6 && p.x <= b.x + b.width + 1e-6 && p.y >= b.y - 1e-6 && p.y <= b.y + b.height + 1e-6;
+  assert.ok(onBorder(ends.source, left) && onBorder(ends.target, right));
+  // The source end faces the target: on the right or bottom side of the left card, the target end on the left or top side.
+  assert.ok(ends.source.x === left.x + left.width || ends.source.y === left.y + left.height);
+  assert.ok(ends.target.x === right.x || ends.target.y === right.y);
+  // Waiter on the left, prerequisite on the right (force): the edge leaves the prerequisite on its left side.
+  const back = floatingEndpoints(right, { x: 0, y: 300, width: 260, height: 92 });
+  assert.equal(back.source.x, right.x);
+});
+
+test("the status line counts what is drawn: Show only counts the focused chain (UX r2 B2 on #1067)", () => {
+  const all = drawnCounts({ nodes, edges });
+  assert.equal(all.items, nodes.filter((n) => n.kind === "item").length);
+  assert.equal(all.links, edges.length);
+  assert.equal(all.waitingForPerson, 1);
+  const chains = focusChains(edges, "A");
+  const kept = new Set(["A", ...chains.upstream, ...chains.downstream]);
+  const isolated = { nodes: nodes.filter((n) => kept.has(n.id)), edges: edges.filter((e) => kept.has(e.source) && kept.has(e.target)) };
+  const counts = drawnCounts(isolated);
+  assert.equal(counts.items, isolated.nodes.filter((n) => n.kind === "item").length);
+  assert.ok(counts.items < all.items, "Show only counts fewer items than the whole graph");
+  const groups = graphGroups(isolated.nodes, isolated.edges, "program");
+  assert.equal(groups.reduce((sum, g) => sum + groupItemCount(g, isolated.nodes), 0), counts.items, "zones and status line share one population");
 });
 
 test("group by program: the root and its children share a group, the rest is No program", () => {

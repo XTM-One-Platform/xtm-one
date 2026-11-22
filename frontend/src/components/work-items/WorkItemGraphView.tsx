@@ -31,14 +31,18 @@ import "@xyflow/react/dist/style.css";
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
   Controls,
   Handle,
   MarkerType,
   Position,
   ReactFlow,
+  getBezierPath,
+  useInternalNode,
   useReactFlow,
   useStore,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
@@ -63,12 +67,13 @@ import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
 import { PRIORITY_LABELS, STATUS_LABELS, waitsForReader } from "@/lib/work-item-context";
 import type { AgentFlowFocusMode } from "@/lib/agent-flow-focus";
-import { criticalLeaves, focusChains, shownGraph } from "@/lib/work-item-graph";
+import { criticalLeaves, drawnCounts, focusChains, shownGraph } from "@/lib/work-item-graph";
 import {
   DEFAULT_WORK_ITEM_GRAPH_LAYOUT,
   GROUP_NODE_SIZE,
   WORK_ITEM_GRAPH_GROUP_BYS,
   WORK_ITEM_GRAPH_LAYOUTS,
+  floatingEndpoints,
   graphGroups,
   groupItemCount,
   groupNodeId,
@@ -396,6 +401,52 @@ function CollapsedGroupNode({ data }: NodeProps<Node<CollapsedData>>) {
 
 const NODE_TYPES = { item: ItemNode, ref: RefNode, person: PersonNode, zone: ZoneNode, collapsed: CollapsedGroupNode };
 
+/** The side of a box a floating endpoint lies on. */
+function sideOf(point: { x: number; y: number }, box: { x: number; y: number; width: number; height: number }): Position {
+  const distances: [Position, number][] = [
+    [Position.Left, Math.abs(point.x - box.x)],
+    [Position.Right, Math.abs(point.x - (box.x + box.width))],
+    [Position.Top, Math.abs(point.y - box.y)],
+    [Position.Bottom, Math.abs(point.y - (box.y + box.height))],
+  ];
+  return distances.reduce((best, entry) => (entry[1] < best[1] ? entry : best))[0];
+}
+
+/**
+ * Force and radial (UX r2 B1 on #1067): no rank decides a side there, so an edge
+ * floats, as on the fleet graph: it leaves and enters on the sides of the two
+ * cards that face each other, never across its own cards.
+ */
+function FloatingEdge({ id, source, target, style, markerEnd }: EdgeProps) {
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
+  if (!sourceNode || !targetNode) return null;
+  const box = (node: NonNullable<typeof sourceNode>) => ({
+    x: node.internals.positionAbsolute.x,
+    y: node.internals.positionAbsolute.y,
+    width: node.measured.width ?? node.width ?? 0,
+    height: node.measured.height ?? node.height ?? 0,
+  });
+  const from = box(sourceNode);
+  const to = box(targetNode);
+  const ends = floatingEndpoints(from, to);
+  const [path] = getBezierPath({
+    sourceX: ends.source.x,
+    sourceY: ends.source.y,
+    sourcePosition: sideOf(ends.source, from),
+    targetX: ends.target.x,
+    targetY: ends.target.y,
+    targetPosition: sideOf(ends.target, to),
+    curvature: 0.15,
+  });
+  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+}
+
+const EDGE_TYPES = { floating: FloatingEdge };
+
+/** The layouts whose ranks give every edge a leading and a trailing side; the others float their edges. */
+const RANKED_LAYOUTS = new Set<WorkItemGraphLayout>(["hierarchy-lr", "hierarchy-tb"]);
+
 function NetworkIcon({ className }: { className?: string }) {
   return <Icon name="network" size={16} className={className} aria-hidden />;
 }
@@ -477,6 +528,7 @@ export function WorkItemGraphView({
     [],
   );
   const vertical = layoutChoice === "hierarchy-tb";
+  const floating = !RANKED_LAYOUTS.has(layoutChoice);
 
   const shown = useMemo(() => (graph ? shownGraph(graph, { showDone }) : null), [graph, showDone]);
   const critical = useMemo(() => (shown ? criticalLeaves(shown) : new Set<string>()), [shown]);
@@ -569,7 +621,7 @@ export function WorkItemGraphView({
         id: edge.id,
         source: edge.drawnSource,
         target: edge.drawnTarget,
-        type: "smoothstep",
+        type: floating ? "floating" : "smoothstep",
         animated,
         markerEnd: edge.kind === "program" ? undefined : { type: MarkerType.ArrowClosed, color: stroke, width: 16, height: 16 },
         style: {
@@ -583,7 +635,7 @@ export function WorkItemGraphView({
         data: { kind: edge.kind },
       };
     });
-  }, [visible, laid, chains]);
+  }, [visible, laid, chains, floating]);
 
   const loading = isLoading || !graph || !shown || !visible;
   const layoutKey = `${layoutChoice}|${groupBy}|${[...collapsedKeys].join(",")}|${focusMode}|${visible?.nodes.length ?? 0}`;
@@ -597,11 +649,13 @@ export function WorkItemGraphView({
     priority: t_i18n("Priority"),
   };
   const focusLabels: Record<AgentFlowFocusMode, string> = { isolate: t_i18n("Show only"), dim: t_i18n("Highlight") };
-  const counters: AgentGraphCounter[] = shown
+  // The status line counts what is drawn, the zones' population: Show only included (UX r2 B2 on #1067).
+  const counts = visible ? drawnCounts(visible) : null;
+  const counters: AgentGraphCounter[] = counts && shown
     ? [
-        { key: "items", label: t_i18n("{count, plural, one {item} other {items}}", { count: shown.nodes.filter((n) => n.kind === "item").length }), value: shown.nodes.filter((n) => n.kind === "item").length },
-        { key: "links", label: t_i18n("{count, plural, one {link} other {links}}", { count: shown.edges.length }), value: shown.edges.length },
-        { key: "person", label: t_i18n("waiting for a person"), value: new Set(shown.edges.filter((e) => e.kind === "person").map((e) => e.source)).size, live: true },
+        { key: "items", label: t_i18n("{count, plural, one {item} other {items}}", { count: counts.items }), value: counts.items },
+        { key: "links", label: t_i18n("{count, plural, one {link} other {links}}", { count: counts.links }), value: counts.links },
+        { key: "person", label: t_i18n("waiting for a person"), value: counts.waitingForPerson, live: true },
         { key: "isolated", label: t_i18n("with no dependency, in the list view"), value: shown.isolated },
       ]
     : [];
@@ -699,6 +753,7 @@ export function WorkItemGraphView({
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={NODE_TYPES}
+                edgeTypes={EDGE_TYPES}
                 fitView
                 fitViewOptions={FIT_VIEW_OPTIONS}
                 minZoom={0.1}
