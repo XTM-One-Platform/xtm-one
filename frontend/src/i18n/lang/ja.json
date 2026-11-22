@@ -20644,5 +20644,19 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, other {同期された # 行を削除しますか?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回の同期実行 ({when}) で再び追加されます。}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own. Your choices are kept by every release; the members and their handovers stay the product's.": "各機能のツールをフリート全体で一度選択します。メンバーは独自の選択を保持できます。選択内容はリリースごとに保持され、メンバーとその引き継ぎは製品のものです。",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own.": "各機能のツールをフリート全体で一度選択します。メンバーは独自の選択を保持できます。",
+  "Replace the custom choices?": "カスタムの選択を置き換えますか?",
+  "{count, plural, one {# member has its own choice for {capability}. Replace it with the fleet choice?} other {# members have their own choice for {capability}. Replace them with the fleet choice?}}": "{count, plural, other {# 人のメンバーが {capability} に独自の選択を持っています。フリートの選択で置き換えますか?}}",
+  "Keep their choice": "選択を保持",
+  "No integration connected": "接続済みの連携はありません",
+  "Fleet choice for {capability}": "{capability} のフリートの選択",
+  "{capability} for {member}": "{member} の {capability}",
+  "Reset to fleet choice": "フリートの選択に戻す",
+  "{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}": "{total, plural, other {# 件中 {connected} 件の機能が接続済み}}",
+  "XTM One inventory (built in)": "XTM One インベントリ (組み込み)",
+  "In XTM One only": "XTM One のみ",
+  "Vulnerability intelligence": "脆弱性インテリジェンス",
+  "External attack surface": "外部攻撃対象領域"
 }

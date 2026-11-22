@@ -20644,5 +20644,19 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Retirer # ligne synchronisée ?} other {Retirer # lignes synchronisées ?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : la prochaine exécution de sa synchronisation, {when}, la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : la prochaine exécution de leur synchronisation, {when}, les ramène sauf si vous les excluez.}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : le prochain import la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : le prochain import les ramène sauf si vous les excluez.}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own. Your choices are kept by every release; the members and their handovers stay the product's.": "Choisissez une fois les outils de chaque capacité pour toute la flotte ; un membre peut garder les siens. Vos choix sont conservés à chaque version ; les membres et leurs transferts restent ceux du produit.",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own.": "Choisissez une fois les outils de chaque capacité pour toute la flotte ; un membre peut garder les siens.",
+  "Replace the custom choices?": "Remplacer les choix personnalisés ?",
+  "{count, plural, one {# member has its own choice for {capability}. Replace it with the fleet choice?} other {# members have their own choice for {capability}. Replace them with the fleet choice?}}": "{count, plural, one {# membre a son propre choix pour {capability}. Le remplacer par le choix de la flotte ?} other {# membres ont leur propre choix pour {capability}. Les remplacer par le choix de la flotte ?}}",
+  "Keep their choice": "Garder leur choix",
+  "No integration connected": "Aucune intégration connectée",
+  "Fleet choice for {capability}": "Choix de la flotte pour {capability}",
+  "{capability} for {member}": "{capability} pour {member}",
+  "Reset to fleet choice": "Revenir au choix de la flotte",
+  "{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}": "{total, plural, one {{connected} capacité connectée sur #} other {{connected} capacités connectées sur #}}",
+  "XTM One inventory (built in)": "Inventaire XTM One (intégré)",
+  "In XTM One only": "Dans XTM One uniquement",
+  "Vulnerability intelligence": "Renseignement sur les vulnérabilités",
+  "External attack surface": "Surface d'attaque externe"
 }
