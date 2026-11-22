@@ -2302,7 +2302,8 @@ Frontend: "Set up now" of `OrganizationSetupPrompt` opens
 reuses the existing pieces rather than new forms: the Organization step links to
 Settings > Organization in setup mode, Ecosystem embeds
 `FleetCapabilitySlotsCard`, Gates embeds `FleetAutonomyStrip`, and Enable opens
-`FleetEnableDialog` (dry-run plan, run estimate, Confirm). The step order, copy
+the fleet setup wizard on its "Run as and automations" step (dry-run plan, run
+estimate, Confirm; see "One guided setup for every fleet" below). The step order, copy
 and fact readers are pure functions in `components/fleets/ctem-loop-setup.ts`.
 
 The end (slice 4): after the last step the dialog shows "The CTEM loop is set
@@ -2312,7 +2313,25 @@ intake (`POST /api/v1/ctem-signals`, path `new_vulnerability`, provider
 send: `testSignal` in `ctem-loop-setup.ts`), so reconcile and the scope gate run
 on it, then opens the command center on its loop trace (`/?loop=signal:<id>`).
 "Open the command center" goes there without a signal. The setup is always
-reachable again through `CtemLoopSetupEntry` ("Set up the CTEM loop"): in the
-command center hero and in the header of the CTEM loop fleet page (slug
-`ctem-loop`), shown to an XTM One administrator only, never while
-impersonating (`showsCtemLoopSetupEntry`).
+reachable again through `CtemLoopSetupEntry` ("Set up the CTEM loop") in the
+command center hero, and on the CTEM loop fleet page (slug `ctem-loop`) through
+the header's "Set up" and the menu's "Run setup again" (`FleetSetupDialog`),
+for an XTM One administrator only, never while impersonating
+(`showsCtemLoopSetupEntry`).
+
+### One guided setup for every fleet
+
+A fleet has one setup path: "Set up" on its card and on its page header while
+no automation is on, "Run setup again" in the page's menu once one runs. Both
+open `FleetSetupDialog`, which routes the CTEM loop fleet (XTM One
+administrator) to `CtemLoopSetupDialog` and every other fleet to
+`FleetSetupWizard`: What it does (purpose, triggers, monthly run estimate),
+Integrations (the capability slots, skippable with "I will do it later",
+dropped for a fleet without slots), Autonomy (`FleetAutonomyStrip` compact),
+Run as and automations (the `dry_run` plan; a row that misses a module starts
+unpicked with "Needs <module>" because the backend refuses a pick that misses
+one), Review and enable (one `POST /fleets/{id}/enable`). Nothing is enabled
+before Confirm. Progress is kept per fleet in the browser
+(`fleet-setup-wizard.ts`, key `xtm.fleet-setup.<fleet id>`), cleared on
+enable; no endpoint was added. The end screen names the automations left off
+and the slots not bound, with a link to the Members view.

@@ -242,13 +242,11 @@ def _answer_widgets(view: DecisionView, ask: dict[str, Any], language: str) -> l
 
 
 def _link_widgets(view: DecisionView, ask: dict[str, Any], language: str) -> list[dict[str, Any]]:
+    from app.services.decision_ask import card_links
+
     buttons: list[dict[str, Any]] = []
-    for link in (ask.get("links") or [])[:_MAX_LINKS]:
-        url = str(link.get("url") or "")
-        if url.startswith(("https://", "http://")):
-            buttons.append(
-                {"text": _clip(link.get("label") or url, _MAX_BUTTON), "onClick": {"openLink": {"url": url}}}
-            )
+    for link in card_links(ask, language, limit=_MAX_LINKS):
+        buttons.append({"text": _clip(link["label"], _MAX_BUTTON), "onClick": {"openLink": {"url": link["url"]}}})
     if view.page_path:
         buttons.append(
             {
@@ -813,8 +811,12 @@ def link_message(decision: Decision, recipient_id: Any, language: str | None = N
     in *language*.
     """
     from app.services.decision_answer_links import answer_links, question_lines
+    from app.services.decision_ask import card_links
 
     lines = question_lines(decision, language)
     for link in answer_links(decision, recipient_id, LINK_SURFACE, language):
+        lines.append(f"\u2022 <{link['url']}|{_link_label(link['label'])}>")
+    # The objects of the ask (a pull request, a ticket) after the answers (#1177).
+    for link in card_links(decision.ask, language):
         lines.append(f"\u2022 <{link['url']}|{_link_label(link['label'])}>")
     return "\n".join(lines)

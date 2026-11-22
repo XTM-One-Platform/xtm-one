@@ -129,7 +129,7 @@ OpenCRQ lists the same assets as supporting assets, each with its own criticalit
 
 - a crown jewel whose name matches exactly one OpenCRQ asset is linked to it;
 - a linked crown jewel sets the criticality of its OpenCRQ asset, since the profile is where the business says what matters (`Critical` becomes very high in OpenCRQ);
-- an OpenCRQ asset rated very high that no crown jewel names is added as a `Critical` crown jewel;
+- an OpenCRQ asset at or above the minimum criticality of your OpenCRQ crown-jewel sync (`High` when you have none, the same threshold as the import) that no crown jewel names is added as a crown jewel of the matching criticality, marked as coming from OpenCRQ. An empty list of crown jewels against an OpenCRQ that holds such assets is always proposed the import, never reported as already in agreement;
 - a name that matches several assets, and a crown jewel linked to an asset OpenCRQ no longer holds, are reported and left unchanged.
 
 `Apply` makes the changes on both sides and saves a new version of the profile when the crown jewels change. The check is not available while you are editing the profile: save or cancel first. OpenCRQ is read with your own OpenCRQ access. See [XTM One in OpenCRQ](../usage/xtm-suite/opencrq.md).

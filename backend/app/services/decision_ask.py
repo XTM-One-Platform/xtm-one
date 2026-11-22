@@ -207,26 +207,152 @@ _JIRA_KEY = re.compile(r"/browse/([A-Z][A-Z0-9]+-\d+)")
 _GITHUB = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/(pull|issues)/(\d+)")
 
 
-def _link_label(url: str) -> str | None:
-    """The button text of a source URL the write path recognises; ``None`` for any other URL."""
+def link_kind(url: str) -> tuple[str, str] | None:
+    """What a source URL opens, ``(kind, value)``; ``None`` for a URL the platform does not recognise.
+
+    ``kind`` is ``pull_request`` or ``issue`` (value: the number), ``ticket``
+    (value: the Jira key, ``""`` when the URL names none), ``page`` (Notion) or
+    ``document`` (Concord). The decision cards word their buttons from it in the
+    reader's language (#1177).
+    """
     try:
         host = (urlsplit(url).hostname or "").lower()
     except ValueError:
         return None
     if host.endswith(".atlassian.net"):
         key = _JIRA_KEY.search(url)
-        return key.group(1) if key else "Jira"
+        return "ticket", key.group(1) if key else ""
     if host == "github.com":
         match = _GITHUB.match(url)
         if match:
-            kind = "PR" if match.group(3) == "pull" else "Issue"
-            return f"{match.group(2)} {kind} #{match.group(4)}"
+            return ("pull_request" if match.group(3) == "pull" else "issue"), match.group(4)
         return None
     if host in ("notion.so", "notion.site") or host.endswith((".notion.so", ".notion.site")):
-        return "Notion page"
+        return "page", ""
     if host == "concordnow.com" or host.endswith(".concordnow.com"):
-        return "Concord document"
+        return "document", ""
     return None
+
+
+def _link_label(url: str) -> str | None:
+    """The button text of a source URL the write path recognises; ``None`` for any other URL."""
+    found = link_kind(url)
+    if found is None:
+        return None
+    kind, value = found
+    if kind == "ticket":
+        return value or "Jira"
+    if kind in ("pull_request", "issue"):
+        match = _GITHUB.match(url)
+        repo = match.group(2) if match else ""
+        return f"{repo} {'PR' if kind == 'pull_request' else 'Issue'} #{value}"
+    return "Notion page" if kind == "page" else "Concord document"
+
+
+def is_derived_label(link: dict[str, Any]) -> bool:
+    """*link* carries the label the platform derived from its URL, not one an agent wrote."""
+    url = str(link.get("url") or "")
+    return bool(url) and str(link.get("label") or "") == (_link_label(url) or "")
+
+
+#: The link buttons a decision card shows next to "Open the decision" (#1177).
+MAX_CARD_LINKS = 4
+
+_LINK_NOTICE = {
+    "pull_request": "card_link_pull_request",
+    "issue": "card_link_issue",
+    "page": "card_link_page",
+    "document": "card_link_document",
+}
+
+
+def card_link_label(link: dict[str, Any], language: str | None = None) -> str:
+    """The button text of one ask link on a decision card, in *language* (#1177).
+
+    A label the agent wrote ("Open PR #20153") is kept as written; a label the
+    platform derived from the URL (:func:`source_links`) is worded from the
+    catalog: "Open PR #N", "Open issue #N", "Open TICKET-1", "Open the ticket",
+    "Open the page", "Open the document".
+    """
+    from app.services.channel_notices import notice
+
+    url = str(link.get("url") or "")
+    label = str(link.get("label") or "").strip()
+    found = link_kind(url) if (not label or is_derived_label(link)) else None
+    if found is None:
+        return label or url
+    kind, value = found
+    if kind == "ticket":
+        return notice("card_link_ticket_key", language, key=value) if value else notice("card_link_ticket", language)
+    if kind in ("pull_request", "issue"):
+        return notice(_LINK_NOTICE[kind], language, number=value)
+    return notice(_LINK_NOTICE[kind], language)
+
+
+def reference_links(refs: object, payload: object = None) -> list[dict[str, str]]:
+    """The ``{label, url}`` of the GitHub pull requests and issues a work item tracks (#1177).
+
+    Read from its ``blocked_on_refs`` (``pull_request`` and ``issue`` kinds, and a
+    ``deployment`` ref naming a pull request) and its ``payload.pull_requests``
+    (the url each binding records), first seen first, at most :data:`MAX_LINKS`.
+    What :func:`with_reference_links` puts in an ask that names no source.
+    """
+    urls: list[str] = []
+    for ref in refs if isinstance(refs, list) else []:
+        if not isinstance(ref, dict) or ref.get("kind", "pull_request") not in ("pull_request", "issue", "deployment"):
+            continue
+        repo, number = ref.get("repo"), ref.get("number")
+        if not isinstance(repo, str) or repo.count("/") != 1 or isinstance(number, bool) or not isinstance(number, int):
+            continue
+        path = "issues" if ref.get("kind") == "issue" else "pull"
+        urls.append(f"https://github.com/{repo}/{path}/{number}")
+    prs = payload.get("pull_requests") if isinstance(payload, dict) else None
+    for pr in prs if isinstance(prs, list) else []:
+        if isinstance(pr, dict) and isinstance(pr.get("url"), str):
+            urls.append(pr["url"])
+    links: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for url in urls:
+        url = url.strip()[:MAX_URL_CHARS]
+        key = url.lower().rstrip("/")
+        if key in seen or not re.match(r"^https?://\S+$", url):
+            continue
+        seen.add(key)
+        links.append({"label": _link_label(url) or url.split("/", 3)[2], "url": url})
+        if len(links) >= MAX_LINKS:
+            break
+    return links
+
+
+def with_reference_links(ask: dict[str, Any] | None, refs: object, payload: object = None) -> dict[str, Any] | None:
+    """*ask* with ``links`` from :func:`reference_links` when it has none; *ask* unchanged otherwise."""
+    if not isinstance(ask, dict) or ask.get("links"):
+        return ask
+    links = reference_links(refs, payload)
+    return {**ask, "links": links} if links else ask
+
+
+def card_links(ask: object, language: str | None = None, limit: int = MAX_CARD_LINKS) -> list[dict[str, str]]:
+    """The ``{label, url}`` buttons a decision card shows for the objects of its ask (#1177).
+
+    One per ``ask.links`` entry, http(s) only, at most *limit*, in the ask's
+    order; each label from :func:`card_link_label`. Every surface (the Teams
+    bot and link cards, the decided card, Google Chat, Slack, the email) reads
+    this one list, so a person sees the same buttons wherever the card lands.
+    """
+    if not isinstance(ask, dict):
+        return []
+    out: list[dict[str, str]] = []
+    for link in ask.get("links") or []:
+        if not isinstance(link, dict):
+            continue
+        url = str(link.get("url") or "")
+        if not url.startswith(("https://", "http://")):
+            continue
+        out.append({"label": card_link_label(link, language), "url": url})
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _strings(value: object) -> Iterator[str]:
