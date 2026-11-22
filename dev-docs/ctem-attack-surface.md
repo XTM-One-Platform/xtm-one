@@ -25,6 +25,14 @@ profile block, not contract fields. Per-asset expectations stay out of the
 profile: `assets_exposure[].internet_facing` is the only declaration;
 reachability assertions belong to OpenAEV (CTEM-27).
 
+Agents set them like any profile field: `update_organization_context`
+(administrator, a new version at once) and `propose_organization_context_change`
+(a pending proposal an administrator accepts field by field) accept the three
+paths `owned_domains`, `address_ranges` and `attack_surface` on the primary
+profile (`PROPOSABLE_EXPOSURE_PATHS` in
+`services/organization_context_proposals.py`); the profile model validates them
+(an invalid CIDR is refused with its reason). A tracked organization has none.
+
 ## 2. The pass
 
 `services/ctem_attack_surface.py`, called by the autonomous tick after the case
