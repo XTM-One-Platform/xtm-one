@@ -30,6 +30,7 @@ import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
 
 export const LOOP_PARAM = "loop";
@@ -299,6 +300,50 @@ function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatte
 }
 
 /**
+ * The rows of an evidence health signal (CTEM-28-UI): the state in words, then
+ * "No evidence since" with the date of the newest evidence, or "Never measured"
+ * when there is none (a gap never reads as safe, never an empty dash), the risk
+ * scenario, the evidence sources by name with when each last reported (left out
+ * on a no_source state, which already says it), and for an emptied sync its row
+ * counts and that its findings stay open.
+ */
+function evidenceHealthRows(fact: EvidenceHealthFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"], day: (iso: string) => string) {
+  const rows: { label: string; value: string }[] = [
+    { label: t_i18n("Evidence health"), value: t_i18n(EVIDENCE_STATE_LABEL[fact.state]) },
+  ];
+  if (fact.sync) {
+    rows.push({
+      label: t_i18n("Connector sync"),
+      value: fact.sync.latest !== null && fact.sync.previous !== null
+        ? t_i18n("{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open", {
+          kind: signalProviderName(fact.sync.kind),
+          latest: fact.sync.latest,
+          previous: fact.sync.previous,
+        })
+        : t_i18n("{kind}: emptied; its findings stay open", { kind: signalProviderName(fact.sync.kind) }),
+    });
+    if (fact.lastEvidence) rows.push({ label: t_i18n("Last sync"), value: day(fact.lastEvidence) });
+    return rows;
+  }
+  rows.push({ label: t_i18n("No evidence since"), value: fact.lastEvidence ? day(fact.lastEvidence) : t_i18n("Never measured") });
+  if (fact.scenario) rows.push({ label: t_i18n("Risk scenario"), value: fact.scenario });
+  // A no_source state already says no source reports the asset: the row would repeat it.
+  if (fact.state === "no_source" && fact.sources.length === 0) return rows;
+  rows.push({
+    label: t_i18n("Evidence sources"),
+    value: fact.sources.length > 0
+      ? fact.sources
+        .map((s) => {
+          const origin = signalProviderName(s.origin);
+          return s.lastSeen ? t_i18n("{origin}, last reported {date}", { origin, date: day(s.lastSeen) }) : origin;
+        })
+        .join("; ")
+      : t_i18n("No source reports this asset"),
+  });
+  return rows;
+}
+
+/**
  * The evidence keys the attack surface pass writes (backend
  * services/ctem_attack_surface.py, CTEM-26): the named rows below say them, so
  * the raw evidence list leaves them out. `reason` is the pass's English
@@ -466,6 +511,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
   const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
   const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
+  const health = evidenceHealthFacts(signal.evidence);
   const surface = surfaceFacts(signal.evidence);
   const staleFacts = freshnessFacts(signal.source.provider, signal.evidence);
   const shownKeys: string[] = [
@@ -473,6 +519,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     ...(findingFacts.length > 0 ? AIKIDO_ROW_KEYS : []),
     ...(staleFacts.length > 0 ? FRESHNESS_ROW_KEYS : []),
     ...subjectShownKeys(signal.subject.kind, signal.evidence),
+    ...(health ? EVIDENCE_HEALTH_ROW_KEYS : []),
     ...(surface ? SURFACE_ROW_KEYS : []),
   ];
   const evidence = Object.entries(signal.evidence ?? {})
@@ -499,6 +546,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
     ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
     ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
+    ...(health ? evidenceHealthRows(health, t_i18n, (iso) => formatDayIntl(intl, iso)) : []),
     ...(surface ? surfaceFactRows(surface, t_i18n, (iso) => formatDayIntl(intl, iso)) : []),
     ...staleFacts.map(() => freshnessFactRow(t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
