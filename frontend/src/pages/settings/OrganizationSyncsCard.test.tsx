@@ -205,7 +205,15 @@ describe("OrganizationSyncsCard (#11913)", () => {
       await waitFor(() =>
         expect(screen.getByTestId("org-sync-edit-direction.reason").textContent).toBe("Outbound is not offered: OpenCTI Systems are owned by its connectors."),
       );
-      expect(screen.getByRole("radio", { name: "Outbound" }).hasAttribute("disabled")).toBe(true);
+      const outbound = screen.getByRole("radio", { name: "Outbound" });
+      expect(outbound.hasAttribute("disabled")).toBe(true);
+      // UX r1 B1: the reason is the option's own description, announced with it.
+      expect(outbound.getAttribute("aria-describedby") ?? "").not.toBe("");
+      expect(document.getElementById(outbound.getAttribute("aria-describedby") ?? "")?.textContent).toContain("OpenCTI Systems are owned by its connectors.");
+      // UX r1 B1/B3: a design system radio group named by the field label, with its info bubble.
+      expect(screen.getByRole("radiogroup", { name: "Direction" })).toBeTruthy();
+      const labelRow = document.getElementById("org-sync-edit-direction-label")?.parentElement;
+      expect(labelRow && within(labelRow).getByRole("img", { name: "About this field" })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(put).toHaveBeenCalledWith("/organization-context/syncs/s-1", expect.objectContaining({ direction: "inbound" })));
     });

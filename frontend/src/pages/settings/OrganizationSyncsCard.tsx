@@ -14,16 +14,15 @@
  * it is saved again, with the token of the administrator who saves it.
  */
 import { useState } from "react";
-import { Icon, Spinner } from "@filigran/design-system";
+import { Alert, Icon, Radio, RadioGroup, Spinner } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
-import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { SettingsCard, SettingsField, SettingsSwitchField } from "@/components/ui/settings-form";
+import { SettingsCard, SettingsField, SettingsSwitchField, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
@@ -217,7 +216,7 @@ export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
       hideBelow: "4xl",
       cell: (sync) =>
         sync.section === "all" ? null : (
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
             <Icon name={directionOf(sync) === "outbound" ? "arrow-up-right" : "arrow-down-left"} size={16} aria-hidden className="shrink-0 text-default-secondary" />
             {t_i18n(DIRECTION_LABELS[directionOf(sync)])}
           </span>
@@ -466,38 +465,52 @@ function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
             <SettingsField
               id="org-sync-edit-direction"
               label={t_i18n("Direction")}
-              helper={
-                direction === "outbound"
-                  ? t_i18n("The XTM One list is the master: the {platform} rows this sync creates are updated and deleted to match it. Other {platform} rows are never touched.", { platform })
-                  : t_i18n("{platform} is the master: its rows are read-only here and follow {platform}.", { platform })
-              }
+              info={t_i18n(
+                "Which side is the master of this list. Inbound: the platform's rows are copied here, read-only. Outbound: the XTM One list is written to the platform, for example crown jewels sent to OpenCRQ as supporting assets. A sync saved without a direction is Inbound.",
+              )}
             >
-              <div className="space-y-1.5">
-                <SegmentedFilter<SyncDirection>
-                  selection="radio"
-                  size="md"
-                  ariaLabel={t_i18n("Direction")}
-                  testId="org-sync-edit-direction"
-                  value={direction}
-                  onChange={setDirection}
-                  options={[
-                    { key: "inbound", label: DIRECTION_LABELS.inbound },
-                    { key: "outbound", label: DIRECTION_LABELS.outbound, disabled: !outboundOffered },
-                  ]}
+              <RadioGroup
+                id="org-sync-edit-direction"
+                aria-labelledby={settingsFieldLabelId("org-sync-edit-direction")}
+                data-testid="org-sync-edit-direction"
+                value={direction}
+                onValueChange={(next) => setDirection(next === "outbound" ? "outbound" : "inbound")}
+              >
+                <Radio
+                  value="inbound"
+                  label={t_i18n(DIRECTION_LABELS.inbound)}
+                  description={t_i18n("{platform} is the master: its rows are read-only here and follow {platform}.", { platform })}
                 />
-                {!outboundOffered && support?.reason && (
-                  <p className="content-compact text-default-secondary" data-testid="org-sync-edit-direction.reason">
-                    {t_i18n("Outbound is not offered: {reason}", { reason: reasonLabel(t_i18n, support.reason) })}
-                  </p>
-                )}
-              </div>
+                <Radio
+                  value="outbound"
+                  disabled={!outboundOffered}
+                  label={t_i18n(DIRECTION_LABELS.outbound)}
+                  description={
+                    !outboundOffered && support?.reason ? (
+                      <span data-testid="org-sync-edit-direction.reason">
+                        {t_i18n("Outbound is not offered: {reason}", { reason: reasonLabel(t_i18n, support.reason) })}
+                      </span>
+                    ) : (
+                      t_i18n(
+                        "The XTM One list is the master: the {platform} rows this sync creates are updated and deleted to match it. Other {platform} rows are never touched.",
+                        { platform },
+                      )
+                    )
+                  }
+                />
+              </RadioGroup>
             </SettingsField>
           )}
           {directionChanged && (
-            <p className="flex items-start gap-2 content-compact text-feedback-warning-primary" data-testid="org-sync-edit-direction.changed">
-              <Icon name="triangle-alert" size={16} aria-hidden className="mt-0.5 shrink-0" />
-              {t_i18n("A new direction starts clean: it does not take over the rows the previous direction created. The next run follows the new direction.")}
-            </p>
+            <Alert
+              severity="warning"
+              elevation={1}
+              data-testid="org-sync-edit-direction.changed"
+              title={t_i18n(
+                "A new direction starts clean: the rows the previous direction created stay in {platform}, untouched, and are not taken over. The next run follows the new direction.",
+                { platform },
+              )}
+            />
           )}
           <SyncScheduleFields idPrefix="org-sync-edit" value={schedule} onChange={setSchedule} />
           <SettingsSwitchField
