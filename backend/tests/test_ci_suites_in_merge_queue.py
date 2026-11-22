@@ -244,6 +244,19 @@ def test_a_pull_request_runs_the_catalog_tests():
     assert not missing, f"catalog tests a pull request never runs: {missing}"
 
 
+def test_the_sandbox_frontend_gates_check_runs_the_ci_command_as_a_pre_push_guard():
+    # #1080 went red on Frontend gates: frontend-unit affected=true selects the
+    # gates only when it runs, and nothing named it before the push. The check
+    # runs CI's step verbatim and is a pre-push guard on every frontend source.
+    checks = tomllib.loads((REPO_ROOT / ".xtm-one" / "checks.toml").read_text(encoding="utf-8"))
+    spec = checks["check"]["frontend-gates"]
+    assert spec["cwd"] == "frontend"
+    assert spec["argv"][:2] == ["sh", "-c"]
+    assert spec["argv"][2] == f"exec {_gates_command()}"
+    for name in ("no-class-name-assertions.test.ts", "App.tsx", "index.css", "en.json"):
+        assert any(fnmatch.fnmatchcase(name, glob) for glob in spec["pre_push"]), name
+
+
 def test_the_gate_filter_reads_a_shallow_glob_only():
     assert _covered_by("src/no-x.test.ts", ["src/*.test.ts"])
     assert not _covered_by("src/pages/a.test.ts", ["src/*.test.ts"])
