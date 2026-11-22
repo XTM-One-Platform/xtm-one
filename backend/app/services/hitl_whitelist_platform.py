@@ -150,6 +150,7 @@ HAND_GATED: dict[str, str] = {
     "download_onepassword_file": _DOWNLOAD_REASON,
     "download_pennylane_invoice_pdf": _DOWNLOAD_REASON,
     "download_perk_invoice_pdf": _DOWNLOAD_REASON,
+    "download_rydoo_receipt": _DOWNLOAD_REASON,
     "download_servicenow_attachment": _DOWNLOAD_REASON,
     "download_slack_file": _DOWNLOAD_REASON,
     "download_spendesk_payable_attachment": _DOWNLOAD_REASON,

@@ -54,6 +54,7 @@ import { MiniTrend, PostureOrbit, signedDelta } from "./ctem/ctem-viz";
 import { CtemStatRow, type CtemHeaderStat } from "./ctem/CtemPageHeader";
 import { CtemWidgetHeader } from "./ctem/CtemWidgetHeader";
 import { ChooseFleetsDialog } from "@/components/fleets/ChooseFleetsDialog";
+import { CtemLoopSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
 import { CompanyContextNotice, ContextScoredLine } from "./ctem/CompanyContextNotice";
 import { useFleets } from "@/hooks/api/useFleetApi";
 import { useOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
@@ -1303,6 +1304,8 @@ export default function CtemCommandCenter({
                         <MessageSquare className="h-3.5 w-3.5" /> {t_i18n("Start chatting")}
                       </Button>
                     )}
+                    {/* The guided CTEM loop setup, always reachable again (#1087): administrators only. */}
+                    <CtemLoopSetupEntry />
                     <span className="inline-flex items-center gap-1.5 text-[11px] text-default-secondary min-w-0">
                       <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent/70" />
                       <span className="truncate">
