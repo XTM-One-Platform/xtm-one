@@ -1,4 +1,8 @@
 {
+  "add_opencrq_treatment_plan_moves": [
+    "tenants.getTenants",
+    "treatmentPlans.addTreatmentPlanMoves"
+  ],
   "create_opencrq_asset_dependency": [
     "assetDependencies.createSupportToPrimaryLinks",
     "assetDependencies.createSupportToSupportLinks",
@@ -38,6 +42,10 @@
   ],
   "create_opencrq_tenant": [
     "tenants.createTenantsTransaction"
+  ],
+  "create_opencrq_treatment_plan": [
+    "tenants.getTenants",
+    "treatmentPlans.createTreatmentPlan"
   ],
   "delete_opencrq_asset_dependencies": [
     "assetDependencies.deleteSupportToPrimaryLinks",
@@ -493,6 +501,10 @@
     "mitreAttack.getTechniques",
     "tenants.getTenants"
   ],
+  "set_opencrq_treatment_plan_moves": [
+    "tenants.getTenants",
+    "treatmentPlans.setTreatmentPlanScope"
+  ],
   "update_opencrq_asset_dependency_roles": [
     "assetDependencies.updateSupportToPrimaryLinks",
     "tenants.getTenants"
@@ -568,5 +580,9 @@
     "tenants.getTenants",
     "threatRelevanceSettings.getThreatRelevanceSettings",
     "threatRelevanceSettings.updateThreatRelevanceSettings"
+  ],
+  "update_opencrq_treatment_plan": [
+    "tenants.getTenants",
+    "treatmentPlans.updateTreatmentPlan"
   ]
 }
