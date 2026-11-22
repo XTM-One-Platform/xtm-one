@@ -24,11 +24,9 @@ in code and never in a prompt sentence:
 * :func:`allowed_module_tools` and :func:`refuse_module_tool`, applied where the
   member's tools are built and where they execute.
 * :func:`registration_in_scope`, the ``module`` target check of ``cycles.start_cycle``.
-* :func:`module_analyst_tick`, the triggers of section 12.2 and the orchestrator's
-  daily module round of section 13.2: a cycle per registration when its open finding
-  set changed (debounced by ``change_min_interval_minutes``), and the round, once a UTC
-  day, which hands every registration not covered that day to its module's checker,
-  findings or not. The state of each registration is a ``HealthSignalState`` row
+* :func:`module_analyst_tick`, the triggers of section 12.2: a cycle per registration
+  when its open finding set changed (debounced by ``change_min_interval_minutes``),
+  else once a UTC day. The state of each registration is a ``HealthSignalState`` row
   (kind :data:`STATE_KIND`, target type ``module``); the pass mark is
   ``health_schedule_marks`` key :data:`TRIGGER_MARK`.
 
@@ -155,9 +153,7 @@ RETRY_REFUSALS: Final = frozenset(
     }
 )
 
-#: ``change``: the open finding set changed (12.2). ``round``: the orchestrator's daily
-#: module round (13.2), which replaced the S14 ``daily`` branch.
-ModuleTrigger = Literal["change", "round"]
+ModuleTrigger = Literal["change", "daily"]
 
 
 def empty_set_hash() -> str:
@@ -175,26 +171,19 @@ def due_trigger(
     now: datetime,
     change_min_interval: timedelta,
 ) -> ModuleTrigger | None:
-    """``change`` when a registration's finding set calls for a cycle, ``None`` otherwise.
+    """Which cycle a registration is due, ``None`` when none.
 
-    Its open finding set differs from the one the checker last took, and no cycle
-    started on it within *change_min_interval* (the debounce: the next allowed cycle
-    reads the set as it is then). The daily look is the module round's
-    (:func:`round_due`), never this trigger's.
+    ``change``: its open finding set differs from the one the analyst last took, and
+    no cycle started on it within *change_min_interval* (the debounce: the next
+    allowed cycle reads the set as it is then). ``daily``: no cycle started on it
+    this UTC day, whatever started it (a change-triggered cycle covers the day).
     """
     last_hash = (last_value or {}).get("hash") or empty_set_hash()
     if current_hash != last_hash and (fired_at is None or now - fired_at >= change_min_interval):
         return "change"
+    if fired_at is None or fired_at.astimezone(UTC).date() < now.astimezone(UTC).date():
+        return "daily"
     return None
-
-
-def round_due(fired_at: datetime | None, now: datetime) -> bool:
-    """Whether *fired_at*, a registration's last cycle, is before this UTC day (the round is due).
-
-    A registration any cycle covered this UTC day (a change, an on-demand request)
-    is not handed to the round again: the round is the check list, run once a day.
-    """
-    return fired_at is None or fired_at.astimezone(UTC).date() < now.astimezone(UTC).date()
 
 
 async def _module_registrations(db: AsyncSession, excluded: Iterable[uuid.UUID]) -> list[tuple[uuid.UUID, str]]:
@@ -289,11 +278,9 @@ async def _start(
 async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
     """One trigger pass: start the cycles the registrations are due; the number started. Commits.
 
-    Two sources, changes first: a registration whose finding set changed (12.2), then
-    the daily module round (13.2), which hands every registration no cycle covered this
-    UTC day to its module's checker, with zero open findings too. Nothing in Copilot
-    mode, with Platform Health off or with the module checks switched off (12.1);
-    ``start_cycle`` refuses the rest (AI off, licence, budget, a cycle already open).
+    Nothing in Copilot mode, with Platform Health off or with the Module Analyst
+    switched off (section 12.1); ``start_cycle`` refuses the rest (AI off, licence,
+    budget, a cycle already open on the registration).
     """
     from app.core.config import settings as app_settings
     from app.models.health_cycle import HealthScheduleMark, HealthSignalState
@@ -332,19 +319,16 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
     for registration_id, provider in registrations:
         state = states.get(registration_id)
         current = hashes.get(str(registration_id), empty_set_hash())
-        fired_at = state.fired_at if state is not None else None
         trigger = due_trigger(
             current_hash=current,
             last_value=state.last_value if state is not None else None,
-            fired_at=fired_at,
+            fired_at=state.fired_at if state is not None else None,
             now=now,
             change_min_interval=interval,
         )
-        if trigger is None and round_due(fired_at, now):
-            trigger = "round"
         if trigger is not None:
             due.append((registration_id, provider, trigger, current))
-    # Changes first: a round entry waits for the next pass when the pass is full.
+    # Changes first: a daily look waits for the next pass when the pass is full.
     due.sort(key=lambda item: item[2] != "change")
     started = 0
     for registration_id, provider, trigger, current in due[:MAX_STARTS_PER_PASS]:

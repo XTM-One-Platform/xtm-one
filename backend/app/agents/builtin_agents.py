@@ -934,6 +934,7 @@ BUILTIN_AGENTS: list[dict] = [
             "manage_opencti_profile",
             "manage_opencti_retention_rule",
             "manage_opencti_role",
+            "manage_opencti_security_coverage",
             "manage_opencti_status_template",
             "manage_opencti_trigger",
             "manage_opencti_user",
@@ -2158,33 +2159,46 @@ _CTEM_ROLE_AGENT_BASE: dict = {
     "builtin_tool_ids": [],
 }
 
+#: The leads of the roles the generic CTEM loop fleet folds in (CTEM-31, #1048):
+#: the former posture orchestrator and the three single-product desk orchestrators.
+CTEM_LOOP_ROLE_LEADS: tuple[str, ...] = (
+    "ctem-posture-orchestrator",
+    "opencti-pir-desk-orchestrator",
+    "openaev-detection-desk-orchestrator",
+    "opencrq-risk-desk-orchestrator",
+)
+
 CTEM_FLEET_AGENTS: list[dict] = [
     {
         "slug": "ctem-threat-response-orchestrator",
         "persona": "ctem-threat-response-orchestrator",
-        "name": "Threat Response Orchestrator",
+        "name": "Loop Orchestrator",
         "description": (
-            "Root of the Threat-informed exposure response fleet: turns a "
-            "published threat into a relevance verdict, a proposed OpenAEV "
-            "scenario, an expected loss and three approved actions, closed by a "
-            "re-test. Writes one threat response brief per threat."
+            "Root of the CTEM loop fleet: turns a change in exposure into a "
+            "relevance verdict, a proposed OpenAEV scenario, an expected loss and "
+            "three approved actions, closed by a re-test. Writes one threat "
+            "response brief per threat."
         ),
         "icon": "Crosshair",
         "output_format": "markdown",
         "disable_chat": True,
         "max_iterations": 150,
         "tags": ["builtin", "ctem", "fleet", "ctem-threat-response"],
+        # CTEM-31 (#1048): the root of the generic CTEM loop fleet also hands over
+        # to the leads of the roles it folds in (posture, the three module desks).
         "handover_agent_slugs": [
             "ctem-threat-relevance-analyst",
             "openaev-scenario-creator",
             "ctem-risk-quantifier",
             "ctem-remediation-coordinator",
+            *CTEM_LOOP_ROLE_LEADS,
         ],
         "handover_type_slugs": {
             "ctem-threat-relevance-analyst": "delegate",
             "openaev-scenario-creator": "delegate",
             "ctem-risk-quantifier": "delegate",
             "ctem-remediation-coordinator": "delegate",
+            **dict.fromkeys(CTEM_LOOP_ROLE_LEADS, "delegate"),
         },
         # The blackboard (ctem:f1:state) and the approval / re-test queue
         # (ctem:f1:<id> work items, needs_human for every environment write).
