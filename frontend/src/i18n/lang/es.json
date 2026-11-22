@@ -18118,6 +18118,7 @@
   "SaaS application": "Aplicación SaaS",
   "AI system (asset category)": "Sistema de IA",
   "Security platform": "Plataforma de seguridad",
+  "Source code": "Código fuente",
   "Other asset (to classify)": "Otro activo (por clasificar)",
   "Workstation": "Estación de trabajo",
   "Laptop": "Portátil",
@@ -20768,15 +20769,9 @@
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "El inventario de activos informa de {product} en {assets, plural, one {# activo} other {# activos}} con {versions, plural, one {# versión} other {# versiones}}.",
   "Asset count": "Número de activos",
   "Versions not listed": "Versiones no listadas",
-  "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.": "Los cambios de exposición que inician el ciclo de gestión de la exposición, su origen y lo que el ciclo decidió para cada uno.",
-  "About signals": "Acerca de las señales",
-  "Where this signal is in the exposure management loop, and why.": "Dónde está esta señal en el ciclo de gestión de la exposición, y por qué.",
-  "Search signal, path or source": "Buscar señal, ruta u origen",
-  "No signal seen yet: your sources are connected and nothing reached the loop.": "Aún no hay señales: sus orígenes están conectados y nada ha llegado al ciclo.",
-  "No signal yet: no source is connected.": "Aún no hay señales: ningún origen está conectado.",
-  "No signal matches these filters": "Ninguna señal coincide con estos filtros",
-  "{connected} of {total}": "{connected} de {total}",
-  "Open signal sources": "Abrir los orígenes de señales",
-  "Trigger path": "Ruta de activación",
-  "State and why": "Estado y motivo"
+  "Code repository": "Repositorio de código",
+  "CI/CD pipeline": "Pipeline de CI/CD",
+  "Package registry": "Registro de paquetes",
+  "Software package": "Paquete de software",
+  "Other code asset": "Otro activo de código"
 }
