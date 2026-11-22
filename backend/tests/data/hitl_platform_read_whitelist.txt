@@ -16,11 +16,13 @@ openaev:get_openaev_attack_pattern
 openaev:get_openaev_exercise
 openaev:get_openaev_injector_contract
 openaev:get_openaev_payload
+openaev:get_openaev_platform_health
 openaev:get_openaev_run_scope
 openaev:get_openaev_scenario
 openaev:get_openaev_team
 openaev:get_openaev_vulnerability
 openaev:list_openaev_domains
+openaev:list_openaev_expectations_due
 openaev:list_openaev_kill_chain_phases
 openaev:list_openaev_tags
 openaev:query_openaev_analytics
