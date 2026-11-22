@@ -89,6 +89,8 @@ beforeEach(() => {
     if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
+    // The Sources and syncs table above the tabs (#1276).
+    if (path.startsWith("/organization-context/syncs") || path.startsWith("/organization-context/sources")) return [];
     throw new Error(`unexpected GET ${path}`);
   });
 });
@@ -937,19 +939,26 @@ describe("OrganizationSection", () => {
     expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
   });
 
-  it("shows the sources above the tabs, each section chip linked to its tab filtered on that source (#1134 S2)", async () => {
+  it("shows the one Sources and syncs table above the tabs, each section chip linked to its tab filtered on that source (#1276)", async () => {
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) =>
-      path === "/organization-context"
-        ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [...CONTEXT.profile.crown_jewels, { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "a-9", source: "opencrq", external_id: "a-9" }] } }
+      path.startsWith("/organization-context/sources")
+        ? [
+            { key: "opencrq", kind: "platform", display_name: "OpenCRQ", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "", sync_ids: [] },
+            { key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 2 }, total: 2, written_by_agent: "", sync_ids: [] },
+          ]
         : base?.(path),
     );
     renderPage();
-    const panel = await screen.findByTestId("settings.organization.sources");
-    const rows = await within(panel).findAllByTestId("settings.organization.sources.row");
-    expect(rows.map((row) => row.textContent)).toEqual([expect.stringContaining("OpenCRQ"), expect.stringContaining("Typed")]);
+    const panel = await screen.findByTestId("organization-sources");
+    const rows = await within(panel).findAllByTestId("organization-sources.row");
+    expect(rows).toHaveLength(2);
+    expect(panel.textContent).toContain("Entered by hand");
+    expect(panel.textContent).not.toContain("Typed");
+    const opencrq = rows.find((row) => row.textContent?.includes("OpenCRQ"));
+    if (!opencrq) throw new Error("OpenCRQ row missing");
     // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
-    const chip = within(rows[0]).getByTestId("settings.organization.sources.chip");
+    const chip = within(opencrq).getByTestId("organization-sources.chip");
     expect(chip.tagName).toBe("BUTTON");
     expect(chip.getAttribute("aria-label")).toBe("Crown jewels from OpenCRQ: 1 row");
     fireEvent.click(chip);
