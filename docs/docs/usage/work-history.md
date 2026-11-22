@@ -41,6 +41,8 @@ A company-managed agent can narrow this for what it produces: its `Coordination 
 
 Each row of the `Work Items` tab names the agent that owns the item (the one expected to act on it), the agent that created it, the chat, assignment run or flow run it came from, and the person it acts for. An agent that is not shared with you is shown as an agent you cannot open, never by name, and so is a run or a chat you cannot open. Filter the list by owner agent with the picker next to the status filters.
 
+The view switch at the end of the toolbar shows the items as a list, as cards or as a `Graph` of what depends on what, and keeps your choice. The graph draws the items the filters, the scope and the search match: an arrow goes from an item to what it waits for (another item, a pull request, an issue, a deployment, a workflow run, or the person a decision card asks), a dashed line from a program to its items. An item a filtered-out item waits for is drawn with a dashed border so the chain does not stop short. Done and cancelled items are hidden until you show them, and items with no dependency are counted under the toolbar rather than drawn. Select a node to light the chain it waits for and the chain that waits for it; an item only a person can release has a red border. The open button of a node opens the same details as the list.
+
 A badge says what will act on the item:
 
 - `Picked up automatically`: an inbox (an assignment or a flow triggered by work items) drains the owner agent's queue and takes the item within about a minute. `Picked up once due` is the same for an item with a due date still to come.
