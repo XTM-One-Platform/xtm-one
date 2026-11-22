@@ -20063,5 +20063,11 @@
   "Re-test passed on {date}": "Nouveau test réussi le {date}",
   "Not reproduced": "Non reproduit",
   "Reproduced": "Reproduit",
-  "Not re-tested yet": "Pas encore retesté"
+  "Not re-tested yet": "Pas encore retesté",
+  "Journal entry posted": "Écriture comptabilisée",
+  "Vendor bill created": "Facture fournisseur créée",
+  "Payment registered": "Paiement enregistré",
+  "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.": "Se déclenche quand une écriture est comptabilisée dans Odoo ou qu’une écriture comptabilisée change (une exécution par changement). Interrogation périodique (toutes les minutes) ; la première interrogation part de maintenant.",
+  "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.": "Se déclenche quand une facture ou un avoir fournisseur est créé dans Odoo. Interrogation périodique (toutes les minutes) ; la première interrogation part de maintenant.",
+  "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.": "Se déclenche quand un paiement est enregistré dans Odoo. Interrogation périodique (toutes les minutes) ; la première interrogation part de maintenant."
 }
