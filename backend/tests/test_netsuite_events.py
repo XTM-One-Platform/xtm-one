@@ -171,18 +171,46 @@ def test_filter_reason_through_the_event_filter():
 
 
 @pytest.mark.asyncio
-async def test_first_poll_seeds_the_cursor_from_the_newest_change(monkeypatch):
+async def test_first_poll_seeds_the_cursor_and_marks_the_records_at_it_seen(monkeypatch):
     calls = []
+    claimed = []
 
     async def _read(credential, sql, max_rows, action):
         calls.append(sql)
-        return [{"cursor": "2026-11-20 09:00:00"}], False, None
+        if "MAX(t.lastmodifieddate)" in sql:
+            return [{"cursor": "2026-11-20 09:00:00"}], False, None
+        return [_row("7", "2026-11-20 09:00:00"), _row("8", "2026-11-20 09:00:00")], False, None
+
+    async def _claim(redis, assignment_id, member, **_kwargs):
+        claimed.append((assignment_id, member))
+        return True
 
     monkeypatch.setattr(netsuite, "read_suiteql", _read)
+    monkeypatch.setattr(event_poller, "claim_seen", _claim)
     redis, wf = _Redis(), _wf()
     assert await event_poller._poll_netsuite_changes(CREDENTIAL, "vendor_bill_changed", wf, redis) == []
     assert redis.values[f"event_cursor:{wf.id}"] == "2026-11-20 09:00:00"
     assert "MAX(t.lastmodifieddate)" in calls[0]
+    assert "TO_TIMESTAMP('2026-11-20 09:00:00'" in calls[1]
+    # The next poll reads >= the cursor: the records at the seed are already seen, so none runs.
+    host = netsuite_events.account_host("1234567_SB1")
+    assert claimed == [
+        (wf.id, f"netsuite:{host}:7:2026-11-20 09:00:00"),
+        (wf.id, f"netsuite:{host}:8:2026-11-20 09:00:00"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_first_poll_keeps_no_cursor_when_the_seed_records_cannot_be_read(monkeypatch):
+    async def _read(credential, sql, max_rows, action):
+        if "MAX(t.lastmodifieddate)" in sql:
+            return [{"cursor": "2026-11-20 09:00:00"}], False, None
+        return [], False, "Error: NetSuite 429 concurrency limit"
+
+    monkeypatch.setattr(netsuite, "read_suiteql", _read)
+    redis, wf = _Redis(), _wf()
+    assert await event_poller._poll_netsuite_changes(CREDENTIAL, "vendor_bill_changed", wf, redis) == []
+    assert f"event_cursor:{wf.id}" not in redis.values
 
 
 @pytest.mark.asyncio

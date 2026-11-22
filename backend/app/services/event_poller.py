@@ -969,7 +969,8 @@ async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignmen
     after the cursor (a NetSuite timestamp, never converted), oldest first; the
     record at the cursor comes back and the seen set skips it. Periods: the
     posting periods' flags diffed against the last snapshot. The first poll
-    stores the cursor or the snapshot and runs nothing.
+    stores the cursor (the records at it marked seen) or the snapshot and runs
+    nothing.
     """
     from app.integrations.providers.netsuite import parse_token, read_suiteql
 
@@ -1000,8 +1001,26 @@ async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignmen
             logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
             return []
         seed = str((rows[0] if rows else {}).get("cursor") or "")
-        cursor = seed if netsuite_events.is_timestamp(seed) else netsuite_events.EPOCH
-        await redis.set(cursor_key, cursor, ex=_CURSOR_TTL_SECONDS)
+        if not netsuite_events.is_timestamp(seed):
+            await redis.set(cursor_key, netsuite_events.EPOCH, ex=_CURSOR_TTL_SECONDS)
+            return []
+        # The next poll reads at or after the cursor, so the records modified at
+        # the seed instant come back: they are marked seen now, never run.
+        rows, _more, err = await read_suiteql(
+            credential,
+            netsuite_events.changes_query(event_type, None, seed),
+            netsuite_events.PAGE + 1,
+            "read the records at the newest change",
+        )
+        if err:
+            logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        for row in rows:
+            if str(row.get("modified_at") or "") == seed:
+                event = netsuite_events.transaction_event(row, event_type, account_id=account_id)
+                if event["message_id"]:
+                    await claim_seen(redis, wf.id, event["message_id"])
+        await redis.set(cursor_key, seed, ex=_CURSOR_TTL_SECONDS)
         return []
     filter_config = trigger_filter(getattr(wf, "trigger_config", None))
     rows, more, err = await read_suiteql(
