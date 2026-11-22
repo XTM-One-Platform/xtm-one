@@ -295,6 +295,7 @@ ee:
   - frontend/src/hooks/api/useCustomToolApi.ts
   - frontend/src/hooks/api/useCustomToolSourceApi.ts
   - frontend/src/hooks/api/useDatasetApi.ts
+  - frontend/src/hooks/api/useDecisionApi.ts
   - frontend/src/hooks/api/useDesktopLoginApi.ts
   - frontend/src/hooks/api/useEvaluationApi.ts
   - frontend/src/hooks/api/useFeedbackCriteriaApi.ts
