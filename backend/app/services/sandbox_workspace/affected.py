@@ -1245,8 +1245,13 @@ async def changed_files(
     read_base: BaseReader,
     globs: Iterable[str] = (),
     lines: bool = False,
+    whole_repository: bool = False,
 ) -> FileSelection:
     """The files the checkout added or modified under the check directory *cwd*, kept by *globs*.
+
+    With *whole_repository* (``affected_whole_repository``), a changed file outside *cwd* is kept too,
+    passed relative to *cwd* (``../docker-compose.yml``): a script that maps the change to what a
+    repository-wide selection reads (a test naming a compose file or a workflow) needs every path.
 
     With *lines*, a modified file is passed as ``PATH:A-B,C-D``, the line ranges
     the change wrote; an added file, or one whose checked-out version cannot be
@@ -1267,7 +1272,7 @@ async def changed_files(
     kept_globs = tuple(globs)
     marked = sorted(branch_marks(record, changes).items())
     for repo_path, mark in marked:
-        if base and not is_under(repo_path, base):
+        if base and not whole_repository and not is_under(repo_path, base):
             continue
         rel = posixpath.relpath(repo_path, base) if base else repo_path
         if not matches_globs(rel, kept_globs):
