@@ -529,6 +529,28 @@ def test_the_note_gives_the_verdict_of_the_files_that_ran_without_the_uncollecte
     assert "the collected tests do not pass" in commands.uncollected_note(outcome)
 
 
+def test_a_failure_on_a_file_outside_the_checkout_is_left_out_of_the_verdict():
+    """One test failing on a frontend file a backend checkout lacks: the verdict of the rest is green (#1111)."""
+    absent = "frontend/src/components/blocks/architecture-bare.test.tsx"
+    report = ReportSummary(
+        kind="junit",
+        tests=81,
+        passed=80,
+        failed=1,
+        failures=[("tests.test_x::test_fixture", f"FileNotFoundError: '/tmp/workspace/co/{absent}'")],
+    )
+    outcome = commands.CommandOutcome(text="", exit_code=1, report=report)
+    verdict = commands.missing_file_verdict(outcome, [absent])
+    assert "Without the 1 test(s) failing on those files (tests.test_x::test_fixture): 80 passed, 0 failed" in verdict
+    assert "the tests this checkout can run pass" in verdict
+    report.failures.append(("tests.test_x::test_real", "AssertionError: 1 != 2"))
+    report.failed = 2
+    assert "1 other test(s) fail on the change" in commands.missing_file_verdict(outcome, [absent])
+    assert commands.missing_file_verdict(outcome, []) == ""
+    outcome.report = ReportSummary(kind="junit", failures=[("t", "AssertionError")])
+    assert commands.missing_file_verdict(outcome, [absent]) == ""
+
+
 def test_a_session_pytest_stopped_at_collection_says_nothing_ran():
     outcome = commands.CommandOutcome(
         text="", exit_code=2, uncollected=["tests/test_agent_generated_files.py"], interrupted=True
