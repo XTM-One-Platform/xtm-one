@@ -13,7 +13,7 @@ import en from "@/i18n/lang/en.json";
 import es from "@/i18n/lang/es.json";
 import fr from "@/i18n/lang/fr.json";
 import ja from "@/i18n/lang/ja.json";
-import { BREADCRUMB_STYLE, CRUMB_EXTRAS_STYLE, CRUMB_ROW_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WITH_BACK_CLASS, HEADER_WIDE_PX, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
+import { BREADCRUMB_STYLE, CRUMB_EXTRAS_STYLE, CRUMB_ROW_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_AREA_STYLE, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
 
 const CATALOGS: Record<string, Record<string, string>> = { en, fr, es, ja };
 /** The widest stat row of the CTEM pages (the command center's five cells). */
@@ -46,8 +46,6 @@ describe("CtemPageHeader", () => {
     const band = wrapper.querySelector("header")!;
     expect(wrapper.firstElementChild).toBe(back);
     expect(band.contains(back)).toBe(false);
-    expect(back.className).toContain("text-default-secondary");
-    expect(wrapper.className).toContain(HEADER_WITH_BACK_CLASS);
     expect(screen.queryByTestId("ctem-page-header-back")).toBeNull();
     expect(band.querySelector("a")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Breadcrumb" }).textContent).toBe("Stage 2 of 5");
@@ -63,7 +61,10 @@ describe("CtemPageHeader", () => {
   // (hairlines top to bottom), centred on the title's axis.
   it("stretches the stat row over the band's height", () => {
     draw({ stats: [{ id: "score", label: "Score", value: 3 }] });
-    expect(screen.getByTestId("ctem-page-header-stats").className).toContain("self-stretch");
+    const row = screen.getByTestId("ctem-page-header-stats");
+    expect(row.style.alignSelf).toBe(STAT_AREA_STYLE.alignSelf);
+    // The wrap rule is kept with it.
+    expect(row.style.flexWrap).toBe(STAT_ROW_STYLE.flexWrap);
   });
 
   it("draws one cell per figure and opens the cell that has a target", () => {

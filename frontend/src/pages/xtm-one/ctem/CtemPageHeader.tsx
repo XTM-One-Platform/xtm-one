@@ -37,7 +37,7 @@
  * round 1 on #11677, B1 and B2). Every element keeps one line
  * (`whitespace-nowrap`, truncation with the full text on hover).
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { LocationBackButton } from "@/components/ui/back-button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useFormatter } from "@/i18n";
@@ -226,7 +226,8 @@ export function CtemPageHeader({
             // The cells take the band's full content height: the hairlines
             // run top to bottom and each cell centres its figure on the same
             // axis as the title block and the actions.
-            className={cn("self-stretch justify-self-start [grid-area:stats]", stacked && "border-l border-elevation-subtle-soft")}
+            style={STAT_AREA_STYLE}
+            className={cn("justify-self-start [grid-area:stats]", stacked && "border-l border-elevation-subtle-soft")}
           />
         )}
 
@@ -255,13 +256,13 @@ export function CtemPageHeader({
  * language). A label longer than its cell truncates with the full text on
  * hover. Also the compact score row of the command center hero.
  */
-export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderStat[]; stacked: boolean; className?: string }) {
+export function CtemStatRow({ stats, stacked, className, style }: { stats: CtemHeaderStat[]; stacked: boolean; className?: string; style?: CSSProperties }) {
   const { t_i18n } = useFormatter();
   return (
     <div
       role="group"
       aria-label={t_i18n("Key figures")}
-      style={STAT_ROW_STYLE}
+      style={{ ...STAT_ROW_STYLE, ...style }}
       className={cn("flex min-w-0 max-w-full items-stretch gap-y-1.5", className)}
       data-testid="ctem-page-header-stats"
     >
@@ -273,7 +274,10 @@ export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderSt
 }
 
 /** The wrapper's rhythm when the back link sits above the band: the spacing of EntityPageHeader (`space-y-1`). */
-export const HEADER_WITH_BACK_CLASS = "space-y-1";
+const HEADER_WITH_BACK_CLASS = "space-y-1";
+
+/** The stat cells take the band's full content height, so their hairlines run top to bottom and their figures centre on the title's axis; read by the test. */
+export const STAT_AREA_STYLE = { alignSelf: "stretch" } as const;
 
 /** Wrap, never clip: the rule the no-overflow test pins. */
 export const STAT_ROW_STYLE = { flexWrap: "wrap", overflow: "visible" } as const;
