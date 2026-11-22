@@ -33,7 +33,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * its props stay `{ fleet }`.
  */
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
   const [open, setOpen] = useState(CAPABILITIES_OPEN_BY_DEFAULT);
   const bind = useBindFleetSlot(fleet.id);
   const unbind = useUnbindFleetSlot(fleet.id);
+  const navigate = useNavigate();
   if (isLoading || error || !data || data.members.length === 0) return null;
   const rows = capabilitySlotRows(data.members);
   if (rows.length === 0) return null;
@@ -191,11 +192,12 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
               className="w-[200px]"
             />
           );
+        // A button of the bind select's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
         if (row.slot.state === "unavailable")
           return (
-            <Link to="/integrations" className="content-caption text-accent">
+            <Button type="button" variant="outline" className="w-[200px]" onClick={() => navigate("/integrations")}>
               {t_i18n("Connect one")}
-            </Link>
+            </Button>
           );
         return null;
   };

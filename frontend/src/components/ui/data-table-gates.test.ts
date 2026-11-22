@@ -191,6 +191,25 @@ const columnArrays = (text: string) =>
     return end ? set.slice(0, end.index + end[0].length) : set;
   });
 
+/** Gate 10: what a row action must not draw (a link or an anchor): row actions are buttons (UX r1 B1 of #1133). */
+const ROW_ACTION_LINK = /<Link\b|<a\b/;
+
+/**
+ * Gate 10: the render of each `rowActions={...}` prop of a file: the inline function, or the body of
+ * the local function it names (`rowActions={bindAction}` and `const bindAction = (row) => {...};`).
+ */
+function rowActionRenders(text: string): string[] {
+  return propBlocks(text, "rowActions").map((block) => {
+    const name = /^\s*(\w+)\s*\}?\s*$/.exec(block)?.[1] ?? /^\s*(?:\w+\s*\?\s*)?(\w+)\s*(?::\s*undefined)?\s*\}/.exec(block)?.[1];
+    if (!name) return block;
+    const start = new RegExp(`(?:const|function)\\s+${name}\\b`).exec(text);
+    if (!start) return block;
+    const rest = text.slice(start.index, start.index + 4000);
+    const end = /\n {2,4}\};?\n/.exec(rest);
+    return end ? rest.slice(0, end.index + end[0].length) : rest;
+  });
+}
+
 /** Classes that give a row or a cell its own height, padding or a wrap past the second line. */
 const ROW_SIZING = /\b(min-h-\S+|h-(\d+|\[)\S*|py-\S+|line-clamp-[3-9]|whitespace-pre-wrap|whitespace-normal)/;
 
@@ -501,6 +520,22 @@ describe("Data table gates (dev-docs/reference/data-tables.md)", () => {
         return columnArrays(text).some((set) => sameAction.test(set)) ? [`${path}: ${handler}`] : [];
       });
     expect(offenders, "draw the cell as plain text: the row opens it (onRowClick)").toEqual([]);
+  });
+
+  it("10. draws no link in a row action: row actions are buttons, the row is the link (#12070, UX r1 B1 of #1133)", () => {
+    const offenders = callers
+      .filter(({ text }) => USES_TABLE.test(text))
+      .flatMap(({ path, text }) => rowActionRenders(text).flatMap((render) => (ROW_ACTION_LINK.test(render) ? [`${path}: ${ROW_ACTION_LINK.exec(render)?.[0]}`] : [])));
+    expect(offenders, "draw a row action as a Button (navigate in its onClick); the row opens its target with rowHref or onRowClick").toEqual([]);
+  });
+
+  it("10. reads the render of a rowActions prop, inline or named", () => {
+    const named = "const act = (row: R) => {\n    return <Link to=\"/x\">Go</Link>;\n  };\n<DataTable\n  rowActions={act}\n  rows={rows}\n/>";
+    const inline = "<DataTable\n  rowActions={(row) => <a href=\"/x\">Go</a>}\n  rows={rows}\n/>";
+    const clean = "<DataTable\n  rowActions={(row) => <Button onClick={go}>Go</Button>}\n  rows={rows}\n/>";
+    expect(rowActionRenders(named).some((render) => ROW_ACTION_LINK.test(render))).toBe(true);
+    expect(rowActionRenders(inline).some((render) => ROW_ACTION_LINK.test(render))).toBe(true);
+    expect(rowActionRenders(clean).some((render) => ROW_ACTION_LINK.test(render))).toBe(false);
   });
 
   it("8. hides no column with a window breakpoint: hideBelow keeps the Columns picker true", () => {
