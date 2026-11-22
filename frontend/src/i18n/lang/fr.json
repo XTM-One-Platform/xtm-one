@@ -20817,7 +20817,7 @@
   "Open the CTEM loop fleet": "Ouvrir la flotte de boucle CTEM",
   "Use your own fleet or agent": "Utiliser votre propre flotte ou agent",
   "Any automation that starts on the case events (case opened or reopened) and whose filter takes this case works it.": "Toute automatisation déclenchée par les événements de cas (cas ouvert ou rouvert) et dont le filtre accepte ce cas le traite.",
-  "Add a case automation": "Ajouter une automatisation de cas",
+  "Add a case automation": "Ajouter une automatisation",
   "Work it yourself": "Le traiter vous-même",
   "Assign an owner and move the case by hand: start it, resolve it with evidence or accept the risk.": "Désignez un responsable et faites avancer le cas à la main : démarrez-le, résolvez-le avec une preuve ou acceptez le risque.",
   "Choose the agent that works cases. Its page opens a new assignment triggered by the case events.": "Choisissez l’agent qui traite les cas. Sa page ouvre une nouvelle mission déclenchée par les événements de cas.",

@@ -91,11 +91,15 @@ function CaseWorkChoices({ loopFleetId, onStart }: { loopFleetId: string | null;
         testId="ctem-case-work-choice-loop"
       >
         {canSetUp ? (
-          <Button variant="outline" onClick={() => setSetupOpen(true)}>
+          <Button variant="outline" className={CHOICE_BUTTON} onClick={() => setSetupOpen(true)}>
             {t_i18n("Set up the CTEM loop")}
           </Button>
         ) : (
-          <Button variant="outline" onClick={() => navigate(loopFleetId ? `/fleets/${loopFleetId}` : "/fleets")}>
+          <Button
+            variant="outline"
+            className={CHOICE_BUTTON}
+            onClick={() => navigate(loopFleetId ? `/fleets/${loopFleetId}` : "/fleets")}
+          >
             {t_i18n("Open the CTEM loop fleet")}
           </Button>
         )}
@@ -106,7 +110,7 @@ function CaseWorkChoices({ loopFleetId, onStart }: { loopFleetId: string | null;
         body={t_i18n("Any automation that starts on the case events (case opened or reopened) and whose filter takes this case works it.")}
         testId="ctem-case-work-choice-own"
       >
-        <Button variant="outline" onClick={() => setPickAgent(true)}>
+        <Button variant="outline" className={CHOICE_BUTTON} onClick={() => setPickAgent(true)}>
           {t_i18n("Add a case automation")}
         </Button>
       </Choice>
@@ -117,7 +121,7 @@ function CaseWorkChoices({ loopFleetId, onStart }: { loopFleetId: string | null;
         testId="ctem-case-work-choice-self"
       >
         {onStart && (
-          <Button variant="outline" className="gap-1.5" onClick={onStart}>
+          <Button variant="outline" className={`gap-1.5 ${CHOICE_BUTTON}`} onClick={onStart}>
             <Icon name="play" size={16} />
             {t_i18n("Start")}
           </Button>
@@ -128,6 +132,9 @@ function CaseWorkChoices({ loopFleetId, onStart }: { loopFleetId: string | null;
     </div>
   );
 }
+
+/** A choice's button stays inside its box at every width and in every language: the label wraps instead of overflowing. */
+const CHOICE_BUTTON = "h-auto min-h-8 max-w-full whitespace-normal text-left";
 
 function Choice({
   icon,
@@ -149,7 +156,7 @@ function Choice({
         {title}
       </span>
       <p className="flex-1 content-compact text-default-secondary">{body}</p>
-      {children && <div className="pt-1">{children}</div>}
+      {children && <div className="min-w-0 pt-1">{children}</div>}
     </div>
   );
 }
