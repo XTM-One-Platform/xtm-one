@@ -36,7 +36,7 @@ const flagSets = (): NavFlags[] => {
       for (const [aiEnabled, aiLicensed] of [[true, true], [false, true], [true, false], [false, false]]) {
         out.push({
           chat: on, customVariables: on, relays: on, xtmOne, aiAdoption: on, aiEnabled, aiLicensed,
-          deepInvestigation: on, videoStudio: on, dashboardStudio: on, evaluation: on, health: on, intents: on,
+          deepInvestigation: on, videoStudio: on, dashboardStudio: on, evaluation: on, health: on, intents: on, ctemCases: xtmOne,
         });
       }
     }

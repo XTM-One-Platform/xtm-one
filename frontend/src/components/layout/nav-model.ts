@@ -68,6 +68,11 @@ export interface NavFlags {
    *  it from the mode: on in XTM One mode (AI on or off), off in Copilot mode,
    *  where nothing routes through an intent (Sam, 19 Nov 2026, #445). */
   intents: boolean;
+  /** The CTEM cases list, the record of the CTEM loop: XTM One domain
+   *  content. The callers set it from the mode, as `intents`: on in XTM One
+   *  mode (AI on or off), off in Copilot mode, where `/ctem/*` is not served
+   *  (#1135). */
+  ctemCases: boolean;
 }
 
 /** Why a `locked` entry is locked — picks the tooltip that explains it. */
@@ -123,6 +128,9 @@ export interface NavLeaf {
    * only gets a plain row with that member's label and route, no tab row.
    */
   family?: NavFamilyMember[];
+  /** As `NavGroup.keywords`: other words the ⌘K palette finds the row by
+   *  (English, never shown). Cases answers "CTEM" (#1135). */
+  keywords?: string[];
 }
 
 /** One page of a `NavLeaf.family`. */
@@ -209,6 +217,12 @@ export const NAV_SECTIONS: NavSection[] = [
          keeps "Dashboards" with no name collision. */
       { ...leaf("/", "house", "Home"), alsoActive: ["/dashboard", "/briefing", "/ctem"] },
       aiLeaf("/chat", "message-square", "Chat", (f) => f.chat),
+      /* The record of the CTEM loop (#1135): case owners outside the CISO
+         reach it without the command center. XTM One mode only, like the
+         CTEM routes; a plain leaf, so cases stay readable with AI off. Its
+         route is longer than Home's `alsoActive` "/ctem", so a case page
+         lights this row and the other CTEM pages still light Home. */
+      { ...leaf("/ctem/cases", "clipboard-check", "Cases", (f) => f.ctemCases), keywords: ["CTEM", "Exposure cases"] },
       /* The agents and what they form and follow (#9301): the label opens a
          hub of cards, like Agent Studio and Tools & Integrations (N2c), and
          the list is a child row of its own. The group row carries no lock
@@ -533,7 +547,7 @@ interface NavDestination {
   icon: NavIcon;
   /** Section or group label, shown as the palette's secondary line. */
   parent?: string;
-  /** A group's `keywords`: matched by the palette, never shown. */
+  /** A row's or group's `keywords`: matched by the palette, never shown. */
   keywords?: string[];
   /** The leaf's `text`: shown as written. */
   text?: string;
@@ -558,7 +572,7 @@ export function navDestinations(sections: NavSection[]): NavDestination[] {
           }
           continue;
         }
-        out.push({ to: entry.to, label: entry.label, text: entry.text, icon: entry.icon, parent: section.label, ...lockOf(entry) });
+        out.push({ to: entry.to, label: entry.label, text: entry.text, icon: entry.icon, parent: section.label, keywords: entry.keywords, ...lockOf(entry) });
         continue;
       }
       if (entry.to) {

@@ -1112,10 +1112,12 @@ source (13.4 scope).
     7 days; the role needs SETTINGS_SECURITYACTIVITY, else the check is `not_run`).
   - OpenAEV: `get_openaev_platform_health` (version, licence, settings sanity, the
     OpenCTI link: configured and last call result), `list_openaev_expectations_due`,
-    `get_openaev_data_health` (objects created per week over 4 weeks, scenarios with no
-    inject, simulations with no target, assets in no group, injects with no expectation,
-    duplicate assets, where exposed), `get_openaev_error_rate` (error entries and failed
-    internal jobs per day over 7 days).
+    `get_openaev_data_health` (scenarios, simulations and atomic testings: totals and
+    updates per week over 4 weeks, as OpenAEV filters no creation time; simulations
+    running past their end or canceled; completeness and duplicate assets are not
+    exposed by its search API, so those checks are `not_run`), `get_openaev_error_rate`
+    (atomic testings in ERROR or PARTIAL per day over 7 days; OpenAEV exposes no
+    platform error log, so that part is `not_run`).
   - OpenCRQ: `get_opencrq_data_health` (scenarios never scored or scored before their
     inputs changed, objects created per 30 days), `get_opencrq_platform_health` (error
     entries and failed jobs per day over 7 days, the links to OpenCTI and OpenAEV:
@@ -1200,7 +1202,8 @@ source (13.4 scope).
 | S15b-1 | Allow-list reshaped to the 13.5 lists (connector and feed tools removed, existing module reads added), renamed `MODULE_CHECKER_TOOLS`, scope test (o) | no |
 | S15b-2a | OpenCTI module health reads (`list_opencti_background_tasks`, `get_opencti_managers`, `get_opencti_platform_queues`, `list_opencti_stream_consumers`, `get_opencti_licence`), allow-listed, classifier and snapshot tests, `backend-snapshots` regenerated | no |
 | S15b-2b | OpenCTI `get_opencti_data_health` (objects created and updated per day over 7 days, total and newest creation, newest works with errors or timed out, platform-wide) and `get_opencti_error_rate` (Activity log entries with `event_status` error per day over 7 days), allow-listed, same tests | no |
-| S15b-2c | OpenAEV health reads of 13.5 in a new `providers/openaev/health_reads.py`, same tests | no |
+| S15b-2c | OpenAEV `get_openaev_platform_health` (`GET /api/settings`: version, licence, XTM Composer, XTM Hub, SMTP and IMAP; `GET /api/tenants/{tenant}/tenant-settings`: OpenCTI and OpenCRQ links enabled and URL set; OpenAEV exposes no last call result of a link, so that part is `not_run`) and `list_openaev_expectations_due` (`GET /api/injects/expectations`, READ on SIMULATION: expectations with no result yet by type, overdue, oldest) in a new `providers/openaev/health_reads.py`, allow-listed, same tests | no |
+| S15b-2c2 | OpenAEV `get_openaev_data_health` (`POST /api/scenarios/search`, `/api/exercises/search`, `/api/atomic-testings/search` with `size` 1, `totalElements` only: totals, updates in the last 7 days vs the 3 weeks before, since `*_created_at` is not `@Queryable`; simulations `RUNNING` 24 h past `exercise_end_date`; simulations `CANCELED` in 24 h, OpenAEV having no failed status; completeness and duplicate assets not exposed by the search API) and `get_openaev_error_rate` (atomic testings with `inject_status` in `ExecutionStatus.ERROR_STATUSES` per day over 7 days by `inject_updated_at`, with the daily mean; no platform error log in the OpenAEV API) in the same file, allow-listed, same tests | no |
 | S15b-2d | OpenCRQ health reads of 13.5, same tests | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
 | S15d | Lab measurement and default ceiling written in 13.7 | no |

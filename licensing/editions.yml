@@ -736,6 +736,7 @@ ce:
   - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
+  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
