@@ -8,9 +8,10 @@
  * `colorMode="dark"` turns on React Flow's own dark palette, whose
  * `.react-flow.dark` paints the container `--xy-background-color-default:
  * #141414`, a flat grey that is not the app's elevation surface (the brown
- * canvas of #1062). Its background variable is pointed at the platform token,
- * and the grid, controls and minimap are painted from tokens too. Scoped to
- * `.graph-canvas`, so nothing leaks into the rest of the app.
+ * canvas of #1062). Its background is transparent, so the canvas shows the
+ * card it sits in: the fleet Graph tab's `Card` (Paper at elevation 1), the same
+ * surface in both themes (UX r1 B3 on #1067). The grid and controls are painted
+ * from tokens. Scoped to `.graph-canvas`, so nothing leaks into the rest of the app.
  */
 
 /* The grid dots: the subtle border token, which follows the theme on its own. */
@@ -19,7 +20,7 @@
 }
 
 .graph-canvas .react-flow {
-  --xy-background-color: var(--bg-elevation-default);
+  --xy-background-color: transparent;
 }
 
 .graph-canvas .react-flow__background {
@@ -46,28 +47,6 @@
 
 .graph-canvas .react-flow__controls-button svg {
   fill: currentColor;
-}
-
-/* React Flow's minimap paints its own near-white panel and a light viewport
-   mask in its stylesheet: repainted from tokens, as in flow-builder.css. */
-.graph-canvas .react-flow__minimap {
-  background: var(--bg-elevation-default);
-  border: 1px solid var(--border-elevation-subtle);
-  border-radius: 0.5rem;
-}
-
-.graph-canvas .react-flow__minimap-svg {
-  background: var(--bg-elevation-default);
-}
-
-.graph-canvas .react-flow__minimap-mask {
-  fill: color-mix(in srgb, var(--bg-elevation-default) 60%, transparent);
-  stroke: var(--border-elevation-subtle);
-  stroke-width: 1;
-}
-
-.graph-canvas .react-flow__minimap-node {
-  stroke: none;
 }
 
 /* An in-flight edge (its prerequisite is being worked on) marches toward what

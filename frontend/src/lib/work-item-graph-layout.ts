@@ -167,6 +167,16 @@ export function graphGroups(
   });
 }
 
+/**
+ * The items of a group: the count its zone and its collapsed node show, the status
+ * line's population (UX r1 B2 on #1067). A reference or a person drawn with an item
+ * is a member of its group for the layout, never counted as an item.
+ */
+export function groupItemCount(group: GraphGroup, nodes: readonly WorkItemGraphNode[]): number {
+  const items = new Set(nodes.flatMap((node) => (node.kind === "item" ? [node.id] : [])));
+  return group.members.filter((id) => items.has(id)).length;
+}
+
 /** Room around the cards of a layout and between two zones. */
 const NODE_SEP = 28;
 const RANK_SEP = 90;

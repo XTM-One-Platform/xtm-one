@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   WORK_ITEM_GRAPH_LAYOUTS,
   graphGroups,
+  groupItemCount,
   groupNodeId,
   layoutWorkItemGraph,
   progressionEdge,
@@ -135,6 +136,16 @@ test("group by owner: a reference and a person join the group of the item that w
   const uxGroup = groups.find((g) => g.key === "owner:agent-ux")!;
   assert.ok(devGroup.members.includes("ref:pr") && devGroup.members.includes("ref:dep"));
   assert.ok(uxGroup.members.includes("person:u"));
+});
+
+test("a group counts its items only, the status line's population (UX r1 B2 on #1067)", () => {
+  const groups = graphGroups(nodes, edges, "owner");
+  const devGroup = groups.find((g) => g.key === "owner:agent-dev")!;
+  const items = devGroup.members.filter((id) => !id.startsWith("ref:") && !id.startsWith("person:")).length;
+  assert.ok(devGroup.members.length > items, "the group draws references beside its items");
+  assert.equal(groupItemCount(devGroup, nodes), items);
+  const total = groups.reduce((sum, group) => sum + groupItemCount(group, nodes), 0);
+  assert.equal(total, nodes.filter((node) => node.kind === "item").length);
 });
 
 test("group by fleet, key prefix, status and priority", () => {

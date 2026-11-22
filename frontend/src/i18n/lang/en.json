@@ -10844,6 +10844,7 @@
   "Declared, seen in the last run": "Declared, seen in the last run",
   "Input data": "Input data",
   "{count, plural, one {# node} other {# nodes}}": "{count, plural, one {# node} other {# nodes}}",
+  "{count, plural, one {# item} other {# items}}": "{count, plural, one {# item} other {# items}}",
   "Drag a field into a text box, or click it to copy its reference.": "Drag a field into a text box, or click it to copy its reference.",
   "Run the flow, or declare a structure (Structured output, trigger parameters, event type), to see the fields here.": "Run the flow, or declare a structure (Structured output, trigger parameters, event type), to see the fields here.",
   "Dropped or expired": "Dropped or expired",

@@ -34,7 +34,6 @@ import {
   Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
   ReactFlow,
   useReactFlow,
@@ -51,6 +50,7 @@ import "@/components/ui/graph-canvas.css";
 import { AgentGraphStatusLine, AgentGraphToolbar, type AgentGraphCounter } from "@/components/ui/agent-graph-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,6 +70,7 @@ import {
   WORK_ITEM_GRAPH_GROUP_BYS,
   WORK_ITEM_GRAPH_LAYOUTS,
   graphGroups,
+  groupItemCount,
   groupNodeId,
   layoutWorkItemGraph,
   type GraphGroup,
@@ -317,7 +318,11 @@ function PersonNode({ data }: NodeProps<Node<GraphNodeData>>) {
   );
 }
 
-/** A group drawn as a zone (#1062): its name, its count and its collapse button; the members sit inside. */
+/**
+ * A group drawn as a zone (#1062): its name, its count and its collapse button; the members sit inside.
+ * The count is the group's items, the status line's population and unit (UX r1 B2 on #1067): a
+ * pull request, a deployment or a person drawn beside an item is not counted.
+ */
 type ZoneData = {
   name: string;
   groupKey: string;
@@ -349,7 +354,7 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
         </button>
         <TruncatedText text={data.name} className="flex-1 content-compact font-medium text-default-primary" />
         <span className="shrink-0 content-caption tabular-nums text-default-secondary">
-          {t_i18n("{count, plural, one {# node} other {# nodes}}", { count: data.count })}
+          {t_i18n("{count, plural, one {# item} other {# items}}", { count: data.count })}
         </span>
       </div>
     </div>
@@ -383,7 +388,7 @@ function CollapsedGroupNode({ data }: NodeProps<Node<CollapsedData>>) {
       </button>
       <TruncatedText text={data.name} className="flex-1 content-compact font-medium text-default-primary" />
       <span className="shrink-0 content-caption tabular-nums text-default-secondary">
-        {t_i18n("{count, plural, one {# node} other {# nodes}}", { count: data.count })}
+        {t_i18n("{count, plural, one {# item} other {# items}}", { count: data.count })}
       </span>
     </div>
   );
@@ -502,6 +507,7 @@ export function WorkItemGraphView({
     [visible, layoutChoice, groups, collapsedKeys],
   );
   const groupName = useCallback((group: GraphGroup) => (group.translate ? t_i18n(group.label) : group.label), [t_i18n]);
+  const itemCount = useCallback((group: GraphGroup) => groupItemCount(group, visible?.nodes ?? []), [visible]);
 
   const nodes = useMemo<Node[]>(() => {
     if (!visible || !laid) return [];
@@ -513,7 +519,7 @@ export function WorkItemGraphView({
       position: { x: zone.x, y: zone.y },
       width: zone.width,
       height: zone.height,
-      data: { name: groupName(zone.group), groupKey: zone.group.key, count: zone.group.members.length, onToggle: toggleGroup },
+      data: { name: groupName(zone.group), groupKey: zone.group.key, count: itemCount(zone.group), onToggle: toggleGroup },
       zIndex: -1,
       ...fixed,
     }));
@@ -523,7 +529,7 @@ export function WorkItemGraphView({
       position: laid.positions.get(groupNodeId(group.key)) ?? { x: 0, y: 0 },
       width: GROUP_NODE_SIZE.width,
       height: GROUP_NODE_SIZE.height,
-      data: { name: groupName(group), groupKey: group.key, count: group.members.length, onToggle: toggleGroup, vertical },
+      data: { name: groupName(group), groupKey: group.key, count: itemCount(group), onToggle: toggleGroup, vertical },
       ...fixed,
     }));
     const drawn: Node[] = visible.nodes.flatMap((node) => {
@@ -548,7 +554,7 @@ export function WorkItemGraphView({
       return [{ id: node.id, type: node.kind, position, width: size.width, height: size.height, data, ...fixed }];
     });
     return [...zones, ...collapsed, ...drawn];
-  }, [visible, laid, chains, selected, critical, onOpenItem, readerId, vertical, groupName, toggleGroup]);
+  }, [visible, laid, chains, selected, critical, onOpenItem, readerId, vertical, groupName, itemCount, toggleGroup]);
 
   const edges = useMemo<Edge[]>(() => {
     if (!visible || !laid) return [];
@@ -710,8 +716,8 @@ export function WorkItemGraphView({
               >
                 <FitOnResize layoutKey={layoutKey} />
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--flow-grid)" />
+                {/* No minimap: the fleet graph has none, and at fit view it covered cards (UX r1 B1 on #1067). */}
                 <Controls showInteractive={false} position="bottom-left" />
-                <MiniMap pannable zoomable position="bottom-right" />
               </ReactFlow>
             )}
           </div>
@@ -727,26 +733,27 @@ export function WorkItemGraphView({
  * The graph's card: toolbar, canvas and status line, the page's last block, as tall as
  * the window has room for (`useFitToViewport`, the bound the list and grid views take),
  * so the page never scrolls in Graph view (UX r1 B2 on #979). Before the first measure,
- * or outside the app's page, the former cap.
+ * or outside the app's page, the former cap. The card is the fleet Graph tab's `Card`
+ * (Paper at elevation 1), so both canvases resolve the same surface (UX r1 B3 on #1067).
  */
 function GraphFrame({ testId, label, children }: { testId?: string; label?: string; children: React.ReactNode }) {
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
   const room = useFitToViewport(frame);
   return (
-    <div
+    <Card
       ref={setFrame}
       data-testid={testId}
       data-scroll-fit={room === undefined ? "capped" : room === null ? "page" : "viewport"}
       style={typeof room === "number" ? { height: room } : undefined}
       className={cn(
-        "relative flex w-full flex-col overflow-hidden rounded-md border border-elevation-subtle bg-elevation-default",
+        "relative flex w-full flex-col overflow-hidden",
         typeof room !== "number" && "h-[calc(100dvh-16rem)] min-h-96",
       )}
       role={label ? "group" : undefined}
       aria-label={label}
     >
       {children}
-    </div>
+    </Card>
   );
 }
 

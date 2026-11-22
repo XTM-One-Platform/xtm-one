@@ -44,9 +44,25 @@ test("the canvas wears the shared graph surface, never React Flow's own #141414 
   const CSS = readFileSync(join(process.cwd(), "src", "components", "ui", "graph-canvas.css"), "utf8");
   assert.match(VIEW, /import "@\/components\/ui\/graph-canvas\.css";/);
   assert.match(VIEW, /className="graph-canvas /);
-  assert.match(CSS, /\.graph-canvas \.react-flow \{\n\s+--xy-background-color: var\(--bg-elevation-default\);/);
+  // Transparent: the canvas shows the card's own surface, as the fleet Graph tab does (UX r1 B3 on #1067).
+  assert.match(CSS, /\.graph-canvas \.react-flow \{\n\s+--xy-background-color: transparent;/);
   assert.match(CSS, /\.graph-canvas \{\n\s+--flow-grid:/, "the grid colour is defined where the canvas reads it");
   assert.equal(/style=\{\{ background: "transparent" \}\}/.test(VIEW), false);
+});
+
+test("no minimap over the cards, the fleet graph has none (UX r1 B1 on #1067)", () => {
+  assert.equal(/<MiniMap\b/.test(VIEW), false);
+});
+
+test("a zone counts items, the status line's unit (UX r1 B2 on #1067)", () => {
+  assert.equal(/# node\} other \{# nodes\}\}", \{ count: data\.count \}/.test(VIEW), false);
+  assert.equal((VIEW.match(/t_i18n\("\{count, plural, one \{# item\} other \{# items\}\}", \{ count: data\.count \}\)/g) ?? []).length, 2);
+  assert.match(VIEW, /count: itemCount\(zone\.group\)/);
+});
+
+test("the graph card is the fleet Graph tab's Card, the same elevation layer (UX r1 B3 on #1067)", () => {
+  assert.match(VIEW, /import \{ Card \} from "@\/components\/ui\/card";/);
+  assert.match(VIEW, /<Card\n\s+ref=\{setFrame\}/);
 });
 
 test("the legend reads the progression: the arrow unblocks (#1062)", () => {
