@@ -61,7 +61,7 @@ from app.integrations.providers.microsoft._message_type import message_type
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import dealhub_events, jira_events, netsuite_events, opencrq_job_events
+from app.services import jira_events, netsuite_events, opencrq_job_events, pennylane_events
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
@@ -135,8 +135,8 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
-    # DealHub quote status changes (dealhub_events): the fallback of its webhooks.
-    **dict.fromkeys(sorted(dealhub_events.EVENTS), dealhub_events.POLL_INTERVAL_SECONDS),
+    # Pennylane changelogs (pennylane_events): no webhook to a company token.
+    **dict.fromkeys(sorted(pennylane_events.EVENTS), pennylane_events.POLL_INTERVAL_SECONDS),
     # NetSuite change events (netsuite_events): SuiteQL every 5 min, within the account's concurrency limit.
     **dict.fromkeys(sorted(netsuite_events.EVENTS), netsuite_events.POLL_INTERVAL_SECONDS),
 }
@@ -178,6 +178,8 @@ _CHANNEL_MESSAGE_PAGE = 20
 _GMAIL_PAGE = 10
 _DOCUSIGN_PAGE = 50
 _OPENCRQ_PAGE = 50
+# Changelog entries one Pennylane poll reads: each selected one costs a record read.
+_PENNYLANE_PAGE = 50
 # Pages one poll reads back to back while the provider has more; past
 # them, the next tick reads on.
 _MAX_PAGES_PER_POLL = 5
@@ -869,8 +871,8 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
-    if provider == dealhub_events.PROVIDER and dealhub_events.polled(event_type):
-        return await _poll_dealhub_quotes(access_token, event_type, wf, redis)
+    if provider == pennylane_events.PROVIDER and event_type in pennylane_events.EVENTS:
+        return await _poll_pennylane_changes(access_token, event_type, wf, redis)
 
     if provider == netsuite_events.PROVIDER and event_type in netsuite_events.EVENTS:
         return await _poll_netsuite_changes(access_token, event_type, wf, redis)
@@ -895,25 +897,24 @@ async def _poll_credential(
     the environment and the account ride with the OAuth token, and the JWT
     Grant mode stores no access token at all, only the RSA key it mints one with.
     """
-    if provider in (opencrq_job_events.PROVIDER, jira_events.PROVIDER, netsuite_events.PROVIDER) and db is not None:
+    if (
+        provider
+        in (opencrq_job_events.PROVIDER, jira_events.PROVIDER, pennylane_events.PROVIDER, netsuite_events.PROVIDER)
+        and db is not None
+    ):
         # The compound the tools run on: OpenCRQ's ``base_url||token`` (an API
         # key, or a token minted for the acting user on a platform-managed
         # integration), Jira's ``cloud_id||token`` refreshed when about to expire,
+        # Pennylane's token, prefixed ``company_id||`` for a firm token,
         # NetSuite's account, mode and secret (``netsuite.compound_credential``).
         from app.services.integration_tools import _get_token
 
         token = await _get_token(
             db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
         )
+        if provider == pennylane_events.PROVIDER:
+            return token or None
         return token if token and "||" in token else None
-    if provider == dealhub_events.PROVIDER and db is not None:
-        # ``host||token`` when the instance host is set, the bare token otherwise.
-        from app.services.integration_tools import _get_token
-
-        token = await _get_token(
-            db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
-        )
-        return token or None
     if provider != "docusign":
         return decrypt_value(holder.access_token_enc) if holder.access_token_enc else None
     from app.services.vault import reveal_json_field
@@ -975,22 +976,37 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ]
 
 
-async def _poll_dealhub_quotes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
-    """Poll the DealHub quotes whose status changed since the last check (``dealhub_events``).
+async def _poll_pennylane_changes(
+    credential: str, event_type: str, wf: Assignment, redis: Redis
+) -> list[dict[str, Any]]:
+    """Poll the Pennylane changelog entries processed since the last check (``pennylane_events``).
 
-    The cursor is the status map of the quotes read last time; the first poll
-    records it and runs nothing. A read that fails leaves the cursor alone.
+    ``start_date`` is inclusive: the entries at the cursor come back and the
+    seen set skips them. The cursor moves past every entry of the page, the ones
+    the event does not read included. The first poll starts from now.
     """
     cursor_key = f"event_cursor:{wf.id}"
-    known = dealhub_events.load_statuses(await redis.get(cursor_key))
-    quotes, err = await dealhub_events.list_quotes(credential)
+    since = await redis.get(cursor_key)
+    if not since:
+        return await _seed_from_now(redis, cursor_key)
+    since = since.decode() if isinstance(since, bytes) else str(since)
+    entries, more, err = await pennylane_events.list_changes(credential, event_type, since, limit=_PENNYLANE_PAGE)
     if err:
-        logger.warning("DealHub quote poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        logger.warning("Pennylane changelog poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
         return []
-    delivered = await dealhub_events.webhook_statuses(redis, wf.id)
-    events, statuses = dealhub_events.poll_events(quotes, event_type, known, delivered=delivered)
-    await redis.set(cursor_key, dealhub_events.dump_statuses(statuses), ex=_CURSOR_TTL_SECONDS)
-    return events
+
+    def processed(entry: dict[str, Any]) -> datetime:
+        return pennylane_events.parse_instant(entry.get("processed_at"))
+
+    entries.sort(key=lambda e: (processed(e), str(e.get("id", ""))))
+    page = _oldest_page(entries, processed, _PENNYLANE_PAGE)
+    _log_page_cut(wf, "Pennylane", page)
+    await _note_backlog(redis, wf, "Pennylane", page.more or more)
+    if page.cursor is not None and page.cursor.get("processed_at"):
+        await redis.set(cursor_key, str(page.cursor["processed_at"]), ex=_CURSOR_TTL_SECONDS)
+    return await pennylane_events.change_events(
+        credential, event_type, pennylane_events.selected(page.items, event_type)
+    )
 
 
 async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict]:
