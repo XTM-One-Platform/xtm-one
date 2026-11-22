@@ -351,7 +351,10 @@ export function DecisionCard({
               <Label htmlFor={`${textId}-reason`} className="text-default-secondary">
                 {t_i18n("Why not? (optional: the agent sees this and can adapt)")}
               </Label>
-              <Textarea id={`${textId}-reason`} value={reason} rows={2} onChange={(e) => setReason(e.target.value)} />
+              <Textarea
+                id={`${textId}-reason`}
+                aria-label={t_i18n("Why not? (optional: the agent sees this and can adapt)")}
+                value={reason} rows={2} onChange={(e) => setReason(e.target.value)} />
             </div>
           )}
           <div className="flex items-center justify-end gap-2">

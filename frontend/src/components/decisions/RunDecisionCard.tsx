@@ -58,7 +58,7 @@ export function approvalOptions(proposals: readonly ActionProposal[], t_i18n: Tr
       effect:
         proposals.length === 1
           ? t_i18n("Runs this call once. The tool asks again next time.")
-          : t_i18n("{count, plural, one {Runs this call once.} other {Runs these # calls once.}} The tool asks again next time.", { count: proposals.length }),
+          : t_i18n("{count, plural, one {Runs # call once.} other {Runs these # calls once.}} The tool asks again next time.", { count: proposals.length }),
       ...(consent
         ? {
             confirm: t_i18n("This needs your own consent: the action is run as you approve it now, and it cannot be undone."),
@@ -112,7 +112,7 @@ export function approvalDecisionView(proposals: readonly ActionProposal[], t_i18
     question:
       proposals.length === 1
         ? t_i18n("Run “{tool}”?", { tool: names[0] })
-        : t_i18n("{count, plural, one {Run this action: {tools}?} other {Run these # actions: {tools}?}}", { count: proposals.length, tools: names.join(", ") }),
+        : t_i18n("{count, plural, one {Run # action: {tools}?} other {Run these # actions: {tools}?}}", { count: proposals.length, tools: names.join(", ") }),
     context: proposals.length === 1 && proposals[0].tool_description ? [proposals[0].tool_description] : [],
     options: approvalOptions(proposals, t_i18n),
     freeText: "none",
