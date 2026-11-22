@@ -20641,7 +20641,7 @@
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {本日作成} other {# 日前に作成}}",
   "Open the case": "ケースを開く",
   "Onboarding": "オンボーディング",
-  "Show the guided setup again on the next sign-in or page load, as after a fresh install.": "新規インストール後と同様に、次回のサインインまたはページ読み込み時にガイド付きセットアップを再表示します。",
+  "Show the guided setup again now, as after a fresh install.": "新規インストール後と同様に、ガイド付きセットアップを今すぐ再表示します。",
   "Reset onboarding": "オンボーディングをリセット",
   "Reset onboarding?": "オンボーディングをリセットしますか？",
   "The guided setup is proposed again to administrators. Your organization profile, integrations and fleets are not changed.": "ガイド付きセットアップが管理者に再度提案されます。組織プロファイル、インテグレーション、フリートは変更されません。",

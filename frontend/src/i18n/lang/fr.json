@@ -20641,7 +20641,7 @@
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Ouvert aujourd'hui} one {Ouvert il y a # jour} other {Ouvert il y a # jours}}",
   "Open the case": "Ouvrir le cas",
   "Onboarding": "Prise en main",
-  "Show the guided setup again on the next sign-in or page load, as after a fresh install.": "Proposer à nouveau la configuration guidée à la prochaine connexion ou au prochain chargement de page, comme après une nouvelle installation.",
+  "Show the guided setup again now, as after a fresh install.": "Proposer à nouveau la configuration guidée maintenant, comme après une nouvelle installation.",
   "Reset onboarding": "Réinitialiser la prise en main",
   "Reset onboarding?": "Réinitialiser la prise en main ?",
   "The guided setup is proposed again to administrators. Your organization profile, integrations and fleets are not changed.": "La configuration guidée est de nouveau proposée aux administrateurs. Le profil de votre organisation, vos intégrations et vos flottes ne sont pas modifiés.",
