@@ -20339,5 +20339,19 @@
   "Attached the treatment plan": "対応計画を紐付けました",
   "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "対応計画はまだありません。OpenCRQ が接続されていると、修復の決定が OpenCRQ に計画を作成します。",
   "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "OpenCRQ に計画があります。OpenCRQ の閲覧者のみ表示できます",
-  "Finance": "財務"
+  "Finance": "財務",
+  "Package": "パッケージ",
+  "Leaked secret": "漏洩したシークレット",
+  "Dependency": "依存関係",
+  "Finding type": "検出の種類",
+  "Closed at source": "ソース側でクローズ",
+  "Infrastructure as code": "Infrastructure as Code",
+  "Malware": "マルウェア",
+  "End of life": "サポート終了",
+  "Surface monitoring": "攻撃対象領域の監視",
+  "SLA": "SLA",
+  "Breached in the source": "ソース側で超過",
+  "{installed}, fixed in {fixed}": "{installed}、{fixed} で修正",
+  "{provider} closed every finding of this case on {date}": "{date} に {provider} がこのケースのすべての検出をクローズしました",
+  "The source closed every finding of this case on {date}": "{date} にソースがこのケースのすべての検出をクローズしました"
 }
