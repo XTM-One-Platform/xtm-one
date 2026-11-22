@@ -59,7 +59,9 @@ logger = logging.getLogger(__name__)
 
 #: What the cycle runner starts: one fleet-wide schedule per specialist, the
 #: per-target investigation, and the weekly digest.
-AssignmentKey = Literal["memory", "quality", "flows", "investigation", "digest", "module_analyst"]
+AssignmentKey = Literal[
+    "memory", "quality", "flows", "investigation", "digest", "opencti_checks", "openaev_checks", "opencrq_checks"
+]
 
 #: Tool groups shipped by levels 3 and 8 (ids registered in ``builtin_tool_groups``).
 IMPROVEMENTS_GROUP: Final = "improvement_proposals"
@@ -140,6 +142,10 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
             ("health-quality-analyst", "delegate"),
             ("health-flow-lab", "delegate"),
             ("health-experimenter", "delegate"),
+            # The module round (#101 S15, dev-docs/platform-health.md section 13.2).
+            ("health-opencti-checker", "delegate"),
+            ("health-openaev-checker", "delegate"),
+            ("health-opencrq-checker", "delegate"),
         ),
         former_slugs=("concierge",),
     ),
@@ -185,15 +191,36 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         builtin_tool_ids=("health_experiments", "health_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
         skill_slugs=("health-experimenter",),
     ),
-    # The Module Analyst (#101 S14, dev-docs/platform-health.md section 12): starts only
-    # from its own triggers (section 12.2), so the orchestrator hands it nothing.
+    # One health checker per module (#101 S15, dev-docs/platform-health.md section 13.1).
+    # The OpenCTI checker is the S14 Module Analyst renamed in place, so its cycles,
+    # recommendations, spend rows and agentic findings keep their history.
     FleetAgentSpec(
-        slug="health-module-analyst",
-        role="module_analyst",
-        name="Module Analyst",
-        description="Investigates each registered module read-only and attaches recommendations to its findings.",
+        slug="health-opencti-checker",
+        former_slugs=("health-module-analyst",),
+        role="opencti_checker",
+        name="OpenCTI Health Checker",
+        description="Runs the OpenCTI health checks read-only, with evidence, and recommends on the module's findings.",
         icon="Radar",
         builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
+        skill_slugs=("health-opencti-checks",),
+    ),
+    FleetAgentSpec(
+        slug="health-openaev-checker",
+        role="openaev_checker",
+        name="OpenAEV Health Checker",
+        description="Runs the OpenAEV health checks read-only, with evidence, and recommends on the module's findings.",
+        icon="Radar",
+        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
+        skill_slugs=("health-openaev-checks",),
+    ),
+    FleetAgentSpec(
+        slug="health-opencrq-checker",
+        role="opencrq_checker",
+        name="OpenCRQ Health Checker",
+        description="Runs the OpenCRQ health checks read-only, with evidence, and recommends on the module's findings.",
+        icon="Radar",
+        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
+        skill_slugs=("health-opencrq-checks",),
     ),
 )
 
@@ -255,31 +282,44 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
             "List the Platform Health cycles closed since `since` and summarize them for administrators: "
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "
             "and everything skipped with its reason. Add a Modules part for the module investigation cycles: "
-            "cycles run, recommendations attached, agentic findings opened and resolved, and the Module Analyst's "
-            "spend against its own ceiling. Use the cycles' own figures and statuses; a cycle that "
+            "cycles run, recommendations attached, agentic findings opened and resolved, and the module checkers' "
+            "spend against their own ceiling. Use the cycles' own figures and statuses; a cycle that "
             "is not completed is never reported as completed. Write in the language the trigger names (`language`)."
         ),
         show_in_digest=True,
         timeout_seconds=900,
         max_iterations=15,
     ),
-    # One cycle per registration (target type ``module``); started by the triggers of
-    # section 12.2 (S14a-2b), never by a schedule of its own in ``cycles.SCHEDULE_KEYS``.
-    FleetAssignmentSpec(
-        key="module_analyst",
-        agent_slug="health-module-analyst",
-        name="Platform Health module investigation",
-        description="Investigates one registered module after its findings changed, daily, or on demand.",
-        prompt=(
-            "Investigate the registered module the trigger names (`target_id`, a platform registration): read "
-            "its open findings, read the module through your read tools, and attach a recommendation to each "
-            "finding the evidence explains. Never write to the module. "
-            f"{_REPORT}"
-        ),
-        timeout_seconds=1800,
-        max_iterations=30,
+    # One cycle per registration (target type ``module``), started by the triggers of
+    # section 12.2 and the module round of section 13.2, never by a schedule of its own.
+    *(
+        FleetAssignmentSpec(
+            key=f"{module}_checks",  # type: ignore[arg-type]
+            agent_slug=f"health-{module}-checker",
+            name=f"Platform Health {label} checks",
+            # The S14 Module Analyst's assignment, renamed in place with its agent.
+            former_names=("Platform Health module investigation",) if module == "opencti" else (),
+            description=f"Runs the {label} health checks on one registration: daily, after its findings changed, or on demand.",
+            prompt=(
+                f"Run every check of your {label} health playbook on the registration the trigger names "
+                "(`target_id`, a platform registration), in order, through your read tools only: record each "
+                "check's verdict with the evidence you read, report a check whose tool you do not hold as not run "
+                "with its reason, and attach a recommendation to each open finding the evidence explains. Never "
+                f"write to the module. {_REPORT}"
+            ),
+            timeout_seconds=1800,
+            max_iterations=30,
+        )
+        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
     ),
 )
+
+#: The seeded checks assignment of each module provider (section 13.1).
+CHECKS_KEY_BY_PROVIDER: Final[dict[str, AssignmentKey]] = {
+    "opencti": "opencti_checks",
+    "openaev": "openaev_checks",
+    "opencrq": "opencrq_checks",
+}
 
 ROLE_BY_SLUG: Final[dict[str, str]] = {spec.slug: spec.role for spec in FLEET_AGENTS}
 #: Former seed slug -> current slug (the Concierge's agents, until S1 of #101).
@@ -288,7 +328,23 @@ RENAMED_FLEET_AGENT_SLUGS: Final[dict[str, str]] = {
 }
 ASSIGNMENT_BY_KEY: Final[dict[str, FleetAssignmentSpec]] = {spec.key: spec for spec in FLEET_ASSIGNMENTS}
 
-_FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows, experiments and modules."
+
+def checks_assignment_names(role: str | None) -> tuple[str, ...]:
+    """The seeded names of the checks assignment of the checker holding *role*; empty otherwise.
+
+    The S14 alias ``module_analyst`` reads as the OpenCTI checker, the row it was renamed to.
+    """
+    from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
+
+    if role == "module_analyst":
+        role = CHECKER_ROLE_BY_PROVIDER["opencti"]
+    for provider, checker_role in CHECKER_ROLE_BY_PROVIDER.items():
+        if checker_role == role:
+            return ASSIGNMENT_BY_KEY[CHECKS_KEY_BY_PROVIDER[provider]].names
+    return ()
+
+
+_FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows, experiments and module health checks."
 
 
 async def _skill_ids_by_slug(db: AsyncSession, slugs: set[str]) -> dict[str, str]:

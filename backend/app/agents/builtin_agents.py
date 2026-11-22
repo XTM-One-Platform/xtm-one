@@ -3933,6 +3933,24 @@ BUILTIN_SKILLS: list[dict] = [
         "tags": ["builtin", "health", "flows"],
         "platform_targets": ["global"],
     },
+    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4): the check
+    # playbook of each module health checker. Seeded unbound; the fleet seed binds each
+    # to its checker. The checks grow by edits of these files within the 13.4 scope.
+    *(
+        {
+            "slug": f"health-{module}-checks",
+            "name": f"Platform Health {label} health checks",
+            "description": (
+                f"The {label} health checks Platform Health runs on a registered {label} platform, read-only: "
+                "each check, what it reads, its warn and fail thresholds, and the report it ends with."
+            ),
+            "compatibility": "health_modules",
+            "content": f"health-{module}-checks",
+            "tags": ["builtin", "health", "modules", module],
+            "platform_targets": ["xtm_one", "dev"],
+        }
+        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
+    ),
 ]
 
 #: Built-in skill slugs renamed in place: former slug -> current slug. The seed
