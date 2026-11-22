@@ -11,7 +11,8 @@ import { renderWithProviders, testQueryClient } from "@/testing/providers";
  * One mode, every answer is sent once and closes it, "Set up now" opens the
  * guided CTEM loop setup in place, and the close cross or Escape only closes
  * it for this page: nothing is recorded, so a reload proposes it again; after
- * Reset onboarding it opens again in the same session.
+ * Reset onboarding (and only then, never on a refetch) it opens again in the
+ * same session.
  */
 
 const auth: { user: { role: string; impersonating?: boolean } | null } = { user: { role: "admin" } };
@@ -130,12 +131,27 @@ describe("OrganizationSetupPrompt", () => {
     await screen.findByRole("dialog", { name: "Set up the CTEM loop" });
     close();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // What useResetOrganizationSetupPrompt writes on success: a fresh proposal.
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    // What useResetOrganizationSetupPrompt writes on success: a fresh proposal and the next reset count.
     act(() => {
       client.setQueryData(["organization-context", "setup-prompt"], { propose: true, outcome: null, answered_at: null });
+      client.setQueryData<number>(["organization-context", "setup-prompt-resets"], (count) => (count ?? 0) + 1);
     });
     expect(await screen.findByRole("dialog", { name: "Set up the CTEM loop" })).toBeTruthy();
+  });
+
+  it("stays closed after the close cross when the setup-prompt query refetches the same proposal", async () => {
+    const client = testQueryClient();
+    renderPrompt(client);
+    await screen.findByRole("dialog", { name: "Set up the CTEM loop" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // An organization-context invalidation (a sync, an import, a proposal decision) refetches it.
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["organization-context"] });
+    });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("orders the buttons with the secondary choices before the primary one", async () => {

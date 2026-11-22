@@ -24,7 +24,12 @@ import { CtemLoopSetupDialog } from "@/components/fleets/CtemLoopSetupDialog";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useAnswerOrganizationSetupPrompt, useOrganizationSetupPrompt, type OrganizationSetupAnswer } from "@/hooks/api/useOrganizationContextApi";
+import {
+  useAnswerOrganizationSetupPrompt,
+  useOrganizationSetupPrompt,
+  useOrganizationSetupPromptResets,
+  type OrganizationSetupAnswer,
+} from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
@@ -53,20 +58,20 @@ export function OrganizationSetupPrompt() {
   const prompt = useOrganizationSetupPrompt(Boolean(isAdmin && isXtmOne && !user?.impersonating));
   const answer = useAnswerOrganizationSetupPrompt();
   const [guided, setGuided] = useState(false);
-  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
-  const [closedAt, setClosedAt] = useState<number | null>(null);
+  const resets = useOrganizationSetupPromptResets();
+  // The Reset onboarding count at which the dialog was answered or closed.
+  const [answeredAtReset, setAnsweredAtReset] = useState<number | null>(null);
+  const [closedAtReset, setClosedAtReset] = useState<number | null>(null);
 
-  // An answer, or the close cross / Escape, closes the dialog only until a newer
-  // proposal arrives: after Reset onboarding (Settings > Platform) the query holds
-  // a fresh `propose: true` and the dialog opens again in the same page session,
-  // without a reload.
-  const beforeNewerProposal = (at: number | null) => at !== null && at >= prompt.dataUpdatedAt;
-  const answered = beforeNewerProposal(answeredAt);
-  const closed = beforeNewerProposal(closedAt);
+  // An answer, or the close cross / Escape, closes the dialog until the next
+  // Reset onboarding (Settings > Platform) in this page session; a refetch of the
+  // setup-prompt query with the same proposal never reopens it.
+  const answered = answeredAtReset === resets;
+  const closed = closedAtReset === resets;
   const open = Boolean(prompt.data?.propose) && !answered && !closed;
   const reply = (outcome: OrganizationSetupAnswer) =>
     answer.mutate(outcome, {
-      onSuccess: () => setAnsweredAt(Date.now()),
+      onSuccess: () => setAnsweredAtReset(resets),
       onSettled: () => {
         if (outcome === "started") setGuided(true);
       },
@@ -75,7 +80,7 @@ export function OrganizationSetupPrompt() {
   if (guided) return <CtemLoopSetupDialog open onOpenChange={(next) => !next && setGuided(false)} />;
   if (!open) return null;
   return (
-    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosedAt(Date.now())}>
+    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosedAtReset(resets)}>
       <DialogContent size="md" data-testid="organization-setup-prompt">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
