@@ -34,7 +34,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * the answer (`onAnswer`) through the endpoint it already uses.
  */
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, MessageSquareReply, Send, Sparkles } from "lucide-react";
 import { Icon, Textarea } from "@filigran/design-system";
 
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
@@ -166,7 +165,7 @@ function DecisionTile({
           </span>
           {recommended && (
             <Badge variant="outline" className="content-caption shrink-0 gap-1 border-accent text-accent" data-testid={`${testId}-recommended`}>
-              <Sparkles className="h-3 w-3" aria-hidden />
+              <Icon name="sparkles" size={16} aria-hidden />
               {t_i18n("Recommended")}
             </Badge>
           )}
@@ -261,7 +260,7 @@ export function DecisionCard({
       <Textarea id={textId} aria-label={textLabel} value={text} rows={2} onChange={(e) => setText(e.target.value)} />
       <div className="flex justify-end">
         <Button variant={options.length > 0 ? "outline" : "default"} className="gap-1" disabled={!text.trim() || pending} onClick={sendText}>
-          <Send className="h-3.5 w-3.5" aria-hidden /> {t_i18n("Send answer")}
+          <Icon name="send" size={16} aria-hidden /> {t_i18n("Send answer")}
         </Button>
       </div>
     </div>
@@ -275,13 +274,13 @@ export function DecisionCard({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <MessageSquareReply className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+        <Icon name="message-square" size={16} className="shrink-0 text-accent" aria-hidden />
         <span className="content-caption font-medium uppercase tracking-wider text-default-secondary">
           {t_i18n("Waiting for your decision")}
         </span>
         {view.deadline && (
           <Badge variant="secondary" className="content-caption ml-auto gap-1" data-testid={`${testId}-deadline`}>
-            <CalendarClock className="h-3 w-3" aria-hidden />
+            <Icon name="calendar" size={16} aria-hidden />
             {t_i18n("Answer by {date}", { date: formatShortDateTimeIntl(intl, view.deadline) })}
           </Badge>
         )}
@@ -342,7 +341,7 @@ export function DecisionCard({
         >
           {confirming.confirm && (
             <p className={cn("flex items-start gap-1.5 content-compact", confirming.warning ? "text-feedback-warning-tertiary" : "text-default-secondary")}>
-              {confirming.warning && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />}
+              {confirming.warning && <Icon name="triangle-alert" size={16} className="mt-0.5 shrink-0" aria-hidden />}
               {confirming.confirm}
             </p>
           )}

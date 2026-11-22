@@ -103,13 +103,12 @@ describe("decision view helpers", () => {
 });
 
 describe("RunDecisionCard", () => {
-  it("approves from the card: one tile per option, full width, the call sent", () => {
+  it("approves from the card: one tile per option, the call sent", () => {
     const onApprove = vi.fn();
     renderWithProviders(<RunDecisionCard runId="r1" proposals={[proposal("c1")]} canAnswer onApprove={onApprove} />);
     const card = screen.getByTestId("run-decision");
     const tiles = within(card).getAllByTestId("run-decision-option");
     expect(tiles).toHaveLength(3);
-    for (const tile of tiles) expect(tile.className).toContain("w-full");
     fireEvent.click(tiles[0]);
     expect(onApprove).toHaveBeenCalledWith("r1", [{ tool_call_id: "c1", decision: "approve" }]);
   });

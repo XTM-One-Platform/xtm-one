@@ -31,7 +31,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * The answer goes through the endpoint each caller already uses.
  */
-import { X } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { DecisionCard, type DecisionAnswer, type DecisionOption, type DecisionView } from "@/components/decisions/DecisionCard";
 import { ProposalArguments } from "@/components/ui/action-proposal";
@@ -219,7 +219,7 @@ export function RunDecisionCard({
             onClick={() => onDismiss(runId)}
             data-testid="run-decision-discard"
           >
-            <X className="h-3.5 w-3.5" aria-hidden />
+            <Icon name="x" size={16} aria-hidden />
             {t_i18n("Discard")}
           </Button>
         </div>
