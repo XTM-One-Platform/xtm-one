@@ -105,6 +105,7 @@ _DOWNLOAD_REASON = (
 
 HAND_GATED: dict[str, str] = {
     "download_opencti_file": _DOWNLOAD_REASON,
+    "download_airwallex_financial_report": _DOWNLOAD_REASON,
     "download_anyrun_analysis_file": _DOWNLOAD_REASON,
     "download_ashby_candidate_file": _DOWNLOAD_REASON,
     "download_ashby_interview_transcript": _DOWNLOAD_REASON,
