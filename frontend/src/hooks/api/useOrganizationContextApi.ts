@@ -411,14 +411,16 @@ export function useDraftOrganizationContext() {
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
-export type ImportSourceKey = "openaev" | "opencti" | "opencrq";
+/** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
+export type ImportSourceKey = "openaev" | "opencti" | "opencrq" | "intune" | "defender";
 
 export interface ImportSourcesResponse {
   sections: {
     section: ImportSectionKey;
     /** The profile field the section writes. */
     field: string;
-    sources: { source: ImportSourceKey; available: boolean; reason: string; filters: string[] }[];
+    /** reason_code: `not_connected` or `no_token` when the dialog words the reason itself (#1251); empty: `reason` as given. */
+    sources: { source: ImportSourceKey; available: boolean; reason: string; reason_code?: string; filters: string[] }[];
   }[];
 }
 
