@@ -431,6 +431,26 @@
       "closed": true
     }
   ],
+  "get_opencrq_data_health": [
+    {
+      "procedures": [
+        "jobs.listAllRuns"
+      ],
+      "fields": [
+        "enqueuedFrom",
+        "enqueuedTo",
+        "finishedFrom",
+        "finishedTo",
+        "kinds",
+        "limit",
+        "offset",
+        "startedTo",
+        "statuses"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "get_opencrq_evidence": [
     {
       "procedures": [
@@ -586,6 +606,26 @@
       ],
       "fields": [
         "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "get_opencrq_platform_health": [
+    {
+      "procedures": [
+        "jobs.listAllRuns"
+      ],
+      "fields": [
+        "enqueuedFrom",
+        "enqueuedTo",
+        "finishedFrom",
+        "finishedTo",
+        "kinds",
+        "limit",
+        "offset",
+        "startedTo",
+        "statuses"
       ],
       "conditional": [],
       "closed": true
