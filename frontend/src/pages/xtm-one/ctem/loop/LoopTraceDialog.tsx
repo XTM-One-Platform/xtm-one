@@ -303,8 +303,9 @@ function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatte
  * The rows of an evidence health signal (CTEM-28-UI): the state in words, then
  * "No evidence since" with the date of the newest evidence, or "Never measured"
  * when there is none (a gap never reads as safe, never an empty dash), the risk
- * scenario, the sources with when each last reported, and for an emptied sync
- * its row counts and that its findings stay open.
+ * scenario, the evidence sources by name with when each last reported (left out
+ * on a no_source state, which already says it), and for an emptied sync its row
+ * counts and that its findings stay open.
  */
 function evidenceHealthRows(fact: EvidenceHealthFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"], day: (iso: string) => string) {
   const rows: { label: string; value: string }[] = [
@@ -315,22 +316,27 @@ function evidenceHealthRows(fact: EvidenceHealthFact, t_i18n: ReturnType<typeof 
       label: t_i18n("Connector sync"),
       value: fact.sync.latest !== null && fact.sync.previous !== null
         ? t_i18n("{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open", {
-          kind: fact.sync.kind,
+          kind: signalProviderName(fact.sync.kind),
           latest: fact.sync.latest,
           previous: fact.sync.previous,
         })
-        : t_i18n("{kind}: emptied; its findings stay open", { kind: fact.sync.kind }),
+        : t_i18n("{kind}: emptied; its findings stay open", { kind: signalProviderName(fact.sync.kind) }),
     });
     if (fact.lastEvidence) rows.push({ label: t_i18n("Last sync"), value: day(fact.lastEvidence) });
     return rows;
   }
   rows.push({ label: t_i18n("No evidence since"), value: fact.lastEvidence ? day(fact.lastEvidence) : t_i18n("Never measured") });
   if (fact.scenario) rows.push({ label: t_i18n("Risk scenario"), value: fact.scenario });
+  // A no_source state already says no source reports the asset: the row would repeat it.
+  if (fact.state === "no_source" && fact.sources.length === 0) return rows;
   rows.push({
-    label: t_i18n("Sources"),
+    label: t_i18n("Evidence sources"),
     value: fact.sources.length > 0
       ? fact.sources
-        .map((s) => (s.lastSeen ? t_i18n("{origin}, last reported {date}", { origin: s.origin, date: day(s.lastSeen) }) : s.origin))
+        .map((s) => {
+          const origin = signalProviderName(s.origin);
+          return s.lastSeen ? t_i18n("{origin}, last reported {date}", { origin, date: day(s.lastSeen) }) : origin;
+        })
         .join("; ")
       : t_i18n("No source reports this asset"),
   });

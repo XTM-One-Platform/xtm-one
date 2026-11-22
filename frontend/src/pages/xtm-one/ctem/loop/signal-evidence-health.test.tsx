@@ -77,7 +77,9 @@ describe("evidence health signal facts", () => {
     expect(within(facts).getByText("Evidence expired: older than the re-test delay")).toBeTruthy();
     expect(within(facts).getByText("No evidence since")).toBeTruthy();
     expect(within(facts).getByText("Ransomware on billing")).toBeTruthy();
-    expect(within(facts).getByText(/^tenable, last reported /)).toBeTruthy();
+    expect(within(facts).getByText("Evidence sources")).toBeTruthy();
+    expect(within(facts).getByText(/^Tenable, last reported /)).toBeTruthy();
+    expect(within(facts).queryByText("Sources")).toBeNull();
     const evidence = within(facts).queryByTestId("ctem-signal-evidence");
     expect(evidence?.textContent ?? "").not.toContain("last_evidence_at");
     expect(evidence?.textContent ?? "").not.toContain("risk_scenario");
@@ -92,7 +94,9 @@ describe("evidence health signal facts", () => {
     });
     expect(within(facts).getByText("Blind spot: no source reports this asset")).toBeTruthy();
     expect(within(facts).getByText("Never measured")).toBeTruthy();
-    expect(within(facts).getByText("No source reports this asset")).toBeTruthy();
+    // The state already says it: no second row repeating it.
+    expect(within(facts).queryByText("No source reports this asset")).toBeNull();
+    expect(within(facts).queryByText("Evidence sources")).toBeNull();
   });
 
   it("an emptied connector sync gives its row counts and keeps its findings open", async () => {
@@ -104,7 +108,7 @@ describe("evidence health signal facts", () => {
       evidence: { event: "coverage_gap", state: "source_emptied", sync_kind: "tenable", last_run_at: "2026-11-21T02:00:00Z", latest_total: 0, previous_total: 412 },
     });
     expect(within(facts).getByText("Blind spot: a connector sync emptied")).toBeTruthy();
-    expect(within(facts).getByText("tenable: 0 rows after 412; its findings stay open")).toBeTruthy();
+    expect(within(facts).getByText("Tenable: 0 rows after 412; its findings stay open")).toBeTruthy();
     expect(within(facts).queryByText("No evidence since")).toBeNull();
   });
 });
