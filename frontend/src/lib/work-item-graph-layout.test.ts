@@ -9,6 +9,8 @@ import {
   groupNodeId,
   layoutWorkItemGraph,
   progressionEdge,
+  routeEdge,
+  segmentCrossesBox,
   type WorkItemGraphLayout,
 } from "./work-item-graph-layout.ts";
 import { drawnCounts, focusChains } from "./work-item-graph.ts";
@@ -234,6 +236,68 @@ test("a collapsed group is one node; its edges move onto it, deduplicated", () =
   assert.equal(fromGroup.length, 1);
   assert.equal(toB.length, 1);
   assert.ok(!laid.edges.some((e) => e.drawnSource === e.drawnTarget), "no edge inside a collapsed group");
+});
+
+// UX r3 B1 on #1067: a program child in another owner's zone, so the program
+// edge crosses zones (the drawing where Program to P2 ran through P1).
+const crossZoneNodes: WorkItemGraphNode[] = [
+  ...nodes.filter((n) => n.id !== "K2"),
+  item("K2", { status: "in_progress", owner_agent: ux }),
+  item("P1", { status: "open", owner_agent: dev }),
+  item("P2", { status: "open", owner_agent: ux }),
+];
+const crossZoneEdges: WorkItemGraphEdge[] = [...edges, edge("R", "P2", "program"), edge("P1", "K1")];
+
+test("no edge segment runs inside a card that is not one of its ends, in every layout and grouping (UX r3 B1 on #1067)", () => {
+  const programKey = "program:R";
+  const cases: { by: "none" | "program" | "owner"; collapsed: string[] }[] = [
+    { by: "none", collapsed: [] },
+    { by: "program", collapsed: [] },
+    { by: "program", collapsed: [programKey] },
+    { by: "owner", collapsed: [] },
+    { by: "owner", collapsed: ["owner:agent-ux"] },
+  ];
+  for (const [label, set] of [["seeded", { nodes, edges }], ["cross-zone", { nodes: crossZoneNodes, edges: crossZoneEdges }]] as const) {
+    for (const layout of WORK_ITEM_GRAPH_LAYOUTS as readonly WorkItemGraphLayout[]) {
+      for (const { by, collapsed } of cases) {
+        for (const aspect of [16 / 9, 1]) {
+          const groups = graphGroups(set.nodes, set.edges, by);
+          const laid = layoutWorkItemGraph(set.nodes, set.edges, { layout, groups, collapsedKeys: new Set(collapsed), sizeOf, aspect });
+          const byId = new Map(set.nodes.map((n) => [n.id, n]));
+          const cards = new Map(
+            [...laid.positions].map(([id, p]) => [id, { ...p, ...(byId.has(id) ? sizeOf(byId.get(id)!) : { width: 220, height: 56 }) }] as const),
+          );
+          const where = `${label} ${layout}/${by}${collapsed.length ? " collapsed" : ""}/${aspect.toFixed(2)}`;
+          assert.ok(laid.edges.length > 0, `${where}: edges drawn`);
+          for (const e of laid.edges) {
+            assert.ok(e.points.length >= 2, `${where}: ${e.id} has a route`);
+            for (const [id, card] of cards) {
+              if (id === e.drawnSource || id === e.drawnTarget) continue;
+              for (let i = 1; i < e.points.length; i++) {
+                assert.ok(!segmentCrossesBox(e.points[i - 1], e.points[i], card), `${where}: ${e.id} runs through ${id}`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test("a ranked edge leaves the prerequisite on its trailing side and enters on the leading side; a clear route stays direct", () => {
+  const source = { x: 0, y: 0, width: 260, height: 92 };
+  const target = { x: 400, y: 200, width: 260, height: 92 };
+  const extent = { x: 0, y: 0, width: 660, height: 292 };
+  const lr = routeEdge(source, target, "lr", [source, target], extent);
+  assert.deepEqual(lr[0], { x: 260, y: 46 });
+  assert.deepEqual(lr[lr.length - 1], { x: 400, y: 246 });
+  assert.equal(lr.length, 4, "the direct step: out, across, in");
+  // A card in the way of the step: the route goes around it.
+  const blocker = { x: 300, y: 0, width: 60, height: 292 };
+  const around = routeEdge(source, target, "lr", [source, target, blocker], { x: 0, y: 0, width: 660, height: 292 });
+  for (let i = 1; i < around.length; i++) assert.ok(!segmentCrossesBox(around[i - 1], around[i], blocker));
+  assert.deepEqual(around[0], lr[0]);
+  assert.deepEqual(around[around.length - 1], lr[lr.length - 1]);
 });
 
 test("focus chains keep their meaning after the flip: upstream is what the item waits for", () => {

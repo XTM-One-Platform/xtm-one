@@ -31,6 +31,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   status, priority. Each group is laid out on its own, drawn as a zone with
  *   its name and count, and the zones are packed in shelves; a collapsed group
  *   is one node with its count, the edges to its members moved onto it.
+ * - Edges (UX r3 B1 on #1067): every drawn edge is routed here, as a polyline,
+ *   under one invariant held by every layout and every grouping: no segment
+ *   runs inside a card that is not one of its two ends. A direct route (the
+ *   ranked step, the floating straight line) is kept when it is clear; else the
+ *   edge goes around the cards on an orthogonal grid built from their sides.
  */
 
 import dagre from "dagre";
@@ -197,7 +202,11 @@ function layoutPart(
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: layout === "hierarchy-lr" ? "LR" : "TB", ranksep: RANK_SEP, nodesep: NODE_SEP, edgesep: 16 });
     g.setDefaultEdgeLabel(() => ({}));
-    for (const id of ids) g.setNode(id, sizeOf(id));
+    // A copy: dagre writes x and y onto the label, never onto a shared size constant.
+    for (const id of ids) {
+      const { width, height } = sizeOf(id);
+      g.setNode(id, { width, height });
+    }
     for (const edge of edges) g.setEdge(edge.source, edge.target);
     dagre.layout(g);
     return normalise(new Map(ids.map((id) => {
@@ -313,6 +322,305 @@ export function floatingEndpoints(source: Box, target: Box): { source: { x: numb
   return { source: border(source, target), target: border(target, source) };
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Room an edge keeps from a card it goes around, and the straight run it leaves and enters a card with. */
+const EDGE_CLEARANCE = 10;
+const EDGE_STUB = 16;
+/** What a bend costs a route, in pixels of length: a longer route with fewer bends reads better. */
+const BEND_COST = 40;
+
+/** Whether the segment a-b runs inside `box` (its border excluded): Liang-Barsky clipping. */
+export function segmentCrossesBox(a: Point, b: Point, box: Box): boolean {
+  const eps = 1e-6;
+  const x0 = box.x + eps;
+  const x1 = box.x + box.width - eps;
+  const y0 = box.y + eps;
+  const y1 = box.y + box.height - eps;
+  if (x0 >= x1 || y0 >= y1) return false;
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const clip = (p: number, q: number) => {
+    if (p === 0) return q > 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  return clip(-dx, a.x - x0) && clip(dx, x1 - a.x) && clip(-dy, a.y - y0) && clip(dy, y1 - a.y) && t1 - t0 > eps;
+}
+
+function routeIsClear(points: readonly Point[], obstacles: readonly Box[]): boolean {
+  for (let i = 1; i < points.length; i++) {
+    for (const box of obstacles) if (segmentCrossesBox(points[i - 1], points[i], box)) return false;
+  }
+  return true;
+}
+
+function inflate(box: Box, by: number): Box {
+  return { x: box.x - by, y: box.y - by, width: box.width + 2 * by, height: box.height + 2 * by };
+}
+
+type Side = "left" | "right" | "top" | "bottom";
+const OUTWARD: Record<Side, Point> = { left: { x: -1, y: 0 }, right: { x: 1, y: 0 }, top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 } };
+/** Grid directions: +x, -x, +y, -y. */
+const STEPS: readonly Point[] = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+const stepOf = (d: Point) => STEPS.findIndex((s) => s.x === d.x && s.y === d.y);
+
+function sideOfPoint(point: Point, box: Box): Side {
+  const distances: [Side, number][] = [
+    ["left", Math.abs(point.x - box.x)],
+    ["right", Math.abs(point.x - (box.x + box.width))],
+    ["top", Math.abs(point.y - box.y)],
+    ["bottom", Math.abs(point.y - (box.y + box.height))],
+  ];
+  return distances.reduce((best, entry) => (entry[1] < best[1] ? entry : best))[0];
+}
+
+function uniqueSorted(values: number[]): number[] {
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
+/** The index of `value` in the sorted `values` (it is one of them). */
+function indexOf(values: readonly number[], value: number): number {
+  let lo = 0;
+  let hi = values.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (values[mid] < value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * The shortest orthogonal route from `from` to `to` inside `bounds` that runs
+ * inside none of `obstacles`, bends counted: Dijkstra on the grid of the
+ * obstacles' sides, where a grid segment is either wholly inside a box or wholly
+ * outside it. `null` when `bounds` holds no such route.
+ */
+function gridRoute(from: Point, to: Point, startStep: number, endStep: number, obstacles: readonly Box[], bounds: Box): Point[] | null {
+  const right = bounds.x + bounds.width;
+  const bottom = bounds.y + bounds.height;
+  const within = obstacles.filter((b) => b.x < right && b.x + b.width > bounds.x && b.y < bottom && b.y + b.height > bounds.y);
+  const xs = uniqueSorted([bounds.x, right, from.x, to.x, ...within.flatMap((b) => [Math.max(b.x, bounds.x), Math.min(b.x + b.width, right)])]);
+  const ys = uniqueSorted([bounds.y, bottom, from.y, to.y, ...within.flatMap((b) => [Math.max(b.y, bounds.y), Math.min(b.y + b.height, bottom)])]);
+  const nx = xs.length;
+  const ny = ys.length;
+  const cell = (i: number, j: number) => j * nx + i;
+  const blockedNode = new Uint8Array(nx * ny);
+  const blockedH = new Uint8Array(nx * ny); // (i, j) -> (i + 1, j)
+  const blockedV = new Uint8Array(nx * ny); // (i, j) -> (i, j + 1)
+  for (const b of within) {
+    const L = Math.max(b.x, bounds.x);
+    const R = Math.min(b.x + b.width, right);
+    const T = Math.max(b.y, bounds.y);
+    const B = Math.min(b.y + b.height, bottom);
+    const li = indexOf(xs, L);
+    const ri = indexOf(xs, R);
+    const tj = indexOf(ys, T);
+    const bj = indexOf(ys, B);
+    // A side the bounds cut is inside the box: the grid line on it is blocked too.
+    const i0 = b.x < L ? li : li + 1;
+    const i1 = R < b.x + b.width ? ri : ri - 1;
+    const j0 = b.y < T ? tj : tj + 1;
+    const j1 = B < b.y + b.height ? bj : bj - 1;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) blockedNode[cell(i, j)] = 1;
+      for (let i = li; i < ri; i++) blockedH[cell(i, j)] = 1;
+    }
+    for (let i = i0; i <= i1; i++) for (let j = tj; j < bj; j++) blockedV[cell(i, j)] = 1;
+  }
+  const start = cell(indexOf(xs, from.x), indexOf(ys, from.y));
+  const goal = cell(indexOf(xs, to.x), indexOf(ys, to.y));
+  if (blockedNode[start] || blockedNode[goal]) return null;
+
+  const states = nx * ny * 4;
+  const cost = new Float64Array(states).fill(Infinity);
+  const prev = new Int32Array(states).fill(-1);
+  const heap: [number, number][] = [];
+  const push = (c: number, s: number) => {
+    heap.push([c, s]);
+    let k = heap.length - 1;
+    while (k > 0) {
+      const parent = (k - 1) >> 1;
+      if (heap[parent][0] <= heap[k][0]) break;
+      [heap[parent], heap[k]] = [heap[k], heap[parent]];
+      k = parent;
+    }
+  };
+  const pop = (): [number, number] => {
+    const top = heap[0];
+    const last = heap.pop()!;
+    if (heap.length) {
+      heap[0] = last;
+      let k = 0;
+      for (;;) {
+        const l = 2 * k + 1;
+        const r = l + 1;
+        let m = k;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === k) break;
+        [heap[m], heap[k]] = [heap[k], heap[m]];
+        k = m;
+      }
+    }
+    return top;
+  };
+  for (let d = 0; d < 4; d++) {
+    const c = d === startStep ? 0 : BEND_COST;
+    cost[start * 4 + d] = c;
+    push(c, start * 4 + d);
+  }
+  let best = Infinity;
+  let bestState = -1;
+  while (heap.length) {
+    const [c, state] = pop();
+    if (c > cost[state] || c >= best) continue;
+    const at = state >> 2;
+    const dir = state & 3;
+    if (at === goal) {
+      const total = c + (dir === endStep ? 0 : BEND_COST);
+      if (total < best) {
+        best = total;
+        bestState = state;
+      }
+      continue;
+    }
+    const i = at % nx;
+    const j = (at - i) / nx;
+    for (let d = 0; d < 4; d++) {
+      const ni = i + STEPS[d].x;
+      const nj = j + STEPS[d].y;
+      if (ni < 0 || nj < 0 || ni >= nx || nj >= ny) continue;
+      const next = cell(ni, nj);
+      if (blockedNode[next]) continue;
+      const through = d < 2 ? blockedH[cell(Math.min(i, ni), j)] : blockedV[cell(i, Math.min(j, nj))];
+      if (through) continue;
+      const length = d < 2 ? Math.abs(xs[ni] - xs[i]) : Math.abs(ys[nj] - ys[j]);
+      const nc = c + length + (d === dir ? 0 : BEND_COST);
+      const ns = next * 4 + d;
+      if (nc < cost[ns]) {
+        cost[ns] = nc;
+        prev[ns] = state;
+        push(nc, ns);
+      }
+    }
+  }
+  if (bestState < 0) return null;
+  const path: Point[] = [];
+  for (let s = bestState; s >= 0; s = prev[s]) {
+    const at = s >> 2;
+    const i = at % nx;
+    const point = { x: xs[i], y: ys[(at - i) / nx] };
+    const last = path[path.length - 1];
+    if (!last || last.x !== point.x || last.y !== point.y) path.push(point);
+  }
+  return path.reverse();
+}
+
+/** Drops the points that sit on a straight run between their neighbours. */
+function simplify(points: readonly Point[]): Point[] {
+  const out: Point[] = [];
+  for (const p of points) {
+    const last = out[out.length - 1];
+    if (last && last.x === p.x && last.y === p.y) continue;
+    const before = out[out.length - 2];
+    if (before && last && ((before.x === last.x && last.x === p.x) || (before.y === last.y && last.y === p.y))) out[out.length - 1] = p;
+    else out.push(p);
+  }
+  return out;
+}
+
+function union(boxes: readonly Box[]): Box {
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  return { x, y, width: Math.max(...boxes.map((b) => b.x + b.width)) - x, height: Math.max(...boxes.map((b) => b.y + b.height)) - y };
+}
+
+/**
+ * The route of one edge from `source` to `target` among `cards` (every card
+ * drawn, both ends included). Ranked layouts leave a card on its trailing side
+ * and enter on its leading one (`lr`: right to left, `tb`: bottom to top);
+ * force and radial float, on the sides facing each other. The direct route is
+ * kept when it clears every other card; else the edge goes around.
+ */
+export function routeEdge(source: Box, target: Box, ranked: "lr" | "tb" | null, cards: readonly Box[], extent: Box): Point[] {
+  let p1: Point;
+  let p2: Point;
+  let direct: Point[];
+  if (ranked === "lr") {
+    p1 = { x: source.x + source.width, y: source.y + source.height / 2 };
+    p2 = { x: target.x, y: target.y + target.height / 2 };
+    const midX = (p1.x + p2.x) / 2;
+    direct = p2.x - p1.x >= 2 * EDGE_STUB ? [p1, { x: midX, y: p1.y }, { x: midX, y: p2.y }, p2] : [];
+  } else if (ranked === "tb") {
+    p1 = { x: source.x + source.width / 2, y: source.y + source.height };
+    p2 = { x: target.x + target.width / 2, y: target.y };
+    const midY = (p1.y + p2.y) / 2;
+    direct = p2.y - p1.y >= 2 * EDGE_STUB ? [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2] : [];
+  } else {
+    const ends = floatingEndpoints(source, target);
+    p1 = ends.source;
+    p2 = ends.target;
+    direct = [p1, p2];
+  }
+  const others = cards.filter((card) => card !== source && card !== target);
+  if (direct.length && routeIsClear(direct, others.map((card) => inflate(card, EDGE_CLEARANCE)))) return simplify(direct);
+
+  const sourceSide = ranked === "lr" ? "right" : ranked === "tb" ? "bottom" : sideOfPoint(p1, source);
+  const targetSide = ranked === "lr" ? "left" : ranked === "tb" ? "top" : sideOfPoint(p2, target);
+  const out = OUTWARD[sourceSide];
+  const inward = OUTWARD[targetSide];
+  const s1 = { x: p1.x + out.x * EDGE_STUB, y: p1.y + out.y * EDGE_STUB };
+  const s2 = { x: p2.x + inward.x * EDGE_STUB, y: p2.y + inward.y * EDGE_STUB };
+  const startStep = stepOf(out);
+  const endStep = stepOf({ x: -inward.x, y: -inward.y });
+  const whole = inflate(union([extent, { x: Math.min(s1.x, s2.x), y: Math.min(s1.y, s2.y), width: Math.abs(s1.x - s2.x), height: Math.abs(s1.y - s2.y) }]), 4 * EDGE_CLEARANCE);
+  // Room to go around: grown from the two ends until it holds the whole drawing.
+  for (const clearance of [EDGE_CLEARANCE, 1]) {
+    const obstacles = cards.map((card) => inflate(card, clearance));
+    for (let margin = 200; ; margin *= 2) {
+      const local = inflate({ x: Math.min(s1.x, s2.x), y: Math.min(s1.y, s2.y), width: Math.abs(s1.x - s2.x), height: Math.abs(s1.y - s2.y) }, margin);
+      const covers = local.x <= whole.x && local.y <= whole.y && local.x + local.width >= whole.x + whole.width && local.y + local.height >= whole.y + whole.height;
+      const route = gridRoute(s1, s2, startStep, endStep, obstacles, covers ? whole : local);
+      if (route) return simplify([p1, ...route, p2]);
+      if (covers) break;
+    }
+  }
+  return simplify(direct.length ? direct : [p1, p2]);
+}
+
+/** The SVG path of a route, its bends rounded. */
+export function edgePath(points: readonly Point[], radius = 8): string {
+  if (points.length < 2) return "";
+  const towards = (from: Point, to: Point, r: number) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    return { x: from.x + ((to.x - from.x) * r) / length, y: from.y + ((to.y - from.y) * r) / length };
+  };
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [p, c, n] = [points[i - 1], points[i], points[i + 1]];
+    const r = Math.min(radius, Math.hypot(c.x - p.x, c.y - p.y) / 2, Math.hypot(n.x - c.x, n.y - c.y) / 2);
+    const a = towards(c, p, r);
+    const b = towards(c, n, r);
+    d += ` L ${a.x} ${a.y} Q ${c.x} ${c.y} ${b.x} ${b.y}`;
+  }
+  const last = points[points.length - 1];
+  return `${d} L ${last.x} ${last.y}`;
+}
+
 function normalise(points: Map<string, { x: number; y: number }>): Map<string, { x: number; y: number }> {
   const minX = Math.min(...[...points.values()].map((p) => p.x));
   const minY = Math.min(...[...points.values()].map((p) => p.y));
@@ -335,8 +643,11 @@ export interface LaidOutGraph {
   positions: Map<string, { x: number; y: number }>;
   /** The zone of each expanded group, around its members. */
   zones: (Box & { group: GraphGroup })[];
-  /** The drawn edges, prerequisite to what it releases, moved onto collapsed groups and deduplicated. */
-  edges: (WorkItemGraphEdge & { drawnSource: string; drawnTarget: string })[];
+  /**
+   * The drawn edges, prerequisite to what it releases, moved onto collapsed groups
+   * and deduplicated; `points` is the route, inside no card but its two ends.
+   */
+  edges: (WorkItemGraphEdge & { drawnSource: string; drawnTarget: string; points: Point[] })[];
   /** Collapsed groups drawn as one node. */
   collapsed: GraphGroup[];
 }
@@ -377,7 +688,7 @@ export function layoutWorkItemGraph(
   const size = (id: string): Size => (id.startsWith("group:") && !byId.has(id) ? GROUP_NODE_SIZE : sizeOf(byId.get(id)!));
 
   const seen = new Set<string>();
-  const edges: LaidOutGraph["edges"] = [];
+  const edges: (WorkItemGraphEdge & { drawnSource: string; drawnTarget: string })[] = [];
   for (const edge of apiEdges.map(progressionEdge)) {
     const drawnSource = drawn(edge.source);
     const drawnTarget = drawn(edge.target);
@@ -391,8 +702,22 @@ export function layoutWorkItemGraph(
   }
   const layoutEdges = edges.map((edge) => ({ source: edge.drawnSource, target: edge.drawnTarget }));
 
+  const routed = (positions: Map<string, { x: number; y: number }>): LaidOutGraph["edges"] => {
+    const boxes = new Map([...positions].map(([id, p]) => [id, { x: p.x, y: p.y, width: size(id).width, height: size(id).height }] as const));
+    const cards = [...boxes.values()];
+    if (cards.length === 0) return [];
+    const extent = union(cards);
+    const ranked = layout === "hierarchy-lr" ? "lr" : layout === "hierarchy-tb" ? "tb" : null;
+    return edges.flatMap((edge) => {
+      const source = boxes.get(edge.drawnSource);
+      const target = boxes.get(edge.drawnTarget);
+      return source && target ? [{ ...edge, points: routeEdge(source, target, ranked, cards, extent) }] : [];
+    });
+  };
+
   if (groups.length === 0) {
-    return { positions: layoutPart(layout, nodes.map((node) => node.id), layoutEdges, size), zones: [], edges, collapsed: [] };
+    const positions = layoutPart(layout, nodes.map((node) => node.id), layoutEdges, size);
+    return { positions, zones: [], edges: routed(positions), collapsed: [] };
   }
 
   // Each expanded group is laid out with its own edges; a collapsed group is one node.
@@ -421,5 +746,5 @@ export function layoutWorkItemGraph(
     for (const [id, p] of part.points) positions.set(id, { x: x + inset.x + p.x, y: y + inset.y + p.y });
     if (part.group) zones.push({ x, y, width: part.size.width, height: part.size.height, group: part.group });
   });
-  return { positions, zones, edges, collapsed };
+  return { positions, zones, edges: routed(positions), collapsed };
 }

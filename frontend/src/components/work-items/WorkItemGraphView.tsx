@@ -37,8 +37,6 @@ import {
   MarkerType,
   Position,
   ReactFlow,
-  getBezierPath,
-  useInternalNode,
   useReactFlow,
   useStore,
   type Edge,
@@ -73,12 +71,13 @@ import {
   GROUP_NODE_SIZE,
   WORK_ITEM_GRAPH_GROUP_BYS,
   WORK_ITEM_GRAPH_LAYOUTS,
-  floatingEndpoints,
+  edgePath,
   graphGroups,
   groupItemCount,
   groupNodeId,
   layoutWorkItemGraph,
   type GraphGroup,
+  type Point,
   type WorkItemGraphGroupBy,
   type WorkItemGraphLayout,
 } from "@/lib/work-item-graph-layout";
@@ -401,51 +400,18 @@ function CollapsedGroupNode({ data }: NodeProps<Node<CollapsedData>>) {
 
 const NODE_TYPES = { item: ItemNode, ref: RefNode, person: PersonNode, zone: ZoneNode, collapsed: CollapsedGroupNode };
 
-/** The side of a box a floating endpoint lies on. */
-function sideOf(point: { x: number; y: number }, box: { x: number; y: number; width: number; height: number }): Position {
-  const distances: [Position, number][] = [
-    [Position.Left, Math.abs(point.x - box.x)],
-    [Position.Right, Math.abs(point.x - (box.x + box.width))],
-    [Position.Top, Math.abs(point.y - box.y)],
-    [Position.Bottom, Math.abs(point.y - (box.y + box.height))],
-  ];
-  return distances.reduce((best, entry) => (entry[1] < best[1] ? entry : best))[0];
-}
-
 /**
- * Force and radial (UX r2 B1 on #1067): no rank decides a side there, so an edge
- * floats, as on the fleet graph: it leaves and enters on the sides of the two
- * cards that face each other, never across its own cards.
+ * Every edge, in every layout and grouping (UX r3 B1 on #1067): the route the
+ * layout computed (`layoutWorkItemGraph`), which runs inside no card but its two
+ * ends; a cross-zone edge goes around the cards instead of through them.
  */
-function FloatingEdge({ id, source, target, style, markerEnd }: EdgeProps) {
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
-  if (!sourceNode || !targetNode) return null;
-  const box = (node: NonNullable<typeof sourceNode>) => ({
-    x: node.internals.positionAbsolute.x,
-    y: node.internals.positionAbsolute.y,
-    width: node.measured.width ?? node.width ?? 0,
-    height: node.measured.height ?? node.height ?? 0,
-  });
-  const from = box(sourceNode);
-  const to = box(targetNode);
-  const ends = floatingEndpoints(from, to);
-  const [path] = getBezierPath({
-    sourceX: ends.source.x,
-    sourceY: ends.source.y,
-    sourcePosition: sideOf(ends.source, from),
-    targetX: ends.target.x,
-    targetY: ends.target.y,
-    targetPosition: sideOf(ends.target, to),
-    curvature: 0.15,
-  });
-  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+function RoutedEdge({ id, data, style, markerEnd }: EdgeProps) {
+  const points = (data as { points?: Point[] } | undefined)?.points ?? [];
+  if (points.length < 2) return null;
+  return <BaseEdge id={id} path={edgePath(points)} markerEnd={markerEnd} style={style} />;
 }
 
-const EDGE_TYPES = { floating: FloatingEdge };
-
-/** The layouts whose ranks give every edge a leading and a trailing side; the others float their edges. */
-const RANKED_LAYOUTS = new Set<WorkItemGraphLayout>(["hierarchy-lr", "hierarchy-tb"]);
+const EDGE_TYPES = { routed: RoutedEdge };
 
 function NetworkIcon({ className }: { className?: string }) {
   return <Icon name="network" size={16} className={className} aria-hidden />;
@@ -528,7 +494,6 @@ export function WorkItemGraphView({
     [],
   );
   const vertical = layoutChoice === "hierarchy-tb";
-  const floating = !RANKED_LAYOUTS.has(layoutChoice);
 
   const shown = useMemo(() => (graph ? shownGraph(graph, { showDone }) : null), [graph, showDone]);
   const critical = useMemo(() => (shown ? criticalLeaves(shown) : new Set<string>()), [shown]);
@@ -621,7 +586,7 @@ export function WorkItemGraphView({
         id: edge.id,
         source: edge.drawnSource,
         target: edge.drawnTarget,
-        type: floating ? "floating" : "smoothstep",
+        type: "routed",
         animated,
         markerEnd: edge.kind === "program" ? undefined : { type: MarkerType.ArrowClosed, color: stroke, width: 16, height: 16 },
         style: {
@@ -632,10 +597,10 @@ export function WorkItemGraphView({
         },
         selectable: false,
         focusable: false,
-        data: { kind: edge.kind },
+        data: { kind: edge.kind, points: edge.points },
       };
     });
-  }, [visible, laid, chains, floating]);
+  }, [visible, laid, chains]);
 
   const loading = isLoading || !graph || !shown || !visible;
   const layoutKey = `${layoutChoice}|${groupBy}|${[...collapsedKeys].join(",")}|${focusMode}|${visible?.nodes.length ?? 0}`;
