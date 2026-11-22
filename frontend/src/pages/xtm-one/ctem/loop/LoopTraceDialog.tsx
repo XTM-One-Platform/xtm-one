@@ -116,7 +116,7 @@ export function signalProviderName(provider: string): string {
 }
 
 /** The Aikido finding types in words (CTEM-25-UI). @i18n-keys */
-const AIKIDO_FINDING_TYPE: Readonly<Record<string, string>> = {
+const AIKIDO_FINDING_TYPE = {
   open_source: "Dependency",
   sast: "Code",
   leaked_secret: "Leaked secret",
@@ -126,7 +126,12 @@ const AIKIDO_FINDING_TYPE: Readonly<Record<string, string>> = {
   malware: "Malware",
   eol: "End of life",
   surface_monitoring: "Surface monitoring",
-};
+} as const;
+
+/** The words of an Aikido finding type, undefined for a type the table does not name. */
+function aikidoFindingTypeLabel(type: string): string | undefined {
+  return (AIKIDO_FINDING_TYPE as Readonly<Record<string, string>>)[type];
+}
 
 /** The evidence keys an Aikido finding's rows say, left out of the raw evidence list. */
 const AIKIDO_ROW_KEYS = [
@@ -183,8 +188,10 @@ export function aikidoFacts(provider: string, evidence: Record<string, unknown> 
 /** An Aikido fact as a row of the signal facts. */
 function aikidoFactRow(fact: AikidoFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
   switch (fact.key) {
-    case "type":
-      return { label: t_i18n("Finding type"), value: AIKIDO_FINDING_TYPE[fact.type] ? t_i18n(AIKIDO_FINDING_TYPE[fact.type]) : fact.type };
+    case "type": {
+      const words = aikidoFindingTypeLabel(fact.type);
+      return { label: t_i18n("Finding type"), value: words ? t_i18n(words) : fact.type };
+    }
     case "repository":
       return { label: t_i18n("Repository"), value: fact.name };
     case "image":
