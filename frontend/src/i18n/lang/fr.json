@@ -18118,6 +18118,7 @@
   "SaaS application": "Application SaaS",
   "AI system (asset category)": "Système d'IA",
   "Security platform": "Plateforme de sécurité",
+  "Source code": "Code source",
   "Other asset (to classify)": "Autre actif (à classer)",
   "Workstation": "Poste de travail",
   "Laptop": "Ordinateur portable",
@@ -20768,9 +20769,9 @@
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "L'inventaire des actifs signale {product} sur {assets, plural, one {# actif} other {# actifs}} en {versions, plural, one {# version} other {# versions}}.",
   "Asset count": "Nombre d'actifs",
   "Versions not listed": "Versions non listées",
-  "Module checks": "Contrôles des modules",
-  "No check round since the last digest": "Aucune série de contrôles depuis le dernier résumé",
-  "Failed most": "Les plus souvent en échec",
-  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# série} other {# séries}} sur {registrations, plural, one {# enregistrement} other {# enregistrements}}",
-  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# en échec} other {# en échec}}, {warned, plural, one {# avertissement} other {# avertissements}}"
+  "Code repository": "Dépôt de code",
+  "CI/CD pipeline": "Pipeline CI/CD",
+  "Package registry": "Registre de paquets",
+  "Software package": "Paquet logiciel",
+  "Other code asset": "Autre actif de code"
 }
