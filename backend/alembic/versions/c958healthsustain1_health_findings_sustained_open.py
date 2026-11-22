@@ -13,7 +13,7 @@ open mails again after the upgrade. Re-running after an interruption is a no-op
 (columns probed first).
 
 Revision ID: c958healthsustain1
-Revises: c916fltcustgates1
+Revises: c942decisions01
 Create Date: 2026-11-21 19:10:00.000000
 """
 
@@ -27,7 +27,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c958healthsustain1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c916fltcustgates1"
+down_revision: str | Sequence[str] | None = "c942decisions01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
