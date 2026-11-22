@@ -20733,5 +20733,10 @@
   "In XTM One only": "Dans XTM One uniquement",
   "Vulnerability intelligence": "Renseignement sur les vulnérabilités",
   "Asset inventory": "Inventaire des actifs",
-  "External attack surface": "Surface d'attaque externe"
+  "External attack surface": "Surface d'attaque externe",
+  "Agentic checks": "Contrôles agentiques",
+  "No check round yet": "Aucune série de contrôles pour l’instant",
+  "Show the checks": "Voir les contrôles",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# non exécuté} other {# non exécutés}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# réussi} other {# réussis}}, {warned, plural, one {# avertissement} other {# avertissements}}, {failed, plural, one {# en échec} other {# en échec}}"
 }

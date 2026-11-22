@@ -20733,5 +20733,10 @@
   "In XTM One only": "XTM One のみ",
   "Vulnerability intelligence": "脆弱性インテリジェンス",
   "Asset inventory": "資産インベントリ",
-  "External attack surface": "外部攻撃対象領域"
+  "External attack surface": "外部攻撃対象領域",
+  "Agentic checks": "エージェントによるチェック",
+  "No check round yet": "チェックはまだ実行されていません",
+  "Show the checks": "チェックを表示",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
 }
