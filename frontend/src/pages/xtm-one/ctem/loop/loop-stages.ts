@@ -74,23 +74,29 @@ export function loopParam(kind: "signal" | "case", id: string): string {
   return `${kind}:${id}`;
 }
 
-/** The `?loop=` value of the signal list, in one state or every state (CTEM-01-UI). */
-export function signalsParam(state: CtemSignalState | null): string {
-  return `signals:${state ?? "all"}`;
+/**
+ * The `?loop=` value of the signal list, in one state or every state
+ * (CTEM-01-UI), optionally on one trigger path (#1189: a path card of the
+ * signal sources dialog opens that path's signals, never the whole list).
+ */
+export function signalsParam(state: CtemSignalState | null, path: string | null = null): string {
+  const base = `signals:${state ?? "all"}`;
+  return path ? `${base}:${path}` : base;
 }
 
 type LoopTarget =
   | { kind: "signal" | "case"; id: string }
-  | { kind: "signals"; state: CtemSignalState | null };
+  | { kind: "signals"; state: CtemSignalState | null; path: string | null };
 
 /** The object a `?loop=` value names, or null when it names none. */
 export function parseLoopParam(value: string | null): LoopTarget | null {
   if (!value) return null;
-  const list = /^signals:([a-z_]+)$/.exec(value);
+  const list = /^signals:([a-z_]+)(?::([a-z0-9_]+))?$/.exec(value);
   if (list) {
-    if (list[1] === "all") return { kind: "signals", state: null };
+    const path = list[2] ?? null;
+    if (list[1] === "all") return { kind: "signals", state: null, path };
     const state = CTEM_SIGNAL_STATES.find((s) => s === list[1]);
-    return state ? { kind: "signals", state } : null;
+    return state ? { kind: "signals", state, path } : null;
   }
   const match = /^(signal|case):([0-9a-fA-F-]{36})$/.exec(value);
   return match ? { kind: match[1] as "signal" | "case", id: match[2] } : null;

@@ -1,8 +1,8 @@
 // The signal sources dialog (#1189): status derivation, Connect targets, and the dialog grouped by lens.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
@@ -122,6 +122,24 @@ describe("SignalSourcesDialog", () => {
     const third = cardRows.find((r) => r.getAttribute("data-path") === "third_party_event") as HTMLElement;
     expect(within(third).queryByRole("button", { name: "Connect", hidden: true })).toBeNull();
     expect(screen.getByText("1 of 3 trigger paths connected")).toBeTruthy();
+  });
+
+  it("opens the signals of the path clicked, never the whole list (davidloiret review on #1194)", async () => {
+    function Probe() {
+      return <output data-testid="location-search">{useLocation().search}</output>;
+    }
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/?signal-sources=1"]}>
+        <SignalSourcesDialog />
+        <Probe />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const vuln = rows.find((r) => r.getAttribute("data-path") === "new_vulnerability") as HTMLElement;
+    fireEvent.click(within(vuln).getByTestId("ctem-signal-sources-open"));
+    const params = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
+    expect(params.get("loop")).toBe("signals:all:new_vulnerability");
+    expect(params.get("signal-sources")).toBeNull();
   });
 
   it("stays closed without the query parameter", () => {

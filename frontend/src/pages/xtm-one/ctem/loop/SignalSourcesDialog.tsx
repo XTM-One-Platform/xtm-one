@@ -91,7 +91,7 @@ function SourceLine({ source }: { source: CtemSignalPathSource }) {
   );
 }
 
-function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals: () => void }) {
+function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals: (pathId: string) => void }) {
   const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
   const { count, exactCount } = useNumberFormat();
@@ -148,7 +148,7 @@ function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals
             </Button>
           )}
           {(path.total ?? 0) > 0 && (
-            <Button variant="ghost" size="sm" onClick={onOpenSignals} title={exactCount(path.total)}>
+            <Button variant="ghost" size="sm" onClick={() => onOpenSignals(path.id)} title={exactCount(path.total)} data-testid="ctem-signal-sources-open">
               {t_i18n("Open signals")} <span className="tabular-nums">{count(path.total)}</span>
             </Button>
           )}
@@ -174,10 +174,11 @@ export function SignalSourcesDialog() {
     next.delete(SIGNAL_SOURCES_PARAM);
     setParams(next, { replace: true });
   };
-  const openSignals = () => {
+  // A path card opens that path's signals (davidloiret review on #1194): its count is the path's total.
+  const openSignals = (pathId: string) => {
     const next = new URLSearchParams(params);
     next.delete(SIGNAL_SOURCES_PARAM);
-    next.set(LOOP_PARAM, signalsParam(null));
+    next.set(LOOP_PARAM, signalsParam(null, pathId));
     setParams(next);
   };
   return (

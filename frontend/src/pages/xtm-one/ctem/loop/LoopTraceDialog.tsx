@@ -676,14 +676,17 @@ function SignalTraceBody({ id }: { id: string }) {
  * opening its own trace (CTEM-01-UI). The trigger path leads every row: a path
  * with no CVE and no actor reads exactly like a vulnerability.
  */
-function SignalListBody({ state, onState, onOpen }: {
+function SignalListBody({ state, path, onState, onClearPath, onOpen }: {
   state: CtemSignalState | null;
+  /** One trigger path the list is narrowed to (#1189), or null for every path. */
+  path: string | null;
   onState: (state: CtemSignalState | null) => void;
+  onClearPath: () => void;
   onOpen: (id: string) => void;
 }) {
   const { t_i18n, intl } = useFormatter();
   const { count: formatCount, exactCount } = useNumberFormat();
-  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(state);
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(state, 50, true, path);
   const first = data?.pages[0];
   const counts = first?.counts ?? {};
   const total = first?.total ?? 0;
@@ -698,6 +701,21 @@ function SignalListBody({ state, onState, onOpen }: {
       {/* The filters and the "n of N" count stay in view: the list below is the
           only scroller (#877 UX round 1 B2). */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+      {path && (
+        <span className="inline-flex items-center gap-1 rounded-sm bg-elevation-hover px-2 py-1 content-caption font-medium" data-testid="ctem-signal-path-filter" data-path={path}>
+          {t_i18n(signals[0]?.trigger_path_label || path)}
+          <button
+            type="button"
+            onClick={onClearPath}
+            aria-label={t_i18n("Remove filter")}
+            title={t_i18n("Remove filter")}
+            className={cn("inline-flex rounded-sm text-default-secondary hover:text-default-primary", BUTTON_ROLE_FOCUS_RING)}
+            data-testid="ctem-signal-path-filter-clear"
+          >
+            <Icon name="x" size={16} aria-hidden />
+          </button>
+        </span>
+      )}
       <div role="group" aria-label={t_i18n("Filter by state")} className="flex flex-wrap gap-1.5">
         {filters.map((f) => (
           <button
@@ -802,7 +820,9 @@ export function LoopTraceDialog() {
         {target?.kind === "signals" ? (
           <SignalListBody
             state={target.state}
-            onState={(state) => go(signalsParam(state), true)}
+            path={target.path}
+            onState={(state) => go(signalsParam(state, target.path), true)}
+            onClearPath={() => go(signalsParam(target.state), true)}
             onOpen={(id) => go(loopParam("signal", id))}
           />
         ) : target?.kind === "signal" ? (

@@ -88,12 +88,14 @@ export function useRecentCtemSignals(limit = 6) {
  * The signals in one state (or every state), a page of 50 at a time through
  * `offset`, for the signal list of the loop trace (CTEM-01-UI; #877 UX round 1
  * B2: every signal reachable). Same stream key family as the recent read, so a
- * recorded signal joins the open list without a reload.
+ * recorded signal joins the open list without a reload. `triggerPath` narrows
+ * it to one trigger path (#1189: the per-path "Open signals" of the sources
+ * dialog).
  */
-export function useCtemSignalList(state: CtemSignalState | null, limit = 50, enabled = true) {
-  const query = state ? `&state=${state}` : "";
+export function useCtemSignalList(state: CtemSignalState | null, limit = 50, enabled = true, triggerPath: string | null = null) {
+  const query = `${state ? `&state=${state}` : ""}${triggerPath ? `&trigger_path=${encodeURIComponent(triggerPath)}` : ""}`;
   return useInfiniteQuery({
-    queryKey: ["ctem-signals", "list", state ?? "all", limit],
+    queryKey: ["ctem-signals", "list", state ?? "all", limit, triggerPath ?? "all"],
     queryFn: ({ pageParam }): Promise<CtemSignalList> => api.get(`/ctem-signals?limit=${limit}&offset=${pageParam}${query}`),
     initialPageParam: 0,
     getNextPageParam: (last: CtemSignalList, pages: CtemSignalList[]) => {
