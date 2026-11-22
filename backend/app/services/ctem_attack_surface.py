@@ -46,7 +46,7 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
 #: Providers XTM One connects that cannot fill an observation, with the reason (``dev-docs/ctem-attack-surface.md``).
 NOT_SUPPORTED: dict[str, str] = {
     "securityscorecard": "the API answers scores and findings per issue type, not a host inventory with its open ports",
-    "socradar": "the digital asset list carries names and monitoring state, no open ports; its response shape is not recorded yet",
+    "socradar": "the ASM digital asset list carries names, source and monitoring state, no address and no open ports",
     "domaintools": "DNS and WHOIS history only: no open ports, and its view is the registrar's, not the reachable surface",
     "rapid7": "InsightVM assets are the inside scan of managed assets, not the outside view",
 }

@@ -268,6 +268,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # (integration.user_id); the token only reads the outside view of the owned
         # domains and address ranges (reader_for).
         "services/ctem_attack_surface.py",
+        # CTEM-26 reachability assertions (#1164): the OpenAEV integration a verified
+        # delivery came through, for its owner (integration.user_id); the token only
+        # reads the delivered scenario's assertion flag (stamp_reachability_assertion).
+        "services/ctem_openaev_events.py",
         # CTEM evidence health pass (#1161): the one OpenCRQ integration an administrator
         # declared in the profile (evidence_health.integration), for its owner
         # (integration.user_id); the token only reads the evidence health of the

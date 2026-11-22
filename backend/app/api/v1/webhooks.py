@@ -4778,6 +4778,14 @@ async def receive_assignment_webhook(
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            if provider == "openaev":
+                # CTEM-26: a failed reachability assertion is an outside-lens exposure (#1164).
+                await ctem_openaev_events.stamp_reachability_assertion(
+                    event_key,
+                    payload,
+                    integration_id=str(integration_id),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             # A change in exposure the CTEM loop listens to (#826): a provisioned
             # OpenCTI trigger delivers here; the signal is recorded once per object,
             # from a delivery verified against a configured webhook secret only.
