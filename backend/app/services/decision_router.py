@@ -44,7 +44,9 @@ from app.models.decision import SOURCE_TYPES, Decision, DecisionEvent
 from app.models.decision_hooks import answer_surface
 
 #: The surfaces an answer may name; anything else is recorded as ``router``.
-SURFACES: frozenset[str] = frozenset({"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "mail"})
+SURFACES: frozenset[str] = frozenset(
+    {"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "whatsapp_card", "mail"}
+)
 
 
 @dataclass(frozen=True)
@@ -168,7 +170,9 @@ async def _dispatch(
     if ref.source_type == "flow_run":
         from app.api.v1.flow_runs import answer_flow_park
 
-        response = text if text and text.strip() else (option or "")
+        # The option's key, with the note after it when one is typed (#842, S6):
+        # answer_flow_park reads the key back as {{ask.option}}.
+        response = run_response(row.ask if row else None, option, text)
         flow_run = await answer_flow_park(db, user, str(ref.source_id), response)
         return {"source_type": "flow_run", "source_id": str(flow_run.id), "status": flow_run.status}
     from app.services import work_item as work_item_service

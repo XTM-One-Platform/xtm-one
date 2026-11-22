@@ -6,7 +6,7 @@
 # will run unattended on every deployment, including scheduled runs nobody
 # is watching. Tools held back by hand live in HAND_GATED, not here.
 #
-# 133 tools; 54 read-classified tools deliberately held back.
+# 133 tools; 57 read-classified tools deliberately held back.
 
 openaev:export_openaev_scenario
 openaev:full_text_search_openaev

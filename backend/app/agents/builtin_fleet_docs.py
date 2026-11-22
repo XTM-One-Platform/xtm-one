@@ -463,6 +463,11 @@ _OPENAEV_LAUNCH_TOOLS = [
     {"name": "manage_openaev_simulation", "when": {"action": ["status"], "status": ["RUNNING"]}},
     {"name": "manage_openaev_atomic_testing", "when": {"action": ["launch", "relaunch"]}},
 ]
+#: The coverage request of the review step (CTEM-16, #1089): OpenAEV builds and
+#: schedules its scenario from it, so it is what an analyst review would hold.
+_COVERAGE_REQUEST_TOOLS = [
+    {"name": "manage_opencti_security_coverage", "when": {"action": ["create"]}},
+]
 _TICKET_TOOLS = [
     {"name": "create_jira_issue"},
     {"name": "create_servicenow_incident"},
@@ -523,7 +528,13 @@ def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: st
             "high",
             _OPENAEV_LAUNCH_TOOLS if launch_tools else None,
         ),
-        gate("ctem.analyst_review", "Review: an analyst checks the threat package", "opencti", "low"),
+        gate(
+            "ctem.analyst_review",
+            "Review: an analyst checks the threat package before its security coverage is requested",
+            "opencti",
+            "low",
+            _COVERAGE_REQUEST_TOOLS,
+        ),
         gate(
             "ctem.remediation.decision",
             "Decide: choose the remediation option and record it as an OpenCRQ treatment plan",
@@ -668,9 +679,16 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
     ],
     "steps": [
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
-        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True},
+        # Each step names the gate it stands for (#1074): the About response badges it when that gate
+        # waits at the fleet's live level and pins; the static flag is the seeded level's (Low).
+        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate_key": "ctem.validation.non_readonly"},
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
-        {"title": "Ticket", "detail": "The remediation ticket is drafted.", "gate": True},
+        {
+            "title": "Ticket",
+            "detail": "The remediation ticket is drafted.",
+            "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
+        },
         {"title": "Re-test", "detail": "A re-validation closes the case."},
     ],
     "gates": _ctem_gates(launch_tools=True, mobilize_tools=True, mobilize_action=_MOBILIZE_ACTION),
@@ -730,9 +748,14 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
         {
             "title": "AI tests",
             "detail": "Prompt injection, jailbreak, excessive agency, tool misuse, MCP tool poisoning.",
-            "gate": True,
+            "gate_key": "ctem.validation.non_readonly",
         },
-        {"title": "Exposure", "detail": "Priced in OpenCRQ, fixes drafted and tracked to closure."},
+        {
+            "title": "Exposure",
+            "detail": "Priced in OpenCRQ, fixes drafted and tracked to closure.",
+            "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
+        },
     ],
     "gates": _ctem_gates(launch_tools=True, mobilize_tools=False, mobilize_action=_MOBILIZE_ACTION),
     "objects": [
@@ -807,6 +830,7 @@ CTEM_THIRD_PARTY_RISK_STRUCTURED: dict[str, Any] = {
             "title": "Actions",
             "detail": "Contact, compensating control, contract clause, monitoring raised.",
             "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
         },
     ],
     "gates": _ctem_gates(
@@ -1117,11 +1141,24 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
     "steps": [
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
         {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
-        # Only Mobilize carries the approval badge: at the seeded level (Low) ctem.mobilize is the
-        # one gate that waits, so the About page agrees with the Approval tab (UX r1 B1, #1061).
-        {"title": "Validate", "detail": "An OpenAEV check, read-only by default."},
-        {"title": "Decide", "detail": "Expected loss and options from OpenCRQ."},
-        {"title": "Mobilize", "detail": "Tickets, owners and the prepared change, after your approval.", "gate": True},
+        # Each step names its gate (#1074): the About response badges it when that gate waits at the
+        # live level and pins. The static flag is the seeded level's (Low): ctem.mobilize alone waits.
+        {
+            "title": "Validate",
+            "detail": "An OpenAEV check, read-only by default.",
+            "gate_key": "ctem.validation.non_readonly",
+        },
+        {
+            "title": "Decide",
+            "detail": "Expected loss and options from OpenCRQ.",
+            "gate_key": "ctem.remediation.decision",
+        },
+        {
+            "title": "Mobilize",
+            "detail": "Tickets, owners and the prepared change, after your approval.",
+            "gate": True,
+            "gate_key": CTEM_MOBILIZE_GATE,
+        },
         {"title": "Re-test and close", "detail": "Closed only on a passing re-test; the lesson feeds the scope."},
     ],
     "gates": _loop_gates(),

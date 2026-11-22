@@ -14,14 +14,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The human-in-the-loop part of a run in a list: the per-tool approval prompt,
- * the free-text question with its reply form, and the latest resolved round.
+ * A paused run in a list (#842, S8; dev-docs/human-gates.md section 3): the
+ * pause on the one `RunDecisionCard` (a tool approval or the run's question)
+ * and the latest resolved round. Replaces `components/ui/run-human-input.tsx`.
  *
- * Shared by the RunCard (dashboard, assignment pages) and the Executions rows
- * of Operations, where it unfolds under the row so the row keeps its height
- * (components/ui/operations-list.tsx, the Operations list contract).
+ * Shared by the RunCard (dashboard, assignment pages), the Executions rows of
+ * Operations (it unfolds under the row so the row keeps its height), the runs
+ * activity list and the fleet's pending approvals.
  */
-import { CheckCircle2, Info, User, X } from "lucide-react";
+import { Icon } from "@filigran/design-system";
+
 import { RunDecisionCard } from "@/components/decisions/RunDecisionCard";
 import { Badge } from "@/components/ui/badge";
 import { CompanyManagedBadge } from "@/components/ui/company-managed-badge";
@@ -31,8 +33,8 @@ import { HITL_CONTINUATION_MESSAGE } from "@/lib/constants";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { ActionProposal, ApprovalDecision, HumanInputHistoryEntry } from "@/types";
 
-/** The fields of a run the human-in-the-loop part reads. */
-export interface RunHumanInputRun {
+/** The fields of a run its pause reads. */
+export interface RunPauseRun {
   id: string;
   status: string;
   is_company_managed?: boolean;
@@ -44,7 +46,7 @@ export interface RunHumanInputRun {
 }
 
 /** Where a run stands with the person it waits for. Pure: tests read it. */
-export function runHitlState(run: RunHumanInputRun) {
+export function runPauseState(run: RunPauseRun) {
   // Pending only while nobody has responded yet: the respond endpoint stores
   // the response immediately, so the block flips to the answered state even
   // before the engine picks the run back up.
@@ -68,9 +70,9 @@ export function runHitlState(run: RunHumanInputRun) {
      window between the two offered a form the API would reject. */
   const isFreeTextPending = isHitlPending && pendingApprovals.length === 0;
   const hitlHistory = run.human_input_history ?? [];
-  // Latest resolved HITL round: from the durable history, with a legacy
-  // fallback for runs resolved before the history column existed (their live
-  // fields survived because they never went through the resume-clear path).
+  // Latest resolved round: from the durable history, with a legacy fallback
+  // for runs resolved before the history column existed (their live fields
+  // survived because they never went through the resume-clear path).
   const latestHitl: HumanInputHistoryEntry | null =
     hitlHistory.length > 0
       ? hitlHistory[hitlHistory.length - 1]
@@ -87,7 +89,7 @@ export function runHitlState(run: RunHumanInputRun) {
   return { isHitlPending, pendingApprovals, isApprovalPending, isFreeTextPending, latestHitl };
 }
 
-export function RunHumanInput({
+export function RunPauseDecision({
   run,
   onRespond,
   onDismiss,
@@ -95,7 +97,7 @@ export function RunHumanInput({
   approveFailed,
   showResolved = true,
 }: {
-  run: RunHumanInputRun;
+  run: RunPauseRun;
   onRespond?: (runId: string, response: string) => void;
   onDismiss?: (runId: string) => void;
   onApprove?: (runId: string, decisions: ApprovalDecision[]) => void;
@@ -106,15 +108,15 @@ export function RunHumanInput({
 }) {
   const { t_i18n } = useFormatter();
   const { isAdmin } = useAuth();
-  const { isHitlPending, pendingApprovals, isApprovalPending, isFreeTextPending, latestHitl } = runHitlState(run);
-  // Company-managed runs: all users see the HITL question, only admins can respond/dismiss.
-  const canInteractHitl = !run.is_company_managed || isAdmin;
+  const { isHitlPending, pendingApprovals, isApprovalPending, isFreeTextPending, latestHitl } = runPauseState(run);
+  // Company-managed runs: all users see the question, only admins can respond/dismiss.
+  const canAnswer = !run.is_company_managed || isAdmin;
 
   return (
     <>
-      {/* The pause on the one decision card (#842, S3): a tool approval when
-          proposals are pending (they take precedence: a gated pause has
-          actions to decide, not a question), else the run's question. */}
+      {/* The pause on the one decision card: a tool approval when proposals
+          are pending (they take precedence: a gated pause has actions to
+          decide, not a question), else the run's question. */}
       {(isApprovalPending || (isFreeTextPending && run.human_input_question)) && (
         <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
           {run.is_company_managed && <CompanyManagedBadge size="sm" />}
@@ -124,7 +126,7 @@ export function RunHumanInput({
             runId={run.id}
             question={run.human_input_question}
             proposals={isApprovalPending ? pendingApprovals : []}
-            canAnswer={canInteractHitl}
+            canAnswer={canAnswer}
             onApprove={onApprove}
             onRespond={onRespond}
             onDismiss={onDismiss}
@@ -132,10 +134,10 @@ export function RunHumanInput({
         </div>
       )}
 
-      {/* Resolved HITL round: answered/dismissed state, the user's reply, and
-          the continuation system notice, all driven by persisted data so the
-          state survives panel re-opens. Also shown while a LATER round is
-          pending so multi-round context is kept. */}
+      {/* Resolved round: answered/dismissed state, the reply, and the
+          continuation notice, all driven by persisted data so the state
+          survives panel re-opens. Also shown while a LATER round is pending
+          so multi-round context is kept. */}
       {showResolved && latestHitl && (
         <div
           className={cn(
@@ -145,16 +147,17 @@ export function RunHumanInput({
               : "bg-elevation-hover border border-elevation-subtle-soft",
           )}
           onClick={(e) => e.stopPropagation()}
+          data-testid="run-pause-resolved"
         >
           <div className="flex items-center gap-2">
             {latestHitl.resolution === "answered" ? (
               <Badge variant="success" className="content-caption gap-1">
-                <CheckCircle2 className="h-3 w-3" />
+                <Icon name="circle-check" size={16} aria-hidden />
                 {t_i18n("Answered")}
               </Badge>
             ) : (
               <Badge variant="outline" className="content-caption gap-1 text-default-secondary">
-                <X className="h-3 w-3" />
+                <Icon name="x" size={16} aria-hidden />
                 {t_i18n("Dismissed")}
               </Badge>
             )}
@@ -166,9 +169,7 @@ export function RunHumanInput({
           </div>
           {latestHitl.resolution === "answered" && (
             <div className="flex items-start gap-2">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 mt-0.5">
-                <User className="h-3 w-3 text-accent" />
-              </div>
+              <Icon name="message-square" size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="content-caption font-medium text-default-secondary">{latestHitl.responded_by ?? t_i18n("You")}</span>
@@ -181,10 +182,10 @@ export function RunHumanInput({
             </div>
           )}
           {/* Continuation notice only for the CURRENT answered transition,
-              never while a later HITL round is waiting for input again. */}
+              never while a later round is waiting for input again. */}
           {latestHitl.resolution === "answered" && !isHitlPending && (
             <div className="flex items-start gap-2 rounded-sm bg-elevation-hover p-2">
-              <Info className="h-3 w-3 text-accent shrink-0 mt-0.5" />
+              <Icon name="info" size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
               <p className="content-caption text-default-secondary">{t_i18n(HITL_CONTINUATION_MESSAGE)}</p>
             </div>
           )}

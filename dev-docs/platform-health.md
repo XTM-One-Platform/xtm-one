@@ -1187,7 +1187,8 @@ source (13.4 scope).
 | Slice | Content | UI |
 |---|---|---|
 | S15 spec | This section | no |
-| S15a | Members: rename in place and two new checkers, roles, `is_module_checker_run`, orchestrator `module_round` and handovers, playbook skills (seed data), tests (n) and the 12.9 extensions | no |
+| S15a-1 | Members: rename in place and two new checkers, roles (`module_analyst` kept as the alias of rows written before S15), `is_module_checker_run`, cycles started on the module's own checker, orchestrator handovers, playbook skills (seed data), the Cycles label of each checker, tests (n) and the 12.9 extensions | no |
+| S15a-2 | Orchestrator `module_round` schedule replacing the daily branch of the triggers pass (13.2) | no |
 | S15b | Tools: allow-list widened, new read-only health tools per provider, classifier and snapshot tests, `backend-snapshots` regenerated | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
 | S15d | Lab measurement and default ceiling written in 13.7 | no |
