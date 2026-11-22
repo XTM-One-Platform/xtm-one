@@ -869,6 +869,97 @@ async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):
     assert [c["method"] for c in fake.calls] == ["get"]
 
 
+async def test_asset_bulk_update_by_filter_sends_one_put(monkeypatch):
+    # xtm-one #1288: OpenAEV #9654 PUT /api/assets/bulk, selection by filter.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1", "a2", "a3"])
+    monkeypatch.setattr(assets, "_api", fake)
+    group = {
+        "mode": "and",
+        "filters": [{"key": "asset_tags", "operator": "contains", "values": ["t1"], "mode": "or"}],
+    }
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {
+            "action": "bulk_update",
+            "asset_filter": json.dumps(group),
+            "category": "web_application",
+            "subcategory": "website",
+            "tags": ["t9"],
+        },
+    )
+    assert not result.is_error, result.content
+    assert [(c["method"], c["path"]) for c in fake.calls] == [("put", "/api/assets/bulk")]
+    sent = fake.last_json()
+    assert sent == {
+        "search_pagination_input": {"filterGroup": group},
+        "asset_category": "WEB_APPLICATION",
+        "asset_subcategory": "WEBSITE",
+        "asset_tags_to_add": ["t9"],
+    }
+    assert "Updated 3 asset(s)" in result.content
+
+
+async def test_asset_bulk_update_by_ids(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1"])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "criticality": "high", "url": "https://x.example"},
+    )
+    assert not result.is_error, result.content
+    assert fake.last_json() == {
+        "asset_ids_to_process": ["a1"],
+        "asset_criticality": "HIGH",
+        "asset_url": "https://x.example",
+    }
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ({"category": "host"}, "exactly one selection"),
+        ({"asset_ids": ["a1"], "asset_filter": "{}", "category": "host"}, "exactly one selection"),
+        ({"asset_ids": ["a1"]}, "at least one of"),
+        ({"asset_ids": ["a1"], "subcategory": "server"}, "needs its category"),
+        ({"asset_filter": "not json", "category": "host"}, "valid JSON"),
+    ],
+)
+async def test_asset_bulk_update_refuses_before_any_call(monkeypatch, args, message):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi([])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "bulk_update", **args})
+    assert message in result.content
+    assert fake.calls == []
+
+
+async def test_asset_bulk_update_on_an_openaev_without_the_route(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        return None, "Error: OpenAEV resource not found (404) while trying to bulk update assets."
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "category": "host"},
+    )
+    assert "one by one" in result.content
+
+
 async def test_empty_update_bodies_are_rejected():
     # Representative coverage of the empty-update guard across the domain
     # modules: an update with only the entity id must return a friendly message
