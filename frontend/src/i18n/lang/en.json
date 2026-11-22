@@ -20804,5 +20804,22 @@
   "Two records with different values of an earlier identifier never merge on a later one. The IP address never merges by itself.": "Two records with different values of an earlier identifier never merge on a later one. The IP address never merges by itself.",
   "Keep at least one identifier on, or every record stays an asset of its own.": "Keep at least one identifier on, or every record stays an asset of its own.",
   "Source of each field": "Source of each field",
-  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person."
+  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.",
+  "Keep apart": "Keep apart",
+  "Merge into one asset": "Merge into one asset",
+  "Assets merged into one": "Assets merged into one",
+  "The assets were not merged": "The assets were not merged",
+  "Merge these assets?": "Merge these assets?",
+  "Their source records become one asset, whatever their identifiers say. The merge is audited and lasts across syncs.": "Their source records become one asset, whatever their identifiers say. The merge is audited and lasts across syncs.",
+  "{count, plural, one {# component imported} other {# components imported}}": "{count, plural, one {# component imported} other {# components imported}}",
+  "The SBOM was not imported": "The SBOM was not imported",
+  "The two records are kept apart": "The two records are kept apart",
+  "The records were not split": "The records were not split",
+  "No open case on this asset.": "No open case on this asset.",
+  "Crown jewels it supports": "Crown jewels it supports",
+  "No crown jewel names this asset.": "No crown jewel names this asset.",
+  "SBOM file": "SBOM file",
+  "Import SBOM": "Import SBOM",
+  "Keep these two records apart?": "Keep these two records apart?",
+  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs."
 }

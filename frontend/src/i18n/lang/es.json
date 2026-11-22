@@ -20804,5 +20804,22 @@
   "Two records with different values of an earlier identifier never merge on a later one. The IP address never merges by itself.": "Dos registros con valores distintos de un identificador anterior nunca se fusionan por uno posterior. La dirección IP nunca fusiona por sí sola.",
   "Keep at least one identifier on, or every record stays an asset of its own.": "Mantenga al menos un identificador activo, o cada registro queda como un activo propio.",
   "Source of each field": "Fuente de cada campo",
-  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "Un campo muestra el valor de la primera fuente de su orden que lo conoce. El entorno, el grupo, la descripción y el servicio de negocio solo los establece una persona."
+  "A field shows the value of the first source in its order that knows it. Environment, group, description and business service are only set by a person.": "Un campo muestra el valor de la primera fuente de su orden que lo conoce. El entorno, el grupo, la descripción y el servicio de negocio solo los establece una persona.",
+  "Keep apart": "Mantener separados",
+  "Merge into one asset": "Fusionar en un solo activo",
+  "Assets merged into one": "Activos fusionados en uno",
+  "The assets were not merged": "Los activos no se fusionaron",
+  "Merge these assets?": "¿Fusionar estos activos?",
+  "Their source records become one asset, whatever their identifiers say. The merge is audited and lasts across syncs.": "Sus registros de origen pasan a ser un solo activo, digan lo que digan sus identificadores. La fusión queda auditada y se mantiene entre sincronizaciones.",
+  "{count, plural, one {# component imported} other {# components imported}}": "{count, plural, one {# componente importado} other {# componentes importados}}",
+  "The SBOM was not imported": "El SBOM no se importó",
+  "The two records are kept apart": "Los dos registros se mantienen separados",
+  "The records were not split": "Los registros no se separaron",
+  "No open case on this asset.": "Ningún caso abierto en este activo.",
+  "Crown jewels it supports": "Joyas de la corona que soporta",
+  "No crown jewel names this asset.": "Ninguna joya de la corona nombra este activo.",
+  "SBOM file": "Archivo SBOM",
+  "Import SBOM": "Importar SBOM",
+  "Keep these two records apart?": "¿Mantener separados estos dos registros?",
+  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "Pasan a ser dos activos, digan lo que digan sus identificadores. La separación queda auditada y se mantiene entre sincronizaciones."
 }

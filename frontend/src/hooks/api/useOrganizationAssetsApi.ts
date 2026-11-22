@@ -6,7 +6,7 @@
  * Read by the CTEM > Inventory page; every list is paginated on the server (`limit` at most 200).
  */
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 /** One field of a canonical asset: the value shown, the source that set it and every source's value. */
@@ -29,6 +29,8 @@ export interface CanonicalAssetSummary {
   sources: string[];
   software_count: number;
   merged_on: string[];
+  /** The source records merged into it (what a merge names); absent on an older API. */
+  records?: AssetRecordRef[];
 }
 
 export interface AssetSoftware {
@@ -90,22 +92,43 @@ export interface TechStackItem {
 
 const KEY = ["organization-assets"] as const;
 
-function pageQuery(params: Record<string, string | number | undefined>): string {
+function pageQuery(params: Record<string, string | number | readonly string[] | undefined>): string {
   const search = new URLSearchParams();
   for (const [name, value] of Object.entries(params)) {
     if (value === undefined || value === "") continue;
-    search.set(name, String(value));
+    // A list is the same name repeated, one value each (the API's list filters).
+    if (Array.isArray(value)) value.forEach((one) => search.append(name, one));
+    else search.set(name, String(value));
   }
   return search.toString();
 }
 
-/** A page of canonical assets, filtered on a name substring. */
-export function useCanonicalAssets(query: { q?: string; offset: number; limit: number }) {
-  const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit });
+/** The asset fields the list filters on, and the source of a record (`GET /assets/facets`). */
+export type AssetFilterKey = "category" | "criticality" | "internet_facing" | "source";
+
+export type AssetFacets = Record<AssetFilterKey, string[]>;
+
+/** A page of canonical assets, filtered on a name substring and on the filter values picked. */
+export function useCanonicalAssets(query: {
+  q?: string;
+  offset: number;
+  limit: number;
+  filters?: Partial<Record<AssetFilterKey, readonly string[]>>;
+}) {
+  const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit, ...query.filters });
   return useQuery<Page<CanonicalAssetSummary>>({
     queryKey: [...KEY, "list", qs],
     queryFn: () => api.get(`/organization-context/assets?${qs}`),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** The values each asset filter offers, read from the store. */
+export function useAssetFacets() {
+  return useQuery<AssetFacets>({
+    queryKey: [...KEY, "facets"],
+    queryFn: () => api.get("/organization-context/assets/facets"),
+    throwOnError: false,
   });
 }
 
@@ -142,6 +165,55 @@ export function useAssetIdentity() {
     queryFn: () => api.get("/organization-context/assets/identity"),
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What an SBOM import answers (`POST /assets/{id}/sbom`). */
+export interface SbomImportResult {
+  id: string;
+  format: string;
+  document: string;
+  components: number;
+  unknown_versions: number;
+  bundled: number;
+  replaced: boolean;
+}
+
+/** Import a CycloneDX or SPDX JSON SBOM on an asset (administrators); the asset's software reads again. */
+export function useImportAssetSbom(assetId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation<SbomImportResult, Error, File>({
+    mutationFn: (file) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.postForm(`/organization-context/assets/${assetId}/sbom`, form);
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+/** One source record as a merge or split names it. */
+export interface AssetRecordRef {
+  source: string;
+  external_id: string;
+}
+
+/** An administrator's merge or split the store applies (`GET /assets/decisions`). */
+export interface AssetDecision {
+  id: string;
+  kind: "merge" | "split";
+  records: AssetRecordRef[];
+  reason: string;
+  author_user_id: string | null;
+  created_at: string | null;
+}
+
+/** Merge records into one asset or keep two apart (administrators, audited); the store rebuilds. */
+export function useRecordAssetDecision() {
+  const queryClient = useQueryClient();
+  return useMutation<AssetDecision, Error, { kind: "merge" | "split"; records: AssetRecordRef[]; reason?: string }>({
+    mutationFn: (body) => api.post("/organization-context/assets/decisions", body),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: KEY }),
   });
 }
 

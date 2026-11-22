@@ -13,6 +13,8 @@ interface CrownJewel {
   owner: string;
   criticality: "low" | "medium" | "high" | "critical";
   opencrq_asset_id: string;
+  /** The assets and asset groups (by name) it runs on (#11543); absent when none is named. */
+  asset_names?: string[];
   /** Where the row came from (#1134): manual, csv, api, agent:<id> or a platform. */
   source?: string;
   external_id?: string;

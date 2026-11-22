@@ -289,6 +289,18 @@ export function useCtemCases(options?: {
   });
 }
 
+/** The cases on one asset (an issue the caller sees names it): the Inventory asset page (#1178). */
+export function useCtemCasesForAsset(asset: string | undefined) {
+  const name = asset?.trim() ?? "";
+  return useQuery<CtemCaseList>({
+    queryKey: ["ctem-cases", "asset", name],
+    queryFn: () => api.get(`/ctem-cases?limit=200&asset=${encodeURIComponent(name)}`),
+    enabled: name !== "",
+    retry: ctemCasesRetry,
+    throwOnError: false,
+  });
+}
+
 /** One loop duration over the cases the caller sees: the median in hours, `null` with no sample. */
 interface CtemLoopDuration {
   median_hours: number | null;

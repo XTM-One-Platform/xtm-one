@@ -214,6 +214,30 @@ async def test_pagination_and_search_are_by_name_and_organizations_never_cross()
     assert foreign is None
 
 
+async def test_the_list_filters_on_fields_and_sources_and_the_facets_name_their_values() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        await _save(session, org, 1, [LAPTOP_INTUNE, LAPTOP_OPENAEV, {**SERVER, "criticality": "low"}])
+        await store.ensure_built(session)
+        await session.commit()
+        high = await store.list_assets(session, org, filters={"criticality": ["high"]})
+        intune = await store.list_assets(session, org, filters={"source": ["intune"]})
+        both = await store.list_assets(session, org, filters={"criticality": ["high", "low"], "source": []})
+        none = await store.list_assets(session, org, filters={"category": ["database"]})
+        facets = await store.asset_facets(session, org)
+    assert [a["name"].casefold() for a in high.items] == ["laptop-01"]
+    assert high.items[0]["records"] == [
+        {"source": "intune", "external_id": "d-1"},
+        {"source": "openaev", "external_id": "a-9"},
+    ]
+    assert [a["name"].casefold() for a in intune.items] == ["laptop-01"]
+    assert both.total == 2
+    assert none.total == 0
+    assert facets["criticality"] == ["high", "low"]
+    assert facets["category"] == ["host"]
+    assert facets["source"] == ["intune", "openaev"]
+
+
 async def test_a_split_keeps_two_records_apart_across_rebuilds_and_its_removal_merges_them_again() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _org(session, "A", primary=True)

@@ -4,16 +4,30 @@
  * One asset of CTEM > Inventory `/ctem/inventory/assets/:id` (#1178, dev-docs/asset-model.md section 9): the
  * recap of everything known on one real thing. Its fields with the source that set each one, the source records
  * merged into it and why, and its software (the version `unknown` when no source knows it, the bundling
- * component when an SBOM gave it).
+ * component when an SBOM gave it), the open cases on it and the crown jewels it supports. Administrators import an
+ * SBOM (CycloneDX or SPDX JSON) and keep two of its records apart (split, audited).
  */
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { NotFoundState } from "@/components/ui/not-found-state";
+import { useToast } from "@/components/ui/toast";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { useCanonicalAsset, type AssetSoftware, type AssetSourceRecord } from "@/hooks/api/useOrganizationAssetsApi";
+import { type CtemCaseSummary, useCtemCasesForAsset } from "@/hooks/api/useCtemCasesApi";
+import { useOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import {
+  useCanonicalAsset,
+  useImportAssetSbom,
+  useRecordAssetDecision,
+  type AssetSoftware,
+  type AssetSourceRecord,
+} from "@/hooks/api/useOrganizationAssetsApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
+import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetLabel, sourceLabel } from "./ctem/inventory";
 
@@ -31,8 +45,13 @@ const HEADER_LABELS: Record<(typeof HEADER_FIELDS)[number], string> = {
   owner: "Owner",
 };
 
+/** The cases still to work: a resolved one is history, read from the Cases page. */
+const OPEN_STATES = new Set(["needs_attention", "in_progress", "mitigated_watching", "accepted_risk"]);
+
 export default function CtemAssetDetail() {
   const { t_i18n, intl } = useFormatter();
+  const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [softwarePage, setSoftwarePage] = useState(0);
@@ -40,6 +59,47 @@ export default function CtemAssetDetail() {
     offset: softwarePage * SOFTWARE_PAGE,
     limit: SOFTWARE_PAGE,
   });
+  const cases = useCtemCasesForAsset(data?.name);
+  const { data: context } = useOrganizationContext();
+  const importSbom = useImportAssetSbom(id);
+  const decide = useRecordAssetDecision();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [splitPicked, setSplitPicked] = useState<string[]>([]);
+  const [confirmSplit, setConfirmSplit] = useState(false);
+
+  const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
+  const nameKey = (data?.name ?? "").trim().toLowerCase();
+  const jewels = nameKey
+    ? (context?.profile.crown_jewels ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
+    : [];
+
+  const onSbom = (file: File | undefined) => {
+    if (!file) return;
+    importSbom.mutate(file, {
+      onSuccess: (result) =>
+        toast({
+          title: t_i18n("{count, plural, one {# component imported} other {# components imported}}", { count: result.components }),
+          variant: "success",
+        }),
+      onError: (error) => toast({ title: t_i18n("The SBOM was not imported"), description: error.message, variant: "error" }),
+    });
+  };
+  const splitRefs = (data?.records ?? [])
+    .filter((r) => splitPicked.includes(`${r.source}|${r.external_id}`))
+    .map((r) => ({ source: r.source, external_id: r.external_id }));
+  const onSplit = () => {
+    decide.mutate(
+      { kind: "split", records: splitRefs },
+      {
+        onSuccess: () => {
+          setSplitPicked([]);
+          toast({ title: t_i18n("The two records are kept apart"), variant: "success" });
+          navigate(INVENTORY_PATH);
+        },
+        onError: (error) => toast({ title: t_i18n("The records were not split"), description: error.message, variant: "error" }),
+      },
+    );
+  };
 
   if (isError && !data) {
     return (
@@ -120,6 +180,19 @@ export default function CtemAssetDetail() {
     },
   ];
 
+  const caseColumns: DataTableColumn<CtemCaseSummary>[] = [
+    {
+      key: "title",
+      header: "Case",
+      cell: (c) => <TruncatedText text={c.title} className="max-w-[24rem] font-medium" />,
+      csv: (c) => c.title,
+      sortValue: (c) => c.title.toLowerCase(),
+    },
+    { key: "state", header: "State", cell: (c) => <CaseStateChip state={c.state} />, csv: (c) => c.state, sortValue: (c) => c.state },
+    { key: "priority", header: "Priority", cell: (c) => <CasePriorityChip priority={c.priority} />, csv: (c) => c.priority },
+    { key: "due", header: "Due", cell: (c) => date(c.due_at), csv: (c) => c.due_at, sortValue: (c) => c.due_at, hideable: true },
+  ];
+
   return (
     <div className="space-y-4">
       <CtemPageHeader
@@ -135,8 +208,64 @@ export default function CtemAssetDetail() {
         }))}
       />
 
+      <section aria-labelledby="asset-cases" className="space-y-2">
+        <h2 id="asset-cases" className="text-base font-semibold">{t_i18n("Open cases")}</h2>
+        <DataTable<CtemCaseSummary>
+          rows={openCases}
+          columns={caseColumns}
+          rowKey={(c) => c.id}
+          rowHref={(c) => `/ctem/cases/${c.id}`}
+          defaultPageSize={25}
+          noFilters="The few cases on one asset."
+          exportName="ctem-asset-cases"
+          isLoading={cases.isLoading && !cases.data}
+          isError={cases.isError}
+          onRetry={() => void cases.refetch()}
+          emptyLabel={t_i18n("No open case on this asset.")}
+          rowTestId="ctem-asset-case-row"
+        />
+      </section>
+
+      <section aria-labelledby="asset-jewels" className="space-y-2">
+        <h2 id="asset-jewels" className="text-base font-semibold">{t_i18n("Crown jewels it supports")}</h2>
+        {jewels.length ? (
+          <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
+            {jewels.map((j) => (
+              <li key={j.name}>
+                <Link to="/settings/organization?card=crown_jewels" className="text-sm underline-offset-2 hover:underline">
+                  {j.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-default-secondary">{t_i18n("No crown jewel names this asset.")}</p>
+        )}
+      </section>
+
       <section aria-labelledby="asset-software" className="space-y-2">
-        <h2 id="asset-software" className="text-base font-semibold">{t_i18n("Software")}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="asset-software" className="text-base font-semibold">{t_i18n("Software")}</h2>
+          {isAdmin && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                aria-label={t_i18n("SBOM file")}
+                onChange={(event) => {
+                  onSbom(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              <Button size="sm" variant="secondary" className="gap-1.5" disabled={!data || importSbom.isPending} onClick={() => fileInput.current?.click()}>
+                <Icon name="upload" size={16} aria-hidden />
+                {importSbom.isPending ? t_i18n("Importing...") : t_i18n("Import SBOM")}
+              </Button>
+            </>
+          )}
+        </div>
         <DataTable<AssetSoftware>
           rows={data?.software.items ?? []}
           columns={softwareColumns}
@@ -168,8 +297,29 @@ export default function CtemAssetDetail() {
           isLoading={isLoading && !data}
           emptyLabel={t_i18n("No source record.")}
           rowTestId="ctem-asset-record-row"
+          selection={
+            isAdmin && (data?.records.length ?? 0) > 1
+              ? {
+                  selected: splitPicked,
+                  onChange: setSplitPicked,
+                  actions: (
+                    <Button size="sm" variant="secondary" disabled={splitRefs.length !== 2 || decide.isPending} onClick={() => setConfirmSplit(true)}>
+                      {t_i18n("Keep apart")}
+                    </Button>
+                  ),
+                }
+              : undefined
+          }
         />
       </section>
+      <ConfirmDialog
+        open={confirmSplit}
+        onOpenChange={setConfirmSplit}
+        title={t_i18n("Keep these two records apart?")}
+        description={t_i18n("They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.")}
+        confirmLabel={t_i18n("Keep apart")}
+        onConfirm={onSplit}
+      />
     </div>
   );
 }

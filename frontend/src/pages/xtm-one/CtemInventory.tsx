@@ -6,13 +6,20 @@
  * tech stack built from their software. Every list is paginated on the server, so 10,000 assets read as fast as
  * ten. The old `/ctem/assets` links redirect here.
  */
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
+  useAssetFacets,
   useCanonicalAssets,
+  useRecordAssetDecision,
   useTechStackInventory,
+  type AssetFilterKey,
   type CanonicalAssetSummary,
   type TechStackItem,
 } from "@/hooks/api/useOrganizationAssetsApi";
@@ -36,18 +43,62 @@ const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
+/** The server filters of the asset list, in the order the toolbar shows them. */
+const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
+  { key: "category", label: "Category" },
+  { key: "criticality", label: "Criticality" },
+  { key: "internet_facing", label: "Internet facing" },
+  { key: "source", label: "Source" },
+];
+
+/** The most records one merge names (organization_asset_store.MAX_MERGE_RECORDS). */
+const MAX_MERGE_RECORDS = 50;
+
 function AssetsTab() {
   const { t_i18n, intl } = useFormatter();
+  const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const table = readTableState(searchParams, ASSETS_URL_KEY, {
     sort: NAME_SORT,
     pageSize: storedPageSize(ASSETS_STORAGE_KEY, PAGE_SIZE),
   });
+  const picked = Object.fromEntries(ASSET_FILTERS.map((f) => [f.key, table.filters[f.key] ?? []]));
   const { data, isLoading, isError, refetch } = useCanonicalAssets({
     q: table.search,
     offset: table.page * table.pageSize,
     limit: table.pageSize,
+    filters: picked,
   });
+  const facets = useAssetFacets();
+  const decide = useRecordAssetDecision();
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirmMerge, setConfirmMerge] = useState(false);
+
+  const filters: DataTableFilter<CanonicalAssetSummary>[] = ASSET_FILTERS.map(({ key, label }) => ({
+    key,
+    label,
+    options: (facets.data?.[key] ?? []).map((value) => ({
+      value,
+      label: key === "source" ? sourceLabel(value) : t_i18n(assetLabel(value)),
+    })),
+  }));
+
+  const rows = data?.items ?? [];
+  const mergeRecords = rows.filter((a) => selected.includes(a.id)).flatMap((a) => a.records ?? []);
+  const canMerge = selected.length >= 2 && mergeRecords.length >= 2 && mergeRecords.length <= MAX_MERGE_RECORDS;
+  const onMerge = () => {
+    decide.mutate(
+      { kind: "merge", records: mergeRecords },
+      {
+        onSuccess: () => {
+          setSelected([]);
+          toast({ title: t_i18n("Assets merged into one"), variant: "success" });
+        },
+        onError: (error) => toast({ title: t_i18n("The assets were not merged"), description: error.message, variant: "error" }),
+      },
+    );
+  };
 
   const columns: DataTableColumn<CanonicalAssetSummary>[] = [
     {
@@ -114,26 +165,51 @@ function AssetsTab() {
   ];
 
   return (
-    <DataTable<CanonicalAssetSummary>
-      rows={data?.items ?? []}
-      columns={columns}
-      rowKey={(a) => a.id}
-      rowHref={(a) => `${INVENTORY_PATH}/assets/${a.id}`}
-      server={{ total: data?.total ?? 0 }}
-      urlKey={ASSETS_URL_KEY}
-      storageKey={ASSETS_STORAGE_KEY}
-      defaultSort={NAME_SORT}
-      defaultPageSize={PAGE_SIZE}
-      searchPlaceholder={t_i18n("Search assets by name")}
-      noFilters="The store answers a name search only; the category, criticality and source filters come with the server filters of the asset list."
-      exportName="ctem-inventory-assets"
-      isLoading={isLoading && !data}
-      isError={isError}
-      onRetry={() => void refetch()}
-      emptyLabel={t_i18n("No asset yet. Add a source to the inventory to fill it.")}
-      noResultsLabel={t_i18n("No asset matches this search")}
-      rowTestId="ctem-inventory-asset-row"
-    />
+    <>
+      <DataTable<CanonicalAssetSummary>
+        rows={rows}
+        columns={columns}
+        rowKey={(a) => a.id}
+        rowHref={(a) => `${INVENTORY_PATH}/assets/${a.id}`}
+        server={{ total: data?.total ?? 0 }}
+        urlKey={ASSETS_URL_KEY}
+        storageKey={ASSETS_STORAGE_KEY}
+        defaultSort={NAME_SORT}
+        defaultPageSize={PAGE_SIZE}
+        searchPlaceholder={t_i18n("Search assets by name")}
+        filters={filters}
+        exportName="ctem-inventory-assets"
+        isLoading={isLoading && !data}
+        isError={isError}
+        onRetry={() => void refetch()}
+        emptyLabel={t_i18n("No asset yet. Add a source to the inventory to fill it.")}
+        noResultsLabel={t_i18n("No asset matches this search")}
+        rowTestId="ctem-inventory-asset-row"
+        selection={
+          isAdmin
+            ? {
+                selected,
+                onChange: setSelected,
+                actions: (
+                  <Button size="sm" variant="secondary" disabled={!canMerge || decide.isPending} onClick={() => setConfirmMerge(true)}>
+                    {t_i18n("Merge into one asset")}
+                  </Button>
+                ),
+              }
+            : undefined
+        }
+      />
+      <ConfirmDialog
+        open={confirmMerge}
+        onOpenChange={setConfirmMerge}
+        title={t_i18n("Merge these assets?")}
+        description={t_i18n(
+          "Their source records become one asset, whatever their identifiers say. The merge is audited and lasts across syncs.",
+        )}
+        confirmLabel={t_i18n("Merge")}
+        onConfirm={onMerge}
+      />
+    </>
   );
 }
 
