@@ -101,6 +101,7 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
+import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -2022,6 +2023,8 @@ export function OrganizationSection() {
             {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
             <OrganizationProposalsCard />
             {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
+            {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
+            <OrganizationOutsideLensCard />
           </div>
           )}
 

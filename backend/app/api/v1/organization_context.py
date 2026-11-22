@@ -198,6 +198,21 @@ async def save_organization_context_injection(
     return await _injection(db)
 
 
+class AttackSurfaceProviders(BaseModel):
+    #: The integration providers the attack surface pass reads (CTEM-26), in order.
+    providers: list[str]
+
+
+@router.get("/attack-surface/providers", response_model=AttackSurfaceProviders)
+async def list_attack_surface_providers(
+    _user: User = Depends(get_current_user),
+) -> AttackSurfaceProviders:
+    """The providers the outside lens can read, so the Settings picker grows with each new reader."""
+    from app.services.ctem_attack_surface import SUPPORTED_PROVIDERS
+
+    return AttackSurfaceProviders(providers=list(SUPPORTED_PROVIDERS))
+
+
 @router.get("/versions", response_model=list[OrganizationContextVersionSummary])
 async def list_organization_context_versions(
     limit: int = Query(default=20, ge=1, le=100),

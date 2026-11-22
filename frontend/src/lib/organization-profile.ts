@@ -43,6 +43,146 @@ export interface ProfileLike {
   enterprise_knowledge?: KnowledgeLink[];
   /** The posture score aimed for (#11547 S2e), set on the Governance & Risk page; kept whole through the form. */
   posture_target?: number | null;
+  /** The domains the organization owns (CTEM-29 scope gate, CTEM-26 outside lens); kept whole through the form. */
+  owned_domains?: string[];
+  /** The public address ranges the organization owns, as CIDR blocks (CTEM-26); kept whole through the form. */
+  address_ranges?: string[];
+  /** The opt-in attack surface pass of the outside lens (CTEM-26); kept whole through the form. */
+  attack_surface?: AttackSurfacePass;
+}
+
+/** The outside lens settings (CTEM-26, `dev-docs/ctem-attack-surface.md` s.1), the backend's defaults below. */
+export interface AttackSurfacePass {
+  enabled: boolean;
+  /** The id of the attack-surface provider integration the pass reads. */
+  integration: string;
+  cadence_hours: number;
+  stale_after_days: number;
+}
+
+export const DEFAULT_ATTACK_SURFACE: AttackSurfacePass = { enabled: false, integration: "", cadence_hours: 24, stale_after_days: 14 };
+/** The bounds the backend's `AttackSurfacePass` enforces. */
+export const ATTACK_SURFACE_BOUNDS = { cadence_hours: { min: 1, max: 24 * 30 }, stale_after_days: { min: 1, max: 365 } } as const;
+
+/** A domain as the backend stores it (`OrganizationProfile._domains`): lower case, `@` and trailing dots dropped; null when empty or over 253. */
+export function normalizeDomain(raw: string): string | null {
+  const text = raw.trim().toLowerCase().replace(/^@+/, "").replace(/\.+$/, "");
+  return text && text.length <= 253 ? text : null;
+}
+
+function ipv4Bits(text: string): number[] | null {
+  const parts = text.split(".");
+  if (parts.length !== 4) return null;
+  const out: number[] = [];
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part) || (part.length > 1 && part.startsWith("0"))) return null;
+    const n = Number(part);
+    if (n > 255) return null;
+    for (let bit = 7; bit >= 0; bit -= 1) out.push((n >> bit) & 1);
+  }
+  return out;
+}
+
+function ipv6Bits(text: string): number[] | null {
+  let body = text;
+  let tail: number[] = [];
+  const lastColon = body.lastIndexOf(":");
+  if (body.includes(".")) {
+    const v4 = ipv4Bits(body.slice(lastColon + 1));
+    if (!v4 || lastColon < 0) return null;
+    tail = v4;
+    // "::1.2.3.4" keeps its "::"; "::ffff:1.2.3.4" keeps "::ffff".
+    body = body.slice(0, lastColon);
+    if (body.endsWith(":")) body += ":";
+  }
+  const groupsWanted = 8 - tail.length / 16;
+  const halves = body.split("::");
+  if (halves.length > 2) return null;
+  const side = (s: string) => (s === "" ? [] : s.split(":"));
+  const head = side(halves[0]);
+  const rest = halves.length === 2 ? side(halves[1]) : [];
+  let groups: string[];
+  if (halves.length === 2) {
+    const missing = groupsWanted - head.length - rest.length;
+    if (missing < 1) return null;
+    groups = [...head, ...Array<string>(missing).fill("0"), ...rest];
+  } else {
+    groups = head;
+  }
+  if (groups.length !== groupsWanted) return null;
+  const out: number[] = [];
+  for (const group of groups) {
+    if (!/^[0-9a-f]{1,4}$/i.test(group)) return null;
+    const n = parseInt(group, 16);
+    for (let bit = 15; bit >= 0; bit -= 1) out.push((n >> bit) & 1);
+  }
+  return [...out, ...tail];
+}
+
+function bitsToNumber(bits: number[]): number {
+  return bits.reduce((acc, bit) => acc * 2 + bit, 0);
+}
+
+function ipv6Text(bits: number[]): string {
+  const groups = Array.from({ length: 8 }, (_, i) => bitsToNumber(bits.slice(i * 16, i * 16 + 16)).toString(16));
+  // The longest run of two or more zero groups becomes "::", the first one on a tie (Python's ipaddress).
+  let best = -1;
+  let bestLen = 0;
+  for (let i = 0; i < 8; i += 1) {
+    let j = i;
+    while (j < 8 && groups[j] === "0") j += 1;
+    if (j - i > bestLen) {
+      best = i;
+      bestLen = j - i;
+    }
+    i = Math.max(i, j - 1);
+  }
+  if (bestLen < 2) return groups.join(":");
+  return `${groups.slice(0, best).join(":")}::${groups.slice(best + bestLen).join(":")}`;
+}
+
+/** The prefix length a dotted mask stands for (a netmask or a host mask, as Python reads them); null otherwise. */
+function dottedMaskPrefix(text: string): number | null {
+  const bits = ipv4Bits(text);
+  if (!bits) return null;
+  const ones = bits.indexOf(0) === -1 ? 32 : bits.indexOf(0);
+  if (bits.slice(ones).every((bit) => bit === 0)) return ones;
+  const zeros = bits.indexOf(1) === -1 ? 32 : bits.indexOf(1);
+  if (bits.slice(zeros).every((bit) => bit === 1)) return zeros;
+  return null;
+}
+
+/**
+ * An address range as the backend stores it (`normalize_address_ranges`, Python's
+ * `ip_network(text, strict=False)`): the network form, a bare address its /32 or /128.
+ * Null when the backend would refuse it.
+ */
+export function normalizeAddressRange(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const [address, prefixText, extra] = text.split("/");
+  if (extra !== undefined) return null;
+  const v4 = ipv4Bits(address);
+  const bits = v4 ?? (address.includes(":") ? ipv6Bits(address) : null);
+  if (!bits) return null;
+  const width = bits.length;
+  let prefix = width;
+  if (prefixText !== undefined) {
+    if (/^\d{1,3}$/.test(prefixText)) prefix = Number(prefixText);
+    else if (v4) prefix = dottedMaskPrefix(prefixText) ?? -1;
+    else return null;
+    if (prefix < 0 || prefix > width) return null;
+  }
+  const network = bits.map((bit, i) => (i < prefix ? bit : 0));
+  const host = v4
+    ? Array.from({ length: 4 }, (_, i) => bitsToNumber(network.slice(i * 8, i * 8 + 8))).join(".")
+    : ipv6Text(network);
+  return `${host}/${prefix}`;
+}
+
+/** The entries of *ranges* the backend would refuse, as typed. */
+export function invalidAddressRanges(ranges: readonly string[]): string[] {
+  return ranges.filter((range) => range.trim() && normalizeAddressRange(range) === null);
 }
 
 /** An asset, typed on OpenAEV's taxonomy (#11781, lib/asset-taxonomy). */
@@ -328,6 +468,10 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.prioritization_policy ? { prioritization_policy: profile.prioritization_policy } : {}),
     ...(profile.enterprise_knowledge ? { enterprise_knowledge: profile.enterprise_knowledge } : {}),
     ...(profile.posture_target != null ? { posture_target: profile.posture_target } : {}),
+    // The outside lens (CTEM-26) has its own card: carried whole so no other save resets it.
+    ...(profile.owned_domains ? { owned_domains: [...profile.owned_domains] } : {}),
+    ...(profile.address_ranges ? { address_ranges: [...profile.address_ranges] } : {}),
+    ...(profile.attack_surface ? { attack_surface: { ...profile.attack_surface } } : {}),
   };
 }
 
@@ -413,6 +557,9 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
           : {}),
         ...(form.enterprise_knowledge ? { enterprise_knowledge: form.enterprise_knowledge.filter((link) => link.knowledge_base_id) } : {}),
         ...(form.posture_target != null ? { posture_target: form.posture_target } : {}),
+        ...(form.owned_domains ? { owned_domains: form.owned_domains } : {}),
+        ...(form.address_ranges ? { address_ranges: form.address_ranges } : {}),
+        ...(form.attack_surface ? { attack_surface: form.attack_surface } : {}),
       },
     };
   } catch (err) {
