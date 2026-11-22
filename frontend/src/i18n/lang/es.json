@@ -20535,19 +20535,6 @@
   "Search capabilities, members, integrations...": "Buscar funcionalidades, miembros, integraciones...",
   "No capability slot": "Ningún espacio de funcionalidad",
   "No slot matches the search and filters": "Ningún espacio coincide con la búsqueda y los filtros",
-  "Evidence health": "Salud de la evidencia",
-  "Evidence expired: older than the re-test delay": "Evidencia caducada: más antigua que el plazo de nueva prueba",
-  "Attested by a person only, never measured by a connector": "Solo atestiguado por una persona, nunca medido por un conector",
-  "Reported by a connector, never measured": "Notificado por un conector, nunca medido",
-  "Blind spot: no source reports this asset": "Punto ciego: ninguna fuente notifica este activo",
-  "Blind spot: the version is unknown": "Punto ciego: la versión es desconocida",
-  "Blind spot: a connector sync emptied": "Punto ciego: una sincronización de conector se vació",
-  "Connector sync": "Sincronización del conector",
-  "{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open": "{kind}: {latest, plural, one {# fila} other {# filas}} tras {previous}; sus hallazgos siguen abiertos",
-  "{kind}: emptied; its findings stay open": "{kind}: vaciada; sus hallazgos siguen abiertos",
-  "No evidence since": "Sin evidencia desde",
-  "Never measured": "Nunca medido",
-  "Risk scenario": "Escenario de riesgo",
-  "{origin}, last reported {date}": "{origin}, última notificación el {date}",
-  "No source reports this asset": "Ninguna fuente notifica este activo"
+  "Freshness": "Actualidad",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsoleto: OpenAEV no lo ha visto más allá del umbral del tenant"
 }
