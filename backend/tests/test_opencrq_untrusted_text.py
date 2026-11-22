@@ -86,6 +86,13 @@ CASES = [
         "Organizations (1) in tenant t-1:", "",
     ),
     (
+        "get_opencrq_organization",
+        {"organization_id": "o-1", "tenant_id": "t-1"},
+        {"organizations.getOrganization": {"id": "o-1", "name": EVIL}},
+        "Organization in tenant t-1:",
+        "",
+    ),
+    (
         "list_opencrq_frameworks", {"tenant_id": "t-1"},
         {"complianceAssessments.getFrameworks": [{"id": "f-1", "title": EVIL}], "drata.getFrameworks": []},
         "Frameworks by source.\n\nAssessment catalog (1) - ", "Drata mirror: no framework.",
@@ -408,6 +415,58 @@ async def test_a_failed_call_stays_an_error_outside_any_block():
     )
     assert result.is_error is True
     assert result.content == str(_FAILED)
+
+
+async def test_get_organization_reads_back_every_stored_field():
+    stored = {
+        "id": "o-1",
+        "name": "Acme",
+        "description": None,
+        "legalEntityName": "Acme SA",
+        "sectorId": "s-1",
+        "sector": {"id": "s-1", "name": "Finance"},
+        "countryId": "c-1",
+        "country": None,
+        "domain": "acme.example",
+        "revenueBand": "10m_100m",
+        "employeeCount": 250,
+        "estateMode": "manual",
+        "reactionTimeMin": 1,
+        "reactionTimeLikely": 4,
+        "reactionTimeMax": 24,
+        "mappedAssetCount": 3,
+    }
+    out = await _call(
+        "get_opencrq_organization",
+        {"organizations.getOrganization": stored},
+        organization_id="o-1",
+        tenant_id="t-1",
+    )
+    for line in (
+        "Name: Acme",
+        "Description: not set",
+        "Legal entity name: Acme SA",
+        "Sector: Finance (id: s-1)",
+        "Country: c-1",
+        "Domain: acme.example",
+        "Revenue band: 10m_100m",
+        "Employee count: 250",
+        "Estate mode: manual",
+        "Reaction time: min 1 h, likely 4 h, max 24 h",
+        "Mapped assets: 3",
+    ):
+        assert line in out, out
+
+
+async def test_get_organization_needs_an_id_and_names_a_missing_one():
+    assert "organization_id is required" in await _call("get_opencrq_organization", {}, tenant_id="t-1")
+    out = await _call(
+        "get_opencrq_organization",
+        {"organizations.getOrganization": None},
+        organization_id="o-9",
+        tenant_id="t-1",
+    )
+    assert out == "Organization o-9 not found in tenant t-1."
 
 
 async def test_nothing_found_is_the_providers_own_line():

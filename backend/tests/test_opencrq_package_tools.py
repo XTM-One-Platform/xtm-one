@@ -43,6 +43,7 @@ EXPECTED_TOOLS = {
     # Tenancy / catalog
     "list_opencrq_tenants",
     "list_opencrq_organizations",
+    "get_opencrq_organization",
     "list_opencrq_frameworks",
     "get_opencrq_framework",
     "list_opencrq_framework_requirements",
