@@ -39,7 +39,6 @@ _NAME_BUDGET = 24
 # its name is shortened or the layout gives it room; the test fails on an entry
 # that already fits, so the list only shrinks.
 _SLICE_2_EXCEPTIONS = {
-    "ctem-threat-response-orchestrator",
     "ctem-prioritization-analyst",
     "ctem-mobilization-analyst",
     "exposure-briefing-analyst",

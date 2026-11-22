@@ -10,7 +10,9 @@ import {
   currentSourceName,
   describeSourceChange,
   showSourceChanges,
+  sourceChanged,
   sourceChangeNames,
+  sourceSuccessor,
 } from "./fleet-source-changes";
 
 const t = (text: string, values?: Record<string, string | number>) =>
@@ -26,6 +28,23 @@ test("shows only on a fork whose existing source changed", () => {
   assert.equal(showSourceChanges(base), true);
   // An old fork: changed is known, the detail is not; the notice still shows.
   assert.equal(showSourceChanges({ ...base, diff_available: false }), true);
+});
+
+const successor = { fleet_id: "f-loop", slug: "ctem-loop", name: "CTEM loop" };
+
+test("a fork of a retired built-in fleet shows its successor, with or without a diff (CTEM-31)", () => {
+  // The retired source is gone: no diff, but the successor is named.
+  const gone: FleetSourceChanges = { ...base, source_exists: false, changed: null, diff_available: false, successor };
+  assert.equal(showSourceChanges(gone), true);
+  assert.equal(sourceChanged(gone), false);
+  assert.deepEqual(sourceSuccessor(gone), successor);
+  // The source row was adopted under the new slug and also changed: both apply.
+  const adopted: FleetSourceChanges = { ...base, successor };
+  assert.equal(sourceChanged(adopted), true);
+  assert.deepEqual(sourceSuccessor(adopted), successor);
+  // Not a fork: never a notice, even with a successor.
+  assert.equal(showSourceChanges({ ...gone, is_fork: false }), false);
+  assert.equal(sourceSuccessor({ ...base, successor: null }), null);
 });
 
 test("each change names the object and its action", () => {

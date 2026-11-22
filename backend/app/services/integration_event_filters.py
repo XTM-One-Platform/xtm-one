@@ -968,6 +968,12 @@ def event_filter_reason(
         return jira_filter_reason(
             payload, filter_config, self_account_id=str(signals.get("jira_self_account_id") or "")
         )
+    if payload.get("provider") == "pennylane":
+        from app.services.pennylane_events import EVENTS as PENNYLANE_EVENTS
+        from app.services.pennylane_events import filter_reason as pennylane_filter_reason
+
+        if event in PENNYLANE_EVENTS:
+            return pennylane_filter_reason(payload, filter_config)
     if payload.get("provider") == "netsuite":
         from app.services.netsuite_events import EVENTS as NETSUITE_EVENTS
         from app.services.netsuite_events import filter_reason as netsuite_filter_reason

@@ -56,7 +56,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDescendantRuns } from "@/hooks/api/useAssignmentApi";
 import { INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
-import { RunHumanInput, runHitlState } from "@/components/ui/run-human-input";
+import { RunPauseDecision, runPauseState } from "@/components/decisions/RunPauseDecision";
 import type { A2AExchange, ActionProposal, ApprovalDecision, HumanInputHistoryEntry } from "@/types";
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -272,7 +272,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
   const AgentIcon = run.agent_icon ? (ICON_MAP[run.agent_icon] ?? Bot) : null;
   const isRunning = run.status === "running";
   const isAwaitingHuman = run.status === "awaiting_human";
-  const { isHitlPending, isApprovalPending, isFreeTextPending } = runHitlState(run);
+  const { isHitlPending, isApprovalPending, isFreeTextPending } = runPauseState(run);
   const isDelegation = !!run.parent_run_id && !run.assignment_name;
   // Which A2A partner submitted this run, if any. An external run has no
   // assignment name and no parent, so without this its origin line is blank and
@@ -546,7 +546,7 @@ export function RunCard({ run, onDelete, card = true, compact = false, onRespond
       </div>
 
       {!compact && (
-        <RunHumanInput
+        <RunPauseDecision
           run={run}
           onRespond={onRespond}
           onDismiss={onDismiss}
