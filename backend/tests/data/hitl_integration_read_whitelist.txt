@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2222 tools across 121 providers; 60 held back by hand.
+# 2214 tools across 120 providers; 60 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1393,9 +1393,13 @@ opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_licence
+opencti:get_opencti_managers
+opencti:get_opencti_platform_queues
 opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
 opencti:get_opencti_top_related
+opencti:list_opencti_background_tasks
 opencti:list_opencti_capabilities
 opencti:list_opencti_connector_states
 opencti:list_opencti_drafts
@@ -1406,6 +1410,7 @@ opencti:list_opencti_markings
 opencti:list_opencti_observables
 opencti:list_opencti_playbook_states
 opencti:list_opencti_relationships
+opencti:list_opencti_stream_consumers
 opencti:list_opencti_subtypes
 opencti:query_opencti_activity
 opencti:query_opencti_catalog
@@ -1629,19 +1634,6 @@ qualys:list_qualys_hosts
 qualys:list_qualys_reports
 qualys:list_qualys_scanner_appliances
 qualys:list_qualys_scans
-quotapath:export_quotapath_deals
-quotapath:export_quotapath_payouts
-quotapath:get_quotapath_commission_totals
-quotapath:get_quotapath_deal
-quotapath:list_quotapath_deals
-quotapath:list_quotapath_payouts
-quotapath:list_quotapath_plans
-quotapath:list_quotapath_quota_assignments
-quotapath:list_quotapath_quota_values
-quotapath:list_quotapath_resolved_payouts
-quotapath:list_quotapath_teams
-quotapath:list_quotapath_unresolved_payouts
-quotapath:list_quotapath_users
 ransomware_live:get_ransomlive_csirt_contacts
 ransomware_live:get_ransomlive_group
 ransomware_live:get_ransomlive_iocs
