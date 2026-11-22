@@ -117,6 +117,8 @@ describe("Signals page", () => {
     await waitFor(() => expect(location()).toContain("signal="));
     expect(await screen.findByTestId("ctem-loop-trace")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
+    // The trace body sits in its own scroll box, so the table keeps its room (UX r1 B1 on #1272).
+    expect(screen.getByTestId("ctem-loop-trace").contains(screen.getByTestId("ctem-loop-trace-scroll"))).toBe(true);
     fireEvent.click(screen.getByTestId("ctem-loop-trace-close"));
     await waitFor(() => expect(location()).not.toContain("signal="));
   });

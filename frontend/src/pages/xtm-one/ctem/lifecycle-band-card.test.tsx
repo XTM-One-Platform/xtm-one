@@ -118,7 +118,8 @@ describe("LifecycleBandCard, the exposure story strip", () => {
     const ringsAt = children.indexOf(screen.getByTestId("ctem-story-key-rings"));
     expect(signalsAt).toBe(0);
     expect(ringsAt).toBeGreaterThan(signalsAt);
-    expect(within(key).getByRole("button", { name: "Signal sources" })).toBeTruthy();
+    // A link to the Sources tab of the Signals page since #1263, no longer a dialog button.
+    expect(within(key).getByRole("link", { name: "Signal sources" })).toBeTruthy();
   });
 
   it("prints both readings as labelled figures beside the ring, not only rings (#11689)", () => {

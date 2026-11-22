@@ -13,7 +13,7 @@
  * section of the page (`?signal=<id>`), never a modal.
  * Sources: the 12 trigger paths by lens (SignalSourcesPanel).
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,13 @@ type StateFilter = CtemSignalState | "all";
 
 /** The page size the table reads from the API (its `MAX_PAGE`), every page loaded. */
 const API_PAGE = 200;
+
+/**
+ * Column widths of the fixed layout (UX r1 B2 on #1272): the six columns fit the table's
+ * 844 px at a 1080 px window, en and fr, without a sideways scroll; "Signal" takes what is
+ * left. "Case" steps aside under the 6xl container width (back from the Columns pill).
+ */
+const COLUMN_WIDTH = { path: 160, source: 130, state: 220, firstSeen: 140, case: 104 } as const;
 
 export default function CtemSignals() {
   const { t_i18n } = useFormatter();
@@ -135,7 +142,11 @@ function SignalsTab() {
     {
       key: "subject",
       header: "Signal",
-      cell: (s) => <TruncatedText text={s.subject.label || s.subject.ref} className="font-medium" />,
+      cell: (s) => (
+        <span className="block min-w-0" data-signal-open={s.id === view.signal ? "" : undefined}>
+          <TruncatedText text={s.subject.label || s.subject.ref} className="font-medium" />
+        </span>
+      ),
       sortValue: (s) => (s.subject.label || s.subject.ref).toLowerCase(),
       csv: (s) => s.subject.label || s.subject.ref,
     },
@@ -143,6 +154,7 @@ function SignalsTab() {
       key: "path",
       header: "Trigger path",
       hideable: true,
+      width: COLUMN_WIDTH.path,
       cell: (s) => <TruncatedText text={t_i18n(s.trigger_path_label || s.trigger_path)} />,
       sortValue: (s) => s.trigger_path_label || s.trigger_path,
       csv: (s) => s.trigger_path,
@@ -151,11 +163,11 @@ function SignalsTab() {
       key: "source",
       header: "Source",
       hideable: true,
-      className: "whitespace-nowrap",
+      width: COLUMN_WIDTH.source,
       cell: (s) => (
-        <span className="inline-flex items-center gap-2" data-testid="ctem-signal-source-cell">
+        <span className="flex min-w-0 items-center gap-2" data-testid="ctem-signal-source-cell">
           <ProviderLogo provider={s.source.provider} className="size-4 shrink-0" decorative />
-          {signalProviderName(s.source.provider)}
+          <TruncatedText text={signalProviderName(s.source.provider)} />
         </span>
       ),
       sortValue: (s) => signalProviderName(s.source.provider),
@@ -165,6 +177,7 @@ function SignalsTab() {
       // The state and why (a discarded, watchlisted or opened signal always says why).
       key: "state",
       header: "State and why",
+      width: COLUMN_WIDTH.state,
       cell: (s) => <DecisionReason state={s.state} decision={s.decision} />,
       sortValue: (s) => CTEM_SIGNAL_STATES.indexOf(s.state),
       csv: (s) => `${s.state}: ${decisionSentence(s.decision, t_i18n, (iso) => iso.slice(0, 10))}`,
@@ -173,6 +186,7 @@ function SignalsTab() {
       key: "first_seen",
       header: "First seen",
       hideable: true,
+      width: COLUMN_WIDTH.firstSeen,
       className: "whitespace-nowrap",
       cell: (s) => <DateTimeCell value={s.first_seen_at} />,
       sortValue: (s) => s.first_seen_at ?? "",
@@ -183,6 +197,8 @@ function SignalsTab() {
       key: "case",
       header: "Case",
       hideable: true,
+      hideBelow: "6xl",
+      width: COLUMN_WIDTH.case,
       className: "whitespace-nowrap",
       cell: (s) => <span className={s.case_id ? undefined : "text-default-secondary"}>{s.case_id ? t_i18n("Case opened") : t_i18n("None")}</span>,
       sortValue: (s) => (s.case_id ? 1 : 0),
@@ -192,8 +208,19 @@ function SignalsTab() {
 
   const sources = Array.from(new Set(signals.map((s) => s.source.provider)));
 
+  // The row whose trace is open stays in view in the table's own scroller (UX r1 B1 on #1272).
+  const tableBox = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!view.signal) return;
+    const frame = requestAnimationFrame(() => {
+      const row = tableBox.current?.querySelector<HTMLElement>("[data-signal-open]")?.closest("tr");
+      row?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [view.signal, signals.length]);
+
   return (
-    <section className="flex flex-col gap-4" aria-label={t_i18n("Signals")}>
+    <section ref={tableBox} className="flex flex-col gap-4" aria-label={t_i18n("Signals")}>
       <SegmentedFilter<StateFilter>
         selection="radio"
         overflow="menu"
@@ -222,13 +249,16 @@ function SignalsTab() {
               {t_i18n("Close")}
             </Button>
           </CardHeader>
-          <CardContent>
+          {/* Its own scroller, capped, so the table under it keeps the room the window has left and
+              the page never scrolls while a trace is open (UX r1 B1 on #1272). */}
+          <CardContent className="max-h-[30vh] overflow-y-auto" data-testid="ctem-loop-trace-scroll">
             <SignalTraceBody id={view.signal} />
           </CardContent>
         </Card>
       )}
       <DataTable
         rows={signals}
+        layout="fixed"
         columns={columns}
         rowKey={(s) => s.id}
         onRowClick={(s) => setParam(SIGNALS_PARAMS.signal, s.id)}
