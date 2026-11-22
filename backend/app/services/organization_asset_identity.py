@@ -511,8 +511,9 @@ def _software_key(entry: Mapping[str, Any]) -> tuple[str, str, str] | None:
 def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
     """The software of *records*: one entry per vendor, product and version, its sources and seen dates.
 
-    The first source (by name) supplies the display spelling; CPE, PURL and
-    install date are filled from the first source that knows them; ``first_seen``
+    The first source (by name) supplies the display spelling; CPE, PURL,
+    install date and the bundling component (``bundled_in``, an SBOM's nesting)
+    are filled from the first source that knows them; ``first_seen``
     is the earliest and ``last_seen`` the latest any source reported.
     """
     merged: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -530,6 +531,7 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                     "cpe": "",
                     "purl": "",
                     "install_date": None,
+                    "bundled_in": "",
                     "first_seen": None,
                     "last_seen": None,
                     "sources": [],
@@ -541,6 +543,8 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                     entry[attr] = str(raw[attr]).strip()
             if entry["install_date"] is None and raw.get("install_date"):
                 entry["install_date"] = raw["install_date"]
+            if not entry["bundled_in"] and raw.get("bundled_in"):
+                entry["bundled_in"] = str(raw["bundled_in"]).strip()
             for attr, pick in (("first_seen", min), ("last_seen", max)):
                 seen = raw.get(attr) or record.last_seen
                 if seen is not None:

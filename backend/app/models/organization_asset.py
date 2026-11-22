@@ -129,10 +129,56 @@ class OrganizationAssetSoftware(Base):
     cpe: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     purl: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     install_date: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    #: The component that bundles this one, ``product version`` (an SBOM's nesting; empty: none).
+    bundled_in: Mapped[str] = mapped_column(String(300), nullable=False, default="", server_default="")
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The sources that report this entry on the asset.
     sources: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+
+
+class OrganizationAssetSbom(Base):
+    """One SBOM imported on an asset (#1178): its components join the asset's software as source ``sbom``.
+
+    Anchored on a source record of the asset (``anchor_source``, ``anchor_external_id``),
+    not on the asset row, so every rebuild of the store (a newer profile, a merge)
+    attaches it again to whichever asset holds that record. One row per document
+    (``document_key``): importing the same document again replaces its
+    components; another document on the same asset adds to them.
+    """
+
+    __tablename__ = "organization_asset_sboms"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "anchor_source",
+            "anchor_external_id",
+            "document_key",
+            name="uq_organization_asset_sboms_doc",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    anchor_source: Mapped[str] = mapped_column(String(80), nullable=False)
+    anchor_external_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: What the document describes (its main component or name), else the file name.
+    document_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    #: ``cyclonedx`` or ``spdx``.
+    format: Mapped[str] = mapped_column(String(20), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(300), nullable=False, default="", server_default="")
+    #: ``[{vendor, product, version, cpe, purl, bundled_in}]``, ``version`` ``unknown`` when the SBOM gives none.
+    components: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now, server_default=text("now()")
+    )
 
 
 class OrganizationAssetDecision(Base):

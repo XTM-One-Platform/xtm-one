@@ -254,6 +254,28 @@ index answer it, so its cost follows the number of products, not of assets.
   the profile rows before (no change for an organization with no asset software). Agents still write the
   profile rows through `upsert_organization_rows`, which never overwrites a platform-sourced row.
 
+### 9.4 SBOM import
+
+An SBOM (CycloneDX JSON or SPDX JSON) is one more source of an asset's software: it describes one
+application or one image running on the asset. `services/sbom_parser.py` (pure) reads it: CycloneDX nested
+`components` give the bundling parent, SPDX `CONTAINS` and `CONTAINED_BY` relationships give it, SPDX
+`externalRefs` give CPE and PURL; a missing, blank or `NOASSERTION` version is `unknown`, never an empty string;
+over 10,000 components (or 20 MB) the file is refused, never cut.
+
+`organization_asset_sboms` keeps each document, anchored on a source record of the asset (its first record by
+source and external id), not on the asset row: every rebuild of the store (a newer profile, a merge or a split)
+adds its components, as source `sbom`, to whichever asset holds that record, through `merge_software` like any
+other source (precedence, first and last seen, sources). One row per document (`document_key`: CycloneDX
+`metadata.component`, SPDX `name`, else the file name): the same document again replaces its components,
+another document adds to them, and components a newer SBOM no longer lists stay with the documents that list
+them. `organization_asset_software.bundled_in` keeps the bundling component (`ingress-nginx-controller 1.15.1`).
+The tech stack inventory (9.3) counts SBOM software like any other.
+
+- `POST /api/v1/organization-context/assets/{asset_id}/sbom` (administrators, multipart `file`, audited): 201
+  with the format, the document, the component count, the unknown versions, the bundled ones and whether it
+  replaced an earlier import; 404 on an unknown asset; 422 on a file refused. The upload in the UI comes with the
+  asset sources panel.
+
 ## 10. OpenCRQ alignment
 
 OpenCRQ-Platform/opencrq#3152 closed the three divergences: `security_platform` and its 10 subcategories are
