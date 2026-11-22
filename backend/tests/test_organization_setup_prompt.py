@@ -122,6 +122,130 @@ def test_the_steps_are_the_six_of_the_ctem_loop_setup_in_order() -> None:
     assert prompt.SETUP_VERSION == "ctem-loop-1"
 
 
+def _answered_row() -> Any:
+    row = _row()
+    prompt.record_step(row, step="organization", state="done")
+    prompt.record_step(row, step="modules", state="skipped")
+    assert prompt.record_answer(row, outcome="started", user_id=uuid.uuid4())
+    return row
+
+
+def test_reset_onboarding_proposes_the_setup_again_from_its_first_step() -> None:
+    row = _answered_row()
+    assert not prompt.should_propose(is_admin=True, is_xtm_one=True, row=row)
+    assert prompt.reset_answer(row)
+    assert prompt.should_propose(is_admin=True, is_xtm_one=True, row=row)
+    state = prompt.state_of(propose=True, row=row)
+    assert (state.outcome, state.answered_at, state.answered_version, state.steps) == (None, None, None, {})
+    assert row.organization_setup_prompted_by_user_id is None
+    # The version the build carries is unchanged: a reset never bumps it.
+    assert state.version == prompt.SETUP_VERSION == "ctem-loop-1"
+
+
+@pytest.mark.parametrize(
+    ("is_admin", "is_xtm_one"),
+    [(False, True), (True, False)],
+    ids=["not-admin", "copilot-mode"],
+)
+def test_reset_onboarding_keeps_the_audience_rule(is_admin: bool, is_xtm_one: bool) -> None:
+    row = _answered_row()
+    prompt.reset_answer(row)
+    assert not prompt.should_propose(is_admin=is_admin, is_xtm_one=is_xtm_one, row=row)
+
+
+def test_reset_onboarding_on_a_never_answered_instance_is_a_no_op() -> None:
+    row = _row()
+    assert not prompt.reset_answer(row)
+    assert vars(row) == vars(_row())
+    assert prompt.should_propose(is_admin=True, is_xtm_one=True, row=row)
+
+
+class _Db:
+    def __init__(self) -> None:
+        self.commits = 0
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+def _patch_route(monkeypatch: pytest.MonkeyPatch, row: Any, *, xtm_one: bool) -> list[dict[str, Any]]:
+    from unittest.mock import PropertyMock
+
+    from app.api.v1 import platform_settings_helpers
+    from app.services import audit
+
+    audits: list[dict[str, Any]] = []
+
+    async def _settings_row(_db: object) -> Any:
+        return row
+
+    async def _log_audit(_db: object, **kwargs: Any) -> None:
+        audits.append(kwargs)
+
+    async def _has_profile(_db: object) -> bool:
+        return True
+
+    monkeypatch.setattr(platform_settings_helpers, "get_platform_settings", _settings_row)
+    monkeypatch.setattr(audit, "log_audit", _log_audit)
+    monkeypatch.setattr(prompt, "has_saved_profile", _has_profile)
+    monkeypatch.setattr("app.core.config.Settings.is_xtm_one", PropertyMock(return_value=xtm_one))
+    return audits
+
+
+async def test_the_reset_route_clears_the_answer_audits_and_answers_the_open_proposal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1.organization_context import reset_setup_prompt
+
+    row = _answered_row()
+    audits = _patch_route(monkeypatch, row, xtm_one=True)
+    db = _Db()
+    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
+    response = await reset_setup_prompt(db=db, admin=admin)  # type: ignore[arg-type]
+    assert response.propose is True
+    assert (response.outcome, response.answered_at, response.steps) == (None, None, {})
+    assert response.version == "ctem-loop-1"
+    assert db.commits == 1
+    assert len(audits) == 1
+    assert audits[0]["action"] == "configure"
+    assert (audits[0]["entity_type"], audits[0]["entity_name"]) == ("organization_context", "setup_prompt")
+    assert audits[0]["summary"] == "Reset the setup proposal ctem-loop-1"
+    # A second reset clears nothing and writes no second audit entry.
+    await reset_setup_prompt(db=db, admin=admin)  # type: ignore[arg-type]
+    assert len(audits) == 1
+
+
+async def test_the_reset_route_is_refused_in_copilot_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    from app.api.v1.organization_context import reset_setup_prompt
+
+    row = _answered_row()
+    audits = _patch_route(monkeypatch, row, xtm_one=False)
+    with pytest.raises(HTTPException) as exc:
+        await reset_setup_prompt(db=_Db(), admin=SimpleNamespace(id=uuid.uuid4(), is_admin=True))  # type: ignore[arg-type]
+    assert exc.value.status_code == 409
+    assert row.setup_prompt_version == prompt.SETUP_VERSION
+    assert audits == []
+
+
+async def test_the_reset_route_is_for_administrators_only() -> None:
+    from fastapi import HTTPException
+    from fastapi.routing import APIRoute
+
+    from app.api.deps import require_admin
+    from app.api.v1.organization_context import reset_setup_prompt, router
+
+    route = next(
+        r for r in router.routes if isinstance(r, APIRoute) and r.path == "/setup-prompt" and "DELETE" in r.methods
+    )
+    assert route.endpoint is reset_setup_prompt
+    assert any(dep.call is require_admin for dep in route.dependant.dependencies)
+    with pytest.raises(HTTPException) as exc:
+        await require_admin(user=SimpleNamespace(is_admin=False))  # type: ignore[arg-type]
+    assert exc.value.status_code == 403
+
+
 @pytest.mark.parametrize(
     ("migration", "columns"),
     [

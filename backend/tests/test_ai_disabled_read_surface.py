@@ -471,6 +471,9 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # step, stored on the settings row; it reaches no model and enables nothing (the
     # fleet enable step goes through enable_fleet_automations, which is gated).
     "record_setup_step",
+    # Settings > Platform "Reset onboarding": an administrator clearing that stored
+    # answer and progress so the setup is proposed again; it reaches no model.
+    "reset_setup_prompt",
     # Settings > Organization, tracked organizations (#9157): an administrator
     # adding, editing, archiving an organization or saving its profile. Stored
     # company data reaching no model; monitoring stays off.

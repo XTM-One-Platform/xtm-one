@@ -219,6 +219,23 @@ export function useRecordSetupStep() {
   });
 }
 
+/**
+ * Reset onboarding (`DELETE /organization-context/setup-prompt`, administrators,
+ * XTM One mode): the answer and step progress are forgotten, so the guided setup
+ * is proposed again as after a fresh install. Nothing else is changed.
+ */
+export function useResetOrganizationSetupPrompt() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSetupPrompt, Error, void>({
+    mutationFn: () => api.delete("/organization-context/setup-prompt"),
+    onSuccess: (state) => {
+      qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.invalidateQueries({ queryKey: [...KEY, "setup-prompt"] });
+      qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
+    },
+  });
+}
+
 /** A profile proposed from what OpenCTI, OpenAEV and OpenCRQ hold: nothing is saved. */
 export interface OrganizationDraftResponse {
   based_on_version: number | null;
