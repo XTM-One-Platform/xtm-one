@@ -1,4 +1,17 @@
 {
+  "add_opencrq_treatment_plan_moves": [
+    {
+      "procedures": [
+        "treatmentPlans.addTreatmentPlanMoves"
+      ],
+      "fields": [
+        "moves",
+        "planId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "create_opencrq_asset_evidence": [
     {
       "procedures": [
@@ -135,6 +148,21 @@
       ],
       "conditional": [],
       "closed": true
+    }
+  ],
+  "create_opencrq_treatment_plan": [
+    {
+      "procedures": [
+        "treatmentPlans.createTreatmentPlan"
+      ],
+      "fields": [
+        "moves",
+        "organizationId"
+      ],
+      "conditional": [
+        "moves"
+      ],
+      "closed": false
     }
   ],
   "delete_opencrq_asset_evidence": [
@@ -1339,6 +1367,19 @@
       "closed": true
     }
   ],
+  "set_opencrq_treatment_plan_moves": [
+    {
+      "procedures": [
+        "treatmentPlans.setTreatmentPlanScope"
+      ],
+      "fields": [
+        "moves",
+        "planId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "update_opencrq_control_capability_assessment": [
     {
       "procedures": [
@@ -1716,6 +1757,19 @@
         "actHalfLifeAuthoredDays",
         "actHalfLifeObservedDays",
         "confidenceGate"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
+  "update_opencrq_treatment_plan": [
+    {
+      "procedures": [
+        "treatmentPlans.updateTreatmentPlan"
+      ],
+      "fields": [
+        "id",
+        "values"
       ],
       "conditional": [],
       "closed": true
