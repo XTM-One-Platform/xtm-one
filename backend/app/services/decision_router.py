@@ -44,7 +44,9 @@ from app.models.decision import SOURCE_TYPES, Decision, DecisionEvent
 from app.models.decision_hooks import answer_surface
 
 #: The surfaces an answer may name; anything else is recorded as ``router``.
-SURFACES: frozenset[str] = frozenset({"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "mail"})
+SURFACES: frozenset[str] = frozenset(
+    {"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "whatsapp_card", "mail"}
+)
 
 
 @dataclass(frozen=True)

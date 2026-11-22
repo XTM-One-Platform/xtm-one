@@ -57,6 +57,17 @@ describe("CycleDigestView", () => {
     expect(screen.queryByText("Budget spent")).toBeNull();
   });
 
+  it.each(["opencti_checker", "openaev_checker", "opencrq_checker"])(
+    "shows the module figures of a %s cycle (#101 S15)",
+    (specialist) => {
+      renderWithProviders(<CycleDigestView digest={{ ...base, specialist }} />);
+      expect(screen.getByText("Recommendations attached")).toBeInTheDocument();
+      expect(screen.getByText("Agentic findings")).toBeInTheDocument();
+      expect(screen.queryByText("Findings")).toBeNull();
+      expect(screen.queryByText("Experiments")).toBeNull();
+    },
+  );
+
   it("writes 0 when the cycle attached nothing", () => {
     renderWithProviders(
       <CycleDigestView digest={{ ...base, recommendations: { attached: 0, high: 0, medium: 0, low: 0 }, agentic_findings: { opened: 0, resolved: 0 } }} />,

@@ -263,9 +263,12 @@ async def open_cycle(
         raise ValueError(f"not a Platform Health role: {specialist!r}")
     if trigger not in _TRIGGERS:
         raise ValueError(f"not a cycle trigger: {trigger!r}")
-    # The Module Analyst is the one exception to the fleet caps (#101 S14b-2, dev-docs 12.5):
-    # the switches and the licence still gate its cycle, its own ceiling bounds its spend.
-    refusal = await _gate(db) if specialist == "module_analyst" else await budget_refusal(db)
+    # The module checkers are the one exception to the fleet caps (#101 S14b-2 and S15, dev-docs
+    # 12.5, 13.1): the switches and the licence still gate their cycles, their own ceiling bounds
+    # their spend.
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
+    refusal = await _gate(db) if specialist in MODULE_CHECKER_ROLES else await budget_refusal(db)
     if refusal is not None:
         raise BudgetRefusedError(refusal)
     cycle = HealthCycle(
