@@ -57,6 +57,8 @@ class Window:
     target_type: str | None
     target_id: uuid.UUID | None
     fleet_agent_ids: list[uuid.UUID]
+    #: The cycle the digest is built for (its check report is keyed by it).
+    cycle_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -83,6 +85,8 @@ class CycleDigest:
     recommendations: dict[str, int] | None = None
     #: A Module Analyst cycle: agentic findings of its registration opened and resolved in the window.
     agentic_findings: dict[str, int] | None = None
+    #: A module checker cycle (#101 S15c, dev-docs 13.8): its check report's counts and failing checks.
+    check_report: dict[str, Any] | None = None
     skipped: list[dict[str, Any]] = field(default_factory=list)
     #: Sections a lower level could not give (not installed, failed): shown as such.
     unavailable: list[str] = field(default_factory=list)
@@ -208,6 +212,35 @@ async def _agentic_findings(db: AsyncSession, w: Window) -> dict[str, int] | Non
     return {"opened": int(opened or 0), "resolved": int(resolved or 0)}
 
 
+async def _check_report(db: AsyncSession, w: Window) -> dict[str, Any] | None:
+    """The check report the module checker stored in this cycle (13.6): counts and the checks not passed.
+
+    ``recorded`` is false when the run stored none, which the digest lists as skipped work.
+    """
+    from app.models.health_module_analyst import HealthModuleCheckReport
+
+    if w.target_type != "module" or w.cycle_id is None:
+        return None
+    row = (
+        await db.execute(select(HealthModuleCheckReport).where(HealthModuleCheckReport.cycle_id == w.cycle_id))
+    ).scalar_one_or_none()
+    if row is None:
+        return {"recorded": False}
+    return {
+        "recorded": True,
+        "report_id": str(row.id),
+        "passed": int(row.passed),
+        "warned": int(row.warned),
+        "failed": int(row.failed),
+        "not_run": int(row.not_run),
+        "not_passed": [
+            {"id": entry.get("id"), "verdict": entry.get("verdict"), "finding_id": entry.get("finding_id")}
+            for entry in (row.checks or [])
+            if isinstance(entry, dict) and entry.get("verdict") != "pass"
+        ],
+    }
+
+
 async def _module_analyst_budget(db: AsyncSession, run: Any, cap_tokens: int | None) -> dict[str, Any]:
     """A Module Analyst cycle's spend: its run's traces against its own per-cycle cap (dev-docs 12.5).
 
@@ -254,6 +287,7 @@ _SECTIONS: Final[dict[str, Section]] = {
     "dry_run_writes": _dry_run_writes,
     "recommendations": _recommendations,
     "agentic_findings": _agentic_findings,
+    "check_report": _check_report,
 }
 #: Which sections each specialist's cycle reports.
 _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
@@ -264,7 +298,7 @@ _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
     # What a module checker attached to its registration's findings and the agentic findings it
     # opened (#101 S14d, S15); ``module_analyst`` reads the cycles the S14 member closed.
     **{
-        role: ("recommendations", "agentic_findings", "proposals", "dry_run_writes")
+        role: ("check_report", "recommendations", "agentic_findings", "proposals", "dry_run_writes")
         for role in sorted(MODULE_CHECKER_ROLES)
     },
     # An investigation delegates to every specialist; the weekly digest reads cycles.
@@ -311,6 +345,7 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         target_type=cycle.target_type,
         target_id=cycle.target_id,
         fleet_agent_ids=await fleet_agent_ids(db),
+        cycle_id=cycle.id,
     )
     health = await load_health_settings(db)
     caps = health.budget
@@ -355,6 +390,8 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         count = (digest.experiments or {}).get(status)
         if count:
             digest.skipped.append({"what": "experiments", "reason": status, "count": int(count)})
+    if digest.check_report is not None and not digest.check_report.get("recorded"):
+        digest.skipped.append({"what": "check_report", "reason": "not_recorded"})
     unmeasured = ((digest.proposals or {}).get("by_verdict") or {}).get("unmeasured")
     if unmeasured:
         digest.skipped.append({"what": "measurement", "reason": "unmeasured", "count": int(unmeasured)})
