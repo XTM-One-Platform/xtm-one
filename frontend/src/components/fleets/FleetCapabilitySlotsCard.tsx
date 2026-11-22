@@ -92,7 +92,9 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
       cell: (row) => (
         <span className="flex min-w-0 items-center gap-2">
           <Icon name={capabilityIcon(row.slot.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
-          <span className="truncate">{t_text(row.slot.label)}</span>
+          <span className="truncate" title={t_text(row.slot.label)}>
+            {t_text(row.slot.label)}
+          </span>
         </span>
       ),
     },
@@ -103,7 +105,9 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
       csv: (row) => row.member.name,
       cell: (row) => (
         <span className="block min-w-0">
-          <span className="block max-w-[240px] truncate font-medium">{row.member.name || t_i18n("Unknown agent")}</span>
+          <span className="block max-w-[240px] truncate font-medium" title={row.member.name || undefined}>
+            {row.member.name || t_i18n("Unknown agent")}
+          </span>
           {row.member.role_label && <span className="block max-w-[240px] truncate content-caption text-default-secondary">{row.member.role_label}</span>}
         </span>
       ),
@@ -111,6 +115,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
     {
       key: "status",
       header: "Status",
+      width: 128,
       sortValue: slotStateRank,
       csv: (row) => t_i18n(SLOT_STATE_LABELS[row.slot.state]),
       cell: (row) => (
@@ -130,7 +135,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
           {row.slot.bound.map((integration) => (
             <span
               key={integration.integration_id}
-              className="group inline-flex max-w-[220px] items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5"
+              className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5"
               data-testid={`slot-bound-${row.key}`}
             >
               <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />
@@ -230,7 +235,9 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
               rowKey={(row) => row.key}
               rowHref={(row) => `/agents/${row.member.agent_id}`}
               rowActions={bindAction}
-              rowActionsWidth={216}
+              rowActionsWidth={224}
+              // Fixed columns: at 1080 the flexible ones truncate instead of pushing the bind select out of the card.
+              layout="fixed"
               defaultSort={{ key: "status", direction: "asc" }}
               searchFields={(row) => slotRowSearchFields(row, t_text(row.slot.label))}
               searchPlaceholder={t_i18n("Search capabilities, members, integrations...")}
