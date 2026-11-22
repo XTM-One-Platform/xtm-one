@@ -33,13 +33,20 @@ def test_the_check_hands_the_script_the_changed_backend_files() -> None:
 
 
 def test_options_and_files_are_split_and_an_unknown_option_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
-    assert queue_tests.split_args(["--list", "./app/x.py", "tests/test_y.py"]) == (
-        ["app/x.py", "tests/test_y.py"],
-        True,
-        [],
-    )
+    options = queue_tests.parse_args(["--list", "./app/x.py", "--part", "2/3", "--budget", "60", "tests/test_y.py"])
+    assert options.files == ["app/x.py", "tests/test_y.py"]
+    assert options.listing
+    assert options.part == (2, 3)
+    assert options.budget == 60.0
+    assert options.errors == []
     assert queue_tests.main(["-k", "x"]) == 2
-    assert "unknown option(s) -k" in capsys.readouterr().out
+    assert "unknown option -k" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("args", [["--part"], ["--part", "4/3"], ["--budget", "soon"]])
+def test_a_malformed_option_is_refused(args: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert queue_tests.main([*args, "app/x.py"]) == 2
+    assert "Options: --list, --part i/n, --budget SECONDS." in capsys.readouterr().out
 
 
 def test_no_changed_file_selects_nothing(capsys: pytest.CaptureFixture[str]) -> None:
@@ -80,11 +87,23 @@ def test_list_prints_the_selection_and_runs_nothing(
     assert queue_tests.main(["--list", "app/x.py"]) == 0
     out = capsys.readouterr().out
     assert "- tests/test_a.py: imports app.x" in out
-    assert "1 selected, 1 in the unit job." in out
+    assert "1 selected, 1 in the unit job, about 1 s of one worker" in out
+
+
+def _fake_run(monkeypatch: pytest.MonkeyPatch, code: int = 0) -> list[tuple[list[str], dict[str, str]]]:
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def run(argv: list[str], check: bool, env: dict[str, str]) -> SimpleNamespace:
+        calls.append((argv, env))
+        return SimpleNamespace(returncode=code)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(queue_tests, "workers", lambda: 2)
+    return calls
 
 
 @pytest.mark.parametrize("code", [0, 1])
-def test_the_unit_job_s_files_run_under_its_marker(
+def test_the_unit_job_s_files_run_under_its_marker_with_workers_and_the_stall_guard(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], code: int
 ) -> None:
     monkeypatch.setattr(
@@ -92,15 +111,53 @@ def test_the_unit_job_s_files_run_under_its_marker(
         "unit_files",
         lambda changed: (None, {"tests/test_a.py": "r", "tests/test_b.py": "r"}, ["tests/test_a.py"]),
     )
-    calls: list[list[str]] = []
-
-    def run(argv: list[str], check: bool) -> SimpleNamespace:
-        calls.append(argv)
-        return SimpleNamespace(returncode=code)
-
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(queue_tests, "durations", lambda: {"tests/test_a.py": 12.0})
+    monkeypatch.delenv("PYTEST_STALL_SECONDS", raising=False)
+    calls = _fake_run(monkeypatch, code)
     assert queue_tests.main(["app/x.py"], python="py") == code
-    assert calls == [
-        ["py", "-m", "pytest", "-m", "not integration", "-q", "--continue-on-collection-errors", "tests/test_a.py"]
+    assert [argv for argv, _ in calls] == [
+        [
+            *("py", "-m", "pytest", "-m", "not integration", "-q", "-n", "2", "--dist", "loadgroup"),
+            *("--continue-on-collection-errors", "tests/test_a.py"),
+        ]
     ]
-    assert "tests/test_b.py: r (integration or chromium as a whole" in capsys.readouterr().out
+    assert calls[0][1]["PYTEST_STALL_SECONDS"] == "300"
+    out = capsys.readouterr().out
+    assert "tests/test_b.py: r (integration or chromium as a whole" in out
+    assert "about 12 s of one worker (2 worker(s) here)" in out
+
+
+def _heavy(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    files = [f"tests/test_{name}.py" for name in "abcd"]
+    monkeypatch.setattr(queue_tests, "unit_files", lambda changed: (None, dict.fromkeys(files, "r"), files))
+    monkeypatch.setattr(queue_tests, "durations", lambda: dict.fromkeys(files, 500.0))
+    return files
+
+
+def test_a_selection_over_the_budget_names_its_parts_and_runs_nothing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _heavy(monkeypatch)
+    calls = _fake_run(monkeypatch)
+    assert queue_tests.main(["app/x.py"], python="py") == 3
+    assert calls == []
+    out = capsys.readouterr().out
+    assert "over the 900 s budget: run it in 3 parts" in out
+    assert '["--part", "3/3"]' in out
+
+
+def test_a_part_runs_its_share_and_the_parts_cover_the_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    files = _heavy(monkeypatch)
+    calls = _fake_run(monkeypatch)
+    for index in (1, 2):
+        assert queue_tests.main(["--part", f"{index}/2", "app/x.py"], python="py") == 0
+    shares = [argv[argv.index("--continue-on-collection-errors") + 1 :] for argv, _ in calls]
+    assert [len(share) for share in shares] == [2, 2]
+    assert sorted(shares[0] + shares[1]) == files
+
+
+def test_budget_zero_runs_the_whole_selection_in_one_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    files = _heavy(monkeypatch)
+    calls = _fake_run(monkeypatch)
+    assert queue_tests.main(["--budget", "0", "app/x.py"], python="py") == 0
+    assert calls[0][0][-len(files) :] == files
