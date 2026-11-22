@@ -110,7 +110,7 @@ describe("LifecycleBandCard, the exposure story strip", () => {
     expect(key.textContent).toContain("Inner ring: In your context (qualitative)");
   });
 
-  it("puts the signals first in the key row, the ring legend after them, with the signal sources button (#1189)", () => {
+  it("puts the signals first in the key row, the ring legend after them, no signal sources icon (#1189, #1263)", () => {
     band({ signals: { counts: { new: 2 }, onOpen: () => {} } });
     const key = screen.getByTestId("ctem-story-key");
     const children = Array.from(key.children);
@@ -118,8 +118,10 @@ describe("LifecycleBandCard, the exposure story strip", () => {
     const ringsAt = children.indexOf(screen.getByTestId("ctem-story-key-rings"));
     expect(signalsAt).toBe(0);
     expect(ringsAt).toBeGreaterThan(signalsAt);
-    // A link to the Sources tab of the Signals page since #1263, no longer a dialog button.
-    expect(within(key).getByRole("link", { name: "Signal sources" })).toBeTruthy();
+    // The sources are a tab of the Signals page the counter opens (Sam, 22 Nov 2026, #1263).
+    expect(within(key).queryByRole("link", { name: "Signal sources" })).toBeNull();
+    expect(within(key).queryByRole("button", { name: "Signal sources" })).toBeNull();
+    expect(within(key).getByRole("button", { name: "Open all signals" })).toBeTruthy();
   });
 
   it("prints both readings as labelled figures beside the ring, not only rings (#11689)", () => {

@@ -1,4 +1,4 @@
-// The signal sources (#1189, #1263): status derivation, Connect targets, the Sources tab grouped by lens, the button and its tooltip.
+// The signal sources (#1189, #1263): status derivation, Connect targets, the Sources tab grouped by lens, the trigger paths card's button.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
@@ -7,7 +7,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
-import { SignalSourcesButton, SignalSourcesPanel, SignalSourcesTip } from "./SignalSourcesPanel";
+import { SignalSourcesButton, SignalSourcesPanel } from "./SignalSourcesPanel";
 import { TriggerPathsCard } from "./TriggerPathsCard";
 import { connectHref, connectTarget, connectedCount, pathStatus } from "./signal-sources";
 
@@ -149,13 +149,4 @@ describe("SignalSourcesButton", () => {
     expect(screen.getByTestId("location").textContent).toBe("/ctem/signals/sources");
   });
 
-  it("its tooltip says the paths connected, connected of total per lens and the hint", () => {
-    renderWithProviders(<SignalSourcesTip paths={PATHS} />);
-    const tip = screen.getByTestId("ctem-signal-sources-tip");
-    expect(within(tip).getByText("Signal sources")).toBeTruthy();
-    expect(within(tip).getByText("1 of 3 trigger paths connected")).toBeTruthy();
-    expect(within(screen.getByTestId("ctem-signal-sources-tip-world")).getByText("1 of 1")).toBeTruthy();
-    expect(within(screen.getByTestId("ctem-signal-sources-tip-inside")).getByText("0 of 2")).toBeTruthy();
-    expect(within(tip).getByText("Open signal sources")).toBeTruthy();
-  });
 });

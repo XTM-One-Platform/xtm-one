@@ -12,6 +12,10 @@
  * and exports what the server answered. A row opens its loop trace as a
  * section of the page (`?signal=<id>`), never a modal.
  * Sources: the 12 trigger paths by lens (SignalSourcesPanel).
+ *
+ * Above the tabs, the summary strip (SignalsSummaryStrip): signals in 30 days,
+ * to validate, cases opened and the trigger paths connected with the sources'
+ * logos, so the page never reads empty, whatever tab is open (Sam, 22 Nov 2026).
  */
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -37,6 +41,7 @@ import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./ctem/loop/DecisionReason";
 import { SignalSourcesLink, SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
 import { SignalTraceBody, signalProviderName } from "./ctem/loop/SignalLoopTrace";
+import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
 import { connectedCount } from "./ctem/loop/signal-sources";
 import { readSignalsView, SIGNAL_SOURCES_PATH, SIGNALS_PARAMS, SIGNALS_PATH, SIGNALS_TABLE_URL_KEY } from "./ctem/loop/signals-route";
 
@@ -69,6 +74,7 @@ export default function CtemSignals() {
         hint={t_i18n("The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.")}
         hintLabel={t_i18n("About signals")}
       />
+      <SignalsSummaryStrip />
       <DetailTabs<Tab>
         tabs={[
           { key: "signals", label: "Signals", glyph: "activity", to: SIGNALS_PATH, testId: "ctem-signals-tab-signals" },
@@ -92,14 +98,6 @@ export default function CtemSignals() {
       />
       {tab === "sources" ? (
         <section className="flex flex-col gap-4" aria-label={t_i18n("Signal sources")}>
-          {paths.length > 0 && (
-            <p className="content-compact text-default-secondary" data-testid="ctem-signal-sources-summary">
-              {t_i18n("{connected} of {total} trigger paths connected. Every signal starts the exposure management loop.", {
-                connected: count(connectedCount(paths)),
-                total: count(paths.length),
-              })}
-            </p>
-          )}
           <SignalSourcesPanel />
         </section>
       ) : (
@@ -111,6 +109,7 @@ export default function CtemSignals() {
 
 function SignalsTab() {
   const { t_i18n } = useFormatter();
+  const { count } = useNumberFormat();
   const [params, setParams] = useSearchParams();
   const view = readSignalsView(params);
   const { data: pathData } = useCtemSignalPaths();
@@ -125,7 +124,8 @@ function SignalsTab() {
   const counts = first?.counts;
   const all = counts ? CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
   const signals = useMemo(() => data?.pages.flatMap((page) => page.signals) ?? [], [data]);
-  const anyConnected = paths.some((p) => p.status === "connected");
+  const connected = connectedCount(paths);
+  const anyConnected = connected > 0;
 
   const setParam = (name: string, value: string | null) =>
     setParams(
@@ -304,6 +304,12 @@ function SignalsTab() {
                 ? t_i18n("No signal seen yet: your sources are connected and nothing reached the loop.")
                 : t_i18n("No signal yet: no source is connected.")}
             </p>
+            {/* The empty list keeps the sources' context: how many paths can fire one (Sam, 22 Nov 2026). */}
+            {paths.length > 0 && (
+              <p className="content-caption text-default-secondary" data-testid="ctem-signal-empty-paths">
+                {t_i18n("{connected} of {total} trigger paths connected", { connected: count(connected), total: count(paths.length) })}
+              </p>
+            )}
             <SignalSourcesLink />
           </div>
         }

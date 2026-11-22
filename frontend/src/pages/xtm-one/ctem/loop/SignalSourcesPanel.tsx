@@ -10,8 +10,8 @@
  * action: Connect the first unbound source, or Open signals in the loop trace.
  *
  * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
- * from the icon button next to the signals counter, an empty signal list and
- * the trigger paths card.
+ * from the page's tabs and summary strip, an empty signal list and the trigger
+ * paths card.
  */
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
@@ -30,7 +30,6 @@ import { SIGNAL_SOURCES_PATH, signalsHref } from "./signals-route";
 import {
   connectHref,
   connectTarget,
-  connectedCount,
   LENS_ICON,
   PATH_ICON,
   PATH_STATUS_LABEL,
@@ -51,58 +50,19 @@ const LENS_HELP = {
 } as const;
 
 /**
- * What the signal sources button's tooltip says (#1263): the paths connected
- * of the catalogue, then connected of total per lens, then the hint.
- */
-export function SignalSourcesTip({ paths }: { paths: readonly CtemSignalPath[] }) {
-  const { t_i18n } = useFormatter();
-  const { count } = useNumberFormat();
-  return (
-    <div className="flex min-w-48 flex-col gap-1.5" data-testid="ctem-signal-sources-tip">
-      <span className="font-medium">{t_i18n("Signal sources")}</span>
-      {paths.length > 0 && (
-        <>
-          <span>
-            {t_i18n("{connected} of {total} trigger paths connected", {
-              connected: count(connectedCount(paths)),
-              total: count(paths.length),
-            })}
-          </span>
-          <ul className="flex flex-col gap-0.5">
-            {LENSES.map((lens) => {
-              const inLens = paths.filter((p) => p.default_lens === lens);
-              if (inLens.length === 0) return null;
-              return (
-                <li key={lens} className="flex items-center gap-2 tabular-nums" data-testid={`ctem-signal-sources-tip-${lens}`}>
-                  <Icon name={LENS_ICON[lens] as IconName} size={16} aria-hidden />
-                  <span className="flex-1">{t_i18n(LENS_HEADING[lens])}</span>
-                  <span>{t_i18n("{connected} of {total}", { connected: count(connectedCount(inLens)), total: count(inLens.length) })}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-      <span className="opacity-80">{t_i18n("Open signal sources")}</span>
-    </div>
-  );
-}
-
-/**
- * The icon button that opens the Sources tab of the Signals page (#1263), next
- * to the signals counter and in card headers. Primary, so it reads as the way
- * in to the sources; its tooltip shows on hover and keyboard focus.
+ * The icon button that opens the Sources tab of the Signals page (#1263), in
+ * the Discovery stage's trigger paths card header. The command center's key row
+ * has none: its signals counter opens the page, Sources is a tab of it (Sam, 22 Nov 2026).
  */
 export function SignalSourcesButton({ className }: { className?: string }) {
   const { t_i18n } = useFormatter();
-  const { data } = useCtemSignalPaths();
   return (
-    <Tip content={<SignalSourcesTip paths={data?.paths ?? []} />}>
+    <Tip content={t_i18n("Signal sources")}>
       <RouterLink
         to={SIGNAL_SOURCES_PATH}
         aria-label={t_i18n("Signal sources")}
         data-testid="ctem-signal-sources-open"
-        className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-accent hover:bg-elevation-hover", BUTTON_ROLE_FOCUS_RING, className)}
+        className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-default-secondary hover:bg-elevation-hover hover:text-default-primary", BUTTON_ROLE_FOCUS_RING, className)}
       >
         <Icon name="satellite-dish" size={16} aria-hidden />
       </RouterLink>

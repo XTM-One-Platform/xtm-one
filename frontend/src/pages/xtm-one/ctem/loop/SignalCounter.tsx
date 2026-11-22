@@ -40,7 +40,7 @@ export function SignalCounter({
         aria-label={t_i18n("Open all signals")}
         className={cn("inline-flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 font-medium hover:bg-elevation-hover", BUTTON_ROLE_FOCUS_RING)}
       >
-        <Icon name="activity" size={16} className="shrink-0 text-default-primary" aria-hidden />
+        <Icon name="activity" size={16} className="shrink-0 text-accent" aria-hidden />
         {t_i18n("Signals")}
         <span className="tabular-nums" title={exactCount(total)}>
           {formatCount(total)}
