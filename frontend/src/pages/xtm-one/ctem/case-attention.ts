@@ -30,7 +30,7 @@ export interface CaseAttentionWeights {
   ageMax: number;
 }
 
-export const DEFAULT_CASE_ATTENTION_WEIGHTS: CaseAttentionWeights = {
+const DEFAULT_CASE_ATTENTION_WEIGHTS: CaseAttentionWeights = {
   priority: { critical: 40, high: 25, medium: 10, low: 0 },
   kev: 15,
   crownJewel: 15,
@@ -68,7 +68,7 @@ type AttentionInput = Pick<
   "state" | "priority" | "kev_count" | "asset_count" | "crown_jewel_count" | "due_at" | "sla_due_at" | "sla_breached_at" | "owner_user_id" | "created_at" | "first_seen_at"
 >;
 
-export function isOpenCase(c: Pick<CtemCaseSummary, "state">): boolean {
+function isOpenCase(c: Pick<CtemCaseSummary, "state">): boolean {
   return c.state === "needs_attention" || c.state === "in_progress";
 }
 

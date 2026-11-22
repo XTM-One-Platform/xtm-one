@@ -15,7 +15,7 @@ import { CtemWidgetHeader } from "./CtemWidgetHeader";
 import { rankByAttention, type CaseAttentionReason, type CaseNextAction } from "./case-attention";
 
 /** How many cases the band shows. */
-export const ATTENTION_BAND_SIZE = 3;
+const ATTENTION_BAND_SIZE = 3;
 
 const NEXT_ACTION_LABEL: Record<CaseNextAction, string> = {
   assign: "Assign an owner",
