@@ -114,6 +114,7 @@ import {
   PROFILE_CARD_TAB,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
+  type ProfileCard,
   type ProfileTab,
   changedTabs,
   groupByTab,
@@ -181,8 +182,18 @@ const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not link
  */
 const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
-export function OrganizationSection() {
+/**
+ * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the tech stack,
+ * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
+ * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
+ */
+export type OrganizationEmbed = { cards: readonly ProfileCard[] };
+
+export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
   const { t_i18n, locale, intl } = useFormatter();
+  // The whole page, or only the cards an embedding page names.
+  const full = !embed;
+  const show = (card: ProfileCard) => !embed || embed.cards.includes(card);
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
@@ -225,12 +236,12 @@ export function OrganizationSection() {
   // returns to the previous one; the query (?setup=1) is kept.
   const location = useLocation();
   const navigate = useNavigate();
-  const tab = profileTabOfPath(location.pathname);
+  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : profileTabOfPath(location.pathname);
   const [focusRetry, setFocusRetry] = useState(0);
   // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
   const endCardLanding = useRef<(() => void) | null>(null);
   const goToTab = (next: ProfileTab | null) => {
-    if (!next || next === tab) return;
+    if (embed || !next || next === tab) return;
     navigate({ pathname: profileTabPath(next), search: location.search });
   };
   // Whether the tab bar is stuck under the top bar (UX r1 B2 on #12332): a 1 px sentinel above it
@@ -542,9 +553,9 @@ export function OrganizationSection() {
   // parameter leaves the URL in place, so Back returns to the page the link was on.
   const requestedCard = parseProfileCard(searchParams.get(PROFILE_CARD_PARAM));
   useEffect(() => {
-    if (!requestedCard || !data) return;
+    if (!requestedCard || !data || !show(requestedCard)) return;
     const cardTab = PROFILE_CARD_TAB[requestedCard];
-    if (cardTab !== tab) {
+    if (!embed && cardTab !== tab) {
       navigate({ pathname: profileTabPath(cardTab), search: location.search }, { replace: true });
       return;
     }
@@ -563,6 +574,7 @@ export function OrganizationSection() {
       },
       { replace: true },
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- show() reads embed, fixed for the page's life
   }, [requestedCard, data, tab, fieldId, navigate, location.search, setSearchParams]);
   // A missing field opens its tab first, then the form on the field (#12329).
   const jumpTo = (path: string) => {
@@ -1440,6 +1452,8 @@ export function OrganizationSection() {
     );
   /** The fields not filled in a tab, at the top of its panel: each opens the form on it. */
   const missingIn = (key: ProfileTab) => {
+    // An embedding page shows the cards alone: the missing fields open the whole form, on Settings.
+    if (embed) return null;
     const paths = missing.filter((path) => tabOfField(path) === key);
     if (paths.length === 0) return null;
     return (
@@ -1460,6 +1474,7 @@ export function OrganizationSection() {
   return (
     <div data-testid="settings.organization" className="space-y-4">
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
+      {full && (
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-3xl space-y-1">
           <h3 className="flex items-center gap-2 title-xs">
@@ -1517,6 +1532,7 @@ export function OrganizationSection() {
           </div>
         )}
       </div>
+      )}
 
       {setupGuide && editing && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
@@ -1526,7 +1542,7 @@ export function OrganizationSection() {
 
       {/* One compact row instead of the four figure cards (#12329): the completeness is per tab on the tab
           bar, the fields not filled sit at the top of their tab, and onboarding stays one click away. */}
-      {missing.length > 0 && !editing && (
+      {full && missing.length > 0 && !editing && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
             {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
@@ -1540,7 +1556,7 @@ export function OrganizationSection() {
         </div>
       )}
 
-      {draftFailed && !editing && (
+      {full && draftFailed && !editing && (
         <div role="alert" data-testid="settings.organization.draft-error" className="flex items-center justify-between gap-3 rounded-sm border border-alert-error bg-alert-error p-3 content-base">
           <p className="space-x-1">
             <span className="font-medium">{t_i18n("The draft could not be made")}</span>
@@ -1605,17 +1621,20 @@ export function OrganizationSection() {
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
           {/* Sources first (#1134 S2): who feeds which section, before what the tabs hold. */}
+          {full && (
           <OrganizationSourcesPanel
             profile={current}
             connected={connectedPlatforms}
             onAddSync={() => setPlatformImportOpen(true)}
             disabled={editing || cardOpen !== null || drafting.isPending}
           />
+          )}
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
               (UX r1 B2). The sentinel above it tells when it is stuck. */}
-          <div ref={tabBarSentinel} aria-hidden className="h-px" />
+          {full && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
+          {full && (
           <div
             {...{ [PAGE_STICKY_BAR_ATTRIBUTE]: "" }}
             data-stuck={tabBarStuck || undefined}
@@ -1623,6 +1642,7 @@ export function OrganizationSection() {
           >
             <DetailTabs tabs={PROFILE_TABS.map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
           </div>
+          )}
           {tab === "identity" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
           {missingIn("identity")}
@@ -2037,6 +2057,7 @@ export function OrganizationSection() {
           {tab === "technology" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.technology)} className="space-y-4" data-testid="settings.organization.panel-technology">
           {missingIn("technology")}
+          {show("tech_stack") && (
           <SettingsCard
             id={`${fieldId}-tech_stack`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -2088,7 +2109,9 @@ export function OrganizationSection() {
                 />
               ))}
           </SettingsCard>
+          )}
 
+          {show("ai_systems") && (
           <SettingsCard
             id={`${fieldId}-ai_systems`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -2140,6 +2163,7 @@ export function OrganizationSection() {
                 />
               ))}
           </SettingsCard>
+          )}
           </div>
           )}
 
@@ -2147,10 +2171,10 @@ export function OrganizationSection() {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.exposure)} className="space-y-4" data-testid="settings.organization.panel-exposure">
             {missingIn("exposure")}
             {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
-            <OrganizationProposalsCard />
-            {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
+            {full && <OrganizationProposalsCard />}
+            {exposureCards((["assets_exposure", "asset_groups", "prioritization_policy"] as const).filter(show))}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
-            <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />
+            {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
           </div>
           )}
 

@@ -17,6 +17,8 @@ import {
   type TechStackItem,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useTabParam } from "@/hooks/useTabParam";
+import { useAuth } from "@/hooks/useAuth";
+import { OrganizationSection } from "@/pages/settings/OrganizationSection";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
@@ -221,9 +223,23 @@ function TechStackTab() {
   );
 }
 
+/**
+ * The profile cards an administrator edits on each tab (#1178 slice 2b): the same cards, per-card edit and Save as
+ * Settings > Organization had, now here; Settings keeps the business profile.
+ */
+const EDIT_CARDS = {
+  assets: ["assets_exposure", "prioritization_policy", "outside_lens"],
+  "asset-groups": ["asset_groups"],
+  "tech-stack": ["tech_stack"],
+  "ai-systems": ["ai_systems"],
+} as const satisfies Record<InventoryTab, readonly string[]>;
+
 export default function CtemInventory() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
+  // Editing the profile stays administrator-only, as in Settings; everyone else reads the tables.
+  const { isAdmin } = useAuth();
+  const editCards = EDIT_CARDS[tab] ?? EDIT_CARDS.assets;
   return (
     <div className="space-y-4">
       <CtemPageHeader
@@ -242,14 +258,15 @@ export default function CtemInventory() {
         ]}
       />
       {tab === "asset-groups" ? (
-        <AssetGroupsTab />
+        isAdmin ? null : <AssetGroupsTab />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
       ) : tab === "ai-systems" ? (
-        <AiSystemsTab />
+        isAdmin ? null : <AiSystemsTab />
       ) : (
         <AssetsTab />
       )}
+      {isAdmin && <OrganizationSection key={tab} embed={{ cards: editCards }} />}
     </div>
   );
 }
