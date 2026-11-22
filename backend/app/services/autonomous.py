@@ -1648,6 +1648,23 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM ticketing sync (#917): create the ticket of a mobilized case,
+        # pull the ticket status (ServiceNow's inbound), push the case state.
+        # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).
+        try:
+            from app.core.config import settings as app_settings
+            from app.services import ctem_case_loop, ctem_ticketing
+
+            if await ctem_ticketing.sync_due():
+                pending = ctem_case_loop.PendingEvents()
+                counts = await ctem_ticketing.sync_cases(db, events=pending, base_url=app_settings.frontend_url)
+                await db.commit()
+                await ctem_case_loop.publish_pending(pending)
+                if any(v for k, v in counts.items() if k != "not_connected"):
+                    logger.info("CTEM ticketing sync: %s", counts)
+        except Exception as e:
+            logger.error("CTEM ticketing sync error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # Assignments marked delete_assignment(after_run=true) whose runs
         # have all ended: deleted now, so a one-off retires itself.
         try:
