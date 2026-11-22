@@ -376,6 +376,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
+  airwallex: "Airwallex",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -411,7 +412,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   giphy: "GIPHY",
   credly: "Credly",
   concord: "Concord",
-  dealhub: "DealHub",
   ashby: "Ashby",
   linkedin: "LinkedIn",
   x: "X (Twitter)",
@@ -585,7 +585,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
   erp: "ERP",
-  finance: "Finance",
+  finance: "Finance & Treasury",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -868,7 +868,6 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   giphy: "/logos/giphy.svg",
   credly: "/logos/credly.svg",
   concord: "/logos/concord.svg",
-  dealhub: "/logos/dealhub.svg",
   ashby: "/logos/ashby.svg",
   linkedin: "/logos/linkedin.svg",
   x: "/logos/x.svg",
