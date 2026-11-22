@@ -20703,5 +20703,10 @@
   "Waiting for {agent}, working this case since {since}.": "En attente de {agent}, qui traite ce cas depuis le {since}.",
   "Waiting for a fleet step, working this case since {since}.": "En attente d’une étape de la flotte, qui traite ce cas depuis le {since}.",
   "Opened from OpenCTI vulnerabilities matched to your inventory": "Ouvert à partir des vulnérabilités OpenCTI rapprochées de votre inventaire",
-  "Opened from OpenAEV findings on your assets": "Ouvert à partir des constats OpenAEV sur vos actifs"
+  "Opened from OpenAEV findings on your assets": "Ouvert à partir des constats OpenAEV sur vos actifs",
+  "Agentic checks": "Contrôles agentiques",
+  "No check round yet": "Aucune série de contrôles pour l’instant",
+  "Show the checks": "Voir les contrôles",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# non exécuté} other {# non exécutés}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# réussi} other {# réussis}}, {warned, plural, one {# avertissement} other {# avertissements}}, {failed, plural, one {# en échec} other {# en échec}}"
 }

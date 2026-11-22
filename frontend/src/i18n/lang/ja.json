@@ -20703,5 +20703,10 @@
   "Waiting for {agent}, working this case since {since}.": "{agent} を待っています ({since} からこのケースを処理中)。",
   "Waiting for a fleet step, working this case since {since}.": "フリートのステップを待っています ({since} からこのケースを処理中)。",
   "Opened from OpenCTI vulnerabilities matched to your inventory": "インベントリと照合された OpenCTI の脆弱性から作成",
-  "Opened from OpenAEV findings on your assets": "資産に対する OpenAEV の検出結果から作成"
+  "Opened from OpenAEV findings on your assets": "資産に対する OpenAEV の検出結果から作成",
+  "Agentic checks": "エージェントによるチェック",
+  "No check round yet": "チェックはまだ実行されていません",
+  "Show the checks": "チェックを表示",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
 }
