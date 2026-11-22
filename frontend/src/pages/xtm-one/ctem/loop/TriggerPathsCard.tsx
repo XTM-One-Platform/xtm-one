@@ -20,6 +20,7 @@ import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { HeroCard } from "../stage-heroes";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { SignalSourcesButton } from "./SignalSourcesDialog";
 
 const LENSES = ["inside", "outside", "world"] as const;
 
@@ -75,8 +76,11 @@ export function TriggerPathsCard({ onConnect }: { onConnect: () => void }) {
       testId="ctem-trigger-paths"
       chips={
         paths.length > 0 ? (
-          <span className="content-caption text-default-secondary tabular-nums">
-            {t_i18n("{live} of {total} paths with a source", { live: count(live), total: count(paths.length) })}
+          <span className="inline-flex items-center gap-1">
+            <span className="content-caption text-default-secondary tabular-nums">
+              {t_i18n("{live} of {total} paths with a source", { live: count(live), total: count(paths.length) })}
+            </span>
+            <SignalSourcesButton />
           </span>
         ) : null
       }

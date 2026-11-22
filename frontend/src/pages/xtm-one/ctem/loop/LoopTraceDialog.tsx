@@ -31,6 +31,7 @@ import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
+import { SignalSourcesDialog, SignalSourcesLink } from "./SignalSourcesDialog";
 
 export const LOOP_PARAM = "loop";
 
@@ -298,125 +299,6 @@ function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatte
   }
 }
 
-/**
- * The evidence keys the attack surface pass writes (backend
- * services/ctem_attack_surface.py, CTEM-26): the named rows below say them, so
- * the raw evidence list leaves them out. `reason` is the pass's English
- * sentence, already in the subject label.
- */
-const SURFACE_ROW_KEYS = [
-  "source", "provider", "hostnames", "ips", "ports", "dns_target", "cert_names", "reason",
-  "baseline", "observed", "asset", "declared_internet_facing", "new_port", "previous_ports",
-  "owned_domain", "address_ranges", "last_seen_at", "stale_after_days",
-] as const;
-
-/** The difference that fired an outside-lens signal: what the baseline held, what this pass saw (CTEM-26-UI). */
-type SurfaceDiff =
-  | { key: "new_port"; port: string; previous: string[] }
-  | { key: "not_internet_facing"; ports: string[] }
-  | { key: "dangling" }
-  | { key: "outside_ranges"; domain: string; ip: string }
-  | { key: "unseen"; lastSeen: string; days: number }
-  | { key: "new_host"; ports: string[] };
-
-/** One named fact of an outside-lens signal of the attack surface pass (CTEM-26-UI). */
-export type SurfaceFact = {
-  diff: SurfaceDiff | null;
-  asset: string | null;
-  ips: string[];
-  ports: string[];
-  dnsTarget: string | null;
-  certNames: string[];
-};
-
-function strings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
-}
-
-/**
- * What an attack surface signal's evidence says (CTEM-26-UI), from the keys
- * `diff` writes for each difference: the port the previous pass did not see,
- * the declared asset that should not answer, the name that resolves to
- * nothing, the owned name pointing outside the owned ranges, the host unseen
- * for N days, the host neither declared nor seen before. A signal from
- * another source gives null.
- */
-export function surfaceFacts(evidence: Record<string, unknown> | null | undefined): SurfaceFact | null {
-  if (!evidence || evidence.source !== "attack_surface") return null;
-  const ports = strings(evidence.ports);
-  const newPort = text(evidence.new_port);
-  const domain = text(evidence.owned_domain);
-  const ips = strings(evidence.ips);
-  const lastSeen = text(evidence.last_seen_at);
-  const days = typeof evidence.stale_after_days === "number" ? evidence.stale_after_days : null;
-  let diff: SurfaceDiff | null = null;
-  if (newPort) diff = { key: "new_port", port: newPort, previous: strings(evidence.previous_ports) };
-  else if (evidence.declared_internet_facing === "no") diff = { key: "not_internet_facing", ports };
-  else if (evidence.observed === "no record") diff = { key: "dangling" };
-  else if (domain && ips.length > 0) diff = { key: "outside_ranges", domain, ip: ips[0] };
-  else if (lastSeen && days !== null) diff = { key: "unseen", lastSeen, days };
-  else if (evidence.baseline === "absent") diff = { key: "new_host", ports };
-  return {
-    diff,
-    asset: text(evidence.asset),
-    ips,
-    ports,
-    dnsTarget: text(evidence.dns_target),
-    certNames: strings(evidence.cert_names),
-  };
-}
-
-/** The baseline and observed rows of a surface difference. */
-function surfaceDiffRows(diff: SurfaceDiff, t_i18n: ReturnType<typeof useFormatter>["t_i18n"], day: (iso: string) => string) {
-  const none = t_i18n("None");
-  switch (diff.key) {
-    case "new_port":
-      return [
-        { label: t_i18n("Baseline"), value: t_i18n("Previous pass saw {ports}", { ports: diff.previous.join(", ") || none }) },
-        { label: t_i18n("Observed"), value: t_i18n("Answers on {port}, a new port", { port: diff.port }) },
-      ];
-    case "not_internet_facing":
-      return [
-        { label: t_i18n("Baseline"), value: t_i18n("Declared not internet-facing in the profile") },
-        { label: t_i18n("Observed"), value: t_i18n("Answers from the Internet on {ports}", { ports: diff.ports.join(", ") || none }) },
-      ];
-    case "dangling":
-      return [
-        { label: t_i18n("Baseline"), value: t_i18n("The name is listed") },
-        { label: t_i18n("Observed"), value: t_i18n("No DNS record backs it") },
-      ];
-    case "outside_ranges":
-      return [
-        { label: t_i18n("Baseline"), value: t_i18n("Names of {domain} point inside the owned address ranges", { domain: diff.domain }) },
-        { label: t_i18n("Observed"), value: t_i18n("Points to {ip}, outside them", { ip: diff.ip }) },
-      ];
-    case "unseen":
-      return [
-        { label: t_i18n("Baseline"), value: t_i18n("The host last answered on {date}", { date: day(diff.lastSeen) }) },
-        { label: t_i18n("Observed"), value: t_i18n("{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}", { count: diff.days }) },
-      ];
-    case "new_host":
-      return [
-        { label: t_i18n("Baseline"), value: t_i18n("Not declared and not seen by an earlier pass") },
-        { label: t_i18n("Observed"), value: diff.ports.length > 0 ? t_i18n("Answers on {ports}", { ports: diff.ports.join(", ") }) : t_i18n("Answers") },
-      ];
-  }
-}
-
-/** The rows of an attack surface signal: the difference first, then what the pass saw of the host. */
-function surfaceFactRows(fact: SurfaceFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"], day: (iso: string) => string) {
-  const rows: { label: string; value: string }[] = [];
-  if (fact.asset) rows.push({ label: t_i18n("Asset"), value: fact.asset });
-  if (fact.diff) rows.push(...surfaceDiffRows(fact.diff, t_i18n, day));
-  if (fact.ips.length > 0) rows.push({ label: t_i18n("Address"), value: fact.ips.join(", ") });
-  if (fact.ports.length > 0 && fact.diff?.key !== "not_internet_facing" && fact.diff?.key !== "new_host") {
-    rows.push({ label: t_i18n("Ports that answer"), value: fact.ports.join(", ") });
-  }
-  if (fact.dnsTarget) rows.push({ label: t_i18n("DNS target"), value: fact.dnsTarget });
-  if (fact.certNames.length > 0) rows.push({ label: t_i18n("Certificate names"), value: fact.certNames.join(", ") });
-  return rows;
-}
-
 /** The evidence keys an OpenAEV freshness fact says, left out of the raw evidence list. */
 const FRESHNESS_ROW_KEYS = ["event", "resource_type"] as const;
 
@@ -466,14 +348,12 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
   const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
   const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
-  const surface = surfaceFacts(signal.evidence);
   const staleFacts = freshnessFacts(signal.source.provider, signal.evidence);
   const shownKeys: string[] = [
     ...ruleFacts.map((fact) => fact.key),
     ...(findingFacts.length > 0 ? AIKIDO_ROW_KEYS : []),
     ...(staleFacts.length > 0 ? FRESHNESS_ROW_KEYS : []),
     ...subjectShownKeys(signal.subject.kind, signal.evidence),
-    ...(surface ? SURFACE_ROW_KEYS : []),
   ];
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
@@ -499,7 +379,6 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
     ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
     ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
-    ...(surface ? surfaceFactRows(surface, t_i18n, (iso) => formatDayIntl(intl, iso)) : []),
     ...staleFacts.map(() => freshnessFactRow(t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
@@ -678,7 +557,10 @@ function SignalListBody({ state, onState, onOpen }: {
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : signals.length === 0 ? (
-        <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
+        <div className="flex flex-col items-start gap-2" data-testid="ctem-signal-empty">
+          <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
+          <SignalSourcesLink />
+        </div>
       ) : (
         <ul className="flex max-h-[min(55vh,32rem)] flex-col overflow-y-auto" data-testid="ctem-signal-rows">
           {signals.map((s) => (
@@ -740,6 +622,7 @@ export function LoopTraceDialog() {
     setParams(next, { replace });
   };
   return (
+    <>
     <Dialog open={target !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent className="max-w-4xl" data-testid="ctem-loop-trace">
         <DialogHeader>
@@ -759,5 +642,8 @@ export function LoopTraceDialog() {
         ) : null}
       </DialogContent>
     </Dialog>
+    {/* The signal sources dialog (#1189) travels with the loop trace: every page that opens one reaches the other. */}
+    <SignalSourcesDialog />
+    </>
   );
 }

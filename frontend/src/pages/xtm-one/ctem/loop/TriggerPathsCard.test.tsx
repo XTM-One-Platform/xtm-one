@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
@@ -29,14 +30,14 @@ beforeEach(() => {
 
 describe("TriggerPathsCard", () => {
   it("renders each path name whole as text, not only as a title", async () => {
-    renderWithProviders(<TriggerPathsCard onConnect={() => {}} />);
+    renderWithProviders(<MemoryRouter><TriggerPathsCard onConnect={() => {}} /></MemoryRouter>);
     const names = await screen.findAllByTestId("ctem-trigger-path-name");
     expect(names.map((n) => n.textContent)).toEqual(["New exposure", LONG]);
     expect(names.every((n) => !n.hasAttribute("title"))).toBe(true);
   });
 
   it("puts Not configured and Connect under a path with no source", async () => {
-    renderWithProviders(<TriggerPathsCard onConnect={() => {}} />);
+    renderWithProviders(<MemoryRouter><TriggerPathsCard onConnect={() => {}} /></MemoryRouter>);
     const rows = await screen.findAllByTestId("ctem-trigger-path");
     const leak = rows.find((r) => r.getAttribute("data-path") === "credential_leak");
     expect(leak).toBeTruthy();

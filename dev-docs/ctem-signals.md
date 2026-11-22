@@ -45,6 +45,29 @@ and titled on that version (`upgrade:-/<package>@<version>`). An
 issue recorded, and the last member closed resolves the case on a passing
 validation of kind `rescan` (`ctem_case_loop.close_signal_members`).
 
+## 2bis. Signal sources (the dialog of the command center)
+
+`GET /api/v1/ctem-signals/paths` also names, per path, what fires it
+(`description`), its `sources` and its `status`, plus `count_30d` and
+`last_signal_at` (the reader's visibility, as the signal list). Additive: the
+former fields are unchanged. The table lives in
+`services/ctem_signal_sources.py` (`PATH_SOURCES`); a test fails when a
+listener row of section 2 has no source row.
+
+| Source `kind` | What it is | `bound` when |
+|---|---|---|
+| `listener` | an integration delivery a listener row maps to the path | an integration of the provider is connected and visible to the reader |
+| `pass` | a scheduled pass: attack surface (Shodan, GTI; paths 5, 6, 7), evidence health (OpenCRQ; paths 9, 12) | its switch is on in the organization profile and its integration is connected |
+| `pir_playbook` | the OpenCTI PIR playbook (CTEM-05), delivered through the OpenCTI listener (paths 1, 2) | OpenCTI is connected and an enabled assignment holds a provisioned playbook |
+
+`status`: `connected` (one source bound), `not_connected` (a source exists,
+none bound), `agents_api` (no automatic source: agents and the API only, never
+read as connected). The dialog (`SignalSourcesDialog.tsx`, `?signal-sources=1`)
+opens from the icon button next to the signals counter of the lifecycle card,
+the header of "Signals by trigger path" and the empty loop trace. Connect sends
+a listener to `/integrations/new?provider=`, a pass and the playbook to their
+field in Settings > Organization.
+
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 
 One row per `(organization_id, recorded_by, dedupe_key)`.
