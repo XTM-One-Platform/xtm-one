@@ -428,6 +428,24 @@ needs = [".xtm-one/lab", ".xtm-one/stores.py"]
 timeout = 1800
 lifetime = 7200
 
+# The Slack decision card of every human gate (#842, S10) drawn from this checkout: .xtm-one/lab/slack_cards.py
+# imports backend/app/services/slack_decision_cards.py and renders render_slack_decision and text_modal on fixed
+# decisions (no Slack workspace, no database), drawn with Slack's message, modal and ephemeral layout. Pages:
+# /card?state=<state>&lang=en|es|fr|ja&theme=light|dark&width=desktop|narrow, /all (every state), /card.json (the
+# exact Block Kit payload, for Slack's Block Kit Builder). States: open per source (hitl, tool-approval, flow,
+# work-item) with and without recommendation and deadline, open-tool-approval-many, decided-option, decided-text,
+# decided-tools, expired, cancelled, modal, refusal.
+[service.lab-slack-cards]
+description = "The Slack Block Kit decision card of this checkout drawn for review (every state, en/es/fr/ja, light and dark, desktop and narrow); no sign-in"
+argv = ["python", ".xtm-one/lab/slack_cards.py"]
+port = 4300
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+needs = [".xtm-one/lab", "backend"]
+timeout = 280
+lifetime = 7200
+
 # OpenAEV built from the PR head (xtm-one #11799, item 5): its own backend (Maven reactor, Flyway migrations) on
 # the lab's PostgreSQL and S3, OpenSearch and RabbitMQ from the OpenCTI lab's store services, the front from Vite
 # over it, seeded through the API (assets, an asset group, a scenario, a simulation), the platform administrator
