@@ -20514,5 +20514,12 @@
   "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "Envíe una señal de prueba para ver avanzar el bucle: se registra por la entrada real y se abre en su traza del bucle.",
   "The test signal could not be recorded.": "No se pudo registrar la señal de prueba.",
   "Open the command center": "Abrir el centro de mando",
-  "Send a test signal": "Enviar una señal de prueba"
+  "Send a test signal": "Enviar una señal de prueba",
+  "Context: {value}": "Contexto: {value}",
+  "Scope: {value}": "Alcance: {value}",
+  "Collaboration instruction set": "Instrucción de colaboración definida",
+  "No collaboration instruction": "Sin instrucción de colaboración",
+  "Search capabilities, members, integrations...": "Buscar funcionalidades, miembros, integraciones...",
+  "No capability slot": "Ningún espacio de funcionalidad",
+  "No slot matches the search and filters": "Ningún espacio coincide con la búsqueda y los filtros"
 }

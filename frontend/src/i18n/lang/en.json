@@ -20514,5 +20514,12 @@
   "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.",
   "The test signal could not be recorded.": "The test signal could not be recorded.",
   "Open the command center": "Open the command center",
-  "Send a test signal": "Send a test signal"
+  "Send a test signal": "Send a test signal",
+  "Context: {value}": "Context: {value}",
+  "Scope: {value}": "Scope: {value}",
+  "Collaboration instruction set": "Collaboration instruction set",
+  "No collaboration instruction": "No collaboration instruction",
+  "Search capabilities, members, integrations...": "Search capabilities, members, integrations...",
+  "No capability slot": "No capability slot",
+  "No slot matches the search and filters": "No slot matches the search and filters"
 }
