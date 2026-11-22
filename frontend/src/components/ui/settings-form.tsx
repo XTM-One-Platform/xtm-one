@@ -75,9 +75,11 @@ export function SettingsCard({ title, description, icon: CardIcon, action, meta,
   const { t_i18n } = useFormatter();
   const bodyId = React.useId();
   const folded = Boolean(onCollapsedChange) && collapsed;
+  // An action-only card (no body) draws no CardContent, so its padding stays balanced.
+  const hasBody = React.Children.toArray(children).length > 0;
   return (
     <Card className={cn("min-w-0", className)} data-collapsed={onCollapsedChange ? String(folded) : undefined} {...rest}>
-      <CardHeader className={cn("flex-row items-start justify-between gap-4 space-y-0 p-4", folded ? "pb-4" : "pb-3")}>
+      <CardHeader className={cn("flex-row items-start justify-between gap-4 space-y-0 p-4", folded || !hasBody ? "pb-4" : "pb-3")}>
         <div className="min-w-0 space-y-1">
           <CardTitle className="flex items-center gap-2 content-base">
             {onCollapsedChange && (
@@ -107,7 +109,7 @@ export function SettingsCard({ title, description, icon: CardIcon, action, meta,
         </div>
         {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
       </CardHeader>
-      {!folded && (
+      {!folded && hasBody && (
         <CardContent id={bodyId} className="px-4 pb-4 pt-0 content-base">
           {children}
         </CardContent>
