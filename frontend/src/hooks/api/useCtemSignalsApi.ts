@@ -37,6 +37,8 @@ export interface CtemDecisionRecord {
   scope?: {
     criticality?: string | null;
     threshold?: string;
+    /** What gave the criticality: an asset, a crown jewel, an owned domain (CTEM-29), a risk scenario. */
+    sources?: { from: string; name: string; criticality?: string }[];
     risk_scenarios?: { id: string; name: string }[];
   } | null;
   policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
@@ -155,30 +157,6 @@ export function useProposeSignalScope() {
     mutationFn: (id) => api.post(`/ctem-signals/${encodeURIComponent(id)}/propose-scope`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
     meta: { suppressGlobalErrorToast: true },
-  });
-}
-
-/** The body of `POST /ctem-signals` (`SignalCreate` in backend/app/api/v1/ctem_signals.py). */
-export interface CtemSignalCreate {
-  trigger_path: string;
-  lens?: CtemLens;
-  source: { provider: string; external_id?: string };
-  subject: { kind: string; ref: string; label?: string };
-  observed_at?: string;
-  evidence?: Record<string, unknown>;
-  dedupe_key?: string;
-}
-
-/**
- * Record one signal through the real intake (`POST /ctem-signals`): the
- * reconcile and scope gate run on it and the stream frame shows it moving.
- * Used by "Send a test signal" at the end of the guided setup (#1087).
- */
-export function useRecordCtemSignal() {
-  const qc = useQueryClient();
-  return useMutation<{ created: boolean; signal: CtemSignal }, Error, CtemSignalCreate>({
-    mutationFn: (body) => api.post("/ctem-signals", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
   });
 }
 
