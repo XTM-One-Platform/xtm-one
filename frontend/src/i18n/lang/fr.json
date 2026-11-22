@@ -5567,6 +5567,7 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "L'URL du webhook sera générée automatiquement après la création à partir de l'ID de l'assignation.",
   "The whole request body is passed to the agent as the trigger payload.": "L'intégralité du corps de la requête est transmise à l'agent comme charge utile du déclencheur.",
   "Theme": "Thème",
+  "Pastel colours": "Couleurs pastel",
   "Theme Color": "Couleur du thème",
   "Theme configuration": "Configuration du thème",
   "There are no objects on the platform yet.": "Il n'y a pas encore d'objets sur la plateforme.",
@@ -20854,5 +20855,6 @@
   "Proven by an OpenAEV simulation, {date}": "Prouvé par une simulation OpenAEV, {date}",
   "Primary assets reached": "Actifs primaires atteints",
   "None: no business asset sits behind the assets reached.": "Aucun : aucun actif métier ne se trouve derrière les actifs atteints.",
-  "Recorded the attack path": "Chemin d'attaque enregistré"
+  "Recorded the attack path": "Chemin d'attaque enregistré",
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tons adoucis pour les couleurs de sévérité, de statut et de marquage. Désactivé : couleurs standard, identiques dans tous les produits."
 }
