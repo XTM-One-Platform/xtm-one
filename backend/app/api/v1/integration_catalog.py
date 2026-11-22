@@ -5808,6 +5808,80 @@ PROVIDER_CATALOG = {
             "notes": "For Metabase, the API key format is: enter your Metabase base URL in the extra config field, and the API key in the API Key field. The tools will use both to connect to your instance. For full functionality, ensure the API key has write permissions.",
         },
     },
+    "odoo": {
+        "name": "Odoo",
+        "description": "ERP & Accounting (multi-company) - Chart of accounts, Journals, Journal entries and items, Trial balance, General ledger, Aged receivable and payable, FEC-style exports (CSV / XLSX), Invoices, Bills and credit notes (with attachments), Payments and reconciliation, Bank statements, Taxes, Fiscal positions, Analytic accounts, Fixed assets, Currencies, Lock dates, Products, and any model through generic search_read (JSON-2 API, JSON-RPC fallback)",
+        "logo": "/logos/odoo.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {
+            "base_url": "Odoo URL (e.g. https://example.odoo.com)",
+            "database": "Database name",
+            "login": "Login (the user's email)",
+            "company_ids": "Default company ids, comma-separated (optional)",
+        },
+        # Polled from the records' create / write dates (providers/odoo/events.py,
+        # every 60 s): the external API has no outbound webhook.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": {
+                    "company": "Only records of these companies (ids or names)",
+                    "journal": "Only records of these journals (ids, codes or names)",
+                    "state": "Only records in these Odoo states (draft, posted, cancel; payments: in_process, paid...)",
+                },
+            }
+            for event, label, description in (
+                (
+                    "journal_entry_posted",
+                    "Journal entry posted",
+                    "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "vendor_bill_created",
+                    "Vendor bill created",
+                    "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "payment_registered",
+                    "Payment registered",
+                    "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+            )
+        ],
+        "setup_guide": {
+            "title": "Odoo API Key Setup",
+            "url": "https://www.odoo.com/documentation/latest/developer/reference/external_api.html",
+            "steps": [
+                "Sign in to Odoo as the user the agents act as (a dedicated user is best: its access rights and companies bound what the tools reach).",
+                "Open the user menu > My Profile (Preferences) > Account Security and create a New API Key named '{APP_NAME}'.",
+                "Paste the key in the API Key field below.",
+                "Fill in the Odoo URL, the database name (Settings > Activate developer mode shows it; on odoo.com it is usually the subdomain) and the login.",
+                "Optionally list default company ids; every tool also takes company_ids, and list_odoo_companies names them.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Accounting / Invoicing: Billing or Accountant",
+                    "description": "Chart of accounts, journals, entries and items, reports, invoices, bills, payments, bank statements, taxes, analytics, assets, lock dates",
+                },
+                {
+                    "scope": "Allowed companies",
+                    "description": "The companies the user may switch to are the companies the tools reach (allowed_company_ids)",
+                },
+                {
+                    "scope": "Contacts",
+                    "description": "Partners and partner bank accounts",
+                },
+            ],
+            "notes": "Odoo 19+ answers the JSON-2 API (bearer API key); older versions are reached through JSON-RPC with the same key. Read or write follows the Odoo operation: every write tool (create, update, post, cancel, reset, register a payment, reconcile, lock dates, generic create / write / unlink / method) asks a person on every call. Bank account numbers answer masked to their last 4 characters. Bind read-only to withhold every write tool. See https://www.odoo.com/documentation/latest/developer/reference/external_api.html.",
+        },
+    },
     "databricks": {
         "name": "Databricks",
         "description": "Lakehouse: SQL Warehouses, Unity Catalog, Jobs & Workflows, Model Serving, Vector Search, and files - volume, DBFS and workspace files (notebooks exported) read, stored as files of the conversation, and written from any file of the conversation",
@@ -9390,67 +9464,6 @@ PROVIDER_CATALOG = {
                 {"scope": "Notetaker Read", "description": "AI Notetaker interview transcripts (Ashby add-on)"},
             ],
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
-        },
-    },
-    "quotapath": {
-        "name": "QuotaPath",
-        "description": (
-            "Sales commission management - users, teams and managers, compensation plans and paths, "
-            "quotas, deals and their crediting, payouts (earned, paid, still owed), commission totals "
-            "by rep, team, plan and period, CSV payout and deal reports. Commission amounts are people "
-            "data; every write asks a person"
-        ),
-        "logo": "/logos/quotapath.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["sales_compensation"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
-        "available_events": [
-            {
-                "event": "payout_updated",
-                "label": "Payout created or updated",
-                "description": (
-                    "Triggers when a QuotaPath payout is created or changes (a deal credited, a rate or "
-                    "quota changed). Uses polling (every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_resolved",
-                "label": "Payout resolved",
-                "description": (
-                    "Triggers when a QuotaPath payout is resolved (the period paid out). Uses polling "
-                    "(every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_unresolved",
-                "label": "Payout newly owed",
-                "description": (
-                    "Triggers when a payout appears among the unresolved ones (commission owed, the "
-                    "accrual). Uses polling (every 15 min); what is owed when the trigger is enabled "
-                    "does not run."
-                ),
-                "mechanism": "polling",
-            },
-        ],
-        "setup_guide": {
-            "title": "QuotaPath API Key Setup",
-            "url": "https://api.quotapath.com/docs/",
-            "steps": [
-                "Sign in to QuotaPath as a workspace admin.",
-                "Open Settings > Integrations and generate an API key.",
-                "Paste the key in the field below. Test Connection reads the workspace users.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Workspace API key",
-                    "description": "Reads users, teams, plans, quotas, deals and payouts; writes deals, quotas and imports (each write asks a person)",
-                },
-            ],
-            "notes": "QuotaPath sends the key as 'Authorization: Token <key>' to https://api.quotapath.com/v1. Its public API has no disputes, adjustments, draws, payout-period approval or lock, CRM sync status, statement PDFs or webhooks: those stay in the QuotaPath application, and events are polled.",
         },
     },
     "pennylane": {

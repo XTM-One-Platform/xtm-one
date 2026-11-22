@@ -58,7 +58,7 @@ from app.integrations.providers import docusign
 from app.integrations.providers.google import GMAIL_API
 from app.integrations.providers.microsoft import GRAPH_API
 from app.integrations.providers.microsoft._message_type import message_type
-from app.integrations.providers.quotapath import events as quotapath_events
+from app.integrations.providers.odoo import events as odoo_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
@@ -136,8 +136,8 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
-    # QuotaPath payouts (providers/quotapath/events.py): no webhook in its API.
-    **dict.fromkeys(sorted(quotapath_events.EVENTS), quotapath_events.POLL_INTERVAL_SECONDS),
+    # Odoo records (providers/odoo/events.py): no webhook in the external API.
+    **dict.fromkeys(sorted(odoo_events.EVENTS), odoo_events.POLL_INTERVAL_SECONDS),
     # Pennylane changelogs (pennylane_events): no webhook to a company token.
     **dict.fromkeys(sorted(pennylane_events.EVENTS), pennylane_events.POLL_INTERVAL_SECONDS),
     # DealHub quote status changes (dealhub_events): the fallback of its webhooks.
@@ -876,8 +876,8 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
-    if provider == quotapath_events.PROVIDER and event_type in quotapath_events.EVENTS:
-        return await _poll_quotapath_payouts(access_token, event_type, wf, redis)
+    if provider == odoo_events.PROVIDER and event_type in odoo_events.EVENTS:
+        return await _poll_odoo_records(access_token, event_type, wf, redis)
 
     if provider == pennylane_events.PROVIDER and event_type in pennylane_events.EVENTS:
         return await _poll_pennylane_changes(access_token, event_type, wf, redis)
@@ -910,12 +910,19 @@ async def _poll_credential(
     """
     if (
         provider
-        in (opencrq_job_events.PROVIDER, jira_events.PROVIDER, pennylane_events.PROVIDER, netsuite_events.PROVIDER)
+        in (
+            opencrq_job_events.PROVIDER,
+            jira_events.PROVIDER,
+            odoo_events.PROVIDER,
+            pennylane_events.PROVIDER,
+            netsuite_events.PROVIDER,
+        )
         and db is not None
     ):
         # The compound the tools run on: OpenCRQ's ``base_url||token`` (an API
         # key, or a token minted for the acting user on a platform-managed
         # integration), Jira's ``cloud_id||token`` refreshed when about to expire,
+        # Odoo's ``base_url||database||login||api_key[||company_ids]``,
         # Pennylane's token, prefixed ``company_id||`` for a firm token,
         # NetSuite's account, mode and secret (``netsuite.compound_credential``).
         from app.services.integration_tools import _get_token
@@ -995,37 +1002,36 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ]
 
 
-async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
-    """Poll the QuotaPath payouts of *event_type* since the last check (``quotapath.events``).
+async def _poll_odoo_records(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
+    """Poll the Odoo records of *event_type* stamped since the last check (``odoo.events``).
 
-    The cursor is a Unix time in seconds: the updated-since lists read from it
-    (inclusive, the seen set skipping a payout already run); the unresolved
-    list has no time filter and the seen set alone tells a new payout. The
-    first poll starts from now.
+    The domain reads at or after the cursor (inclusive): the records at the
+    cursor come back and the seen set skips them. The trigger filter narrows
+    the search (company and journal ids, states). The first poll starts from now.
     """
     cursor_key = f"event_cursor:{wf.id}"
     since = await redis.get(cursor_key)
-    now = int(datetime.now(UTC).timestamp())
     if not since:
-        await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
-        if event_type == "payout_unresolved":
-            # Mark what is owed today seen, so enabling the trigger replays nothing.
-            rows, err = await quotapath_events.list_payouts(api_key, event_type, None)
-            for row in rows if not err else []:
-                msg_id = quotapath_events.payout_event(row, event_type)["message_id"]
-                if msg_id:
-                    await claim_seen(redis, wf.id, msg_id)
+        await redis.set(cursor_key, odoo_events.now_cursor(), ex=_CURSOR_TTL_SECONDS)
         return []
-    try:
-        since_ts = int(since.decode() if isinstance(since, bytes) else since)
-    except ValueError:
-        since_ts = now
-    rows, err = await quotapath_events.list_payouts(api_key, event_type, since_ts)
+    since = since.decode() if isinstance(since, bytes) else str(since)
+    filter_config = trigger_filter(getattr(wf, "trigger_config", None))
+    records, cred, err = await odoo_events.list_changed_records(
+        credential, event_type, since, filter_config, limit=odoo_events.PAGE + 1
+    )
     if err:
-        logger.warning("QuotaPath payout poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        logger.warning("Odoo poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
         return []
-    await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
-    return [quotapath_events.payout_event(row, event_type) for row in rows]
+
+    def stamped(record: dict[str, Any]) -> str:
+        return odoo_events.stamp_of(record, event_type)
+
+    page = _oldest_page(records, stamped, odoo_events.PAGE)
+    _log_page_cut(wf, "Odoo", page)
+    await _note_backlog(redis, wf, "Odoo", page.more)
+    if page.cursor is not None:
+        await redis.set(cursor_key, stamped(page.cursor), ex=_CURSOR_TTL_SECONDS)
+    return [odoo_events.record_event(record, event_type, credential=cred) for record in page.items]
 
 
 async def _poll_pennylane_changes(
