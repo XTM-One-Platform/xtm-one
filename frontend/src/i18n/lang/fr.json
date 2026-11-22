@@ -20459,5 +20459,16 @@
   "Kept as a fingerprint only, never the value": "Conservé uniquement sous forme d'empreinte, jamais la valeur",
   "Named in": "Cité dans",
   "Organization criticality": "Criticité de l'organisation",
-  "From {source}": "Depuis {source}"
+  "From {source}": "Depuis {source}",
+  "Analyst review": "Revue de l'analyste",
+  "Analyst review skipped by policy": "Revue de l'analyste ignorée par la politique",
+  "The fleet requests the coverage without a person": "La flotte demande la couverture sans intervention humaine",
+  "the analyst's mark in OpenCTI": "la marque de l'analyste dans OpenCTI",
+  "Unnamed Grouping": "Regroupement sans nom",
+  "The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.": "La revue attend un analyste : la décision est dans sa liste En attente de vous, ou il pose le libellé de revue sur le regroupement dans OpenCTI.",
+  "A Grouping exists in OpenCTI: restricted to OpenCTI readers": "Un regroupement existe dans OpenCTI : réservé aux lecteurs d'OpenCTI",
+  "Drafted the threat package": "A rédigé le paquet de menace",
+  "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "Pas encore de paquet de menace : la flotte en rédige un dans OpenCTI une fois le cas trié.",
+  "Threat package drafted, coverage not requested yet": "Paquet de menace rédigé, couverture pas encore demandée",
+  "Coverage requested in OpenCTI": "Couverture demandée dans OpenCTI"
 }
