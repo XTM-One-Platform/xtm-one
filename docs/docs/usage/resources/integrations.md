@@ -439,6 +439,7 @@ define(['N/search', 'N/file', 'N/render', 'N/record', 'N/encode'], (search, file
 });
 ```
 
+- **Events.** An assignment can start on NetSuite changes, polled every 5 minutes with SuiteQL (no script to deploy): *Vendor bill created or changed*, *Invoice created or changed* (invoices and credit memos), *Payment created or changed* (customer and vendor payments), *Journal entry created or changed* (journal entries and intercompany journals) and *Accounting period changed* (closed, reopened, locked or unlocked). Filters: `subsidiary_id`, `transaction_types`, `status`, `min_amount` and `change_kinds` (`created`, `updated`) on the transaction events, `states` on the period event. The first poll starts from now. The role needs SuiteAnalytics Workbook (SuiteQL) and view access to the transactions and periods it watches.
 - **Limits.** NetSuite's concurrency limit (HTTP 429) is retried with backoff; a role missing a permission, or a transaction in a closed or locked period, is answered as such.
 
 ### HubSpot: activity, forms, sequences and the inbound report

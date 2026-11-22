@@ -44,6 +44,43 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
 }
+#: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
+_NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
+    "subsidiary_id": "Only records of these subsidiaries (internal ids)",
+    "transaction_types": "Only these types among the event's (e.g. credit_memo, vendor_payment)",
+    "status": "Only records in one of these statuses (names or codes)",
+    "min_amount": "Only records whose absolute amount is at least this, in the transaction currency",
+    "change_kinds": "Only created or only updated records",
+}
+
+#: The NetSuite transaction change events: event, label, description.
+_NETSUITE_TRANSACTION_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "vendor_bill_changed",
+        "Vendor bill created or changed",
+        "Triggers when a vendor bill is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "invoice_changed",
+        "Invoice created or changed",
+        "Triggers when an invoice or a credit memo is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "payment_changed",
+        "Payment created or changed",
+        "Triggers when a customer or vendor payment is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "journal_entry_changed",
+        "Journal entry created or changed",
+        "Triggers when a journal entry or an intercompany journal is created or changed. Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+)
+
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
@@ -5140,6 +5177,32 @@ PROVIDER_CATALOG = {
                 {"value": "tba", "label": "Token-Based Authentication (OAuth 1.0a, HMAC-SHA256)"},
             ],
         },
+        # Polled with SuiteQL (services/netsuite_events.py, every 5 min): NetSuite
+        # posts no change notification without a script of the customer's.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _NETSUITE_TRANSACTION_FILTER_KEYS,
+            }
+            for event, label, description in _NETSUITE_TRANSACTION_EVENTS
+        ]
+        + [
+            {
+                "event": "accounting_period_changed",
+                "label": "Accounting period changed",
+                "description": (
+                    "Triggers when an accounting period is closed, reopened, locked or unlocked. "
+                    "Uses polling (every 5 minutes); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+                "filter_keys": {
+                    "states": "Only periods now in one of these states: open, closed, ap_locked, ar_locked, all_locked",
+                },
+            }
+        ],
         "setup_guide": {
             "title": "NetSuite Setup",
             "url": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_162686838198.html",
