@@ -28,4 +28,4 @@ Your playbook for one registered OpenCTI platform (the registration the trigger 
 
 ## Report
 
-One line per check: name, verdict, the values read, the tool and the time. Then the recommendations you attached to open findings, and every check not run with its reason.
+Store every check with `record_module_check_report` before you end: its verdict, the evidence (tool, arguments, objects, values, time), a recommendation on warn and fail, a reason on not run. A warn or fail opens the check's agentic finding and a pass resolves it. Then write one line per check: name, verdict, the values read, the tool and the time. Then the recommendations you attached to open findings, and every check not run with its reason.

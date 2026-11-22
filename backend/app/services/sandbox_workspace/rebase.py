@@ -31,6 +31,9 @@ sides is merged line by line (:func:`merge_text`), overlapping hunks written
 between ``<<<<<<<`` / ``=======`` / ``>>>>>>>`` markers, as git writes them,
 unless the three versions are JSON objects whose keys merge cleanly
 (:mod:`app.services.sandbox_workspace.jsonmerge`, the i18n catalogs);
+a clean line merge of plain text that writes a block more often than
+either side holds it (:func:`duplicated_block`, #1171) keeps the
+workspace side and is reported as a conflict;
 a binary changed on both sides, and a delete against a change, keep the
 workspace side and are reported as conflicts. The record then moves to the
 new ref (:func:`rebased_record`), so ``sandbox_checkout_status`` and
@@ -459,6 +462,45 @@ class OnConflict(StrEnum):
     WORKSPACE = "workspace"
 
 
+#: Consecutive substantive lines a run must hold before a copy of it written by the merge is reported (#1171).
+DUPLICATE_RUN_LINES = 3
+
+
+def _substantive(line: str) -> bool:
+    """A line that says something: not blank, and holding a letter or a digit (a lone brace or ``)`` is not one)."""
+    return any(char.isalnum() for char in line)
+
+
+def _runs(lines: list[str]) -> dict[tuple[str, ...], list[int]]:
+    """Each run of :data:`DUPLICATE_RUN_LINES` consecutive substantive lines, with the 0-based index of each start."""
+    size = DUPLICATE_RUN_LINES
+    found: dict[tuple[str, ...], list[int]] = {}
+    for start in range(len(lines) - size + 1):
+        window = tuple(line.rstrip() for line in lines[start : start + size])
+        if all(_substantive(line) for line in window):
+            found.setdefault(window, []).append(start)
+    return found
+
+
+def duplicated_block(ours: str, theirs: str, merged: str) -> int:
+    """The 1-based line where *merged* writes a block more often than either side holds it, 0 when none (#1171).
+
+    A line merge joins hunks that do not overlap: when the workspace and the ref each add the same block
+    at different places (a branch carrying a change the ref also squashed), both copies are written and
+    the merge reads clean. A run of :data:`DUPLICATE_RUN_LINES` substantive lines found more times in
+    *merged* than in *ours* and in *theirs* is that copy; the line answered is the start of the first
+    extra one. A run neither side holds is not a copy: it is where two merged hunks meet.
+    """
+    held = [_runs(text.splitlines()) for text in (ours, theirs)]
+    first = 0
+    for window, starts in _runs(merged.splitlines()).items():
+        most = max(len(side.get(window, ())) for side in held)
+        if most and len(starts) > most:
+            line = starts[most] + 1
+            first = line if not first else min(first, line)
+    return first
+
+
 def _keys_note(kind: str, texts: list[str]) -> str:
     if kind != structured.JSON:
         return ""
@@ -514,6 +556,15 @@ def merge_file(
     merged = merge_text(*texts)
     if not merged.conflicts:
         kind, defect = judged(merged.text)
+        # A structured file is judged by its parser (a key written twice) and merged key by key below.
+        twice = 0 if kind or defect else duplicated_block(ours_text, theirs_text, merged.text)
+        if twice:
+            return FileMerge(
+                ours,
+                1,
+                f"the line merge has no overlap but writes a block twice (the copy starts at line {twice} of the "
+                "merge): the workspace version is kept",
+            )
         if not defect:
             return FileMerge(merged.text.encode("utf-8"), validated=kind)
     by_key = merge_json_objects(*texts)

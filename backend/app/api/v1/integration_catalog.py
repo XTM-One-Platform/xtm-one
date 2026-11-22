@@ -2222,7 +2222,9 @@ PROVIDER_CATALOG = {
         "logo": "/logos/jira.svg",
         "category": "integration",
         "integration_category": "development",
-        "integration_types": ["repository"],
+        # Issues and Service Management: Jira fills the Ticketing capability
+        # slot of a fleet (services.fleet_capability_slots).
+        "integration_types": ["repository", "ticketing", "itsm"],
         "auth_type": "oauth",
         # What its sign-in learns about the account: a person's own credential
         # never reads the integration's.
@@ -9442,6 +9444,9 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "threat_intelligence",
         "integration_types": ["threat_intel"],
+        # An extraction model, not a data source: never offered in a fleet's
+        # capability slots (services.fleet_capability_slots.providers_for).
+        "capability_slots": False,
         "auth_type": "none",
         "fields": [],
         "extra_fields": {

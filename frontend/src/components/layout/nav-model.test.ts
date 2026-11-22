@@ -57,20 +57,26 @@ test("the top block reads Home, Chat, the Orchestration group, then Work (#9301)
 /* The callers set `ctemCases` from the mode (Sidebar.tsx, use-nav-group.ts), as `intents`. */
 const XTM_ONE: NavFlags = { ...FLAGS, xtmOne: true, ctemCases: true };
 
-test("Cases: a top-level row between Chat and Orchestration in XTM One mode only, open with AI off (#1135)", () => {
+test("CTEM: a top-level group between Chat and Orchestration in XTM One mode only, holding Cases, open with AI off (#1135)", () => {
   const xtmOne = XTM_ONE;
   const top = (flags: NavFlags, isAdmin = true) =>
     resolveNav(flags, isAdmin)[0].entries.map((entry) => (entry.kind === "leaf" ? entry.to : entry.id));
-  assert.deepEqual(top(xtmOne), ["/", "/chat", "/ctem/cases", "agents", "work"], "XTM One mode, administrator");
-  assert.deepEqual(top(xtmOne, false), ["/", "/chat", "/ctem/cases", "agents", "work"], "XTM One mode, every user");
+  assert.deepEqual(top(xtmOne), ["/", "/chat", "ctem", "agents", "work"], "XTM One mode, administrator");
+  assert.deepEqual(top(xtmOne, false), ["/", "/chat", "ctem", "agents", "work"], "XTM One mode, every user");
   assert.deepEqual(top(FLAGS), ["/", "/chat", "agents", "work"], "Copilot mode: absent, not locked");
-  const cases = (flags: NavFlags) => resolveNav(flags, true)[0].entries.find((entry) => entry.kind === "leaf" && entry.to === "/ctem/cases");
+  const ctem = group("ctem", true, xtmOne);
+  assert.equal(ctem.label, "CTEM");
+  assert.equal(ctem.to, undefined, "no hub page: the heading folds the group");
+  assert.deepEqual(ctem.children.map((child) => child.to), ["/ctem/cases"]);
   for (const flags of [{ ...xtmOne, aiEnabled: false }, { ...xtmOne, aiLicensed: false }, { ...xtmOne, chat: false }]) {
-    const entry = cases(flags);
-    assert.ok(entry && !entry.locked, "listed and open: a read surface, no AI or licence lock");
+    const found = group("ctem", true, flags);
+    assert.ok(!found.locked, "the group carries no lock");
+    const cases = found.children.find((child) => child.to === "/ctem/cases");
+    assert.ok(cases && !cases.locked, "listed and open: a read surface, no AI or licence lock");
   }
-  assert.equal(cases(xtmOne)?.label, "Cases");
-  assert.notEqual(cases(xtmOne)?.icon, "briefcase", "briefcase is the Work group's glyph");
+  assert.equal(ctem.children[0].label, "Cases");
+  const glyphs = resolveNav(xtmOne, true)[0].entries.filter((entry) => entry.kind === "group" && entry.id !== "ctem").map((entry) => entry.icon);
+  assert.ok(!glyphs.includes(ctem.icon), "the CTEM glyph is not another group's (Orchestration, Work)");
 });
 
 test("a case page lights Cases, the other CTEM pages still light Home (#1135)", () => {
@@ -83,11 +89,12 @@ test("a case page lights Cases, the other CTEM pages still light Home (#1135)", 
   }
 });
 
-test("the palette lists Cases in XTM One mode only, found by CTEM and exposure cases (#1135)", () => {
+test("the palette lists CTEM > Cases in XTM One mode only, found by CTEM and exposure cases (#1135)", () => {
   const destination = (flags: NavFlags) => navDestinations(resolveNav(flags, false)).find((dest) => dest.to === "/ctem/cases");
   const found = destination(XTM_ONE);
   assert.ok(found, "listed in XTM One mode");
   assert.equal(found.label, "Cases");
+  assert.equal(found.parent, "CTEM", "the palette's secondary line names the group");
   assert.deepEqual(found.keywords, ["CTEM", "Exposure cases"]);
   assert.equal(destination(FLAGS), undefined, "never in Copilot mode");
 });

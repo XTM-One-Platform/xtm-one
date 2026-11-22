@@ -84,9 +84,18 @@ def slots_for_role(role_label: str | None) -> tuple[str, ...]:
 
 
 def providers_for(capability: str, catalog: Mapping[str, Any]) -> frozenset[str]:
-    """The catalog providers whose ``integration_types`` fill *capability*."""
+    """The catalog providers whose ``integration_types`` fill *capability*.
+
+    An entry flagged ``capability_slots: False`` is never a candidate: a tool
+    such as an extraction model keeps its ``integration_types`` for the
+    catalog browser without being offered as a data source of a slot.
+    """
     types = set(CAPABILITIES[capability]["integration_types"])
-    return frozenset(key for key, entry in catalog.items() if types & set(entry.get("integration_types") or ()))
+    return frozenset(
+        key
+        for key, entry in catalog.items()
+        if entry.get("capability_slots", True) and types & set(entry.get("integration_types") or ())
+    )
 
 
 @dataclass

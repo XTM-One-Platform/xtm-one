@@ -304,7 +304,8 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
                 f"Run every check of your {label} health playbook on the registration the trigger names "
                 "(`target_id`, a platform registration), in order, through your read tools only: record each "
                 "check's verdict with the evidence you read, report a check whose tool you do not hold as not run "
-                "with its reason, and attach a recommendation to each open finding the evidence explains. Never "
+                "with its reason, and attach a recommendation to each open finding the evidence explains. Store "
+                "every verdict in one record_module_check_report call before you end. Never "
                 f"write to the module. {_REPORT}"
             ),
             timeout_seconds=1800,
