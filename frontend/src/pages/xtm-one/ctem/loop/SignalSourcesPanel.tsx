@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The signal sources dialog (#1189, dev-docs/ctem-signals.md section 2bis):
+ * The signal sources (#1189, dev-docs/ctem-signals.md section 2bis):
  * every trigger path the loop knows, read from `GET /ctem-signals/paths` and
  * never hard-coded, grouped by lens. Each path says what fires it, whether a
  * source is connected (Connected, Not connected, or Agents and API only: a path
@@ -9,13 +9,13 @@
  * and the event that fires each, its signals of the last 30 days, and one
  * action: Connect the first unbound source, or Open signals in the loop trace.
  *
- * Opened by `?signal-sources=1` on a page that mounts it, from the icon button
- * next to the signals counter, the empty loop trace and the trigger paths card.
+ * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
+ * from the page's tabs and summary strip, an empty signal list and the trigger
+ * paths card.
  */
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { Tip } from "@/components/ui/tooltip";
 import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
@@ -26,17 +26,15 @@ import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { signalsParam } from "./loop-stages";
+import { SIGNAL_SOURCES_PATH, signalsHref } from "./signals-route";
 import {
   connectHref,
   connectTarget,
-  connectedCount,
   LENS_ICON,
   PATH_ICON,
   PATH_STATUS_LABEL,
   PATH_STATUS_TONE,
   pathStatus,
-  SIGNAL_SOURCES_PARAM,
   SOURCE_KIND_LABEL,
 } from "./signal-sources";
 
@@ -51,26 +49,23 @@ const LENS_HELP = {
   world: "What happens in the threat landscape that may concern you",
 } as const;
 
-/** The icon button that opens the dialog, next to the signals counter and in card headers. */
+/**
+ * The icon button that opens the Sources tab of the Signals page (#1263), in
+ * the Discovery stage's trigger paths card header. The command center's key row
+ * has none: its signals counter opens the page, Sources is a tab of it (Sam, 22 Nov 2026).
+ */
 export function SignalSourcesButton({ className }: { className?: string }) {
   const { t_i18n } = useFormatter();
-  const [params, setParams] = useSearchParams();
-  const open = () => {
-    const next = new URLSearchParams(params);
-    next.set(SIGNAL_SOURCES_PARAM, "1");
-    setParams(next);
-  };
   return (
     <Tip content={t_i18n("Signal sources")}>
-      <button
-        type="button"
-        onClick={open}
+      <RouterLink
+        to={SIGNAL_SOURCES_PATH}
         aria-label={t_i18n("Signal sources")}
         data-testid="ctem-signal-sources-open"
         className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-default-secondary hover:bg-elevation-hover hover:text-default-primary", BUTTON_ROLE_FOCUS_RING, className)}
       >
         <Icon name="satellite-dish" size={16} aria-hidden />
-      </button>
+      </RouterLink>
     </Tip>
   );
 }
@@ -158,94 +153,55 @@ function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals
   );
 }
 
-/** The loop trace's query parameter (`LOOP_PARAM` of LoopTraceDialog, which imports this module). */
-const LOOP_PARAM = "loop";
-
-/** Mount once on a page that holds the signals counter or the trigger paths card. */
-export function SignalSourcesDialog() {
+/**
+ * The Sources tab of the Signals page (#1263): every trigger path by lens,
+ * its status, sources, signals in 30 days and Connect. A path's "Open signals"
+ * opens the Signals tab filtered on it.
+ */
+export function SignalSourcesPanel() {
   const { t_i18n } = useFormatter();
-  const { count } = useNumberFormat();
-  const [params, setParams] = useSearchParams();
-  const open = params.get(SIGNAL_SOURCES_PARAM) !== null;
+  const navigate = useNavigate();
   const { data, isLoading, isError } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
-  const close = () => {
-    const next = new URLSearchParams(params);
-    next.delete(SIGNAL_SOURCES_PARAM);
-    setParams(next, { replace: true });
-  };
   // A path card opens that path's signals (davidloiret review on #1194): its count is the path's total.
-  const openSignals = (pathId: string) => {
-    const next = new URLSearchParams(params);
-    next.delete(SIGNAL_SOURCES_PARAM);
-    next.set(LOOP_PARAM, signalsParam(null, pathId));
-    setParams(next);
-  };
+  const openSignals = (pathId: string) => navigate(signalsHref({ path: pathId }));
+  if (isLoading) return <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>;
+  if (isError) return <p className="content-compact text-default-secondary">{t_i18n("The signal sources could not be read. Try again in a moment.")}</p>;
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-w-5xl" data-testid="ctem-signal-sources">
-        <DialogHeader>
-          <DialogTitle>{t_i18n("Signal sources")}</DialogTitle>
-          <DialogDescription>
-            {paths.length > 0
-              ? t_i18n("{connected} of {total} trigger paths connected. Every signal starts the exposure management loop.", {
-                  connected: count(connectedCount(paths)),
-                  total: count(paths.length),
-                })
-              : t_i18n("The signals that start the exposure management loop, and where they come from.")}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogBody>
-          {isLoading ? (
-            <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
-          ) : isError ? (
-            <p className="content-compact text-default-secondary">{t_i18n("The signal sources could not be read. Try again in a moment.")}</p>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {LENSES.map((lens) => {
-                const inLens = paths.filter((p) => p.default_lens === lens);
-                if (inLens.length === 0) return null;
-                return (
-                  <section key={lens} className="flex min-w-0 flex-col gap-2" data-testid={`ctem-signal-sources-lens-${lens}`}>
-                    <div className="flex items-center gap-2">
-                      <Icon name={LENS_ICON[lens] as IconName} size={16} className="text-default-secondary" aria-hidden />
-                      <h3 className="content-compact font-medium">{t_i18n(LENS_HEADING[lens])}</h3>
-                      <span className="content-caption text-default-secondary">{t_i18n(LENS_HELP[lens])}</span>
-                    </div>
-                    <ul className="divide-y divide-[var(--border-elevation-subtle)]">
-                      {inLens.map((p) => (
-                        <PathCard key={p.id} path={p} onOpenSignals={openSignals} />
-                      ))}
-                    </ul>
-                  </section>
-                );
-              })}
+    <div className="flex flex-col gap-5" data-testid="ctem-signal-sources">
+      {LENSES.map((lens) => {
+        const inLens = paths.filter((p) => p.default_lens === lens);
+        if (inLens.length === 0) return null;
+        return (
+          <section key={lens} className="flex min-w-0 flex-col gap-2" data-testid={`ctem-signal-sources-lens-${lens}`}>
+            <div className="flex items-center gap-2">
+              <Icon name={LENS_ICON[lens] as IconName} size={16} className="text-default-secondary" aria-hidden />
+              <h2 className="content-compact font-medium">{t_i18n(LENS_HEADING[lens])}</h2>
+              <span className="content-caption text-default-secondary">{t_i18n(LENS_HELP[lens])}</span>
             </div>
-          )}
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
+            <ul className="divide-y divide-[var(--border-elevation-subtle)]">
+              {inLens.map((p) => (
+                <PathCard key={p.id} path={p} onOpenSignals={openSignals} />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
-/** The link the empty loop trace shows. */
+/** The link an empty signal list shows: the Sources tab. */
 export function SignalSourcesLink() {
   const { t_i18n } = useFormatter();
-  const [params, setParams] = useSearchParams();
   return (
-    <button
-      type="button"
+    <RouterLink
+      to={SIGNAL_SOURCES_PATH}
       data-testid="ctem-signal-sources-link"
-      onClick={() => {
-        const next = new URLSearchParams(params);
-        next.delete(LOOP_PARAM);
-        next.set(SIGNAL_SOURCES_PARAM, "1");
-        setParams(next);
-      }}
       className={cn("inline-flex items-center gap-1.5 rounded-sm content-compact text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
     >
       <Icon name="satellite-dish" size={16} aria-hidden />
       {t_i18n("See which signal sources are connected")}
-    </button>
+    </RouterLink>
   );
 }
