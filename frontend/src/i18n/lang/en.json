@@ -20540,7 +20540,7 @@
   "Exclude from this sync": "Exclude from this sync",
   "From {platform}, kept in sync: only the local fields can be edited here.": "From {platform}, kept in sync: only the local fields can be edited here.",
   "From {platform}: only the local fields can be edited here.": "From {platform}: only the local fields can be edited here.",
-  "{count, plural, one {Remove a synced row?} other {Remove # synced rows?}}": "{count, plural, one {Remove a synced row?} other {Remove # synced rows?}}",
+  "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}",
   "They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.": "They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.",
   "They come from {platform}: the next import brings them back unless you exclude them.": "They come from {platform}: the next import brings them back unless you exclude them.",
   "The sync never imports them again. You can take them out of its exclusions later.": "The sync never imports them again. You can take them out of its exclusions later."

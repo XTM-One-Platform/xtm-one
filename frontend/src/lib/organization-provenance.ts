@@ -9,11 +9,12 @@
  * Mirrors `is_platform_source` and `SOURCED_FIELDS` of the backend.
  */
 
-export interface Provenance {
+// A type alias, not an interface: the form's rows are still read as Record<string, unknown>.
+export type Provenance = {
   source?: string;
   external_id?: string;
   sync_id?: string;
-}
+};
 
 /** The sources of rows a person wrote. */
 const HAND_SOURCES = new Set(["", "manual", "csv", "api"]);

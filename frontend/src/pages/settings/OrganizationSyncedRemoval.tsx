@@ -121,7 +121,7 @@ export function useSyncedRemoval() {
         if (!open) close(false);
       }}
       variant="warning"
-      title={t_i18n("{count, plural, one {Remove a synced row?} other {Remove # synced rows?}}", { count })}
+      title={t_i18n("{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}", { count })}
       description={
         nextRuns.length > 0
           ? t_i18n("They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.", { platform: platforms, when: timeUntil(nextRuns[0], locale) })

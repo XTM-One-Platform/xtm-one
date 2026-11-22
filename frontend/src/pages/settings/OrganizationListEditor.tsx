@@ -265,18 +265,18 @@ export function OrganizationListEditor<V>({
   // The selected rows that still exist and are not removed (a removed or dropped row leaves the selection).
   const [picked, setPicked] = useState<string[]>([]);
   const selected = picked.filter((key) => byKey.has(key) && !byKey.get(key)!.removed);
-  // Synced rows in what goes: asked first (#1134), else removed at once (struck through, Undo until Save).
-  const askRemove = async (keys: string[]) => {
+  // Synced rows in what goes: asked first (#1134); anything else is removed at once (struck through, Undo until Save).
+  const withConfirm = (keys: string[], remove: () => void) => {
     const values = keys.flatMap((key) => (byKey.get(key) ? [byKey.get(key)!.value] : []));
-    if (confirmRemove && values.some((value) => locked?.tip(value)) && !(await confirmRemove(values))) return false;
-    return true;
+    if (!confirmRemove || !values.some((value) => locked?.tip(value))) return remove();
+    void confirmRemove(values).then((confirmed) => confirmed && remove());
   };
-  const bulkRemove = async () => {
-    if (!(await askRemove(selected))) return;
-    if (openKey && selected.includes(openKey)) open(null);
-    onRows(removeRows(rows, selected));
-    setPicked([]);
-  };
+  const bulkRemove = () =>
+    withConfirm(selected, () => {
+      if (openKey && selected.includes(openKey)) open(null);
+      onRows(removeRows(rows, selected));
+      setPicked([]);
+    });
 
   const counts = changeCounts(rows);
   return (
@@ -303,7 +303,7 @@ export function OrganizationListEditor<V>({
           actions: (
             <>
               {bulkFields.length > 0 && <BulkSet fields={bulkFields} onApply={(patch) => onRows(patchRows(rows, selected, patch as Partial<V>))} />}
-              <Button variant="secondary" className="gap-1.5" onClick={() => void bulkRemove()} data-testid="settings.organization.bulk-remove">
+              <Button variant="secondary" className="gap-1.5" onClick={bulkRemove} data-testid="settings.organization.bulk-remove">
                 <Icon name="trash-2" size={16} aria-hidden /> {t_i18n("Remove")}
               </Button>
             </>
@@ -327,11 +327,12 @@ export function OrganizationListEditor<V>({
               )}
               <RowRemoveButton
                 label={t_i18n("Remove")}
-                onClick={async () => {
-                  if (!(await askRemove([row.key]))) return;
-                  if (row.key === openKey) open(null);
-                  onRows(removeRow(rows, row.key));
-                }}
+                onClick={() =>
+                  withConfirm([row.key], () => {
+                    if (row.key === openKey) open(null);
+                    onRows(removeRow(rows, row.key));
+                  })
+                }
               />
             </>
           )
