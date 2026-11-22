@@ -188,9 +188,10 @@ def test_the_engine_wraps_the_provider_only_for_the_exempt_module_analyst_run():
 def test_the_module_analyst_leaves_the_fleet_caps():
     # Its cycle is gated by the switches and the licence only, and settling it never
     # charges the fleet ledger or stops it at the fleet caps: one ceiling, one ledger.
-    assert 'specialist == "module_analyst"' in inspect.getsource(health_budget.open_cycle)
+    assert "specialist in MODULE_CHECKER_ROLES" in inspect.getsource(health_budget.open_cycle)
     settle = inspect.getsource(health_cycles._settle_cycle)
-    assert 'own_ledger=specialist == "module_analyst"' in settle
+    assert "own_ledger = specialist in MODULE_CHECKER_ROLES" in settle
+    assert "own_ledger=own_ledger" in settle
     assert "None if own_ledger else" in settle
 
 
