@@ -608,45 +608,22 @@ the Settings form carries it whole.
   and "Restricted", every other cell empty (no id, source, score, asset or
   link); the Source filter offers "Restricted". A case the viewer sees
   nothing of is the not-found page, never an empty case.
-- Who works the case (#1266, replaces the per-section sentence of #1206
-  slice D): one card at the top of the case body (`ctem/CaseWorkCard.tsx`),
-  read from live state (`ctem/case-workers.ts`), never assumed. The reader
-  lists every assignment that can start on THIS case, whatever fleet or agent
-  owns it (the built-in CTEM loop fleet is one way, never the default): its
-  platform event trigger names `ctem_case.opened` or `ctem_case.reopened` (an
-  automation on `ctem_case.resolved` or the SLA event alone continues a case,
-  never starts it), and its `trigger_config.filter` takes the case event
-  payload, evaluated with the backend's filter grammar
-  (`integration_event_filters.payload_filter_reason`) on the fields the page
-  knows (`case_id`, `object_id`, `object_type`, `trigger_path`). The two
-  seeded case automations route by `trigger_path` (`in` and `not_in` the
-  threat paths), so a case lists exactly one of them. A key the page cannot
-  read (`vertical`, the state at the next event) or an operator it does not
-  evaluate (`matches`) never drops an automation: the page refutes only what
-  it proves (UX round 1 on #1275, B1). The reader also reads the runs the
-  case events started on this case
-  (`GET /fleets/case-runs/{id}`). First match wins: a run active on the case
-  shows "Worked by <agent> (<fleet>)", queued or running since, and "Open
-  the run"; the newest run failed shows the same line in the error colour
-  with the run; an enabled automation shows "Worked by" and "Waits for the
-  next case event"; automations that are all off are named with their agent
-  and fleet and a "Switch on" button; nothing at all is one elevated empty
-  state (icon, title, explanation, centred) with three choices on equal
-  footing: Use the built-in CTEM loop (the guided setup for an administrator
-  of XTM One, else the fleet page), Use your own fleet or agent (pick an
-  agent; its page opens the assignment panel preset on `ctem_case.opened`
-  and `ctem_case.reopened`, `?add-assignment=ctem-case`), Work it yourself
-  (Start). The card is not shown on a resolved or accepted-risk case. Without
-  agentic AI or on a read error nothing is claimed and the card is hidden.
-  Calls to action are design system buttons; no inline link in the secondary
-  colour.
-- Loop sections, not started (#1266): How it would be exploited, Analyst
-  review, Validation, Remediation decision and Treatment plan each say what
-  they will hold and the product they are written from (OpenCRQ for the
-  exploitation reading and the treatment plan, OpenCTI for the analyst
-  review, OpenAEV for validation) with its logo and connection state, and a
-  "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
+- Loop sections (#1206, slice D): Opened by, How it would be exploited,
+  Analyst review, Validation, Remediation decision and Treatment plan never
+  promise work nobody will do. An empty section says the reason read from
+  live state (`ctem/case-loop-reason.ts`), first match wins: "Empty: OpenCRQ
+  is not connected." with a Connect link (exploitation reading and treatment
+  plan only, when no OpenCRQ registration exists); "Waiting for <agent>,
+  working this case since <time>" while a fleet run on the case is active,
+  whatever the fleet's switches say (a run that stays pending keeps this
+  line with its start time, which shows how long it has waited); "No
+  automation works this case: the CTEM loop fleet is not set up." with a
+  link to the fleet when no run is active and the seeded `ctem-loop` fleet
+  or a fork of it has none of its automations on, or no such fleet is
+  visible; otherwise the section's own sentence. Links are the design
+  system `Link` over the router link (underlined in every state). Without
+  agentic AI or on a read error nothing is claimed
+  and the own sentence stays. "Opened by" on a case no signal opened names
   the source readers from the sources of its visible issues ("Opened from
   OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
   findings on your assets").
@@ -719,6 +696,8 @@ No decision structure is stored on the case: the decision is the gate `ctem.reme
 A decision is recorded in OpenCRQ as a treatment plan through four OpenCRQ provider tools on the procedures OpenCRQ already serves (`providers/opencrq/treatment.py`): `create_opencrq_treatment_plan` (`treatmentPlans.createTreatmentPlan`: name, owner, period, one-off and annual cost, rationale, first control moves), `update_opencrq_treatment_plan` (`updateTreatmentPlan`, partial: an empty value clears a nullable field), `set_opencrq_treatment_plan_moves` (`setTreatmentPlanScope`, replaces the moves) and `add_opencrq_treatment_plan_moves` (`addTreatmentPlanMoves`). A move is a control capability with its target strength rung and coverage bucket (L0 to L3, a target left out keeps that axis); OpenCRQ re-prices the plan after a change of its moves. No new OpenCRQ entity: the accepted residual risk is the evidence dismissal `risk_accepted` with a reason code (`update_opencrq_evidence_state`), its expiry the profile policy `accepted_risks`. Every call carries the acting user's own OpenCRQ token (per-user JWT): a user OpenCRQ refuses gets that refusal and nothing is written for them. Gates: on a CTEM loop fleet the four tools are rules of `ctem.remediation.decision` (runs out of the box, a pin or Full human gates makes it wait, so the plan follows the decision without a second approval); on the risk budget desk they are rules of `opencrq.register.write`. Tests: `tests/test_opencrq_tool_contracts.py`, `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
 On the case (CTEM-18-UI, #1068): `create_opencrq_treatment_plan` answers the plan's OpenCRQ link (`Link:` line, `/treatment-plans/<id>`), and the fleet attaches the plan to the case with `update_ctem_case` `treatment_plan` {id, name, url} (`ctem_case_loop.record_treatment_plan`: the id a UUID, the url the OpenCRQ page of that id, else refused; the same plan again writes nothing). No migration: one `treatment_plan` case event (`to` the id, `reason` the name, `evidence` the url). The case detail serves `treatment_plan`, the newest such event, as the exploitation reading (#936): id, name and link only to a viewer whose own OpenCRQ read is available, `{restricted: true, at}` to anyone else, and the history row of that kind carries no value for them. The case page shows it in a "Treatment plan" card (name linked to OpenCRQ, attach date; never blank) and the history line "Attached the treatment plan". The accepted residual risk and its expiry stay where they were: the accepted-risk card of the case and Governance & Risk > Accepted risks. Tests: `tests/test_ctem_case_treatment_plan.py`, `frontend/src/pages/xtm-one/ctem/case-treatment-plan.test.tsx`.
+
+Attack path and blast radius (CTEM-23-UI, #1289): `get_opencrq_attack_path_reach` (`providers/opencrq/risk.py`) reads OpenCRQ's `supportingAssets.getAttackPathReach` for one supporting asset: the hops nearest first (each proven by an OpenAEV execution or inferred, with its simulation), the assets reached with their depth and criticality, and the primary assets behind them; hops unconfirmed past OpenCRQ's stale delay are left out. The triage analyst calls it on the matched asset with the highest impact and the orchestrator writes it with `update_ctem_case` `attack_path` (`ctem_case_loop.record_attack_path`: origin required, a hop with no end dropped, a nature other than proven read as inferred, capped at 40 hops and reached assets and 20 primary assets, replaced whole). Column `ctem_cases.attack_path` (JSON, `{}` until the first read; migration `c1289ctemattackpath1`). One `attack_path` case event per change, its evidence the counts alone. A hop also keeps `simulation_name`, `simulation_url` (an absolute http(s) page, else dropped) and `seen_at` (the ISO date of the execution, from OpenCRQ's last reported date). The case detail serves `attack_path` like the exploitation reading: asset names and the simulation name and page only to a viewer who reads OpenCRQ, else `Restricted`; the raw simulation id is never served; `null` before the first read. The case page shows the card "Attack path and blast radius" under "How it would be exploited" (`ctem/CaseAttackPath.tsx`): the origin as "Attack starts from", each hop with a Proven chip (high tone) or an Inferred chip (info tone), and for a proven hop "Proven by <simulation name>, <date>" (or "Proven by an OpenAEV simulation, <date>"), linked to the simulation page when there is one (UX round 1 on #1296).
 
 Granted to the built-in CTEM loop orchestrators (vulnerability prioritization,
 threat response, which run a case from `ctem_case.opened`, #891), the
