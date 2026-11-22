@@ -53,6 +53,7 @@ Signature validation (both endpoints):
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
   - Airwallex: x-signature over x-timestamp + body (HMAC-SHA256, 5 min replay window)
+  - Spendesk: x-spendesk-webhook-signature header (HMAC-SHA256)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -196,6 +197,9 @@ from app.integrations.providers.airwallex.webhooks import TIMESTAMP_HEADER as AI
 from app.integrations.providers.airwallex.webhooks import is_delivery as is_airwallex_delivery
 from app.integrations.providers.airwallex.webhooks import trigger_event as airwallex_trigger_event
 from app.integrations.providers.airwallex.webhooks import verify_signature as verify_airwallex_signature
+from app.integrations.providers.spendesk.webhooks import SIGNATURE_HEADER as SPENDESK_SIGNATURE_HEADER
+from app.integrations.providers.spendesk.webhooks import event_key as spendesk_event_key
+from app.integrations.providers.spendesk.webhooks import verify_signature as verify_spendesk_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -2184,6 +2188,13 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
 
+    # Spendesk: ``event.entity`` and ``event.eventType`` name the event
+    # (payables + created -> payables_created), signed per delivery.
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER):
+        spendesk_key = spendesk_event_key(payload)
+        if spendesk_key:
+            return spendesk_key
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2215,6 +2226,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         return aikido_trigger_event(payload["event_type"])
     if isinstance(payload, dict) and is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER) and spendesk_event_key(payload):
+        return spendesk_event_key(payload)
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2553,6 +2566,7 @@ def _verify_signature(
     perk_sig = request.headers.get("Tk-Signature", "")
     aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
     airwallex_ts = request.headers.get(AIRWALLEX_TIMESTAMP_HEADER, "")
+    spendesk_sig = request.headers.get(SPENDESK_SIGNATURE_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2593,6 +2607,11 @@ def _verify_signature(
         ok, reason = verify_airwallex_signature(body, secret, request.headers.get("X-Signature", ""), airwallex_ts)
         if not ok:
             raise HTTPException(status_code=401, detail=f"Invalid Airwallex webhook signature: {reason}")
+    elif spendesk_sig:
+        # Spendesk signs the payload (hex HMAC-SHA256) with the webhook secret.
+        ok, reason = verify_spendesk_signature(body, secret, spendesk_sig)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Spendesk webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):
