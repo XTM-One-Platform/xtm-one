@@ -65,6 +65,7 @@ from app.services.sandbox_workspace import (
     editing,
     eviction,
     filediff,
+    images,
     installed,
     jobs,
     jsonkeys,
@@ -125,6 +126,7 @@ SANDBOX_TOOL_NAMES = (
     "sandbox_apply_patch",
     "sandbox_write_file",
     "sandbox_json_keys",
+    "sandbox_convert_images",
     "materialize_repository",
     "sandbox_checkout_status",
     "sandbox_checkout_diff",
@@ -148,6 +150,7 @@ WORKSPACE_WRITE_TOOLS = frozenset(
         "sandbox_apply_patch",
         "sandbox_write_file",
         "sandbox_json_keys",
+        "sandbox_convert_images",
         "materialize_repository",
         "sandbox_checkout_rebase",
         "sandbox_diff_files",
@@ -1624,6 +1627,58 @@ def build_sandbox_workspace_tools(
             else "Nothing was written."
         )
         return head + "\n" + "\n".join(lines)
+
+    async def sandbox_convert_images(
+        conversions: list[dict[str, Any]] | dict[str, Any] | None = None, overwrite: bool = False
+    ) -> str | ToolResult:
+        try:
+            planned = images.parse(conversions)
+            current = await session.entries(refresh=True)
+        except (images.ImageError, WorkspacePathError, WorkspaceUnavailableError) as exc:
+            metrics.operation("convert_images", "refused")
+            return _error(f"{exc} Nothing was written.")
+        for conversion in planned:
+            if conversion.source not in current:
+                metrics.operation("convert_images", "refused")
+                return _error(f"{display(conversion.source)} is not a file of the workspace. Nothing was written.")
+            if conversion.target in current and conversion.target != conversion.source and not overwrite:
+                metrics.operation("convert_images", "refused")
+                return _error(
+                    f"{display(conversion.target)} already exists: pass overwrite=true to replace it. Nothing was written."
+                )
+        results: list[images.Converted] = []
+        for conversion in planned:
+            try:
+                _entry, data = await session.get_bytes(conversion.source)
+                # Pillow decodes on a thread: a large capture must not hold the event loop.
+                results.append(await asyncio.to_thread(images.convert, conversion, data))
+            except FileNotFoundError:
+                metrics.operation("convert_images", "refused")
+                return _error(f"{display(conversion.source)} changed while it was read. Nothing was written.")
+            except images.ImageError as exc:
+                metrics.operation("convert_images", "refused")
+                return _error(f"{exc} Nothing was written.")
+        try:
+            plan = await session.put_tree(((r.conversion.target, r.data) for r in results), operation="convert_images")
+        except (QuotaExceededError, WorkspaceUnavailableError) as exc:
+            metrics.operation("convert_images", "refused")
+            return _error(str(exc))
+        except Exception as exc:
+            metrics.operation("convert_images", "failed")
+            return _error(f"the images could not be written to the workspace ({format_exception_message(exc)}).")
+        metrics.operation("convert_images", "ok")
+        await audit.record(
+            "workspace_write",
+            user_id=owner,
+            workspace_id=session.workspace_id,
+            summary=f"Converted {len(results)} image(s) in the sandbox workspace",
+            details={"conversions": [[r.conversion.source, r.conversion.target] for r in results]},
+        )
+        return (
+            f"Converted {len(results)} image(s) in one write. "
+            f"Workspace {format_size(plan.size_bytes)} of {format_size(session.limits.quota_bytes)}.\n"
+            + "\n".join(r.line() for r in results)
+        )
 
     async def _archive_tree(
         provider: str,
@@ -3296,6 +3351,7 @@ def build_sandbox_workspace_tools(
         ("sandbox_apply_patch", sandbox_apply_patch),
         ("sandbox_write_file", sandbox_write_file),
         ("sandbox_json_keys", sandbox_json_keys),
+        ("sandbox_convert_images", sandbox_convert_images),
         ("materialize_repository", materialize_repository),
         ("sandbox_checkout_status", sandbox_checkout_status),
         ("sandbox_checkout_diff", sandbox_checkout_diff),
@@ -4045,6 +4101,50 @@ def build_sandbox_workspace_tools(
                     },
                 },
                 "required": ["path", "content"],
+            },
+            source=source,
+        ),
+        ToolDefinition(
+            name="sandbox_convert_images",
+            description=(
+                "Convert, resize or compress images of the sandbox workspace in one write: a PNG capture to WebP for "
+                "a README, a screenshot bounded to a width, a JPEG recompressed. The output format is the suffix of "
+                "'to' (.png, .jpg, .jpeg, .webp); a resize keeps the aspect ratio and never enlarges. Answers each "
+                "file's size before and after. Use it, not a code_interpreter Pillow script, to write an image of a "
+                "checkout. Refused with nothing written: a source absent or not an image, an animated source, an "
+                "existing target unless overwrite."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "conversions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "from": {"type": "string", "description": "Source image, a workspace path."},
+                                "to": {
+                                    "type": "string",
+                                    "description": "Target path; its suffix is the format (may equal from).",
+                                },
+                                "max_width": {"type": "integer", "description": "Bound on the width in px."},
+                                "max_height": {"type": "integer", "description": "Bound on the height in px."},
+                                "quality": {
+                                    "type": "integer",
+                                    "description": f"JPEG and lossy WebP quality, 1-100 (default {images.DEFAULT_QUALITY}).",
+                                },
+                                "lossless": {"type": "boolean", "description": "Lossless WebP."},
+                            },
+                            "required": ["from", "to"],
+                        },
+                        "description": f"At most {images.MAX_CONVERSIONS} conversions.",
+                    },
+                    "overwrite": {
+                        "type": "boolean",
+                        "description": "Replace an existing target other than the source (default false).",
+                    },
+                },
+                "required": ["conversions"],
             },
             source=source,
         ),

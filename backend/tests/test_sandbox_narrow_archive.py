@@ -94,6 +94,21 @@ def test_the_in_memory_bound_is_the_compressed_output_not_the_selected_bytes() -
         narrow_archive(_archive(noise), ["seed"], max_bytes=1 << 20, max_output_bytes=1_000)
 
 
+def test_the_narrowed_bound_is_the_workspace_quota_not_a_fixed_in_memory_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """materialize-archive-size-cap, retest FAIL of #1249: 338.7 MB of images under one sub_path compress to about
+    their own size, over the former 256 MB cap; the workspace quota (2 GB by default) is what bounds them now."""
+    from app.core.config import settings
+    from app.integrations.providers.github import contents
+
+    mb = 1024 * 1024
+    monkeypatch.setattr(settings, "code_interpreter_workspace_quota_mb", 2048)
+    assert contents._narrowed_archive_bound() == 2048 * mb > 339 * mb
+    monkeypatch.setattr(settings, "code_interpreter_workspace_quota_mb", 8192)
+    assert contents._narrowed_archive_bound() == contents._MAX_NARROWED_SELECTED_BYTES, "capped at the runaway bound"
+    monkeypatch.setattr(settings, "code_interpreter_workspace_quota_mb", 64)
+    assert contents._narrowed_archive_bound() == contents._MAX_ARCHIVE_BYTES, "never below the whole-archive bound"
+
+
 def test_small_files_outside_the_paths_past_their_budget_are_left_out_never_refused() -> None:
     """#432: a site whose seed data and pages outside the sub_path pass the archive limit still narrows."""
     files = {

@@ -28,14 +28,14 @@ import { caseDueFlags, casesListHref, EXPIRING_DAYS } from "./cases-due";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
 /**
- * The segment fill of each state: the feedback token of its Chip severity
- * (7.0). Accepted risk takes the neutral token, never the track's colour, so
+ * The segment fill of each state: the feedback token of its hot tone
+ * (7.0, #1267), the same colour as its badge. Accepted risk takes the neutral token, never the track's colour, so
  * its segment stays visible (at least 3:1 on the track, both themes).
  */
 const SEGMENT_FILL: Record<CtemCaseState, string> = {
-  needs_attention: "bg-feedback-alert-primary",
+  needs_attention: "bg-feedback-warning-primary",
   in_progress: "bg-feedback-info-primary",
-  mitigated_watching: "bg-feedback-success-tertiary",
+  mitigated_watching: "bg-feedback-alert-primary",
   resolved: "bg-feedback-success-primary",
   accepted_risk: "bg-feedback-neutral-primary",
 };

@@ -10,6 +10,7 @@
  */
 import { Chip, Icon } from "@filigran/design-system";
 import { useTriggerTabIndex } from "@/components/ui/row-target-context";
+import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { isRestrictedIssue, type CtemCaseIssue, type CtemCasePriority, type CtemCaseSeverity, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -21,7 +22,8 @@ type Translate = (id: string, values?: Record<string, string | number>) => strin
 
 const OPEN_STATES: ReadonlySet<string> = new Set(["needs_attention", "in_progress"]);
 
-const SEVERITY_CHIP: Record<CtemCaseSeverity, "critical" | "high" | "medium"> = { P1: "critical", P2: "high", P3: "medium" };
+/** The loop severity in the hot tones of a priority (#1267): P1 red, P2 orange, P3 yellow. */
+const SEVERITY_TONE: Record<CtemCaseSeverity, HotTone> = { P1: "red", P2: "orange", P3: "yellow" };
 
 /** The countdown to the SLA: what is left, or how late, in the largest whole unit. */
 export function slaCountdown(
@@ -173,7 +175,7 @@ function closedAtSourceSentence(provider: string | null, date: string | null, t_
 
 function CaseSeverityChip({ severity }: { severity: CtemCaseSeverity | null | undefined }) {
   if (!severity) return null;
-  return <Chip label={severity} severity={SEVERITY_CHIP[severity]} className="shrink-0" />;
+  return <ToneBadge tone={SEVERITY_TONE[severity]}>{severity}</ToneBadge>;
 }
 
 /**

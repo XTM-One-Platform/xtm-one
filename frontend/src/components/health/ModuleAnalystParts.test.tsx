@@ -1,5 +1,5 @@
 // The Module Analyst on the Health page (#101 S14c-2): a module card's one AI block (the last
-// investigation or the analysis summary under one shared header, Investigate now in its menu), and a
+// investigation or the analysis summary under one shared header, Run checks now in its menu), and a
 // finding's Module Analyst block.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ const renderBlock = (props: Partial<Parameters<typeof ModuleAnalystBlock>[0]> = 
 
 const openMenu = async () => {
   await userEvent.setup().click(screen.getByRole("button", { name: "OpenCTI actions" }));
-  return screen.findByRole("menuitem", { name: /Investigate now/ });
+  return screen.findByRole("menuitem", { name: /Run checks now/ });
 };
 
 describe("ModuleAnalystBlock", () => {
@@ -63,7 +63,7 @@ describe("ModuleAnalystBlock", () => {
 
   it("says when the module was never investigated", () => {
     renderBlock({ module: "openaev", investigation: null });
-    expect(screen.getByTestId("health-investigation-openaev").textContent).toContain("Not investigated yet");
+    expect(screen.getByTestId("health-investigation-openaev").textContent).toContain("No check round yet");
   });
 
   it("renders the same AI block header whatever the body shows (UX round 6 B1 on #953)", () => {
@@ -78,7 +78,7 @@ describe("ModuleAnalystBlock", () => {
     expect([...summaryHeader.querySelectorAll("*")].map((node) => node.tagName)).toEqual(investigationTags);
   });
 
-  it("keeps Investigate now in the menu when the summary is the body (UX round 6 B2 on #953)", async () => {
+  it("keeps Run checks now in the menu when the summary is the body (UX round 6 B2 on #953)", async () => {
     renderBlock({ showSummary: true });
     expect(await openMenu()).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /Analyse now/ })).toBeTruthy();
@@ -99,7 +99,7 @@ describe("ModuleAnalystBlock", () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/health/modules/opencti/investigate", {}));
   });
 
-  it("disables Investigate now with the reason while AI is off", async () => {
+  it("disables Run checks now with the reason while AI is off", async () => {
     flags.aiEnabled = false;
     renderBlock({ investigation: null });
     const item = await openMenu();

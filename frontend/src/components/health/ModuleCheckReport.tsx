@@ -127,8 +127,12 @@ function CheckGroup({ module, group, name }: { module: HealthModule; group: Chec
   );
 }
 
-/** The agentic checks line of a module card: nothing while loading or on a read error. */
-export function ModuleCheckReportLine({ module }: { module: HealthModule }) {
+/**
+ * The agentic checks line of a module card: nothing while loading or on a read error. With `hideEmpty`
+ * (the card's Last check round block already shows the round status), nothing either when no round
+ * reported yet, so the card never says "No check round yet" twice (UX round 1 B1 on #1269).
+ */
+export function ModuleCheckReportLine({ module, hideEmpty = false }: { module: HealthModule; hideEmpty?: boolean }) {
   const { t_i18n } = useFormatter();
   const { data } = useHealthModuleChecks(module);
   const { data: registrations } = usePlatformRegistrations();
@@ -140,6 +144,7 @@ export function ModuleCheckReportLine({ module }: { module: HealthModule }) {
     return registration?.platform_title || registration?.platform_url || t_i18n(HEALTH_MODULE_LABELS[module]);
   };
   const hasChecks = totals?.groups.some((group) => group.checks.length > 0) ?? false;
+  if (!totals && hideEmpty) return null;
   return (
     <section className="space-y-1" aria-labelledby={`health-checks-heading-${module}`} data-testid={`health-checks-${module}`}>
       <h4 id={`health-checks-heading-${module}`} className="content-caption font-medium uppercase tracking-wider text-default-secondary">

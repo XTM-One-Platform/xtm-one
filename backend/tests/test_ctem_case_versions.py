@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import ctem_case_versions as versions
 
@@ -111,6 +113,30 @@ def test_an_asset_is_counted_once_in_the_totals():
     assert answer["asset_count"] == 3
     # The worst version of each asset decides: a1 and a2 below, a3 not comparable, none on fixed alone.
     assert (answer["assets_below_fixed"], answer["assets_on_fixed"], answer["assets_not_comparable"]) == (2, 0, 1)
+
+
+def test_the_case_leaves_scope_only_when_every_asset_is_on_the_fixed_version() -> None:
+    def answer(*rows: dict[str, Any]) -> dict[str, Any] | None:
+        return versions.running_versions(list(rows), product_label="Oracle Java", fixed_version="8.0.9")
+
+    java = {"vendor": "Oracle", "product": "Java"}
+    assert versions.all_on_fixed(answer(_row("8.0.9", 3, **java), _row("8.0.10", 2, **java)))
+    assert not versions.all_on_fixed(answer(_row("8.0.9", 3, **java), _row("8.0.1", 1, **java)))
+    # An unknown version is never read as fixed.
+    assert not versions.all_on_fixed(answer(_row("8.0.9", 3, **java), _row("unknown", 1, **java)))
+    assert not versions.all_on_fixed(
+        versions.running_versions([_row("8.0.9", 3, **java)], product_label="Oracle Java", fixed_version=None)
+    )
+    assert not versions.all_on_fixed(None)
+
+
+@pytest.mark.asyncio
+async def test_a_case_without_a_fixed_version_never_leaves_scope_on_the_inventory() -> None:
+    case = SimpleNamespace(
+        remediation_kind="upgrade", organization_id=uuid.uuid4(), product_label="Microsoft Windows", fixed_version=None
+    )
+    # No fixed version: the inventory is never read, so no session is needed.
+    assert await versions.fixed_in_inventory(cast(AsyncSession, None), case) is False
 
 
 @pytest.mark.asyncio
