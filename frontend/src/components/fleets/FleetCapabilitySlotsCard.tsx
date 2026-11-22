@@ -63,8 +63,11 @@ import { useFormatter } from "@/i18n";
 
 import {
   CAPABILITIES_OPEN_BY_DEFAULT,
+  MEMBERS_COLUMN_WIDTH,
   MULTI_CHANNEL_CAPABILITIES,
   NO_INTEGRATION_VALUE,
+  ROW_ACTIONS_WIDTH,
+  SECONDARY_COLUMNS_HIDE_BELOW,
   STATUS_COLUMN_WIDTH,
   TYPE_STATE_LABELS,
   TYPE_STATE_VARIANTS,
@@ -266,7 +269,10 @@ export function FleetCapabilitySlotsCard({
     {
       key: "members",
       header: "Members",
-      width: 112,
+      width: MEMBERS_COLUMN_WIDTH,
+      hideable: true,
+      // The opened row lists the members: the count steps aside below 1280 px of table (UX r2 B1 of #1209).
+      hideBelow: SECONDARY_COLUMNS_HIDE_BELOW,
       sortValue: (type) => type.members.length,
       csv: (type) => String(type.members.length),
       cell: (type) => (
@@ -291,6 +297,8 @@ export function FleetCapabilitySlotsCard({
       key: "integration",
       header: "Integration",
       hideable: true,
+      // Steps aside below 1280 px of table, and in the setup dialog (UX r2 B1 of #1209).
+      hideBelow: SECONDARY_COLUMNS_HIDE_BELOW,
       csv: (type) => [type.builtin ? t_text(type.builtin.label) : "", ...type.choice.map(integrationName)].filter(Boolean).join(", "),
       cell: (type) => (
         <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid={`type-choice-${type.capability}`}>
@@ -436,7 +444,7 @@ export function FleetCapabilitySlotsCard({
               onRowClick={toggleType}
               expandedRow={membersPanel}
               rowActions={typeAction}
-              rowActionsWidth={264}
+              rowActionsWidth={ROW_ACTIONS_WIDTH}
               // Fixed columns: at 1080 the flexible ones truncate instead of pushing the picker out of the card.
               layout="fixed"
               defaultSort={{ key: "status", direction: "asc" }}

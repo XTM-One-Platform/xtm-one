@@ -12,11 +12,15 @@ import {
   CAPABILITY_ICONS,
   FALLBACK_CAPABILITY_ICON,
   FLEET_DEFAULTS_OPEN_BY_DEFAULT,
+  CAPABILITY_CELL_CHROME,
   NO_INTEGRATION_VALUE,
+  SECONDARY_COLUMNS_HIDE_BELOW_PX,
+  STATUS_COLUMN_WIDTH,
   STATUS_LABEL_MAX_CHARS,
   TYPE_STATE_LABELS,
   builtinValue,
   capabilityIcon,
+  flexibleColumnWidth,
   customMembers,
   idsForPick,
   instructionSummaryKey,
@@ -110,6 +114,50 @@ describe("capability types table (#1201)", () => {
   it("sizes the Status column for the longest state label of the four catalogs (UX r1 B5 of #1209)", () => {
     for (const catalog of [en, fr, es, ja] as Record<string, string>[])
       for (const key of Object.values(TYPE_STATE_LABELS)) expect((catalog[key] ?? key).length).toBeLessThanOrEqual(STATUS_LABEL_MAX_CHARS);
+  });
+
+  it("keeps the Status column at the widest badge, not wider (UX r2 B1 of #1209)", () => {
+    // "Aucune connectée" was measured as a 126 px badge: the column is that badge, padded, at most 8 px more.
+    expect(STATUS_COLUMN_WIDTH).toBeGreaterThanOrEqual(126 + 24);
+    expect(STATUS_COLUMN_WIDTH).toBeLessThanOrEqual(126 + 24 + 8);
+  });
+
+  // The capability labels of backend/app/services/fleet_capability_slots.py (CAPABILITIES).
+  const CAPABILITY_LABELS = [
+    "Ticketing",
+    "Notification",
+    "EDR / XDR",
+    "Vulnerability scanner",
+    "External attack surface",
+    "Vulnerability intelligence",
+    "Asset inventory",
+    "SIEM",
+  ];
+  // 14 px body text: 7.2 px a character is above the measured average of the four catalogs.
+  const textWidth = (text: string) => text.length * 7.2;
+  // The table's width at a 1080 px window (sidebar, page and card padding taken), and in the
+  // 960 px setup dialog at any window.
+  const TABLE_AT_1080 = 812;
+  const TABLE_IN_DIALOG = 896;
+
+  it("fits the longest capability name of each catalog at 1080 and in the setup dialog (UX r2 B1 of #1209)", () => {
+    for (const tableWidth of [TABLE_AT_1080, TABLE_IN_DIALOG]) {
+      expect(tableWidth).toBeLessThan(SECONDARY_COLUMNS_HIDE_BELOW_PX);
+      const room = flexibleColumnWidth(tableWidth) - CAPABILITY_CELL_CHROME;
+      for (const catalog of [en, fr, es, ja] as Record<string, string>[])
+        for (const label of CAPABILITY_LABELS) {
+          expect(catalog[label], `${label} is in every catalog`).toBeTruthy();
+          expect(textWidth(catalog[label]), `${catalog[label]} at ${tableWidth}`).toBeLessThanOrEqual(room);
+        }
+    }
+  });
+
+  it("fits the French unset-members badge in the Integration column where it is drawn (UX r2 B2 of #1209)", () => {
+    const badge = (fr as Record<string, string>)["{count, plural, one {# member not set} other {# members not set}}"];
+    expect(badge).toContain("membre non défini");
+    // "12 membres non définis" at 12 px (6.9 px a character) and the badge's 8 px a side, in a cell padded 12 px a side.
+    const widest = "12 membres non définis".length * 6.9 + 16;
+    expect(widest).toBeLessThanOrEqual(flexibleColumnWidth(SECONDARY_COLUMNS_HIDE_BELOW_PX) - 24);
   });
 
   it("names the members a Partial type leaves unset and shows no picker value for it (UX r1 B2 of #1209)", () => {

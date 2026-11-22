@@ -48,12 +48,37 @@ export const TYPE_STATE_VARIANTS = {
 
 /**
  * The longest state label of the four catalogs, in characters ("Ninguna conectada", es), and the
- * Status column sized from it: 7 px a character at the badge's 12 px, the badge's 8 px padding a
- * side and the cell's 12 px a side (UX r1 B5 of #1209: "Aucune connectée" was cut at 128 px).
- * capability-slots-table.test.ts fails when a catalog grows a longer label.
+ * Status column sized from it: 6.9 px a character at the badge's 12 px (measured: "Aucune connectée",
+ * 16 characters, is a 126 px badge), the badge's 8 px padding a side and the cell's 12 px a side
+ * (UX r1 B5 and r2 B1 of #1209). capability-slots-table.test.ts fails when a catalog grows a longer label.
  */
-export const STATUS_LABEL_MAX_CHARS = 18;
-export const STATUS_COLUMN_WIDTH = STATUS_LABEL_MAX_CHARS * 7 + 16 + 24;
+export const STATUS_LABEL_MAX_CHARS = 17;
+export const STATUS_COLUMN_WIDTH = Math.ceil(STATUS_LABEL_MAX_CHARS * 6.9) + 16 + 24;
+
+/** The Members column: "# members" in the four catalogs. */
+export const MEMBERS_COLUMN_WIDTH = 112;
+/** The row actions cell: the type picker's 240 px box and 12 px a side. */
+export const ROW_ACTIONS_WIDTH = 264;
+/**
+ * Below this table width (the 7xl container) the Members and Integration columns step aside to
+ * the Columns pill, as the cases table does, so capability names keep their room at 1080 and in
+ * the setup dialog (UX r2 B1 of #1209): the type picker still shows the fleet choice and the
+ * opened row lists the members.
+ */
+export const SECONDARY_COLUMNS_HIDE_BELOW = "7xl" as const;
+export const SECONDARY_COLUMNS_HIDE_BELOW_PX = 1280;
+/** What a capability cell spends beside its name: two 16 px icons, two 8 px gaps, 12 px padding a side. */
+export const CAPABILITY_CELL_CHROME = 16 * 2 + 8 * 2 + 24;
+
+/**
+ * The width the fixed layout leaves each flexible column (Capability, and Integration when drawn)
+ * at a table width: what Status, the row actions and, when drawn, Members leave, shared.
+ */
+export function flexibleColumnWidth(tableWidth: number): number {
+  const wide = tableWidth >= SECONDARY_COLUMNS_HIDE_BELOW_PX;
+  const left = tableWidth - STATUS_COLUMN_WIDTH - ROW_ACTIONS_WIDTH - (wide ? MEMBERS_COLUMN_WIDTH : 0);
+  return wide ? left / 2 : left;
+}
 
 /** What is left to do first: Not bound, Partial, None connected, then Connected. */
 const TYPE_STATE_ORDER: Record<FleetCapabilityType["state"], number> = {
