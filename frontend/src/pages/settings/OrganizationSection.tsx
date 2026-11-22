@@ -2024,7 +2024,7 @@ export function OrganizationSection() {
             <OrganizationProposalsCard />
             {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
-            <OrganizationOutsideLensCard />
+            <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />
           </div>
           )}
 

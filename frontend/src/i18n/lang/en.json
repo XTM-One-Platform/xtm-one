@@ -20531,7 +20531,7 @@
   "Also the scope of leaked credentials (CTEM scope gate). Type a domain and press Enter.": "Also the scope of leaked credentials (CTEM scope gate). Type a domain and press Enter.",
   "example.com": "example.com",
   "An IP address or a CIDR block, such as 198.51.100.0/24 or 2001:db8::/32. Press Enter after each.": "An IP address or a CIDR block, such as 198.51.100.0/24 or 2001:db8::/32. Press Enter after each.",
-  "address range {value} is not an IP address or CIDR block": "address range {value} is not an IP address or CIDR block",
+  "Address range {value} is not an IP address or CIDR block.": "Address range {value} is not an IP address or CIDR block.",
   "198.51.100.0/24": "198.51.100.0/24",
   "Watch the owned domains and ranges from the Internet with an attack surface provider.": "Watch the owned domains and ranges from the Internet with an attack surface provider.",
   "Connected integrations the pass reads, their findings merged per host.": "Connected integrations the pass reads, their findings merged per host.",

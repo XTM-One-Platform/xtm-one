@@ -23,12 +23,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { useId, useState } from "react";
 import { Icon } from "@filigran/design-system";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { SECTION_BAR_ANCHOR_CLASS } from "@/components/ui/section-index";
 import {
   SettingsCard,
+  type SettingsCardFold,
   SettingsField,
   SettingsFieldGrid,
   SettingsSaveBar,
@@ -74,7 +75,14 @@ interface Draft {
   stale: string;
 }
 
-export function OrganizationOutsideLensCard() {
+interface OrganizationOutsideLensCardProps {
+  /** The landing anchor a `?card=outside_lens` link and the owned_domains / address_ranges / attack_surface field links focus. */
+  id: string;
+  /** The page's fold props, like the sibling cards (read mode only: a card being edited never folds). */
+  fold?: SettingsCardFold;
+}
+
+export function OrganizationOutsideLensCard({ id: anchorId, fold }: OrganizationOutsideLensCardProps) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const id = useId();
@@ -170,6 +178,11 @@ export function OrganizationOutsideLensCard() {
 
   return (
     <SettingsCard
+      id={anchorId}
+      className={SECTION_BAR_ANCHOR_CLASS}
+      data-anchor="card"
+      tabIndex={-1}
+      {...(draft ? { meta: fold?.meta } : fold)}
       data-testid="settings.organization.outside-lens"
       icon={CardIcon}
       title={t_i18n("Owned domains and outside lens")}
@@ -209,9 +222,7 @@ export function OrganizationOutsideLensCard() {
           <SettingsReadField
             label={t_i18n("Outside lens")}
             info={lensInfo}
-            value={
-              pass.enabled ? <Badge variant="success">{t_i18n("On")}</Badge> : <Badge variant="secondary">{t_i18n("Off")}</Badge>
-            }
+            value={pass.enabled ? t_i18n("Yes") : t_i18n("No")}
             data-testid="settings.organization.outside-lens.enabled"
           />
           <SettingsReadField label={t_i18n("Attack surface providers")} value={providerText} />
@@ -251,7 +262,7 @@ export function OrganizationOutsideLensCard() {
               helper={t_i18n("An IP address or a CIDR block, such as 198.51.100.0/24 or 2001:db8::/32. Press Enter after each.")}
               error={
                 badRanges.length
-                  ? t_i18n("address range {value} is not an IP address or CIDR block", { value: badRanges[0] })
+                  ? t_i18n("Address range {value} is not an IP address or CIDR block.", { value: badRanges[0] })
                   : undefined
               }
               wide
@@ -271,7 +282,6 @@ export function OrganizationOutsideLensCard() {
             </SettingsField>
           </SettingsFieldGrid>
           <SettingsSwitchField
-            className="rounded-sm bg-elevation-default p-3.5"
             id={`${id}-enabled`}
             label={t_i18n("Outside lens")}
             helper={t_i18n("Watch the owned domains and ranges from the Internet with an attack surface provider.")}
