@@ -13,6 +13,24 @@ mutation, no action switch exists.
 * ``list_opencti_playbook_states``: playbooks with their running flag and queued
   messages (root ``playbooks``, AUTOMATION).
 
+The module health reads of S15b-2 (platform-health.md 13.5), platform-wide, none
+taking or returning a connector id:
+
+* ``list_opencti_background_tasks``: the newest background tasks with their type,
+  progress, completion and errors (root ``backgroundTasks``; OpenCTI 6.0 or later).
+* ``get_opencti_managers``: the platform managers with their enabled, running and
+  warning flags (``settings.platform_modules``).
+* ``get_opencti_platform_queues``: workers consuming and messages queued, platform
+  totals only (root ``rabbitMQMetrics``, MODULES); no queue is named.
+* ``list_opencti_stream_consumers``: live stream collections and their consumers'
+  time lag (root ``streamCollections``; without the ``consumers`` field, the
+  collections alone).
+* ``get_opencti_licence``: the enterprise licence state and expiry
+  (``settings.platform_enterprise_edition``; OpenCTI 6.0 or later).
+
+A module that lacks a field answers the error line, and the checker reports the
+check that needs it as ``not_run``.
+
 A root the user's role cannot read answers its own error line and the others
 still answer. Names, URIs and descriptions are text the platform's users wrote:
 the listing is returned wrapped as untrusted content.
@@ -21,7 +39,7 @@ the listing is returned wrapped as untrusted content.
 from __future__ import annotations
 
 import logging
-from typing import Final
+from typing import Any, Final
 
 from app.services.content_safety import wrap_untrusted
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -57,6 +75,39 @@ _PLAYBOOKS_QUERY: Final = (
 )
 
 
+_BACKGROUND_TASKS_QUERY: Final = (
+    "query HealthBackgroundTasks($first: Int) { backgroundTasks(first: $first,"
+    " orderBy: created_at, orderMode: desc) { edges { node {"
+    " id type created_at last_execution_date completed"
+    " task_expected_number task_processed_number errors { timestamp message } } } } }"
+)
+
+_MANAGERS_QUERY: Final = "query HealthManagers { settings { platform_modules { id enable running warning } } }"
+
+_QUEUES_QUERY: Final = (
+    "query HealthPlatformQueues { rabbitMQMetrics { consumers overview {"
+    " queue_totals { messages messages_ready messages_unacknowledged } } } }"
+)
+
+_STREAMS_QUERY: Final = (
+    "query HealthStreams($first: Int) { streamCollections(first: $first) { edges { node {"
+    " id name stream_live consumers { connectionId connectedAt lastEventDate timeLag } } } } }"
+)
+_STREAMS_QUERY_NO_CONSUMERS: Final = (
+    "query HealthStreams($first: Int) { streamCollections(first: $first) { edges { node { id name stream_live } } } }"
+)
+
+_LICENCE_QUERY: Final = (
+    "query HealthLicence { settings { platform_enterprise_edition {"
+    " license_validated license_expired license_expiration_date license_type } } }"
+)
+
+#: The newest background tasks one call reads.
+_TASK_LIMIT: Final = 50
+#: The errors listed per background task; the line counts the rest.
+_TASK_ERRORS: Final = 3
+
+
 def _feed_query(root: str) -> str:
     return (
         f"query HealthFeeds($first: Int) {{ {root}(first: $first) {{ edges {{ node {{"
@@ -90,6 +141,41 @@ def _playbook_line(node: dict) -> str:
     queued = node.get("queue_messages")
     tail = f", queue {queued}" if queued is not None else ""
     return f"- {node.get('name') or '?'} [{state}]{tail} (id: {node.get('id') or '?'})"
+
+
+def _task_line(node: dict[str, Any]) -> str:
+    state = "completed" if node.get("completed") else "in progress"
+    done, expected = node.get("task_processed_number"), node.get("task_expected_number")
+    progress = f", {done} of {expected} processed" if expected is not None else ""
+    errors = [e for e in (node.get("errors") or []) if isinstance(e, dict)]
+    line = (
+        f"- {node.get('type') or '?'} [{state}]{progress}, created {node.get('created_at') or '?'},"
+        f" last run {node.get('last_execution_date') or 'never'}, errors {len(errors)}"
+        f" (id: {node.get('id') or '?'})"
+    )
+    shown = [f"    {e.get('timestamp') or '?'}: {e.get('message') or '?'}" for e in errors[:_TASK_ERRORS]]
+    return "\n".join([line, *shown])
+
+
+def _manager_line(node: dict[str, Any]) -> str:
+    enabled = "enabled" if node.get("enable") else "disabled"
+    running = "running" if node.get("running") else "not running"
+    warning = ", warning" if node.get("warning") else ""
+    return f"- {node.get('id') or '?'} [{enabled}, {running}{warning}]"
+
+
+def _stream_line(node: dict[str, Any]) -> str:
+    state = "live" if node.get("stream_live") else "stopped"
+    head = f"- {node.get('name') or '?'} [{state}] (id: {node.get('id') or '?'})"
+    if "consumers" not in node:
+        return head
+    consumers = [c for c in (node.get("consumers") or []) if isinstance(c, dict)]
+    rows = [
+        f"    consumer {c.get('connectionId') or '?'}: time lag {c.get('timeLag') if c.get('timeLag') is not None else '?'},"
+        f" last event {c.get('lastEventDate') or 'never'}, connected {c.get('connectedAt') or '?'}"
+        for c in consumers
+    ]
+    return "\n".join([f"{head}, consumers {len(consumers)}", *rows])
 
 
 def _cut(lines: list[str]) -> list[str]:
@@ -141,9 +227,78 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             f"Playbooks ({len(nodes)}):\n" + "\n".join(_playbook_line(n) for n in nodes), "OpenCTI playbooks"
         )
 
+    async def list_opencti_background_tasks() -> str:
+        data, err = await _gql(_BACKGROUND_TASKS_QUERY, {"first": _TASK_LIMIT})
+        if err:
+            return f"Background tasks: {err}"
+        nodes = _edges(data, "backgroundTasks")
+        if not nodes:
+            return "Background tasks: none on this OpenCTI."
+        running = sum(1 for n in nodes if not n.get("completed"))
+        failed = sum(1 for n in nodes if n.get("errors"))
+        head = f"Background tasks (newest {len(nodes)}; {running} in progress, {failed} with errors):"
+        return wrap_untrusted(head + "\n" + "\n".join(_task_line(n) for n in nodes), "OpenCTI background tasks")
+
+    async def get_opencti_managers() -> str:
+        data, err = await _gql(_MANAGERS_QUERY)
+        if err:
+            return f"Managers: {err}"
+        nodes = [n for n in ((data.get("settings") or {}).get("platform_modules") or []) if isinstance(n, dict)]
+        if not nodes:
+            return "Managers: none reported by this OpenCTI."
+        down = sum(1 for n in nodes if n.get("enable") and not n.get("running"))
+        return f"Managers ({len(nodes)}; {down} enabled and not running):\n" + "\n".join(
+            _manager_line(n) for n in nodes
+        )
+
+    async def get_opencti_platform_queues() -> str:
+        data, err = await _gql(_QUEUES_QUERY)
+        if err:
+            return f"Platform queues: {err}"
+        metrics = data.get("rabbitMQMetrics") or {}
+        totals = (metrics.get("overview") or {}).get("queue_totals") or {}
+        return (
+            "Platform queues (all queues together):"
+            f" consumers {metrics.get('consumers') if metrics.get('consumers') is not None else '?'},"
+            f" messages {totals.get('messages', '?')},"
+            f" ready {totals.get('messages_ready', '?')},"
+            f" unacknowledged {totals.get('messages_unacknowledged', '?')}"
+        )
+
+    async def list_opencti_stream_consumers() -> str:
+        data, err = await _gql(_STREAMS_QUERY, {"first": _LIMIT})
+        if err and "consumers" in err:
+            # An OpenCTI without the consumers field: the collections still answer.
+            data, err = await _gql(_STREAMS_QUERY_NO_CONSUMERS, {"first": _LIMIT})
+        if err:
+            return f"Streams: {err}"
+        nodes = _edges(data, "streamCollections")
+        if not nodes:
+            return "Streams: no live stream collection on this OpenCTI."
+        lines = _cut([_stream_line(n) for n in nodes])
+        return wrap_untrusted(f"Stream collections ({len(nodes)}):\n" + "\n".join(lines), "OpenCTI streams")
+
+    async def get_opencti_licence() -> str:
+        data, err = await _gql(_LICENCE_QUERY)
+        if err:
+            return f"Licence: {err}"
+        ee = (data.get("settings") or {}).get("platform_enterprise_edition") or {}
+        if not ee:
+            return "Licence: no enterprise licence reported by this OpenCTI."
+        return (
+            f"Licence: type {ee.get('license_type') or '?'},"
+            f" validated {bool(ee.get('license_validated'))}, expired {bool(ee.get('license_expired'))},"
+            f" expires {ee.get('license_expiration_date') or 'never'}"
+        )
+
     executor.register("list_opencti_connector_states", list_opencti_connector_states)
     executor.register("list_opencti_feed_states", list_opencti_feed_states)
     executor.register("list_opencti_playbook_states", list_opencti_playbook_states)
+    executor.register("list_opencti_background_tasks", list_opencti_background_tasks)
+    executor.register("get_opencti_managers", get_opencti_managers)
+    executor.register("get_opencti_platform_queues", get_opencti_platform_queues)
+    executor.register("list_opencti_stream_consumers", list_opencti_stream_consumers)
+    executor.register("get_opencti_licence", get_opencti_licence)
 
     return [
         ToolDefinition(
@@ -161,6 +316,36 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         ToolDefinition(
             name="list_opencti_playbook_states",
             description="Read-only: OpenCTI playbooks with their running flag and queued messages.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="list_opencti_background_tasks",
+            description="Read-only: the newest OpenCTI background tasks with progress, completion and errors.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencti_managers",
+            description="Read-only: OpenCTI platform managers with their enabled, running and warning flags.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencti_platform_queues",
+            description="Read-only: OpenCTI workers consuming and messages queued, platform-wide totals.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="list_opencti_stream_consumers",
+            description="Read-only: OpenCTI live stream collections and their consumers' time lag.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencti_licence",
+            description="Read-only: OpenCTI enterprise licence state and expiry date.",
             input_schema={"type": "object", "properties": {}, "required": []},
             source=_SOURCE,
         ),

@@ -168,8 +168,14 @@ def _text(data: bytes | None) -> str | None:
         return None
 
 
-def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None) -> PathMerge:
-    """The three-way merge of one path from its three versions (``None``: absent on that side)."""
+def merge_path(
+    path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None, *, ref_first: bool = False
+) -> PathMerge:
+    """The three-way merge of one path from its three versions (``None``: absent on that side).
+
+    *ref_first*: a JSON object file merged by key keeps the order of *theirs* (the ref merged into the branch),
+    the branch's own keys after it, so the branch's diff against the ref holds its own keys only (#1116).
+    """
     if ours is None or theirs is None:
         gone, kept = ("the branch", "the ref") if ours is None else ("the ref", "the branch")
         return PathMerge(path, reason=f"removed on {gone}, changed on {kept}: keep one side whole")
@@ -186,7 +192,7 @@ def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes 
         )
         if not defect:
             return PathMerge(path, merged=merged.text, **checks)
-    by_key = merge_json_objects(base_text, ours_text, theirs_text)
+    by_key = merge_json_objects(base_text, ours_text, theirs_text, ref_first=ref_first)
     if by_key is not None and not structured.parse_defect(checks["structured_kind"], by_key):
         return PathMerge(path, merged=by_key, **checks)
     regions = merged.regions
@@ -201,10 +207,10 @@ def merge_path(path: str, base: bytes | None, ours: bytes | None, theirs: bytes 
     union = merge_text(base_text, ours_text, theirs_text, both=True).text
     # A JSON object file (an i18n catalog) settles a keep by key: the line merge's preferred hunk would take one
     # side's whole tail and drop the keys the other side appended there; the key merge keeps them.
-    keep_ours = merge_json_objects(base_text, ours_text, theirs_text, prefer="ours")
+    keep_ours = merge_json_objects(base_text, ours_text, theirs_text, prefer="ours", ref_first=ref_first)
     if keep_ours is None:
         keep_ours = merge_text(base_text, ours_text, theirs_text, prefer="ours").text
-    keep_theirs = merge_json_objects(base_text, ours_text, theirs_text, prefer="theirs")
+    keep_theirs = merge_json_objects(base_text, ours_text, theirs_text, prefer="theirs", ref_first=ref_first)
     if keep_theirs is None:
         keep_theirs = merge_text(base_text, ours_text, theirs_text, prefer="theirs").text
     return PathMerge(
@@ -263,7 +269,10 @@ async def line_merge(
     head: str,
     paths: list[str],
 ) -> LineMerge | str:
-    """Read the three versions of *paths* and merge each line by line; the reason when it cannot run."""
+    """Read the three versions of *paths* and merge each line by line; the reason when it cannot run.
+
+    *head* is merged into *branch*: a JSON object file merged by key keeps *head*'s key order (#1116).
+    """
     if len(paths) > MAX_MERGED_PATHS:
         return f"{len(paths)} paths changed on both sides, over the {MAX_MERGED_PATHS} the line merge reads"
     sides: list[_Side] = []
@@ -317,7 +326,8 @@ async def line_merge(
         try:
             # Off the event loop; a thread past the budget finishes on its own and its result is dropped.
             merges[path] = await asyncio.wait_for(
-                asyncio.to_thread(merge_path, path, base, ours, theirs), timeout=max(remaining, 0.001)
+                asyncio.to_thread(merge_path, path, base, ours, theirs, ref_first=True),
+                timeout=max(remaining, 0.001),
             )
         except TimeoutError:
             merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
