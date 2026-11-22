@@ -5106,6 +5106,104 @@ PROVIDER_CATALOG = {
             ),
         },
     },
+    "netsuite": {
+        "name": "NetSuite",
+        "description": "Oracle NetSuite ERP, OneWorld-ready: SuiteQL, any record, subsidiaries, periods, chart of accounts, transactions and journal lines, trial balance, income statement and balance sheet per subsidiary or consolidated, AR/AP aging, intercompany balances; master data, bills, invoices, payments, journals, bank details and period close, the sensitive writes asked first",
+        "logo": "/logos/netsuite.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["erp", "finance"],
+        # Both modes sign their own requests (a client credentials grant with a
+        # certificate, or OAuth 1.0a TBA): the secret goes in the API Key field,
+        # the account and identifiers in extra_config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "account_id": "Account ID (Setup > Company > Company Information, e.g. 1234567 or 1234567_SB1 for a sandbox)",
+            "auth_mode": "Authentication",
+            "oauth_client_id": "Client ID of the integration record - OAuth 2.0 machine-to-machine",
+            "certificate_id": "Certificate ID (OAuth 2.0 Client Credentials Setup) - OAuth 2.0 machine-to-machine",
+            "oauth_scopes": "OAuth 2.0 scopes (default rest_webservices; add restlets to call RESTlets)",
+            "consumer_key": "Consumer key of the integration record - Token-Based Authentication",
+            "consumer_secret": "Consumer secret of the integration record - Token-Based Authentication",
+            "token_id": "Token ID of the access token - Token-Based Authentication",
+            "companion_script_id": "Companion RESTlet script ID (saved searches, file cabinet, attachments; optional)",
+            "companion_deploy_id": "Companion RESTlet deployment ID",
+        },
+        "extra_field_options": {
+            "auth_mode": [
+                {
+                    "value": "m2m",
+                    "label": "OAuth 2.0 machine-to-machine (client credentials with a certificate), recommended",
+                },
+                {"value": "tba", "label": "Token-Based Authentication (OAuth 1.0a, HMAC-SHA256)"},
+            ],
+        },
+        "setup_guide": {
+            "title": "NetSuite Setup",
+            "url": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_162686838198.html",
+            "steps": [
+                "Enable the features (Setup > Company > Enable Features > SuiteCloud): REST Web Services, OAuth 2.0 (machine-to-machine) or Token-Based Authentication, and SuiteAnalytics Workbook for SuiteQL.",
+                "Create a dedicated role with the permissions listed below and assign it to an integration user (a person or a dedicated employee record). Grant only the write permissions the agents need: every tool family is its own tool, and the sensitive ones ask a person on every call.",
+                "Create an integration record (Setup > Integration > Manage Integrations > New): for OAuth 2.0 machine-to-machine check Client Credentials (Machine to Machine) Grant and the scope REST Web Services (and RESTlets to call RESTlets); for TBA check Token-Based Authentication. Copy the client ID, or the consumer key and secret, shown once.",
+                "OAuth 2.0 machine-to-machine (recommended): generate a key pair and a certificate (openssl req -new -x509 -newkey rsa:3072 -nodes -keyout private.pem -out public.pem -days 730 -sha256), then Setup > Integration > OAuth 2.0 Client Credentials (M2M) Setup > Create New: the entity (integration user), the role, the application and public.pem. Paste the Certificate ID and the Client ID below and private.pem in the API Key field.",
+                "Token-Based Authentication: create an access token (Setup > Users/Roles > Access Tokens > New) for the application, user and role; paste the consumer key and secret and the token ID below and the token secret in the API Key field.",
+                "Optional, saved searches, file cabinet downloads, transaction PDFs and attachments: deploy the companion RESTlet documented in the integrations usage guide (SuiteScript 2.1, the actions search, file, pdf and attach), add the RESTlets scope to the integration record and the OAuth scopes field, and paste its script and deployment IDs below.",
+                "Set the account ID (sandbox: 1234567_SB1), choose the authentication mode, save, then Test Connection: it reads the subsidiaries the role reaches.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Setup > REST Web Services (Full)",
+                    "description": "Every REST call: records, metadata catalog, SuiteQL",
+                },
+                {
+                    "scope": "Setup > Log in using OAuth 2.0 Access Tokens (Full), or Log in using Access Tokens (Full) for TBA",
+                    "description": "Authenticate the integration",
+                },
+                {
+                    "scope": "Reports > SuiteAnalytics Workbook (Edit)",
+                    "description": "SuiteQL queries (every read tool)",
+                },
+                {
+                    "scope": "Lists > Subsidiaries, Accounts, Accounting Periods, Departments, Classes, Locations, Currency, Customers, Vendors, Items (View)",
+                    "description": "Reference data and the finance statements",
+                },
+                {
+                    "scope": "Transactions > Find Transaction, Invoice, Credit Memo, Customer Payment, Sales Order, Bills, Vendor Payment, Purchase Order, Make Journal Entry, Intercompany Journal (View)",
+                    "description": "Transactions, journal lines, aging, intercompany balances",
+                },
+                {
+                    "scope": "Lists > Customers, Vendors, Items, Departments, Classes, Locations (Create or Edit)",
+                    "description": "create_netsuite_record and update_netsuite_record (master data)",
+                },
+                {
+                    "scope": "Transactions > Bills, Pay Bills, Invoice, Credit Memo, Customer Payment, Make Journal Entry, Intercompany Journal (Create or Edit)",
+                    "description": "create_netsuite_transaction and update_netsuite_transaction (ask a person on every call)",
+                },
+                {
+                    "scope": "Setup > Manage Accounting Periods (Full)",
+                    "description": "set_netsuite_period_status: close, reopen, lock (asks a person on every call)",
+                },
+                {
+                    "scope": "Custom record Entity Bank Details (View; Edit to change them)",
+                    "description": "get_netsuite_entity_bank_details, set_netsuite_entity_bank_details (the write asks a person)",
+                },
+                {
+                    "scope": "Lists > Documents and Files (View; Create to attach)",
+                    "description": "download_netsuite_file and attach_netsuite_file through the companion RESTlet",
+                },
+            ],
+            "notes": (
+                "Reads are free; master-data writes are writes; posting transactions (bills, invoices, payments, "
+                "journals), period close and lock, entity bank detail changes and RESTlet calls other than GET ask a "
+                "person on every call. Each family is its own tool, so a binding narrows it with the integration's "
+                "allowed tools. Concurrency and governance limits (HTTP 429) are retried with backoff on reads, never "
+                "on writes. Consolidated statements use BUILTIN.CONSOLIDATE at the period's "
+                "consolidation rates. A role missing a permission or a locked period is reported as such."
+            ),
+        },
+    },
     "hibob": {
         "name": "HiBob",
         "description": "HR — Employees, Time Off, Goals (OKR), Job Catalog, Tasks, Reports, Documents, Payroll, Training, Attendance, Projects, Workforce Planning, Custom Tables, Metadata",
@@ -9030,67 +9128,6 @@ PROVIDER_CATALOG = {
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
         },
     },
-    "quotapath": {
-        "name": "QuotaPath",
-        "description": (
-            "Sales commission management - users, teams and managers, compensation plans and paths, "
-            "quotas, deals and their crediting, payouts (earned, paid, still owed), commission totals "
-            "by rep, team, plan and period, CSV payout and deal reports. Commission amounts are people "
-            "data; every write asks a person"
-        ),
-        "logo": "/logos/quotapath.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["sales_compensation"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
-        "available_events": [
-            {
-                "event": "payout_updated",
-                "label": "Payout created or updated",
-                "description": (
-                    "Triggers when a QuotaPath payout is created or changes (a deal credited, a rate or "
-                    "quota changed). Uses polling (every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_resolved",
-                "label": "Payout resolved",
-                "description": (
-                    "Triggers when a QuotaPath payout is resolved (the period paid out). Uses polling "
-                    "(every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_unresolved",
-                "label": "Payout newly owed",
-                "description": (
-                    "Triggers when a payout appears among the unresolved ones (commission owed, the "
-                    "accrual). Uses polling (every 15 min); what is owed when the trigger is enabled "
-                    "does not run."
-                ),
-                "mechanism": "polling",
-            },
-        ],
-        "setup_guide": {
-            "title": "QuotaPath API Key Setup",
-            "url": "https://api.quotapath.com/docs/",
-            "steps": [
-                "Sign in to QuotaPath as a workspace admin.",
-                "Open Settings > Integrations and generate an API key.",
-                "Paste the key in the field below. Test Connection reads the workspace users.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Workspace API key",
-                    "description": "Reads users, teams, plans, quotas, deals and payouts; writes deals, quotas and imports (each write asks a person)",
-                },
-            ],
-            "notes": "QuotaPath sends the key as 'Authorization: Token <key>' to https://api.quotapath.com/v1. Its public API has no disputes, adjustments, draws, payout-period approval or lock, CRM sync status, statement PDFs or webhooks: those stay in the QuotaPath application, and events are polled.",
-        },
-    },
     "linkedin": {
         "name": "LinkedIn",
         "description": "Posts (text, images, video, documents), Pages (Organizations), Analytics, Comments, Reactions",
@@ -9710,6 +9747,8 @@ _URL_DUMMY_PROVIDERS = {
 # exact shape it parses. Tenable needs base_url||access_key||secret_key (both
 # keys non-empty); Intel 471 api_username||api_key, with no URL.
 _SHAPED_DUMMIES: dict[str, str] = {
+    # NetSuite's token is account||mode||...||secret.
+    "netsuite": "1234567||tba||__dummy__||__dummy__||__dummy__||__dummy__",
     # PagerDuty's token is region||from_email||api_key.
     "pagerduty": "us||agent@example.com||__dummy__",
     # Zendesk's token is subdomain||email||api_token.
