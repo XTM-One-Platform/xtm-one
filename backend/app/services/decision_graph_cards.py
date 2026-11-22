@@ -191,6 +191,120 @@ async def update_sent_cards(
 Refresher = Callable[[uuid.UUID], Awaitable[None]]
 
 
+#: Sends tried for one decision card before the scheduler stops trying.
+MAX_SEND_ATTEMPTS = 3
+#: A decision opened longer ago than this gets no card from the tick.
+_SEND_WINDOW_DAYS = 2
+_SEND_BATCH = 20
+
+
+def card_target(item: Any) -> dict[str, str] | None:
+    """Where a waiting work item's card goes: its notify ask's chat or channel, else ``None``.
+
+    A notify ask naming a person by address (``user``) has no conversation
+    to post a card in yet: it keeps the text notification at the item's end.
+    """
+    spec = notify.notify_spec(getattr(item, "payload", None))
+    if not spec or not spec.get("integration"):
+        return None
+    if spec.get("team_id") and spec.get("channel_id"):
+        return {"team_id": str(spec["team_id"]), "channel_id": str(spec["channel_id"])}
+    if spec.get("chat_id"):
+        return {"chat_id": str(spec["chat_id"])}
+    return None
+
+
+def recipient_user_id(recipient: str | None) -> uuid.UUID | None:
+    """The person a link is minted for: ``user:<uuid>`` only (a group or ``company`` has no single reader)."""
+    if not recipient or not recipient.startswith("user:"):
+        return None
+    try:
+        return uuid.UUID(recipient.removeprefix("user:"))
+    except ValueError:
+        return None
+
+
+async def _send_attempts(db: AsyncSession, decision_id: uuid.UUID) -> tuple[bool, int]:
+    """Whether *decision_id* needs no more send (sent, or refused for good), and how many sends failed."""
+    result = await db.execute(
+        select(DecisionEvent.detail).where(DecisionEvent.decision_id == decision_id, DecisionEvent.event == "notified")
+    )
+    details = [d for d in result.scalars().all() if isinstance(d, dict) and d.get("via") == VIA]
+    finished = any(d.get("message_id") or d.get("permanent") for d in details)
+    return finished, sum(1 for d in details if d.get("error"))
+
+
+async def deliver_work_item_cards(*, limit: int = _SEND_BATCH, caller: CallerFactory | None = None) -> int:
+    """Post the link card of every open work item decision whose item names a Teams chat or channel.
+
+    Called by the scheduler tick. The item's ``payload.notify`` names the
+    Microsoft integration and the chat or channel; the agent that created the
+    item sends, as for its end notification. A failed send is recorded as a
+    ``notified`` event with its error and tried again on the next ticks, at
+    most :data:`MAX_SEND_ATTEMPTS` times. Returns the number of cards sent.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func
+
+    from app.core.database import async_session
+    from app.models.work_item import WorkItem
+
+    since = datetime.now(UTC) - timedelta(days=_SEND_WINDOW_DAYS)
+    sent = 0
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                select(Decision, WorkItem)
+                .join(WorkItem, WorkItem.id == Decision.source_id)
+                .where(
+                    Decision.source_type == "work_item",
+                    Decision.status == "open",
+                    Decision.created_at >= since,
+                    func.json_typeof(WorkItem.payload[notify.NOTIFY_KEY]) == "object",
+                )
+                .order_by(Decision.created_at.asc())
+                .limit(limit)
+            )
+        ).all()
+        for decision, item in rows:
+            target = card_target(item)
+            recipient = recipient_user_id(decision.recipient)
+            agent_id = item.created_by_agent_id or item.owner_agent_id
+            if target is None or recipient is None or agent_id is None or item.user_id is None:
+                continue
+            done, failures = await _send_attempts(db, decision.id)
+            if done or failures >= MAX_SEND_ATTEMPTS:
+                continue
+            spec = notify.notify_spec(item.payload) or {}
+            try:
+                await send_link_card(
+                    db,
+                    decision,
+                    agent_id=agent_id,
+                    user_id=item.user_id,
+                    integration=str(spec["integration"]),
+                    recipient_id=recipient,
+                    target=target,
+                    caller=caller,
+                )
+                sent += 1
+            except Exception as exc:  # recorded and retried on the next tick, bounded
+                error = format_exception_message(exc)[:500]
+                permanent = isinstance(exc, notify.PermanentNotifyError)
+                db.add(
+                    DecisionEvent(
+                        decision_id=decision.id,
+                        event="notified",
+                        surface=_SURFACE[target_kind(target)],
+                        detail={"via": VIA, "error": error, **({"permanent": True} if permanent else {})},
+                    )
+                )
+                await db.commit()
+                logger.warning("Decision %s: the card was not sent: %s", decision.id, error)
+    return sent
+
+
 async def refresh_after_answer(decision_id: uuid.UUID) -> None:
     """Update the sent cards of a decision just answered, on a session of its own."""
     from app.core.database import async_session

@@ -223,3 +223,122 @@ async def test_has_sent_cards_reads_only_this_module_events():
 def test_message_id_of():
     assert cards.message_id_of("Chat message sent. Message ID: 1716. Sent at: now.") == "1716"
     assert cards.message_id_of("nothing") is None
+
+
+# --- the tick: work items waiting for a person ----------------------------------------
+
+
+def _item(notify_spec: dict[str, Any] | None, **over: Any) -> Any:
+    base = {
+        "id": DID,
+        "user_id": OWNER,
+        "created_by_agent_id": AGENT,
+        "owner_agent_id": None,
+        "payload": {"notify": notify_spec} if notify_spec is not None else {},
+    }
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+class _TickDb(_Db):
+    """The tick's session: the first query lists (decision, item), the next ones read events."""
+
+    def __init__(self, rows: list[tuple[Any, Any]], notified: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(None, notified)
+        self.rows = rows
+        self.queries = 0
+
+    async def __aenter__(self) -> "_TickDb":
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return False
+
+    async def execute(self, stmt: Any) -> Any:
+        self.queries += 1
+        if self.queries == 1:
+            from sqlalchemy.dialects import postgresql
+
+            self.sql = str(stmt.compile(dialect=postgresql.dialect()))
+            rows = self.rows
+            return SimpleNamespace(all=lambda: list(rows))
+        return await super().execute(stmt)
+
+
+def _tick(monkeypatch: pytest.MonkeyPatch, db: _TickDb, caller: Any) -> int:
+    import asyncio
+
+    monkeypatch.setattr("app.core.database.async_session", lambda: db)
+    return asyncio.run(cards.deliver_work_item_cards(caller=caller))
+
+
+CHAT = {"channel": "teams_dm", "chat_id": "19:abc@thread.v2", "integration": "Office account"}
+
+
+def test_card_target_reads_the_notify_ask():
+    assert cards.card_target(_item(CHAT)) == {"chat_id": "19:abc@thread.v2"}
+    channel = {"channel": "teams_channel", "team_id": "t1", "channel_id": "c1", "integration": "x"}
+    assert cards.card_target(_item(channel)) == {"team_id": "t1", "channel_id": "c1"}
+    # A person by address has no conversation to post a card in; no integration, no card.
+    assert cards.card_target(_item({"user": "a@example.com", "integration": "x"})) is None
+    assert cards.card_target(_item({"chat_id": "19:abc@thread.v2"})) is None
+    assert cards.card_target(_item(None)) is None
+
+
+def test_recipient_user_id_is_a_single_person_only():
+    assert cards.recipient_user_id(f"user:{ALICE}") == ALICE
+    for other in ("company", "admins", f"group:{ALICE}", "user:nope", None):
+        assert cards.recipient_user_id(other) is None
+
+
+def test_tick_sends_the_card_of_a_waiting_item_once(monkeypatch: pytest.MonkeyPatch):
+    seen: list = []
+    caller = _caller({"send_microsoft_chat_message": (True, "Chat message sent. Message ID: 9. Sent at: x.")}, seen)
+    db = _TickDb([(_decision(recipient=f"user:{ALICE}"), _item(CHAT))])
+    assert _tick(monkeypatch, db, caller) == 1
+    sender, integration, tool, arguments = seen[0]
+    assert (sender.created_by_agent_id, sender.user_id, integration, tool) == (
+        AGENT,
+        OWNER,
+        "Office account",
+        "send_microsoft_chat_message",
+    )
+    assert arguments["chat_id"] == "19:abc@thread.v2"
+    assert "FROM decisions JOIN work_items" in db.sql and "json_typeof" in db.sql
+    # The next tick reads the notified event: nothing is sent again.
+    again = _TickDb([(_decision(recipient=f"user:{ALICE}"), _item(CHAT))], notified=[_sent(message_id="9")])
+    assert _tick(monkeypatch, again, caller) == 0 and len(seen) == 1
+
+
+def test_tick_skips_a_group_recipient_and_an_address_target(monkeypatch: pytest.MonkeyPatch):
+    seen: list = []
+    caller = _caller({}, seen)
+    rows = [
+        (_decision(recipient="company"), _item(CHAT)),
+        (_decision(recipient=f"user:{ALICE}"), _item({"user": "a@example.com", "integration": "x"})),
+    ]
+    assert _tick(monkeypatch, _TickDb(rows), caller) == 0 and seen == []
+
+
+def test_tick_records_a_failed_send_and_stops_after_the_bound(monkeypatch: pytest.MonkeyPatch):
+    seen: list = []
+    caller = _caller({"send_microsoft_chat_message": (False, "Service unavailable")}, seen)
+    db = _TickDb([(_decision(recipient=f"user:{ALICE}"), _item(CHAT))])
+    assert _tick(monkeypatch, db, caller) == 0
+    event = db.added[0]
+    assert event.event == "notified" and event.detail["error"] and "permanent" not in event.detail
+    failed = [{"via": cards.VIA, "error": "x"}] * cards.MAX_SEND_ATTEMPTS
+    bounded = _TickDb([(_decision(recipient=f"user:{ALICE}"), _item(CHAT))], notified=failed)
+    assert _tick(monkeypatch, bounded, caller) == 0 and len(seen) == 1
+
+
+def test_tick_stops_at_once_on_a_permanent_refusal(monkeypatch: pytest.MonkeyPatch):
+    seen: list = []
+    caller = _caller({}, seen)  # the tool is denied to the agent
+    db = _TickDb([(_decision(recipient=f"user:{ALICE}"), _item(CHAT))], notified=[])
+    # A denied tool raises NotifyError (retryable): one failure recorded.
+    assert _tick(monkeypatch, db, caller) == 0
+    assert db.added[0].detail["error"]
+    refused = [{"via": cards.VIA, "error": "bad request", "permanent": True}]
+    stopped = _TickDb([(_decision(recipient=f"user:{ALICE}"), _item(CHAT))], notified=refused)
+    assert _tick(monkeypatch, stopped, caller) == 0 and len(seen) == 1
