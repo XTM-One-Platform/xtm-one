@@ -292,6 +292,9 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
     {
       key: "kind",
       header: "Kind",
+      // The Kind filter and the source's icon keep the kind readable when the column steps aside.
+      hideable: true,
+      hideBelow: "4xl",
       cell: (row) => <span className="whitespace-nowrap">{row.sync?.section === "all" ? t_i18n("Sync all") : t_i18n(SOURCE_KIND_NAMES[kindOf(row)])}</span>,
       sortValue: (row) => kindOf(row),
       csv: (row) => kindOf(row),
@@ -355,6 +358,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       key: "schedule",
       header: "Schedule",
       hideable: true,
+      hideBelow: "6xl",
       cell: (row) =>
         row.sync ? (
           <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[13rem]" />
@@ -389,7 +393,8 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       key: "next_run",
       header: "Next run",
       hideable: true,
-      cell: (row) => (row.sync ? <TruncatedText text={nextRunLine(row.sync)} lines={2} className="w-max max-w-[14rem] text-default-secondary" /> : null),
+      // Clamped so the default columns fit an 810 px card; the whole reason is in the tooltip.
+      cell: (row) => (row.sync ? <TruncatedText text={nextRunLine(row.sync)} lines={2} className="w-max max-w-[10rem] text-default-secondary" /> : null),
       sortValue: (row) => row.sync?.next_run_at ?? "",
       csv: (row) => row.sync?.next_run_at ?? "",
     },
