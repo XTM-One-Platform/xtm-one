@@ -219,6 +219,15 @@ export type ExtraFieldLabel = { name: string; detail: string | null; optional: b
 
 const OPTIONAL_LEAD = /^optional\b\s*(?:[\u2014\u2013,;:.-]\s*)?/i;
 const REQUIRED_ONLY = /^required$/i;
+/** A trailing ` \u2014 REQUIRED` / ` - optional` marker, read like `(required)` / `(optional)`. */
+const TRAILING_MARKER = /\s*(?:[\u2014\u2013]|\s-)\s*(required|optional)\s*$/i;
+/** A dash between spaces separates the name from its explanation, like `: `. */
+const DASH_SEPARATOR = / [\u2014\u2013-] /;
+/** A text opening with an article or speaking to the reader is a sentence, not a name. */
+const ARTICLE_LEAD = /^(?:the|a|an|your)\s/i;
+const SECOND_PERSON = /\b(?:you|your)\b/i;
+/** A shouted word (`REQUIRED`), longer than any acronym of a name. */
+const SHOUTED_WORD = /\b[A-Z]{6,}\b/;
 /** Longest text read as a field's name; a longer one is an explanation. */
 export const EXTRA_FIELD_NAME_MAX = 40;
 
@@ -239,15 +248,6 @@ export function extraFieldKeyName(key: string): string {
   return words.length ? capitalised(words.join(" ")) : key;
 }
 
-function balanced(text: string): boolean {
-  let depth = 0;
-  for (const char of text) {
-    if (char === "(") depth += 1;
-    else if (char === ")" && --depth < 0) return false;
-  }
-  return depth === 0;
-}
-
 /** Index of the `(` that opens the label's last top-level parenthesis, when the label ends with it after a space. */
 function trailingParenthesis(text: string): number | null {
   if (!text.endsWith(")")) return null;
@@ -259,21 +259,33 @@ function trailingParenthesis(text: string): number | null {
   return null;
 }
 
-/** Whether a text reads as a field's name: short, not a number, its parentheses balanced. */
-function isFieldName(name: string): boolean {
-  return name.length > 0 && name.length <= EXTRA_FIELD_NAME_MAX && !/^\d/.test(name) && balanced(name);
+/**
+ * Whether a text reads as a field's name: short, not a number, no dash or
+ * parenthesis, no shouted word, not a sentence (an article first, or `you`).
+ */
+export function isFieldName(name: string): boolean {
+  return (
+    name.length > 0 &&
+    name.length <= EXTRA_FIELD_NAME_MAX &&
+    !/^\d/.test(name) &&
+    !/[()\u2014\u2013]/.test(name) &&
+    !SHOUTED_WORD.test(name) &&
+    !ARTICLE_LEAD.test(name) &&
+    !SECOND_PERSON.test(name)
+  );
 }
 
 /**
  * Split a catalog label into the field's name and its explanation, so the name
  * is the label and the explanation is the info bubble. The catalog writes the
  * explanation after the name, in a balanced trailing parenthesis (`Webhook
- * secret (optional - for signature verification)`) or after a colon
- * (`Region: where the tenant is hosted`); `optional` at the start of the label
- * or of its explanation marks a field that may stay empty, `(required)` alone
- * adds nothing. When what precedes the explanation is not a name (a number, a
- * sentence, an unbalanced parenthesis, an `Optional - ...` label), the name is
- * read off the field's `key` and the whole label is the explanation.
+ * secret (optional - for signature verification)`), after a colon (`Region:
+ * where the tenant is hosted`) or after a spaced dash (`Base URL \u2014 XSOAR 8`);
+ * `optional` at the start of the label or of its explanation marks a field
+ * that may stay empty, `(required)` or a trailing `\u2014 REQUIRED` adds nothing.
+ * When what precedes the explanation is not a name ({@link isFieldName}: a
+ * number, a sentence, a parenthesis, a shouted word, an `Optional - ...`
+ * label), the name is read off the field's `key` and the label is the explanation.
  */
 export function splitExtraFieldLabel(label: string, key?: string): ExtraFieldLabel {
   let text = label.trim();
@@ -281,18 +293,29 @@ export function splitExtraFieldLabel(label: string, key?: string): ExtraFieldLab
     text = text.replace(OPTIONAL_LEAD, "").trim();
     return { name: extraFieldKeyName(key), detail: text ? capitalised(text) : null, optional: true };
   }
+  let optional = false;
+  const marker = TRAILING_MARKER.exec(text);
+  if (marker && marker.index > 0) {
+    optional = marker[1].toLowerCase() === "optional";
+    text = text.slice(0, marker.index).trim();
+  }
   let name = text;
   let detail: string | null = null;
   const paren = trailingParenthesis(text);
   const colon = text.indexOf(": ");
-  if (paren !== null && (colon < 0 || paren < colon)) {
+  const dash = DASH_SEPARATOR.exec(text);
+  const separators = [
+    ...(colon > 0 ? [{ at: colon, length: 2 }] : []),
+    ...(dash && dash.index > 0 ? [{ at: dash.index, length: 3 }] : []),
+  ].sort((a, b) => a.at - b.at);
+  const separator = separators[0];
+  if (paren !== null && (!separator || paren < separator.at)) {
     name = text.slice(0, paren).trim();
     detail = text.slice(paren + 1, -1).trim();
-  } else if (colon > 0) {
-    name = text.slice(0, colon).trim();
-    detail = text.slice(colon + 2).trim();
+  } else if (separator) {
+    name = text.slice(0, separator.at).trim();
+    detail = text.slice(separator.at + separator.length).trim();
   }
-  let optional = false;
   if (detail !== null && OPTIONAL_LEAD.test(detail)) {
     optional = true;
     detail = detail.replace(OPTIONAL_LEAD, "").trim();
@@ -334,14 +357,30 @@ export function extraFieldLabels(fields: Readonly<Record<string, string>>): Reco
   return labels;
 }
 
+/** Product and vendor names written capitalised inside a sentence (lower case here). */
+const PROPER_NOUNS: ReadonlySet<string> = new Set([
+  "airwallex", "aikido", "atlassian", "aws", "azure", "cloudflare", "confluence", "cortex", "crowdstrike",
+  "databricks", "elastic", "elasticsearch", "entra", "github", "gitlab", "gmail", "google", "jira", "kibana",
+  "meta", "microsoft", "notion", "okta", "opencti", "openaev", "opencrq", "pennylane", "rydoo", "salesforce",
+  "sentinel", "servicenow", "sharepoint", "slack", "splunk", "supabase", "teams", "whatsapp", "windows",
+]);
+
 /**
- * A field name inside a sentence ("Paste {field}..."): lower-case first letter,
- * kept when the name opens with an acronym (`API key`, `URL`) or is a proper
- * noun (every word capitalised: `Meta Cloud API`, `Azure AD Tenant ID`).
+ * A field name inside a sentence ("Paste {field}..."), one rule for every
+ * word: a plain word is lower case (`Base URL` -> `base URL`), an acronym or a
+ * word with an inner capital (`API`, `GitHub`) and a proper noun (`Kibana`,
+ * `Meta`) are kept, and so is a whole title-case name that opens with a
+ * proper noun (`Meta Cloud API`, `Azure AD Tenant ID`).
  */
 export function fieldNameInSentence(name: string): string {
-  if (name.length > 1 && /[A-Z]/.test(name.charAt(1))) return name;
-  const words = name.split(/\s+/);
-  if (words.length > 1 && words.every((word) => /^[A-Z0-9]/.test(word))) return name;
-  return name.charAt(0).toLowerCase() + name.slice(1);
+  const words = name.split(" ");
+  const first = words[0].replace(/[^A-Za-z]/g, "").toLowerCase();
+  if (words.length > 1 && PROPER_NOUNS.has(first) && words.every((word) => /^[A-Z0-9]/.test(word))) return name;
+  return words
+    .map((word) => {
+      const letters = word.replace(/[^A-Za-z]/g, "");
+      if (!letters || /[A-Z]/.test(letters.slice(1)) || PROPER_NOUNS.has(letters.toLowerCase())) return word;
+      return word.replace(/[A-Z]/, (char) => char.toLowerCase());
+    })
+    .join(" ");
 }

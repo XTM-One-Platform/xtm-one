@@ -16,6 +16,7 @@ import {
   extraFieldProblem,
   fieldNameInSentence,
   hasInvalidExtraField,
+  isFieldName,
   maskedStoredSecrets,
   splitExtraFieldLabel,
 } from "./extra-fields.ts";
@@ -44,10 +45,24 @@ test("a label that does not open with a name is named off its key and kept whole
     splitExtraFieldLabel("5432 (session pooler or direct, default) or 6543 (transaction pooler)", "db_port"),
     { name: "DB port", detail: "5432 (session pooler or direct, default) or 6543 (transaction pooler)", optional: false },
   );
-  // The trailing parenthesis is the last top-level one, never an inner one.
+  // A sentence (an article first, or speaking to the reader) is not a name.
   assert.deepEqual(
     splitExtraFieldLabel("Your Entra tenant (directory) ID (required)", "tenant_id"),
-    { name: "Your Entra tenant (directory) ID", detail: null, optional: false },
+    { name: "Tenant ID", detail: "Your Entra tenant (directory) ID", optional: false },
+  );
+  assert.deepEqual(
+    splitExtraFieldLabel("The database host", "db_host"),
+    { name: "DB host", detail: "The database host", optional: false },
+  );
+  assert.equal(splitExtraFieldLabel("Client ID the partner issued you", "client_id").name, "Client ID");
+  // A spaced dash separates like a colon; a trailing dashed REQUIRED is a marker.
+  assert.deepEqual(
+    splitExtraFieldLabel("API Key ID (x-xdr-auth-id) \u2014 REQUIRED", "api_key_id"),
+    { name: "API Key ID", detail: "X-xdr-auth-id", optional: false },
+  );
+  assert.deepEqual(
+    splitExtraFieldLabel("Cortex XSOAR base URL \u2014 XSOAR 8/Cloud", "base_url"),
+    { name: "Cortex XSOAR base URL", detail: "XSOAR 8/Cloud", optional: false },
   );
   // A leading "Optional" marks the field and leaves a sentence: named off its key.
   assert.deepEqual(
@@ -83,7 +98,19 @@ test("a field name reads inside a sentence, acronyms and proper nouns kept", () 
   assert.equal(fieldNameInSentence("API key"), "API key");
   assert.equal(fieldNameInSentence("URL"), "URL");
   assert.equal(fieldNameInSentence("Meta Cloud API"), "Meta Cloud API");
-  assert.equal(fieldNameInSentence("Your Entra tenant (directory) ID"), "your Entra tenant (directory) ID");
+  // One rule for every field of a form.
+  assert.equal(fieldNameInSentence("Base URL"), "base URL");
+  assert.equal(fieldNameInSentence("Phone number ID"), "phone number ID");
+  assert.equal(fieldNameInSentence("Kibana space ID"), "Kibana space ID");
+  assert.equal(fieldNameInSentence("Databricks workspace URL"), "Databricks workspace URL");
+});
+
+test("a name holds no dash, parenthesis, shouted word or sentence", () => {
+  assert.equal(isFieldName("API Key ID"), true);
+  assert.equal(isFieldName("API Key ID \u2014 REQUIRED"), false);
+  assert.equal(isFieldName("Tenant (directory) ID"), false);
+  assert.equal(isFieldName("The database"), false);
+  assert.equal(isFieldName("Client ID the partner issued you"), false);
 });
 
 /** Every one-line `"key": "label"` entry of each `extra_fields` block of the provider catalog. */
@@ -111,7 +138,7 @@ test("every provider field of the catalog gets its own short name", () => {
     const labels = extraFieldLabels(fields);
     const seen = new Set<string>();
     for (const [key, { name }] of Object.entries(labels)) {
-      if (/^\d/.test(name) || name.length > EXTRA_FIELD_NAME_MAX || seen.has(name.toLowerCase())) problems.push(`${key}: ${name}`);
+      if (!isFieldName(name) || name.length > EXTRA_FIELD_NAME_MAX || seen.has(name.toLowerCase())) problems.push(`${key}: ${name}`);
       seen.add(name.toLowerCase());
     }
   }
