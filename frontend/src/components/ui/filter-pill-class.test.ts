@@ -85,6 +85,18 @@ test("a host lead never pushes the one-row toolbar past its box", () => {
   expect(table).toContain("<div ref={setLead}");
 });
 
+// A one-row toolbar whose full labels run past its box (the Tasks lead at 1440: Status and
+// Quick filters, #1004) records the lead and box widths it overflowed at and draws the
+// compact controls from then on, measured before paint.
+test("full labels that overflow the one-row toolbar fall back to the compact controls", () => {
+  const table = readFileSync(join(SRC, "components/ui/data-table.tsx"), "utf8");
+  expect(table).toContain("ref={setToolbarRow}");
+  expect(table).toContain("toolbarRow.scrollWidth > toolbarRow.clientWidth + 1");
+  expect(table).toContain("leadWidth >= fullLabelsOverflow.lead");
+  expect(table).toContain("boxWidth <= fullLabelsOverflow.box");
+  expect(table).toContain("boxWidth < COMPACT_TOOLBAR_BELOW_PX || leadNeedsCompact");
+});
+
 // The selected Properties row keeps its label in the primary ink: accent text on
 // bg-accent/15 read 4.08:1 in dark at 12 px (UX r1 A1 on #10372). The accent
 // stays on the icon and the check (3:1 for a graphic).

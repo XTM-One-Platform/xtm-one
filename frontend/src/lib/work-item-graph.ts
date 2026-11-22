@@ -62,6 +62,19 @@ export function shownGraph(graph: WorkItemGraph, { showDone }: { showDone: boole
   return { nodes: linked, edges, isolated: nodes.length - linked.length };
 }
 
+/**
+ * The status line's counts of a drawing: its items, its links and the items
+ * waiting for a person. One population with the zones (UX r2 B2 on #1067): the
+ * graph as drawn, so Show only counts the focused chain alone.
+ */
+export function drawnCounts(graph: { nodes: WorkItemGraphNode[]; edges: WorkItemGraphEdge[] }): { items: number; links: number; waitingForPerson: number } {
+  return {
+    items: graph.nodes.filter((node) => node.kind === "item").length,
+    links: graph.edges.length,
+    waitingForPerson: new Set(graph.edges.filter((edge) => edge.kind === "person").map((edge) => edge.source)).size,
+  };
+}
+
 /** Every node reached from *start* along *next*, *start* excluded. */
 function reach(start: string, next: Map<string, string[]>): Set<string> {
   const seen = new Set<string>();
