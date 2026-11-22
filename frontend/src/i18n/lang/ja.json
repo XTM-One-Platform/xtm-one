@@ -20736,5 +20736,6 @@
   "No product matches this search": "この検索に一致する製品はありません",
   "About the inventory": "インベントリについて",
   "This asset does not exist any more: a newer sync, a merge or a split may have replaced it.": "この資産はもう存在しません。新しい同期、統合、または分割によって置き換えられた可能性があります。",
-  "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.": "ソースをまたいで実体ごとに 1 つの資産：同じ対象に関する複数ソースのレコードは識別子で統合されます。技術スタックは資産が実行するソフトウェアから構築されます。"
+  "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.": "ソースをまたいで実体ごとに 1 つの資産：同じ対象に関する複数ソースのレコードは識別子で統合されます。技術スタックは資産が実行するソフトウェアから構築されます。",
+  "Search source or id": "ソースまたは ID を検索"
 }
