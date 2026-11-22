@@ -303,7 +303,13 @@ async def _sync_members(db: AsyncSession, fleet: Fleet, data: dict, agents: dict
     rows = (await db.execute(select(FleetMember).where(FleetMember.fleet_id == fleet.id))).scalars().all()
     by_agent: dict[uuid.UUID, FleetMember] = {}
     for row in rows:
-        if row.role == FLEET_ROLE_MEMBER and row.agent_id in wanted_ids:
+        if row.agent_id in wanted_ids and row.role == FLEET_ROLE_CONNECTED:
+            # CTEM-31 (#1048): an agent connected to the adopted row becomes a home
+            # member; the row is promoted in place, (fleet, agent) being unique.
+            row.role = FLEET_ROLE_MEMBER
+            row.collaboration_instruction = None
+            by_agent[row.agent_id] = row
+        elif row.role == FLEET_ROLE_MEMBER and row.agent_id in wanted_ids:
             by_agent[row.agent_id] = row
         elif row.role == FLEET_ROLE_MEMBER:
             if fleet.orchestrator_agent_id == row.agent_id:
