@@ -537,7 +537,10 @@ verification is done.
 S12 as built (`services/decision_whatsapp.py`): 1 to 3 options are reply
 buttons, 4 to 10 a list, anything else (more options, a free-text question,
 a tool approval with more calls than a card shows, an answered decision) is
-text with the link to the decision. Each reply id is
+text with the link to the decision. Buttons whose 20-character clipped titles
+read the same are sent as a list, and list rows that still collide as text.
+A closed decision states its outcome (who chose what and when, in UTC, or
+expired, or no longer needed) instead of the options. Each reply id is
 `xtm.d:<decisions row id>:<option key>`; the webhook answers a 1:1
 `button_reply` or `list_reply` through the router as the sender's linked
 WhatsApp identity (surface `whatsapp_card`), never routes it to an agent, and
@@ -550,6 +553,16 @@ bytes, holds the row id and key; `callback_query` on the existing webhook;
 through message components answered on an Interactions endpoint (Ed25519
 signature, a 3-second deadline), which the gateway adapter does not expose
 today. Both are left out of this slice.
+
+Render for review: WhatsApp offers no surface a review can open, so every lab
+answers `GET /api/v1/lab/whatsapp-decision` (on the preview, `/api` is
+proxied) with each state drawn from the real `render_whatsapp_decision` /
+`decision_text` payload and the `answer_reply` texts, laid out as a WhatsApp
+chat (body formatting, footer, reply buttons, the list button and its opened
+sheet; the Cloud API payload under each). Query: `lang` (en, es, fr, ja),
+`theme` (light, dark), `width` (phone 390 px, desktop 760 px), `state` (one
+id); `/api/v1/lab/whatsapp-decision/index` links them all
+(`.xtm-one/lab/whatsapp_decision_preview.py`).
 
 S2 as built: `app/models/decision.py` (the tables), `app/models/decision_hooks.py`
 (one `before_flush` hook writes the dual write from the engines' own columns, so

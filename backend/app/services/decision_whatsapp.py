@@ -117,7 +117,24 @@ def _outcome(view: Any, ask: dict[str, Any], language: str) -> list[str]:
         ]
     if answer.get("text"):
         lines.append(_clip(answer.get("text"), 400))
+    when = _answered_at(row)
+    if when:
+        # The message's own time is when the outcome was sent, not when it was answered (UX round 2, A3).
+        lines.append(f"{when.replace('T', ' ').rstrip('Z')} UTC")
     return lines
+
+
+def _answered_at(row: Any) -> str | None:
+    from app.services.decision_cards import _utc
+
+    answered_at = getattr(row, "answered_at", None)
+    return _utc(answered_at.isoformat()) if answered_at else None
+
+
+def _distinct(titles: list[str]) -> bool:
+    """Whether clipped titles still tell every option apart (UX round 1, A1)."""
+    folded = [title.casefold() for title in titles]
+    return len(set(folded)) == len(folded)
 
 
 def _body(view: Any, ask: dict[str, Any], language: str, *, answerable: bool) -> str:
@@ -162,7 +179,7 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
 
     ``None`` means the caller sends :func:`decision_text` instead (an answered
     decision, more than ten options, a free-text question, a tool approval
-    with more calls than a card shows).
+    with more calls than a card shows, options whose clipped titles collide).
     """
     from app.services.decision_cards import _decides_unshown_calls, _label
 
@@ -174,7 +191,9 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
     kind = row.kind
     body = {"text": _body(view, ask, language, answerable=True)}
     footer = {"text": _clip(notice("card_header_decision", language), _MAX_FOOTER)}
-    if len(options) <= MAX_BUTTONS:
+    titles = [_label(o, kind, language, _MAX_BUTTON_TITLE) for o in options]
+    # Two buttons whose clipped titles read the same are a list, whose rows hold more (A1).
+    if len(options) <= MAX_BUTTONS and _distinct(titles):
         return {
             "type": "button",
             "body": body,
@@ -183,12 +202,9 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
                 "buttons": [
                     {
                         "type": "reply",
-                        "reply": {
-                            "id": reply_id(row.id, str(o["key"])),
-                            "title": _label(o, kind, language, _MAX_BUTTON_TITLE),
-                        },
+                        "reply": {"id": reply_id(row.id, str(o["key"])), "title": title},
                     }
-                    for o in options
+                    for o, title in zip(options, titles, strict=True)
                 ]
             },
         }
@@ -201,6 +217,9 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
         if option.get("effect"):
             entry["description"] = _clip(option["effect"], _MAX_ROW_DESCRIPTION)
         rows.append(entry)
+    if not _distinct([str(entry["title"]) for entry in rows]):
+        # Rows that still read the same cannot be told apart: the text with the link instead.
+        return None
     return {
         "type": "list",
         "body": body,

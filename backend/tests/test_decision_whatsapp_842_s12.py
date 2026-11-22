@@ -143,6 +143,34 @@ def test_an_answered_tool_approval_states_the_verdicts():
     assert notice("card_decide_in_xtm", "en") not in text
 
 
+def test_an_answered_decision_says_when_it_was_answered():
+    from datetime import UTC, datetime
+
+    row = _row(status="answered", answer={"option": "A"}, answered_at=datetime(2026, 11, 22, 8, 41, tzinfo=UTC))
+    text = wa.decision_text(_view(row, answered_by_name="Ada"), "en")
+    lines = text.splitlines()
+    assert "2026-11-22 08:41:00 UTC" in lines
+    assert lines[-1].endswith(str(SOURCE_ID))
+
+
+def test_buttons_whose_clipped_titles_collide_become_a_list():
+    labels = ["Escalate to on-call now", "Escalate to on-call later"]
+    ask = _ask(2)
+    ask["options"] = [{"key": k, "label": label} for k, label in zip("AB", labels, strict=True)]
+    message = wa.render_whatsapp_decision(_view(_row(ask=ask)), "en")
+    assert message["type"] == "list"
+    titles = [r["title"] for r in message["action"]["sections"][0]["rows"]]
+    assert len(set(titles)) == 2
+
+
+def test_rows_that_still_collide_are_text_with_the_link():
+    ask = _ask(2)
+    ask["options"] = [{"key": k, "label": "Escalate to the on-call security engineer " + k} for k in "AB"]
+    view = _view(_row(ask=ask))
+    assert wa.render_whatsapp_decision(view, "en") is None
+    assert str(SOURCE_ID) in wa.decision_text(view, "en")
+
+
 def test_a_long_body_keeps_the_link_line_whole():
     row = _row(ask=_ask(2, context="x " * 2000))
     body = wa.render_whatsapp_decision(_view(row), "en")["body"]["text"]

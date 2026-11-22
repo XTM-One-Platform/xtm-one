@@ -84,6 +84,8 @@ The product labs' preview Fronts (`opencti_ask_ariane.py`, `opencti_pr_head.py`,
 | backend (uvicorn, migrations, seeded administrator) | 127.0.0.1:8100 | the checkout's `backend/` |
 | Vite dev server, `/api` proxied to the backend | 0.0.0.0:3100 (the preview port) | the checkout's `frontend/` |
 
+Every lab also answers `/api/v1/lab/whatsapp-decision` (`lab_asgi`, from `.xtm-one/lab/whatsapp_decision_preview.py`): the WhatsApp decision message of the human gates drawn in every state from its real payload builder, by `lang`, `theme`, `width` and `state` (`/index` lists the links), since WhatsApp has no surface a review can open (`dev-docs/human-gates.md`, S12).
+
 - Readiness is the Vite port; the frontend starts only once `/api/health/ready` answers, and while it waits the script prints the readiness answer (the `startup_error` included) every 15 s. The backend's own access lines for those polls are dropped from the output. A readiness answer that names a `startup_error` stops the lab at once (`startup_failure`): the backend keeps its process alive after a failed startup and would answer 503 until the 600 s wait ran out, so the start answer reports the failure in seconds, with `lab: backend startup failed: <error>` in `sandbox_service_logs`.
 - `PLATFORM_MODE=xtm_one`: the lab carries no licence, and the Copilot mode puts every page behind the licence wall. `ENABLED_FEATURES=*`.
 - Three declarations run the same script, because no single mode serves every page:
