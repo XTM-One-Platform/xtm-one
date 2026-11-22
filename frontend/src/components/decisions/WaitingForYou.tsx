@@ -36,6 +36,7 @@ import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from "@/
 import { useToast } from "@/components/ui/toast";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useAnswerDecision, useWaitingDecisions, type WaitingDecision } from "@/hooks/api/useDecisionApi";
+import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 
@@ -86,9 +87,12 @@ function DecisionDialog({ row, onClose }: { row: WaitingDecision; onClose: () =>
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const answer = useAnswerDecision();
+  // The answer resumes an agent: with AI off the card is read-only and says why (FR-018).
+  const aiOff = useAiActionDisabled();
+  const aiReason = useAiDisabledReason();
 
   const send = async ({ option, text }: DecisionAnswer) => {
-    if (!option && !text) return;
+    if (aiOff || (!option && !text)) return;
     try {
       await answer.mutateAsync({ id: row.id, option, text });
       toast({ title: t_i18n("Answer sent"), description: t_i18n("The agent has your answer and goes on."), variant: "success" });
@@ -114,7 +118,8 @@ function DecisionDialog({ row, onClose }: { row: WaitingDecision; onClose: () =>
         <DialogBody className="space-y-3" data-testid="waiting-for-you-panel">
           <DecisionCard
             view={waitingDecisionView(row)}
-            canAnswer
+            canAnswer={!aiOff}
+            readOnlyNote={aiReason ?? undefined}
             pending={answer.isPending}
             onAnswer={(a) => void send(a)}
             testId="waiting-decision"

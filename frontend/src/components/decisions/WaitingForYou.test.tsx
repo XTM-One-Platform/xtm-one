@@ -18,6 +18,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return { ...actual, api: { ...actual.api, get, post } };
 });
 
+const ai = vi.hoisted(() => ({ off: false }));
+vi.mock("@/hooks/useAiDisabled", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useAiDisabled")>()),
+  useAiActionDisabled: () => ai.off,
+  useAiDisabledReason: () => (ai.off ? "AI is disabled on this platform." : null),
+}));
+
 const t = (s: string) => s;
 
 function row(kind: WaitingDecision["kind"], id: string, extra: Partial<WaitingDecision> = {}): WaitingDecision {
@@ -50,6 +57,7 @@ const FOUR = [row("hitl", "run1"), row("tool_approval", "appr1"), row("flow_ask"
 beforeEach(() => {
   get.mockReset();
   post.mockClear();
+  ai.off = false;
 });
 afterEach(cleanup);
 
@@ -109,6 +117,20 @@ describe("WaitingForYou", () => {
       expect(post).toHaveBeenCalledWith("/decisions/flow1/answer", { option: "A", text: undefined, surface: "inbox" }),
     );
     await waitFor(() => expect(screen.queryByTestId("waiting-for-you-panel")).toBeNull());
+  });
+
+  it("keeps the card read-only with the reason while AI is off", async () => {
+    ai.off = true;
+    get.mockResolvedValue({ enabled: true, reason: null, items: FOUR });
+    renderWithProviders(<WaitingForYou />);
+    const rows = await screen.findAllByTestId("waiting-for-you-row");
+    fireEvent.click(within(rows[2]).getByText("Question of flow1"));
+    const panel = await screen.findByTestId("waiting-for-you-panel");
+    expect(within(panel).getByText("AI is disabled on this platform.")).toBeTruthy();
+    const option = within(panel).getByText("Go flow1").closest("button");
+    expect(option?.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(within(panel).getByText("Go flow1"));
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("draws nothing while the read switch is off", async () => {
