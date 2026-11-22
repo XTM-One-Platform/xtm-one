@@ -16288,7 +16288,7 @@ export interface HealthBudgetCaps {
 }
 
 /** One spend ceiling (#1202): the value in force, its default, what the row holds and where the value comes from. */
-export interface HealthSpendLimit {
+interface HealthSpendLimit {
   block: "budget" | "analysis" | "module_analyst";
   key: string;
   value: number | string | null;
