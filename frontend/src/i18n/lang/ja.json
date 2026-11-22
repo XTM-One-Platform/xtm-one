@@ -15139,7 +15139,7 @@
   "Add a crown jewel": "重要資産を追加",
   "Add a product": "製品を追加",
   "Add an AI system": "AIシステムを追加",
-  "Add {name}, very high in OpenCRQ, as a critical crown jewel": "OpenCRQで「非常に高い」の{name}を重要度「重大」の重要資産として追加",
+  "Add {name} from OpenCRQ as a crown jewel": "OpenCRQから{name}を重要資産として追加",
   "Annual loss threshold": "年間損失しきい値",
   "Approval threshold": "承認しきい値",
   "Business service": "業務サービス",
