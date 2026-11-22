@@ -30,7 +30,6 @@ import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
 
 export const LOOP_PARAM = "loop";
@@ -299,42 +298,27 @@ function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatte
   }
 }
 
+/** The evidence keys an OpenAEV freshness fact says, left out of the raw evidence list. */
+const FRESHNESS_ROW_KEYS = ["event", "resource_type"] as const;
+
+/** One named fact of an OpenAEV asset freshness signal (CTEM-27-UI). */
+type FreshnessFact = { key: "stale" };
+
 /**
- * The rows of an evidence health signal (CTEM-28-UI): the state in words, then
- * "No evidence since" with the date of the newest evidence, or "Never measured"
- * when there is none (a gap never reads as safe, never an empty dash), the risk
- * scenario, the sources with when each last reported, and for an emptied sync
- * its row counts and that its findings stay open.
+ * What an OpenAEV stale-asset signal says (CTEM-27-UI): the asset turned stale
+ * in OpenAEV, unseen past the tenant's stale threshold (the provisioned event
+ * `asset_stale`, backend openaev_trigger_provisioning, read by the path 6
+ * listener). Another source or event gives none: a plain asset update is no
+ * freshness verdict.
  */
-function evidenceHealthRows(fact: EvidenceHealthFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"], day: (iso: string) => string) {
-  const rows: { label: string; value: string }[] = [
-    { label: t_i18n("Evidence health"), value: t_i18n(EVIDENCE_STATE_LABEL[fact.state]) },
-  ];
-  if (fact.sync) {
-    rows.push({
-      label: t_i18n("Connector sync"),
-      value: fact.sync.latest !== null && fact.sync.previous !== null
-        ? t_i18n("{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open", {
-          kind: fact.sync.kind,
-          latest: fact.sync.latest,
-          previous: fact.sync.previous,
-        })
-        : t_i18n("{kind}: emptied; its findings stay open", { kind: fact.sync.kind }),
-    });
-    if (fact.lastEvidence) rows.push({ label: t_i18n("Last sync"), value: day(fact.lastEvidence) });
-    return rows;
-  }
-  rows.push({ label: t_i18n("No evidence since"), value: fact.lastEvidence ? day(fact.lastEvidence) : t_i18n("Never measured") });
-  if (fact.scenario) rows.push({ label: t_i18n("Risk scenario"), value: fact.scenario });
-  rows.push({
-    label: t_i18n("Sources"),
-    value: fact.sources.length > 0
-      ? fact.sources
-        .map((s) => (s.lastSeen ? t_i18n("{origin}, last reported {date}", { origin: s.origin, date: day(s.lastSeen) }) : s.origin))
-        .join("; ")
-      : t_i18n("No source reports this asset"),
-  });
-  return rows;
+export function freshnessFacts(provider: string, evidence: Record<string, unknown> | null | undefined): FreshnessFact[] {
+  if (provider !== "openaev" || evidence?.event !== "asset_stale") return [];
+  return [{ key: "stale" }];
+}
+
+/** A freshness fact as a row of the signal facts. */
+function freshnessFactRow(t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  return { label: t_i18n("Freshness"), value: t_i18n("Stale: not seen by OpenAEV past the tenant's threshold") };
 }
 
 /** A rule fact as a row of the signal facts: a label that never says "triggered" unless the rule matched. */
@@ -363,12 +347,12 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
   const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
   const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
-  const health = evidenceHealthFacts(signal.evidence);
+  const staleFacts = freshnessFacts(signal.source.provider, signal.evidence);
   const shownKeys: string[] = [
     ...ruleFacts.map((fact) => fact.key),
     ...(findingFacts.length > 0 ? AIKIDO_ROW_KEYS : []),
+    ...(staleFacts.length > 0 ? FRESHNESS_ROW_KEYS : []),
     ...subjectShownKeys(signal.subject.kind, signal.evidence),
-    ...(health ? EVIDENCE_HEALTH_ROW_KEYS : []),
   ];
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
@@ -394,7 +378,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
     ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
     ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
-    ...(health ? evidenceHealthRows(health, t_i18n, (iso) => formatDayIntl(intl, iso)) : []),
+    ...staleFacts.map(() => freshnessFactRow(t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
     { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },
