@@ -23,6 +23,19 @@ asset moves between the three without a lookup table beyond the case.
 
 Conversion: XTM One to OpenAEV is `upper()`; OpenAEV to XTM One is `lower()`. XTM One to OpenCRQ is identity,
 `security_platform` and its subcategories included (OpenCRQ-Platform/opencrq#3152).
+
+Source code (#1233, 22 Nov 2026): a 13th category, `source_code` "Source code" (a code repository, pipeline or
+package the teams build and ship), with 5 subcategories: `code_repository` (a Git repository; its SBOM is attached
+to it), `ci_cd_pipeline`, `package_registry`, `software_package` (a library or artifact the organization publishes)
+and `code_other`. XTM One counts 13 categories and 85 subcategories. Not assets: a third-party dependency (it is the
+software of the repository, section 9), and a GitHub organization or GitLab instance (`saas_application/saas_tenant`,
+a host or a web application); container images, registries and IaC templates keep their category. The value is added
+in OpenCRQ, OpenAEV and OpenCTI by their own pull requests: an import reads `SOURCE_CODE` as `source_code` as soon
+as a product sends it, and `manage_openaev_asset` sends `GENERIC_ASSET` with no subcategory when the connected
+OpenAEV refuses `SOURCE_CODE`, the exact category staying on the XTM One row. Nothing fails and nothing is lost.
+The fallback runs only when the update itself sets `SOURCE_CODE` on an endpoint not already on it and OpenAEV
+answers a 400 or 422 naming the category; any other error (a 5xx, a timeout, another field refused) is
+answered as it is, so an endpoint is never downgraded by an unrelated failure.
 OpenCTI to XTM One: a `System` is `generic_asset` until a person classifies it.
 
 `ASSET_TAXONOMY` in `organization_context.py` is the one copy in XTM One; the backend validates every row against it.
@@ -253,6 +266,28 @@ index answer it, so its cost follows the number of products, not of assets.
 - `get_organization_context(category="tech_stack")` answers the same items once an asset carries software, and
   the profile rows before (no change for an organization with no asset software). Agents still write the
   profile rows through `upsert_organization_rows`, which never overwrites a platform-sourced row.
+
+### 9.4 SBOM import
+
+An SBOM (CycloneDX JSON or SPDX JSON) is one more source of an asset's software: it describes one
+application or one image running on the asset. `services/sbom_parser.py` (pure) reads it: CycloneDX nested
+`components` give the bundling parent, SPDX `CONTAINS` and `CONTAINED_BY` relationships give it, SPDX
+`externalRefs` give CPE and PURL; a missing, blank or `NOASSERTION` version is `unknown`, never an empty string;
+over 10,000 components (or 20 MB) the file is refused, never cut.
+
+`organization_asset_sboms` keeps each document, anchored on a source record of the asset (its first record by
+source and external id), not on the asset row: every rebuild of the store (a newer profile, a merge or a split)
+adds its components, as source `sbom`, to whichever asset holds that record, through `merge_software` like any
+other source (precedence, first and last seen, sources). One row per document (`document_key`: CycloneDX
+`metadata.component`, SPDX `name`, else the file name): the same document again replaces its components,
+another document adds to them, and components a newer SBOM no longer lists stay with the documents that list
+them. `organization_asset_software.bundled_in` keeps the bundling component (`ingress-nginx-controller 1.15.1`).
+The tech stack inventory (9.3) counts SBOM software like any other.
+
+- `POST /api/v1/organization-context/assets/{asset_id}/sbom` (administrators, multipart `file`, audited): 201
+  with the format, the document, the component count, the unknown versions, the bundled ones and whether it
+  replaced an earlier import; 404 on an unknown asset; 422 on a file refused. The upload in the UI comes with the
+  asset sources panel.
 
 ## 10. OpenCRQ alignment
 

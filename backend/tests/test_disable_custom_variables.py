@@ -12,7 +12,6 @@ failed CI.  This rev wires up the full FastAPI router under
 
 from __future__ import annotations
 
-import importlib
 import uuid
 from collections.abc import Iterator
 from types import SimpleNamespace
@@ -30,20 +29,17 @@ from app.core.database import get_db
 
 
 def test_config_disable_custom_variables_default_dev(monkeypatch):
-    """In dev/copilot mode, ``disable_custom_variables`` defaults to False."""
+    """In dev/copilot mode, ``disable_custom_variables`` defaults to False.
+
+    Never ``importlib.reload(app.core.config)`` here (#1239): a reload leaves
+    ``config.Settings`` a new class while ``config.settings`` stays an instance
+    of the old one, so a later test patching the class misses the singleton.
+    """
     import app.core.config as config_module
 
     monkeypatch.setenv("PLATFORM_MODE", "dev")
-    original_settings = config_module.settings
-    importlib.reload(config_module)
-    try:
-        cfg = config_module.Settings(platform_mode="dev")
-        assert cfg.disable_custom_variables is False
-    finally:
-        # Restore the original singleton — importlib.reload creates a new
-        # Settings() instance that would break other tests holding a
-        # reference to the old one.
-        config_module.settings = original_settings
+    cfg = config_module.Settings(platform_mode="dev")
+    assert cfg.disable_custom_variables is False
 
 
 def test_config_disable_custom_variables_default_xtm_one():

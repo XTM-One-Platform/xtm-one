@@ -8,8 +8,9 @@ import { renderWithProviders } from "@/testing/providers";
 /**
  * The first-connection setup proposal (#9173 S3, versioned by #1087): the
  * server decides who sees it; the client asks only as an administrator in XTM
- * One mode, every answer is sent once and closes it, and "Set up now" opens
- * the guided CTEM loop setup in place.
+ * One mode, every answer is sent once and closes it, "Set up now" opens the
+ * guided CTEM loop setup in place, and the close cross or Escape only closes
+ * it for this page: nothing is recorded, so a reload proposes it again.
  */
 
 const auth: { user: { role: string; impersonating?: boolean } | null } = { user: { role: "admin" } };
@@ -99,6 +100,23 @@ describe("OrganizationSetupPrompt", () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith("/organization-context/setup-prompt", { outcome });
     expect(screen.getByTestId("where").textContent).toBe("/");
+  });
+
+  it.each([
+    ["the close cross", () => fireEvent.click(screen.getByRole("button", { name: "Close" }))],
+    ["Escape", () => fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })],
+  ])("%s closes for this page without recording an answer, and a reload proposes it again", async (_name, close) => {
+    const first = renderPrompt();
+    await screen.findByRole("dialog", { name: "Set up the CTEM loop" });
+    close();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(post).not.toHaveBeenCalled();
+    expect(screen.getByTestId("where").textContent).toBe("/");
+
+    first.unmount();
+    renderPrompt();
+    expect(await screen.findByRole("dialog", { name: "Set up the CTEM loop" })).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("orders the buttons with the secondary choices before the primary one", async () => {

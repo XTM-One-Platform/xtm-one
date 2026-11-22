@@ -547,6 +547,62 @@ async def remove_asset_decision(
     await db.commit()
 
 
+class AssetSbomImportResponse(BaseModel):
+    id: str
+    #: ``cyclonedx`` or ``spdx``.
+    format: str
+    #: What the document describes; importing the same document again replaces it.
+    document: str
+    components: int
+    unknown_versions: int
+    bundled: int
+    #: True: the same document was imported before on this asset and is replaced.
+    replaced: bool
+
+
+@router.post("/assets/{asset_id}/sbom", response_model=AssetSbomImportResponse, status_code=201)
+async def import_asset_sbom(
+    asset_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> AssetSbomImportResponse:
+    """Import a CycloneDX or SPDX JSON SBOM on an asset: its components join the asset's software (source ``sbom``).
+
+    Administrators, audited. The same document again replaces its components;
+    another document adds to them. 404: unknown asset; 422: a file refused
+    (not JSON, not CycloneDX or SPDX, over 10,000 components or 20 MB).
+    """
+    from app.services import sbom_parser
+    from app.services.audit import log_audit
+    from app.services.organization_asset_store import SbomImportError, import_sbom
+
+    data = await file.read(sbom_parser.MAX_BYTES + 1)
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    try:
+        result = await import_sbom(db, org, asset_id, data=data, file_name=file.filename or "", author_user_id=admin.id)
+    except SbomImportError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except sbom_parser.SbomError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    await log_audit(
+        db,
+        user=admin,
+        action="configure",
+        entity_type="organization_context",
+        entity_id=asset_id,
+        entity_name="asset_sbom",
+        summary=f"SBOM {result['document']} imported on an asset: {result['components']} component(s)",
+        details={k: result[k] for k in ("format", "document", "components", "replaced")},
+    )
+    await db.commit()
+    return AssetSbomImportResponse(**result)
+
+
 @router.get("/assets/{asset_id}")
 async def get_canonical_asset(
     asset_id: uuid.UUID,
