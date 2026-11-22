@@ -137,6 +137,7 @@ from app.integrations.providers.opencrq.procedure_manifest import PROBE, Manifes
 from app.integrations.providers.opencti import build_tools as opencti_tools
 from app.integrations.providers.ovhcloud import build_tools as ovhcloud_tools
 from app.integrations.providers.pagerduty import build_tools as pagerduty_tools
+from app.integrations.providers.pennylane import build_tools as pennylane_tools
 from app.integrations.providers.perk import build_tools as perk_tools
 from app.integrations.providers.picus import build_tools as picus_tools
 from app.integrations.providers.planhat import build_tools as planhat_tools
@@ -165,7 +166,6 @@ from app.integrations.providers.shodan import build_tools as shodan_tools
 from app.integrations.providers.slack import build_tools as slack_tools
 from app.integrations.providers.slack_bot import build_tools as slack_bot_tools
 from app.integrations.providers.socradar import build_tools as socradar_tools
-from app.integrations.providers.spendesk import build_tools as spendesk_tools
 from app.integrations.providers.splunk import build_tools as splunk_tools
 from app.integrations.providers.sublime import build_tools as sublime_tools
 from app.integrations.providers.sumologic import build_tools as sumologic_tools
@@ -999,6 +999,7 @@ PROVIDER_TOOLS = {
     "filigran_ai": filigran_ai_tools,
     "hubspot": hubspot_tools,
     "drata": drata_tools,
+    "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
     "wordsmith": wordsmith_tools,
@@ -1048,7 +1049,6 @@ PROVIDER_TOOLS = {
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
     "airwallex": airwallex_tools,
-    "spendesk": spendesk_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1116,7 +1116,6 @@ _PERSIST_FILE_PROVIDERS = frozenset(
     {
         "aikido",
         "airwallex",
-        "spendesk",
         "anyrun",
         "ashby",
         "bluesky",
@@ -1130,6 +1129,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "docusign",
         "doppel",
         "drata",
+        "pennylane",
         "facebook",
         "figma",
         "flashpoint",
@@ -2988,28 +2988,6 @@ async def _get_token(
         airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return airwallex_token_from_config(airwallex_secret, airwallex_extra)
 
-    # --- Spendesk (OAuth2 client credentials, production or sandbox host) ---
-    # The client secret is the API key column; the environment and the client
-    # id live in extra_config. The provider gets ``environment||client_id||secret``
-    # (partial when a part is missing, so a call names what to fix).
-    if provider == "spendesk":
-        from app.integrations.providers.spendesk import (
-            token_from_config as spendesk_token_from_config,
-        )
-
-        spendesk_extra = {}
-        if integ.extra_config_enc:
-            try:
-                spendesk_extra = await _reveal_extra(integ)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to decrypt extra_config for '%s' (spendesk): %s",
-                    integ.name,
-                    format_exception_message(exc),
-                )
-        spendesk_secret = (await reveal_field(integ, "api_key_enc")) or ""
-        return spendesk_token_from_config(spendesk_secret, spendesk_extra)
-
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
     # (admin.api.crowdsec.net) each use their own API key, both sent in the
@@ -4321,6 +4299,21 @@ async def _get_token(
         except Exception as exc:
             logger.warning(
                 "Failed to extract region from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
+                format_exception_message(exc),
+            )
+
+    # Pennylane: a firm token names the company of each request (X-Company-Id).
+    if provider == "pennylane" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            company_id = str(extra.get("company_id") or "").strip()
+            if company_id:
+                return f"{company_id}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract company_id from extra_config for '%s' (%s): %s",
                 integ.name,
                 provider,
                 format_exception_message(exc),
