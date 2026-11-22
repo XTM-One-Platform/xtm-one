@@ -263,6 +263,11 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # owner (integration.user_id); the token only finds, opens, updates and
         # reads the CTEM case tickets of that target (adapter_for).
         "services/ctem_ticketing.py",
+        # CTEM attack surface pass (#1110): the one provider integration an administrator
+        # declared in the profile (attack_surface.integration), for its owner
+        # (integration.user_id); the token only reads the outside view of the owned
+        # domains and address ranges (reader_for).
+        "services/ctem_attack_surface.py",
         "services/openaev_trigger_provisioning.py",
         "services/opencti_trigger_provisioning.py",
         "services/organization_context_opencrq.py",

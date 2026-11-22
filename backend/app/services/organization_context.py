@@ -147,6 +147,9 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "enterprise_knowledge",
     # CTEM-29: read by the scope gate, never dumped into the always-on block.
     "owned_domains",
+    # CTEM-26: read by the attack surface pass, never dumped into the always-on block.
+    "address_ranges",
+    "attack_surface",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -475,6 +478,43 @@ class TicketingSync(BaseModel):
     due_date_from_sla: bool = True
 
 
+class AttackSurfacePass(BaseModel):
+    """The opt-in outside lens of CTEM-26 (``dev-docs/ctem-attack-surface.md``).
+
+    Off by default. When on, a scheduled pass reads the outside view of
+    ``owned_domains`` and ``address_ranges`` from ``integration`` (a connected
+    attack-surface provider, Shodan first) and records the differences as
+    signals on paths 5, 6 and 7.
+    """
+
+    model_config = _Strict
+
+    enabled: bool = False
+    #: The id of the provider integration the pass reads with its owner's credential.
+    integration: str = Field(default="", max_length=100)
+    #: Hours between two passes (daily by default).
+    cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
+    #: A host unseen for this many days is a stale asset (path 6).
+    stale_after_days: int = Field(default=14, ge=1, le=365)
+
+
+def normalize_address_ranges(value: list[str]) -> list[str]:
+    """CIDR blocks in their network form, each once (a bare address is its /32 or /128)."""
+    import ipaddress
+
+    out: list[str] = []
+    for raw in value:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        try:
+            network = ipaddress.ip_network(text, strict=False)
+        except ValueError as exc:
+            raise ValueError(f"address range {text!r} is not an IP address or CIDR block") from exc
+        out.append(str(network))
+    return list(dict.fromkeys(out))
+
+
 class TicketingTarget(BaseModel):
     model_config = _Strict
 
@@ -516,6 +556,11 @@ class OrganizationProfile(BaseModel):
     #: The DNS and email domains the organization owns (CTEM-29; the outside lens reads them too):
     #: a leaked credential of an account on one of them is in scope.
     owned_domains: list[str] = Field(default_factory=list, max_length=500)
+    #: The public address ranges the organization owns, as CIDR blocks (CTEM-26): an answering
+    #: name that points outside them is no longer owned (path 6).
+    address_ranges: list[str] = Field(default_factory=list, max_length=500)
+    #: The opt-in attack surface pass of the outside lens (CTEM-26).
+    attack_surface: AttackSurfacePass = Field(default_factory=AttackSurfacePass)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.
@@ -562,6 +607,11 @@ class OrganizationProfile(BaseModel):
         """Lower-cased, ``@`` and a trailing dot dropped, each once."""
         cleaned = (str(v).strip().lower().lstrip("@").rstrip(".") for v in value)
         return [d for d in dict.fromkeys(cleaned) if d and len(d) <= 253]
+
+    @field_validator("address_ranges")
+    @classmethod
+    def _ranges(cls, value: list[str]) -> list[str]:
+        return normalize_address_ranges(value)
 
     @field_validator("currency")
     @classmethod
