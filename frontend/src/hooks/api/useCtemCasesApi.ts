@@ -39,6 +39,11 @@ export interface CtemCaseSummary {
   max_cvss: number | null;
   max_epss: number | null;
   first_seen_at: string | null;
+  /** When the case was opened and last changed (#1176). */
+  created_at?: string | null;
+  updated_at?: string | null;
+  /** The signals that opened or joined the case (#1176). */
+  signal_count?: number;
   /** Products that did not answer this read: their issues show without details. */
   details_unavailable: string[];
   /** The loop (#857): how the case started, its severity and SLA, its proof. */
