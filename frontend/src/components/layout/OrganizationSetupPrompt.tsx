@@ -11,6 +11,8 @@
  * never comes back for that version, for anyone. The close cross, Escape and
  * an overlay click record nothing: they only close it for this page, and a
  * reload or a new sign-in proposes it again until an answer is recorded.
+ * Reset onboarding proposes it anew: the dialog then opens again in the same
+ * page session, whatever was answered or closed before.
  *
  * "Set up now" opens the guided CTEM loop setup (`CtemLoopSetupDialog`): six
  * steps, each saved on its own, nothing switched on before the last one.
@@ -51,11 +53,20 @@ export function OrganizationSetupPrompt() {
   const prompt = useOrganizationSetupPrompt(Boolean(isAdmin && isXtmOne && !user?.impersonating));
   const answer = useAnswerOrganizationSetupPrompt();
   const [guided, setGuided] = useState(false);
-  const [closed, setClosed] = useState(false);
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
+  const [closedAt, setClosedAt] = useState<number | null>(null);
 
-  const open = Boolean(prompt.data?.propose) && !answer.isSuccess && !closed;
+  // An answer, or the close cross / Escape, closes the dialog only until a newer
+  // proposal arrives: after Reset onboarding (Settings > Platform) the query holds
+  // a fresh `propose: true` and the dialog opens again in the same page session,
+  // without a reload.
+  const beforeNewerProposal = (at: number | null) => at !== null && at >= prompt.dataUpdatedAt;
+  const answered = beforeNewerProposal(answeredAt);
+  const closed = beforeNewerProposal(closedAt);
+  const open = Boolean(prompt.data?.propose) && !answered && !closed;
   const reply = (outcome: OrganizationSetupAnswer) =>
     answer.mutate(outcome, {
+      onSuccess: () => setAnsweredAt(Date.now()),
       onSettled: () => {
         if (outcome === "started") setGuided(true);
       },
@@ -64,7 +75,7 @@ export function OrganizationSetupPrompt() {
   if (guided) return <CtemLoopSetupDialog open onOpenChange={(next) => !next && setGuided(false)} />;
   if (!open) return null;
   return (
-    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosed(true)}>
+    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosedAt(Date.now())}>
       <DialogContent size="md" data-testid="organization-setup-prompt">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

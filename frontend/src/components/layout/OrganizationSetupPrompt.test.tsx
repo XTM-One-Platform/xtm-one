@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { api } from "@/lib/api";
-import { renderWithProviders } from "@/testing/providers";
+import { renderWithProviders, testQueryClient } from "@/testing/providers";
 
 /**
  * The first-connection setup proposal (#9173 S3, versioned by #1087): the
  * server decides who sees it; the client asks only as an administrator in XTM
  * One mode, every answer is sent once and closes it, "Set up now" opens the
  * guided CTEM loop setup in place, and the close cross or Escape only closes
- * it for this page: nothing is recorded, so a reload proposes it again.
+ * it for this page: nothing is recorded, so a reload proposes it again; after
+ * Reset onboarding it opens again in the same session.
  */
 
 const auth: { user: { role: string; impersonating?: boolean } | null } = { user: { role: "admin" } };
@@ -40,12 +41,13 @@ function Where() {
   return <span data-testid="where">{`${location.pathname}${location.search}`}</span>;
 }
 
-function renderPrompt() {
+function renderPrompt(client = testQueryClient()) {
   return renderWithProviders(
     <MemoryRouter initialEntries={["/"]}>
       <OrganizationSetupPrompt />
       <Where />
     </MemoryRouter>,
+    client,
   );
 }
 
@@ -117,6 +119,23 @@ describe("OrganizationSetupPrompt", () => {
     renderPrompt();
     expect(await screen.findByRole("dialog", { name: "Set up the CTEM loop" })).toBeTruthy();
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Later", () => fireEvent.click(screen.getByRole("button", { name: "Later" }))],
+    ["the close cross", () => fireEvent.click(screen.getByRole("button", { name: "Close" }))],
+  ])("opens again in the same session after %s once Reset onboarding proposes it anew (#1219 B1)", async (_name, close) => {
+    const client = testQueryClient();
+    renderPrompt(client);
+    await screen.findByRole("dialog", { name: "Set up the CTEM loop" });
+    close();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // What useResetOrganizationSetupPrompt writes on success: a fresh proposal.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    act(() => {
+      client.setQueryData(["organization-context", "setup-prompt"], { propose: true, outcome: null, answered_at: null });
+    });
+    expect(await screen.findByRole("dialog", { name: "Set up the CTEM loop" })).toBeTruthy();
   });
 
   it("orders the buttons with the secondary choices before the primary one", async () => {
