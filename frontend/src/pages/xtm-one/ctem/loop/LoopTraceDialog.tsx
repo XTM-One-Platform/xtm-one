@@ -210,6 +210,86 @@ function aikidoFactRow(fact: AikidoFact, t_i18n: ReturnType<typeof useFormatter>
   }
 }
 
+/** The OpenCTI observable types a leaked identity arrives as (CTEM-29-UI). @i18n-keys */
+const IDENTITY_OBSERVED_AS = { "user-account": "User account", "email-addr": "Email address" } as const;
+
+/** The OpenCTI objects that name a tracked organization (CTEM-29-UI). @i18n-keys */
+const THIRD_PARTY_NAMED_IN = { report: "Report: {name}", incident: "Incident: {name}" } as const;
+
+/** The relationship of a tracked organization, as Settings > Organizations words it. @i18n-keys */
+const THIRD_PARTY_RELATIONSHIP = { provider: "Provider", customer: "Customer", partner: "Partner", subsidiary: "Subsidiary" } as const;
+
+/** The evidence keys a leak or third-party signal's rows say, left out of the raw evidence list. */
+const SUBJECT_ROW_KEYS = ["stix_type", "account_disabled", "report", "relationship", "organization_criticality"] as const;
+
+/** One named fact of a leaked identity or a third-party event (CTEM-29-UI). */
+export type SubjectFact =
+  | { key: "observed_as"; type: string }
+  | { key: "account"; disabled: boolean }
+  | { key: "fingerprint" }
+  | { key: "named_in"; type: string; name: string }
+  | { key: "relationship"; relationship: string }
+  | { key: "organization_criticality"; criticality: string };
+
+/**
+ * What a credential-leak or a third-party signal's evidence says (CTEM-29-UI),
+ * from the keys the listeners write (backend ctem_signal_listeners: the
+ * identity listener and note_tracked_organizations): how the identity was
+ * observed, whether the account is disabled, that a secret is kept only as its
+ * fingerprint (`*_fingerprint`, never the value); the report or incident that
+ * named the tracked organization, its relationship and criticality. Another
+ * subject kind gives none.
+ */
+export function subjectFacts(subjectKind: string, evidence: Record<string, unknown> | null | undefined): SubjectFact[] {
+  if (!evidence) return [];
+  const facts: SubjectFact[] = [];
+  if (subjectKind === "identity") {
+    const type = text(evidence.stix_type);
+    if (type) facts.push({ key: "observed_as", type });
+    if (typeof evidence.account_disabled === "boolean") facts.push({ key: "account", disabled: evidence.account_disabled });
+    if (Object.keys(evidence).some((k) => k.endsWith("_fingerprint"))) facts.push({ key: "fingerprint" });
+  } else if (subjectKind === "third_party") {
+    const type = text(evidence.stix_type);
+    const name = text(evidence.report);
+    if (type && name) facts.push({ key: "named_in", type, name });
+    const relationship = text(evidence.relationship);
+    if (relationship) facts.push({ key: "relationship", relationship });
+    const criticality = text(evidence.organization_criticality);
+    if (criticality) facts.push({ key: "organization_criticality", criticality });
+  }
+  return facts;
+}
+
+/** The evidence keys a set of subject facts already says. */
+function subjectShownKeys(subjectKind: string, evidence: Record<string, unknown> | null | undefined): string[] {
+  if (subjectKind !== "identity" && subjectKind !== "third_party") return [];
+  return [...SUBJECT_ROW_KEYS, ...Object.keys(evidence ?? {}).filter((k) => k.endsWith("_fingerprint"))];
+}
+
+/** A subject fact as a row of the signal facts. */
+function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  switch (fact.key) {
+    case "observed_as": {
+      const words = (IDENTITY_OBSERVED_AS as Readonly<Record<string, string>>)[fact.type];
+      return { label: t_i18n("Observed as"), value: words ? t_i18n(words) : fact.type };
+    }
+    case "account":
+      return { label: t_i18n("Account"), value: fact.disabled ? t_i18n("Disabled") : t_i18n("Enabled") };
+    case "fingerprint":
+      return { label: t_i18n("Secret"), value: t_i18n("Kept as a fingerprint only, never the value") };
+    case "named_in": {
+      const words = (THIRD_PARTY_NAMED_IN as Readonly<Record<string, string>>)[fact.type];
+      return { label: t_i18n("Named in"), value: words ? t_i18n(words, { name: fact.name }) : fact.name };
+    }
+    case "relationship": {
+      const words = (THIRD_PARTY_RELATIONSHIP as Readonly<Record<string, string>>)[fact.relationship];
+      return { label: t_i18n("Relationship"), value: words ? t_i18n(words) : fact.relationship };
+    }
+    case "organization_criticality":
+      return { label: t_i18n("Organization criticality"), value: String(levelLabel(fact.criticality, t_i18n)) };
+  }
+}
+
 /** A rule fact as a row of the signal facts: a label that never says "triggered" unless the rule matched. */
 function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
   if (fact.key === "pir") {
@@ -235,9 +315,11 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const provider = signalProviderName(signal.source.provider);
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
   const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
+  const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
   const shownKeys: string[] = [
     ...ruleFacts.map((fact) => fact.key),
     ...(findingFacts.length > 0 ? AIKIDO_ROW_KEYS : []),
+    ...subjectShownKeys(signal.subject.kind, signal.evidence),
   ];
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
@@ -262,6 +344,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     },
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
     ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
+    ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
     { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },

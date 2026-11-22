@@ -19945,6 +19945,7 @@
   "Becomes a case if an internet-facing asset holds it": "Se convierte en caso si lo tiene un recurso expuesto a Internet",
   "Becomes a case if a crown jewel at or above {minimum} holds it": "Se convierte en caso si lo tiene un activo crítico de nivel {minimum} o superior",
   "Becomes a case once a risk scenario holds it": "Se convierte en caso cuando lo tenga un escenario de riesgo",
+  "Email address": "Dirección de correo electrónico",
   "Becomes a case once OpenCRQ can be read and a risk scenario holds it": "Se convierte en caso cuando OpenCRQ pueda leerse y lo tenga un escenario de riesgo",
   "Becomes a case once an asset at or above {threshold} holds it": "Se convierte en caso cuando lo tenga un recurso de nivel {threshold} o superior",
   "Becomes a case if criticality rises to {threshold}": "Se convierte en caso si la criticidad sube a {threshold}",
@@ -20399,5 +20400,17 @@
   "Breached in the source": "Incumplido en el origen",
   "{installed}, fixed in {fixed}": "{installed}, corregido en {fixed}",
   "{provider} closed every finding of this case on {date}": "{provider} cerró todos los hallazgos de este caso el {date}",
-  "The source closed every finding of this case on {date}": "El origen cerró todos los hallazgos de este caso el {date}"
+  "The source closed every finding of this case on {date}": "El origen cerró todos los hallazgos de este caso el {date}",
+  "No crown jewel depends on this organization": "Ningún activo crítico depende de esta organización",
+  "Not exposed: the account is disabled": "No expuesto: la cuenta está desactivada",
+  "Becomes a case once a crown jewel depends on this organization": "Se convierte en un caso cuando un activo crítico dependa de esta organización",
+  "Becomes a case if the account is enabled again": "Se convierte en un caso si la cuenta se vuelve a activar",
+  "Owned domain": "Dominio propio",
+  "Report: {name}": "Informe: {name}",
+  "Incident: {name}": "Incidente: {name}",
+  "Observed as": "Observado como",
+  "Kept as a fingerprint only, never the value": "Se guarda solo como huella, nunca el valor",
+  "Named in": "Citado en",
+  "Organization criticality": "Criticidad de la organización",
+  "From {source}": "Desde {source}"
 }
