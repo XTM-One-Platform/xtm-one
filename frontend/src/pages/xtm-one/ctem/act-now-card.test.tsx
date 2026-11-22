@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
   version: null as number | null,
   navigated: [] as string[],
   cases: [] as { id: string; title: string; state: string; severity: string | null; priority?: string; sla_due_at: string | null }[],
+  decisions: [] as { id: string; correlation_key: string; needs_human: boolean; status: string }[],
 }));
 
 vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
@@ -43,6 +44,7 @@ vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
 vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useWorkItemApi")>()),
   useWorkItemsWaitingForMe: () => ({ data: state.waiting }),
+  useWorkItems: () => ({ data: state.decisions }),
 }));
 vi.mock("@/hooks/api/useAssignmentApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAssignmentApi")>()),
@@ -88,10 +90,26 @@ beforeEach(() => {
   state.version = null;
   state.navigated = [];
   state.cases = [];
+  state.decisions = [];
   sessionStorage.clear();
 });
 
 describe("ActNowCard", () => {
+  it("says on a case row that its remediation decision waits (CTEM-17-UI)", () => {
+    state.cases = [
+      { id: "c1", title: "Upgrade nginx to 1.27.4", state: "needs_attention", severity: "P1", sla_due_at: null },
+      { id: "c2", title: "Patch a P2", state: "needs_attention", severity: "P2", sla_due_at: null },
+    ];
+    state.decisions = [
+      { id: "w1", correlation_key: "ctem:remediation:c1", needs_human: true, status: "blocked" },
+      { id: "w2", correlation_key: "ctem:remediation:c2", needs_human: false, status: "done" },
+    ];
+    card([]);
+    const rows = items();
+    expect(within(rows[0]).getByText(/Remediation decision waits/)).toBeTruthy();
+    expect(within(rows[1]).queryByText(/Remediation decision waits/)).toBeNull();
+  });
+
   it("puts the work items and approvals waiting for the reader first, fleets off", () => {
     state.waiting = { count: 2, oldest: { id: "w1", title: "Approve the patch window", reason: null, since: null } };
     state.approvals = { tools: [{ tool_name: "send_email", run_count: 3, call_count: 3 }], mixed: [], mixed_run_count: 1 };
