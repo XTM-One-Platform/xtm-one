@@ -180,6 +180,24 @@ restart_target = 120
 lifetime = 7200
 env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_MODEL = "live" }
 
+# The module health lab (#101 S15d-3): [service.lab-live] with Platform Health on (LAB_PLATFORM_HEALTH = "on",
+# the real PUT /health/settings) and the SAQ worker (LAB_WORKER = "1"), so the daily module round starts one
+# checker cycle per registered OpenCTI, OpenAEV and OpenCRQ (the seed's .invalid registrations) with no admin
+# action, on the live model: the lab measurement of dev-docs/platform-health.md 13.7 reads its token spend.
+[service.lab-module-health]
+description = "xtm-one with a live model, Platform Health on and the three modules registered (module health round): sign in as lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_MODEL = "live", LAB_PLATFORM_HEALTH = "on", LAB_WORKER = "1" }
+
 # The OOTB routing eval lab (#9646 slice 2b): [service.lab-live] plus an OpenCTI of its own in the
 # same pod, each product on the image the operator allows in AGENTIC_LABS_IMAGES (keys opencti,
 # opencti-search, opencti-broker, opencti-redis, opencti-s3; ports apart from the lab's stores).
@@ -1683,12 +1701,13 @@ report_path = ".xtm/tripwires.xml"
 # The backend unit tests the merge queue runs for the change, before the push: a pull
 # request's CI runs the static checks only, the suites run in the queue on what
 # tests/selection.py selects for the merge group. affected = "files" hands
-# scripts/queue_tests.py the changed files under backend/ (a checkout has no git);
+# scripts/queue_tests.py the changed files (a checkout has no git), those outside
+# backend/ too (affected_whole_repository: a compose file or a workflow a guard reads);
 # it prints the selection with each file's reason and runs the files the queue's
 # unit job runs. args ["--list"] with no file: the selection of the change, nothing run.
 # A change the queue runs whole for (a conftest.py, the dependencies) is named, not run.
 [check.backend-queue-tests]
-description = "the backend unit tests the merge queue would run for the change (tests/selection.py), run before the push; no args: the change; args: --list (the selection only) or changed paths from backend/"
+description = "the backend unit tests the merge queue would run for the change (tests/selection.py), run before the push; no args: the change; args: --list (the selection only), --part i/n (one share of a selection over the 900 s budget, exit 3 names the parts), --budget 0 (no budget) or changed paths from backend/"
 argv = ["python", "-m", "scripts.queue_tests"]
 cwd = "backend"
 timeout = 1800
@@ -1698,6 +1717,7 @@ env = { SECRET_KEY = "ci-test-secret-key-not-for-production" }
 affected = "files"
 affected_by_default = true
 affected_narrows_args = true
+affected_whole_repository = true
 
 # The formatter, advisory: CI does not gate it and main is not format-clean.
 # Run it with affected=true: affected = "lines" hands scripts/format_changed.py

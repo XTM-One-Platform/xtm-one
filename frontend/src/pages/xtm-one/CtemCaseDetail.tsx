@@ -53,6 +53,7 @@ import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
@@ -510,6 +511,9 @@ export default function CtemCaseDetail() {
           </>
         }
       />
+
+      {/* Why now, created, age, last change and due (#1176): the same explained score as the Cases list. */}
+      <CaseAttentionNow c={kase} now={now} onChanged={() => void refetch()} />
 
       {kase.state === "accepted_risk" && (
         <Card>

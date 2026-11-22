@@ -16287,6 +16287,24 @@ export interface HealthBudgetCaps {
   month_cost_usd: string | null;
 }
 
+/** One spend ceiling (#1202): the value in force, its default, what the row holds and where the value comes from. */
+interface HealthSpendLimit {
+  block: "budget" | "analysis" | "module_analyst";
+  key: string;
+  value: number | string | null;
+  default: number | string | null;
+  stored: number | string | null;
+  source: "default" | "database";
+}
+
+/** `GET /health/settings/spend-limits`: the ceilings are locked at their defaults unless `env_var` is true. */
+export interface HealthSpendLimits {
+  locked: boolean;
+  locked_reason: "environment" | null;
+  env_var: string;
+  limits: HealthSpendLimit[];
+}
+
 /**
  * The analysis layer of Platform Health (#101 S9): off by default, with hard ceilings per day and per
  * month; `null` clears a ceiling, which refuses every analysis. Costs are decimal strings.

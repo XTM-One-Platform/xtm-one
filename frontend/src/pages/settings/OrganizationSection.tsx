@@ -101,6 +101,7 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
+import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
@@ -675,9 +676,12 @@ export function OrganizationSection() {
       },
     );
 
-  /** The translated criticality, never the raw enum value inside a translated sentence. */
-  const criticalityLabel = (value: string) =>
-    value in CRITICALITY_LABELS ? t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]) : value;
+  /** The translated criticality, never the raw enum value inside a translated sentence: a profile level, else an OpenCRQ level (very_high), which the push rows carry (UX B1). */
+  const criticalityLabel = (value: string) => {
+    if (value in CRITICALITY_LABELS) return t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]);
+    if (value in MIN_CRITICALITY_LABELS) return t_i18n(MIN_CRITICALITY_LABELS[value as keyof typeof MIN_CRITICALITY_LABELS]);
+    return value;
+  };
   /** The helper and the bubble of a field, from the field contract (UX B3). */
   const help = (key: keyof typeof FIELD_HELP) => ({ helper: t_i18n(FIELD_HELP[key].helper), info: t_i18n(FIELD_HELP[key].info) });
   const text = (key: "name" | "sector" | "sub_sector", title: string, placeholder?: string) => {
@@ -1318,8 +1322,11 @@ export function OrganizationSection() {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
+  // "Already agree" only on the backend's in_sync (#1134 S2): an empty profile against a non-empty
+  // OpenCRQ is an import to propose, never agreement. An older backend without it: nothing listed.
   const planEmpty =
     plan &&
+    (plan.plan.in_sync ?? true) &&
     !plan.plan.linked.length &&
     !plan.plan.pushed_to_opencrq.length &&
     !plan.plan.pulled_from_opencrq.length &&
@@ -1957,7 +1964,7 @@ export function OrganizationSection() {
                       <li key={`p-${row.opencrq_asset_id}`}>{t_i18n("Set {name} to {criticality} in OpenCRQ", { name: row.name, criticality: criticalityLabel(row.criticality) })}</li>
                     ))}
                     {plan.plan.pulled_from_opencrq.map((row) => (
-                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name}, very high in OpenCRQ, as a critical crown jewel", { name: row.name })}</li>
+                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a crown jewel", { name: row.name })}</li>
                     ))}
                     {plan.plan.ambiguous.map((name) => (
                       <li key={`a-${name}`}>{t_i18n("{name} matches several OpenCRQ assets: link it by hand", { name })}</li>

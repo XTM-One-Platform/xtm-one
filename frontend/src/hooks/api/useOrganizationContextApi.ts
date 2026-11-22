@@ -83,6 +83,8 @@ interface OpenCrqSyncPlan {
   pulled_from_opencrq: { opencrq_asset_id: string; name: string }[];
   ambiguous: string[];
   not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
+  /** Whether the profile and OpenCRQ agree (#1134 S2): the only answer that may say so; absent from an older backend. */
+  in_sync?: boolean;
 }
 
 export interface OpenCrqSyncResponse {
@@ -214,6 +216,23 @@ export function useRecordSetupStep() {
     mutationFn: (body) => api.put("/organization-context/setup-prompt/steps", body),
     onSuccess: (state) => {
       qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
+    },
+  });
+}
+
+/**
+ * Reset onboarding (`DELETE /organization-context/setup-prompt`, administrators,
+ * XTM One mode): the answer and step progress are forgotten, so the guided setup
+ * is proposed again as after a fresh install. Nothing else is changed.
+ */
+export function useResetOrganizationSetupPrompt() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSetupPrompt, Error, void>({
+    mutationFn: () => api.delete("/organization-context/setup-prompt"),
+    onSuccess: (state) => {
+      qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.invalidateQueries({ queryKey: [...KEY, "setup-prompt"] });
       qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
     },
   });
@@ -506,10 +525,13 @@ export type OrganizationSyncBody = Pick<
 
 const SYNCS = [...KEY, "syncs"] as const;
 
-export function useOrganizationSyncs() {
+/** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
+export type OrganizationSyncScope = "profile" | "inventory" | "";
+
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
   return useQuery<OrganizationSync[]>({
-    queryKey: SYNCS,
-    queryFn: () => api.get("/organization-context/syncs"),
+    queryKey: [...SYNCS, scope],
+    queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
     // The list says its own failure with a retry; it never takes the page down.
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
