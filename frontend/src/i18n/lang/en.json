@@ -20752,5 +20752,7 @@
   "Cannot be compared": "Cannot be compared",
   "SBOM": "SBOM",
   "CSV import": "CSV import",
-  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}."
+  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.",
+  "Asset count": "Asset count",
+  "Versions not listed": "Versions not listed"
 }

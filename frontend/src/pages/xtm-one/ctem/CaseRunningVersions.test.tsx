@@ -97,6 +97,30 @@ describe("CaseRunningVersions (#1252)", () => {
     expect(screen.queryAllByTestId("ctem-case-running-version-row")).toHaveLength(0);
   });
 
+  it("reads the real total in the toolbar when versions are not listed, and draws nothing under the table (UX r1 B1 on #1277)", () => {
+    const { container } = draw({
+      productLabel: "Microsoft Windows",
+      fixedVersion: "10.0.22631.4317",
+      versions: { ...WITH_FIX, more_versions: 2, version_count: 5 },
+    });
+    expect(screen.getByTestId("data-table-total").textContent).toContain("3 of 5");
+    expect(screen.getByRole("img", { name: "Versions not listed" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/more versions not listed/);
+  });
+
+  it("names each source in the product tooltip, never a native title (UX r1 B3 on #1277)", () => {
+    draw({ productLabel: "Microsoft Windows", fixedVersion: "10.0.22631.4317", versions: WITH_FIX });
+    for (const mark of screen.getAllByTestId("ctem-case-version-source")) {
+      expect(mark.getAttribute("title")).toBeNull();
+      expect(mark.getAttribute("tabindex")).toBe("0");
+    }
+  });
+
+  it("names the asset column with its own key", () => {
+    draw({ productLabel: "Microsoft Windows", fixedVersion: "10.0.22631.4317", versions: WITH_FIX });
+    expect(screen.getByRole("columnheader", { name: /Asset count/ })).toBeInTheDocument();
+  });
+
   it("names every source a reader recognises", () => {
     expect(versionSourceName("intune")).toBe("Microsoft Intune");
     expect(versionSourceName("openaev")).toBe("OpenAEV");

@@ -15,7 +15,9 @@ import { Icon } from "@filigran/design-system";
 import type { ComponentProps } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ProviderLogo } from "@/components/ui/provider-logo";
+import { Tip } from "@/components/ui/tooltip";
 import type { CtemCaseRunningVersion, CtemCaseRunningVersions } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES, PROVIDER_LOGOS } from "@/lib/constants";
@@ -51,17 +53,24 @@ function SourceMark({ source }: { source: string }) {
   const { t_i18n } = useFormatter();
   const name = t_i18n(versionSourceName(source));
   const glyph: { icon: IconName } | undefined = source.startsWith("agent:") ? { icon: "bot" } : SOURCE_GLYPHS[source];
+  // The product tooltip, shown on hover and on keyboard focus, never the native title (UX r1 B3 on #1277).
   return (
-    <span className="inline-flex shrink-0 items-center" title={name} data-testid="ctem-case-version-source">
-      {PROVIDER_LOGOS[source] ? (
-        <ProviderLogo provider={source} decorative className="h-4 w-4" />
-      ) : glyph ? (
-        <Icon name={glyph.icon} size={16} className="text-default-secondary" aria-hidden />
-      ) : (
-        <ProviderLogo provider={source} decorative className="h-4 w-4" />
-      )}
-      <span className="sr-only">{name}</span>
-    </span>
+    <Tip content={name}>
+      <span
+        className="inline-flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        tabIndex={0}
+        data-testid="ctem-case-version-source"
+      >
+        {PROVIDER_LOGOS[source] ? (
+          <ProviderLogo provider={source} decorative className="h-4 w-4" />
+        ) : glyph ? (
+          <Icon name={glyph.icon} size={16} className="text-default-secondary" aria-hidden />
+        ) : (
+          <ProviderLogo provider={source} decorative className="h-4 w-4" />
+        )}
+        <span className="sr-only">{name}</span>
+      </span>
+    </Tip>
   );
 }
 
@@ -89,7 +98,8 @@ export function CaseRunningVersions({
     },
     {
       key: "assets",
-      header: "Assets",
+      // Its own key, translated with the word of the card's sentences (actifs, activos, 資産), never the shared "Assets" (UX r1 B2 on #1277).
+      header: "Asset count",
       align: "right",
       cell: (r) => formatCount(intl.locale, r.asset_count),
       sortValue: (r) => r.asset_count,
@@ -142,6 +152,10 @@ export function CaseRunningVersions({
         ]
       : []),
   ];
+
+  // The API lists the first versions only: the toolbar total reads "shown of all" and the rest is
+  // said in the toolbar's tip, nothing is drawn under the table (UX r1 B1 on #1277).
+  const moreVersions = versions?.more_versions ?? 0;
 
   return (
     <Card data-testid="ctem-case-running-versions">
@@ -203,15 +217,18 @@ export function CaseRunningVersions({
             defaultPageSize={10}
             exportName="ctem-case-running-versions"
             urlKey="v_"
+            totalAll={versions?.version_count}
+            toolbar={
+              moreVersions > 0 ? (
+                <InfoTip
+                  label={t_i18n("Versions not listed")}
+                  content={t_i18n("{count, plural, one {# more version not listed} other {# more versions not listed}}", { count: moreVersions })}
+                />
+              ) : undefined
+            }
             emptyLabel={t_i18n("No version")}
             rowTestId="ctem-case-running-version-row"
           />
-        )}
-
-        {(versions?.more_versions ?? 0) > 0 && (
-          <p className="content-compact text-default-secondary">
-            {t_i18n("{count, plural, one {# more version not listed} other {# more versions not listed}}", { count: versions?.more_versions ?? 0 })}
-          </p>
         )}
       </CardContent>
     </Card>
