@@ -17,7 +17,7 @@ import { AboutDialog } from "./AboutDialog";
 import { Tip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/relative-time";
-import { canMarkAllRead as anyReadable, hasUnreadApproval, isWaitingDecision, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
+import { canMarkAllRead as anyReadable, decisionSource, hasUnreadApproval, isWaitingDecision, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useDesktopBridge, useRunnersEnabled } from "@/hooks/useDesktop";
 import { useTick } from "@/hooks/useTick";
@@ -168,7 +168,9 @@ export function Header() {
               </div>
               <div className="max-h-96 overflow-y-auto">
                 {allNotifs.length > 0 ? allNotifs.map((item) => {
-                  const isHitl = item.kind === "hitl";
+                  // One decision kind, three sources (#842, S4): the run's hand,
+                  // the flow's question, the work item's hand.
+                  const source = decisionSource(item);
                   // Pinned until answered: the warning chrome, no read dot, no
                   // "Mark as read"; opening it does not read it (#991).
                   const isPinned = isWaitingDecision(item) && item.unread;
@@ -188,15 +190,16 @@ export function Header() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {unread && !isPinned && <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
-                          {isHitl ? (
-                            /* A read approval keeps its icon, without the alert tint and pulse (#901). */
-                            <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-full", item.unread ? "bg-feedback-warning-primary/20 animate-pulse" : "bg-elevation-hover")}>
-                              <Hand className={cn("h-2.5 w-2.5", item.unread ? "text-feedback-warning-primary" : "text-default-secondary")} />
-                            </span>
-                          ) : item.kind === "flow_hitl" ? (
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-feedback-warning-primary/20 animate-pulse">
-                              <MessageCircleQuestion className="h-2.5 w-2.5 text-feedback-warning-primary" />
-                            </span>
+                          {source ? (
+                            /* One decision kind, one treatment (UX round 1, B1): the same
+                               12 px glyph for every source, no opacity animation; only the
+                               glyph changes (question for a flow), and an answered decision
+                               is dimmed by its colour token (#901). */
+                            source === "flow_run" ? (
+                              <MessageCircleQuestion className={cn("h-3 w-3 shrink-0", item.unread ? "text-feedback-warning-primary" : "text-default-secondary")} />
+                            ) : (
+                              <Hand className={cn("h-3 w-3 shrink-0", item.unread ? "text-feedback-warning-primary" : "text-default-secondary")} />
+                            )
                           ) : isAnalyticsRefresh ? (
                             <LayoutDashboard className="h-3 w-3 text-accent shrink-0" />
                           ) : item.kind === "flow" ? (
@@ -211,7 +214,7 @@ export function Header() {
                             <Key className="h-3 w-3 text-feedback-warning-primary shrink-0" />
                           ) : item.kind === "agent_account" ? (
                             <UserCog className="h-3 w-3 text-accent shrink-0" />
-                          ) : item.kind === "run_action_request" || item.kind === "work_item_waiting" ? (
+                          ) : item.kind === "run_action_request" ? (
                             <Hand className="h-3 w-3 text-feedback-warning-primary shrink-0" />
                           ) : item.kind === "reminder" ? (
                             <AlarmClock className="h-3 w-3 text-accent shrink-0" />

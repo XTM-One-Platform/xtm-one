@@ -72,6 +72,7 @@ export const HEALTH_SPECIALIST_LABELS = {
   quality_analyst: "Quality Analyst",
   flow_lab: "Flow Lab",
   experimenter: "Experimenter",
+  module_analyst: "Module Analyst",
 } as const;
 
 /** @i18n-keys */
@@ -116,6 +117,11 @@ const REASON_LABELS = {
   remove: "removed",
   flag: "flagged",
   dry_run: "dry-run",
+  high: "high confidence",
+  medium: "medium confidence",
+  low: "low confidence",
+  opened: "opened",
+  resolved: "resolved",
 } as const;
 
 export function healthSkipLabel(what: string): string {
