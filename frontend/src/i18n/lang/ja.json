@@ -20765,7 +20765,6 @@
   "Signals in 30 days": "30 日間のシグナル",
   "Cases opened": "作成されたケース",
   "Trigger paths connected": "接続済みのトリガーパス",
-  "Connected sources": "接続済みのソース",
   "No source connected yet": "接続済みのソースはまだありません",
   "{count, plural, one {# signal in all} other {# signals in all}}": "{count, plural, other {合計 # 件のシグナル}}",
   "{count, plural, one {# new} other {# new}}": "{count, plural, other {新規 # 件}}",
