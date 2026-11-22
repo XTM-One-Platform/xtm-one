@@ -551,6 +551,18 @@
       "closed": true
     }
   ],
+  "get_opencrq_organization": [
+    {
+      "procedures": [
+        "organizations.getOrganization"
+      ],
+      "fields": [
+        "id"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "get_opencrq_risk_dashboard": [
     {
       "procedures": [
