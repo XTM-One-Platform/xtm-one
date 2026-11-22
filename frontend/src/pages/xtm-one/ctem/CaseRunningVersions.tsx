@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { Tip } from "@/components/ui/tooltip";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import type { CtemCaseRunningVersion, CtemCaseRunningVersions } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES, PROVIDER_LOGOS } from "@/lib/constants";
@@ -57,7 +57,7 @@ function SourceMark({ source }: { source: string }) {
   return (
     <Tip content={name}>
       <span
-        className="inline-flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={`inline-flex shrink-0 items-center ${TIP_WRAP_FOCUS_RING}`}
         tabIndex={0}
         data-testid="ctem-case-version-source"
       >
