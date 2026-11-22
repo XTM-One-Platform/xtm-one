@@ -20757,5 +20757,6 @@
   "In XTM One only": "XTM One のみ",
   "Vulnerability intelligence": "脆弱性インテリジェンス",
   "Asset inventory": "資産インベントリ",
-  "External attack surface": "外部攻撃対象領域"
+  "External attack surface": "外部攻撃対象領域",
+  "No asset group yet. Add a source to the inventory to fill it.": "アセットグループはまだありません。インベントリにソースを追加すると表示されます。"
 }

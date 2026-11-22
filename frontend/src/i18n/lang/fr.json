@@ -20757,5 +20757,6 @@
   "In XTM One only": "Dans XTM One uniquement",
   "Vulnerability intelligence": "Renseignement sur les vulnérabilités",
   "Asset inventory": "Inventaire des actifs",
-  "External attack surface": "Surface d'attaque externe"
+  "External attack surface": "Surface d'attaque externe",
+  "No asset group yet. Add a source to the inventory to fill it.": "Aucun groupe d'actifs pour l'instant. Ajoutez une source à l'inventaire pour le remplir."
 }
