@@ -144,8 +144,6 @@ from app.api.v1.schemas.fleet import (
     FleetRunEntry,
     FleetRunEstimateResponse,
     FleetRunStatsResponse,
-    FleetSetupStatusResponse,
-    FleetSetupStep,
     FleetSharedStateHygieneResponse,
     FleetSlotBind,
     FleetSourceChange,
@@ -171,6 +169,7 @@ from app.services.fleet_autonomy import (
     fleet_gates,
     gate_catalog,
     normalize_level,
+    with_live_step_gates,
 )
 from app.services.fleet_control import (
     enable_fleet,
@@ -1456,6 +1455,7 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     from app.services.fleet_gate_proposals import fleet_effective_gates
 
     effective = await fleet_effective_gates(db, fleet.id)
+    catalog = gate_catalog(fleet.autonomy_level, effective[1] if effective else [])
     # Any generation running on the server (#10316, #10817): the page derives its spinner from it on mount.
     generation = await generation_state(fleet.id)
     return FleetDocumentationResponse(
@@ -1468,12 +1468,13 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
         out_of_date=view.out_of_date,
         local=view.local,
         restored_from=view.restored_from,
-        structured=view.structured,
+        # A step's approval badge follows the gate it names at the live level and pins (#1074).
+        structured=with_live_step_gates(view.structured, catalog),
         prerequisite_states=[FleetPrerequisiteState(**vars(s)) for s in states],
         live_prerequisites=[FleetLivePrerequisite(**vars(line)) for line in live],
         autonomy_level=effective_level(fleet.autonomy_level),
         # The gates the runs enforce, computed ones included (#10153): the page says what holds.
-        autonomy_catalog=gate_catalog(fleet.autonomy_level, effective[1] if effective else []),
+        autonomy_catalog=catalog,
         findings=view.findings,
         dismissed_findings=view.dismissed_findings,
         generating=generation.generating,
@@ -3256,88 +3257,4 @@ async def get_fleet_run_estimate(
         window_days=ESTIMATE_DAYS,
         organizations=out,
         expected_runs_per_month=sum(o.expected_runs_per_month for o in out),
-    )
-
-
-@router.get("/setup/ctem-loop", response_model=FleetSetupStatusResponse)
-async def get_ctem_loop_setup_status(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    _gate: None = Depends(require_agentic_ai_licensed),
-) -> FleetSetupStatusResponse:
-    """Where the CTEM loop guided setup stands, step by step (#1087 slice 2).
-
-    Administrators of an XTM One platform only (403 otherwise). Each step reads
-    ``done`` or ``skipped`` as recorded for the current setup version, else
-    ``ready`` or ``todo`` from the platform as it is: the saved profile, the
-    active module registrations, the loop fleet's capability slots, its
-    autonomy level, gates and automations. Read only: no model call, no quota,
-    no write. ``resume_on`` names the step the flow opens on.
-    """
-    from app.agents.builtin_fleets import CTEM_LOOP_SLUG
-    from app.api.v1.platform_settings_helpers import get_platform_settings
-    from app.core.config import settings as app_settings
-    from app.models.platform_registration import PlatformRegistration
-    from app.services import fleet_setup_status as status_mod
-    from app.services import organization_setup_prompt as prompt
-    from app.services.fleet_autonomy import effective_gates, effective_level, gate_waits
-    from app.services.fleet_views import opt_in_state
-    from app.services.organization_context import current_version, parse_profile
-
-    if not (user.is_admin and app_settings.is_xtm_one):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
-    row = await get_platform_settings(db)
-    saved = await current_version(db)
-    profile = parse_profile(saved.profile) if saved is not None else None
-    profile_facts = status_mod.ProfileFacts(
-        saved=saved is not None,
-        crown_jewels=len(profile.crown_jewels) if profile else 0,
-        tech_stack=len(profile.tech_stack) if profile else 0,
-        ticketing_target=bool(profile and profile.ticketing.integration),
-        scope_min_criticality=profile.prioritization_policy.scope_min_criticality if profile else "",
-    )
-    modules = [
-        str(identifier)
-        for (identifier,) in (
-            await db.execute(
-                select(PlatformRegistration.platform_identifier)
-                .where(
-                    PlatformRegistration.platform_identifier.in_(status_mod.LOOP_MODULES),
-                    PlatformRegistration.status == "active",
-                )
-                .distinct()
-            )
-        ).all()
-    ]
-    fleet = (
-        await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True), Fleet.slug == CTEM_LOOP_SLUG).limit(1))
-    ).scalar_one_or_none()
-    slots: dict[str, str] = status_mod.slot_summary(())
-    fleet_facts = status_mod.LoopFleetFacts()
-    if fleet is not None:
-        slot_view = await get_fleet_capability_slots(str(fleet.id), user=user, db=db, _gate=None)
-        slots = status_mod.slot_summary(
-            [{"capability": s.capability, "state": s.state} for s in m.slots] for m in slot_view.members
-        )
-        level = effective_level(fleet.autonomy_level)
-        gates = effective_gates(
-            fleet.approval_gates, fleet.documentation, pins=fleet.approval_pins, customer=fleet.customer_gates
-        )
-        counts = await fleet_automation_counts(db, fleet)
-        fleet_facts = status_mod.LoopFleetFacts(
-            fleet_id=str(fleet.id),
-            autonomy_level=level,
-            opt_in=opt_in_state(counts),
-            automations_total=counts.total,
-            automations_enabled=counts.enabled,
-            waiting_gates=tuple(str(g.get("key") or "") for g in gates if gate_waits(level, g)),
-        )
-    result = status_mod.setup_status(
-        recorded=prompt.steps_of(row), profile=profile_facts, modules=modules, slots=slots, fleet=fleet_facts
-    )
-    return FleetSetupStatusResponse(
-        version=prompt.SETUP_VERSION,
-        fleet_id=fleet_facts.fleet_id,
-        steps=[FleetSetupStep.model_validate({"key": s.key, "state": s.state, "facts": s.facts}) for s in result.steps],
-        resume_on=result.resume_on,
     )

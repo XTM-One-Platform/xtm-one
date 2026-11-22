@@ -1903,7 +1903,7 @@ risk) declare one gate per loop stage, from
 | Key | Stage | Impact | Tools paused |
 |---|---|---|---|
 | `ctem.validation.non_readonly` | Validate: an OpenAEV test that is not read-only | high | the OpenAEV launches |
-| `ctem.analyst_review` | Review of the threat package | low | none |
+| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
 | `ctem.production_change` | A change applied on production through an integration | high | none |
@@ -1916,6 +1916,14 @@ waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
 the Mobilize action, so one Mobilize decision covers every ticket of its case.
+The review step (CTEM-16): the vulnerability and threat orchestrators draft the
+threat package as an OpenCTI Grouping (the vulnerability or threat, software,
+attack patterns, a note on the exploitation conditions) and request its
+security coverage, which OpenAEV builds its scenario from; the coverage
+follows the run's OpenCTI draft. Out of the box the request runs and the case
+records "analyst review skipped by policy"; pinned `wait`, the request pauses
+as a decision until a person answers. Resuming on an analyst's mark set in
+OpenCTI itself is not built yet.
 The personas name no approval of their own: they apply the catalog the run
 prompt states (`tests/test_ctem_gate_catalog_916.py` pins it). A gate that
 waits is a decision of the unified system (`dev-docs/human-gates.md`), never a
@@ -1962,6 +1970,18 @@ fleets `p10153fltpin1` had moved (created before #10164 merged, no level
 change in the audit log), so no member's run prompt changes. A custom fleet that declares gates and has no pins stored keeps acting on its
 declared gates alone until a person applies a level. A built-in fleet acts on
 its seeded catalog alone.
+
+**Step badges follow the catalog (#1074).** A step of the structured
+documentation may name the gate it stands for (`DocStep.gate_key`, a catalog
+key such as `ctem.mobilize`). `GET /fleets/{id}/documentation` derives that
+step's `gate` (the About page's "A person approves first" badge) from the
+same effective catalog it returns as `autonomy_catalog`
+(`fleet_autonomy.with_live_step_gates`), level and pins applied, so the About
+page and the Approval tab never disagree at any level or pin. A step without a
+key, or naming a gate the catalog does not hold, keeps its stored flag. The
+built-in steps name their keys and their stored flags equal the seeded level
+(Low: `ctem.mobilize` alone waits), checked for every built-in fleet by
+`test_builtin_fleet_docs.py`.
 
 **Set by instructions (#10168, B2-I).** A fleet whose approvals live in its
 personas, guardrails and skills (no platform gate) has a second position on
@@ -2252,30 +2272,3 @@ The desks' agents keep `platform_targets` `["xtm_one", "dev"]` and their
 time of the change), so the embedded OpenCTI, OpenAEV and OpenCRQ chats are
 unaffected. The posture lead keeps answering people in chat
 (`chat_members` of the loop entry).
-
-### 14.4 First-connection setup of the loop (CTEM-33, #1087)
-
-The first-connection proposal of #9173 is versioned
-(`organization_setup_prompt.SETUP_VERSION`, `ctem-loop-1`): shown to an
-administrator of an XTM One platform at install and once after an upgrade that
-carries a new version, never in Copilot mode. Its six steps (organization,
-modules, ecosystem, gates, preview, enable) each save on their own through
-`PUT /api/v1/organization-context/setup-prompt/steps`.
-
-`GET /api/v1/fleets/setup/ctem-loop` (administrators, read only) answers each
-step's state and the step to resume on (`app/services/fleet_setup_status.py`):
-`done` or `skipped` as recorded for the current version, else `ready` when the
-platform already holds it (a saved profile with crown jewels and a tech stack;
-one CTEM module registered; one filled ecosystem slot of the loop fleet; the
-loop fleet seeded, for gates and preview; every automation on, for enable),
-else `todo`. The Modules step names what the loop loses without each module.
-Nothing is enabled before the enable step, which calls `POST /fleets/{id}/enable`.
-
-Frontend: "Set up now" of `OrganizationSetupPrompt` opens
-`components/fleets/CtemLoopSetupDialog.tsx` in place (no navigation). It opens on
-`resume_on`, records each step with Continue (`done`) or Skip (`skipped`), and
-reuses the existing pieces rather than new forms: the Organization step links to
-Settings > Organization in setup mode, Ecosystem embeds
-`FleetCapabilitySlotsCard`, Gates embeds `FleetAutonomyStrip`, and Enable opens
-`FleetEnableDialog` (dry-run plan, run estimate, Confirm). The step order, copy
-and fact readers are pure functions in `components/fleets/ctem-loop-setup.ts`.
