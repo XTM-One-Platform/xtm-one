@@ -20819,5 +20819,18 @@
   "Points by the priority of the case.": "Points selon la priorité du cas.",
   "Points for what the case holds.": "Points selon ce que contient le cas.",
   "Points when the due date is near or has passed.": "Points quand l'échéance est proche ou dépassée.",
-  "Points for a case nobody owns and for each day it stays open.": "Points pour un cas sans responsable et pour chaque jour où il reste ouvert."
+  "Points for a case nobody owns and for each day it stays open.": "Points pour un cas sans responsable et pour chaque jour où il reste ouvert.",
+  "Attack path and blast radius": "Chemin d'attaque et rayon d'impact",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "Pas encore de chemin d'attaque : le triage le lit dans OpenCRQ dès qu'une simulation OpenAEV a cartographié l'actif touché.",
+  "No attack path leaves this asset in the latest simulations.": "Aucun chemin d'attaque ne part de cet actif dans les dernières simulations.",
+  "Hops, nearest first": "Étapes, la plus proche en premier",
+  "Attack starts from": "L'attaque part de",
+  "Proven": "Prouvé",
+  "Inferred": "Déduit",
+  "Proven by {name}, {date}": "Prouvé par {name}, {date}",
+  "Proven by {name}": "Prouvé par {name}",
+  "Proven by an OpenAEV simulation, {date}": "Prouvé par une simulation OpenAEV, {date}",
+  "Primary assets reached": "Actifs primaires atteints",
+  "None: no business asset sits behind the assets reached.": "Aucun : aucun actif métier ne se trouve derrière les actifs atteints.",
+  "Recorded the attack path": "Chemin d'attaque enregistré"
 }
