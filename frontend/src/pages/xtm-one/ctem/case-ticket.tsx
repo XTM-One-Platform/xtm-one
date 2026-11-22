@@ -40,6 +40,29 @@ const SYNC_LABELS = {
   error: "Sync error",
 } as const;
 
+/**
+ * The fix of a sync failure, by the stable code the backend records
+ * (ctem_ticketing.FIX_CODES, `sync.fix_code`): the reader's language, never the
+ * backend's English `fix` sentence or its raw provider error. @i18n-keys
+ */
+const FIX_LABELS = {
+  check_integration: "Check the ticketing integration in the settings.",
+  reconnect_jira: "Reconnect the Jira integration.",
+  map_jira_status: "Map a Jira status to this case status in the ticketing sync settings.",
+  choose_servicenow_table: "Choose a supported ServiceNow table in the ticketing settings.",
+  check_servicenow_credentials: "Check the ServiceNow credentials.",
+  relink_case: "Relink the case to an existing ServiceNow record.",
+} as const;
+
+type FixCode = keyof typeof FIX_LABELS;
+
+/** The localized fix of a failed sync: its code, else the generic fix when the record names one without a code (an older record). */
+function fixSentence(sync: CtemCaseTicket["sync"], t_i18n: Translate): string | null {
+  const code = sync?.fix_code;
+  if (code && code in FIX_LABELS) return t_i18n(FIX_LABELS[code as FixCode]);
+  return sync?.fix || sync?.error ? t_i18n(FIX_LABELS.check_integration) : null;
+}
+
 /** The tone of each sync state: a failure reads high, a lag reads medium, healthy reads low. */
 const SYNC_TONE: Record<CtemTicketSyncState, "high" | "medium" | "low" | "info"> = {
   linked: "info",
@@ -68,18 +91,21 @@ function systemName(ticket: CtemCaseTicket): string | null {
   return provider ? (SYSTEM_NAMES[provider] ?? provider) : null;
 }
 
-/** The sentence behind the sync state: since when, what failed and how to fix it. */
+/**
+ * The sentence behind the sync state: since when, that it failed and how to fix
+ * it, all in the reader's language. The backend's raw `error` and `fix` text
+ * (English, with code values) is never drawn: it stays for agents and logs.
+ */
 export function ticketSyncSentence(ticket: CtemCaseTicket, t_i18n: Translate, formatDate: (iso: string) => string): string {
   const state = ticketSyncState(ticket);
   const since = ticket.sync?.since ? formatDate(ticket.sync.since) : null;
   const external = ticket.sync?.external_status;
-  if (state === "out_of_date") {
-    const head = since ? t_i18n("The ticket has not been read since {date}.", { date: since }) : t_i18n("The ticket could not be read.");
-    return ticket.sync?.fix ? `${head} ${ticket.sync.fix}` : head;
-  }
-  if (state === "error") {
-    const head = ticket.sync?.error ? t_i18n("The last sync failed: {error}", { error: ticket.sync.error }) : t_i18n("The last sync failed.");
-    return ticket.sync?.fix ? `${head} ${ticket.sync.fix}` : head;
+  if (state === "out_of_date" || state === "error") {
+    let head: string;
+    if (state === "error") head = t_i18n("The last sync failed.");
+    else head = since ? t_i18n("The ticket has not been read since {date}.", { date: since }) : t_i18n("The ticket could not be read.");
+    const fix = fixSentence(ticket.sync, t_i18n);
+    return fix ? `${head} ${fix}` : head;
   }
   if (state === "in_sync") {
     if (since && external) return t_i18n("In sync since {date}, status in the ticketing system: {status}.", { date: since, status: external });

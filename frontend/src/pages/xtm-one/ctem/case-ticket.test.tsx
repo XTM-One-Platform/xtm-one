@@ -2,6 +2,7 @@
 // state and sentence, and "No ticketing connected" when no target is declared.
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseTicket } from "@/hooks/api/useCtemCasesApi";
 import { CaseTicketChip, caseTicket, ticketSyncSentence, ticketSyncState } from "./case-ticket";
@@ -35,14 +36,40 @@ describe("caseTicket", () => {
 });
 
 describe("ticketSyncSentence", () => {
-  it("says since when a ticket is out of date, with its fix", () => {
-    const late = { ...synced, sync: { state: "out_of_date" as const, since: "2026-11-20T08:00:00+00:00", fix: "Renew the token." } };
-    expect(ticketSyncSentence(late, t, date)).toBe("The ticket has not been read since 2026-11-20. Renew the token.");
+  it("says since when a ticket is out of date, with its fix in words from the fix code", () => {
+    const late = {
+      ...synced,
+      sync: {
+        state: "out_of_date" as const,
+        since: "2026-11-20T08:00:00+00:00",
+        error: "ServiceNow did not answer to read INC0010234",
+        fix: "check the ServiceNow credentials",
+        fix_code: "check_servicenow_credentials",
+      },
+    };
+    expect(ticketSyncSentence(late, t, date)).toBe("The ticket has not been read since 2026-11-20. Check the ServiceNow credentials.");
   });
 
-  it("says what failed on an error", () => {
-    const failed = { ...synced, sync: { state: "error" as const, error: "403 Forbidden" } };
-    expect(ticketSyncSentence(failed, t, date)).toBe("The last sync failed: 403 Forbidden");
+  it("says the sync failed and its fix, never the raw backend error or fix text", () => {
+    const failed = {
+      ...synced,
+      sync: {
+        state: "error" as const,
+        error: "no Jira transition of SEC-1043 leads to in_progress",
+        fix: "map a Jira status to this case status in the ticketing sync settings",
+        fix_code: "map_jira_status",
+      },
+    };
+    const sentence = ticketSyncSentence(failed, t, date);
+    expect(sentence).toBe("The last sync failed. Map a Jira status to this case status in the ticketing sync settings.");
+    expect(sentence).not.toContain("in_progress");
+  });
+
+  it("falls back to the generic fix for a record without a known fix code", () => {
+    const older = { ...synced, sync: { state: "error" as const, error: "403 Forbidden", fix: "reconnect" } };
+    expect(ticketSyncSentence(older, t, date)).toBe("The last sync failed. Check the ticketing integration in the settings.");
+    const bare = { ...synced, sync: { state: "error" as const } };
+    expect(ticketSyncSentence(bare, t, date)).toBe("The last sync failed.");
   });
 
   it("names the external status when in sync", () => {
@@ -65,7 +92,11 @@ describe("CaseTicketChip", () => {
 
   it("says no ticketing is connected, with the settings link, only when asked", () => {
     const ticketing = { connected: false, reason: "No ticketing connected", settings: "/settings/organization?card=ticketing" };
-    const { unmount } = renderWithProviders(<CaseTicketChip tickets={[]} ticketing={ticketing} showNotConnected />);
+    const { unmount } = renderWithProviders(
+      <MemoryRouter>
+        <CaseTicketChip tickets={[]} ticketing={ticketing} showNotConnected />
+      </MemoryRouter>,
+    );
     expect(screen.getByTestId("ctem-case-ticket-none")).toHaveTextContent("No ticketing connected");
     unmount();
     renderWithProviders(<CaseTicketChip tickets={[]} ticketing={ticketing} />);

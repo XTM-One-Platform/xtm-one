@@ -53,12 +53,31 @@ DEFAULT_JIRA_PRIORITY = {"P1": "Highest", "P2": "High", "P3": "Medium"}
 DEFAULT_SERVICENOW_URGENCY = {"P1": "1", "P2": "2", "P3": "3"}
 
 
-class TicketingError(Exception):
-    """A sync step the system refused; ``fix`` names the one action that fixes it."""
+#: The stable code of each fix a sync failure names (``sync.fix_code``): the UI
+#: says the fix in the reader's language from it (case-ticket.tsx), never from
+#: the English ``fix`` sentence, which stays for agents and logs.
+FIX_CODES = (
+    "check_integration",
+    "reconnect_jira",
+    "map_jira_status",
+    "choose_servicenow_table",
+    "check_servicenow_credentials",
+    "relink_case",
+)
 
-    def __init__(self, message: str, fix: str = "check the ticketing integration in Settings"):
+
+class TicketingError(Exception):
+    """A sync step the system refused; ``fix`` names the one action that fixes it, ``fix_code`` its stable code."""
+
+    def __init__(
+        self,
+        message: str,
+        fix: str = "check the ticketing integration in Settings",
+        fix_code: str = "check_integration",
+    ):
         super().__init__(message)
         self.fix = fix
+        self.fix_code = fix_code if fix_code in FIX_CODES else "check_integration"
 
 
 @dataclass(frozen=True)
@@ -369,7 +388,7 @@ async def push_case_state(
             return outcome
         remote = await adapter.update(str(ticket["key"]), draft, status="open" if reopen else wanted)
     except TicketingError as exc:
-        _mark(db, case, ticket, adapter, "error", now, error=str(exc), fix=exc.fix)
+        _mark(db, case, ticket, adapter, "error", now, error=str(exc), fix=exc.fix, fix_code=exc.fix_code)
         outcome.error = str(exc)
         return outcome
     case_loop.record_ticket(
@@ -417,7 +436,18 @@ async def pull_ticket_status(
     try:
         remote = remote or await adapter.read_status(str(ticket["key"]))
     except TicketingError as exc:
-        _mark(db, case, ticket, adapter, "out_of_date", now, error=str(exc), fix=exc.fix, keep_since=True)
+        _mark(
+            db,
+            case,
+            ticket,
+            adapter,
+            "out_of_date",
+            now,
+            error=str(exc),
+            fix=exc.fix,
+            fix_code=exc.fix_code,
+            keep_since=True,
+        )
         outcome.error = str(exc)
         return outcome
     before = ticket.get("status")
@@ -460,6 +490,7 @@ def _mark(
     *,
     error: str = "",
     fix: str = "",
+    fix_code: str = "check_integration",
     keep_since: bool = False,
 ) -> None:
     """Write a sync state that is not ``in_sync`` (the since of a running out-of-date is kept)."""
@@ -472,6 +503,7 @@ def _mark(
         "provider": getattr(adapter, "provider", previous.get("provider", "")),
         "error": error[:300],
         "fix": fix[:200],
+        "fix_code": fix_code,
     }
     case_loop.record_ticket(
         db,
@@ -507,7 +539,11 @@ class JiraAdapter:
 
         resp, err = await jira_request(method, f"{api3(self.base)}/{path}", action, headers=self.headers, **kwargs)
         if err or resp is None:
-            raise TicketingError(err or f"Jira did not answer to {action}", fix="reconnect the Jira integration")
+            raise TicketingError(
+                err or f"Jira did not answer to {action}",
+                fix="reconnect the Jira integration",
+                fix_code="reconnect_jira",
+            )
         return resp.json() if resp.content else {}
 
     def _remote(self, issue: dict[str, Any]) -> RemoteTicket:
@@ -578,6 +614,7 @@ class JiraAdapter:
         raise TicketingError(
             f"no Jira transition of {key} leads to {status}",
             fix="map a Jira status to this case status in the ticketing sync settings",
+            fix_code="map_jira_status",
         )
 
     async def comment(self, key: str, text: str) -> None:
@@ -611,6 +648,7 @@ class ServiceNowAdapter:
             raise TicketingError(
                 f"the ServiceNow table {self.table!r} has no ticketing sync",
                 fix=f"choose one of {', '.join(SERVICENOW_TABLES)} in the ticketing settings",
+                fix_code="choose_servicenow_table",
             )
         self.group = group
         self.status_map = status_map or {}
@@ -621,7 +659,9 @@ class ServiceNowAdapter:
         resp, err = await sn_request(method, url, action, headers=self.headers, **kwargs)
         if err or resp is None:
             raise TicketingError(
-                err or f"ServiceNow did not answer to {action}", fix="check the ServiceNow credentials"
+                err or f"ServiceNow did not answer to {action}",
+                fix="check the ServiceNow credentials",
+                fix_code="check_servicenow_credentials",
             )
         return result_of(resp)
 
@@ -681,7 +721,11 @@ class ServiceNowAdapter:
     async def _sys_id(self, key: str) -> str:
         row = await self._row(f"number={key}", f"resolve {key}")
         if not row:
-            raise TicketingError(f"ServiceNow has no {self.table} {key}", fix="relink the case to an existing record")
+            raise TicketingError(
+                f"ServiceNow has no {self.table} {key}",
+                fix="relink the case to an existing record",
+                fix_code="relink_case",
+            )
         return str(row["sys_id"])
 
     async def update(self, key: str, draft: TicketDraft, *, status: str | None = None) -> RemoteTicket:
@@ -698,7 +742,11 @@ class ServiceNowAdapter:
     async def read_status(self, key: str) -> RemoteTicket:
         row = await self._row(f"number={key}", f"read {key}")
         if not row:
-            raise TicketingError(f"ServiceNow has no {self.table} {key}", fix="relink the case to an existing record")
+            raise TicketingError(
+                f"ServiceNow has no {self.table} {key}",
+                fix="relink the case to an existing record",
+                fix_code="relink_case",
+            )
         return self._remote(row)
 
 

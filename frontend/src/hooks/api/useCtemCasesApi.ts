@@ -69,6 +69,8 @@ export interface CtemCaseTicket {
     external_status?: string;
     error?: string;
     fix?: string;
+    /** The stable code of the fix (backend ctem_ticketing.FIX_CODES): the UI words it in the reader's language. */
+    fix_code?: string;
   };
 }
 
