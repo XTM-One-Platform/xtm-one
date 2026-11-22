@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2014 tools across 115 providers; 52 held back by hand.
+# 1990 tools across 115 providers; 53 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -133,49 +133,6 @@ aikido:list_aikido_users
 aikido:list_aikido_virtual_machines
 aikido:list_aikido_webhooks
 aikido:list_aikido_zen_users
-airwallex:download_airwallex_financial_report
-airwallex:export_airwallex_financial_report
-airwallex:get_airwallex_account
-airwallex:get_airwallex_beneficiary
-airwallex:get_airwallex_card
-airwallex:get_airwallex_card_limits
-airwallex:get_airwallex_card_transaction
-airwallex:get_airwallex_cardholder
-airwallex:get_airwallex_connected_account
-airwallex:get_airwallex_conversion
-airwallex:get_airwallex_deposit
-airwallex:get_airwallex_financial_report
-airwallex:get_airwallex_financial_transaction
-airwallex:get_airwallex_fx_quote
-airwallex:get_airwallex_fx_rate
-airwallex:get_airwallex_global_account
-airwallex:get_airwallex_invoice
-airwallex:get_airwallex_payment_intent
-airwallex:get_airwallex_payment_link
-airwallex:get_airwallex_settlement
-airwallex:get_airwallex_transfer
-airwallex:get_airwallex_wallet_info
-airwallex:list_airwallex_balance_history
-airwallex:list_airwallex_balances
-airwallex:list_airwallex_beneficiaries
-airwallex:list_airwallex_card_transactions
-airwallex:list_airwallex_cardholders
-airwallex:list_airwallex_cards
-airwallex:list_airwallex_connected_accounts
-airwallex:list_airwallex_conversions
-airwallex:list_airwallex_deposits
-airwallex:list_airwallex_financial_reports
-airwallex:list_airwallex_financial_transactions
-airwallex:list_airwallex_global_account_transactions
-airwallex:list_airwallex_global_accounts
-airwallex:list_airwallex_invoice_line_items
-airwallex:list_airwallex_invoices
-airwallex:list_airwallex_payment_intents
-airwallex:list_airwallex_payment_links
-airwallex:list_airwallex_settlements
-airwallex:list_airwallex_transfers
-airwallex:list_airwallex_webhooks
-airwallex:validate_airwallex_beneficiary
 anomali:get_anomali_observable
 anomali:get_anomali_passive_dns
 anomali:get_anomali_status
@@ -1179,6 +1136,25 @@ n8n:get_n8n_workflow
 n8n:get_n8n_workflow_tags
 n8n:list_n8n_executions
 n8n:list_n8n_workflows
+netsuite:describe_netsuite_records
+netsuite:get_netsuite_aging
+netsuite:get_netsuite_balance_sheet
+netsuite:get_netsuite_entity_bank_details
+netsuite:get_netsuite_income_statement
+netsuite:get_netsuite_intercompany_balances
+netsuite:get_netsuite_record
+netsuite:get_netsuite_transaction
+netsuite:get_netsuite_trial_balance
+netsuite:list_netsuite_accounting_periods
+netsuite:list_netsuite_accounts
+netsuite:list_netsuite_bank_lines
+netsuite:list_netsuite_currencies
+netsuite:list_netsuite_items
+netsuite:list_netsuite_records
+netsuite:list_netsuite_segments
+netsuite:list_netsuite_subsidiaries
+netsuite:list_netsuite_transactions
+netsuite:search_netsuite_entities
 newsapi:get_newsapi_headlines
 newsapi:list_newsapi_sources
 newsapi:search_newsapi_articles
