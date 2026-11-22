@@ -6525,8 +6525,6 @@ export interface WorkItem {
   blocked_reason?: string | null;
   /** Blocked on a person's decision. */
   needs_human?: boolean;
-  /** The person a needs_human item waits for when not its user (#11893); null otherwise. */
-  waits_for_user_id?: string | null;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
@@ -6749,12 +6747,6 @@ export interface WorkItemGraphItemNode {
   is_program_root: boolean;
   /** A blocker the filter left out, drawn so the chain does not end on nothing. */
   outside_filter: boolean;
-  /** What the Waiting for me filter reads (`waitsForReader`): the node's Waiting for you marker. */
-  user_id: string | null;
-  waits_for_user_id: string | null;
-  owner_agent_id: string | null;
-  due_at: string | null;
-  scheduled: boolean;
 }
 
 /** A pull request, issue, deployment or workflow run an item waits for. */
@@ -12626,8 +12618,13 @@ export interface PlatformFormsResponse {
 // Notifications and linked phones
 // ---------------------------------------------------------------------------
 
-/** A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`). */
+/**
+ * A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`).
+ * `decision` is every human gate (#842, S4); `hitl`, `flow_hitl` and
+ * `work_item_waiting` stay readable for one release as its aliases.
+ */
 export type NotificationKind =
+  | "decision"
   | "hitl"
   | "flow_hitl"
   | "run"
@@ -12657,12 +12654,17 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a `hitl` item waits on, or the flow run a `flow_hitl` item asks from. */
+  /** The run a run decision waits on, or the flow run a flow decision asks from. */
   run_id: string | null;
+  /** What a `decision` entry waits on (`DECISION_SOURCES`). */
+  source?: NotificationDecisionSource | null;
   /** A decision still waiting: unread until answered, never read by opening it (#991). */
   awaiting_answer?: boolean;
   unread: boolean;
 }
+
+/** The source of a `decision` notification. */
+export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
@@ -16302,6 +16304,23 @@ export interface HealthSettings extends HealthTriggerSettings {
   openaev: HealthOpenAEVThresholds;
   /** The alert emails (#101 S12), off by default. */
   alert_emails: HealthAlertEmailSettings;
+  /** The Module Analyst's switch, debounce, exclusions and own ceilings (#101 S14). */
+  module_analyst: HealthModuleAnalystSettings;
+}
+
+/**
+ * `HealthModuleAnalystSettings` of `services/health/settings.py` (#101 S14, dev-docs 12.5): its own
+ * ceilings outside the agentic quota; `null` clears one, which refuses every model call. Costs are decimal strings.
+ */
+export interface HealthModuleAnalystSettings {
+  enabled: boolean;
+  change_min_interval_minutes: number;
+  excluded_registration_ids: string[];
+  cycle_tokens: number | null;
+  day_tokens: number | null;
+  day_cost_usd: string | null;
+  month_tokens: number | null;
+  month_cost_usd: string | null;
 }
 
 /** `HealthAlertEmailSettings` of `services/health/settings.py`. */
@@ -16380,7 +16399,7 @@ export interface HealthBudget {
 
 // ── Platform Health cycles, signals and inbox (#8261) ─────────────────────
 
-export type HealthTargetType = "agent" | "flow" | "assignment";
+export type HealthTargetType = "agent" | "flow" | "assignment" | "module";
 type HealthCycleStatus = "open" | "completed" | "budget_reached" | "failed" | "cancelled";
 /** A digest's status: ``completed`` only for a completed run with nothing skipped. */
 type HealthDigestStatus = "completed" | "partial" | "failed" | "budget_reached" | "cancelled";
@@ -16409,8 +16428,13 @@ export interface HealthDigest {
   findings: Record<string, number> | null;
   experiments: Record<string, number> | null;
   proposals: { filed: number; applied: number; rolled_back: number; by_verdict: Record<string, number> } | null;
-  budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null };
+  /** `ledger: "module_analyst"` when the spend counts against the Module Analyst's own ceiling (#101 S14d). */
+  budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null; ledger?: string };
   dry_run_writes: number | null;
+  /** A Module Analyst cycle (#101 S14d): recommendations attached (`attached`, then by confidence). */
+  recommendations?: Record<string, number> | null;
+  /** A Module Analyst cycle: agentic findings of its registration `opened` and `resolved` in its window. */
+  agentic_findings?: Record<string, number> | null;
   skipped: HealthDigestSkip[];
   unavailable: string[];
   narrative: string | null;
@@ -16548,6 +16572,16 @@ export interface HealthAnalysisOverview {
   day: HealthAnalysisSpend;
   month: HealthAnalysisSpend;
   modules: HealthModuleAnalysis[];
+  /** The Module Analyst row of Spend limits (#101 S14d): its own ceilings and ledger. */
+  module_analyst: HealthModuleAnalystSpendRow;
+}
+
+interface HealthModuleAnalystSpendRow {
+  enabled: boolean;
+  ceilings_set: boolean;
+  ceilings: Omit<HealthModuleAnalystSettings, "enabled" | "change_min_interval_minutes" | "excluded_registration_ids">;
+  day: HealthAnalysisSpend;
+  month: HealthAnalysisSpend;
 }
 
 export interface HealthOverview {
