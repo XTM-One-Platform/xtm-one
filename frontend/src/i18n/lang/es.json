@@ -5567,6 +5567,7 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "La URL del webhook se generará automáticamente tras la creación usando el ID de la asignación.",
   "The whole request body is passed to the agent as the trigger payload.": "Todo el cuerpo de la solicitud se pasa al agente como carga útil del disparador.",
   "Theme": "Tema",
+  "Pastel colours": "Colores pastel",
   "Theme Color": "Color del tema",
   "Theme configuration": "Configuración del tema",
   "There are no objects on the platform yet.": "Todavía no hay objetos en la plataforma.",
@@ -20868,5 +20869,6 @@
   "Restore coverage": "Restablecer la cobertura",
   "Unknown user": "Usuario desconocido",
   "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# fila} other {# filas}}",
-  "Group by: {group}": "Agrupar por: {group}"
+  "Group by: {group}": "Agrupar por: {group}",
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tonos suaves para los colores de gravedad, estado y marcado. Desactivado: colores estándar, iguales en todos los productos."
 }
