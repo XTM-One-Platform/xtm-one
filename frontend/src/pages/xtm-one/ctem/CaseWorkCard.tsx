@@ -60,7 +60,7 @@ function NothingWorksCase({ loopFleetId, onStart }: { loopFleetId: string | null
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-elevation-default text-default-secondary">
             <Icon name="workflow" size={24} />
           </span>
-          <h2 className="content-title font-semibold">{t_i18n("No automation works this case yet")}</h2>
+          <h2 className="title-sm">{t_i18n("No automation works this case yet")}</h2>
           <p className="content-base text-default-secondary">
             {t_i18n(
               "Working a case means reading how it would be exploited, an analyst review, validating the exposure, deciding the remediation and writing the treatment plan. You choose who does it.",
@@ -210,7 +210,7 @@ function AutomationsOff({ automations, loopFleetId, onStart }: { automations: Ca
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-elevation-default text-default-secondary">
             <Icon name="workflow" size={24} />
           </span>
-          <h2 className="content-title font-semibold">{t_i18n("The automations that work cases are switched off")}</h2>
+          <h2 className="title-sm">{t_i18n("The automations that work cases are switched off")}</h2>
           <p className="content-base text-default-secondary">
             {t_i18n("{count, plural, one {# automation listens to the case events but is off.} other {# automations listen to the case events but are off.}}", {
               count: automations.length,
