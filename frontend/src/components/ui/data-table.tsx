@@ -1168,7 +1168,7 @@ function DataTableView<T>({
                           <td colSpan={spanned} className="p-0">
                             {fullWidth(
                               <span className="flex items-center gap-2">
-                                <span className="min-w-0 truncate font-medium text-default">{groupBy.label(value)}</span>
+                                <span className="min-w-0 truncate font-medium text-default-primary">{groupBy.label(value)}</span>
                                 <span className="shrink-0 tabular-nums text-default-secondary">{formatGroupCount(groupCounts.get(value) ?? 0)}</span>
                               </span>,
                               "px-3 py-1.5 content-compact",
