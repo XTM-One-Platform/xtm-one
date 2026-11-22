@@ -132,6 +132,18 @@ def test_opencti_system_takes_the_batch_type_labels_and_author():
     assert imp.opencti_system(node, "not-a-type").category == "generic_asset"
 
 
+def test_a_source_code_asset_is_read_from_openaev_and_opencti_once_they_carry_it():
+    # xtm-one #1233: an OpenAEV asset or OpenCTI System typed SOURCE_CODE reads as source_code.
+    row = imp.openaev_asset(
+        _aev_asset("r1", "xtm-one", asset_category="SOURCE_CODE", asset_subcategory="CODE_REPOSITORY")
+    )
+    assert (row.category, row.subcategory) == ("source_code", "code_repository")
+    node = {"id": "s2", "name": "ci", "x_opencti_system_subcategory": "ci_cd_pipeline"}
+    system = imp.opencti_system(node, "")
+    assert (system.category, system.subcategory) == ("source_code", "ci_cd_pipeline")
+    assert imp.batch_taxonomy("source_code/software_package") == ("source_code", "software_package")
+
+
 def test_opencti_system_maps_the_asset_taxonomy_of_opencti_19943():
     node = {
         "id": "s2",
