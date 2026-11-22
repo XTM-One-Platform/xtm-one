@@ -128,4 +128,37 @@ describe("useFitToViewport in a row set by a taller neighbour (#11467, #11470)",
     expect(new Set(rooms.filter((room) => room !== undefined))).toEqual(new Set([400]));
     expect(rooms.length).toBeLessThanOrEqual(4);
   });
+
+  it("shrinks a bound 1 px over the room, so the page does not scroll (#1300)", () => {
+    vi.stubGlobal("innerHeight", 901);
+    const { rooms, area } = settle(true);
+    expect(rooms.at(-1)).toBe(401);
+    vi.stubGlobal("innerHeight", 900);
+    act(() => {
+      for (const cb of observers) cb([], {} as ResizeObserver);
+    });
+    act(() => {
+      const queued = [...frames.values()];
+      frames = new Map();
+      for (const frame of queued) frame(performance.now());
+    });
+    expect(rooms.at(-1)).toBe(400);
+    expect(area.style.maxHeight).toBe("400px");
+  });
+
+  it("keeps the bound on a 1 px growth of the room", () => {
+    const { rooms, area } = settle(true);
+    expect(rooms.at(-1)).toBe(400);
+    vi.stubGlobal("innerHeight", 901);
+    act(() => {
+      for (const cb of observers) cb([], {} as ResizeObserver);
+    });
+    act(() => {
+      const queued = [...frames.values()];
+      frames = new Map();
+      for (const frame of queued) frame(performance.now());
+    });
+    expect(rooms.at(-1)).toBe(400);
+    expect(area.style.maxHeight).toBe("400px");
+  });
 });

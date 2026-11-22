@@ -469,6 +469,45 @@ READS = {
             }
         },
     ),
+    "get_opencrq_attack_path_reach": Read(
+        "get_opencrq_attack_path_reach",
+        {"supporting_asset_id": SUPPORTING_ASSET},
+        opencrq_risk,
+        # supporting-assets/supporting-assets-router.ts: getAttackPathReach input is {supportingAssetId (uuid)}
+        [_sent("supportingAssets.getAttackPathReach", {"supportingAssetId": SUPPORTING_ASSET})],
+        ("supportingAssets.getAttackPathReach",),
+        (
+            "Attack-path reach (2 asset(s) reached, 2 hop(s), 1 proven, 1 primary asset(s) behind)",
+            "Origin: Edge bastion (OpenSSH) (internet-facing, criticality high)",
+            "Edge bastion (OpenSSH) -> Jump host (proven, simulation sim-2026-11-20",
+            "Jump host -> Core Banking System (Temenos T24) (inferred, last reported",
+            "Core Banking System (Temenos T24) (depth 2, internal, criticality very_high)",
+            "Credit Decision Process (through Core Banking System (Temenos T24))",
+            "Hops unconfirmed for 30 days are left out as stale.",
+        ),
+        absent=("more.", "none reached"),
+    ),
+    "get_opencrq_attack_path_reach_of_an_isolated_asset": Read(
+        "get_opencrq_attack_path_reach",
+        {"supporting_asset_id": SUPPORTING_ASSET},
+        opencrq_risk,
+        [_sent("supportingAssets.getAttackPathReach", {"supportingAssetId": SUPPORTING_ASSET})],
+        (),
+        (
+            "Attack-path reach (0 asset(s) reached, 0 hop(s), 0 proven, 0 primary asset(s) behind)",
+            "Hops: no attack path leaves this asset.",
+            "Primary assets behind: none reached.",
+        ),
+        absent=("Reached assets:",),
+        overrides={
+            "supportingAssets.getAttackPathReach": {
+                **_fixture("supportingAssets.getAttackPathReach")[1],
+                "reachedAssets": [],
+                "hops": [],
+                "primaryAssets": [],
+            }
+        },
+    ),
     "get_opencrq_attack_outcome_for_an_organization": Read(
         "get_opencrq_attack_outcome",
         {"attack_outcome_id": ATTACK_OUTCOME, "organization_id": ORGANIZATION}, opencrq_risk,
