@@ -33,9 +33,20 @@ const analyst = {
 };
 const draft = { module_analyst: analyst } as unknown as HealthSettings;
 
+/** The spend lock the server reports (#1202); unlocked unless a test locks it. */
+let spendLocked = false;
+
 beforeEach(() => {
+  spendLocked = false;
   get.mockReset().mockImplementation((url: string) =>
-    url === "/health/analysis"
+    url === "/health/settings/spend-limits"
+      ? Promise.resolve({
+          locked: spendLocked,
+          locked_reason: spendLocked ? "environment" : null,
+          env_var: "PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED",
+          limits: [],
+        })
+      : url === "/health/analysis"
       ? Promise.resolve({
           enabled: false,
           ceilings_set: true,
@@ -73,8 +84,9 @@ describe("ModuleAnalystBlock", () => {
     expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
-  it("lays the ceilings out one period per row, as the analysis grid and the spend lines", () => {
+  it("lays the ceilings out one period per row, as the analysis grid and the spend lines", async () => {
     renderWithProviders(<ModuleAnalystBlock draft={draft} editing onChange={() => {}} />);
+    await screen.findByRole("spinbutton", { name: "Tokens per cycle" });
     const cells = Array.from(screen.getByTestId("health.module-analyst-ceilings").children);
     const names = cells.map((cell) => cell.getAttribute("data-testid") ?? cell.textContent);
     expect(names).toEqual([
@@ -95,13 +107,23 @@ describe("ModuleAnalystBlock", () => {
     expect(spend).toHaveTextContent("Tokens: 136K of 10M");
   });
 
-  it("writes an edited ceiling into the draft, the other fields kept", () => {
+  it("writes an edited ceiling into the draft, the other fields kept", async () => {
     const onChange = vi.fn();
     renderWithProviders(<ModuleAnalystBlock draft={draft} editing onChange={onChange} />);
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Tokens per cycle" }), { target: { value: "60000" } });
+    fireEvent.change(await screen.findByRole("spinbutton", { name: "Tokens per cycle" }), { target: { value: "60000" } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ module_analyst: expect.objectContaining({ cycle_tokens: 60000, day_tokens: 500000, enabled: true }) }),
     );
+  });
+
+  it("locked (#1202): the ceilings stay read-only in edit mode, the switch stays editable, the variable is named", async () => {
+    spendLocked = true;
+    renderWithProviders(<ModuleAnalystBlock draft={draft} editing onChange={() => {}} />);
+    const notice = await screen.findByTestId("health.module-analyst-locked");
+    expect(notice).toHaveTextContent("PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED");
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(screen.getByTestId("health.module-analyst")).toHaveTextContent("$4.00");
+    expect(screen.getByRole("switch", { name: "Investigate the modules" })).toBeInTheDocument();
   });
 
   it("keeps Save off for a negative or fractional token ceiling, and accepts a cleared one", () => {

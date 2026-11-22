@@ -48,11 +48,17 @@ from app.services.health import budget as health_budget
 from app.services.health.consent import Revocation, apply_revocation
 from app.services.health.naming import default_health_agent_name, load_health_agent_name
 from app.services.health.settings import (
+    SPEND_LIMITS_ENV_VAR,
+    SPEND_LIMITS_LOCKED_REASON,
     HealthBudgetCaps,
     HealthSettings,
+    SpendLimitsLockedError,
+    describe_spend_limits,
     load_health_settings,
+    load_stored_health_settings,
     save_health_settings,
     scope_narrowed,
+    spend_limits_unlocked,
 )
 
 logger = logging.getLogger(__name__)
@@ -299,10 +305,51 @@ async def put_health_settings(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HealthSettings:
-    before, after = await save_health_settings(db, body, actor=admin, request=request)
+    """Store the settings. A changed spend ceiling while they are locked (#1202) is refused (403), nothing written."""
+    try:
+        before, after = await save_health_settings(db, body, actor=admin, request=request)
+    except SpendLimitsLockedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     revocation = Revocation(kind="scope_narrowed") if scope_narrowed(before, after) else None
     await _commit_with_revocation(db, revocation)
     return after
+
+
+class SpendLimit(BaseModel):
+    """One spend ceiling: the value in force, its default, what the row holds and where the value comes from."""
+
+    block: str
+    key: str
+    value: int | Decimal | None
+    default: int | Decimal | None
+    stored: int | Decimal | None
+    #: ``default`` (the built-in value applies) or ``database`` (a stored value applies).
+    source: str
+
+
+class SpendLimitsResponse(BaseModel):
+    """Whether the spend ceilings are locked at their defaults (#1202), and each of them."""
+
+    locked: bool
+    #: ``environment`` while locked: only the variable below unlocks them.
+    locked_reason: str | None
+    env_var: str
+    limits: list[SpendLimit]
+
+
+@router.get("/settings/spend-limits", response_model=SpendLimitsResponse)
+async def get_spend_limits(
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SpendLimitsResponse:
+    """The spend lock and every ceiling, so the page needs no second rule."""
+    locked = not spend_limits_unlocked()
+    return SpendLimitsResponse(
+        locked=locked,
+        locked_reason=SPEND_LIMITS_LOCKED_REASON if locked else None,
+        env_var=SPEND_LIMITS_ENV_VAR,
+        limits=[SpendLimit(**item) for item in describe_spend_limits(await load_stored_health_settings(db))],
+    )
 
 
 @router.get("/budget", response_model=BudgetResponse)

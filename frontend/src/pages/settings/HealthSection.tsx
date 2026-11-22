@@ -47,7 +47,7 @@ import { cn } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSettings, HealthAnalysisSpend, HealthBudgetCaps, HealthSettings } from "@/types";
 
-import { BlockTitle, type BlockProps } from "./health-block";
+import { BlockTitle, SpendLockNotice, useSpendLock, type BlockProps } from "./health-block";
 import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
 import { ModuleAnalystBlock, moduleAnalystValid } from "./HealthModuleAnalystBlock";
 import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
@@ -285,6 +285,9 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
   // untranslated in fr); the server's message only for a code this build does not know.
   const refusalKey = healthRefusalCodeKey(budget?.refusal);
   const refusalText = refusalKey ? t_i18n(refusalKey, { name: healthName }) : budget?.refusal_message;
+  // #1202: the caps are locked at their defaults unless the platform's variable unlocks them.
+  const { locked, envVar } = useSpendLock();
+  const editable = editing && !locked;
   const setCap = (key: keyof HealthBudgetCaps, raw: string) => {
     const value = raw.trim() === "" ? null : TOKEN_CAPS.has(key) ? Number(raw) : raw.trim();
     onChange({ ...draft, budget: { ...draft.budget, [key]: value } });
@@ -299,12 +302,13 @@ function BudgetBlock({ draft, editing, onChange }: BlockProps) {
         )}
       />
       <div className="space-y-2 rounded-sm bg-elevation-default p-3.5">
+        {locked && <SpendLockNotice envVar={envVar} testId="health.budget-locked" />}
         <SettingsFieldGrid>
           {CAP_KEYS.map((key) => {
             const id = `${fieldId}-${key}`;
             return (
               <SettingsField key={key} id={id} label={t_i18n(CAP_LABELS[key])} info={t_i18n(CAP_INFO[key])} helper={t_i18n("Empty: no cap.")}>
-                {editing ? (
+                {editable ? (
                   <Input
                     id={id}
                     aria-labelledby={settingsFieldLabelId(id)}
@@ -356,6 +360,9 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
     setAnalysis({ [key]: value });
   };
   const info = t_i18n("On: once a day, the routing model explains each module's open findings when they changed, within the ceilings below. Off: no model is called. Needs AI to be on.");
+  // #1202: the ceilings are locked at their defaults; the switch stays editable (off only lowers spend).
+  const { locked, envVar } = useSpendLock();
+  const editable = editing && !locked;
   return (
     <div data-testid="health.analysis">
       <BlockTitle
@@ -376,6 +383,7 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
         ) : (
           <SettingsReadField label={t_i18n("Analyse the findings")} info={info} value={analysis.enabled ? t_i18n("On") : t_i18n("Off")} />
         )}
+        {locked && <SpendLockNotice envVar={envVar} testId="health.analysis-locked" />}
         <SettingsFieldGrid>
           {CEILING_KEYS.map((key) => {
             const id = `${fieldId}-${key}`;
@@ -388,14 +396,14 @@ function AnalysisBlock({ draft, editing, onChange }: BlockProps) {
                 info={t_i18n(CEILING_INFO[key])}
                 helper={t_i18n("Empty: every analysis is refused.")}
                 error={
-                  editing && !valid
+                  editable && !valid
                     ? TOKEN_CEILINGS.has(key)
                       ? t_i18n("Enter a whole number of 0 or more.")
                       : t_i18n("Enter a number of 0 or more.")
                     : undefined
                 }
               >
-                {editing ? (
+                {editable ? (
                   <Input
                     id={id}
                     aria-labelledby={settingsFieldLabelId(id)}
