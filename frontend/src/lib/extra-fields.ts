@@ -242,6 +242,30 @@ function capitalised(text: string): string {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }
 
+/** A token written as code: a URL, a header, a key, a host or a value (`https://...`, `x-xdr-auth-id`, `client_id`, `*.example.com`). */
+const CODE_TOKEN = /:\/\/|[_*<>|/]|\w\.\w|\d|^x-|-.*-/i;
+const QUOTE_LEAD = /^['"`\u2018\u201c]/;
+/** An HTTP header name (`x-xdr-auth-id`, `X-Aikido-Webhook-Signature`). */
+const HEADER_TOKEN = /^x-[a-z0-9-]+$/i;
+
+/**
+ * An explanation as the bubble shows it: its first letter capitalised, unless
+ * it opens with a quote or a code token, which is shown as written.
+ */
+function explanation(text: string): string {
+  const first = (text.split(/\s/, 1)[0] ?? "").replace(/[,;:.]+$/, "");
+  return QUOTE_LEAD.test(first) || CODE_TOKEN.test(first) ? text : capitalised(text);
+}
+
+/**
+ * The explanation a trailing parenthesis gives. A bare code token is not one:
+ * a header name says where the value goes, any other token is dropped.
+ */
+function parenthesisExplanation(text: string): string {
+  if (/\s/.test(text) || !CODE_TOKEN.test(text)) return text;
+  return HEADER_TOKEN.test(text) ? `Carried in the ${text} header` : "";
+}
+
 /** A field's name read off its key: words of the key, acronyms kept (`phone_number_id` -> `Phone number ID`). */
 export function extraFieldKeyName(key: string): string {
   const words = key.split(/[_\-\s]+/).filter(Boolean).map((word) => KEY_ACRONYMS[word.toLowerCase()] ?? word.toLowerCase());
@@ -291,7 +315,7 @@ export function splitExtraFieldLabel(label: string, key?: string): ExtraFieldLab
   let text = label.trim();
   if (key && OPTIONAL_LEAD.test(text)) {
     text = text.replace(OPTIONAL_LEAD, "").trim();
-    return { name: extraFieldKeyName(key), detail: text ? capitalised(text) : null, optional: true };
+    return { name: extraFieldKeyName(key), detail: text ? explanation(text) : null, optional: true };
   }
   let optional = false;
   const marker = TRAILING_MARKER.exec(text);
@@ -311,7 +335,7 @@ export function splitExtraFieldLabel(label: string, key?: string): ExtraFieldLab
   const separator = separators[0];
   if (paren !== null && (!separator || paren < separator.at)) {
     name = text.slice(0, paren).trim();
-    detail = text.slice(paren + 1, -1).trim();
+    detail = parenthesisExplanation(text.slice(paren + 1, -1).trim());
   } else if (separator) {
     name = text.slice(0, separator.at).trim();
     detail = text.slice(separator.at + separator.length).trim();
@@ -329,10 +353,10 @@ export function splitExtraFieldLabel(label: string, key?: string): ExtraFieldLab
   if (!isFieldName(name)) {
     if (!key) return { name: text, detail: null, optional };
     // A bare marker leaves the text before it as the explanation; else the whole label is.
-    const explanation = detail === "" ? name : text;
-    return { name: extraFieldKeyName(key), detail: capitalised(explanation), optional };
+    const bubble = detail === "" ? name : text;
+    return { name: extraFieldKeyName(key), detail: explanation(bubble), optional };
   }
-  return { name, detail: detail ? capitalised(detail) : null, optional };
+  return { name, detail: detail ? explanation(detail) : null, optional };
 }
 
 /**
@@ -351,7 +375,7 @@ export function extraFieldLabels(fields: Readonly<Record<string, string>>): Reco
   }
   for (const [key, label] of Object.entries(fields)) {
     if ((uses.get(labels[key].name.toLowerCase()) ?? 0) > 1) {
-      labels[key] = { name: extraFieldKeyName(key), detail: capitalised(label.trim()), optional: labels[key].optional };
+      labels[key] = { name: extraFieldKeyName(key), detail: explanation(label.trim()), optional: labels[key].optional };
     }
   }
   return labels;

@@ -28,7 +28,7 @@ test("a catalog label splits into its name, its explanation and whether it is op
   );
   assert.deepEqual(
     splitExtraFieldLabel("Webhook HMAC signing secret (X-Aikido-Webhook-Signature)"),
-    { name: "Webhook HMAC signing secret", detail: "X-Aikido-Webhook-Signature", optional: false },
+    { name: "Webhook HMAC signing secret", detail: "Carried in the X-Aikido-Webhook-Signature header", optional: false },
   );
   assert.deepEqual(
     splitExtraFieldLabel("Linked-device gateway: a long random secret you choose"),
@@ -58,8 +58,19 @@ test("a label that does not open with a name is named off its key and kept whole
   // A spaced dash separates like a colon; a trailing dashed REQUIRED is a marker.
   assert.deepEqual(
     splitExtraFieldLabel("API Key ID (x-xdr-auth-id) \u2014 REQUIRED", "api_key_id"),
-    { name: "API Key ID", detail: "X-xdr-auth-id", optional: false },
+    { name: "API Key ID", detail: "Carried in the x-xdr-auth-id header", optional: false },
   );
+  // An explanation that opens with a URL, a header, a key or a quote is shown as written.
+  assert.deepEqual(
+    splitExtraFieldLabel("Cortex XDR tenant API host \u2014 https://api-<fqdn> (from your API key's CURL example URL)", "base_url"),
+    { name: "Cortex XDR tenant API host", detail: "https://api-<fqdn> (from your API key's CURL example URL)", optional: false },
+  );
+  assert.equal(splitExtraFieldLabel("Header: x-api-key, sent on every call", "header").detail, "x-api-key, sent on every call");
+  assert.equal(splitExtraFieldLabel("Key type: 'standard' or 'advanced'", "key_type").detail, "'standard' or 'advanced'");
+  assert.equal(splitExtraFieldLabel("Region: where the tenant is hosted", "region").detail, "Where the tenant is hosted");
+  assert.equal(splitExtraFieldLabel("Mode: linked-device gateway or cloud", "mode").detail, "Linked-device gateway or cloud");
+  // A bare code token in a trailing parenthesis that is not a header is not an explanation.
+  assert.deepEqual(splitExtraFieldLabel("Project ref (project_ref)", "project_ref"), { name: "Project ref", detail: null, optional: false });
   assert.deepEqual(
     splitExtraFieldLabel("Cortex XSOAR base URL \u2014 XSOAR 8/Cloud", "base_url"),
     { name: "Cortex XSOAR base URL", detail: "XSOAR 8/Cloud", optional: false },
