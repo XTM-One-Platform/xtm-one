@@ -26,7 +26,7 @@ import { Icon } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   SettingsCard,
   SettingsField,
@@ -52,10 +52,11 @@ import {
   DEFAULT_ATTACK_SURFACE,
   fromForm,
   invalidAddressRanges,
+  MAX_ATTACK_SURFACE_INTEGRATIONS,
+  passIntegrationIds,
   toForm,
+  withIntegrationIds,
 } from "@/lib/organization-profile";
-
-const NO_PROVIDER = "__none__";
 
 function CardIcon({ className }: { className?: string }) {
   return (
@@ -91,14 +92,16 @@ export function OrganizationOutsideLensCard() {
   const providers = new Set(supported?.providers ?? []);
   // Only a connected integration of a provider the pass reads is offered.
   const candidates = integrations.filter((integration) => providers.has(integration.provider) && integration.status === "connected");
-  const chosen = integrations.find((integration) => integration.id === pass.integration);
-  const providerText = chosen ? chosen.name : pass.integration ? t_i18n("Integration not found") : t_i18n("None");
+  const nameOf = (integrationId: string) =>
+    integrations.find((integration) => integration.id === integrationId)?.name ?? t_i18n("Integration not found");
+  const passIds = passIntegrationIds(pass);
+  const providerText = passIds.length ? passIds.map(nameOf).join(", ") : t_i18n("None");
 
   const start = () =>
     setDraft({
       owned_domains: [...domains],
       address_ranges: [...ranges],
-      attack_surface: { ...pass },
+      attack_surface: withIntegrationIds(pass, passIds),
       cadence: String(pass.cadence_hours),
       stale: String(pass.stale_after_days),
     });
@@ -106,7 +109,24 @@ export function OrganizationOutsideLensCard() {
   const badRanges = draft ? invalidAddressRanges(draft.address_ranges) : [];
   const cadence = draft ? boundedInteger(draft.cadence, ATTACK_SURFACE_BOUNDS.cadence_hours) : null;
   const stale = draft ? boundedInteger(draft.stale, ATTACK_SURFACE_BOUNDS.stale_after_days) : null;
-  const providerMissing = Boolean(draft?.attack_surface.enabled && !candidates.some((i) => i.id === draft.attack_surface.integration));
+  const draftIds = draft ? passIntegrationIds(draft.attack_surface) : [];
+  const providerMissing = Boolean(draft?.attack_surface.enabled && !candidates.some((i) => draftIds.includes(i.id)));
+  // A chosen integration no longer connected stays listed, so it can be seen and removed, never dropped silently.
+  const providerOptions = [
+    ...candidates.map((integration) => ({ value: integration.id, label: integration.name })),
+    ...draftIds
+      .filter((chosenId) => !candidates.some((integration) => integration.id === chosenId))
+      .map((chosenId) => ({ value: chosenId, label: t_i18n("{name} (not connected)", { name: nameOf(chosenId) }) })),
+  ];
+  const toggleProvider = (value: string) => {
+    if (!draft) return;
+    const ids = draftIds.includes(value)
+      ? draftIds.filter((chosenId) => chosenId !== value)
+      : draftIds.length < MAX_ATTACK_SURFACE_INTEGRATIONS
+        ? [...draftIds, value]
+        : draftIds;
+    setDraft({ ...draft, attack_surface: withIntegrationIds(draft.attack_surface, ids) });
+  };
   const next =
     draft && cadence !== null && stale !== null
       ? {
@@ -118,7 +138,8 @@ export function OrganizationOutsideLensCard() {
   const dirty =
     draft !== null &&
     (next === null ||
-      JSON.stringify(next) !== JSON.stringify({ owned_domains: domains, address_ranges: ranges, attack_surface: pass }));
+      JSON.stringify(next) !==
+        JSON.stringify({ owned_domains: domains, address_ranges: ranges, attack_surface: withIntegrationIds(pass, passIds) }));
   const blocked = next === null || badRanges.length > 0 || providerMissing;
 
   const onSave = () => {
@@ -193,7 +214,7 @@ export function OrganizationOutsideLensCard() {
             }
             data-testid="settings.organization.outside-lens.enabled"
           />
-          <SettingsReadField label={t_i18n("Attack surface provider")} value={providerText} />
+          <SettingsReadField label={t_i18n("Attack surface providers")} value={providerText} />
           <SettingsReadField
             label={t_i18n("Pass cadence")}
             value={t_i18n("{count, plural, one {Every hour} other {Every # hours}}", { count: pass.cadence_hours })}
@@ -261,25 +282,26 @@ export function OrganizationOutsideLensCard() {
           <SettingsFieldGrid>
             <SettingsField
               id={`${id}-provider`}
-              label={t_i18n("Attack surface provider")}
+              label={t_i18n("Attack surface providers")}
               helper={
                 candidates.length
-                  ? t_i18n("A connected integration the pass can read.")
+                  ? t_i18n("Connected integrations the pass reads, their findings merged per host.")
                   : t_i18n("No connected attack surface integration. Connect one in Integrations first.")
               }
-              error={providerMissing ? t_i18n("Pick a provider to turn the outside lens on.") : undefined}
+              error={providerMissing ? t_i18n("Pick at least one provider to turn the outside lens on.") : undefined}
             >
-              <SearchableSelect
+              <MultiSelect
                 id={`${id}-provider`}
-                aria-labelledby={settingsFieldLabelId(`${id}-provider`)}
+                aria-label={t_i18n("Attack surface providers")}
                 aria-describedby={settingsFieldHintId(`${id}-provider`)}
-                aria-invalid={providerMissing ? true : undefined}
-                pinned={[{ value: NO_PROVIDER, label: t_i18n("None") }]}
-                options={candidates.map((integration) => ({ value: integration.id, label: integration.name }))}
-                value={draft.attack_surface.integration || NO_PROVIDER}
-                onValueChange={(value) =>
-                  setDraft({ ...draft, attack_surface: { ...draft.attack_surface, integration: value === NO_PROVIDER ? "" : value } })
-                }
+                options={providerOptions}
+                selected={draftIds}
+                onToggle={toggleProvider}
+                sort={false}
+                placeholder={t_i18n("None")}
+                searchPlaceholder={t_i18n("Search integrations")}
+                emptyOptionsLabel={t_i18n("No connected attack surface integration. Connect one in Integrations first.")}
+                noMatchLabel={t_i18n("No match")}
               />
             </SettingsField>
             <SettingsField

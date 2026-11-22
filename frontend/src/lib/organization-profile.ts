@@ -54,13 +54,39 @@ export interface ProfileLike {
 /** The outside lens settings (CTEM-26, `dev-docs/ctem-attack-surface.md` s.1), the backend's defaults below. */
 export interface AttackSurfacePass {
   enabled: boolean;
-  /** The id of the attack-surface provider integration the pass reads. */
+  /** The id of the attack-surface provider integration the pass reads first. */
   integration: string;
+  /** More provider integrations read in the same pass (backend: up to 10), their observations merged per host. */
+  integrations?: string[];
   cadence_hours: number;
   stale_after_days: number;
 }
 
-export const DEFAULT_ATTACK_SURFACE: AttackSurfacePass = { enabled: false, integration: "", cadence_hours: 24, stale_after_days: 14 };
+export const DEFAULT_ATTACK_SURFACE: AttackSurfacePass = {
+  enabled: false,
+  integration: "",
+  integrations: [],
+  cadence_hours: 24,
+  stale_after_days: 14,
+};
+/** The most provider integrations one pass reads: `integration` plus the backend's 10 `integrations`. */
+export const MAX_ATTACK_SURFACE_INTEGRATIONS = 11;
+
+/** Every integration the pass reads, in order: `integration` first, then `integrations`, without blanks or repeats. */
+export function passIntegrationIds(pass: Pick<AttackSurfacePass, "integration" | "integrations">): string[] {
+  const ids: string[] = [];
+  for (const id of [pass.integration, ...(pass.integrations ?? [])]) {
+    const value = (id ?? "").trim();
+    if (value && !ids.includes(value)) ids.push(value);
+  }
+  return ids;
+}
+
+/** The pass reading `ids`: the first in `integration`, the rest in `integrations` (the backend's shape). */
+export function withIntegrationIds(pass: AttackSurfacePass, ids: string[]): AttackSurfacePass {
+  const [first = "", ...rest] = passIntegrationIds({ integration: "", integrations: ids });
+  return { ...pass, integration: first, integrations: rest };
+}
 /** The bounds the backend's `AttackSurfacePass` enforces. */
 export const ATTACK_SURFACE_BOUNDS = { cadence_hours: { min: 1, max: 24 * 30 }, stale_after_days: { min: 1, max: 365 } } as const;
 

@@ -5,11 +5,14 @@ import {
   boundedInteger,
   cleanDomains,
   cleanRanges,
+  DEFAULT_ATTACK_SURFACE,
   fromForm,
   invalidAddressRanges,
   normalizeAddressRange,
   normalizeDomain,
+  passIntegrationIds,
   toForm,
+  withIntegrationIds,
 } from "./organization-profile";
 
 /** The outside lens fields (CTEM-26 slice 2, #1140): normalised as the backend does, carried by every save. */
@@ -73,11 +76,23 @@ describe("a profile save keeps the outside lens", () => {
       ticketing: { integration: "", project: "" },
       owned_domains: ["corp.example"],
       address_ranges: ["198.51.100.0/24"],
-      attack_surface: { enabled: true, integration: "int-1", cadence_hours: 12, stale_after_days: 7 },
+      attack_surface: { enabled: true, integration: "int-1", integrations: ["int-2", "int-3"], cadence_hours: 12, stale_after_days: 7 },
     };
     const saved = fromForm(toForm(profile));
     expect("profile" in saved && saved.profile.owned_domains).toEqual(["corp.example"]);
     expect("profile" in saved && saved.profile.address_ranges).toEqual(["198.51.100.0/24"]);
     expect("profile" in saved && saved.profile.attack_surface).toEqual(profile.attack_surface);
+  });
+});
+
+describe("the providers of one pass (#1154: integration first, then integrations)", () => {
+  it("reads integration then integrations, without blanks or repeats", () => {
+    expect(passIntegrationIds({ integration: "a", integrations: ["b", "a", " ", "c"] })).toEqual(["a", "b", "c"]);
+    expect(passIntegrationIds({ integration: "", integrations: undefined })).toEqual([]);
+  });
+
+  it("writes the first id in integration and the rest in integrations", () => {
+    expect(withIntegrationIds(DEFAULT_ATTACK_SURFACE, ["x", "y", "z"])).toMatchObject({ integration: "x", integrations: ["y", "z"] });
+    expect(withIntegrationIds({ ...DEFAULT_ATTACK_SURFACE, integration: "x" }, [])).toMatchObject({ integration: "", integrations: [] });
   });
 });
