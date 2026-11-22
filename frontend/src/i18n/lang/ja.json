@@ -20051,7 +20051,7 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
-  "Asset turned stale": "アセットが古くなりました",
+  "Asset turned stale": "アセット陳腐化",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
   "OpenAEV result received": "OpenAEV の結果を受信",
@@ -20468,5 +20468,7 @@
   "Kept as a fingerprint only, never the value": "フィンガープリントのみ保持し、値は保持しません",
   "Named in": "言及元",
   "Organization criticality": "組織の重要度",
-  "From {source}": "取得元: {source}"
+  "From {source}": "取得元: {source}",
+  "Freshness": "鮮度",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "陳腐化: テナントのしきい値を超えて OpenAEV で確認されていません"
 }
