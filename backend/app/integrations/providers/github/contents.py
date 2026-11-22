@@ -50,10 +50,13 @@ _SOURCE = "integration:github"
 _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 # The contents API refuses a file body over ~100 MB; base64 inflates it by 4/3.
 _MAX_COMMIT_BYTES = 50 * 1024 * 1024
-# A repository archive is read in memory: bounded.
+# A repository archive is read in memory: bounded (a narrowed one by its compressed size).
 _MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 # An archive narrowed to paths is streamed to a temporary file, never held whole: this bounds the disk it takes.
 _MAX_STREAMED_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
+# The files a narrowed archive keeps, uncompressed: the checkout's own quota bounds what it writes, so this
+# only stops a runaway selection; the in-memory bound is the compressed archive (_MAX_ARCHIVE_BYTES).
+_MAX_NARROWED_SELECTED_BYTES = 2 * 1024 * 1024 * 1024
 
 
 #: Characters of a file get_github_file returns per call by default, and at most.
@@ -1673,7 +1676,13 @@ def register(
                 # Within the limit: the whole archive, as without paths.
                 return spool.read(), [], 0
             try:
-                narrowed = await asyncio.to_thread(narrow_archive, spool, paths, max_bytes=_MAX_ARCHIVE_BYTES)
+                narrowed = await asyncio.to_thread(
+                    narrow_archive,
+                    spool,
+                    paths,
+                    max_bytes=_MAX_NARROWED_SELECTED_BYTES,
+                    max_output_bytes=_MAX_ARCHIVE_BYTES,
+                )
             except ArchiveTooLargeError as exc:
                 return f"Error: the archive of {repo} at {ref} was not narrowed: {exc}."
         logger.info(

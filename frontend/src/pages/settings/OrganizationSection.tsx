@@ -69,6 +69,8 @@ import {
   useDraftOrganizationContext,
   useOpenCrqSync,
   useOrganizationContext,
+  useOrganizationSyncs,
+  useRunOrganizationSync,
   useOrganizationPirs,
   useOrganizationReaders,
   useSaveOrganizationContext,
@@ -99,6 +101,7 @@ import { addRow, addRows, attentionCount, changeCounts, committedValues, type Ed
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
+import { OrganizationSourcesPanel } from "./OrganizationSourcesPanel";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
@@ -189,6 +192,11 @@ export function OrganizationSection() {
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
   const save = useSaveOrganizationContext();
   const sync = useOpenCrqSync();
+  // One mechanism for OpenCRQ (#1134 S2): once crown jewels sync from OpenCRQ, the card's OpenCRQ
+  // button runs that sync (its filters, links and direction), never a second set of rules.
+  const { data: profileSyncs } = useOrganizationSyncs("profile");
+  const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
+  const runSyncNow = useRunOrganizationSync();
   const drafting = useDraftOrganizationContext();
   const [form, setForm] = useState<ProfileForm | null>(null);
   // The draft the form was opened from: the save is then recorded with source "draft".
@@ -1596,6 +1604,13 @@ export function OrganizationSection() {
         // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
+          {/* Sources first (#1134 S2): who feeds which section, before what the tabs hold. */}
+          <OrganizationSourcesPanel
+            profile={current}
+            connected={connectedPlatforms}
+            onAddSync={() => setPlatformImportOpen(true)}
+            disabled={editing || cardOpen !== null || drafting.isPending}
+          />
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
@@ -1904,10 +1919,32 @@ export function OrganizationSection() {
               <>
                 {attention("crown_jewels")}
                 <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
-                  <Button variant="secondary" className="gap-1.5" disabled={editing || cardOpen !== null || sync.isPending} onClick={() => runSync(false)} aria-busy={sync.isPending || undefined}>
-                    {sync.isPending && <Spinner size="sm" tone="inherit" />}{!sync.isPending && <RefreshCw className="h-3.5 w-3.5" />}
-                    {t_i18n("Check against OpenCRQ")}
-                  </Button>
+                  {opencrqJewelSync ? (
+                    <Button
+                      variant="secondary"
+                      className="gap-1.5"
+                      data-testid="settings.organization.opencrq-run-now"
+                      disabled={editing || cardOpen !== null || runSyncNow.isPending}
+                      aria-busy={runSyncNow.isPending || undefined}
+                      onClick={() =>
+                        runSyncNow.mutate(opencrqJewelSync.id, {
+                          onSuccess: (result) =>
+                            result.last_result?.error
+                              ? toast({ title: t_i18n("The OpenCRQ sync failed"), description: result.last_result.error, variant: "error" })
+                              : toast({ title: t_i18n("Crown jewels synchronized with OpenCRQ"), variant: "success" }),
+                          onError: (err) => toast({ title: t_i18n("OpenCRQ could not be read"), description: err.message, variant: "error" }),
+                        })
+                      }
+                    >
+                      {runSyncNow.isPending && <Spinner size="sm" tone="inherit" />}{!runSyncNow.isPending && <RefreshCw className="h-3.5 w-3.5" />}
+                      {t_i18n("Sync with OpenCRQ now")}
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" className="gap-1.5" disabled={editing || cardOpen !== null || sync.isPending} onClick={() => runSync(false)} aria-busy={sync.isPending || undefined}>
+                      {sync.isPending && <Spinner size="sm" tone="inherit" />}{!sync.isPending && <RefreshCw className="h-3.5 w-3.5" />}
+                      {t_i18n("Check against OpenCRQ")}
+                    </Button>
+                  )}
                 </Tip>
                 {listEditAction("crown_jewels")}
                 {pasteAction("crown_jewels")}
