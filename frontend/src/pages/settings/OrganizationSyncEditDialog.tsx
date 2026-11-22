@@ -41,13 +41,6 @@ export const SYNC_SECTION_LABELS = {
 export type SyncState = "enabled" | "paused" | "disabled";
 
 /** @i18n-keys */
-export const STATE_LABELS = {
-  enabled: "Enabled",
-  paused: "Paused",
-  disabled: "Disabled",
-} as const satisfies Record<SyncState, string>;
-
-/** @i18n-keys */
 export const DIRECTION_LABELS = {
   inbound: "Inbound",
   outbound: "Outbound",

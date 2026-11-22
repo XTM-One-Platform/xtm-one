@@ -51,6 +51,7 @@ import { PLATFORM_NAMES } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 import { SOURCED_SECTION_LABELS, sourceSectionHref, type SourcedSection } from "@/lib/organization-sources";
 import { useScheduleLabel } from "@/lib/organization-sync-schedule";
+import { exactCount, formatCount } from "@/lib/number-format";
 import { formatTimeAgo } from "@/lib/relative-time";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { bodyOf, DIRECTION_LABELS, directionOf, stateOf, SYNC_SECTION_LABELS, SyncEditDialog, type SyncState } from "./OrganizationSyncEditDialog";
@@ -275,7 +276,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
               return (
                 <Chip
                   key={field}
-                  label={`${label} ${intl.formatNumber(count)}`}
+                  label={`${label} ${formatCount(locale, count)}`}
                   onClick={() => navigate(sectionHref(field, filterLabel))}
                   aria-label={t_i18n("{section} from {source}: {count, plural, one {# row} other {# rows}}", { section: label, source: name, count })}
                   data-testid="organization-sources.chip"
@@ -512,11 +513,12 @@ const TrashIcon = () => <Icon name="trash-2" size={16} aria-hidden />;
 
 /** The rows a plan touches, per section, in one line: "1,186 assets, 2 asset groups". */
 function usePlanLine() {
-  const { t_i18n, intl } = useFormatter();
+  const { t_i18n, locale } = useFormatter();
+  // Exact counts: a purge is confirmed on the number of rows it removes (#1276).
   return (plan: RowsPlan | undefined): string =>
     Object.entries(plan?.counts ?? {})
       .filter(([, count]) => count > 0)
-      .map(([field, count]) => `${intl.formatNumber(count)} ${isSourcedField(field) ? t_i18n(SOURCED_SECTION_LABELS[field]) : field}`)
+      .map(([field, count]) => `${exactCount(locale, count)} ${isSourcedField(field) ? t_i18n(SOURCED_SECTION_LABELS[field]) : field}`)
       .join(", ");
 }
 
