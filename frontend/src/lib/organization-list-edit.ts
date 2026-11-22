@@ -93,10 +93,21 @@ export function addRows<V>(rows: readonly EditRow<V>[], values: readonly V[]): E
   return values.reduce<EditRow<V>[]>((next, value) => addRow(next, value).rows, [...rows]);
 }
 
-/** Bulk edit (#12256 slice 2): *patch* set on every row of *keys* that is not removed. */
-export function patchRows<V>(rows: readonly EditRow<V>[], keys: readonly string[], patch: Partial<V>): EditRow<V>[] {
+/**
+ * Bulk edit (#12256 slice 2): *patch* set on every row of *keys* that is not removed. A row
+ * *locked* on one of the patched fields (a synced row's sourced field, #1134) is left as it is,
+ * as its open row keeps that field as text.
+ */
+export function patchRows<V>(
+  rows: readonly EditRow<V>[],
+  keys: readonly string[],
+  patch: Partial<V>,
+  locked?: (value: V, field: string) => boolean,
+): EditRow<V>[] {
   const wanted = new Set(keys);
-  return rows.map((row) => (wanted.has(row.key) && !row.removed ? { ...row, value: { ...row.value, ...patch } } : row));
+  const fields = Object.keys(patch);
+  const takes = (row: EditRow<V>) => wanted.has(row.key) && !row.removed && !(locked && fields.some((field) => locked(row.value, field)));
+  return rows.map((row) => (takes(row) ? { ...row, value: { ...row.value, ...patch } } : row));
 }
 
 /** Bulk remove: each row of *keys* removed as `removeRow` does (saved rows struck through with Undo, added rows gone). */

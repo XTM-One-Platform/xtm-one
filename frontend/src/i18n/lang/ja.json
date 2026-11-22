@@ -20635,5 +20635,14 @@
   "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {本日期限} other {期限まで # 日}}",
   "No owner": "担当者なし",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {本日作成} other {# 日前に作成}}",
-  "Open the case": "ケースを開く"
+  "Open the case": "ケースを開く",
+  "Typed": "手入力",
+  "API": "API",
+  "Exclude from this sync": "この同期から除外",
+  "From {platform}, kept in sync: only the local fields can be edited here.": "{platform} から同期中: ここではローカル項目のみ編集できます。",
+  "From {platform}: only the local fields can be edited here.": "{platform} から取得: ここではローカル項目のみ編集できます。",
+  "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, other {同期された # 行を削除しますか?}}",
+  "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回の同期実行 ({when}) で再び追加されます。}}",
+  "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。}}",
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}"
 }

@@ -20635,5 +20635,14 @@
   "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {Échéance aujourd'hui} one {Échéance dans # jour} other {Échéance dans # jours}}",
   "No owner": "Sans responsable",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Ouvert aujourd'hui} one {Ouvert il y a # jour} other {Ouvert il y a # jours}}",
-  "Open the case": "Ouvrir le cas"
+  "Open the case": "Ouvrir le cas",
+  "Typed": "Saisi",
+  "API": "API",
+  "Exclude from this sync": "Exclure de cette synchronisation",
+  "From {platform}, kept in sync: only the local fields can be edited here.": "Depuis {platform}, synchronisé : seuls les champs locaux sont modifiables ici.",
+  "From {platform}: only the local fields can be edited here.": "Depuis {platform} : seuls les champs locaux sont modifiables ici.",
+  "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Retirer # ligne synchronisée ?} other {Retirer # lignes synchronisées ?}}",
+  "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : la prochaine exécution de sa synchronisation, {when}, la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : la prochaine exécution de leur synchronisation, {when}, les ramène sauf si vous les excluez.}}",
+  "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : le prochain import la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : le prochain import les ramène sauf si vous les excluez.}}",
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}"
 }
