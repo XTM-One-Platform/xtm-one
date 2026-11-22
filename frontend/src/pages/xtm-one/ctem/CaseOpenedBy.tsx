@@ -6,24 +6,28 @@
  * lens, its trigger path, its source (CTEM-29-UI), the scope gate's reason in one sentence, and a
  * link to its loop trace (`?loop=signal:<id>`). Read through
  * `GET /ctem-signals?case_id=`, which applies the reader's visibility; a case
- * opened by no signal (one the recompute built from source issues) says so.
+ * opened by no signal (one the recompute built from source issues) names the
+ * source readers that opened it, from the sources of its issues (#1206).
  */
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
+import { Link } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCtemCaseSignals } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
+import { READER_OPENED_LABEL, readerOpenedLines } from "./case-loop-reason";
 import { decisionSentence } from "./loop/DecisionReason";
 import { signalProviderName } from "./loop/LoopTraceDialog";
 import { loopParam } from "./loop/loop-stages";
 
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 
-export function CaseOpenedBy({ caseId }: { caseId: string }) {
+export function CaseOpenedBy({ caseId, sources = [] }: { caseId: string; sources?: readonly string[] }) {
   const { t_i18n, intl } = useFormatter();
   const { data, isLoading, isError } = useCtemCaseSignals(caseId);
   const signals = data?.signals ?? [];
+  const readers = readerOpenedLines(sources);
 
   return (
     <Card data-testid="ctem-case-opened-by">
@@ -35,6 +39,12 @@ export function CaseOpenedBy({ caseId }: { caseId: string }) {
           <Skeleton className="h-10 w-full" />
         ) : isError && !data ? (
           <p className="content-base text-default-secondary">{t_i18n("The signals of this case could not be read.")}</p>
+        ) : signals.length === 0 && readers.length > 0 ? (
+          <ul className="space-y-1 content-base" data-testid="ctem-case-opened-by-reader">
+            {readers.map((r) => (
+              <li key={r}>{t_i18n(READER_OPENED_LABEL[r])}</li>
+            ))}
+          </ul>
         ) : signals.length === 0 ? (
           <p className="content-base text-default-secondary">{t_i18n("No signal opened this case: it groups open issues read from the products.")}</p>
         ) : (
@@ -51,11 +61,8 @@ export function CaseOpenedBy({ caseId }: { caseId: string }) {
                   <span className="min-w-0 truncate text-default-secondary" title={s.subject.label || s.subject.ref}>
                     {s.subject.label || s.subject.ref}
                   </span>
-                  <Link
-                    to={`?loop=${encodeURIComponent(loopParam("signal", s.id))}`}
-                    className="ml-auto whitespace-nowrap text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                  >
-                    {t_i18n("See the loop trace")}
+                  <Link asChild className="ml-auto whitespace-nowrap">
+                    <RouterLink to={`?loop=${encodeURIComponent(loopParam("signal", s.id))}`}>{t_i18n("See the loop trace")}</RouterLink>
                   </Link>
                 </span>
                 <span className="text-default-secondary">
