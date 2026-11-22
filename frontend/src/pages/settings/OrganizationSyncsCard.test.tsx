@@ -161,6 +161,69 @@ describe("OrganizationSyncsCard (#11913)", () => {
     await waitFor(() => expect(screen.getByTestId("org-shared-context.actor").textContent).toBe("Runs as admin@example.com"));
   });
 
+  describe("direction (#1134 S3)", () => {
+    const directions = [
+      { section: "crown_jewels", source: "opencrq", directions: ["inbound", "outbound"], reason: "" },
+      { section: "assets", source: "opencti", directions: ["inbound"], reason: "OpenCTI Systems are owned by its connectors." },
+    ];
+    const serve = (syncs: OrganizationSync[]) =>
+      get.mockImplementation((path: string) =>
+        Promise.resolve(path === "/auth/me" ? { email: "admin@example.com" } : path === "/organization-context/syncs/directions" ? directions : syncs),
+      );
+
+    it("shows each sync's direction in the table, inbound when the API sends none", async () => {
+      serve([sync({}), sync({ id: "s-2", section: "crown_jewels", source: "opencrq", direction: "outbound" })]);
+      render();
+      const [first, second] = await rows();
+      expect(first.textContent).toContain("Inbound");
+      expect(second.textContent).toContain("Outbound");
+    });
+
+    it("saves an outbound direction where the platform can be written, and warns that it starts clean", async () => {
+      serve([sync({ section: "crown_jewels", source: "opencrq", filters: {} })]);
+      put.mockResolvedValue(sync({ section: "crown_jewels", source: "opencrq", direction: "outbound" }));
+      render();
+      const [row] = await rows();
+      fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+      const outbound = await screen.findByRole("radio", { name: "Outbound" });
+      await waitFor(() => expect(outbound.hasAttribute("disabled")).toBe(false));
+      expect(screen.queryByTestId("org-sync-edit-direction.changed")).toBeNull();
+      fireEvent.click(outbound);
+      expect(screen.getByTestId("org-sync-edit-direction.changed").textContent).toContain("A new direction starts clean");
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(put).toHaveBeenCalledWith("/organization-context/syncs/s-1", expect.objectContaining({ section: "crown_jewels", source: "opencrq", direction: "outbound" })),
+      );
+    });
+
+    it("greys out outbound with the API's reason where the platform cannot be written, and keeps inbound on save", async () => {
+      serve([sync({})]);
+      put.mockResolvedValue(sync({}));
+      render();
+      const [row] = await rows();
+      fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("org-sync-edit-direction.reason").textContent).toBe("Outbound is not offered: OpenCTI Systems are owned by its connectors."),
+      );
+      expect(screen.getByRole("radio", { name: "Outbound" }).hasAttribute("disabled")).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(put).toHaveBeenCalledWith("/organization-context/syncs/s-1", expect.objectContaining({ direction: "inbound" })));
+    });
+
+    it("offers no direction for Sync all and sends none", async () => {
+      serve([sync({})]);
+      post.mockResolvedValue(sync({ id: "all-1", section: "all", source: "" }));
+      render();
+      await rows();
+      fireEvent.click(screen.getByRole("button", { name: "Add Sync all" }));
+      const save = await screen.findByRole("button", { name: "Save" });
+      expect(screen.queryByRole("radiogroup", { name: "Direction" })).toBeNull();
+      fireEvent.click(save);
+      await waitFor(() => expect(post).toHaveBeenCalled());
+      expect(post.mock.calls[0][1]).not.toHaveProperty("direction");
+    });
+  });
+
   it("says how to add a sync when there is none, and offers no Sync all", async () => {
     get.mockResolvedValue([]);
     render();

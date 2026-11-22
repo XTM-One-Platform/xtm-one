@@ -20734,9 +20734,17 @@
   "Vulnerability intelligence": "Inteligencia de vulnerabilidades",
   "Asset inventory": "Inventario de activos",
   "External attack surface": "Superficie de ataque externa",
-  "Agentic checks": "Comprobaciones agénticas",
-  "No check round yet": "Aún no hay ninguna ronda de comprobaciones",
-  "Show the checks": "Ver las comprobaciones",
-  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}"
+  "Inbound": "Entrante",
+  "Outbound": "Saliente",
+  "Outbound is not offered: {reason}": "La dirección saliente no está disponible: {reason}",
+  "The XTM One list is the master: the {platform} rows this sync creates are updated and deleted to match it. Other {platform} rows are never touched.": "La lista de XTM One es la referencia: las filas de {platform} que crea esta sincronización se actualizan y eliminan para coincidir con ella. Las demás filas de {platform} nunca se modifican.",
+  "{platform} is the master: its rows are read-only here and follow {platform}.": "{platform} es la referencia: sus filas son de solo lectura aquí y siguen a {platform}.",
+  "A new direction starts clean: it does not take over the rows the previous direction created. The next run follows the new direction.": "Una nueva dirección empieza de cero: no retoma las filas que creó la dirección anterior. La próxima ejecución sigue la nueva dirección.",
+  "Planned: OpenAEV endpoint writes are not wired for syncs yet.": "Previsto: la escritura de endpoints de OpenAEV aún no está conectada a las sincronizaciones.",
+  "Planned: OpenAEV asset group writes are not wired for syncs yet.": "Previsto: la escritura de grupos de activos de OpenAEV aún no está conectada a las sincronizaciones.",
+  "Planned: OpenCTI PIR writes are not wired for syncs yet.": "Previsto: la escritura de PIR de OpenCTI aún no está conectada a las sincronizaciones.",
+  "OpenCTI Systems are owned by its connectors.": "Los sistemas de OpenCTI pertenecen a sus conectores.",
+  "OpenAEV has no AI system object to write.": "OpenAEV no tiene ningún objeto de sistema de IA que escribir.",
+  "OpenAEV software inventory is read from its agents.": "El inventario de software de OpenAEV se lee de sus agentes.",
+  "This pairing reads only.": "Esta combinación es de solo lectura."
 }

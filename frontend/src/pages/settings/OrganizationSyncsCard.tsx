@@ -6,7 +6,9 @@
  * One row per sync: the section, the source with its logo, the filters, the
  * schedule, the last run (when, added, updated, removed, or its error), the
  * next run, the status (Enabled, Paused with its reason, Disabled) and the
- * enabled switch; Run now, Edit and Delete on each row. "Sync all" is one
+ * enabled switch; Run now, Edit and Delete on each row. The edit dialog sets
+ * the direction (#1134 S3): Inbound, the platform is the master, or Outbound,
+ * the XTM One list is, offered only where the platform can be written. "Sync all" is one
  * more schedule that runs every enabled section sync in order. A sync is
  * created from the import stepper ("Keep in sync"); a paused sync resumes when
  * it is saved again, with the token of the administrator who saves it.
@@ -18,9 +20,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { SettingsCard, SettingsSwitchField } from "@/components/ui/settings-form";
+import { SettingsCard, SettingsField, SettingsSwitchField } from "@/components/ui/settings-form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
@@ -29,6 +32,7 @@ import { useMe } from "@/hooks/api/useAuthApi";
 import {
   useCreateOrganizationSync,
   useDeleteOrganizationSync,
+  useOrganizationSyncDirections,
   useOrganizationSyncs,
   useRunOrganizationSync,
   useUpdateOrganizationSync,
@@ -36,6 +40,7 @@ import {
   type OrganizationSync,
   type OrganizationSyncBody,
   type OrganizationSyncScope,
+  type SyncDirection,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { filtersSummary } from "@/lib/organization-import-filters";
@@ -65,6 +70,33 @@ const STATE_LABELS = {
   paused: "Paused",
   disabled: "Disabled",
 } as const satisfies Record<SyncState, string>;
+
+/** @i18n-keys */
+const DIRECTION_LABELS = {
+  inbound: "Inbound",
+  outbound: "Outbound",
+} as const satisfies Record<SyncDirection, string>;
+
+/**
+ * The reasons GET /syncs/directions gives for a pairing without outbound (backend DIRECTIONS of
+ * organization_context_outbound.py), listed so the catalogs translate them; an unknown one shows as sent.
+ * @i18n-keys
+ */
+const OUTBOUND_REASONS = {
+  openaev_assets: "Planned: OpenAEV endpoint writes are not wired for syncs yet.",
+  openaev_asset_groups: "Planned: OpenAEV asset group writes are not wired for syncs yet.",
+  opencti_pirs: "Planned: OpenCTI PIR writes are not wired for syncs yet.",
+  opencti_assets: "OpenCTI Systems are owned by its connectors.",
+  openaev_ai_systems: "OpenAEV has no AI system object to write.",
+  openaev_tech_stack: "OpenAEV software inventory is read from its agents.",
+  other: "This pairing reads only.",
+} as const;
+
+const KNOWN_REASONS: readonly string[] = Object.values(OUTBOUND_REASONS);
+
+const reasonLabel = (t_i18n: (key: string) => string, reason: string): string => (KNOWN_REASONS.includes(reason) ? t_i18n(reason) : reason);
+
+const directionOf = (sync: OrganizationSync): SyncDirection => sync.direction ?? "inbound";
 
 const stateOf = (sync: OrganizationSync): SyncState => (!sync.enabled ? "disabled" : sync.paused_reason ? "paused" : "enabled");
 
@@ -176,6 +208,22 @@ export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
       ),
       sortValue: (sync) => sourceName(sync),
       csv: (sync) => sync.source,
+    },
+    {
+      // #1134 S3: which side is the master.
+      key: "direction",
+      header: "Direction",
+      hideable: true,
+      hideBelow: "4xl",
+      cell: (sync) =>
+        sync.section === "all" ? null : (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <Icon name={directionOf(sync) === "outbound" ? "arrow-up-right" : "arrow-down-left"} size={16} aria-hidden className="shrink-0 text-default-secondary" />
+            {t_i18n(DIRECTION_LABELS[directionOf(sync)])}
+          </span>
+        ),
+      sortValue: (sync) => (sync.section === "all" ? "" : directionOf(sync)),
+      csv: (sync) => (sync.section === "all" ? "" : directionOf(sync)),
     },
     {
       // #11994: whose permissions the runs read the platform with.
@@ -353,10 +401,10 @@ export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
         open={editing !== null}
         saving={create.isPending || update.isPending}
         onClose={() => setEditing(null)}
-        onSave={(schedule, enabled) => {
+        onSave={(schedule, enabled, direction) => {
           const done = { onSuccess: () => setEditing(null), onError: reportFailure(t_i18n("The sync could not be saved")) };
           if (editing === "all") create.mutate({ section: "all", source: "", filters: {}, batch_type: "", remove_gone: false, ...schedule, enabled }, done);
-          else if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled }) }, done);
+          else if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction }) }, done);
         }}
       />
     </>
@@ -369,7 +417,8 @@ interface EditProps {
   open: boolean;
   saving: boolean;
   onClose: () => void;
-  onSave: (schedule: SyncSchedule, enabled: boolean) => void;
+  /** The direction is sent only for a section sync; Sync all has none. */
+  onSave: (schedule: SyncSchedule, enabled: boolean, direction: SyncDirection | undefined) => void;
 }
 
 /** The schedule and the switch of one sync; saving it again resumes a paused one with the current administrator's token. */
@@ -379,13 +428,22 @@ function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
   const meLabel = me?.email || me?.full_name || null;
   const [schedule, setSchedule] = useState<SyncSchedule>(defaultSchedule);
   const [enabled, setEnabled] = useState(true);
+  const [direction, setDirection] = useState<SyncDirection>("inbound");
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const sectionSync = sync !== null && sync.section !== "all";
+  const { data: matrix } = useOrganizationSyncDirections(open && sectionSync);
+  const support = sectionSync ? (Array.isArray(matrix) ? matrix : []).find((row) => row.section === sync.section && row.source === sync.source) : undefined;
+  // Outbound is offered only when the platform can be written; a stored outbound stays pickable so it is never hidden.
+  const outboundOffered = (Array.isArray(support?.directions) && support.directions.includes("outbound")) || (sync ? directionOf(sync) === "outbound" : false);
+  const platform = sync ? (PLATFORM_NAMES[sync.source] ?? sync.source) : "";
+  const directionChanged = sectionSync && direction !== directionOf(sync);
   const key = open ? (sync?.id ?? "new") : null;
   if (key !== loadedFor) {
     setLoadedFor(key);
     if (key !== null) {
       setSchedule(sync ? { frequency: sync.frequency, hour: sync.hour, minute: sync.minute, weekday: sync.weekday, timezone: sync.timezone } : defaultSchedule());
       setEnabled(sync ? sync.enabled : true);
+      setDirection(sync ? directionOf(sync) : "inbound");
     }
   }
   const title = sync ? t_i18n("Edit the sync") : t_i18n("Add Sync all");
@@ -404,6 +462,43 @@ function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
         </DialogHeader>
         <DialogBody className="space-y-4">
           <OrganizationSharedContextNotice elevation={1} actor={sync ? { mode: "runs", who: sync.owner_email ?? t_i18n("Unknown"), savingAs: meLabel } : null} />
+          {sectionSync && (
+            <SettingsField
+              id="org-sync-edit-direction"
+              label={t_i18n("Direction")}
+              helper={
+                direction === "outbound"
+                  ? t_i18n("The XTM One list is the master: the {platform} rows this sync creates are updated and deleted to match it. Other {platform} rows are never touched.", { platform })
+                  : t_i18n("{platform} is the master: its rows are read-only here and follow {platform}.", { platform })
+              }
+            >
+              <div className="space-y-1.5">
+                <SegmentedFilter<SyncDirection>
+                  selection="radio"
+                  size="md"
+                  ariaLabel={t_i18n("Direction")}
+                  testId="org-sync-edit-direction"
+                  value={direction}
+                  onChange={setDirection}
+                  options={[
+                    { key: "inbound", label: DIRECTION_LABELS.inbound },
+                    { key: "outbound", label: DIRECTION_LABELS.outbound, disabled: !outboundOffered },
+                  ]}
+                />
+                {!outboundOffered && support?.reason && (
+                  <p className="content-compact text-default-secondary" data-testid="org-sync-edit-direction.reason">
+                    {t_i18n("Outbound is not offered: {reason}", { reason: reasonLabel(t_i18n, support.reason) })}
+                  </p>
+                )}
+              </div>
+            </SettingsField>
+          )}
+          {directionChanged && (
+            <p className="flex items-start gap-2 content-compact text-feedback-warning-primary" data-testid="org-sync-edit-direction.changed">
+              <Icon name="triangle-alert" size={16} aria-hidden className="mt-0.5 shrink-0" />
+              {t_i18n("A new direction starts clean: it does not take over the rows the previous direction created. The next run follows the new direction.")}
+            </p>
+          )}
           <SyncScheduleFields idPrefix="org-sync-edit" value={schedule} onChange={setSchedule} />
           <SettingsSwitchField
             id="org-sync-edit-enabled"
@@ -417,7 +512,7 @@ function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
           <Button variant="secondary" onClick={onClose}>
             {t_i18n("Cancel")}
           </Button>
-          <Button onClick={() => onSave(schedule, enabled)} disabled={saving} aria-busy={saving || undefined}>
+          <Button onClick={() => onSave(schedule, enabled, sectionSync ? direction : undefined)} disabled={saving} aria-busy={saving || undefined}>
             {saving && <Spinner size="sm" tone="inherit" label={t_i18n("Saving...")} />}
             {t_i18n("Save")}
           </Button>
