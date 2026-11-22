@@ -289,12 +289,20 @@ def build_organization_context_write_tools(
                     "applied": False,
                     "notice": SHARED_CONTEXT_NOTICE,
                 }
-                if plan.error or not apply or not (plan.new or plan.updated) or plan.profile is None:
+                if plan.error or not apply:
+                    return json.dumps(answer, default=str)
+                if not (plan.new or plan.updated) or plan.profile is None:
+                    # An endpoint source (#1251) may change only the software of known devices.
+                    if plan.software and await imp.store_endpoint_software(db, plan):
+                        await db.commit()
+                        answer.update(applied=True)
                     return json.dumps(answer, default=str)
                 sources = imp.provenance(plan, used)
                 row = await org_context.save_version(
                     db, plan.profile, source="draft", author_user_id=person.id, sources=sources
                 )
+                if plan.software:
+                    await imp.store_endpoint_software(db, plan)
                 await db.commit()
                 answer.update(applied=True, version=row.version)
                 return json.dumps(answer, default=str)

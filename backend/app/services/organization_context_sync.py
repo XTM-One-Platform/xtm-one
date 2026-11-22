@@ -307,6 +307,11 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
+        if not plan.error and plan.software:
+            # An endpoint source (#1251): the software follows its devices even when no device row changed.
+            result["software_changed"] = await imp.store_endpoint_software(db, plan)
+        if plan.software_rows:
+            result["software_rows"] = plan.software_rows
         if result["version"] is not None or result["error"]:
             await log_audit(
                 db,
