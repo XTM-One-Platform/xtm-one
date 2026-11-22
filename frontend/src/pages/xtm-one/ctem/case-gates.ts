@@ -52,6 +52,88 @@ export function isGateOutcome(value: string | null | undefined): value is GateOu
   return value === "passed_automatically" || value === "waited" || value === "answered";
 }
 
+/** A user id as the case history stores it (a gate answered by a person names them by id). */
+export function isUserId(value: string | null | undefined): value is string {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Why a gate ran or waited, in words: the kinds of reason the backend writes. @i18n-keys */
+export const GATE_REASON_LABEL = {
+  runbook: "Pre-approved runbook {runbook}",
+  within_threshold: "Within the approval threshold",
+  above_threshold: "Above the approval threshold",
+  loss_unknown: "Expected loss unknown, an approval threshold is set",
+  fleet_runs: "The fleet runs this gate without a person",
+  fleet_waits: "The fleet makes this gate wait for a person",
+} as const;
+
+export type GateReason = { kind: keyof typeof GATE_REASON_LABEL; runbook?: string };
+
+/**
+ * The kind of reason a `gate` event carries (`ctem_remediation_decision.decide`,
+ * `record_gate` by: the level or pin, or a person), so the screen renders it
+ * with translated words and never prints the backend text. A person (answered)
+ * is not a reason: the caller names them. Unknown text gives null: no line.
+ */
+export function gateReason(reason: string | null | undefined, outcome: string | null | undefined): GateReason | null {
+  const text = (reason ?? "").trim();
+  if (!text || outcome === "answered") return null;
+  const runbook = /pre-approved runbook (.+?)(?: \([^()]*\))?$/i.exec(text);
+  if (runbook) return { kind: "runbook", runbook: runbook[1].trim() };
+  if (/within the approval threshold/i.test(text)) return { kind: "within_threshold" };
+  if (/above the approval threshold/i.test(text)) return { kind: "above_threshold" };
+  if (/expected loss is unknown/i.test(text)) return { kind: "loss_unknown" };
+  if (outcome === "passed_automatically") return { kind: "fleet_runs" };
+  if (outcome === "waited") return { kind: "fleet_waits" };
+  return null;
+}
+
+/** The facts of an option line, in words. @i18n-keys */
+export const OPTION_FACT_LABEL = {
+  residual_risk: "Residual risk",
+  time_to_apply: "Time to apply",
+  runbook: "Pre-approved runbook",
+} as const;
+
+type OptionFact = { kind: keyof typeof OPTION_FACT_LABEL; value: string };
+export type RemediationOptionLine = { key: string; label: string; facts: OptionFact[] };
+
+const FACT_PREFIX: ReadonlyArray<[OptionFact["kind"], string]> = [
+  ["residual_risk", "residual risk "],
+  ["time_to_apply", "time to apply "],
+  ["runbook", "pre-approved runbook "],
+];
+
+function parseFacts(text: string): OptionFact[] | null {
+  if (text === "no figures given") return [];
+  const facts: OptionFact[] = [];
+  for (const part of text.split("; ")) {
+    const found = FACT_PREFIX.find(([, prefix]) => part.startsWith(prefix));
+    if (!found) return null;
+    facts.push({ kind: found[0], value: part.slice(found[1].length).trim() });
+  }
+  return facts;
+}
+
+/**
+ * One option line of the note (`<key>. <label>: <facts>`, the facts written by
+ * `option_effect` without figures) as its key, the label the agent typed and
+ * the facts by kind, so the screen labels them in the reader's language. A
+ * line that does not read so keeps its text as the label, with no fact.
+ */
+export function parseRemediationOption(line: string): RemediationOptionLine {
+  const head = /^([^.\s]{1,40})\. (.*)$/.exec(line);
+  if (!head) return { key: "", label: line, facts: [] };
+  const [, key, rest] = head;
+  let at = rest.lastIndexOf(": ");
+  while (at > 0) {
+    const facts = parseFacts(rest.slice(at + 2));
+    if (facts) return { key, label: rest.slice(0, at), facts };
+    at = rest.lastIndexOf(": ", at - 1);
+  }
+  return { key, label: rest, facts: [] };
+}
+
 /** The newest `gate` event of one gate key, or null (history order is not assumed). */
 export function latestGate(history: readonly CtemCaseEvent[], key: string): CtemCaseEvent | null {
   let found: CtemCaseEvent | null = null;

@@ -8,7 +8,7 @@ import { screen } from "@testing-library/react";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
-import { latestGate, remediationOptionLines } from "./case-gates";
+import { gateReason, latestGate, parseRemediationOption, remediationOptionLines } from "./case-gates";
 
 const state = vi.hoisted(() => ({ items: [] as unknown[], calls: [] as unknown[] }));
 
@@ -48,12 +48,17 @@ beforeEach(() => {
 
 describe("CaseRemediationDecision", () => {
   it("shows decided by policy with the option, why, and the figure-free options", () => {
-    const history = [NOTE, ev({ kind: "gate", from: "ctem.remediation.decision", to: "passed_automatically", reason: "autonomy level", evidence: "A" })];
+    const history = [NOTE, ev({ kind: "gate", from: "ctem.remediation.decision", to: "passed_automatically", reason: "decided by policy: pre-approved runbook RB-FW-12 (pin run)", evidence: "A" })];
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={history} />);
     expect(screen.getByText("Decided by policy")).toBeTruthy();
     expect(screen.getByText("Option A")).toBeTruthy();
-    expect(screen.getByText("autonomy level")).toBeTruthy();
-    expect(screen.getByText(/B\. Add a WAF rule/)).toBeTruthy();
+    // The reason in translated words, never the backend text.
+    expect(screen.getByTestId("ctem-case-remediation-why").textContent).toBe("Pre-approved runbook RB-FW-12");
+    expect(screen.queryByText(/pin run/)).toBeNull();
+    expect(screen.getByText("B. Add a WAF rule")).toBeTruthy();
+    expect(screen.getByText("Residual risk: low")).toBeTruthy();
+    expect(screen.getByText("Time to apply: 2 days")).toBeTruthy();
+    expect(screen.queryByText(/residual risk low/)).toBeNull();
     expect(screen.queryByTestId("unified-decision-card")).toBeNull();
     // Nothing waits: the decision item is not read.
     expect(state.calls.every((c) => (c as { enabled: boolean }).enabled === false)).toBe(true);
@@ -98,6 +103,20 @@ describe("CaseRemediationDecision", () => {
     expect(screen.getByText("by Jane Doe")).toBeTruthy();
   });
 
+  it("never prints the id of a person it cannot name", () => {
+    const id = "948a0ace-8644-4b09-ac27-6eb7ab9f1d93";
+    const history = [ev({ kind: "gate", from: "ctem.remediation.decision", to: "answered", reason: id, evidence: "B" })];
+    renderWithProviders(<CaseRemediationDecision caseId="c1" history={history} personName={() => null} />);
+    expect(screen.getByText("by a person")).toBeTruthy();
+    expect(screen.queryByText(new RegExp(id))).toBeNull();
+  });
+
+  it("says why a decision waits in words, not the backend text", () => {
+    const history = [ev({ kind: "gate", from: "ctem.remediation.decision", to: "waited", reason: "the expected loss is above the approval threshold" })];
+    renderWithProviders(<CaseRemediationDecision caseId="c1" history={history} />);
+    expect(screen.getByTestId("ctem-case-remediation-why").textContent).toBe("Above the approval threshold");
+  });
+
   it("says so when the case is not decided yet", () => {
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={[]} />);
     expect(screen.getByText(/Not decided yet/)).toBeTruthy();
@@ -118,5 +137,31 @@ describe("case gates", () => {
   it("reads the option lines of the newest remediation note only", () => {
     expect(remediationOptionLines([ev({ kind: "note", reason: "Something else\nA. x" }), NOTE])).toHaveLength(2);
     expect(remediationOptionLines([])).toEqual([]);
+  });
+
+  it("reads an option line as its key, label and facts", () => {
+    expect(parseRemediationOption("A. Upgrade Tomcat to 10.1.25: residual risk low; time to apply 5 days")).toEqual({
+      key: "A",
+      label: "Upgrade Tomcat to 10.1.25",
+      facts: [
+        { kind: "residual_risk", value: "low" },
+        { kind: "time_to_apply", value: "5 days" },
+      ],
+    });
+    expect(parseRemediationOption("B. Restrict: admin port: pre-approved runbook RB-1")).toEqual({
+      key: "B",
+      label: "Restrict: admin port",
+      facts: [{ kind: "runbook", value: "RB-1" }],
+    });
+    expect(parseRemediationOption("C. Isolate the host: no figures given")).toEqual({ key: "C", label: "Isolate the host", facts: [] });
+    expect(parseRemediationOption("free text")).toEqual({ key: "", label: "free text", facts: [] });
+  });
+
+  it("classes every reason the backend writes", () => {
+    expect(gateReason("decided by policy (level low)", "passed_automatically")).toEqual({ kind: "fleet_runs" });
+    expect(gateReason("decided by policy: expected loss within the approval threshold (pin run)", "passed_automatically")).toEqual({ kind: "within_threshold" });
+    expect(gateReason("an approval threshold is set and the expected loss is unknown", "waited")).toEqual({ kind: "loss_unknown" });
+    expect(gateReason("the gate waits (pin wait)", "waited")).toEqual({ kind: "fleet_waits" });
+    expect(gateReason("u-1", "answered")).toBeNull();
   });
 });

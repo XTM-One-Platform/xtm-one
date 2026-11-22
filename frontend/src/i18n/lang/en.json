@@ -20266,5 +20266,16 @@
   "Ticket status": "Ticket status",
   "Re-test started: the ticket is done": "Re-test started: the ticket is done",
   "Ticket created": "Ticket created",
-  "{from} to {to}": "{from} to {to}"
+  "{from} to {to}": "{from} to {to}",
+  "a person": "a person",
+  "Pre-approved runbook {runbook}": "Pre-approved runbook {runbook}",
+  "Within the approval threshold": "Within the approval threshold",
+  "Above the approval threshold": "Above the approval threshold",
+  "Expected loss unknown, an approval threshold is set": "Expected loss unknown, an approval threshold is set",
+  "The fleet runs this gate without a person": "The fleet runs this gate without a person",
+  "The fleet makes this gate wait for a person": "The fleet makes this gate wait for a person",
+  "Residual risk": "Residual risk",
+  "Time to apply": "Time to apply",
+  "Pre-approved runbook": "Pre-approved runbook",
+  "{label}: {value}": "{label}: {value}"
 }

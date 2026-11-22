@@ -47,7 +47,7 @@ import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } 
 import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
-import { GATE_LABEL, GATE_OUTCOME_LABEL, isGateOutcome } from "./ctem/case-gates";
+import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
 import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -238,7 +238,11 @@ export default function CtemCaseDetail() {
   const actorIds = useMemo(() => {
     const ids = new Set<string>();
     if (kase?.owner_user_id) ids.add(kase.owner_user_id);
-    for (const e of kase?.history ?? []) if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
+    for (const e of kase?.history ?? []) {
+      if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
+      // A gate answered by a person names them by id in its reason.
+      if (e.kind === "gate" && e.to === "answered" && isUserId(e.reason)) ids.add(e.reason);
+    }
     return [...ids];
   }, [kase]);
   const { data: people } = useUserDirectoryByIds(actorIds);
@@ -662,7 +666,19 @@ export default function CtemCaseDetail() {
                 {e.kind === "gate" && isGateOutcome(e.to) && (
                   <span className="font-medium">{t_i18n(GATE_OUTCOME_LABEL[e.to])}</span>
                 )}
-                {e.reason && <span className="text-default-secondary">{e.reason}</span>}
+                {e.kind === "gate" && e.to === "answered" && (
+                  <span className="text-default-secondary">
+                    {t_i18n("by {name}", { name: (e.reason && personName(e.reason)) || t_i18n("a person") })}
+                  </span>
+                )}
+                {e.kind === "gate" &&
+                  (() => {
+                    const why = gateReason(e.reason, e.to);
+                    return why ? (
+                      <span className="text-default-secondary">{t_i18n(GATE_REASON_LABEL[why.kind], { runbook: why.runbook ?? "" })}</span>
+                    ) : null;
+                  })()}
+                {e.reason && e.kind !== "gate" && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && (
                   <span className="text-default-secondary">
                     {e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}

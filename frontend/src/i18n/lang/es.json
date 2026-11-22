@@ -20266,5 +20266,16 @@
   "Ticket status": "Estado del ticket",
   "Re-test started: the ticket is done": "Re-test iniciado: el ticket está terminado",
   "Ticket created": "Ticket creado",
-  "{from} to {to}": "{from} a {to}"
+  "{from} to {to}": "{from} a {to}",
+  "a person": "una persona",
+  "Pre-approved runbook {runbook}": "Procedimiento preaprobado {runbook}",
+  "Within the approval threshold": "Dentro del umbral de aprobación",
+  "Above the approval threshold": "Por encima del umbral de aprobación",
+  "Expected loss unknown, an approval threshold is set": "Pérdida esperada desconocida, hay un umbral de aprobación definido",
+  "The fleet runs this gate without a person": "La flota pasa esta etapa sin una persona",
+  "The fleet makes this gate wait for a person": "La flota hace esperar esta etapa a una persona",
+  "Residual risk": "Riesgo residual",
+  "Time to apply": "Tiempo de aplicación",
+  "Pre-approved runbook": "Procedimiento preaprobado",
+  "{label}: {value}": "{label}: {value}"
 }

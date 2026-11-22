@@ -18,7 +18,17 @@ import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { waitsForAnswer } from "@/lib/work-item-context";
-import { GATE_OUTCOME_LABEL, REMEDIATION_GATE, latestGate, remediationDecisionKey, remediationOptionLines } from "./case-gates";
+import {
+  GATE_OUTCOME_LABEL,
+  GATE_REASON_LABEL,
+  OPTION_FACT_LABEL,
+  REMEDIATION_GATE,
+  gateReason,
+  latestGate,
+  parseRemediationOption,
+  remediationDecisionKey,
+  remediationOptionLines,
+} from "./case-gates";
 
 export function CaseRemediationDecision({
   caseId,
@@ -37,8 +47,10 @@ export function CaseRemediationDecision({
   // The decision item, read with the viewer's own work-item visibility.
   const items = useWorkItems({ correlation_key: remediationDecisionKey(caseId), open_only: true, limit: 1 }, waiting);
   const item = waiting ? (items.data ?? []).find(waitsForAnswer) ?? null : null;
-  const options = remediationOptionLines(history);
-  const who = gate?.reason ? (personName?.(gate.reason) ?? gate.reason) : null;
+  const options = remediationOptionLines(history).map(parseRemediationOption);
+  // Who answered: their directory name, else "a person", never the raw id.
+  const who = gate?.to === "answered" ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
+  const why = gate ? gateReason(gate.reason, gate.to) : null;
 
   return (
     <Card data-testid="ctem-case-remediation">
@@ -58,8 +70,12 @@ export function CaseRemediationDecision({
                 : t_i18n(GATE_OUTCOME_LABEL[gate.to as keyof typeof GATE_OUTCOME_LABEL])}
             </span>
             {gate.evidence && <span>{t_i18n("Option {option}", { option: gate.evidence })}</span>}
-            {gate.to === "answered" && who && <span className="text-default-secondary">{t_i18n("by {name}", { name: who })}</span>}
-            {gate.to !== "answered" && gate.reason && <span className="text-default-secondary">{gate.reason}</span>}
+            {who && <span className="text-default-secondary">{t_i18n("by {name}", { name: who })}</span>}
+            {why && (
+              <span className="text-default-secondary" data-testid="ctem-case-remediation-why">
+                {t_i18n(GATE_REASON_LABEL[why.kind], { runbook: why.runbook ?? "" })}
+              </span>
+            )}
             {gate.at && (
               <span className="ml-auto whitespace-nowrap text-default-secondary">
                 {intl.formatDate(gate.at, { dateStyle: "medium", timeStyle: "short" })}
@@ -77,8 +93,15 @@ export function CaseRemediationDecision({
         )}
         {options.length > 0 && !item && (
           <ul className="space-y-1 text-default-secondary" aria-label={t_i18n("Remediation options")}>
-            {options.map((line) => (
-              <li key={line}>{line}</li>
+            {options.map((option, index) => (
+              <li key={`${option.key}-${index}`} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-default-primary">{option.key ? `${option.key}. ${option.label}` : option.label}</span>
+                {option.facts.map((fact) => (
+                  <span key={fact.kind}>
+                    {t_i18n("{label}: {value}", { label: t_i18n(OPTION_FACT_LABEL[fact.kind]), value: fact.value })}
+                  </span>
+                ))}
+              </li>
             ))}
           </ul>
         )}
