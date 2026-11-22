@@ -155,12 +155,24 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
     20, 0, "running", undefined, undefined, undefined, agent.id, undefined, undefined, true, undefined, "all",
   );
   // `?add-assignment=ctem-case` (the CTEM case page, #1266): the panel opens on the case events.
-  const [searchParams] = useSearchParams();
-  const preset: AssignmentPreset | undefined =
+  // Read once: the preset applies to the first open only, and closing the panel drops it and the parameter.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [preset, setPreset] = useState<AssignmentPreset | undefined>(() =>
     searchParams.get("add-assignment") === "ctem-case"
       ? { triggerType: "platform_event", platformEvents: ["ctem_case.opened", "ctem_case.reopened"], name: t_i18n("Work CTEM cases") }
-      : undefined;
+      : undefined,
+  );
   const [addingAssignment, setAddingAssignment] = useState(() => Boolean(preset) && canManage);
+  const closeAddAssignment = () => {
+    setAddingAssignment(false);
+    if (!preset) return;
+    setPreset(undefined);
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params);
+      next.delete("add-assignment");
+      return next;
+    }, { replace: true });
+  };
   const assignmentsCardRef = useRef<HTMLDivElement>(null);
   // The Fleet card's "Add Assignment" (#9539 S5, UX round 1 B1): opens this page's panel and brings it into view.
   const openAddAssignment = () => {
@@ -411,14 +423,14 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
           <div className="flex items-center gap-2">
             <span className="content-caption text-default-secondary">{t_i18n("{enabled} of {total} active", { enabled: formatCompactNumber(enabledAssignments), total: formatCompactNumber(assignments?.length || 0) })}</span>
             {canManage && (
-              <Button size="sm" className="h-7 content-compact gap-1.5" onClick={() => setAddingAssignment(!addingAssignment)}>
+              <Button size="sm" className="h-7 content-compact gap-1.5" onClick={() => (addingAssignment ? closeAddAssignment() : setAddingAssignment(true))}>
                 <Plus className="h-3 w-3" /> {t_i18n("Add Assignment")}
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent className="pt-0 px-4 pb-4">
-          {addingAssignment && <div className="mb-4"><AddAssignmentPanel agent={agent} preset={preset} onClose={() => setAddingAssignment(false)} /></div>}
+          {addingAssignment && <div className="mb-4"><AddAssignmentPanel agent={agent} preset={preset} onClose={closeAddAssignment} /></div>}
 
           {assignments && assignments.length > 0 ? (
             <div className="space-y-2">
