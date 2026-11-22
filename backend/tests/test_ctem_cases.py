@@ -156,6 +156,28 @@ def test_a_resolved_case_reopens_when_its_issues_return():
     assert plan.reopen == ["opencti:v1"] and plan.add == ["opencti:v2"]
 
 
+def test_a_case_fixed_on_every_asset_resolves_while_its_issues_stay_open_at_source() -> None:
+    """#1252: the inventory shows no asset below the fix, the case leaves the open cases."""
+    case = _case(members={"opencti:v1": True}, fixed_in_inventory=True)
+    (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1")])
+    assert plan.new_state == "resolved"
+    assert plan.evidence == cc.FIXED_IN_INVENTORY
+    # The member stays as the source says: the case leaves the scope, the issue is not closed.
+    assert plan.resolve == []
+
+
+def test_a_case_fixed_in_the_inventory_is_not_reopened_by_its_open_issues() -> None:
+    case = _case("resolved", {"opencti:v1": True}, fixed_in_inventory=True)
+    (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1")])
+    assert plan.new_state is None
+
+
+def test_a_case_fixed_in_the_inventory_with_a_validation_plan_waits_for_its_proof() -> None:
+    case = _case(members={"opencti:v1": True}, fixed_in_inventory=True, validation_plan=True)
+    (plan,) = cc.plan_recompute([case], [_cti("v1", "CVE-1")])
+    assert plan.new_state is None
+
+
 def test_a_merge_maps_every_merged_key_to_the_surviving_case():
     case = cc.CaseSnapshot(
         id="c1", keys=["upgrade:apache/tomcat@9.0.98", "upgrade:apache/tomcat@10.1.35"], state="needs_attention"

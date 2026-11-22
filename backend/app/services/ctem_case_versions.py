@@ -141,6 +141,29 @@ def running_versions(
     return answer
 
 
+def all_on_fixed(answer: Mapping[str, Any] | None) -> bool:
+    """Whether every asset running the product runs the fixed version or later (pure).
+
+    ``False`` without a known fixed version, without any asset, or while one
+    asset is below the fix or runs a version that cannot be compared: an
+    unknown version is never read as fixed.
+    """
+    if not answer or not answer.get("fixed_version"):
+        return False
+    return (
+        int(answer.get("assets_on_fixed") or 0) > 0
+        and int(answer.get("assets_below_fixed") or 0) == 0
+        and int(answer.get("assets_not_comparable") or 0) == 0
+    )
+
+
+async def fixed_in_inventory(db: AsyncSession, case: Any) -> bool:
+    """Whether the inventory shows an upgrade *case* fixed on every asset (it leaves the case scope)."""
+    if getattr(case, "remediation_kind", None) != "upgrade" or not getattr(case, "fixed_version", None):
+        return False
+    return all_on_fixed(await for_case(db, case))
+
+
 async def for_case(db: AsyncSession, case: Any) -> dict[str, Any] | None:
     """The running versions of an upgrade *case* (its product, its fixed version), else ``None``."""
     if getattr(case, "remediation_kind", None) != "upgrade":
