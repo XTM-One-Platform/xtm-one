@@ -2495,6 +2495,7 @@ async def _start(sandbox: Any, command: ResolvedCommand, run_id: str, entries: d
     from opensandbox.models.execd import RunCommandOpts
     from opensandbox.models.filesystem import WriteEntry
 
+    from app.services.sandbox_workspace.registry_mirror import command_env
     from app.services.sandbox_workspace.remote import REMOTE_WORKSPACE, TOOL_PATH, snapshot_json
 
     rdir = remote_run_dir(run_id)
@@ -2513,7 +2514,10 @@ async def _start(sandbox: Any, command: ResolvedCommand, run_id: str, entries: d
     where = f"{REMOTE_WORKSPACE}/{command.cwd}" if command.cwd else REMOTE_WORKSPACE
     await sandbox.commands.run(
         f"python {TOOL_PATH} exec {shlex.quote(rdir)} {shlex.quote(where)} {int(command.timeout)}",
-        opts=RunCommandOpts(background=True, working_directory="/tmp", envs=dict(SAFE_ENV)),  # noqa: S108
+        # The registry mirror's variables travel with the command too: a pooled container (poolRef) does not
+        # carry the create's env into the process execd starts, so corepack and yarn fell back to the public
+        # registries the egress policy denies.
+        opts=RunCommandOpts(background=True, working_directory="/tmp", envs={**command_env(), **SAFE_ENV}),  # noqa: S108
     )
 
 

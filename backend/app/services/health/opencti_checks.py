@@ -53,7 +53,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health.engine import Check, CheckResult, close_out, register_check
+from app.services.health.engine import RESTART_GRACE, Check, CheckResult, apply_grace, close_out, register_check
 from app.services.health.platform_checks import PLATFORM_CHECK_INTERVAL, _platform_check
 from app.services.health.settings import HealthOpenCTIThresholds, load_health_settings
 
@@ -106,6 +106,35 @@ async def _registrations(
 
 def _subject(registration: Any) -> dict[str, str]:
     return {"registration_id": str(registration.id)}
+
+
+async def restarting_registrations(
+    db: AsyncSession, now: datetime, platform_identifier: str = PLATFORM_IDENTIFIER
+) -> frozenset[str]:
+    """The ids of the registrations of that kind that restarted less than ``engine.RESTART_GRACE`` ago (#958)."""
+    from app.models.platform_health_snapshot import PlatformHealthSnapshot
+    from app.models.platform_registration import PlatformRegistration
+
+    rows = await db.execute(
+        select(PlatformHealthSnapshot.registration_id)
+        .join(PlatformRegistration, PlatformRegistration.id == PlatformHealthSnapshot.registration_id)
+        .where(
+            PlatformRegistration.platform_identifier == platform_identifier,
+            PlatformHealthSnapshot.restarted_at.is_not(None),
+            PlatformHealthSnapshot.restarted_at > now - RESTART_GRACE,
+        )
+    )
+    return frozenset(str(rid) for rid in rows.scalars())
+
+
+async def with_restart_grace(
+    db: AsyncSession, now: datetime, results: list[CheckResult], platform_identifier: str = PLATFORM_IDENTIFIER
+) -> list[CheckResult]:
+    """*results* with the failing availability reads of a restarting registration marked ``in_grace`` (#958)."""
+    restarting = await restarting_registrations(db, now, platform_identifier)
+    if not restarting:
+        return results
+    return apply_grace(results, lambda r: (r.subject or {}).get("registration_id") in restarting)
 
 
 def heartbeat(
@@ -309,6 +338,7 @@ def _check(check_id: str, read: Read) -> Callable[[AsyncSession, datetime], Awai
         results: list[CheckResult] = []
         for registration, snapshot in await _registrations(db, now):
             results.extend(read(registration, snapshot, now, limits))
+        results = await with_restart_grace(db, now, results)
         return results + await close_out(db, check_id, results)
 
     run.__name__ = read.__name__

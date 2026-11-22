@@ -2125,6 +2125,10 @@ export interface Agent {
   enabled: boolean;
   is_builtin: boolean;
   is_company_managed: boolean;
+  /** A built-in's organization notes, appended after its persona (#914). */
+  customer_notes?: string | null;
+  /** The customer-layer fields a person set on a built-in, kept across seed runs (#914). */
+  customer_fields?: string[] | null;
   is_public_catalog?: boolean;
   /** The catalog download carries the code of personal custom tools. */
   catalog_include_personal_tools?: boolean;
@@ -6727,6 +6731,60 @@ export interface WorkItemBlockedRef {
   release_on: "merged" | "closed" | "merged_or_closed" | "deployed" | "succeeded";
   state?: "merged" | "closed" | "deployed" | "succeeded" | null;
   at?: string | null;
+}
+
+/** `services/work_item_graph.py`: a work item of the Graph view. */
+export interface WorkItemGraphItemNode {
+  id: string;
+  kind: "item";
+  title: string;
+  status: WorkItemStatus;
+  priority: string | null;
+  correlation_key: string | null;
+  owner_agent: { id: string | null; name: string | null; icon: string | null } | null;
+  needs_human: boolean;
+  ask: { question: string; options: { key: string; label: string }[]; recommendation?: string | null } | null;
+  is_program_root: boolean;
+  /** A blocker the filter left out, drawn so the chain does not end on nothing. */
+  outside_filter: boolean;
+}
+
+/** A pull request, issue, deployment or workflow run an item waits for. */
+export interface WorkItemGraphRefNode {
+  id: string;
+  kind: "ref";
+  ref_kind: WorkItemBlockedRef["kind"];
+  label: string;
+  repo: string | null;
+  number: number | null;
+  state: WorkItemBlockedRef["state"];
+  satisfied: boolean;
+  url: string | null;
+}
+
+/** The person a `needs_human` item waits for. */
+export interface WorkItemGraphPersonNode {
+  id: string;
+  kind: "person";
+  name: string | null;
+  is_you: boolean;
+}
+
+export type WorkItemGraphNode = WorkItemGraphItemNode | WorkItemGraphRefNode | WorkItemGraphPersonNode;
+
+/** `blocked_on`, `ref` and `person` go from the waiter to what it waits for; `program` from the root to a child. */
+export interface WorkItemGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: "blocked_on" | "ref" | "person" | "program";
+}
+
+/** `GET /work-items/graph`. */
+export interface WorkItemGraph {
+  nodes: WorkItemGraphNode[];
+  edges: WorkItemGraphEdge[];
+  truncated: boolean;
 }
 
 /** `work_item_context._Lookup.blocked_on`: an item another one waits for. */
@@ -16245,6 +16303,8 @@ export interface HealthAlertEmailSettings {
   min_severity: "critical" | "warning" | "info";
   immediate: boolean;
   digest: boolean;
+  /** Minutes a critical finding stays open before its immediate email (default 15, 0 to 1440). */
+  alert_after_minutes?: number;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */

@@ -401,9 +401,12 @@ async def _wait_ready(
 async def _launch(sandbox: Any, resolved: ResolvedService, spec: ServiceSpec) -> None:
     from opensandbox.models.execd import RunCommandOpts
 
+    from app.services.sandbox_workspace.registry_mirror import command_env
+
     where = _join(resolved.checkout, spec.cwd)
     cwd = f"{remote.REMOTE_WORKSPACE}/{where}" if where else remote.REMOTE_WORKSPACE
-    env = {**SERVICE_ENV, **dict(spec.env)}
+    # The registry mirror's variables on the process itself: a pooled container does not pass the create's env on.
+    env = {**command_env(), **SERVICE_ENV, **dict(spec.env)}
     command = f"{shlex.join(spec.argv)} >> {shlex.quote(log_path(spec.name))} 2>&1"
     await sandbox.commands.run(command, opts=RunCommandOpts(background=True, working_directory=cwd, envs=env))
 
