@@ -20819,5 +20819,19 @@
   "Points by the priority of the case.": "ケースの優先度によるポイント。",
   "Points for what the case holds.": "ケースの内容によるポイント。",
   "Points when the due date is near or has passed.": "期限が近いまたは過ぎたときのポイント。",
-  "Points for a case nobody owns and for each day it stays open.": "担当者のいないケースと、オープンのままの日数ごとのポイント。"
+  "Points for a case nobody owns and for each day it stays open.": "担当者のいないケースと、オープンのままの日数ごとのポイント。",
+  "No grouping": "グループ化なし",
+  "Fix family": "修正の種類",
+  "Upgrade": "アップグレード",
+  "Patch": "パッチ",
+  "Course of action": "対応策",
+  "Close exposure": "露出の解消",
+  "Decommission": "廃止",
+  "Rotate credential": "認証情報のローテーション",
+  "Restore control": "制御の復元",
+  "Supplier action": "サプライヤー対応",
+  "Restore coverage": "カバレッジの復元",
+  "Unknown user": "不明なユーザー",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, other {# 行}}",
+  "Group by: {group}": "グループ化: {group}"
 }

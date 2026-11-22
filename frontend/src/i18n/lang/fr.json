@@ -20819,5 +20819,19 @@
   "Points by the priority of the case.": "Points selon la priorité du cas.",
   "Points for what the case holds.": "Points selon ce que contient le cas.",
   "Points when the due date is near or has passed.": "Points quand l'échéance est proche ou dépassée.",
-  "Points for a case nobody owns and for each day it stays open.": "Points pour un cas sans responsable et pour chaque jour où il reste ouvert."
+  "Points for a case nobody owns and for each day it stays open.": "Points pour un cas sans responsable et pour chaque jour où il reste ouvert.",
+  "No grouping": "Aucun regroupement",
+  "Fix family": "Famille de correctif",
+  "Upgrade": "Mise à niveau",
+  "Patch": "Correctif",
+  "Course of action": "Plan d'action",
+  "Close exposure": "Fermer l'exposition",
+  "Decommission": "Retrait du service",
+  "Rotate credential": "Renouveler l'identifiant",
+  "Restore control": "Rétablir le contrôle",
+  "Supplier action": "Action du fournisseur",
+  "Restore coverage": "Rétablir la couverture",
+  "Unknown user": "Utilisateur inconnu",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# ligne} other {# lignes}}",
+  "Group by: {group}": "Grouper par : {group}"
 }
