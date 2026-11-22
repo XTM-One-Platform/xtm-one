@@ -24,14 +24,14 @@ def _defs(*names: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
 
 
 def test_only_allow_listed_reads_are_kept():
-    defs, executor = _defs("list_opencti_connector_states", "manage_opencti_connector", "list_opencti_reports")
+    defs, executor = _defs("list_opencti_playbook_states", "manage_opencti_connector", "list_opencti_reports")
     kept = health_modules.keep_allow_listed_reads("opencti", defs, executor)
-    assert [d.name for d in kept] == ["list_opencti_connector_states"]
+    assert [d.name for d in kept] == ["list_opencti_playbook_states"]
     assert set(executor.refusals) == {"manage_opencti_connector", "list_opencti_reports"}
 
 
 async def test_a_withheld_tool_called_by_name_is_refused():
-    defs, executor = _defs("list_opencti_connector_states", "manage_opencti_connector")
+    defs, executor = _defs("list_opencti_playbook_states", "manage_opencti_connector")
     health_modules.keep_allow_listed_reads("opencti", defs, executor)
     result = await executor.execute_tool(ToolCall(id="c", name="manage_opencti_connector", arguments={}))
     assert result.is_error and result.content == REFUSAL_REASON
@@ -73,7 +73,7 @@ async def test_the_cycle_registration_integration_is_built_read_only(monkeypatch
 
     async def _build(db, bindings, *, context=None):
         seen["bindings"], seen["context"] = bindings, context
-        return _defs("list_opencti_feed_states", "delete_opencti_feed")
+        return _defs("list_opencti_playbook_states", "delete_opencti_feed")
 
     monkeypatch.setattr(health_modules, "module_tools_offered", lambda: True)
     monkeypatch.setattr(health_modules, "_cycle_module_target", _target)
@@ -93,4 +93,4 @@ async def test_the_cycle_registration_integration_is_built_read_only(monkeypatch
     from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY
 
     assert seen["context"][READ_ONLY_CONTEXT_KEY] == frozenset({str(integration_id)})
-    assert [d.name for d in composite.all_tools] == ["list_opencti_feed_states"]
+    assert [d.name for d in composite.all_tools] == ["list_opencti_playbook_states"]
