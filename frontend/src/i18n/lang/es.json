@@ -20640,5 +20640,6 @@
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {Viene de {platform}: la próxima importación la devuelve salvo que la excluya.} other {Vienen de {platform}: la próxima importación las devuelve salvo que las excluya.}}",
   "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La sincronización no la vuelve a importar. Puede quitarla de sus exclusiones más tarde.} other {La sincronización no las vuelve a importar. Puede quitarlas de sus exclusiones más tarde.}}",
   "Not computed yet": "Aún no calculado",
-  "{products} did not answer at {time}, cases unchanged.": "{products} no respondió a las {time}, casos sin cambios."
+  "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} no respondió a las {time}, casos sin cambios.} other {{products} no respondieron a las {time}, casos sin cambios.}}",
+  "Open the {product} integration": "Abrir la integración de {product}"
 }
