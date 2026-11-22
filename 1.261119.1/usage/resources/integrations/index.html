@@ -2405,6 +2405,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pennylane-ledger-invoices-bank-transactions-and-analytics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pennylane: ledger, invoices, bank transactions and analytics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ashby-candidates-applications-interviews-and-scorecards" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4731,6 +4742,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pennylane-ledger-invoices-bank-transactions-and-analytics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pennylane: ledger, invoices, bank transactions and analytics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ashby-candidates-applications-interviews-and-scorecards" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5509,6 +5531,16 @@
 <li>Where tool approval is required (<a href="../../../administration/ai-governance/">AI governance</a>), the three reading tools run without asking and the six writing tools ask first. A read-only binding of the integration offers only the reading ones.</li>
 </ul>
 <p>They use the OAuth scope <code>https://www.googleapis.com/auth/spreadsheets</code>, which the integration requests, or the <code>https://www.googleapis.com/auth/drive</code> scope it already held: an integration authorized before shows a permissions change, and works without re-authorizing. The Google Cloud project of the integration's OAuth client must have the <strong>Google Sheets API</strong> enabled; until it is, the tools say so.</p>
+<h3 id="pennylane-ledger-invoices-bank-transactions-and-analytics">Pennylane: ledger, invoices, bank transactions and analytics</h3>
+<p>An agent connected to Pennylane (Company API v2) reads and keeps the books the way an accountant does in Pennylane. One integration per Pennylane company: paste a company API token, or a firm token with the <strong>Company ID</strong> it should act on.</p>
+<ul>
+<li><strong>Ledger.</strong> <code>search_pennylane_ledger_entry_lines</code> filters lines by date range, journal, ledger account (or an account number prefix such as <code>606</code>) and analytical category, with account and journal labels and page totals. <code>get_pennylane_trial_balance</code> sums every account over a period; <code>create_pennylane_export</code> starts a FEC, general ledger or analytical general ledger export that <code>get_pennylane_export</code> reads once ready. Ledger entries are created and updated only when balanced.</li>
+<li><strong>Invoices.</strong> Customer and supplier invoices list by date, party, status, number or analytical category; <code>get_pennylane_invoice</code> gives the lines, payments and matched bank transactions, <code>download_pennylane_invoice_pdf</code> puts the PDF in the conversation. Customer invoices are created as drafts; finalizing, sending and the e-invoicing calls are their own tools.</li>
+<li><strong>Banking.</strong> Bank transactions list with what they are matched to (<code>unmatched_only=true</code> for what is left to reconcile); matching, lettering and analytical categorisation are tools, as are bank accounts, bank establishments and SEPA, GoCardless and Pro account mandates.</li>
+<li><strong>Changes.</strong> <code>list_pennylane_changes</code> reads Pennylane's changelogs (four weeks) for incremental reads.</li>
+<li><strong>Events.</strong> An assignment can trigger on <code>supplier_invoice_created</code>, <code>supplier_invoice_updated</code>, <code>customer_invoice_created</code>, <code>customer_invoice_updated</code>, <code>customer_invoice_paid</code> (once per invoice), <code>transaction_created</code> and <code>transaction_matched</code> (again when the matched invoices change). They are polled from the changelogs every 5 minutes, starting from the moment the trigger is enabled, and each change is read with its record. Filter keys: <code>min_amount</code> and <code>max_amount</code> (euros, tax included), <code>supplier_id</code>, <code>customer_id</code>, <code>journal_id</code>, <code>bank_account_id</code>, <code>status</code> (the payment status of a supplier invoice) and <code>currency</code>; any other payload field (<code>invoice_number</code>, <code>label</code>...) is filtered with the usual operators.</li>
+<li><strong>Guardrails.</strong> A tool is a read when its endpoint is a GET, else a write, so a read-only binding withholds every write. Marking an invoice paid, a supplier payment status, bank account and mandate writes, sending a document and deletions wait for a person's approval at each call. The tools that show or change bank data form one group (<code>BANK_DETAIL_TOOLS</code>) a deny list can withhold. A missing scope is named in the error; the token is never echoed.</li>
+</ul>
 <h3 id="ashby-candidates-applications-interviews-and-scorecards">Ashby: candidates, applications, interviews and scorecards</h3>
 <p>An agent connected to Ashby works the recruiting pipeline the way a recruiter reads it in Ashby.</p>
 <ul>
@@ -5915,7 +5947,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 03:52:07 UTC"><span class="timeago" datetime="2026-11-22T03:52:07+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 03:52:07 UTC">2026-11-22</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 04:58:08 UTC"><span class="timeago" datetime="2026-11-22T04:58:08+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 04:58:08 UTC">2026-11-22</span>
   </span>
 
     
