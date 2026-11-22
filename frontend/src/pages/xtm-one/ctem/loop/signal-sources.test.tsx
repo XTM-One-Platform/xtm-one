@@ -1,4 +1,4 @@
-// The signal sources dialog (#1189): status derivation, Connect targets, and the dialog grouped by lens.
+// The signal sources (#1189, #1263): status derivation, Connect targets, the Sources tab grouped by lens, the button and its tooltip.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
@@ -7,8 +7,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
-import { LoopTraceDialog } from "./LoopTraceDialog";
-import { SignalSourcesDialog } from "./SignalSourcesDialog";
+import { SignalSourcesButton, SignalSourcesPanel, SignalSourcesTip } from "./SignalSourcesPanel";
 import { TriggerPathsCard } from "./TriggerPathsCard";
 import { connectHref, connectTarget, connectedCount, pathStatus } from "./signal-sources";
 
@@ -73,16 +72,21 @@ describe("signal source rules", () => {
   });
 });
 
-describe("SignalSourcesDialog", () => {
+function Probe() {
+  const location = useLocation();
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
+}
+
+describe("SignalSourcesPanel", () => {
   it("lists every path from the endpoint by lens, with status, sources and the Connect action", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/?signal-sources=1"]}>
-        <SignalSourcesDialog />
+      <MemoryRouter>
+        <SignalSourcesPanel />
       </MemoryRouter>,
     );
     const rows = await screen.findAllByTestId("ctem-signal-sources-path");
     expect(rows.map((r) => r.getAttribute("data-path")).sort()).toEqual(["blind_spot", "code_flaw", "new_vulnerability"]);
-    expect(screen.getByText("1 of 3 trigger paths connected. Every signal starts the exposure management loop.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     const world = screen.getByTestId("ctem-signal-sources-lens-world");
     expect(within(world).getByText("Connected")).toBeTruthy();
@@ -99,7 +103,6 @@ describe("SignalSourcesDialog", () => {
   });
 
   it("agrees with the Discovery card on every path, whatever `configured` says (UX round 1 B1 on #1194)", async () => {
-    // The lab case: configured=true with status not_connected, configured=false with status connected.
     const mixed: CtemSignalPath[] = [
       path({ id: "code_flaw", label: "Code flaw", configured: true, status: "not_connected", sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }] }),
       path({ id: "third_party_event", label: "Third party", default_lens: "world", configured: false, status: "connected", sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }] }),
@@ -107,69 +110,52 @@ describe("SignalSourcesDialog", () => {
     ];
     get.mockResolvedValue({ paths: mixed });
     renderWithProviders(
-      <MemoryRouter initialEntries={["/?signal-sources=1"]}>
+      <MemoryRouter>
         <TriggerPathsCard />
-        <SignalSourcesDialog />
+        <SignalSourcesPanel />
       </MemoryRouter>,
     );
-    const dialogRows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const panelRows = await screen.findAllByTestId("ctem-signal-sources-path");
     const cardRows = await screen.findAllByTestId("ctem-trigger-path");
     const statusOf = (rows: HTMLElement[]) => Object.fromEntries(rows.map((r) => [r.getAttribute("data-path"), r.getAttribute("data-status")]));
-    expect(statusOf(cardRows)).toEqual(statusOf(dialogRows));
+    expect(statusOf(cardRows)).toEqual(statusOf(panelRows));
     expect(statusOf(cardRows)).toEqual({ code_flaw: "not_connected", third_party_event: "connected", blind_spot: "agents_api" });
-    const code = cardRows.find((r) => r.getAttribute("data-path") === "code_flaw") as HTMLElement;
-    // The open modal hides the page behind it from the accessibility tree.
-    expect(within(code).getByRole("button", { name: "Connect", hidden: true })).toBeTruthy();
-    const third = cardRows.find((r) => r.getAttribute("data-path") === "third_party_event") as HTMLElement;
-    expect(within(third).queryByRole("button", { name: "Connect", hidden: true })).toBeNull();
-    expect(screen.getByText("1 of 3 trigger paths connected")).toBeTruthy();
   });
 
-  it("opens the signals of the path clicked, never the whole list (davidloiret review on #1194)", async () => {
-    function Probe() {
-      return <output data-testid="location-search">{useLocation().search}</output>;
-    }
+  it("opens the Signals tab on the path clicked, never the whole list (davidloiret review on #1194)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/?signal-sources=1"]}>
-        <SignalSourcesDialog />
+      <MemoryRouter initialEntries={["/ctem/signals/sources"]}>
+        <SignalSourcesPanel />
         <Probe />
       </MemoryRouter>,
     );
     const rows = await screen.findAllByTestId("ctem-signal-sources-path");
     const vuln = rows.find((r) => r.getAttribute("data-path") === "new_vulnerability") as HTMLElement;
     fireEvent.click(within(vuln).getByTestId("ctem-signal-sources-path-open"));
-    const params = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
-    expect(params.get("loop")).toBe("signals:all:new_vulnerability");
-    expect(params.get("signal-sources")).toBeNull();
+    expect(screen.getByTestId("location").textContent).toBe("/ctem/signals?s_f_path=new_vulnerability");
   });
+});
 
-  it("labels the path chip from the catalogue on an empty filtered list, never with the id, and its delete keeps the state (UX round 3 B1/B3 on #1194)", async () => {
-    get.mockImplementation(async (url: string) =>
-      url.startsWith("/ctem-signals/paths") ? { paths: PATHS } : { signals: [], total: 0, counts: {} },
-    );
-    function Probe() {
-      return <output data-testid="location-search">{useLocation().search}</output>;
-    }
+describe("SignalSourcesButton", () => {
+  it("links to the Sources tab, its aria-label kept", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/?loop=signals:new:code_flaw"]}>
-        <LoopTraceDialog />
+      <MemoryRouter>
+        <SignalSourcesButton />
         <Probe />
       </MemoryRouter>,
     );
-    const chip = await screen.findByTestId("ctem-signal-path-filter");
-    expect(chip.textContent).toContain("Code or dependency flaw before production");
-    expect(screen.queryByText("code_flaw")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Remove filter Code or dependency flaw before production" }));
-    const params = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
-    expect(params.get("loop")).toBe("signals:new");
+    const button = screen.getByRole("link", { name: "Signal sources" });
+    fireEvent.click(button);
+    expect(screen.getByTestId("location").textContent).toBe("/ctem/signals/sources");
   });
 
-  it("stays closed without the query parameter", () => {
-    renderWithProviders(
-      <MemoryRouter>
-        <SignalSourcesDialog />
-      </MemoryRouter>,
-    );
-    expect(screen.queryByTestId("ctem-signal-sources")).toBeNull();
+  it("its tooltip says the paths connected, connected of total per lens and the hint", () => {
+    renderWithProviders(<SignalSourcesTip paths={PATHS} />);
+    const tip = screen.getByTestId("ctem-signal-sources-tip");
+    expect(within(tip).getByText("Signal sources")).toBeTruthy();
+    expect(within(tip).getByText("1 of 3 trigger paths connected")).toBeTruthy();
+    expect(within(screen.getByTestId("ctem-signal-sources-tip-world")).getByText("1 of 1")).toBeTruthy();
+    expect(within(screen.getByTestId("ctem-signal-sources-tip-inside")).getByText("0 of 2")).toBeTruthy();
+    expect(within(tip).getByText("Open signal sources")).toBeTruthy();
   });
 });

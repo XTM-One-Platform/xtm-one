@@ -48,7 +48,7 @@ import { MiniTrend } from "./ctem-viz";
 import { CtemScoreTip } from "./CtemScoreTip";
 import { LifecycleHeader } from "./LifecycleHeader";
 import { SignalCounter } from "./loop/SignalCounter";
-import { SignalSourcesButton } from "./loop/SignalSourcesDialog";
+import { SignalSourcesButton } from "./loop/SignalSourcesPanel";
 import { assessmentBusy } from "./landing-refresh";
 import { historyWindow, seriesChange } from "./trend-window";
 
