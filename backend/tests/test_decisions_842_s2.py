@@ -21,7 +21,8 @@ from app.services import decision_router as router
 from app.services.notification_feed import NOTIFICATION_KINDS
 
 APP_TSX = Path(__file__).resolve().parents[2] / "frontend" / "src" / "App.tsx"
-RID = uuid.uuid4()
+# Fixed, so pytest-xdist workers collect the same parametrize ids.
+RID = uuid.UUID("7d2e47ff-e3b9-4f9d-bd3a-64aad67154f5")
 
 
 # --- dual write rules ---------------------------------------------------------
