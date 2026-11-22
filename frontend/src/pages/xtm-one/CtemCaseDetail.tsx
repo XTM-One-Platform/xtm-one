@@ -53,6 +53,10 @@ import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { CaseLoopProvider } from "./ctem/CaseSectionReason";
+import { caseLoopWorker, loopFleetOf, opencrqConnected } from "./ctem/case-loop-reason";
+import { useFleetHealth, useFleets } from "@/hooks/api/useFleetApi";
+import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -233,6 +237,24 @@ export default function CtemCaseDetail() {
   const agenticLicensed = useAgenticAIEnabled();
   const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
   const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
+  // Why an empty section is empty (#1206): the CTEM loop fleet, the runs on the case, OpenCRQ.
+  const fleets = useFleets({ optional: true, enabled: agenticLicensed });
+  const loopFleet = loopFleetOf(fleets.data);
+  const loopHealth = useFleetHealth(loopFleet?.id, { optional: true });
+  const { data: registrations } = usePlatformRegistrations();
+  const loopState = useMemo(
+    () => ({
+      worker: caseLoopWorker({
+        licensed: agenticLicensed,
+        fleets: fleets.data,
+        fleetsError: fleets.isError || loopHealth.isError,
+        automations: loopFleet ? loopHealth.data?.automations : null,
+        runs: caseRuns?.runs,
+      }),
+      opencrq: opencrqConnected(registrations),
+    }),
+    [agenticLicensed, fleets.data, fleets.isError, loopFleet, loopHealth.data, loopHealth.isError, caseRuns, registrations],
+  );
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -559,17 +581,19 @@ export default function CtemCaseDetail() {
         </p>
       )}
 
-      <CaseOpenedBy caseId={kase.id} />
+      <CaseLoopProvider value={loopState}>
+        <CaseOpenedBy caseId={kase.id} sources={kase.issues.flatMap((i) => (i.restricted ? [] : [i.source]))} />
 
-      <CaseExploitation entries={kase.exploitation} />
+        <CaseExploitation entries={kase.exploitation} />
 
-      <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} personName={personName} />
+        <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} personName={personName} />
 
-      <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
+        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
 
-      <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
+        <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
 
-      <CaseTreatmentPlan plan={kase.treatment_plan} />
+        <CaseTreatmentPlan plan={kase.treatment_plan} />
+      </CaseLoopProvider>
 
       <Card>
         <CardHeader>
