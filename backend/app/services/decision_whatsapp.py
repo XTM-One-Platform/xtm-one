@@ -137,8 +137,50 @@ def _distinct(titles: list[str]) -> bool:
     return len(set(folded)) == len(folded)
 
 
+def _tool_line(proposal: dict[str, Any]) -> str:
+    return f"- `{_clip(proposal.get('tool_name') or '?', 60)}`"
+
+
+def _proposal_lines(view: Any, language: str, *, arguments: bool = True) -> list[str]:
+    """The tool calls an open tool approval decides, as the Teams card lists them (UX round 3, B1).
+
+    Each tool's name, and its redacted arguments when the viewer decides; more
+    calls than a card lists are counted and decided in XTM One.
+    """
+    from app.services.decision_cards import _decides_unshown_calls
+    from app.services.teams_link_cards import argument_lines
+
+    proposals = getattr(view, "proposals", ()) or ()
+    if view.decision.kind != "tool_approval" or not proposals:
+        return []
+    if _decides_unshown_calls(view):
+        return [notice("card_too_many_tools", language, count=len(proposals))]
+    lines = [notice("card_tools_awaiting", language)]
+    for proposal in proposals:
+        lines.append(_tool_line(proposal))
+        if arguments and view.may_answer:
+            lines.extend(f"  {_clip(line, 120)}" for line in argument_lines(proposal.get("arguments")))
+    return lines
+
+
 def _body(view: Any, ask: dict[str, Any], language: str, *, answerable: bool) -> str:
-    from app.services.decision_cards import _label, _page_base, _utc
+    lines = _compose(view, ask, language, answerable=answerable, arguments=True)
+    text = "\n".join(line for line in lines if line)
+    if len(text) > _MAX_BODY and view.decision.kind == "tool_approval":
+        # Over the limit, the tool names stay and their arguments go first.
+        lines = _compose(view, ask, language, answerable=answerable, arguments=False)
+        text = "\n".join(line for line in lines if line)
+    if len(text) <= _MAX_BODY:
+        return text
+    # The link line is what a reader needs to answer otherwise: keep it whole.
+    tail = lines[-1] if view.page_path else ""
+    head = "\n".join(line for line in (lines[:-1] if tail else lines) if line)
+    room = _MAX_BODY - len(tail) - 2
+    return f"{head[: max(room, 0)].rstrip()}…\n{tail}" if tail else text[: _MAX_BODY - 1] + "…"
+
+
+def _compose(view: Any, ask: dict[str, Any], language: str, *, answerable: bool, arguments: bool) -> list[str]:
+    from app.services.decision_cards import _decides_unshown_calls, _label, _page_base, _utc
 
     kind = view.decision.kind
     closed = view.decision.status != "open"
@@ -148,6 +190,8 @@ def _body(view: Any, ask: dict[str, Any], language: str, *, answerable: bool) ->
         lines.append(_clip(context, 400))
     if closed:
         lines.extend(_outcome(view, ask, language))
+    else:
+        lines.extend(_proposal_lines(view, language, arguments=arguments))
     recommendation = str(ask.get("recommendation") or "")
     for option in [] if closed else _options(ask):
         if kind == "tool_approval" and not option.get("effect"):
@@ -162,16 +206,11 @@ def _body(view: Any, ask: dict[str, Any], language: str, *, answerable: bool) ->
     if deadline:
         lines.append(f"{notice('card_label_deadline', language)}: {deadline.replace('T', ' ').rstrip('Z')} UTC")
     if view.page_path:
-        prefix = "" if answerable or closed else f"{notice('card_decide_in_xtm', language)} "
+        # card_too_many_tools already says to decide in XTM One.
+        told = answerable or closed or _decides_unshown_calls(view)
+        prefix = "" if told else f"{notice('card_decide_in_xtm', language)} "
         lines.append(f"{prefix}{notice('card_open', language)}: {_page_base()}{view.page_path}")
-    text = "\n".join(line for line in lines if line)
-    if len(text) <= _MAX_BODY:
-        return text
-    # The link line is what a reader needs to answer otherwise: keep it whole.
-    tail = lines[-1] if view.page_path else ""
-    head = "\n".join(lines[:-1] if tail else lines)
-    room = _MAX_BODY - len(tail) - 2
-    return f"{head[: max(room, 0)].rstrip()}…\n{tail}" if tail else text[: _MAX_BODY - 1] + "…"
+    return lines
 
 
 def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
@@ -190,6 +229,9 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
         return None
     kind = row.kind
     body = {"text": _body(view, ask, language, answerable=True)}
+    if kind == "tool_approval" and not all(_tool_line(p) in body["text"] for p in view.proposals):
+        # Buttons never decide a call the message could not name: the text with the link instead.
+        return None
     footer = {"text": _clip(notice("card_header_decision", language), _MAX_FOOTER)}
     titles = [_label(o, kind, language, _MAX_BUTTON_TITLE) for o in options]
     # Two buttons whose clipped titles read the same are a list, whose rows hold more (A1).

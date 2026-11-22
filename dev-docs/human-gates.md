@@ -540,7 +540,14 @@ a tool approval with more calls than a card shows, an answered decision) is
 text with the link to the decision. Buttons whose 20-character clipped titles
 read the same are sent as a list, and list rows that still collide as text.
 A closed decision states its outcome (who chose what and when, in UTC, or
-expired, or no longer needed) instead of the options. Each reply id is
+expired, or no longer needed) instead of the options. An open tool approval
+lists its calls as the Teams card of S9 does: `card_tools_awaiting`, then one
+line per tool name, plus the redacted arguments when the viewer decides (the
+send tool builds the message with no reader: names only); past
+`MAX_TOOLS_SHOWN` calls, `card_too_many_tools` with the count. Over the
+1,024-character body, arguments go first; a message that still cannot name
+every call is sent as text, so buttons never decide a call they did not
+name. Each reply id is
 `xtm.d:<decisions row id>:<option key>`; the webhook answers a 1:1
 `button_reply` or `list_reply` through the router as the sender's linked
 WhatsApp identity (surface `whatsapp_card`), never routes it to an agent, and

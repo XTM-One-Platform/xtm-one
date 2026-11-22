@@ -25,6 +25,7 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs
 
+from app.models.decision_hooks import run_ask
 from app.services import decision_whatsapp as wa
 from app.services.channel_notices import notice
 
@@ -52,6 +53,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "regions": ["Europe West", "Europe North", "US East", "US West", "Asia Pacific", "Middle East"],
         "many": "Region {n}",
         "format": "Delete *all* staging data in _eu-west_ (~2 TB)?",
+        "approval": "Release Manager wants to deploy the login loop fix.",
     },
     "es": {
         "question": "¿Publicar esta noche la corrección del bucle de inicio de sesión?",
@@ -64,6 +66,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "regions": ["Europa Oeste", "Europa Norte", "EE. UU. Este", "EE. UU. Oeste", "Asia Pacífico", "Oriente Medio"],
         "many": "Región {n}",
         "format": "¿Borrar *todos* los datos de staging en _eu-west_ (~2 TB)?",
+        "approval": "Release Manager quiere desplegar la corrección del bucle de inicio de sesión.",
     },
     "fr": {
         "question": "Publier ce soir le correctif de la boucle de connexion ?",
@@ -76,6 +79,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "regions": ["Europe Ouest", "Europe Nord", "États-Unis Est", "États-Unis Ouest", "Asie-Pacifique", "Moyen-Orient"],
         "many": "Région {n}",
         "format": "Supprimer *toutes* les données de staging dans _eu-west_ (~2 To) ?",
+        "approval": "Release Manager veut déployer le correctif de la boucle de connexion.",
     },
     "ja": {
         "question": "ログインループの修正を今夜リリースしますか？",
@@ -88,6 +92,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "regions": ["欧州西部", "欧州北部", "米国東部", "米国西部", "アジア太平洋", "中東"],
         "many": "リージョン {n}",
         "format": "_eu-west_ のステージングデータを*すべて*削除しますか（~2 TB）？",
+        "approval": "Release Manager がログインループ修正のデプロイを求めています。",
     },
 }
 
@@ -122,10 +127,24 @@ def _ask(language: str, count: int = 3, *, deadline: bool = False, labels: list[
 
 
 def _approval_ask(language: str) -> dict[str, Any]:
-    return {
-        "question": notice("card_tools_awaiting", language),
-        "options": [{"key": k, "label": k} for k in ("approve", "approve_always", "reject")],
-    }
+    """The ask production stores for a tool approval: ``run_ask`` with the run's question and ``APPROVAL_OPTIONS``."""
+    _kind, ask = run_ask(TEXTS[language]["approval"], [], [{"id": "c1"}])
+    return ask
+
+
+#: The pending calls of the tool approval fixtures, as ``_proposals`` hands them to a decider.
+CALLS: tuple[dict[str, Any], ...] = (
+    {"tool_name": "deploy_service", "arguments": {"service": "auth-api", "version": "2.14.1", "region": "eu-west"}},
+    {"tool_name": "purge_cdn_cache", "arguments": {"paths": ["/login", "/session"]}},
+    {"tool_name": "post_status_update", "arguments": {"channel": "#release", "text": "auth-api 2.14.1 is live"}},
+)
+
+
+def _calls(count: int) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        CALLS[i] if i < len(CALLS) else {"tool_name": f"scale_worker_pool_{i}", "arguments": {"replicas": i}}
+        for i in range(count)
+    )
 
 
 def _view(kind: str, ask: dict[str, Any], status: str = "open", *, answer: dict | None = None, proposals: int = 0):
@@ -136,10 +155,11 @@ def _view(kind: str, ask: dict[str, Any], status: str = "open", *, answer: dict 
     row.public_id = f"{row.source_type}:{row.source_id}"
     page = f"/runs/{SOURCE_ID}" if kind == "tool_approval" else f"/tasks/work-items/{SOURCE_ID}"
     return SimpleNamespace(
+        # The send tool builds the view with no reader (decision_message_for_tool): may_answer None, tool names only.
         decision=row, may_answer=None, recipient_name="Ada Lovelace",
         answered_by_name="Ada Lovelace" if status == "answered" else None, agent_name="Release Manager",
         page_path=page,
-        proposals=tuple({"tool_name": f"deploy_service_{i}", "arguments": {}} for i in range(proposals)),
+        proposals=_calls(proposals),
     )
 
 
@@ -158,8 +178,10 @@ def states(language: str) -> list[dict[str, Any]]:
          "view": _view("work_item", _ask(language, 6))},
         {"id": "text-12", "title": "12 options: text with the link", "view": _view("work_item", _ask(language, 12))},
         {"id": "free-text", "title": "Free-text question: text with the link", "view": _view("flow_ask", free)},
-        {"id": "tool-approval", "title": "Tool approval: reply buttons",
+        {"id": "tool-approval", "title": "Tool approval of 1 call: reply buttons",
          "view": _view("tool_approval", _approval_ask(language), proposals=1)},
+        {"id": "tool-approval-3", "title": "Tool approval of 3 calls: reply buttons",
+         "view": _view("tool_approval", _approval_ask(language), proposals=3)},
         {"id": "tool-approval-many", "title": "Tool approval of 11 calls: text with the link",
          "view": _view("tool_approval", _approval_ask(language), proposals=11)},
         {"id": "collision", "title": "2 options whose 20-character titles collide: list (A1)",

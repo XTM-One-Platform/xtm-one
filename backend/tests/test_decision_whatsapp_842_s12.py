@@ -185,6 +185,62 @@ def test_tool_approval_buttons_use_the_catalog_labels():
     assert titles[0] == notice("card_approve", "en")[:20]
 
 
+def _tool_approval(calls: int, **fields) -> SimpleNamespace:
+    from app.models.decision_hooks import run_ask
+
+    _kind, ask = run_ask("Release Manager wants to deploy.", [], [{"id": "c1"}])
+    proposals = tuple(
+        {"tool_name": f"deploy_service_{i}", "arguments": {"service": "auth-api", "token_hint": f"v{i}"}}
+        for i in range(calls)
+    )
+    return _view(_row(kind="tool_approval", ask=ask, **fields), page_path=f"/runs/{SOURCE_ID}", proposals=proposals)
+
+
+@pytest.mark.parametrize("language", ["en", "fr"])
+def test_a_tool_approval_names_every_tool_it_approves(language):
+    """UX round 3, B1: the message lists the calls as the Teams card does (S9)."""
+    view = _tool_approval(3)
+    message = wa.render_whatsapp_decision(view, language)
+    assert message["type"] == "button"
+    body = message["body"]["text"]
+    assert notice("card_tools_awaiting", language) in body
+    for i in range(3):
+        assert f"`deploy_service_{i}`" in body
+    # The send tool has no reader: names only, never the arguments.
+    assert "auth-api" not in body
+
+
+def test_a_decider_reads_the_arguments_of_each_call():
+    view = _tool_approval(1)
+    view.may_answer = True
+    body = wa.render_whatsapp_decision(view, "en")["body"]["text"]
+    assert "service: auth-api" in body
+
+
+def test_a_tool_approval_of_more_calls_than_a_card_lists_is_counted_and_decided_in_xtm_one():
+    from app.services.teams_link_cards import MAX_TOOLS_SHOWN
+
+    view = _tool_approval(MAX_TOOLS_SHOWN + 1)
+    assert wa.render_whatsapp_decision(view, "en") is None
+    text = wa.decision_text(view, "en")
+    assert notice("card_too_many_tools", "en", count=MAX_TOOLS_SHOWN + 1) in text
+    assert notice("card_decide_in_xtm", "en") not in text
+    assert text.endswith(f"https://xtm.example.com/runs/{SOURCE_ID}")
+
+
+def test_a_tool_approval_too_long_for_the_body_drops_arguments_then_buttons():
+    view = _tool_approval(10)
+    view.may_answer = True
+    view.proposals = tuple({**p, "arguments": {"blob": "x" * 200}} for p in view.proposals)
+    message = wa.render_whatsapp_decision(view, "en")
+    body = message["body"]["text"]
+    assert len(body) <= 1024
+    assert "xxxx" not in body
+    assert all(f"`deploy_service_{i}`" in body for i in range(10))
+    view.decision.ask = {**view.decision.ask, "question": "q " * 300, "context": "y " * 600}
+    assert wa.render_whatsapp_decision(view, "en") is None
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
