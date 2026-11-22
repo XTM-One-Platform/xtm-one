@@ -3,7 +3,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/testing/providers";
-import { CaseAttentionWeightsDialog, WEIGHT_FIELDS, parseWeight } from "./CaseAttentionWeightsDialog";
+import { CaseAttentionWeightsDialog, WEIGHT_FIELDS, WEIGHT_GROUPS, parseWeight } from "./CaseAttentionWeightsDialog";
 import { DEFAULT_CASE_ATTENTION_WEIGHTS, weightsFromProfile, weightsToProfile } from "./case-attention";
 
 const saved = vi.hoisted(() => ({ calls: [] as unknown[] }));
@@ -31,6 +31,24 @@ describe("case attention points (#1176 slice 2b)", () => {
 
   it("names a field for every point of the score", () => {
     expect(WEIGHT_FIELDS.map((f) => f.key).sort()).toEqual(Object.keys(weightsToProfile(DEFAULT_CASE_ATTENTION_WEIGHTS)).sort());
+  });
+
+  it("puts every field in exactly one titled group (UX r1 B2)", () => {
+    const grouped = WEIGHT_GROUPS.flatMap((g) => [...g.keys]);
+    expect(grouped.slice().sort()).toEqual(WEIGHT_FIELDS.map((f) => f.key).sort());
+    expect(new Set(grouped).size).toBe(grouped.length);
+    renderWithProviders(<CaseAttentionWeightsDialog open onClose={() => undefined} />);
+    for (const g of WEIGHT_GROUPS) {
+      const section = screen.getByTestId(`ctem-attention-group-${g.id}`);
+      expect(section.textContent).toContain(g.title);
+      expect(section.textContent).toContain(g.description);
+    }
+  });
+
+  it("gives every field an info text with what it adds (UX r1 B1)", () => {
+    for (const f of WEIGHT_FIELDS) {
+      expect(f.info.length).toBeGreaterThan(f.helper.length);
+    }
   });
 
   it("saves the points in the profile, other fields kept", () => {
