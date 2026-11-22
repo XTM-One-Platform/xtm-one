@@ -6,9 +6,10 @@ import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 
 /**
- * The first-login organization setup proposal (#9173, S3): the server decides
- * who sees it; the client asks only as an administrator in XTM One mode, and
- * every answer is sent once and closes it.
+ * The first-connection setup proposal (#9173 S3, versioned by #1087): the
+ * server decides who sees it; the client asks only as an administrator in XTM
+ * One mode, every answer is sent once and closes it, and "Set up now" opens
+ * the guided CTEM loop setup in place.
  */
 
 const auth: { user: { role: string; impersonating?: boolean } | null } = { user: { role: "admin" } };
@@ -23,8 +24,12 @@ vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/usePlatformConfig")>()),
   useIsXtmOne: () => xtmOne,
 }));
+// The guided setup has its own tests: here only that "Set up now" opens it.
+vi.mock("@/components/fleets/CtemLoopSetupDialog", () => ({
+  CtemLoopSetupDialog: () => <div data-testid="ctem-loop-setup" />,
+}));
 
-const { OrganizationSetupPrompt, ORGANIZATION_SETUP_PATH } = await import("./OrganizationSetupPrompt");
+const { OrganizationSetupPrompt } = await import("./OrganizationSetupPrompt");
 
 const get = vi.mocked(api.get);
 const post = vi.mocked(api.post);
@@ -53,7 +58,7 @@ beforeEach(() => {
 describe("OrganizationSetupPrompt", () => {
   it("proposes the setup to an administrator when the server says so", async () => {
     renderPrompt();
-    expect(await screen.findByRole("dialog", { name: "Set up your organization profile" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Set up the CTEM loop" })).toBeTruthy();
     expect(get).toHaveBeenCalledWith("/organization-context/setup-prompt");
   });
 
@@ -76,12 +81,12 @@ describe("OrganizationSetupPrompt", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("Set up now records the answer and opens Settings > Organization in setup mode", async () => {
+  it("Set up now records the answer and opens the guided setup in place", async () => {
     renderPrompt();
     fireEvent.click(await screen.findByRole("button", { name: "Set up now" }));
-    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe(ORGANIZATION_SETUP_PATH));
+    expect(await screen.findByTestId("ctem-loop-setup")).toBeTruthy();
     expect(post).toHaveBeenCalledWith("/organization-context/setup-prompt", { outcome: "started" });
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("where").textContent).toBe("/");
   });
 
   it.each([

@@ -2270,3 +2270,12 @@ one CTEM module registered; one filled ecosystem slot of the loop fleet; the
 loop fleet seeded, for gates and preview; every automation on, for enable),
 else `todo`. The Modules step names what the loop loses without each module.
 Nothing is enabled before the enable step, which calls `POST /fleets/{id}/enable`.
+
+Frontend: "Set up now" of `OrganizationSetupPrompt` opens
+`components/fleets/CtemLoopSetupDialog.tsx` in place (no navigation). It opens on
+`resume_on`, records each step with Continue (`done`) or Skip (`skipped`), and
+reuses the existing pieces rather than new forms: the Organization step links to
+Settings > Organization in setup mode, Ecosystem embeds
+`FleetCapabilitySlotsCard`, Gates embeds `FleetAutonomyStrip`, and Enable opens
+`FleetEnableDialog` (dry-run plan, run estimate, Confirm). The step order, copy
+and fact readers are pure functions in `components/fleets/ctem-loop-setup.ts`.

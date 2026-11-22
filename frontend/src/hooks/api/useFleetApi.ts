@@ -526,6 +526,37 @@ export function useFleetCapabilitySlots(fleetId: string | null | undefined, show
   });
 }
 
+/** One step of the CTEM loop guided setup (`FleetSetupStep`, #1087). */
+export interface FleetSetupStep {
+  key: "organization" | "modules" | "ecosystem" | "gates" | "preview" | "enable";
+  /** `done` / `skipped` as recorded for the current setup version, else `ready` (already in place) or `todo`. */
+  state: "done" | "skipped" | "ready" | "todo";
+  /** What the step shows, read live (counts, connected modules, slot states, level, opt-in). */
+  facts: Record<string, unknown>;
+}
+
+/** `GET /fleets/setup/ctem-loop` (#1087): where the guided setup stands; administrators of XTM One only. */
+export interface FleetSetupStatus {
+  version: string;
+  /** The CTEM loop fleet, null when it is not seeded on this instance. */
+  fleet_id: string | null;
+  steps: FleetSetupStep[];
+  /** The step the flow opens on; null when every step is done or skipped. */
+  resume_on: FleetSetupStep["key"] | null;
+}
+
+/** The CTEM loop setup's step states, read while the guided setup is open: read only, no quota. */
+export function useCtemLoopSetupStatus(enabled: boolean) {
+  return useQuery<FleetSetupStatus>({
+    queryKey: [...KEY, "setup", "ctem-loop"],
+    queryFn: () => api.get("/fleets/setup/ctem-loop"),
+    enabled,
+    staleTime: 0,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
 /** One object of a fork's source that moved since the fork (`FleetSourceChange`). */
 export interface FleetSourceChange {
   object: "fleet" | "member" | "connected";
