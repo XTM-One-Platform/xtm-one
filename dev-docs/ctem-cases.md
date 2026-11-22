@@ -216,7 +216,19 @@ members are left as the source reports them. A case with a validation plan
 still closes only on its passing validation (#857); a case whose fixed version
 is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
-through the usual reopen rule. The case page is the next slice of #1252.
+through the usual reopen rule.
+
+**On the case page.** An upgrade case draws a "Running versions" card
+(`frontend/src/pages/xtm-one/ctem/CaseRunningVersions.tsx`) from
+`running_versions`: one sentence with the distinct assets and versions, the
+assets still below the fixed version and those on it or later (ICU plurals with
+an `=0` branch), then a table of versions with their asset count, their status
+against the fixed version and their sources as logos (an integration or a
+product by its `ProviderLogo`; `sbom`, `csv`, `manual`, `api` and `agent:*`,
+which carry no brand, by a glyph; the name in the tooltip and for screen
+readers). With no fixed version the card says it is unknown and what was
+checked; with no asset running the product it says the versions come from the
+assets. Nothing on the page asks the user to type a version in the tech stack.
 
 ### 4.3 Recompute
 
@@ -534,8 +546,11 @@ then the existing AI assessment and facts grid unchanged.
 
 ### 7.3 Case page `/ctem/cases/:id`
 
-- Header: `EntityPageHeader` with back link "Back to Cases", the fix as
-  title, badges (state Chip, priority Chip, owner Avatar, due date), actions
+- Header: the CTEM header band (`CtemPageHeader`) with the shared
+  `LocationBackButton` "Back to Cases" first, above the band and outside its
+  border, exactly as on an entity page (Sam, 22 Nov 2026: no CTEM-only back
+  link inside the band), the fix as title, badges on the breadcrumb line
+  (state Chip, priority Chip, owner Avatar, due date), actions
   in the platform order: More (`IconButton` + `Menu`: Split, Merge, Open in
   Act now, A6), Accept risk, Assign, then the next state as the filled
   primary ("Start", "Resolve", "Reopen").
