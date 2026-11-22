@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import ColumnElement, func, select
@@ -482,16 +482,19 @@ class AttackSurfacePass(BaseModel):
     """The opt-in outside lens of CTEM-26 (``dev-docs/ctem-attack-surface.md``).
 
     Off by default. When on, a scheduled pass reads the outside view of
-    ``owned_domains`` and ``address_ranges`` from ``integration`` (a connected
-    attack-surface provider, Shodan first) and records the differences as
+    ``owned_domains`` and ``address_ranges`` from ``integration`` and
+    ``integrations`` (connected attack-surface providers: Shodan, Google Threat
+    Intelligence ASM), merges them per host and records the differences as
     signals on paths 5, 6 and 7.
     """
 
     model_config = _Strict
 
     enabled: bool = False
-    #: The id of the provider integration the pass reads with its owner's credential.
+    #: The id of a provider integration the pass reads with its owner's credential (the first one).
     integration: str = Field(default="", max_length=100)
+    #: More provider integrations read in the same pass, their observations merged per host.
+    integrations: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=10)
     #: Hours between two passes (daily by default).
     cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
     #: A host unseen for this many days is a stale asset (path 6).
