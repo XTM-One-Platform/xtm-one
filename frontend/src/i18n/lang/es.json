@@ -13869,6 +13869,7 @@
   "Audit": "Auditoría",
   "Data Platform & Lakehouse": "Plataforma de datos y lakehouse",
   "ERP": "ERP",
+  "Finance": "Finanzas",
   "Agent to Agent (A2A)": "Agente a agente (A2A)",
   "No integrations match your filters": "Ninguna integración coincide con sus filtros",
   "Try a different search term or remove some filters to browse the full catalog.": "Pruebe otro término de búsqueda o quite algunos filtros para explorar el catálogo completo.",
@@ -20154,6 +20155,11 @@
   "Not reproduced": "No reproducido",
   "Reproduced": "Reproducido",
   "Not re-tested yet": "Aún sin nueva prueba",
+  "Spend Management": "Gestión del gasto",
+  "Payable created": "Gasto creado",
+  "Payable prepared for accounting": "Gasto preparado para contabilidad",
+  "Settlement created": "Liquidación creada",
+  "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk (the create_spendesk_webhook tool) pointing to the webhook URL shown below.": "Se activa con este evento de webhook de Spendesk. Cree un webhook en Spendesk (la herramienta create_spendesk_webhook) hacia la URL de webhook indicada abajo.",
   "Supplier invoice created": "Factura de proveedor creada",
   "Supplier invoice updated": "Factura de proveedor actualizada",
   "Customer invoice created": "Factura de cliente creada",
@@ -20338,6 +20344,5 @@
   "Attached on {date}": "Vinculado el {date}",
   "Attached the treatment plan": "Vinculó el plan de tratamiento",
   "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "Aún no hay plan de tratamiento: la decisión de remediación escribe uno en OpenCRQ cuando OpenCRQ está conectado.",
-  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "Existe un plan en OpenCRQ: restringido a los lectores de OpenCRQ",
-  "Finance": "Finanzas"
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "Existe un plan en OpenCRQ: restringido a los lectores de OpenCRQ"
 }
