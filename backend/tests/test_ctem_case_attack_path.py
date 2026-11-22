@@ -45,8 +45,22 @@ def _record(db: FakeSession, case: CtemCase, reading: dict[str, Any], **kw: Any)
 READING: dict[str, Any] = {
     "origin": {"asset": "Edge bastion", "exposure": "internet-facing"},
     "hops": [
-        {"from": "Edge bastion", "to": "Jump host", "nature": "proven", "simulation": "sim-2026-11-20"},
-        {"from": "Jump host", "to": "Core banking", "nature": "guessed"},
+        {
+            "from": "Edge bastion",
+            "to": "Jump host",
+            "nature": "proven",
+            "simulation": "sim-2026-11-20",
+            "simulation_name": "Edge pivot drill",
+            "simulation_url": "https://aev.example/admin/simulations/sim-2026-11-20",
+            "seen_at": "2026-11-20T09:30:00Z",
+        },
+        {
+            "from": "Jump host",
+            "to": "Core banking",
+            "nature": "guessed",
+            "simulation_url": "javascript:alert(1)",
+            "seen_at": "soon",
+        },
         {"from": "", "to": "Nowhere", "nature": "proven"},
         "not a hop",
     ],
@@ -69,6 +83,9 @@ def test_record_keeps_hops_nearest_first_and_one_event() -> None:
         ("Jump host", "Core banking", "inferred"),
     ]
     assert stored["hops"][0]["simulation"] == "sim-2026-11-20"
+    assert stored["hops"][0]["simulation_name"] == "Edge pivot drill"
+    assert stored["hops"][0]["seen_at"] == "2026-11-20"
+    assert stored["hops"][1]["simulation_url"] is None and stored["hops"][1]["seen_at"] is None
     assert [a["asset"] for a in stored["reached"]] == ["Jump host", "Core banking"]
     assert stored["reached"][0]["criticality"] == "medium"
     assert stored["primary"] == ["Credit decision"]
@@ -118,7 +135,9 @@ def test_viewer_without_opencrq_sees_the_shape_not_the_names() -> None:
     assert shown["origin"] == {"asset": view_of.RESTRICTED, "exposure": "internet_facing"}
     assert {h["from"] for h in shown["hops"]} == {view_of.RESTRICTED}
     assert [h["nature"] for h in shown["hops"]] == ["proven", "inferred"]
-    assert all(h["simulation"] is None for h in shown["hops"])
+    assert all(h["simulation_name"] is None and h["simulation_url"] is None for h in shown["hops"])
+    assert all("simulation" not in h for h in shown["hops"])
+    assert shown["hops"][0]["seen_at"] == "2026-11-20"
     assert [a["depth"] for a in shown["reached"]] == [1, 2]
     assert shown["primary"] == [view_of.RESTRICTED]
 
@@ -132,7 +151,9 @@ def test_viewer_with_opencrq_sees_names_and_simulation() -> None:
         "from": "Edge bastion",
         "to": "Jump host",
         "nature": "proven",
-        "simulation": "sim-2026-11-20",
+        "simulation_name": "Edge pivot drill",
+        "simulation_url": "https://aev.example/admin/simulations/sim-2026-11-20",
+        "seen_at": "2026-11-20",
     }
     assert shown["primary"] == ["Credit decision"]
 

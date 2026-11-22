@@ -506,8 +506,9 @@ def attack_path_for(case: CtemCase, view: ViewerView) -> dict[str, Any] | None:
 
     The shape (hops nearest first with proven or inferred, depths, criticality,
     exposure, counts) is served to every viewer of the case; the OpenCRQ asset
-    names and simulation ids only to a viewer whose own OpenCRQ read is
-    available, else each name is ``Restricted``.
+    names and the simulation (name, page, date) only to a viewer whose own
+    OpenCRQ read is available, else each name is ``Restricted``. The raw
+    simulation id is never served: it is kept for the trace (#1296, B2).
     """
     stored = getattr(case, "attack_path", None) or {}
     if not isinstance(stored, dict) or not isinstance(stored.get("origin"), dict):
@@ -524,7 +525,9 @@ def attack_path_for(case: CtemCase, view: ViewerView) -> dict[str, Any] | None:
                 "from": name(h.get("from")),
                 "to": name(h.get("to")),
                 "nature": "proven" if h.get("nature") == "proven" else "inferred",
-                "simulation": h.get("simulation") if view.opencrq else None,
+                "simulation_name": h.get("simulation_name") if view.opencrq else None,
+                "simulation_url": h.get("simulation_url") if view.opencrq else None,
+                "seen_at": h.get("seen_at"),
             }
             for h in stored.get("hops") or []
             if isinstance(h, dict)

@@ -576,6 +576,24 @@ def _asset_name(value: object) -> str:
     return str(value or "").strip()[:200]
 
 
+#: A simulation page a hop links to: an absolute http(s) URL, nothing else (UX round 1 on #1296, B2).
+_HOP_URL = re.compile(r"^https?://[^\s/?#]+[^\s]*$")
+
+
+def _hop_url(value: object) -> str | None:
+    url = str(value or "").strip()[:500]
+    return url if _HOP_URL.match(url) else None
+
+
+def _hop_date(value: object) -> str | None:
+    """The ISO date of the execution that showed a hop, or None when it is not one."""
+    text = str(value or "").strip()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat() if text else None
+    except ValueError:
+        return None
+
+
 def record_attack_path(
     db: AsyncSession,
     case: CtemCase,
@@ -588,7 +606,9 @@ def record_attack_path(
 
     *reading* is the triage step's ``attack_path`` object (from
     ``get_opencrq_attack_path_reach``): ``origin`` {asset, exposure}, ``hops``
-    [{from, to, nature, simulation}] nearest first, ``reached`` [{asset, depth,
+    [{from, to, nature, simulation, simulation_name, simulation_url, seen_at}]
+    nearest first (the simulation id is kept for the trace, never drawn: its
+    name, page and date are), ``reached`` [{asset, depth,
     criticality}] and ``primary`` (the primary asset names behind). Replaced
     whole (the newest read is the truth); a hop with no end is dropped, a
     nature other than proven is inferred. An origin with no hop is a reading
@@ -623,6 +643,9 @@ def record_attack_path(
                 "to": target,
                 "nature": nature if nature in HOP_NATURES else "inferred",
                 "simulation": str(hop.get("simulation") or "").strip()[:100] or None,
+                "simulation_name": str(hop.get("simulation_name") or "").strip()[:200] or None,
+                "simulation_url": _hop_url(hop.get("simulation_url")),
+                "seen_at": _hop_date(hop.get("seen_at")),
             }
         )
     reached: list[dict[str, Any]] = []

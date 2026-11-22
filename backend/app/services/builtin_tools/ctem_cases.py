@@ -679,7 +679,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "type": "object",
                         "description": (
                             "From get_opencrq_attack_path_reach: origin {asset, exposure}, hops nearest first "
-                            "[{from, to, nature: proven|inferred, simulation}], reached [{asset, depth, "
+                            "[{from, to, nature: proven|inferred, simulation (id), simulation_name, simulation_url, "
+                            "seen_at}], reached [{asset, depth, "
                             "criticality}], primary (asset names). Replaces the stored one."
                         ),
                         "properties": {

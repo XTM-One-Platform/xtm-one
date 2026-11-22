@@ -20778,9 +20778,12 @@
   "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "Aún no hay ruta de ataque: el triaje la lee en OpenCRQ cuando una simulación de OpenAEV ha mapeado el activo afectado.",
   "No attack path leaves this asset in the latest simulations.": "Ninguna ruta de ataque sale de este activo en las últimas simulaciones.",
   "Hops, nearest first": "Saltos, el más cercano primero",
+  "Attack starts from": "El ataque parte de",
   "Proven": "Probado",
   "Inferred": "Inferido",
-  "Simulation {id}": "Simulación {id}",
+  "Proven by {name}, {date}": "Probado por {name}, {date}",
+  "Proven by {name}": "Probado por {name}",
+  "Proven by an OpenAEV simulation, {date}": "Probado por una simulación de OpenAEV, {date}",
   "Primary assets reached": "Activos primarios alcanzados",
   "None: no business asset sits behind the assets reached.": "Ninguno: ningún activo de negocio está detrás de los activos alcanzados.",
   "Recorded the attack path": "Ruta de ataque registrada"
