@@ -431,6 +431,8 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     evaluation: evaluationOn,
     /* Intents are XTM One domain content: no row in Copilot mode (#445). */
     intents: isXtm,
+    /* The CTEM cases list is XTM One domain content too: no row in Copilot mode (#1135). */
+    ctemCases: isXtm,
   }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn]);
 
   const sections = useMemo(() => resolveNav(flags, isAdmin, isGroupManager), [flags, isAdmin, isGroupManager]);
