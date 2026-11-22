@@ -20767,5 +20767,10 @@
   "CSV import": "Importación CSV",
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "El inventario de activos informa de {product} en {assets, plural, one {# activo} other {# activos}} con {versions, plural, one {# versión} other {# versiones}}.",
   "Asset count": "Número de activos",
-  "Versions not listed": "Versiones no listadas"
+  "Versions not listed": "Versiones no listadas",
+  "Module checks": "Comprobaciones de los módulos",
+  "No check round since the last digest": "Ninguna ronda de comprobaciones desde el último resumen",
+  "Failed most": "Las que más fallaron",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# ronda} other {# rondas}} en {registrations, plural, one {# registro} other {# registros}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# fallida} other {# fallidas}}, {warned, plural, one {# advertencia} other {# advertencias}}"
 }

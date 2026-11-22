@@ -30,7 +30,8 @@ import {
   isModuleCheckerRole,
   labelOf,
 } from "@/lib/health";
-import type { HealthDigest } from "@/types";
+import { HEALTH_MODULE_LABELS, checkTitle } from "@/lib/health-modules";
+import type { HealthDigest, HealthModule, HealthWeeklyModuleSummary } from "@/types";
 import { useHealthName } from "@/hooks/api/useHealthApi";
 
 function Figure({ label, value }: { label: string; value: React.ReactNode }) {
@@ -56,6 +57,72 @@ function attached(values: Record<string, number> | null, unavailable: boolean, t
   const { attached: total = 0, ...byConfidence } = values;
   const detail = counts(byConfidence, false, t);
   return total > 0 ? `${total} · ${detail}` : "0";
+}
+
+/**
+ * The weekly digest's Modules part (#101 S15e, dev-docs 13.8): per module, the check rounds of the
+ * window, their verdict totals and the checks failed most, as the schedule computed them from the
+ * stored reports (`digest.modules`); "Unavailable" when that read failed, never 0.
+ */
+function WeeklyModules({ modules, unavailable }: { modules: HealthDigest["modules"]; unavailable: boolean }) {
+  const { t_i18n } = useFormatter();
+  if (!unavailable && !modules) return null;
+  const entries = Object.entries(modules ?? {}) as [HealthModule, HealthWeeklyModuleSummary][];
+  return (
+    <section className="space-y-2 rounded-sm bg-elevation-default p-3" aria-labelledby="health-digest-modules" data-testid="health-digest-modules">
+      <h4 id="health-digest-modules" className="content-caption text-default-secondary">
+        {t_i18n("Module checks")}
+      </h4>
+      {unavailable ? (
+        <p className="content-compact text-default-secondary">{t_i18n("Unavailable")}</p>
+      ) : !entries.length ? (
+        <p className="content-compact text-default-secondary">{t_i18n("No check round since the last digest")}</p>
+      ) : (
+        <ul className="space-y-3">
+          {entries.map(([module, part]) => (
+            <li key={module} className="space-y-0.5" data-testid={`health-digest-module-${module}`}>
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="content-compact font-medium text-default-primary">{t_i18n(HEALTH_MODULE_LABELS[module] ?? module)}</span>
+                <span className="tabular-nums content-caption text-default-secondary">
+                  {t_i18n(
+                    "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}",
+                    { rounds: part.rounds, registrations: part.registrations },
+                  )}
+                </span>
+              </div>
+              <p className="tabular-nums content-compact text-default-primary">
+                {t_i18n(
+                  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}",
+                  { passed: part.passed, warned: part.warned, failed: part.failed },
+                )}
+                {part.not_run ? `, ${t_i18n("{count, plural, one {# not run} other {# not run}}", { count: part.not_run })}` : ""}
+              </p>
+              {part.most_failed.length > 0 && (
+                <div className="pt-1">
+                  <p className="content-caption text-default-secondary">{t_i18n("Failed most")}</p>
+                  <ul className="list-disc pl-5 content-compact text-default-primary">
+                    {part.most_failed.map((check) => (
+                      <li key={check.id}>
+                        {checkTitle(`${module}.agentic.${check.id}`, t_i18n)}{" "}
+                        <span className="tabular-nums text-default-secondary">
+                          (
+                          {t_i18n("{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}", {
+                            failed: check.failed,
+                            warned: check.warned,
+                          })}
+                          )
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 export function DigestStatusBadge({ status }: { status: HealthDigest["status"] | "open" }) {
@@ -135,6 +202,7 @@ export function CycleDigestView({ digest }: { digest: HealthDigest }) {
           <Figure label={t_i18n("Writes logged in dry-run, not executed")} value={n(digest.dry_run_writes)} />
         )}
       </div>
+      <WeeklyModules modules={digest.modules} unavailable={missing.has("modules")} />
       {digest.skipped.length > 0 && (
         <div className="rounded-sm border border-alert-warning bg-alert-warning p-3">
           <p className="content-compact font-medium text-default-primary">{t_i18n("Skipped or not completed")}</p>
