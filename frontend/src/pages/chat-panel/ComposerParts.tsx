@@ -129,9 +129,20 @@ export function ComposerHeader({
           {t_i18n("Deep Investigation on: the next message is a subject to investigate")}
         </p>
       )}
-      {runnerApprovals.map((request) => (
-        <RunnerApprovalCard key={request.command_id} request={request} onDecided={onRunnerApprovalDecided} />
-      ))}
+      {runnerApprovals.length > 0 && (
+        // The held commands scroll inside a capped stack, so the composer and
+        // the latest message stay in view however many commands wait.
+        <div
+          data-testid="runner-approvals-stack"
+          role="region"
+          aria-label={t_i18n("Commands waiting for your approval")}
+          className="max-h-[45vh] space-y-2 overflow-y-auto overscroll-contain"
+        >
+          {runnerApprovals.map((request) => (
+            <RunnerApprovalCard key={request.command_id} request={request} onDecided={onRunnerApprovalDecided} />
+          ))}
+        </div>
+      )}
       {desktop && runnerId && (
         <DesktopMachineBar
           runnerId={runnerId}
