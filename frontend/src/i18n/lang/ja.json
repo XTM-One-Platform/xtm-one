@@ -20752,5 +20752,7 @@
   "Cannot be compared": "比較不可",
   "SBOM": "SBOM",
   "CSV import": "CSV インポート",
-  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "資産インベントリは {product} を {assets, plural, other {# 件の資産}} で {versions, plural, other {# 個のバージョン}} 報告しています。"
+  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "資産インベントリは {product} を {assets, plural, other {# 件の資産}} で {versions, plural, other {# 個のバージョン}} 報告しています。",
+  "Asset count": "資産数",
+  "Versions not listed": "表示されていないバージョン"
 }
