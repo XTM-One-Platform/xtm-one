@@ -662,6 +662,11 @@ Decided by Sam, 22 Nov 2026:
   finding stays, as one output of a check round among others. What S14 shipped (the member,
   the triggers, the quota exemption, the ceiling ledger, the recommendation and agentic
   finding store) is kept and reused; nothing is reverted.
+- Agentic module checks scope: **modules and their own data only**. "Don't put any third
+  party or connector checks like drata or cve etc. It's focused on the modules. It's only
+  health of the modules and the data itself, + integrations but 'generic' like logs etc.
+  Remove everything related to third parties." Third-party and connector checks are out of
+  scope of section 13 (13.4).
 
 ## 12. Module Analyst: agentic module checks (S14)
 
@@ -924,7 +929,10 @@ read tools cannot see what a Filigran engineer checks by hand. Section 13 makes 
 **agentic check** the product: on every registered OpenCTI, OpenAEV and OpenCRQ the fleet
 runs a named list of checks every day, findings or not, each with the evidence it read and
 a pass, warn or fail verdict, and opens a finding for what the module itself does not
-declare. The deterministic checks of sections 4.3 to 4.5 stay as they are; the
+declare. The checks cover the health of the module, the health of its own data, and
+integrations only generically (platform errors, failing internal jobs counted platform-wide,
+the link between Filigran modules); no check reads a third party or a specific connector
+(Sam, 22 Nov 2026, 13.4). The deterministic checks of sections 4.3 to 4.5 stay as they are; the
 recommendation on a declared finding (section 12.4) stays as one output of a round.
 
 Reused from S14 unchanged: the cycle model (target type `module`, one open cycle per
@@ -989,79 +997,110 @@ and records the report (13.6) at the end, a partial report when the ceiling stop
 
 ### 13.4 Check lists (first version)
 
+Scope (Sam, 22 Nov 2026, section 11): the checks read **the module and its own data**, and
+integrations only in a generic way. No check reads, names or counts a specific connector,
+feed, collector, injector, executor or third-party data source; there is no per-connector
+split anywhere. Each list has three parts: module-native health, data health of the
+module's own objects, and generic integration health.
+
 **OpenCTI** (`health-opencti-checks`):
 
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
-| `connectors_alive` | connector states | active connector with no heartbeat for 30 min fail, 10 min warn |
-| `connector_works_errors` | works of the last 24 h per connector | a connector with over 20% works in error warn, over 50% fail; the error messages quoted |
-| `connector_queue` | queue depth per connector, now and 1 h ago | depth over 10,000 and growing warn, over 100,000 fail |
-| `ingestion_flowing` | objects created in the last 24 h vs the 7-day daily mean, per connector | under 25% of the mean warn, 0 with a non-zero mean fail |
-| `feeds_running` | RSS, CSV, JSON, TAXII feeds: running flag, last run, last error | running feed not run for 3 x its period warn, 6 x fail; any last error warn |
-| `playbooks_executing` | playbooks: running flag, last executions, queued messages | last 10 executions over 50% failed fail; stuck (queued and no execution for 1 h) warn |
-| `background_tasks` | background tasks and works stuck in progress or in error | in progress over 24 h warn, any task in error in 24 h warn, over 10 fail |
+| `platform_version_licence` | platform version, licence expiry, settings sanity (base URL set) | licence under 30 days warn, 7 days fail; version behind the range XTM One supports fail; a missing setting warn |
 | `managers_running` | platform managers (rule engine, retention, expiration, history, notification, sync) | an enabled manager not running fail |
-| `stream_consumers` | stream collections and consumers: lag | lag over 1 h warn, 6 h fail |
-| `connector_versions` | connector versions vs platform version | a connector two minor versions behind warn, a major behind fail |
-| `licence_and_settings` | licence expiry, platform settings sanity (base URL set, SMTP set) | licence under 30 days warn, 7 days fail; a missing setting warn |
+| `background_tasks` | background tasks: state, progress, errors | in progress over 24 h warn; any in error in 24 h warn, over 10 fail |
+| `workers_and_queues` | platform workers and the platform queues as a whole (total messages now and 1 h ago) | total over 100,000 and growing warn, over 1,000,000 fail; no worker consuming fail |
+| `streams` | live stream collections and their consumers: lag | lag over 1 h warn, 6 h fail |
+| `playbooks_executing` | native playbooks: running flag, last executions | last 10 executions over 50% failed fail; running with no execution for 24 h and messages queued warn |
 | `stale_drafts` | drafts not touched for 30 days | over 20 warn |
+| `data_volume_growth` | objects created in the last 24 h, platform-wide, vs the 7-day daily mean | under 25% of the mean warn, 0 with a non-zero mean fail |
+| `data_freshness` | the newest object creation and update times, platform-wide | no object created or updated for 24 h on a platform with a non-zero 7-day mean fail |
+| `data_completeness` | the module's own objects without author or without marking, relationships whose source or target no longer exists, where the API exposes them | over 5% of the sampled objects warn, over 20% fail; not exposed: `not_run` |
+| `platform_errors` | platform error log entries and error rate of the last 24 h (activity and audit errors) vs the 7-day mean | rate over 2 x the mean warn, over 5 x fail |
+| `works_in_error` | works in error in the last 24 h, counted platform-wide, never per source | over 10% of the works warn, over 30% fail |
 
 **OpenAEV** (`health-openaev-checks`):
 
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
-| `injectors_alive` | injectors: last seen, version | not seen for 1 h warn, 24 h fail |
-| `collectors_alive` | collectors: last seen, last run, version | not seen for 1 h warn, 24 h fail |
-| `executors_alive` | executors: last seen, version | an executor with agents and not seen for 1 h fail |
-| `agents_online` | agents online vs assets expected (asset groups with an executor) | under 80% online warn, under 50% fail |
-| `simulations_state` | simulations and scenarios failed, or running past their end | any failed in 24 h warn, running 24 h past end fail |
-| `scheduled_scenarios_ran` | scheduled scenarios and their last start | a scheduled start missed by over 1 h fail |
+| `platform_version_licence` | platform version, licence, settings sanity | as OpenCTI |
+| `simulations_state` | simulations failed, or running past their end | any failed in 24 h warn, running 24 h past end fail |
+| `scenarios_scheduled` | scenarios with a schedule and their last start | a scheduled start missed by over 1 h fail |
 | `expectations_due` | expectations past their due time without result | over 10% warn, over 30% fail |
-| `findings_ingestion` | findings created in the last 7 days vs the previous 7 | 0 after a non-zero week warn |
-| `opencti_link` | the OpenCTI connection of OpenAEV (configured, last successful call) | configured and failing fail |
-| `config_sanity` | mail and executor configuration | mail not configured warn |
-| `version_drift` | injectors, collectors, executors vs platform version | as `connector_versions` |
+| `findings_flowing` | findings created in the last 7 days vs the previous 7, platform-wide | 0 after a non-zero week warn |
+| `data_volume_growth` | simulations, scenarios, assets and findings created in the last 7 days vs the 4-week weekly mean | under 25% of the mean warn |
+| `data_completeness` | scenarios with no inject, simulations with no target, assets in no asset group, injects with no expectation, where the API exposes them | over 10% warn, over 30% fail; not exposed: `not_run` |
+| `data_consistency` | assets duplicated by hostname or IP, as the module exposes them | any duplicate warn |
+| `platform_errors` | platform error log entries and failed internal jobs in the last 24 h, platform-wide | rate over 2 x the 7-day mean warn, over 5 x fail |
+| `module_link` | the configured link to the Filigran module it reads (OpenCTI): configured and last successful call | configured and failing fail |
 
 **OpenCRQ** (`health-opencrq-checks`):
 
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
-| `connector_syncs` | connectors and their syncs | last sync failed fail; no success for 2 x its period warn |
-| `jobs_state` | jobs failed or stuck | any failed in 24 h warn, running over 6 h fail |
+| `platform_version` | platform version vs the version XTM One supports | behind the supported range fail |
+| `jobs_state` | jobs failed or stuck, platform-wide | any failed in 24 h warn, running over 6 h fail |
 | `crq_run_fresh` | CRQ run history: last successful run and its age | over 7 days warn, 30 days fail, none fail |
 | `scenario_inputs` | risk scenarios missing a TEF input or a financial profile | any warn, over 25% fail |
-| `data_sources_fresh` | Drata controls and CVE data last update | over 7 days warn, 30 days fail |
-| `version_drift` | platform version vs the version XTM One supports | behind the supported range fail |
+| `data_completeness` | risk scenarios never scored, or scored before their inputs last changed | any warn, over 25% fail |
+| `data_volume_growth` | risk scenarios and CRQ runs created in the last 30 days vs the previous 30 | 0 after a non-zero month warn |
+| `platform_errors` | failed internal jobs and platform error entries in the last 24 h, platform-wide | rate over 2 x the 7-day mean warn, over 5 x fail |
+| `module_link` | the configured links to the Filigran modules it reads (OpenCTI, OpenAEV): configured and last successful call | configured and failing fail |
 
-The lists grow by playbook edits; a check added needs its tool on the allow-list first.
+`module_link` is our reading of "integrations, generic": a link between two Filigran modules
+is not a third party. It reads the configured flag and the last call result only, never the
+linked module's data. Dropped at the first word otherwise.
+
+Out of scope by decision (Sam, 22 Nov 2026), and not to be added back by a playbook edit:
+connector, feed, collector, injector and executor liveness, queues, works, syncs or versions
+read per component, ingestion per connector, and the freshness of third-party data sources
+(compliance tools, vulnerability feeds and the like). The deterministic checks of sections
+4.3 to 4.5 are not changed by this section.
+
+The lists grow by playbook edits within this scope; a check added needs its tool on the
+allow-list first.
 
 ### 13.5 Tools
 
 The two locks of 12.3 stay: the registration's integration under the read-only binding, and
 `MODULE_ANALYST_TOOLS` (renamed `MODULE_CHECKER_TOOLS`, one tuple per provider). Each tool
-added is a read tool the classifier reads as a read (test (k) of 12.9).
+added is a read tool the classifier reads as a read (test (k) of 12.9). No tool on the
+list reads a specific connector, feed, collector, injector, executor or third-party data
+source (13.4 scope).
 
+- **Removed from the S14 allow-list:** `list_opencti_connector_states`,
+  `list_opencti_feed_states`, `query_openaev_connectors`, `list_opencrq_connectors`,
+  `list_opencrq_connector_syncs`. Kept: `get_opencti_platform_version`,
+  `list_opencti_playbook_states`, `get_opencrq_platform_version`, `list_opencrq_jobs`,
+  `get_opencrq_job`. The tools themselves stay in their providers for the other agents.
 - **Existing read tools added to the allow-list:** OpenCTI `get_opencti_entity_stats`,
   `query_opencti_activity`, `list_opencti_drafts`; OpenAEV `search_openaev_exercises`,
   `get_openaev_exercise`, `search_openaev_scenarios`, `search_openaev_findings`,
   `search_openaev_assets`, `search_openaev_asset_groups`; OpenCRQ
   `list_opencrq_crq_run_history`, `get_opencrq_crq_run`, `get_opencrq_crq_settings`,
-  `list_opencrq_risk_scenarios`, `get_opencrq_tef_input`, `get_opencrq_financial_profile`,
-  `list_opencrq_drata_controls`, `list_opencrq_cves`.
+  `list_opencrq_risk_scenarios`, `get_opencrq_tef_input`, `get_opencrq_financial_profile`.
 - **New read-only health tools** (`providers/<module>/health_reads.py`, the S14a-2b-3
-  pattern), where the existing tools cannot read the data or classify as writes:
-  - OpenCTI: `list_opencti_works` (works per connector, status, errors, last 24 h),
-    `list_opencti_background_tasks` (state, progress, errors), `get_opencti_managers`
-    (platform managers and their running flag), `get_opencti_queue_stats` (message counts
-    per connector queue), `list_opencti_stream_consumers` (collections, consumers, lag),
-    `get_opencti_licence` (expiry, settings sanity fields).
-  - OpenAEV: `list_openaev_executors`, `list_openaev_collectors`, `list_openaev_injectors`
-    (last seen, version: the reads of `query_openaev_connectors` split by kind, each
-    returning only state fields), `count_openaev_agents_online` (online vs expected by asset
-    group), `list_openaev_expectations_due`, `get_openaev_platform_health` (version, OpenCTI
-    link, mail and executor configuration flags).
-  - OpenCRQ: the existing tools cover the playbook; `get_opencrq_data_source_freshness`
-    only when `list_opencrq_drata_controls` and `list_opencrq_cves` give no update time.
+  pattern), where the existing tools cannot read the data or classify as writes. Every
+  count is platform-wide; none takes or returns a connector id:
+  - OpenCTI: `list_opencti_background_tasks` (state, progress, errors),
+    `get_opencti_managers` (platform managers and their running flag),
+    `get_opencti_platform_queues` (workers and total queued messages, platform-wide),
+    `list_opencti_stream_consumers` (live collections, consumers, lag),
+    `get_opencti_licence` (expiry, settings sanity fields), `get_opencti_data_health`
+    (objects created and updated per day over 7 days, newest times, works in error
+    counted platform-wide, sampled completeness and dangling relationships where exposed),
+    `get_opencti_error_rate` (platform error entries per day over 7 days).
+  - OpenAEV: `get_openaev_platform_health` (version, licence, settings sanity, the
+    OpenCTI link: configured and last call result), `list_openaev_expectations_due`,
+    `get_openaev_data_health` (objects created per week over 4 weeks, scenarios with no
+    inject, simulations with no target, assets in no group, injects with no expectation,
+    duplicate assets, where exposed), `get_openaev_error_rate` (error entries and failed
+    internal jobs per day over 7 days).
+  - OpenCRQ: `get_opencrq_data_health` (scenarios never scored or scored before their
+    inputs changed, objects created per 30 days), `get_opencrq_platform_health` (error
+    entries and failed jobs per day over 7 days, the links to OpenCTI and OpenAEV:
+    configured and last call result).
   Each S15b tool names in its docstring the module query it runs and the module version it
   needs; a module that lacks the query answers `not_run` for the checks that need it.
 
@@ -1090,15 +1129,16 @@ added is a read tool the classifier reads as a read (test (k) of 12.9).
   labelled "Module health checks" in Spend limits.
 - Outside agentic quota under the S14 ceiling (12.5), one ledger for the three checkers.
 - **Default ceiling, to re-measure (S15d).** A round reads more than the S14 quiet cycle
-  (about 22,600 tokens): estimated 50,000 to 70,000 tokens per module per round with 12
-  checks. Provisional defaults, until the lab measurement replaces them here: per-cycle cap
+  (about 22,600 tokens): estimated 45,000 to 65,000 tokens per module per round with 8 to
+  12 checks (OpenCTI 12, OpenAEV 10, OpenCRQ 8; the per-connector reads are gone, the
+  data-health reads are aggregates). Provisional defaults, until the lab measurement replaces them here: per-cycle cap
   **150,000 tokens**, **1,000,000 tokens and 8 USD a day, 20,000,000 tokens and 120 USD a
   month**. The measurement runs the three rounds in the lab with zero open findings and
   with one induced fault per module, and writes the figures in this section.
 
 ### 13.8 Where it shows
 
-- **Health page, module card:** "Agentic checks: 14 passed, 2 warn, 1 fail, last run
+- **Health page, module card:** "Agentic checks: 9 passed, 2 warn, 1 fail, last run
   <time>" with a link to the report; "Run checks now" for an administrator (replaces
   "Investigate now"). The report view lists every check with its verdict, evidence and
   recommendation; a failed check links to its agentic finding.
@@ -1118,14 +1158,18 @@ added is a read tool the classifier reads as a read (test (k) of 12.9).
   zero open findings: the daily `module_round` delegates one cycle per registration with no
   admin action, each run calls its module's tools and records a report with every check of
   its playbook (backend test, stubbed model and integrations; lab retest at deploy).
-- (m) A stubbed fault per module (a connector with no heartbeat, an executor offline, a
-  failed job) yields a fail verdict and an open `<module>.agentic.<check>` finding with its
+- (m) A stubbed module-native fault per module (OpenCTI: an enabled manager not running;
+  OpenAEV: a scheduled scenario whose start was missed; OpenCRQ: a failed job) yields a fail verdict and an open `<module>.agentic.<check>` finding with its
   recommendation; the next round with the fault removed resolves it.
 - (n) The seeded fleet: the orchestrator holds a `delegate` handover to each checker, each
   checker holds its skill, and the fleet graph payload draws the edges.
 - (h), (i), (j), (k) of 12.9 extended to the three checkers: no agentic quota counter
   moves, the ceiling stops the round, nothing starts in Copilot mode, off or `ai_disabled`,
   every allow-listed tool classifies as a read and a write by name is refused.
+- (o) Scope: no tool of `MODULE_CHECKER_TOOLS` and no check id of the three playbooks
+  names a connector, feed, collector, injector, executor or third-party source (a
+  deny-list of name fragments over the tuple and the seeded skill content), and no new
+  health tool accepts a connector id argument.
 
 ### 13.10 Sub-slices (`Refs #101 (S15x of the plan)`)
 
