@@ -320,7 +320,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   filigran_ai: "Filigran AI",
   planhat: "Planhat",
   metabase: "Metabase",
-  odoo: "Odoo",
   openaev: "OpenAEV",
   opencti: "OpenCTI",
   opencrq: "OpenCRQ",
@@ -425,6 +424,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   docusign: "DocuSign",
   google_a2a: "Google Agent Platform A2A",
   nova: "Nova Prompt Safety",
+  netsuite: "NetSuite",
 };
 
 // ── MCP transport display names ─────────────────────────────────────────────
@@ -583,6 +583,8 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
+  erp: "ERP",
+  finance: "Finance",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -774,7 +776,6 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   filigran_ai: "/logos/filigran.svg",
   planhat: "/logos/planhat.svg",
   metabase: "/logos/metabase.svg",
-  odoo: "/logos/odoo.svg",
   grafana: "/logos/grafana.svg",
   openaev: "/logos/openaev.svg",
   opencti: "/logos/opencti.svg",
