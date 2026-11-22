@@ -564,8 +564,8 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_UPSERT_ROWS_TOOL,
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
-                "on source + external_id (rows a person wrote are never touched), tech stack and AI systems by name "
-                "(added if new). Validated like the CSV import. Preview first (apply false): counts and refusals with "
+                "on source + external_id (rows a person wrote are never touched), tech stack and AI systems by name. "
+                "Validated like the CSV import. Preview first (apply false): counts and refusals with "
                 "reasons. A rows_format other than profile maps a platform's raw objects on the server."
                 + SHARED_CONTEXT_CLAUSE
             ),
@@ -609,8 +609,8 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_IMPORT_TOOL,
             description=(
-                "Run the Settings > Organization import of one section from a connected platform (same rules: "
-                "hand rows kept, the source's own rows updated). Preview first: new, updated, skipped, the source count."
+                "Run the Settings > Organization import of one section from a connected platform (hand rows "
+                "kept, the source's rows updated). Preview first: new, updated, skipped, source count."
                 + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
