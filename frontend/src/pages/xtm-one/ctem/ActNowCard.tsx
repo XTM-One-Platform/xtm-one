@@ -36,7 +36,9 @@ import { useFormatter } from "@/i18n";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { cn, formatCompactNumber } from "@/lib/utils";
 import { CTEM_PRIORITY_CONFIG } from "@/lib/constants";
-import { useWorkItemsWaitingForMe } from "@/hooks/api/useWorkItemApi";
+import { useWorkItems, useWorkItemsWaitingForMe } from "@/hooks/api/useWorkItemApi";
+import { waitsForAnswer } from "@/lib/work-item-context";
+import { REMEDIATION_DECISION_PREFIX, caseIdOfDecisionKey } from "./case-gates";
 import { usePendingApprovalsByTool } from "@/hooks/api/useAssignmentApi";
 import { useCtemCases } from "@/hooks/api/useCtemCasesApi";
 import { useCtemSignalList } from "@/hooks/api/useCtemSignalsApi";
@@ -244,6 +246,17 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
   const caseSignals = useCtemSignalList("case_opened", 200);
   const scopes = useMemo(() => caseScopes(caseSignals.data?.pages.flatMap((p) => p.signals) ?? []), [caseSignals.data]);
   const loopCases = useMemo(() => actNowCases(cases.data?.cases ?? [], scopes), [cases.data, scopes]);
+  // The cases whose remediation decision waits for a person (CTEM-17-UI): the
+  // open decision items the reader can see, one read for every case.
+  const decisions = useWorkItems({ correlation_key_prefix: REMEDIATION_DECISION_PREFIX, open_only: true, limit: 50 });
+  const decisionCases = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of decisions.data ?? []) {
+      const caseId = caseIdOfDecisionKey(item.correlation_key);
+      if (caseId && waitsForAnswer(item)) ids.add(caseId);
+    }
+    return ids;
+  }, [decisions.data]);
 
   const waitingCount = waiting.data?.count ?? 0;
   const approvalRuns =
@@ -255,6 +268,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
       const countdown = slaCountdown(c.sla_due_at, now);
       const scope = scopes.get(c.id);
       const parts = [
+        decisionCases.has(c.id) ? t_i18n("Remediation decision waits") : "",
         scope?.crownJewels.length
           ? t_i18n("Crown jewel: {name}", { name: scope.crownJewels.join(", ") })
           : scope?.criticality
@@ -292,7 +306,7 @@ export function ActNowCard({ rows, briefingActions = [], aiLockReason, onContent
       });
     }
     return actNowQueue([...rows, ...extra], undefined, briefingActions);
-  }, [rows, briefingActions, loopCases, scopes, now, intl.locale, waitingCount, waiting.data?.oldest, approvalRuns, navigate, t_i18n]);
+  }, [rows, briefingActions, loopCases, scopes, decisionCases, now, intl.locale, waitingCount, waiting.data?.oldest, approvalRuns, navigate, t_i18n]);
 
   const shown = expanded ? queue : queue.slice(0, ACT_NOW_COLLAPSED);
   const more = queue.length > ACT_NOW_COLLAPSED;

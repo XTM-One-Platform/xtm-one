@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.sandbox_workspace import structured
-from app.services.sandbox_workspace.jsonmerge import merge_json_objects
+from app.services.sandbox_workspace.jsonmerge import merge_json_objects, removed_keys
 from app.services.sandbox_workspace.reading import is_text
 from app.services.sandbox_workspace.rebase import ConflictRegion, _added, merge_text
 
@@ -87,6 +87,9 @@ class PathMerge:
     added_both: tuple[str, ...] = ()
     #: How often each side holds each of those lines: a merge holds a line at most as often as one side.
     side_counts: tuple[tuple[str, int], ...] = ()
+    #: The keys of a JSON object file the merge base and the ref hold that the branch removed: a merge removes them
+    #: without a conflict, so the answer names them for a check (a stale copy of a catalog loses keys that way, #1095).
+    removed_keys: tuple[str, ...] = ()
 
     @property
     def clean(self) -> bool:
@@ -144,10 +147,12 @@ def _checks(path: str, base_text: str, ours_text: str, theirs_text: str) -> dict
     )
     ours_counts = Counter(line.strip() for line in ours_text.splitlines())
     theirs_counts = Counter(line.strip() for line in theirs_text.splitlines())
+    kind = _structured_sides(path, ours_text, theirs_text)
     return {
-        "structured_kind": _structured_sides(path, ours_text, theirs_text),
+        "structured_kind": kind,
         "added_both": both,
         "side_counts": tuple((line, max(ours_counts[line], theirs_counts[line])) for line in both),
+        "removed_keys": tuple(removed_keys(base_text, ours_text, theirs_text)) if kind == structured.JSON else (),
     }
 
 
@@ -230,6 +235,15 @@ class LineMerge:
         return sorted(path for path, merge in self.merges.items() if not merge.clean)
 
     @property
+    def removed(self) -> list[str]:
+        """``path: key, key`` for every JSON path whose branch removed keys the base and the ref hold (#1095)."""
+        return [
+            f"{path}: {_keys_shown(merge.removed_keys)}"
+            for path, merge in sorted(self.merges.items())
+            if merge.removed_keys
+        ]
+
+    @property
     def validated(self) -> list[str]:
         """``path (FORMAT)`` for every clean structured path: parsed after the merge, no duplicate key (#11986)."""
         return sorted(
@@ -308,6 +322,27 @@ async def line_merge(
         except TimeoutError:
             merges[path] = PathMerge(path, reason=_OVER_TIME_BUDGET)
     return LineMerge(merges)
+
+
+#: Keys of one path named in an answer; the rest are counted.
+MAX_REMOVED_KEYS_SHOWN = 20
+
+
+def _keys_shown(keys: tuple[str, ...]) -> str:
+    shown = ", ".join(keys[:MAX_REMOVED_KEYS_SHOWN])
+    more = len(keys) - MAX_REMOVED_KEYS_SHOWN
+    return shown + (f" and {more} more" if more > 0 else "")
+
+
+def removed_lines(merged: LineMerge | None) -> list[str]:
+    """The answer lines naming the JSON keys the branch removed, or none (#1095)."""
+    if merged is None or not merged.removed:
+        return []
+    return [
+        f"Keys the branch removed that the merge base and the ref still hold ({len(merged.removed)} path(s)); "
+        "the merge removes them too: restore any the branch dropped by mistake (a stale copy of the file):",
+        *(f"- {line}" for line in merged.removed),
+    ]
 
 
 _OVER_TIME_BUDGET = (
