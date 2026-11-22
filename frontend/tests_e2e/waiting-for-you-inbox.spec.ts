@@ -135,7 +135,7 @@ test.describe('Waiting for you: one inbox across every source', () => {
     await expect(rows(page).nth(3)).toContainText('Run: Export desk');
   });
 
-  test('each decision is answered from the side panel and leaves the list', async ({ page }) => {
+  test('each decision is answered from the dialog and leaves the list', async ({ page }) => {
     const answers = await serveInbox(page);
     await page.goto('/tasks/work-items?view=waiting');
     await expect(rows(page)).toHaveCount(4, { timeout: 15_000 });

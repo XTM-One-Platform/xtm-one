@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { WaitingForYou } from "@/components/decisions/WaitingForYou";
+import { useWaitingDecisions } from "@/hooks/api/useDecisionApi";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { VisibilityEmptyHint } from "@/components/ui/visibility-filter";
@@ -291,6 +292,10 @@ export default function WorkItemsTab({
   const staleOnly = viewParam === "stale";
   const scheduledOnly = viewParam === "scheduled";
   const waitingForMe = viewParam === WAITING_FOR_ME_VIEW;
+  // "Waiting for me" with the read switch on is the decision inbox alone: one records list per
+  // view (UX r1 B2 on #1081). Switch off, the per-engine work items list stays.
+  const waitingDecisions = useWaitingDecisions(waitingForMe);
+  const inboxView = waitingForMe && waitingDecisions.data?.enabled === true;
   const sortKey = table.sort && (SORT_KEYS as readonly string[]).includes(table.sort.key) ? (table.sort.key as WorkItemOrder) : "created";
   const direction = table.sort?.direction ?? "desc";
 
@@ -1139,6 +1144,29 @@ export default function WorkItemsTab({
     },
   ];
 
+  const viewSwitch = (
+    <SegmentedFilter
+      ariaLabel={t_i18n("View filter")}
+      testId="work-items-view-filter"
+      options={VIEW_FILTERS}
+      value={viewParam}
+      onChange={(key) => {
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete("stale");
+            if (key) next.set("view", key);
+            else next.delete("view");
+            next.delete(`${URL_KEY}page`);
+            next.delete("page");
+            return next;
+          },
+          { replace: true },
+        );
+      }}
+    />
+  );
+
   return (
     <div className="space-y-4">
       {confirmNode}
@@ -1160,13 +1188,13 @@ export default function WorkItemsTab({
         </div>
       )}
 
-      {/* "Waiting for me" lists every open decision first, whatever asked it (#842, S5). */}
-      {waitingForMe && <WaitingForYou />}
-
-      {/* One records table (dev-docs/reference/data-tables.md, slice 8d): search, Visibility,
+      {/* "Waiting for me" lists every open decision, whatever asked it (#842, S5): its own list,
+          the view switch first on its toolbar so the reader leaves it from there. */}
+      {/* Otherwise one records table (dev-docs/reference/data-tables.md, slice 8d): search, Visibility,
           the Status pill (on the row itself), the view, scope, fleet and owner filters (Filters
           pill), sort, Columns, total, page size and URL state are the table's. The grid view keeps
           each row on the Operations row contract (OpsRowGrid) as its card; the list view draws columns. */}
+      {inboxView ? <WaitingForYou toolbarLead={viewSwitch} /> : (
       <DataTable<WorkItem>
         rows={listLoading ? [] : displayItems}
         columns={columns}
@@ -1222,26 +1250,7 @@ export default function WorkItemsTab({
                 onChange={(key) => updateParam("scope", key || undefined)}
               />
             )}
-            <SegmentedFilter
-              ariaLabel={t_i18n("View filter")}
-              testId="work-items-view-filter"
-              options={VIEW_FILTERS}
-              value={viewParam}
-              onChange={(key) => {
-                setSearchParams(
-                  (prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.delete("stale");
-                    if (key) next.set("view", key);
-                    else next.delete("view");
-                    next.delete(`${URL_KEY}page`);
-                    next.delete("page");
-                    return next;
-                  },
-                  { replace: true },
-                );
-              }}
-            />
+            {viewSwitch}
             {/* The shared Fleet + Agent pair, as on Executions. */}
             <FleetAgentPickerGroup
               testId="work-items-picker-group"
@@ -1347,6 +1356,7 @@ export default function WorkItemsTab({
           <OpsListSkeleton label={t_i18n("Loading...")} pageSize={size} actionsClassName={ACTIONS_COLUMN} actions={2} />
         )}
       />
+      )}
 
       <WorkItemDetailDialog itemId={openId} onClose={closeDetails} actionsFor={actionsFor} />
       <WorkItemCloseDialog

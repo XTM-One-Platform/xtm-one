@@ -86,12 +86,23 @@ describe("WaitingForYou", () => {
     }
   });
 
-  it("opens the card in a side panel and answers through the one answer path", async () => {
+  it("filters the list by kind from the shared toolbar", async () => {
+    get.mockResolvedValue({ enabled: true, reason: null, items: FOUR });
+    renderWithProviders(<WaitingForYou />);
+    expect(await screen.findAllByTestId("waiting-for-you-row")).toHaveLength(4);
+    // The shared toolbar: a search box and the Kind pill (UX r1 B1 on #1081).
+    expect(screen.getByRole("searchbox")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Kind/ })).toBeTruthy();
+  });
+
+  it("opens the card in the centred dialog and answers through the one answer path", async () => {
     get.mockResolvedValue({ enabled: true, reason: null, items: FOUR });
     renderWithProviders(<WaitingForYou />);
     const rows = await screen.findAllByTestId("waiting-for-you-row");
     fireEvent.click(within(rows[2]).getByText("Question of flow1"));
     const panel = await screen.findByTestId("waiting-for-you-panel");
+    // The shared dialog, titled by the source (no slide-over, UX r1 B3 on #1081).
+    expect(screen.getByRole("dialog", { name: "Flow: Origin flow1" })).toBeTruthy();
     expect(within(panel).getByTestId("waiting-decision-source-link").getAttribute("href")).toBe("/somewhere/flow1");
     fireEvent.click(within(panel).getByText("Go flow1"));
     await waitFor(() =>

@@ -20312,7 +20312,6 @@
   "Answer by": "Responder antes de",
   "Could not load what is waiting for you.": "No se pudo cargar lo que le espera.",
   "The agent has your answer and goes on.": "El agente tiene su respuesta y continúa.",
-  "Decisions waiting for you": "Decisiones que le esperan",
   "Run this {kind} on {name}?": "¿Ejecutar {kind} en {name}?",
   "The agent waits {time} for your decision.": "El agente espera su decisión durante {time}.",
   "Runs this command once. The machine asks again next time.": "Ejecuta este comando una vez. La máquina volverá a preguntar la próxima vez.",
