@@ -44,6 +44,7 @@ import {
   useDecisionLink,
   type DecisionLinkView,
 } from "@/hooks/api/useDecisionLinkApi";
+import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 
@@ -213,13 +214,17 @@ export default function DecisionLink() {
   const { t_i18n } = useFormatter();
   const link = useDecisionLink(token);
   const answer = useAnswerDecisionLink(token);
+  // The answer route is AI-gated (FR-018): with AI off the link reads the
+  // decision and says why it cannot answer, it never clicks into a refusal.
+  const aiOff = useAiActionDisabled();
+  const aiReason = useAiDisabledReason();
   // One answer per page load: React's double effect in development and a
   // refetch never send the option twice (the server is single use anyway).
   const sent = useRef(false);
 
   const view = link.data;
   const isOptionLink = !!view && view.option !== TEXT_LINK_OPTION;
-  const shouldAnswer = !!view && view.status === "open" && isOptionLink;
+  const shouldAnswer = !!view && view.status === "open" && isOptionLink && !aiOff;
 
   useEffect(() => {
     if (!shouldAnswer || sent.current) return;
@@ -274,14 +279,15 @@ export default function DecisionLink() {
     );
   }
 
-  const recording = isOptionLink || answer.isPending;
+  const recording = (isOptionLink && !aiOff) || answer.isPending;
   const option = isOptionLink ? view.option_label || view.option : null;
 
   return (
     <Frame sourceLink={view.source_link} card>
       <DecisionCard
         view={linkDecisionView(view, t_i18n)}
-        canAnswer
+        canAnswer={!aiOff}
+        readOnlyNote={aiReason ?? undefined}
         pending={recording}
         onAnswer={({ option: picked, text }) => answer.mutate({ option: picked, text })}
         testId="decision-link-card"

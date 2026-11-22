@@ -12,6 +12,13 @@ import { renderWithProviders } from "@/testing/providers";
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("@/lib/api", async (importOriginal) => ({ ...(await importOriginal<object>()), api }));
 
+const ai = vi.hoisted(() => ({ off: false }));
+vi.mock("@/hooks/useAiDisabled", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useAiDisabled")>()),
+  useAiActionDisabled: () => ai.off,
+  useAiDisabledReason: () => (ai.off ? "AI is disabled on this platform." : null),
+}));
+
 import DecisionLink from "./DecisionLink";
 
 const ASK = {
@@ -59,6 +66,7 @@ function draw() {
 const refusal = (status: number) => Object.assign(new Error("refused"), { status });
 
 beforeEach(() => {
+  ai.off = false;
   api.get.mockReset();
   api.post.mockReset();
 });
@@ -75,6 +83,15 @@ describe("DecisionLink", () => {
     expect(screen.getByText("Ship now")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByTestId("decision-link-source")).toHaveAttribute("href", "/work-items?item=w-1");
+  });
+
+  it("answers nothing and says why when AI is off", async () => {
+    ai.off = true;
+    api.get.mockResolvedValue(view());
+    draw();
+    expect(await screen.findByText("AI is disabled on this platform.")).toBeInTheDocument();
+    expect(screen.queryByTestId("decision-link-state")).toBeNull();
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it("shows the decided state and answers nothing on a closed decision", async () => {
