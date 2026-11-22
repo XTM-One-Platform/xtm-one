@@ -377,6 +377,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sublime: "Sublime Security",
   aikido: "Aikido Security",
   airwallex: "Airwallex",
+  rydoo: "Rydoo",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
