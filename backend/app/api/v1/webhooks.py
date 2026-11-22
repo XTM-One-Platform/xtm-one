@@ -53,8 +53,7 @@ Signature validation (both endpoints):
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
   - Airwallex: x-signature over x-timestamp + body (HMAC-SHA256, 5 min replay window)
-  - Rydoo: unsigned expense events, refused unless the URL carries the
-    integration's webhook_token as ?token= (no token configured: refused)
+  - Spendesk: x-spendesk-webhook-signature header (HMAC-SHA256)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -188,7 +187,6 @@ from app.core.security import (
 from app.core.utils import (
     format_exception_message,
     is_valid_uuid,
-    redact_secret_text,
     request_client_ip,
     safe_uuid,
 )
@@ -199,11 +197,9 @@ from app.integrations.providers.airwallex.webhooks import TIMESTAMP_HEADER as AI
 from app.integrations.providers.airwallex.webhooks import is_delivery as is_airwallex_delivery
 from app.integrations.providers.airwallex.webhooks import trigger_event as airwallex_trigger_event
 from app.integrations.providers.airwallex.webhooks import verify_signature as verify_airwallex_signature
-from app.integrations.providers.rydoo.webhooks import TOKEN_FIELD as RYDOO_TOKEN_FIELD
-from app.integrations.providers.rydoo.webhooks import TOKEN_PARAM as RYDOO_TOKEN_PARAM
-from app.integrations.providers.rydoo.webhooks import is_delivery as is_rydoo_delivery
-from app.integrations.providers.rydoo.webhooks import token_matches as rydoo_token_matches
-from app.integrations.providers.rydoo.webhooks import trigger_event as rydoo_trigger_event
+from app.integrations.providers.spendesk.webhooks import SIGNATURE_HEADER as SPENDESK_SIGNATURE_HEADER
+from app.integrations.providers.spendesk.webhooks import event_key as spendesk_event_key
+from app.integrations.providers.spendesk.webhooks import verify_signature as verify_spendesk_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -212,7 +208,7 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -2192,11 +2188,12 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
 
-    # Rydoo: a flat expense event (eventType, expenseId, companyId); the
-    # trigger key is rydoo_ and its snake form (ExpenseApproved ->
-    # rydoo_expense_approved).
-    if is_rydoo_delivery(payload):
-        return rydoo_trigger_event(payload["eventType"])
+    # Spendesk: ``event.entity`` and ``event.eventType`` name the event
+    # (payables + created -> payables_created), signed per delivery.
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER):
+        spendesk_key = spendesk_event_key(payload)
+        if spendesk_key:
+            return spendesk_key
 
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
@@ -2229,8 +2226,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         return aikido_trigger_event(payload["event_type"])
     if isinstance(payload, dict) and is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
-    if is_rydoo_delivery(payload):
-        return rydoo_trigger_event(payload["eventType"])
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER) and spendesk_event_key(payload):
+        return spendesk_event_key(payload)
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2569,6 +2566,7 @@ def _verify_signature(
     perk_sig = request.headers.get("Tk-Signature", "")
     aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
     airwallex_ts = request.headers.get(AIRWALLEX_TIMESTAMP_HEADER, "")
+    spendesk_sig = request.headers.get(SPENDESK_SIGNATURE_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2609,6 +2607,11 @@ def _verify_signature(
         ok, reason = verify_airwallex_signature(body, secret, request.headers.get("X-Signature", ""), airwallex_ts)
         if not ok:
             raise HTTPException(status_code=401, detail=f"Invalid Airwallex webhook signature: {reason}")
+    elif spendesk_sig:
+        # Spendesk signs the payload (hex HMAC-SHA256) with the webhook secret.
+        ok, reason = verify_spendesk_signature(body, secret, spendesk_sig)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Spendesk webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):
@@ -3889,28 +3892,6 @@ async def _handle_docusign_connect(
     return await docusign_connect.dispatch_connect_delivery(integration_id, extra, payload)
 
 
-def _verify_rydoo_webhook_token(extra_config_enc: str | None, request: Request, *, context: str) -> None:
-    """Refuse (401) a Rydoo delivery that does not carry the integration's webhook token.
-
-    Rydoo neither signs its expense webhook nor sets a custom header, so the
-    URL given to Rydoo carries the integration's ``webhook_token`` as
-    ``?token=`` (``X-Webhook-Token`` is accepted too). No token configured
-    refuses every delivery: the integration URL is never left open.
-    """
-    extra = _read_webhook_config(extra_config_enc, context=context) if extra_config_enc else {}
-    configured = _usable_secret(
-        extra.get(RYDOO_TOKEN_FIELD), refusal="Missing or invalid Rydoo webhook token", context=context
-    )
-    if not configured:
-        logger.warning("Rydoo webhook delivery refused (%s): no webhook token configured", context)
-        raise HTTPException(status_code=401, detail="Missing or invalid Rydoo webhook token")
-    presented = str(request.query_params.get(RYDOO_TOKEN_PARAM) or "") or request.headers.get(
-        _STATIC_TOKEN_HEADERS[0], ""
-    )
-    if not rydoo_token_matches(presented, configured):
-        raise HTTPException(status_code=401, detail="Missing or invalid Rydoo webhook token")
-
-
 async def _handle_dealhub_webhook(
     integration_id: str,
     extra_config_enc: str | None,
@@ -4017,10 +3998,6 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
             payload_raw,
             callback_token=str(request.query_params.get(wordsmith_webhooks.CALLBACK_PARAM) or ""),
         )
-    if integ_pre and integ_pre.provider == "rydoo":
-        # Rydoo expense webhook: unsigned, so the integration's webhook token
-        # in the URL gates it before the dedup cache; refused without one.
-        _verify_rydoo_webhook_token(integ_pre.extra_config_enc, request, context=f"integration={integration_id}")
     if integ_pre and integ_pre.extra_config_enc:
         # HubSpot signs every delivery with the app client secret, so the
         # signature must be verified for the configured provider regardless of
@@ -4306,8 +4283,7 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
                     wh_trigger_context = {
                         "type": "webhook",
                         "scope": "integration",
-                        # A token the URL carries (Rydoo's ?token=) never reaches the run.
-                        "url": redact_secret_text(str(request.url)),
+                        "url": str(request.url),
                         "method": request.method,
                         "provider": provider,
                         "event_key": event_key,
@@ -4768,6 +4744,14 @@ async def receive_assignment_webhook(
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
             )
+            if provider == "opencti":
+                # The analyst's mark on a drafted Grouping answers the CTEM review
+                # gate waiting on its coverage request (CTEM-16, #1089).
+                await ctem_analyst_mark.note_event(
+                    provider,
+                    payload,
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if provider == "openaev":
                 # An OpenAEV result a CTEM case waits on moves it (CTEM-15, #918).
                 await ctem_openaev_events.note_event(

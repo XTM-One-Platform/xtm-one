@@ -714,6 +714,7 @@ ce:
   - backend/app/enterprise
   - backend/app/integrations/providers/aikido  # a connector
   - backend/app/integrations/providers/airwallex  # a connector
+  - backend/app/integrations/providers/spendesk  # a connector
   - backend/app/integrations/providers/ashby  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
   - backend/app/integrations/providers/dealhub  # a connector
@@ -732,7 +733,6 @@ ce:
   - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
-  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector

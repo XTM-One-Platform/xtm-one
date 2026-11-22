@@ -378,7 +378,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sublime: "Sublime Security",
   aikido: "Aikido Security",
   airwallex: "Airwallex",
-  rydoo: "Rydoo",
+  spendesk: "Spendesk",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -537,6 +537,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   crm: "CRM",
   documentation: "Documentation",
   travel: "Travel & Booking",
+  spend_management: "Spend Management",
   compliance: "Compliance",
   data_governance: "Data Governance",
   ediscovery: "eDiscovery",
@@ -591,7 +592,6 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   accounting: "Accounting",
   erp: "ERP",
   finance: "Finance & Treasury",
-  expense_management: "Expense Management",
   cpq: "Quoting (CPQ)",
 } as const;
 
