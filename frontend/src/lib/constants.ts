@@ -425,6 +425,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   google_a2a: "Google Agent Platform A2A",
   nova: "Nova Prompt Safety",
   netsuite: "NetSuite",
+  pennylane: "Pennylane",
 };
 
 // ── MCP transport display names ─────────────────────────────────────────────
