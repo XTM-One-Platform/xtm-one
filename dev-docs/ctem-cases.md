@@ -202,8 +202,21 @@ for any other case or when no asset runs the product:
 
 Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
-An asset already on the fixed version leaving the case's scope, and the case
-page, are later slices of #1252.
+
+**Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
+an upgrade case with a known fixed version, open or resolved, is checked
+against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
+asset running the product runs the fixed version or later (`all_on_fixed`: at
+least one asset on it, none below, none `unknown` or unreadable), the case
+leaves the scope. An open case resolves with the evidence "every asset running
+the product runs the fixed version or later (asset inventory)" and resolution
+kind `fixed`; a resolved case is not reopened by member issues that stay open
+at source (OpenCTI still relates the CVE to a version nobody runs). The
+members are left as the source reports them. A case with a validation plan
+still closes only on its passing validation (#857); a case whose fixed version
+is unknown never leaves the scope on the inventory; an asset that falls back
+below the fix (or a new one running an old version) brings the case back
+through the usual reopen rule. The case page is the next slice of #1252.
 
 ### 4.3 Recompute
 
@@ -324,15 +337,26 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 ### 7.0 Shared visual language (UX round 1 B4, B5, B7; round 2 B1)
 
-- **One colour per state, everywhere** (board, list badge, case page, widget),
-  through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
-  needs attention `medium` (alert), in progress `info`, mitigated, watching
-  `low` with the DS `eye` icon as the Chip's own `startIcon` (inside the chip,
-  same left edge and baseline as its siblings) and the
-  `feedback-success-tertiary` segment on every counts bar (#857, UX rounds 1
-  B3 and 2 B1: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
-  `feedback-success-primary` segment), accepted risk `neutral`. AI purple is never used on Cases (it is
-  the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
+- **One colour per state and per priority, everywhere** (board, list badge,
+  case page, widget, signal state of the loop trace), through the shared
+  outlined `ToneBadge` (`components/ui/tone-badge.tsx`), the hot hues of Work
+  items and Tasks (whose page-local badges have no visible edge and are not on
+  `ToneBadge` yet), never the pastel severity tiles of the DS `Chip` (Sam,
+  22 Nov 2026, #1267): states needs attention orange, in progress blue,
+  mitigated, watching yellow with the DS `eye` icon inside the badge, resolved
+  green, accepted risk neutral; priorities critical red, high orange, medium
+  yellow, low green; loop severity P1 red, P2 orange, P3 yellow. Each tone is a
+  /10 wash of the hue, an edge and a label in its `-tertiary` token (4.5:1 text,
+  3:1 edge on every elevation surface in both themes, guard
+  `tests_unit/tone-badge-contrast.test.ts`). No CTEM page draws a state,
+  priority, severity or signal state with the DS `Chip`, a tone map typed other
+  than `HotTone`, or a `Badge` coloured from the feedback tokens (guard
+  `tests_unit/ctem-tone-badge-guard.test.ts`; the stage assessment "Out of
+  date" badge is an orange `ToneBadge`). Counts bar segments take the same
+  hue (needs attention `feedback-warning-primary`, in progress
+  `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
+  `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
+  colour only): crown jewels are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
 - **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One
@@ -541,34 +565,22 @@ then the existing AI assessment and facts grid unchanged.
   and "Restricted", every other cell empty (no id, source, score, asset or
   link); the Source filter offers "Restricted". A case the viewer sees
   nothing of is the not-found page, never an empty case.
-- Who works the case (#1266, replaces the per-section sentence of #1206
-  slice D): one card at the top of the case body (`ctem/CaseWorkCard.tsx`),
-  read from live state (`ctem/case-workers.ts`), never assumed. The reader
-  lists every assignment whose trigger is a platform event `ctem_case.*`,
-  whatever fleet or agent owns it (the built-in CTEM loop fleet is one way,
-  never the default), and the runs the case events started on this case
-  (`GET /fleets/case-runs/{id}`). First match wins: a run active on the case
-  shows "Worked by <agent> (<fleet>)", queued or running since, and "Open
-  the run"; the newest run failed shows the same line in the error colour
-  with the run; an enabled automation shows "Worked by" and "Waits for the
-  next case event"; automations that are all off are named with their agent
-  and fleet and a "Switch on" button; nothing at all is one elevated empty
-  state (icon, title, explanation, centred) with three choices on equal
-  footing: Use the built-in CTEM loop (the guided setup for an administrator
-  of XTM One, else the fleet page), Use your own fleet or agent (pick an
-  agent; its page opens the assignment panel preset on `ctem_case.opened`
-  and `ctem_case.reopened`, `?add-assignment=ctem-case`), Work it yourself
-  (Start). The card is not shown on a resolved or accepted-risk case. Without
-  agentic AI or on a read error nothing is claimed and the card is hidden.
-  Calls to action are design system buttons; no inline link in the secondary
-  colour.
-- Loop sections, not started (#1266): How it would be exploited, Analyst
-  review, Validation, Remediation decision and Treatment plan each say what
-  they will hold and the product they are written from (OpenCRQ for the
-  exploitation reading and the treatment plan, OpenCTI for the analyst
-  review, OpenAEV for validation) with its logo and connection state, and a
-  "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
+- Loop sections (#1206, slice D): Opened by, How it would be exploited,
+  Analyst review, Validation, Remediation decision and Treatment plan never
+  promise work nobody will do. An empty section says the reason read from
+  live state (`ctem/case-loop-reason.ts`), first match wins: "Empty: OpenCRQ
+  is not connected." with a Connect link (exploitation reading and treatment
+  plan only, when no OpenCRQ registration exists); "Waiting for <agent>,
+  working this case since <time>" while a fleet run on the case is active,
+  whatever the fleet's switches say (a run that stays pending keeps this
+  line with its start time, which shows how long it has waited); "No
+  automation works this case: the CTEM loop fleet is not set up." with a
+  link to the fleet when no run is active and the seeded `ctem-loop` fleet
+  or a fork of it has none of its automations on, or no such fleet is
+  visible; otherwise the section's own sentence. Links are the design
+  system `Link` over the router link (underlined in every state). Without
+  agentic AI or on a read error nothing is claimed
+  and the own sentence stays. "Opened by" on a case no signal opened names
   the source readers from the sources of its visible issues ("Opened from
   OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
   findings on your assets").
