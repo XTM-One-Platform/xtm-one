@@ -82,11 +82,14 @@ import {
   CURRENCIES,
   FIELD_HELP,
   FIELD_LABELS,
+  IMPORT_SOURCE_NAMES,
+  IMPORT_SOURCE_PROVIDER,
   PLATFORM_NAMES,
   type ProfileForm,
   SIZE_BANDS,
   TICKETING_PROJECT_ELEMENT,
   formatAmount,
+  importSourcesOfProvider,
   isSupportedRecordType,
   fromForm,
   toForm,
@@ -611,6 +614,8 @@ export function OrganizationSection() {
     navigate("/chat");
   };
   const connectedPlatforms = [...new Set(integrations.map((integration) => integration.provider).filter((provider) => provider in PLATFORM_NAMES))];
+  // The Sources panel also lists Intune and Defender once a Microsoft integration is connected (#1251).
+  const connectedSources = [...new Set(integrations.flatMap((integration) => importSourcesOfProvider(integration.provider)))];
   const draftMenuItems: OverflowMenuItem[] = [
     { id: "draft-platforms", label: t_i18n("From the platforms"), icon: Import, onSelect: () => setPlatformImportOpen(true) },
     {
@@ -786,13 +791,13 @@ export function OrganizationSection() {
   /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
   const sourceLabel = (value: Provenance) => {
     const kind = sourceKind(value.source);
-    return kind === "platform" ? (PLATFORM_NAMES[sourcePlatform(value.source)] ?? value.source ?? "") : t_i18n(SOURCE_KIND_LABELS[kind]);
+    return kind === "platform" ? (IMPORT_SOURCE_NAMES[sourcePlatform(value.source)] ?? value.source ?? "") : t_i18n(SOURCE_KIND_LABELS[kind]);
   };
   const sourceCell = (value: Provenance) => {
     const platform = sourcePlatform(value.source);
     return (
       <span className="flex min-w-0 items-center gap-2">
-        {platform && <ProviderLogo provider={platform} decorative className="h-4 w-4 shrink-0" />}
+        {platform && <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[platform] ?? platform} decorative className="h-4 w-4 shrink-0" />}
         <TruncatedText text={sourceLabel(value)} />
       </span>
     );
@@ -1607,7 +1612,7 @@ export function OrganizationSection() {
           {/* Sources first (#1134 S2): who feeds which section, before what the tabs hold. */}
           <OrganizationSourcesPanel
             profile={current}
-            connected={connectedPlatforms}
+            connected={connectedSources}
             onAddSync={() => setPlatformImportOpen(true)}
             disabled={editing || cardOpen !== null || drafting.isPending}
           />

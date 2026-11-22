@@ -449,6 +449,28 @@ export const FIELD_HELP = {
 export const PLATFORM_NAMES: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
 
 /**
+ * Every source an import or a sync reads, as the product is named: the platforms, then the
+ * endpoint sources read through a Microsoft integration (#1251). Kept apart from PLATFORM_NAMES,
+ * which lists the Filigran platforms only (dashboards, packs and drafts read it).
+ */
+export const IMPORT_SOURCE_NAMES: Record<string, string> = {
+  ...PLATFORM_NAMES,
+  intune: "Microsoft Intune",
+  defender: "Microsoft Defender for Endpoint",
+};
+
+/** The integration provider an import source is read through (its logo), when it is not the source itself. */
+export const IMPORT_SOURCE_PROVIDER: Record<string, string> = { intune: "microsoft", defender: "microsoft" };
+
+/** The import sources a connected integration provider opens (a Microsoft integration opens Intune and Defender). */
+export function importSourcesOfProvider(provider: string): string[] {
+  if (provider in PLATFORM_NAMES) return [provider];
+  return Object.entries(IMPORT_SOURCE_PROVIDER)
+    .filter(([, via]) => via === provider)
+    .map(([source]) => source);
+}
+
+/**
  * The platform an "unavailable" line of the draft names ("OpenCRQ: ..."), or ""
  * for any other line, so the page shows its own sentence and never the
  * backend's error text.

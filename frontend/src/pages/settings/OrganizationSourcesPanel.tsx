@@ -16,13 +16,13 @@ import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SettingsCard } from "@/components/ui/settings-form";
 import { useOrganizationSyncs, type OrganizationSync } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
-import { PLATFORM_NAMES } from "@/lib/organization-profile";
+import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS, type Provenance } from "@/lib/organization-provenance";
 import { SOURCED_SECTION_LABELS, sourceSectionHref, summarizeSources, type SourceSummary } from "@/lib/organization-sources";
 
 interface Props {
   profile: Partial<Record<"crown_jewels" | "tech_stack" | "ai_systems" | "assets_exposure" | "asset_groups", readonly Provenance[] | undefined>>;
-  /** The platform keys with an integration (opencti, openaev, opencrq). */
+  /** The source keys with an integration (opencti, openaev, opencrq; intune and defender through a Microsoft integration). */
   connected: readonly string[];
   /** Opens the import stepper; disabled while the form is in edit. */
   onAddSync: () => void;
@@ -36,7 +36,7 @@ export function OrganizationSourcesPanel({ profile, connected, onAddSync, disabl
   const syncs = Array.isArray(data) ? data : [];
   const sources = summarizeSources(profile, connected);
   const label = (source: SourceSummary) =>
-    source.kind === "platform" ? (PLATFORM_NAMES[source.key] ?? source.key) : t_i18n(SOURCE_KIND_LABELS[source.kind as keyof typeof SOURCE_KIND_LABELS]);
+    source.kind === "platform" ? (IMPORT_SOURCE_NAMES[source.key] ?? source.key) : t_i18n(SOURCE_KIND_LABELS[source.kind as keyof typeof SOURCE_KIND_LABELS]);
   const syncsOf = (key: string): OrganizationSync[] => syncs.filter((sync) => sync.source === key && sync.section !== "all");
 
   const addSync = (
@@ -71,7 +71,7 @@ export function OrganizationSourcesPanel({ profile, connected, onAddSync, disabl
               <li key={source.key} className="col-span-3 grid min-h-6 grid-cols-subgrid items-center" data-testid="settings.organization.sources.row">
                 <span className="flex items-center gap-2 font-medium">
                   {source.kind === "platform" ? (
-                    <ProviderLogo provider={source.key} decorative className="h-4 w-4 shrink-0" />
+                    <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[source.key] ?? source.key} decorative className="h-4 w-4 shrink-0" />
                   ) : (
                     <span className="h-4 w-4 shrink-0" aria-hidden />
                   )}

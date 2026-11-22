@@ -39,7 +39,7 @@ import {
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { filtersSummary } from "@/lib/organization-import-filters";
-import { PLATFORM_NAMES } from "@/lib/organization-profile";
+import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
 import { formatTimeAgo } from "@/lib/relative-time";
 import { timeUntil } from "@/lib/utils";
 import { defaultSchedule, useScheduleLabel, type SyncSchedule } from "@/lib/organization-sync-schedule";
@@ -108,7 +108,7 @@ export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
   const reportFailure = (title: string) => (error: unknown) =>
     toast({ title, description: error instanceof Error ? error.message : undefined, variant: "error" });
 
-  const sourceName = (sync: OrganizationSync) => (sync.section === "all" ? t_i18n("Every section sync") : (PLATFORM_NAMES[sync.source] ?? sync.source));
+  const sourceName = (sync: OrganizationSync) => (sync.section === "all" ? t_i18n("Every section sync") : (IMPORT_SOURCE_NAMES[sync.source] ?? sync.source));
 
   /** The filters of a sync in the import stepper's words: "Category: Host, Server; Labels: 2 values", or every entity. */
   const filtersLine = (sync: OrganizationSync): string => {
@@ -170,7 +170,7 @@ export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
       header: "Source",
       cell: (sync) => (
         <span className="flex min-w-0 items-center gap-2">
-          {sync.source && <ProviderLogo provider={sync.source} decorative className="h-4 w-4 shrink-0" />}
+          {sync.source && <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[sync.source] ?? sync.source} decorative className="h-4 w-4 shrink-0" />}
           <TruncatedText text={sourceName(sync)} className="max-w-[10rem]" />
         </span>
       ),
@@ -282,7 +282,7 @@ export function OrganizationSyncsCard({ scope = "" }: CardProps = {}) {
       label: "Source",
       values: (sync) => [sync.source || "all"],
       options: [
-        ...Object.entries(PLATFORM_NAMES).map(([value, label]) => ({ value, label })),
+        ...Object.entries(IMPORT_SOURCE_NAMES).map(([value, label]) => ({ value, label })),
         { value: "all", label: t_i18n("Every section sync") },
       ],
       pinned: ["all"],
