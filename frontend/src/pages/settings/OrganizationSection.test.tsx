@@ -907,6 +907,25 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Set Payments to Critical (criticality) in OpenCRQ")).toBeTruthy();
   });
 
+  it("names an OpenCRQ-only level (very_high) in words on the pushed line", async () => {
+    post.mockResolvedValue({
+      applied: false,
+      plan: {
+        linked: [],
+        pushed_to_opencrq: [{ opencrq_asset_id: "a-3", name: "Ledger", criticality: "very_high" }],
+        pulled_from_opencrq: [],
+        ambiguous: [],
+        not_in_opencrq: [],
+      },
+      errors: [],
+      version: 3,
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    expect(await screen.findByText("Set Ledger to Very high in OpenCRQ")).toBeTruthy();
+    expect(screen.queryByText(/very_high/)).toBeNull();
+  });
+
   it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {
     get.mockImplementation(async (path: string) =>
       path === "/organizations" || path === "/integrations"

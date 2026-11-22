@@ -101,6 +101,7 @@ import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
+import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
@@ -675,9 +676,12 @@ export function OrganizationSection() {
       },
     );
 
-  /** The translated criticality, never the raw enum value inside a translated sentence. */
-  const criticalityLabel = (value: string) =>
-    value in CRITICALITY_LABELS ? t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]) : value;
+  /** The translated criticality, never the raw enum value inside a translated sentence: a profile level, else an OpenCRQ level (very_high), which the push rows carry (UX B1). */
+  const criticalityLabel = (value: string) => {
+    if (value in CRITICALITY_LABELS) return t_i18n(CRITICALITY_LABELS[value as keyof typeof CRITICALITY_LABELS]);
+    if (value in MIN_CRITICALITY_LABELS) return t_i18n(MIN_CRITICALITY_LABELS[value as keyof typeof MIN_CRITICALITY_LABELS]);
+    return value;
+  };
   /** The helper and the bubble of a field, from the field contract (UX B3). */
   const help = (key: keyof typeof FIELD_HELP) => ({ helper: t_i18n(FIELD_HELP[key].helper), info: t_i18n(FIELD_HELP[key].info) });
   const text = (key: "name" | "sector" | "sub_sector", title: string, placeholder?: string) => {
