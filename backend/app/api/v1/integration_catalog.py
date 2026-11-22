@@ -46,6 +46,43 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
 }
+#: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
+_NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
+    "subsidiary_id": "Only records of these subsidiaries (internal ids)",
+    "transaction_types": "Only these types among the event's (e.g. credit_memo, vendor_payment)",
+    "status": "Only records in one of these statuses (names or codes)",
+    "min_amount": "Only records whose absolute amount is at least this, in the transaction currency",
+    "change_kinds": "Only created or only updated records",
+}
+
+#: The NetSuite transaction change events: event, label, description.
+_NETSUITE_TRANSACTION_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "vendor_bill_changed",
+        "Vendor bill created or changed",
+        "Triggers when a vendor bill is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "invoice_changed",
+        "Invoice created or changed",
+        "Triggers when an invoice or a credit memo is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "payment_changed",
+        "Payment created or changed",
+        "Triggers when a customer or vendor payment is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "journal_entry_changed",
+        "Journal entry created or changed",
+        "Triggers when a journal entry or an intercompany journal is created or changed. Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+)
+
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
@@ -5235,6 +5272,32 @@ PROVIDER_CATALOG = {
                 {"value": "tba", "label": "Token-Based Authentication (OAuth 1.0a, HMAC-SHA256)"},
             ],
         },
+        # Polled with SuiteQL (services/netsuite_events.py, every 5 min): NetSuite
+        # posts no change notification without a script of the customer's.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _NETSUITE_TRANSACTION_FILTER_KEYS,
+            }
+            for event, label, description in _NETSUITE_TRANSACTION_EVENTS
+        ]
+        + [
+            {
+                "event": "accounting_period_changed",
+                "label": "Accounting period changed",
+                "description": (
+                    "Triggers when an accounting period is closed, reopened, locked or unlocked. "
+                    "Uses polling (every 5 minutes); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+                "filter_keys": {
+                    "states": "Only periods now in one of these states: open, closed, ap_locked, ar_locked, all_locked",
+                },
+            }
+        ],
         "setup_guide": {
             "title": "NetSuite Setup",
             "url": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_162686838198.html",
@@ -5637,80 +5700,6 @@ PROVIDER_CATALOG = {
                 },
             ],
             "notes": "For Metabase, the API key format is: enter your Metabase base URL in the extra config field, and the API key in the API Key field. The tools will use both to connect to your instance. For full functionality, ensure the API key has write permissions.",
-        },
-    },
-    "odoo": {
-        "name": "Odoo",
-        "description": "ERP & Accounting (multi-company) - Chart of accounts, Journals, Journal entries and items, Trial balance, General ledger, Aged receivable and payable, FEC-style exports (CSV / XLSX), Invoices, Bills and credit notes (with attachments), Payments and reconciliation, Bank statements, Taxes, Fiscal positions, Analytic accounts, Fixed assets, Currencies, Lock dates, Products, and any model through generic search_read (JSON-2 API, JSON-RPC fallback)",
-        "logo": "/logos/odoo.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["accounting", "finance"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
-        "extra_fields": {
-            "base_url": "Odoo URL (e.g. https://example.odoo.com)",
-            "database": "Database name",
-            "login": "Login (the user's email)",
-            "company_ids": "Default company ids, comma-separated (optional)",
-        },
-        # Polled from the records' create / write dates (providers/odoo/events.py,
-        # every 60 s): the external API has no outbound webhook.
-        "available_events": [
-            {
-                "event": event,
-                "label": label,
-                "description": description,
-                "mechanism": "polling",
-                "filter_keys": {
-                    "company": "Only records of these companies (ids or names)",
-                    "journal": "Only records of these journals (ids, codes or names)",
-                    "state": "Only records in these Odoo states (draft, posted, cancel; payments: in_process, paid...)",
-                },
-            }
-            for event, label, description in (
-                (
-                    "journal_entry_posted",
-                    "Journal entry posted",
-                    "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.",
-                ),
-                (
-                    "vendor_bill_created",
-                    "Vendor bill created",
-                    "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.",
-                ),
-                (
-                    "payment_registered",
-                    "Payment registered",
-                    "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.",
-                ),
-            )
-        ],
-        "setup_guide": {
-            "title": "Odoo API Key Setup",
-            "url": "https://www.odoo.com/documentation/latest/developer/reference/external_api.html",
-            "steps": [
-                "Sign in to Odoo as the user the agents act as (a dedicated user is best: its access rights and companies bound what the tools reach).",
-                "Open the user menu > My Profile (Preferences) > Account Security and create a New API Key named '{APP_NAME}'.",
-                "Paste the key in the API Key field below.",
-                "Fill in the Odoo URL, the database name (Settings > Activate developer mode shows it; on odoo.com it is usually the subdomain) and the login.",
-                "Optionally list default company ids; every tool also takes company_ids, and list_odoo_companies names them.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Accounting / Invoicing: Billing or Accountant",
-                    "description": "Chart of accounts, journals, entries and items, reports, invoices, bills, payments, bank statements, taxes, analytics, assets, lock dates",
-                },
-                {
-                    "scope": "Allowed companies",
-                    "description": "The companies the user may switch to are the companies the tools reach (allowed_company_ids)",
-                },
-                {
-                    "scope": "Contacts",
-                    "description": "Partners and partner bank accounts",
-                },
-            ],
-            "notes": "Odoo 19+ answers the JSON-2 API (bearer API key); older versions are reached through JSON-RPC with the same key. Read or write follows the Odoo operation: every write tool (create, update, post, cancel, reset, register a payment, reconcile, lock dates, generic create / write / unlink / method) asks a person on every call. Bank account numbers answer masked to their last 4 characters. Bind read-only to withhold every write tool. See https://www.odoo.com/documentation/latest/developer/reference/external_api.html.",
         },
     },
     "databricks": {
