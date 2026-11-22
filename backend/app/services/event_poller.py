@@ -58,8 +58,8 @@ from app.integrations.providers import docusign
 from app.integrations.providers.google import GMAIL_API
 from app.integrations.providers.microsoft import GRAPH_API
 from app.integrations.providers.microsoft._message_type import message_type
-from app.integrations.providers.quotapath import events as quotapath_events
 from app.integrations.providers.odoo import events as odoo_events
+from app.integrations.providers.quotapath import events as quotapath_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
