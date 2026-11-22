@@ -463,6 +463,10 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # answering it once (set up now, later, dismiss). A stored flag reaching no
     # model; with AI off the profile form it opens stays editable.
     "answer_setup_prompt",
+    # The guided setup's step progress (#1087, CTEM-33): a done or skipped mark per
+    # step, stored on the settings row; it reaches no model and enables nothing (the
+    # fleet enable step goes through enable_fleet_automations, which is gated).
+    "record_setup_step",
     # Settings > Organization, tracked organizations (#9157): an administrator
     # adding, editing, archiving an organization or saving its profile. Stored
     # company data reaching no model; monitoring stays off.

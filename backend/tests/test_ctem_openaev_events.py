@@ -73,6 +73,38 @@ def test_the_score_degradation_is_a_path_8_signal() -> None:
     assert "mitigation_regression" in listeners.paths_with_listener()
 
 
+def test_the_stale_asset_trigger_filters_on_the_stale_status() -> None:
+    # CTEM-27: OpenAEV's freshness job raises an asset update on the STALE transition;
+    # the trigger keeps only updates of an asset whose status reads STALE.
+    spec = {"fleet": "F", "purpose": "P", "events": ["asset_stale"]}
+    body = prov.trigger_body(spec, "asset_stale", "n1")
+    assert body["notification_trigger_resource_type"] == "ASSET"
+    assert body["notification_trigger_event_types"] == ["UPDATE"]
+    assert body["notification_trigger_filters"] == {
+        "mode": "and",
+        "filters": [{"key": "asset_status", "operator": "eq", "mode": "or", "values": ["STALE"]}],
+    }
+    assert prov.event_from_notification_name(body["notification_trigger_name"]) == "asset_stale"
+    assert "asset_stale" in CTEM_OPENAEV_LOOP_EVENTS
+
+
+def test_a_stale_asset_is_a_path_6_signal() -> None:
+    found = listeners.match("openaev", "asset_stale", _delivery("asset_stale", "ASSET", "a1", "[asset] web-01 updated"))
+    assert found is not None
+    row, signal = found
+    assert (row.trigger_path, row.lens, row.subject_kind) == ("stale_asset", "outside", "asset")
+    assert signal["external_id"] == "a1"
+    assert signal["evidence"]["event"] == "asset_stale"
+    assert signal["evidence"]["platform_url"] == "https://aev.example"
+    assert "stale_asset" in listeners.paths_with_listener()
+
+
+def test_a_plain_asset_update_records_no_stale_signal() -> None:
+    # Only the filtered trigger names the event asset_stale; a plain asset update is no signal.
+    assert listeners.match("openaev", "asset_updated", _delivery("asset_updated", "ASSET", "a1")) is None
+    assert listeners.match("openaev", "asset_stale", _delivery("asset_stale", "SCENARIO", "s1")) is None
+
+
 def test_other_openaev_events_record_no_signal() -> None:
     assert (
         listeners.match("openaev", "simulation_finished", _delivery("simulation_finished", "SIMULATION", "x")) is None

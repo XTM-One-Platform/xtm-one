@@ -594,6 +594,7 @@ ee:
   - backend/app/services/quota_exhausted_notice.py
   - backend/app/services/rollout_counters.py
   - backend/app/services/slack_decision_cards.py
+  - backend/app/services/google_chat_decision_cards.py
   - backend/app/services/storage_purge.py
   - backend/app/services/teams_link_cards.py
   - frontend/src/components/ui/a2a-unavailable-notice.tsx

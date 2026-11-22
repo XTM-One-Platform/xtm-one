@@ -461,7 +461,7 @@ def agent_send(monkeypatch):
 
     integration_id = str(uuid.uuid4())
 
-    async def _resolve(_db, _item, _reference):
+    async def _resolve(_db, _item, _reference, _provider="microsoft"):
         return integration_id
 
     monkeypatch.setattr(notify_mod, "_resolve_integration", _resolve)

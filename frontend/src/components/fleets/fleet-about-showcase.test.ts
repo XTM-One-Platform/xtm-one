@@ -22,6 +22,7 @@ import {
   quotaSubtitle,
   quotaValue,
   setupPrerequisites,
+  shownAutomationCount,
   successRate,
   triggerKindLabel,
   triggerKinds,
@@ -66,6 +67,22 @@ describe("automationCount", () => {
   it("is unknown while either read is", () => {
     expect(automationCount(undefined, [])).toBeNull();
     expect(automationCount(ran, undefined)).toBeNull();
+  });
+});
+
+describe("shownAutomationCount", () => {
+  // One count source with the header pill and the CTEM loop setup (UX r1 B2 on #1092): "12 of 33" on the
+  // About tile against "0 of 21" in the setup for the same fleet came from two populations.
+  it("reads the health's fleet automations when the health carries them", () => {
+    const assignments = [
+      { agent_id: "a", enabled: true },
+      { agent_id: "a", enabled: false },
+    ];
+    expect(shownAutomationCount({ ...ran, automations: { enabled: 0, total: 21 } }, assignments)).toEqual({ on: 0, total: 21 });
+  });
+  it("falls back to the members' assignments while the health has no count", () => {
+    expect(shownAutomationCount(ran, [{ agent_id: "a", enabled: true }])).toEqual({ on: 1, total: 1 });
+    expect(shownAutomationCount(undefined, [])).toBeNull();
   });
 });
 
