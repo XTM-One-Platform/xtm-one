@@ -463,7 +463,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         try:
             return not isinstance(await _opencrq_connection(db, str(scope)), str)
         except Exception:
-            logger.warning("OpenCRQ access check failed", exc_info=True)
+            logger.warning("Risk figures access check failed", exc_info=True)
             return False
 
     async def _gate_state(db: AsyncSession) -> tuple[bool, str]:
@@ -722,7 +722,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "case_id": {"type": "string"},
                     "options": {
                         "type": "array",
-                        "description": "1 to 6 options; figures from OpenCRQ, in the organization's currency.",
+                        "description": "1 to 6 options; figures from the connected risk quantification, in the organization's currency.",
                         "items": {
                             "type": "object",
                             "properties": {
