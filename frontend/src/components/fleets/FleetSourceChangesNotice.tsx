@@ -37,7 +37,9 @@ import {
   currentSourceName,
   describeSourceChange,
   showSourceChanges,
+  sourceChanged,
   sourceChangeNames,
+  sourceSuccessor,
 } from "./fleet-source-changes";
 
 export function FleetSourceChangesNotice({
@@ -57,9 +59,14 @@ export function FleetSourceChangesNotice({
   if (!showSourceChanges(data)) return null;
 
   const name = currentSourceName(data, source.name);
-  const title = source.isBuiltin
-    ? t_i18n("The built-in fleet {name} has changed since you duplicated it", { name })
-    : t_i18n("The fleet {name} has changed since you duplicated it", { name });
+  // CTEM-31: a built-in source folded into another seeded fleet names that fleet.
+  const successor = sourceSuccessor(data);
+  const changed = sourceChanged(data);
+  const title = successor
+    ? t_i18n("The built-in fleet {name} is now part of {successor}", { name: source.name, successor: successor.name })
+    : source.isBuiltin
+      ? t_i18n("The built-in fleet {name} has changed since you duplicated it", { name })
+      : t_i18n("The fleet {name} has changed since you duplicated it", { name });
 
   return (
     <DashboardNotice
@@ -67,13 +74,23 @@ export function FleetSourceChangesNotice({
       icon={GitFork}
       title={title}
       actions={
-        <NoticeAction variant="info" to={`/fleets/${source.sourceId}`}>
-          {t_i18n("Open the original fleet")}
-        </NoticeAction>
+        successor ? (
+          <NoticeAction variant="info" to={`/fleets/${successor.fleet_id}`}>
+            {t_i18n("Open {name}", { name: successor.name })}
+          </NoticeAction>
+        ) : (
+          <NoticeAction variant="info" to={`/fleets/${source.sourceId}`}>
+            {t_i18n("Open the original fleet")}
+          </NoticeAction>
+        )
       }
     >
-      <p>{t_i18n("Your copy is not changed. Apply what you want from the original by hand.")}</p>
-      {data.diff_available ? (
+      <p>
+        {successor
+          ? t_i18n("Your copy is not changed and keeps running. New built-in improvements arrive in {successor}.", { successor: successor.name })
+          : t_i18n("Your copy is not changed. Apply what you want from the original by hand.")}
+      </p>
+      {!changed ? null : data.diff_available ? (
         <details className="mt-1.5" data-testid="fleet-source-changes">
           <DisclosureSummary>
             {t_i18n("{count, plural, one {# change} other {# changes}}", { count: data.changes.length })}
