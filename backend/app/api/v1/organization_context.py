@@ -1428,7 +1428,7 @@ async def reset_setup_prompt(
     from app.services import organization_setup_prompt as prompt
     from app.services.audit import log_audit
 
-    if not settings.is_xtm_one:
+    if settings.is_copilot_like:
         raise HTTPException(status_code=409, detail="The guided setup exists in XTM One mode only.")
     row = await get_platform_settings(db)
     if prompt.reset_answer(row):

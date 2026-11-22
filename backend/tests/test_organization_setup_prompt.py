@@ -189,6 +189,7 @@ def _patch_route(monkeypatch: pytest.MonkeyPatch, row: Any, *, xtm_one: bool) ->
     monkeypatch.setattr(audit, "log_audit", _log_audit)
     monkeypatch.setattr(prompt, "has_saved_profile", _has_profile)
     monkeypatch.setattr("app.core.config.Settings.is_xtm_one", PropertyMock(return_value=xtm_one))
+    monkeypatch.setattr("app.core.config.Settings.is_copilot_like", PropertyMock(return_value=not xtm_one))
     return audits
 
 
