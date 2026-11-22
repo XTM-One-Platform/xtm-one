@@ -20836,5 +20836,10 @@
   "Points by the priority of the case.": "Points by the priority of the case.",
   "Points for what the case holds.": "Points for what the case holds.",
   "Points when the due date is near or has passed.": "Points when the due date is near or has passed.",
-  "Points for a case nobody owns and for each day it stays open.": "Points for a case nobody owns and for each day it stays open."
+  "Points for a case nobody owns and for each day it stays open.": "Points for a case nobody owns and for each day it stays open.",
+  "Module checks": "Module checks",
+  "No check round since the last digest": "No check round since the last digest",
+  "Failed most": "Failed most",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}"
 }

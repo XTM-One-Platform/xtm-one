@@ -20836,5 +20836,10 @@
   "Points by the priority of the case.": "ケースの優先度によるポイント。",
   "Points for what the case holds.": "ケースの内容によるポイント。",
   "Points when the due date is near or has passed.": "期限が近いまたは過ぎたときのポイント。",
-  "Points for a case nobody owns and for each day it stays open.": "担当者のいないケースと、オープンのままの日数ごとのポイント。"
+  "Points for a case nobody owns and for each day it stays open.": "担当者のいないケースと、オープンのままの日数ごとのポイント。",
+  "Module checks": "モジュールのチェック",
+  "No check round since the last digest": "前回のダイジェスト以降、チェックラウンドはありません",
+  "Failed most": "失敗の多いチェック",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{registrations, plural, other {# 件の登録}}で{rounds, plural, other {# 回のラウンド}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, other {# 件失敗}}、{warned, plural, other {# 件の警告}}"
 }
