@@ -242,6 +242,9 @@ _NOT_WRITER_GATED = {
         # to the caller that attach a file, read under the same clause.
         "work_items_attaching",
         "list_work_items",
+        # The graph view's blockers outside the filter (#968), read under
+        # the visibility clause of ``list_work_items``.
+        "list_visible_work_items_by_ids",
         "count_work_items",
         # One GROUP BY per field value over the same filters (#12105).
         "count_work_items_grouped",

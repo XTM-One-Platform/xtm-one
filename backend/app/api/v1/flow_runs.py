@@ -255,7 +255,15 @@ async def respond_flow_run(
       shared visibility — otherwise a read-only viewer could inject
       ``{{ask.response}}`` into a run nobody asked them about.
     """
-    response = str(body.get("response") or "").strip()
+    run = await answer_flow_park(db, user, run_id, str(body.get("response") or ""))
+    return _run_summary(run)
+
+
+async def answer_flow_park(db: AsyncSession, user: User, run_id: str, response: str) -> FlowRun:
+    """Answer a flow run's Ask-user park as *user*: the one path the respond
+    endpoint and the decisions router (#842, S2) both take, so the access rule
+    and the refusals cannot drift between them."""
+    response = response.strip()
     if not response:
         raise HTTPException(status_code=422, detail="A response is required.")
     run = await get_visible_run(db, user, run_id)
@@ -273,11 +281,17 @@ async def respond_flow_run(
     waiting["responded_by"] = user.email or str(user.id)
     state["waiting"] = waiting
     run.state = state
-    await db.commit()
+    from app.models.decision_hooks import answer_actor
+
+    token = answer_actor.set(user.id)
+    try:
+        await db.commit()
+    finally:
+        answer_actor.reset(token)
     from app.services import orchestration_engine as engine
 
     await engine.notify_orchestration_wake()
-    return _run_summary(run)
+    return run
 
 
 # ---------------------------------------------------------------------------
