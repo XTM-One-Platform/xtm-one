@@ -117,7 +117,7 @@ export default function CtemAssetDetail() {
 
   const origin = (field: string) => {
     const source = data?.fields?.[field]?.source;
-    return source ? t_i18n("From {source}", { source: sourceLabel(String(source)) }) : undefined;
+    return source ? t_i18n("From {source}", { source: sourceLabel(t_i18n, String(source)) }) : undefined;
   };
   const date = (value: string | null) => (value ? intl.formatDate(value, { dateStyle: "medium" }) : "");
 
@@ -147,7 +147,7 @@ export default function CtemAssetDetail() {
     {
       key: "sources",
       header: "Sources",
-      cell: (s) => s.sources.map(sourceLabel).join(", "),
+      cell: (s) => s.sources.map((source) => sourceLabel(t_i18n, source)).join(", "),
       csv: (s) => s.sources.join(" "),
       hideable: true,
     },
@@ -162,7 +162,7 @@ export default function CtemAssetDetail() {
   ];
 
   const recordColumns: DataTableColumn<AssetSourceRecord>[] = [
-    { key: "source", header: "Source", cell: (r) => sourceLabel(r.source), csv: (r) => r.source, sortValue: (r) => r.source },
+    { key: "source", header: "Source", cell: (r) => sourceLabel(t_i18n, r.source), csv: (r) => r.source, sortValue: (r) => sourceLabel(t_i18n, r.source).toLowerCase() },
     {
       key: "external_id",
       header: "Its id there",
@@ -293,7 +293,7 @@ export default function CtemAssetDetail() {
           rowKey={(r) => `${r.source}|${r.external_id}`}
           defaultSort={{ key: "source", direction: "asc" }}
           defaultPageSize={25}
-          searchFields={(r) => [r.source, sourceLabel(r.source), r.external_id]}
+          searchFields={(r) => [r.source, sourceLabel(t_i18n, r.source), r.external_id]}
           searchPlaceholder={t_i18n("Search source or id")}
           noFilters="The few records merged into one asset."
           exportName="ctem-asset-sources"

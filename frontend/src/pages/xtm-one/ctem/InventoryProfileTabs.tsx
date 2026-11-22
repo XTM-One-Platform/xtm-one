@@ -81,7 +81,7 @@ export function AssetGroupsTab() {
     {
       key: "source",
       header: "Source",
-      cell: (g) => sourceLabel(g.source || "manual"),
+      cell: (g) => sourceLabel(t_i18n, g.source || "manual"),
       csv: (g) => g.source || "manual",
       hideable: true,
       hideBelow: "6xl",
@@ -155,7 +155,7 @@ export function AiSystemsTab() {
     {
       key: "source",
       header: "Source",
-      cell: (s) => sourceLabel(s.source || "manual"),
+      cell: (s) => sourceLabel(t_i18n, s.source || "manual"),
       csv: (s) => s.source || "manual",
       hideable: true,
       hideBelow: "6xl",

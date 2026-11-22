@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import en from "@/i18n/lang/en.json";
 import fr from "@/i18n/lang/fr.json";
 import { isAssetNotFound } from "@/hooks/api/useOrganizationAssetsApi";
-import { assetCategory, assetCategoryLabel, assetFieldLabel } from "./inventory";
+import { assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./inventory";
 
 type Catalog = Record<string, string>;
 const translator = (catalog: Catalog) => (id: string) => catalog[id] ?? id;
@@ -46,6 +46,21 @@ describe("assetCategoryLabel and assetFieldLabel", () => {
     expect(assetFieldLabel(tEn, "criticality", "custom_level")).toBe("custom_level");
     expect(assetFieldLabel(tEn, "criticality", null)).toBe("");
     expect(assetCategoryLabel(tEn, { category: null, subcategory: null })).toBe("");
+  });
+});
+
+// UX round 3 on #1254, B10: a record's source reads in the reader's language too.
+describe("sourceLabel", () => {
+  it("reads a CSV row in French", () => {
+    expect(sourceLabel(tFr, "csv")).toBe("Import CSV");
+    expect(sourceLabel(tFr, "manual")).toBe("Manuel");
+    expect(sourceLabel(tFr, "agent:triage")).toBe("Agent");
+  });
+
+  it("names the known sources in English and keeps an unknown one as stored", () => {
+    expect(sourceLabel(tEn, "csv")).toBe("CSV import");
+    expect(sourceLabel(tEn, "opencti")).toBe("OpenCTI");
+    expect(sourceLabel(tEn, "custom_feed")).toBe("custom_feed");
   });
 });
 

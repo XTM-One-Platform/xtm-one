@@ -15,8 +15,8 @@ export const INVENTORY_LABEL = "Inventory";
 /** The page's route; `/ctem/assets` redirects to it. */
 export const INVENTORY_PATH = "/ctem/inventory";
 
-/** The source names a record carries, as people read them; an unknown source keeps its own name. */
-const SOURCE_LABELS: Record<string, string> = {
+/** The source names a record carries, as people read them; an unknown source keeps its own name. @i18n-keys */
+const SOURCE_LABELS = {
   manual: "Manual",
   csv: "CSV import",
   api: "API",
@@ -24,11 +24,16 @@ const SOURCE_LABELS: Record<string, string> = {
   opencti: "OpenCTI",
   openaev: "OpenAEV",
   opencrq: "OpenCRQ",
-};
+} as const;
 
-export function sourceLabel(source: string): string {
-  if (source.startsWith("agent:")) return "Agent";
-  return SOURCE_LABELS[source] ?? source;
+/**
+ * The translated name of a record's source (`csv` reads "Import CSV" in French; UX round 3 on #1254, B10). A source
+ * outside the known set is shown as stored.
+ */
+export function sourceLabel(t: Translate, source: string): string {
+  if (source.startsWith("agent:")) return t("Agent");
+  const label = (SOURCE_LABELS as Record<string, string>)[source];
+  return label ? t(label) : source;
 }
 
 /**

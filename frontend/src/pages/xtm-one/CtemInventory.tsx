@@ -87,7 +87,7 @@ function AssetsTab() {
     label,
     options: (facets.data?.[key] ?? []).map((value) => ({
       value,
-      label: key === "source" ? sourceLabel(value) : assetFieldLabel(t_i18n, key, value),
+      label: key === "source" ? sourceLabel(t_i18n, value) : assetFieldLabel(t_i18n, key, value),
     })),
   }));
 
@@ -165,7 +165,7 @@ function AssetsTab() {
     {
       key: "sources",
       header: "Sources",
-      cell: (a) => <TruncatedText text={a.sources.map(sourceLabel).join(", ")} className="max-w-[14rem]" />,
+      cell: (a) => <TruncatedText text={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[14rem]" />,
       csv: (a) => a.sources.join(" "),
       hideable: true,
     },
@@ -278,7 +278,7 @@ function TechStackTab() {
     {
       key: "sources",
       header: "Sources",
-      cell: (i) => <TruncatedText text={i.sources.map(sourceLabel).join(", ")} className="max-w-[14rem]" />,
+      cell: (i) => <TruncatedText text={i.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[14rem]" />,
       csv: (i) => i.sources.join(" "),
       hideable: true,
     },
