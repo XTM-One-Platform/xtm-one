@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2064 tools across 117 providers; 54 held back by hand.
+# 2063 tools across 117 providers; 55 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1216,7 +1216,6 @@ notion:list_notion_users
 notion:query_notion_database
 notion:search_notion
 odoo:count_odoo_records
-odoo:download_odoo_attachments
 odoo:export_odoo_report
 odoo:get_odoo_aged_balance
 odoo:get_odoo_general_ledger

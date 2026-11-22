@@ -150,10 +150,6 @@ class OdooClient:
     uid: int | None = None
     _http: Any = field(default=None, repr=False)
 
-    @classmethod
-    def from_token(cls, token: str) -> OdooClient:
-        return cls(credential=OdooCredential.parse(token))
-
     # -- plumbing -------------------------------------------------------------------
 
     async def __aenter__(self) -> OdooClient:

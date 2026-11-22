@@ -1541,8 +1541,3 @@ def build_operation_tools(
     )
     add(call_defn, call_odoo_method)
     return tools
-
-
-#: The tools whose calls change nothing in Odoo (whatever their arguments).
-def read_tool_names(tools: list[ToolDefinition]) -> set[str]:
-    return {t.name for t in tools if t.read_only}

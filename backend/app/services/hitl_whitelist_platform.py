@@ -144,6 +144,7 @@ HAND_GATED: dict[str, str] = {
     "download_microsoft_meeting_recording": _DOWNLOAD_REASON,
     "download_netsuite_file": _DOWNLOAD_REASON,
     "download_notion_file": _DOWNLOAD_REASON,
+    "download_odoo_attachments": _DOWNLOAD_REASON,
     "download_onepassword_file": _DOWNLOAD_REASON,
     "download_perk_invoice_pdf": _DOWNLOAD_REASON,
     "download_servicenow_attachment": _DOWNLOAD_REASON,
