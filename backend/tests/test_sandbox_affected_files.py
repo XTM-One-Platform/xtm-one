@@ -77,6 +77,12 @@ async def test_a_new_file_runs_whole_and_an_edited_unformatted_file_only_on_its_
     )
     assert whole.args == ["app/new.py", "app/old.py"]
 
+    # A repository-wide selection script takes the files outside its directory too, relative to it.
+    every = await affected.changed_files(
+        workspace, record, changes, cwd="co/backend", read_base=read_base, whole_repository=True
+    )
+    assert every.args == ["README.md", "app/new.py", "app/old.py", "../frontend/a.py"]
+
 
 async def test_an_empty_change_after_a_commit_says_committed_lines_are_left_out():
     """#11122: once a commit moved the record, an empty change must not read as "the committed lines were checked"."""
@@ -363,6 +369,16 @@ def test_affected_narrows_args_is_a_files_or_lines_switch_shown_in_the_listing()
         load_checks('[check.x]\nargv = ["x"]\naffected_narrows_args = true\n')
     with pytest.raises(ChecksError, match="affected_narrows_args must be true or false"):
         load_checks('[check.x]\nargv = ["x"]\naffected = "lines"\naffected_narrows_args = 1\n')
+
+
+def test_affected_whole_repository_is_a_files_switch_shown_in_the_listing():
+    specs = load_checks('[check.q]\nargv = ["q"]\naffected = "files"\naffected_whole_repository = true\n')
+    assert specs["q"].affected_whole_repository
+    assert "changed files of the whole repository" in describe_checks(specs)
+    with pytest.raises(ChecksError, match="affected_whole_repository applies"):
+        load_checks('[check.x]\nargv = ["x"]\naffected = "lines"\naffected_whole_repository = true\n')
+    with pytest.raises(ChecksError, match="affected_whole_repository must be true or false"):
+        load_checks('[check.x]\nargv = ["x"]\naffected = "files"\naffected_whole_repository = 1\n')
 
 
 def test_the_repository_lint_checks_take_a_path_and_cover_the_lab():

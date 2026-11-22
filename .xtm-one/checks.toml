@@ -1683,7 +1683,8 @@ report_path = ".xtm/tripwires.xml"
 # The backend unit tests the merge queue runs for the change, before the push: a pull
 # request's CI runs the static checks only, the suites run in the queue on what
 # tests/selection.py selects for the merge group. affected = "files" hands
-# scripts/queue_tests.py the changed files under backend/ (a checkout has no git);
+# scripts/queue_tests.py the changed files (a checkout has no git), those outside
+# backend/ too (affected_whole_repository: a compose file or a workflow a guard reads);
 # it prints the selection with each file's reason and runs the files the queue's
 # unit job runs. args ["--list"] with no file: the selection of the change, nothing run.
 # A change the queue runs whole for (a conftest.py, the dependencies) is named, not run.
@@ -1698,6 +1699,7 @@ env = { SECRET_KEY = "ci-test-secret-key-not-for-production" }
 affected = "files"
 affected_by_default = true
 affected_narrows_args = true
+affected_whole_repository = true
 
 # The formatter, advisory: CI does not gate it and main is not format-clean.
 # Run it with affected=true: affected = "lines" hands scripts/format_changed.py

@@ -27,6 +27,8 @@ def test_the_check_hands_the_script_the_changed_backend_files() -> None:
     assert spec.cwd == "backend"
     assert spec.affected == "files"
     assert spec.affected_by_default
+    # A compose file or a workflow outside backend/ reaches the queue's selection too (gap pr-ci-selection-misses-guards).
+    assert spec.affected_whole_repository
     # The unit job's key: a JWT test fails on an empty one.
     raw = tomllib.loads(CHECKS.read_text(encoding="utf-8"))
     assert raw["check"]["backend-queue-tests"]["env"]["SECRET_KEY"]
@@ -71,6 +73,15 @@ def test_the_selection_is_the_queue_s_own() -> None:
     # The file the queue reached for #405 while its pull request's CI was green.
     assert "tests/test_file_inline_types.py" in reasons
     assert set(run) <= set(reasons)
+
+
+def test_a_change_outside_backend_is_selected_as_the_queue_selects_it() -> None:
+    """``../docker-compose.yml`` from ``backend/`` is ``docker-compose.yml`` for ``select_backend``."""
+    assert queue_tests.repo_path("../docker-compose.yml") == "docker-compose.yml"
+    assert queue_tests.repo_path("app/x.py") == "backend/app/x.py"
+    expected = selection.select_backend(["docker-compose.yml"], selection.Graph.read())
+    full, reasons, _run = queue_tests.unit_files(["../docker-compose.yml"])
+    assert (full, reasons) == (expected.full, ({} if expected.full else expected.reasons))
 
 
 def test_list_prints_the_selection_and_runs_nothing(

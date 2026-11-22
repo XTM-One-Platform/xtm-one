@@ -141,6 +141,9 @@ class CheckSpec:
     #: ``PATH:A-B,C-D``), so a fixer named a file main never formatted rewrites the change's lines only;
     #: :data:`WHOLE_ARG` in args turns it off for that call.
     affected_narrows_args: bool = False
+    #: With ``files``: the changed files outside ``cwd`` are passed too, relative to it (``../x.yml``), for a
+    #: script that maps the whole change to a repository-wide selection (the merge queue's test selection).
+    affected_whole_repository: bool = False
     #: Run the install check of the same directory and image first when its dependencies are not installed in
     #: the container (``false`` for a check that needs none, such as a linter of plain files).
     install_first: bool = True
@@ -401,6 +404,11 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             raise ChecksError(f"[check.{name}] affected_narrows_args must be true or false.")
         if narrows and mode == "tests":
             raise ChecksError(f'[check.{name}] affected_narrows_args applies to affected = "files" or "lines" only.')
+        whole_repository = raw.get("affected_whole_repository", False)
+        if not isinstance(whole_repository, bool):
+            raise ChecksError(f"[check.{name}] affected_whole_repository must be true or false.")
+        if whole_repository and mode != "files":
+            raise ChecksError(f'[check.{name}] affected_whole_repository applies to affected = "files" only.')
         install_first = raw.get("install_first", True)
         if not isinstance(install_first, bool):
             raise ChecksError(f"[check.{name}] install_first must be true or false.")
@@ -451,6 +459,7 @@ def load_checks(text: str) -> dict[str, CheckSpec]:
             affected_by_default=by_default,
             whole_timeout=min(whole_timeout, timeout_raw, MAX_TIMEOUT),
             affected_narrows_args=narrows,
+            affected_whole_repository=whole_repository,
             install_first=install_first,
             fallback_image=fallback_image,
             fallback_when=fallback_when,
@@ -759,6 +768,8 @@ def describe_checks(specs: dict[str, CheckSpec], *, compact: bool = False) -> st
             affected += f" [no args: affected=true; {WHOLE_ARG} alone: the whole run, at most {bound} s]"
         if spec.affected_narrows_args:
             affected += f" [args narrowed to the changed {spec.affected}; {WHOLE_ARG}: as given]"
+        if spec.affected_whole_repository:
+            affected += " [the changed files of the whole repository, relative to its directory]"
         if spec.git_repo:
             affected += " [in a throwaway git repository of the checkout]"
         lines.append(f"- {spec.name}{what}: {shown_argv(spec.argv)}{where}{image}{report}{defaults}{affected}")

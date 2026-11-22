@@ -18,9 +18,10 @@ When the change runs under every test (a ``conftest.py``, the dependencies,
 the selection itself), the queue runs the whole suite: the script says so and
 runs nothing, since the whole suite is CI's (``backend-unit`` takes a file).
 
-Only the files under ``backend/`` reach the script: a change elsewhere that
-the queue's selection also reads (``frontend/``, ``.github/``) is not seen,
-and a deleted file is not passed. The first line says so.
+The check declares ``affected_whole_repository``: a changed file outside
+``backend/`` reaches the script too, relative to it (``../docker-compose.yml``),
+and counts in the selection as the queue counts it (a test naming a compose
+file or a workflow). A deleted file is not passed. The first line says so.
 
 The selection runs as the queue's unit job runs it: pytest-xdist workers with
 ``--dist loadgroup`` (``WORKERS`` at most) and the stall guard of
@@ -47,6 +48,7 @@ from __future__ import annotations
 
 import math
 import os
+import posixpath
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -65,8 +67,8 @@ BUDGET_SECONDS = 900.0
 #: The unit job's stall bound (``ci.yml``): a hung test ends its worker with its stacks.
 STALL_SECONDS = "300"
 SCOPE = (
-    "queue_tests: the merge queue's backend selection (tests/selection.py) over {n} changed file(s) under backend/; "
-    "files outside backend/ and deleted files are not seen."
+    "queue_tests: the merge queue's backend selection (tests/selection.py) over {n} changed file(s) "
+    "of the repository; deleted files are not seen."
 )
 
 
@@ -113,16 +115,21 @@ def parse_args(args: list[str]) -> Options:
 def unit_files(changed: list[str]) -> tuple[str | None, dict[str, str], list[str]]:
     """``(why every file runs or None, {selected file: reason}, the files the unit job runs)``.
 
-    *changed* are paths from ``backend/``, as the check hands them.
+    *changed* are paths from ``backend/``, as the check hands them (``../x`` for a file outside it).
     """
     from tests.selection import Graph, _marks_whole_file, select_backend
 
     graph = Graph.read()
-    selection = select_backend([f"backend/{path}" for path in changed], graph)
+    selection = select_backend([repo_path(path) for path in changed], graph)
     if selection.full:
         return selection.full, {}, []
     run = [path for path in selection.files if not _marks_whole_file(graph.sources.get(path, ""))]
     return None, dict(selection.reasons), run
+
+
+def repo_path(path: str) -> str:
+    """*path*, given from ``backend/``, as a path from the repository root (``../ci.yml`` -> ``ci.yml``)."""
+    return posixpath.normpath(posixpath.join("backend", path))
 
 
 def durations() -> dict[str, float]:
@@ -155,7 +162,7 @@ def main(argv: list[str] | None = None, *, python: str = sys.executable) -> int:
         return 2
     print(SCOPE.format(n=len(options.files)))
     if not options.files:
-        print("queue_tests: no changed file under backend/, the queue selects no backend test for it.")
+        print("queue_tests: no changed file, the queue selects no backend test for it.")
         return 0
     full, reasons, run = unit_files(options.files)
     if full:
