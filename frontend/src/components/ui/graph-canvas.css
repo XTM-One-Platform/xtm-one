@@ -1,0 +1,62 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * The surface of a read-only React Flow graph (Tasks > Work Items Graph view,
+ * #1062): the same canvas as the fleet and Agentic Flow graphs and the flow
+ * builder, in both themes.
+ *
+ * `colorMode="dark"` turns on React Flow's own dark palette, whose
+ * `.react-flow.dark` paints the container `--xy-background-color-default:
+ * #141414`, a flat grey that is not the app's elevation surface (the brown
+ * canvas of #1062). Its background is transparent, so the canvas shows the
+ * card it sits in: the fleet Graph tab's `Card` (Paper at elevation 1), the same
+ * surface in both themes (UX r1 B3 on #1067). The grid and controls are painted
+ * from tokens. Scoped to `.graph-canvas`, so nothing leaks into the rest of the app.
+ */
+
+/* The grid dots: the subtle border token, which follows the theme on its own. */
+.graph-canvas {
+  --flow-grid: var(--border-elevation-subtle);
+}
+
+.graph-canvas .react-flow {
+  --xy-background-color: transparent;
+}
+
+.graph-canvas .react-flow__background {
+  background-color: transparent;
+}
+
+.graph-canvas .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border-elevation-subtle);
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.graph-canvas .react-flow__controls-button {
+  background: var(--bg-elevation-default);
+  border-bottom: 1px solid var(--border-elevation-subtle);
+  color: var(--text-default-secondary);
+}
+
+.graph-canvas .react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--text-default-primary) 6%, var(--bg-elevation-default));
+  color: var(--text-default-primary);
+}
+
+.graph-canvas .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* An in-flight edge (its prerequisite is being worked on) marches toward what
+   it releases, the fleet graph's live edges. */
+.graph-canvas .react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 6 4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-canvas .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
+}
