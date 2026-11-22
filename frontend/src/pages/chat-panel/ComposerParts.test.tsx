@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
-import { ComposerToolbar, ComposerVoiceCallButton } from "@/pages/chat-panel/ComposerParts";
+import { ComposerHeader, ComposerToolbar, ComposerVoiceCallButton } from "@/pages/chat-panel/ComposerParts";
 import { renderWithProviders } from "@/testing/providers";
 
 const iconButtons = vi.hoisted(() => [] as Record<string, unknown>[]);
@@ -24,6 +24,11 @@ vi.mock("@filigran/design-system", async (importOriginal) => {
   return { ...actual, IconButton: RecordingIconButton };
 });
 vi.mock("@/pages/chat/SessionToolPicker", () => ({ SessionToolPicker: () => <span>tools</span> }));
+vi.mock("@/pages/chat/RunnerApprovalCard", () => ({
+  RunnerApprovalCard: ({ request }: { request: { command_id: string } }) => (
+    <div data-testid="runner-card">{request.command_id}</div>
+  ),
+}));
 
 describe("ComposerVoiceCallButton", () => {
   it("starts the voice conversation from a button named for it", () => {
@@ -46,6 +51,45 @@ describe("ComposerVoiceCallButton", () => {
   it("is disabled with the composer's other controls", () => {
     renderWithProviders(<ComposerVoiceCallButton disabled onStart={() => {}} />);
     expect(screen.getByRole("button", { name: "Start voice conversation" })).toBeDisabled();
+  });
+});
+
+// The held runner commands are full decision cards: their stack is capped and
+// scrolls inside, so the composer and the latest message stay visible (#842 S8,
+// UX round 1 B1).
+describe("ComposerHeader runner approvals", () => {
+  const request = (id: string) =>
+    ({
+      command_id: id,
+      runner_id: "r-1",
+      runner_name: "LAB",
+      kind: "run_shell",
+      summary: "ls",
+      expires_in_seconds: 60,
+      received_at_ms: 0,
+    }) as ComponentProps<typeof ComposerHeader>["runnerApprovals"][number];
+
+  it("holds every waiting command in one capped, scrolling stack", () => {
+    renderWithProviders(
+      <ComposerHeader
+        deepInvestigation={false}
+        runnerApprovals={[request("a"), request("b")]}
+        onRunnerApprovalDecided={() => {}}
+        desktop={null}
+      />,
+    );
+    const stack = screen.getByTestId("runner-approvals-stack");
+    expect(stack.className).toContain("max-h-[45vh]");
+    expect(stack.className).toContain("overflow-y-auto");
+    expect(stack.querySelectorAll('[data-testid="runner-card"]')).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Commands waiting for your approval" })).toBe(stack);
+  });
+
+  it("draws no stack when no command waits", () => {
+    renderWithProviders(
+      <ComposerHeader deepInvestigation runnerApprovals={[]} onRunnerApprovalDecided={() => {}} desktop={null} />,
+    );
+    expect(screen.queryByTestId("runner-approvals-stack")).toBeNull();
   });
 });
 
