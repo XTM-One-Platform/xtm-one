@@ -135,9 +135,12 @@ export default function CtemCases() {
       sortValue: (c) => c.open_issue_count,
       csv: (c) => c.open_issue_count,
       firstSort: "desc",
-      // Below 6xl the Attention score already carries it: the State chip is never cut at 1080 in FR.
+      // The Attention score already carries it: off by default at every width so the
+      // default columns fit at 1728 in FR and ES (UX round 1 on #1243, B1);
+      // the Columns picker brings it back.
       hideBelow: "6xl",
       hideable: true,
+      defaultHidden: true,
     },
     {
       key: "crown_jewels",
