@@ -39,10 +39,83 @@ def test_the_service_runs_the_script_on_the_jvm_image_with_its_stores():
 
 def test_the_ports_never_meet_another_lab():
     module = _module()
-    ours = {module.PORT, module.VITE_PORT, module.BACKEND_PORT}
-    assert len(ours) == 3
+    ours = {module.PORT, module.VITE_PORT, module.BACKEND_PORT, module.OPENCTI_STUB_PORT}
+    assert len(ours) == 4
     others = {spec["port"] for name, spec in _services().items() if name != "lab-openaev"}
     assert not ours & others
+
+
+def test_the_default_tenant_is_connected_to_the_opencti_stub(monkeypatch):
+    """Gap lab-xtm-counterpart-stub: the backend's own counterpart lookup answers, no browser stub."""
+    import json
+
+    module = _module()
+    monkeypatch.delenv("LAB_OPENAEV_OPENCTI", raising=False)
+    spring = json.loads(module.backend_env()["SPRING_APPLICATION_JSON"])
+    assert spring == {
+        "openaev": {
+            "xtm": {"opencti": {"enable": True, "url": module.OPENCTI_STUB_URL, "token": module.OPENCTI_STUB_TOKEN}}
+        }
+    }
+    assert module.OPENCTI_STUB_URL.endswith("/") and str(module.OPENCTI_STUB_PORT) in module.OPENCTI_STUB_URL
+    monkeypatch.setenv("LAB_OPENAEV_OPENCTI", "off")
+    assert "SPRING_APPLICATION_JSON" not in module.backend_env()
+
+
+def _lookup(module, kind_filters):
+    return module.opencti_answer(
+        {
+            "query": "query XtmCounterparts { stixCoreObjects { edges { node { id } } } }",
+            "variables": {"first": 8, "filters": kind_filters},
+        }
+    )
+
+
+def test_the_stub_answers_the_asset_lookup_found_and_not_found():
+    """The filter shape of OpenCTICounterpartProvider.variables(ASSET): a System by name, observables by value."""
+    module = _module()
+    names = ["lab-web-01", "lab-dc-01", "lab-mac-01"]
+    filters = {
+        "mode": "or",
+        "filters": [],
+        "filterGroups": [
+            {
+                "mode": "and",
+                "filters": [{"key": ["entity_type"], "values": ["System"]}, {"key": ["name"], "values": names}],
+            },
+            {
+                "mode": "and",
+                "filters": [
+                    {"key": ["entity_type"], "values": ["Hostname", "IPv4-Addr"]},
+                    {"key": ["value"], "values": names},
+                ],
+            },
+        ],
+    }
+    nodes = [e["node"] for e in _lookup(module, filters)["data"]["stixCoreObjects"]["edges"]]
+    found = {n.get("name") or n.get("observable_value") for n in nodes}
+    assert found == {"lab-web-01", "lab-dc-01"}
+    web = next(n for n in nodes if n.get("name") == "lab-web-01")
+    assert web["representative"]["main"] == "lab-web-01" and web["reports"]["pageInfo"]["globalCount"] == 3
+    assert web["objectMarking"] == [{"definition": "TLP:AMBER"}] and web["modified"]
+
+
+def test_the_stub_answers_an_attack_pattern_by_its_mitre_id_and_nothing_else_empty():
+    module = _module()
+    filters = {
+        "mode": "and",
+        "filters": [
+            {"key": ["entity_type"], "values": ["Attack-Pattern"]},
+            {"key": ["x_mitre_id"], "values": ["T1486", "T9999"]},
+        ],
+        "filterGroups": [],
+    }
+    nodes = [e["node"] for e in _lookup(module, filters)["data"]["stixCoreObjects"]["edges"]]
+    assert [n["x_mitre_id"] for n in nodes] == ["T1486"]
+    assert module.opencti_answer({"query": "query { externalReferences { edges { node { url } } } }"}) == {
+        "data": {"externalReferences": {"edges": []}}
+    }
+    assert module.opencti_answer({"query": "mutation { connectorRegister }"}) == {"data": {}}
 
 
 def test_the_backend_runs_on_the_port_the_front_proxies_to():

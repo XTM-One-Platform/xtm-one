@@ -18,6 +18,13 @@ against its own backend, its own Flyway migrations and seeded data, not a stub (
    it), then opens ``/``. Theme: ``/lab/theme/dark`` or ``/lab/theme/light`` (``PUT /api/me/profile``).
 5. This script listens on ``PORT``, the preview port: ``/lab/*`` here, everything else (websockets included) to
    Vite on ``VITE_PORT``, which proxies ``/api`` to the backend. Node and yarn are the lab's pinned downloads.
+6. The XTM counterpart (gap lab-xtm-counterpart-stub): the default tenant is connected to an OpenCTI stub this
+   script serves on ``OPENCTI_STUB_PORT`` (``openaev.xtm.opencti.*``, the legacy keys the default tenant reads),
+   so the backend's own counterpart lookup answers and every pivot renders its found and not-found states with no
+   browser stub: ``POST /graphql`` answers ``stixCoreObjects`` from ``OPENCTI_COUNTERPARTS`` (two of the seeded
+   assets, an attack pattern, a vulnerability; ``lab-mac-01`` stays not found) and every other query empty;
+   ``/dashboard/id/<id>`` is the page a found pivot opens. ``LAB_OPENAEV_OPENCTI=off`` leaves OpenCTI not
+   connected, the teaser state.
 """
 
 from __future__ import annotations
@@ -128,6 +135,131 @@ def openaev_checkout() -> Path:
 #: OpenAEV's ``enabled_dev_features`` in the lab: ``*`` turns every ``PreviewFeature`` on.
 PREVIEW_FEATURES = "*"
 
+#: The OpenCTI the lab connects the default tenant to: a stub on this port, answering the counterpart lookup.
+OPENCTI_STUB_PORT = 3702
+OPENCTI_STUB_URL = f"http://localhost:{OPENCTI_STUB_PORT}/"
+OPENCTI_STUB_TOKEN = "lab-only-opencti-token-never-used-outside-the-lab"
+#: The OpenCTI objects the stub holds, keyed by what OpenAEV looks them up by (an asset's name, an attack
+#: pattern's MITRE id, a vulnerability's name); lab-mac-01 is absent on purpose, the not-found state.
+OPENCTI_COUNTERPARTS = (
+    {"id": "lab-octi-system-web-01", "entity_type": "System", "name": "lab-web-01", "confidence": 80,
+     "reports": 3, "markings": ("TLP:AMBER",)},
+    {"id": "lab-octi-ipv4-dc-01", "entity_type": "IPv4-Addr", "observable_value": "lab-dc-01", "reports": 1,
+     "markings": ("TLP:GREEN",)},
+    {"id": "lab-octi-attack-pattern-t1486", "entity_type": "Attack-Pattern", "name": "Data Encrypted for Impact",
+     "x_mitre_id": "T1486", "confidence": 100, "reports": 12, "markings": ("TLP:CLEAR",)},
+    {"id": "lab-octi-vulnerability-cve-2024-3400", "entity_type": "Vulnerability", "name": "CVE-2024-3400",
+     "confidence": 90, "reports": 7, "markings": ("TLP:CLEAR",)},
+)
+OPENCTI_MODIFIED = "2026-11-20T09:00:00.000Z"
+
+
+def opencti_connected() -> bool:
+    """Whether the lab connects the default tenant to the OpenCTI stub (``LAB_OPENAEV_OPENCTI=off``: not connected)."""
+    return os.environ.get("LAB_OPENAEV_OPENCTI", "on").strip().lower() not in ("off", "0", "false", "no")
+
+
+def opencti_env() -> dict[str, str]:
+    """``openaev.xtm.opencti.*`` (the legacy keys, read as the default tenant's connection) onto the stub.
+
+    Through SPRING_APPLICATION_JSON, not one variable per key: XtmConfig binds ``opencti`` as a
+    ``Map<String, Object>``, and a relaxed env name such as ``..._API_URL`` would bind a nested ``api`` key, read
+    as a tenant. The API URL is the product's fallback, ``url`` + ``graphql``."""
+    if not opencti_connected():
+        return {}
+    connection = {"enable": True, "url": OPENCTI_STUB_URL, "token": OPENCTI_STUB_TOKEN}
+    return {"SPRING_APPLICATION_JSON": json.dumps({"openaev": {"xtm": {"opencti": connection}}})}
+
+
+def _filter_values(node: object, out: set[str]) -> None:
+    """Every value of every filter of a GraphQL FilterGroup but the entity_type ones, recursively."""
+    if isinstance(node, dict):
+        keys = node.get("key")
+        values = node.get("values")
+        if isinstance(values, list) and keys != ["entity_type"]:
+            out.update(v for v in values if isinstance(v, str))
+        for child in node.values():
+            _filter_values(child, out)
+    elif isinstance(node, list):
+        for child in node:
+            _filter_values(child, out)
+
+
+def opencti_node(item: dict) -> dict:
+    """One stub object in the shape OpenAEV's OpenCTICounterpartProvider reads."""
+    node = {
+        "id": item["id"],
+        "entity_type": item["entity_type"],
+        "standard_id": f"{item['entity_type'].lower()}--{item['id']}",
+        "representative": {"main": item.get("name") or item.get("observable_value")},
+        "modified": OPENCTI_MODIFIED,
+        "reports": {"pageInfo": {"globalCount": item.get("reports", 0)}},
+        "objectMarking": [{"definition": m} for m in item.get("markings", ())],
+    }
+    for field in ("name", "observable_value", "x_mitre_id", "confidence"):
+        if field in item:
+            node[field] = item[field]
+    return node
+
+
+def opencti_answer(body: dict) -> dict:
+    """The stub's GraphQL answer: the counterpart lookup from OPENCTI_COUNTERPARTS, any other query empty."""
+    query = str(body.get("query") or "")
+    if "stixCoreObjects" in query:
+        wanted: set[str] = set()
+        _filter_values((body.get("variables") or {}).get("filters"), wanted)
+        wanted_lower = {w.lower() for w in wanted}
+        edges = [
+            {"node": opencti_node(item)}
+            for item in OPENCTI_COUNTERPARTS
+            if any(str(item.get(f, "")).lower() in wanted_lower
+                   for f in ("id", "name", "observable_value", "x_mitre_id") if item.get(f))
+        ]
+        return {"data": {"stixCoreObjects": {"edges": edges}}}
+    if "externalReferences" in query:
+        return {"data": {"externalReferences": {"edges": []}}}
+    return {"data": {}}
+
+
+class OpenCtiStub(http.server.BaseHTTPRequestHandler):
+    """The OpenCTI the lab's tenant is connected to: GraphQL on /graphql, a plain page per object id."""
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - BaseHTTPRequestHandler's signature
+        return
+
+    def _send(self, status: int, data: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self) -> None:  # noqa: N802 - http.server's name
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            body = {}
+        self._send(200, json.dumps(opencti_answer(body if isinstance(body, dict) else {})).encode(), "application/json")
+
+    def do_GET(self) -> None:  # noqa: N802 - http.server's name
+        object_id = self.path.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+        item = next((i for i in OPENCTI_COUNTERPARTS if i["id"] == object_id), None)
+        title = (item.get("name") or item.get("observable_value")) if item else "OpenCTI lab stub"
+        page = f"<!doctype html><title>{title}</title><h1>OpenCTI (lab stub)</h1><p>{title}</p>".encode()
+        self._send(200 if item or object_id in ("", "graphql") else 404, page, "text/html; charset=utf-8")
+
+
+def start_opencti_stub() -> None:
+    """Serve the OpenCTI stub in a thread, before the backend boots (its connector registers at start)."""
+    if not opencti_connected():
+        lab.log("openaev: OpenCTI not connected (LAB_OPENAEV_OPENCTI=off): every pivot shows its teaser")
+        return
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", OPENCTI_STUB_PORT), OpenCtiStub)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    lab.log(f"openaev: default tenant connected to the OpenCTI stub {OPENCTI_STUB_URL} "
+            f"({len(OPENCTI_COUNTERPARTS)} counterparts)")
+
 
 def backend_env() -> dict[str, str]:
     """Spring's relaxed binding of application.properties onto the lab's stores, as OpenAEV's CI sets them."""
@@ -159,6 +291,7 @@ def backend_env() -> dict[str, str]:
         # Every preview feature on (PreviewFeature.FEATURE_FLAG_ALL, read as openaev.enabled-dev-features): a
         # pull request behind a preview flag renders its screens in the lab instead of the flag-off fallback.
         "OPENAEV_ENABLED_DEV_FEATURES": PREVIEW_FEATURES,
+        **opencti_env(),
     }
 
 
@@ -400,6 +533,7 @@ def main() -> None:
         lab.run("openaev-build", maven_argv(root), cwd=root)
     if not jar.is_file():
         raise SystemExit(f"openaev: the build left no {jar}")
+    start_opencti_stub()
     lab.spawn("openaev-back", java_argv(jar), cwd=root / "openaev-api", env={**os.environ, **backend_env()})
     digest = lab.lock_digest(front / "yarn.lock")
     if digest and (front / "node_modules").is_dir() and FRONT_INSTALLED.is_file() and FRONT_INSTALLED.read_text() == digest:
