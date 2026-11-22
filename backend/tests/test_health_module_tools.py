@@ -32,9 +32,9 @@ def test_the_group_offers_one_read_and_one_write():
 
 def test_no_tool_of_the_group_reaches_a_module():
     """Section 12.3: the module reads are the allow-listed integration tools, never these."""
-    from app.services.health.module_analyst import MODULE_ANALYST_TOOLS
+    from app.services.health.module_analyst import MODULE_CHECKER_TOOLS
 
-    listed = {name for names in MODULE_ANALYST_TOOLS.values() for name in names}
+    listed = {name for names in MODULE_CHECKER_TOOLS.values() for name in names}
     assert listed.isdisjoint(d.name for d in tools.build_health_module_tools("")[0])
 
 
