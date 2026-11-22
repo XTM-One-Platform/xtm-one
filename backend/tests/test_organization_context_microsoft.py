@@ -324,3 +324,49 @@ def test_read_defender_machines_sync_when_software_permission_is_missing() -> No
     )
     read = asyncio.run(microsoft.read_defender("t", {}, limit=100, client=client))
     assert read.error is None and len(read.rows) == 1 and read.software == {}
+    assert read.software_unread == {"f3e2-mde"}
+
+
+def test_read_intune_marks_devices_whose_apps_read_failed_as_unread() -> None:
+    base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    second = {**INTUNE_DEVICE, "id": "dev-2", "deviceName": "MAC-7", "serialNumber": "C02X"}
+    client = _Client(
+        {
+            f"{base}/8d3b-intune/detectedApps": [_Resp(200, {"value": [{"displayName": "Slack", "version": "4"}]})],
+            f"{base}/dev-2/detectedApps": [_Resp(503)],
+            f"{base}?": [_Resp(200, {"value": [INTUNE_DEVICE, second]})],
+        }
+    )
+    read = asyncio.run(microsoft.read_intune("t", {}, limit=1000, client=client))
+    assert read.error is None and not read.truncated
+    assert list(read.software) == ["8d3b-intune"]
+    assert read.software_unread == {"dev-2"}
+
+
+def test_read_defender_partial_inventory_keeps_stored_software() -> None:
+    inventory = f"{microsoft.MDE_BASE}/machines/SoftwareInventoryByMachine"
+    client = _Client(
+        {
+            f"{inventory}?pageSize=50000": [
+                _Resp(
+                    200,
+                    {
+                        "value": [
+                            {
+                                "deviceId": "f3e2-mde",
+                                "softwareVendor": "nginx",
+                                "softwareName": "nginx",
+                                "softwareVersion": "1",
+                            }
+                        ],
+                        "@odata.nextLink": f"{inventory}?page=2",
+                    },
+                )
+            ],
+            f"{inventory}?page=2": [_Resp(500)],
+            f"{microsoft.MDE_BASE}/machines": [_Resp(200, {"value": [DEFENDER_MACHINE]})],
+        }
+    )
+    read = asyncio.run(microsoft.read_defender("t", {}, limit=100, client=client))
+    assert read.error is None and len(read.rows) == 1
+    assert read.software == {} and read.software_unread == {"f3e2-mde"}

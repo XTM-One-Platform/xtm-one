@@ -413,6 +413,9 @@ class EndpointRead:
     error: str | None = None
     software_rows: int = 0
     software_cut: int = 0
+    #: Devices whose software could not be read (a failed per-device read, a partial inventory):
+    #: their stored software is kept, never taken for "no software".
+    software_unread: set[str] = field(default_factory=set)
 
 
 async def _get_json(client: Any, url: str, headers: dict[str, str], source: str) -> tuple[dict[str, Any] | None, str]:
@@ -496,6 +499,7 @@ async def read_intune(token: str, filters: dict[str, Any], *, limit: int, client
                 apps, app_cut, app_err = await _paged(http, url, headers, INTUNE, MAX_APPS_PER_DEVICE)
             if app_err:
                 logger.info("Intune detected apps of %s unreadable: %s", row["external_id"], app_err)
+                result.software_unread.add(row["external_id"])
                 return
             software = intune_software(apps)
             result.software[row["external_id"]] = software
@@ -542,8 +546,11 @@ async def read_defender(token: str, filters: dict[str, Any], *, limit: int, clie
         )
         if inv_err:
             # Machines without software still sync; the error names the missing permission.
+            # A failed or partial inventory says nothing about the machines it did not reach.
             logger.info("Defender software inventory unreadable: %s", inv_err)
             result.error = None
+            result.software_unread = set(wanted)
+            return result
         by_machine = defender_software_by_machine(inventory)
         for machine_id, software in by_machine.items():
             if machine_id in wanted:

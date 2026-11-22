@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -504,13 +504,15 @@ async def replace_endpoint_software(
     software: Mapping[str, list[dict[str, Any]]],
     *,
     complete: bool,
+    unread: Collection[str] = (),
 ) -> int:
     """Store the software an endpoint source read per device, anchored on its device record (#1251).
 
     One document per device (``document_key`` the source): a re-run replaces its
     components, so versions follow the source. When the read was *complete*, the
-    documents of devices it no longer returned are removed with them. Answers
-    the number of documents written or removed; the caller rebuilds the store.
+    documents of devices it no longer returned are removed with them, except the
+    *unread* devices (their software read failed): their stored document is kept.
+    Answers the number of documents written or removed; the caller rebuilds the store.
     """
     if source not in ENDPOINT_SOFTWARE_FORMATS:
         raise ValueError(f"source must be one of {', '.join(sorted(ENDPOINT_SOFTWARE_FORMATS))}")
@@ -561,7 +563,10 @@ async def replace_endpoint_software(
         row.imported_at = now
         changed += 1
     if complete:
-        for row in stored.values():
+        keep = {_cut(external_id, 200) for external_id in unread}
+        for external_id, row in stored.items():
+            if external_id in keep:
+                continue
             await db.delete(row)
             changed += 1
     await db.flush()

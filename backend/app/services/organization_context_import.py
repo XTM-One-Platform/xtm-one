@@ -181,6 +181,8 @@ class ReadResult:
     software: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Software entries read (all devices).
     software_rows: int = 0
+    #: Devices whose software read failed: their stored software is kept (never read as "none").
+    software_unread: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -214,6 +216,8 @@ class ImportPlan:
     #: Software per device an endpoint source read (#1251); written by :func:`store_endpoint_software`.
     software: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     software_rows: int = 0
+    #: Devices whose software read failed: :func:`store_endpoint_software` keeps their stored software.
+    software_unread: set[str] = field(default_factory=set)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -473,6 +477,7 @@ def plan_import(
         sync_id=sync_id[:64],
         software=read.software,
         software_rows=read.software_rows,
+        software_unread=read.software_unread,
     )
     draft = profile.model_copy(deep=True)
     if section in SOURCED_FIELDS:
@@ -926,6 +931,7 @@ async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: 
     kept = {r.external_id for r in result.rows}
     result.software = {k: v for k, v in read.software.items() if k in kept}
     result.software_rows = sum(len(v) for v in result.software.values())
+    result.software_unread = {k for k in read.software_unread if k in kept}
     return result
 
 
@@ -933,7 +939,8 @@ async def store_endpoint_software(db: AsyncSession, plan: ImportPlan) -> int:
     """After a saved plan of an endpoint source, store each device's software and rebuild the store.
 
     The software of a device the source no longer returns goes with it when the
-    read was complete. Answers the documents written or removed (0: nothing to do).
+    read was complete; a device whose software read failed keeps what was stored.
+    Answers the documents written or removed (0: nothing to do).
     """
     from app.services import organization_asset_store as store
     from app.services.organizations import get_primary
@@ -944,7 +951,7 @@ async def store_endpoint_software(db: AsyncSession, plan: ImportPlan) -> int:
     if primary is None:
         return 0
     changed = await store.replace_endpoint_software(
-        db, primary.id, plan.source, plan.software, complete=not plan.truncated
+        db, primary.id, plan.source, plan.software, complete=not plan.truncated, unread=plan.software_unread
     )
     if changed:
         await store.rebuild_from_profile(db, primary.id)
