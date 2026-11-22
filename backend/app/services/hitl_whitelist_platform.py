@@ -117,6 +117,8 @@ HAND_GATED: dict[str, str] = {
     "download_crowdstrike_sample": _DOWNLOAD_REASON,
     "download_crowdstrike_sandbox_artifact": _DOWNLOAD_REASON,
     "download_databricks_file": _DOWNLOAD_REASON,
+    "download_dealhub_products_excel": _DOWNLOAD_REASON,
+    "download_dealhub_quote_document": _DOWNLOAD_REASON,
     "download_docusign_document": _DOWNLOAD_REASON,
     "download_doppel_alert_screenshot": _DOWNLOAD_REASON,
     "download_drata_file": _DOWNLOAD_REASON,

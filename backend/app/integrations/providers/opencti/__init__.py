@@ -15,6 +15,8 @@ The provider is split by domain:
                      sub-types, decay rules, retention rules, exclusion lists.
 * ``audit``        - platform activity / history audit queries.
 * ``pir``          - Priority Intelligence Requirements.
+* ``security_coverage`` - security coverages, the test requests OpenAEV builds
+                     its scenarios from (CTEM-16).
 * ``ingestion``    - RSS/CSV/JSON/TAXII feeds + intake forms.
 * ``markings``     - marking definitions, and the marking / author ref
                      resolvers the ingestion and marking tools share.
@@ -58,6 +60,7 @@ from .naming import platform_names_lookup
 from .notifications import register as register_notifications
 from .pir import register as register_pir
 from .playbooks import register as register_playbooks
+from .security_coverage import register as register_security_coverage
 from .workspaces import register as register_workspaces
 
 logger = logging.getLogger(__name__)
@@ -161,6 +164,7 @@ def build_tools(
     tools += register_customization(base_url, headers, executor)
     tools += register_audit(base_url, headers, executor)
     tools += register_pir(base_url, headers, executor)
+    tools += register_security_coverage(base_url, headers, executor)
     tools += register_ingestion(base_url, headers, executor)
     tools += register_markings(base_url, headers, executor)
     tools += register_data_sharing(base_url, headers, executor)

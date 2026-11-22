@@ -105,6 +105,7 @@ def test_listeners_cover_the_paths_whose_events_exist_today():
         "relevant_threat",
         "code_flaw",
         "mitigation_regression",
+        "credential_leak",
     }
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
@@ -215,6 +216,80 @@ def test_an_aikido_new_issue_is_a_path_3_signal_and_a_closed_one_is_nothing():
     assert fields["evidence"]["severity"] == "high"
     assert listeners.match("aikido", "issue_closed", payload) is None
     assert listeners.match("slack", "message", payload) is None
+
+
+def _aikido(event: str, **body) -> dict:
+    return {"event_type": event, "payload": body}
+
+
+def test_an_aikido_dependency_issue_names_its_repository_and_fixed_version():
+    """CTEM-25: the repository goes to evidence.assets for the scope gate, the fixed version to the case."""
+    payload = _aikido(
+        "issue.open.created",
+        issue_id=7,
+        type="open_source",
+        affected_package="lodash",
+        installed_version="4.17.20",
+        patched_version="4.17.21",
+        code_repo_name="filigran/portal",
+        code_repo_id=991,
+        severity="critical",
+    )
+    row, fields = listeners.match("aikido", "issue_open_created", payload)
+    assert row.trigger_path == "code_flaw" and row.lens == "inside"
+    assert fields["evidence"]["assets"] == ["filigran/portal", "991"]
+    assert fields["evidence"]["fixed_version"] == "4.17.21"
+    assert fields["evidence"]["installed_version"] == "4.17.20"
+
+
+def test_an_aikido_leaked_secret_is_a_path_10_signal_and_keeps_no_secret():
+    payload = _aikido(
+        "issue.open.created",
+        issue_id=8,
+        type="leaked_secret",
+        affected_file=".env",
+        code_repo_name="filigran/portal",
+        secret="AKIA-NEVER-STORED",
+    )
+    row, fields = listeners.match("aikido", "issue_open_created", payload)
+    assert row.trigger_path == "credential_leak" and row.lens == "world"
+    assert fields["external_id"] == "8"
+    assert "AKIA-NEVER-STORED" not in json.dumps(fields)
+
+
+def test_an_aikido_sla_breach_resights_the_signal_of_the_same_issue():
+    opened = listeners.match("aikido", "issue_open_created", _aikido("issue.open.created", issue_id=9, title="XSS"))
+    breached = listeners.match("aikido", "issue_sla_breached", _aikido("issue.sla.breached", issue_id=9, title="XSS"))
+    assert breached[0].trigger_path == opened[0].trigger_path == "code_flaw"
+    assert breached[1]["external_id"] == opened[1]["external_id"] == "9"
+    assert breached[1]["evidence"]["sla_breached"] is True
+
+
+def test_an_aikido_gate_or_image_scan_is_about_its_repository_and_an_empty_scan_is_nothing():
+    gate = _aikido("ci.gate.failed", scan_id="s-1", code_repo_name="filigran/portal", new_issues=2)
+    row, fields = listeners.match("aikido", "ci_gate_failed", gate)
+    assert row.trigger_path == "code_flaw"
+    assert (fields["external_id"], fields["ref"]) == ("s-1", "filigran/portal")
+    image = _aikido("scan.image.finished", scan_id="s-2", container_repo_name="ghcr.io/filigran/app", issue_count=0)
+    assert listeners.match("aikido", "scan_image_finished", image) is None
+    image["payload"]["issue_count"] = 3
+    assert listeners.match("aikido", "scan_image_finished", image)[1]["ref"] == "ghcr.io/filigran/app"
+
+
+async def test_an_aikido_closed_issue_closes_its_members_and_records_nothing(monkeypatch):
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    closed: list = []
+
+    async def _close(provider, external_id):
+        closed.append((provider, external_id))
+        return 1
+
+    monkeypatch.setattr(listeners, "_close_at_source", _close)
+    payload = _aikido("issue.closed", issue_id=42)
+    assert await listeners.note_event("aikido", "issue_closed", payload, verified=False) is False
+    assert closed == []
+    assert await listeners.note_event("aikido", "issue_closed", payload, verified=True) is False
+    assert closed == [("aikido", "42")]
 
 
 async def test_note_event_records_through_the_store_as_system(monkeypatch):
@@ -481,6 +556,7 @@ async def test_the_paths_endpoint_names_the_listened_paths(client):
         "relevant_threat",
         "code_flaw",
         "mitigation_regression",
+        "credential_leak",
     }
 
 

@@ -99,6 +99,10 @@ With ``LAB_STALE_BUILD_SERVER_ID`` set (by ``lab.py`` under ``LAB_STALE_BUILD=on
 answers that id as ``build_id`` over the route's own answer: the Vite dev server writes another id in the page's
 ``<meta name="build-id">``, so the stale build notice renders natively. Every other field is the route's.
 
+Every lab answers ``GET /api/v1/lab/whatsapp-decision`` (and ``/index``) with the render of the WhatsApp decision
+message in every state, drawn from the real payload builder (``whatsapp_decision_preview``, #842 S12): WhatsApp
+offers no other surface a review can open.
+
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
 
@@ -112,6 +116,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import ctem_sample  # beside this file
+import whatsapp_decision_preview  # beside this file
 
 from app.api.v1 import ctem_metrics
 from app.main import application as backend
@@ -1566,7 +1571,21 @@ def asks_ctem_posture_on_preview(scope, environ) -> bool:
     )
 
 
+async def _send_html(send, page: str) -> None:
+    body = page.encode()
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [(b"content-type", b"text/html; charset=utf-8"), (b"content-length", str(len(body)).encode())],
+    })
+    await send({"type": "http.response.body", "body": body})
+
+
 async def application(scope, receive, send):
+    whatsapp_page = whatsapp_decision_preview.answer(scope)
+    if whatsapp_page is not None:
+        await _send_html(send, whatsapp_page)
+        return
     if asks_ctem_posture_on_preview(scope, os.environ):
         await answer_ctem_posture_on_preview(scope, receive, send)
         return
