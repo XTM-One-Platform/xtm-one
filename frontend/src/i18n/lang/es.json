@@ -20179,6 +20179,7 @@
   "Account suspended": "Cuenta suspendida",
   "Global account closed": "Cuenta global cerrada",
   "Finance & Treasury": "Finanzas y tesorería",
+  "Accounting": "Contabilidad",
   "Triggers on this Airwallex webhook event. Add a webhook for it in Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL shown below.": "Se activa con este evento de webhook de Airwallex. Añada un webhook para él en Airwallex > Settings > Developer > Webhooks, que apunte a la URL de webhook mostrada abajo.",
   "What you can change on this built-in agent": "Lo que puede cambiar en este agente integrado",
   "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.": "Cada versión reescribe lo que el producto bloquea y conserva lo que es suyo. Para cambiar la parte bloqueada, duplique la flota.",
