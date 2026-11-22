@@ -20767,5 +20767,15 @@
   "CSV import": "CSV インポート",
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "資産インベントリは {product} を {assets, plural, other {# 件の資産}} で {versions, plural, other {# 個のバージョン}} 報告しています。",
   "Asset count": "資産数",
-  "Versions not listed": "表示されていないバージョン"
+  "Versions not listed": "表示されていないバージョン",
+  "Attack path and blast radius": "攻撃経路と影響範囲",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "攻撃経路はまだありません: OpenAEV のシミュレーションが対象資産をマッピングすると、トリアージが OpenCRQ から読み取ります。",
+  "No attack path leaves this asset in the latest simulations.": "最新のシミュレーションでは、この資産から出る攻撃経路はありません。",
+  "Hops, nearest first": "ホップ (近い順)",
+  "Proven": "実証済み",
+  "Inferred": "推定",
+  "Simulation {id}": "シミュレーション {id}",
+  "Primary assets reached": "到達した主要資産",
+  "None: no business asset sits behind the assets reached.": "なし: 到達した資産の背後に業務資産はありません。",
+  "Recorded the attack path": "攻撃経路を記録しました"
 }
