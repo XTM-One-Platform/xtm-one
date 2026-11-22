@@ -76,7 +76,8 @@ export function CaseValidation({
       <CardContent className="space-y-3 content-base">
         {rows.length === 0 && !gate && (
           <CaseSectionReason
-            own={t_i18n("Not validated yet: the fleet requests read-only checks in OpenAEV once the case is prioritized.")}
+            own={t_i18n("Read-only checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.")}
+            source="openaev"
             testId="ctem-case-validation-empty"
           />
         )}

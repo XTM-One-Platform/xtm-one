@@ -1,22 +1,30 @@
-// Why an empty case section is empty (#1206, slice D): read from live state,
-// never "the fleet drafts one" while no automation would do it.
+// Who works a case (#1266): read from every automation on the case events,
+// never "the CTEM loop fleet is not set up" as the only way.
 
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { caseLoopWorker, loopFleetOf, opencrqConnected, readerOpenedLines, sectionReason } from "./case-loop-reason";
+import { loopFleetOf, readerOpenedLines } from "./case-loop-reason";
+import { caseAutomations, caseSources, caseWork, listensToCases } from "./case-workers";
 import { CaseLoopProvider, CaseSectionReason } from "./CaseSectionReason";
 import { CaseTreatmentPlan } from "./CaseTreatmentPlan";
 
 const SEEDED = { id: "f-loop", slug: "ctem-loop", is_builtin: true, is_archived: false, forked_from: null };
-const OFF = { total: 6, enabled: 0, paused: 0 };
-const ON = { total: 6, enabled: 6, paused: 0 };
 
 function run(over: Partial<CtemCaseRun>): CtemCaseRun {
   return { id: "r1", agent_id: "a1", agent_name: "CTEM Triage", status: "running", created_at: "2026-11-22T10:00:00Z", completed_at: null, outcome: "active", ...over };
 }
+
+function assignment(over: Partial<{ id: string; agent_id: string; name: string; enabled: boolean; trigger_type: string; trigger_config: { event?: unknown } | null }>) {
+  return { id: "as1", agent_id: "a1", name: "Work cases", enabled: true, trigger_type: "platform_event", trigger_config: { event: "ctem_case.opened" }, ...over };
+}
+
+const AGENTS = [
+  { id: "a1", name: "CTEM Triage", fleet: { fleet_id: "f-loop", fleet_name: "CTEM loop" } },
+  { id: "a2", name: "My agent", fleet: null },
+];
 
 describe("loopFleetOf", () => {
   it("finds the seeded fleet, else a fork of it, never an archived one", () => {
@@ -28,48 +36,62 @@ describe("loopFleetOf", () => {
   });
 });
 
-describe("caseLoopWorker", () => {
-  const base = { licensed: true, fleets: [SEEDED], fleetsError: false, automations: OFF, runs: [] as CtemCaseRun[] };
-
-  it("says not set up when no automation of the loop fleet is on", () => {
-    expect(caseLoopWorker(base)).toEqual({ kind: "not_set_up", fleetId: "f-loop" });
+describe("listensToCases and caseAutomations", () => {
+  it("keeps the platform-event assignments on a case event, a list of events included", () => {
+    expect(listensToCases(assignment({}))).toBe(true);
+    expect(listensToCases(assignment({ trigger_config: { event: ["timer.due", "ctem_case.reopened"] } }))).toBe(true);
+    expect(listensToCases(assignment({ trigger_config: { event: "timer.due" } }))).toBe(false);
+    expect(listensToCases(assignment({ trigger_type: "schedule" }))).toBe(false);
+    expect(listensToCases(assignment({ trigger_config: null }))).toBe(false);
   });
 
-  it("says not set up when the reader sees no loop fleet", () => {
-    expect(caseLoopWorker({ ...base, fleets: [] })).toEqual({ kind: "not_set_up", fleetId: null });
-  });
-
-  it("names the oldest active run working the case", () => {
-    const runs = [run({ id: "r2", agent_name: "Later", created_at: "2026-11-22T11:00:00Z" }), run({})];
-    expect(caseLoopWorker({ ...base, automations: ON, runs })).toEqual({ kind: "running", agent: "CTEM Triage", since: "2026-11-22T10:00:00Z" });
-  });
-
-  it("claims nothing without the licence, on a read error, or before the health is read", () => {
-    expect(caseLoopWorker({ ...base, licensed: false }).kind).toBe("unknown");
-    expect(caseLoopWorker({ ...base, fleetsError: true }).kind).toBe("unknown");
-    expect(caseLoopWorker({ ...base, fleets: undefined }).kind).toBe("unknown");
-    expect(caseLoopWorker({ ...base, automations: undefined }).kind).toBe("unknown");
-  });
-
-  it("is on when the fleet runs and no run works the case now", () => {
-    expect(caseLoopWorker({ ...base, automations: ON, runs: [run({ outcome: "succeeded" })] }).kind).toBe("on");
+  it("names the agent and its fleet, whatever fleet owns it, enabled first", () => {
+    const list = caseAutomations(
+      [assignment({ id: "x", agent_id: "a2", enabled: false }), assignment({ id: "y" }), assignment({ id: "z", trigger_config: { event: "timer.due" } })],
+      AGENTS,
+    );
+    expect(list.map((a) => a.id)).toEqual(["y", "x"]);
+    expect(list[0]).toMatchObject({ agentName: "CTEM Triage", fleetName: "CTEM loop" });
+    expect(list[1]).toMatchObject({ agentName: "My agent", fleetName: null, enabled: false });
   });
 });
 
-describe("sectionReason", () => {
-  it("puts OpenCRQ first for the sections written from it, only when known absent", () => {
-    expect(sectionReason({ kind: "on" }, true, false)).toBe("opencrq");
-    expect(sectionReason({ kind: "on" }, true, null)).toBe("own");
-    expect(sectionReason({ kind: "not_set_up", fleetId: null }, false, false)).toBe("not_set_up");
-    expect(sectionReason({ kind: "unknown" }, false, true)).toBe("own");
+describe("caseWork", () => {
+  const on = caseAutomations([assignment({})], AGENTS);
+  const off = caseAutomations([assignment({ enabled: false })], AGENTS);
+
+  it("says none when nothing listens to the case events", () => {
+    expect(caseWork({ licensed: true, automations: [], runs: [] })).toEqual({ kind: "none" });
+  });
+
+  it("names the automations switched off", () => {
+    expect(caseWork({ licensed: true, automations: off, runs: [] })).toMatchObject({ kind: "off", automations: off });
+  });
+
+  it("names the oldest live run working the case", () => {
+    const runs = [run({ id: "r2", created_at: "2026-11-22T11:00:00Z" }), run({})];
+    expect(caseWork({ licensed: true, automations: on, runs })).toMatchObject({ kind: "running", run: { id: "r1" } });
+  });
+
+  it("says the newest run failed when none runs now", () => {
+    const runs = [run({ id: "old", outcome: "succeeded", created_at: "2026-11-21T10:00:00Z" }), run({ id: "new", outcome: "failed" })];
+    expect(caseWork({ licensed: true, automations: on, runs })).toMatchObject({ kind: "failed", run: { id: "new" } });
+  });
+
+  it("is on when an automation is on and no run works the case now", () => {
+    expect(caseWork({ licensed: true, automations: on, runs: [run({ outcome: "succeeded" })] }).kind).toBe("on");
+  });
+
+  it("claims nothing without the licence or before the automations are read", () => {
+    expect(caseWork({ licensed: false, automations: on, runs: [] }).kind).toBe("unknown");
+    expect(caseWork({ licensed: true, automations: undefined, runs: [] }).kind).toBe("unknown");
   });
 });
 
-describe("opencrqConnected and readerOpenedLines", () => {
-  it("reads OpenCRQ from the registrations", () => {
-    expect(opencrqConnected(undefined)).toBeNull();
-    expect(opencrqConnected([{ platform_identifier: "opencti" }])).toBe(false);
-    expect(opencrqConnected([{ platform_identifier: "opencrq" }])).toBe(true);
+describe("caseSources and readerOpenedLines", () => {
+  it("reads each product from the registrations, OpenBAS read as OpenAEV", () => {
+    expect(caseSources(undefined)).toEqual({ opencrq: null, opencti: null, openaev: null });
+    expect(caseSources([{ platform_identifier: "opencti" }, { platform_identifier: "openbas" }])).toEqual({ opencrq: false, opencti: true, openaev: true });
   });
 
   it("names each source reader once, OpenBAS read as OpenAEV", () => {
@@ -80,42 +102,40 @@ describe("opencrqConnected and readerOpenedLines", () => {
 });
 
 describe("CaseSectionReason", () => {
-  it("says no automation works the case and links the fleet", () => {
+  const ALL = { opencrq: true, opencti: true, openaev: true };
+
+  it("says what the section holds and that its product is connected, never who works the case", () => {
     renderWithProviders(
       <MemoryRouter>
-        <CaseLoopProvider value={{ worker: { kind: "not_set_up", fleetId: "f-loop" }, opencrq: true }}>
-          <CaseSectionReason own="Own sentence" testId="reason" />
+        <CaseLoopProvider value={{ sources: ALL }}>
+          <CaseSectionReason own="What it holds" source="openaev" testId="reason" />
         </CaseLoopProvider>
       </MemoryRouter>,
     );
-    expect(screen.getByText(/No automation works this case/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open the fleet" }).getAttribute("href")).toBe("/fleets/f-loop");
-    expect(screen.queryByText("Own sentence")).toBeNull();
+    expect(screen.getByText("What it holds")).toBeInTheDocument();
+    expect(screen.getByText(/Written from OpenAEV, connected/)).toBeInTheDocument();
+    expect(screen.queryByText(/No automation works this case/)).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
-  it("names the agent working the case", () => {
-    renderWithProviders(
-      <CaseLoopProvider value={{ worker: { kind: "running", agent: "CTEM Triage", since: "2026-11-22T10:00:00Z" }, opencrq: true }}>
-        <CaseSectionReason own="Own sentence" testId="reason" />
-      </CaseLoopProvider>,
-    );
-    expect(screen.getByTestId("reason").textContent).toMatch(/Waiting for CTEM Triage, working this case since/);
-  });
-
-  it("keeps the section's own sentence without the page's state", () => {
-    renderWithProviders(<CaseSectionReason own="Own sentence" testId="reason" />);
-    expect(screen.getByText("Own sentence")).toBeInTheDocument();
-  });
-
-  it("says OpenCRQ is not connected on the treatment plan", () => {
+  it("keeps the section's sentence alone without the page's state", () => {
     renderWithProviders(
       <MemoryRouter>
-        <CaseLoopProvider value={{ worker: { kind: "on" }, opencrq: false }}>
+        <CaseSectionReason own="What it holds" source="opencrq" testId="reason" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("reason").textContent).toBe("What it holds");
+  });
+
+  it("offers a Connect button where the product is missing", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseLoopProvider value={{ sources: { ...ALL, opencrq: false } }}>
           <CaseTreatmentPlan plan={null} />
         </CaseLoopProvider>
       </MemoryRouter>,
     );
     expect(screen.getByText(/OpenCRQ is not connected/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Connect OpenCRQ" }).getAttribute("href")).toBe("/integrations");
+    expect(screen.getByRole("button", { name: "Connect OpenCRQ" })).toBeInTheDocument();
   });
 });

@@ -119,7 +119,7 @@ describe("CaseRemediationDecision", () => {
 
   it("says so when the case is not decided yet", () => {
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={[]} />);
-    expect(screen.getByText(/Not decided yet/)).toBeTruthy();
+    expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
   });
 });
 
