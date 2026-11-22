@@ -20422,5 +20422,16 @@
   "Attached on {date}": "{date} に紐付け",
   "Attached the treatment plan": "対応計画を紐付けました",
   "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "対応計画はまだありません。OpenCRQ が接続されていると、修復の決定が OpenCRQ に計画を作成します。",
-  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "OpenCRQ に計画があります。OpenCRQ の閲覧者のみ表示できます"
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "OpenCRQ に計画があります。OpenCRQ の閲覧者のみ表示できます",
+  "Analyst review": "アナリストのレビュー",
+  "Analyst review skipped by policy": "ポリシーによりアナリストのレビューを省略しました",
+  "The fleet requests the coverage without a person": "フリートは人を介さずにカバレッジを要求します",
+  "the analyst's mark in OpenCTI": "OpenCTI のアナリストのマーク",
+  "Unnamed Grouping": "名前のないグルーピング",
+  "The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.": "レビューはアナリストを待っています。決定はその人の「あなたの対応待ち」リストにあります。または OpenCTI でグルーピングにレビューのラベルを付けます。",
+  "A Grouping exists in OpenCTI: restricted to OpenCTI readers": "OpenCTI にグルーピングがあります。OpenCTI の閲覧者に限定されています",
+  "Drafted the threat package": "脅威パッケージを作成しました",
+  "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "脅威パッケージはまだありません。ケースのトリアージ後、フリートが OpenCTI に作成します。",
+  "Threat package drafted, coverage not requested yet": "脅威パッケージを作成しました。カバレッジはまだ要求していません",
+  "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました"
 }
