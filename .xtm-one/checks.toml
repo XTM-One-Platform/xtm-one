@@ -1688,7 +1688,7 @@ report_path = ".xtm/tripwires.xml"
 # unit job runs. args ["--list"] with no file: the selection of the change, nothing run.
 # A change the queue runs whole for (a conftest.py, the dependencies) is named, not run.
 [check.backend-queue-tests]
-description = "the backend unit tests the merge queue would run for the change (tests/selection.py), run before the push; no args: the change; args: --list (the selection only) or changed paths from backend/"
+description = "the backend unit tests the merge queue would run for the change (tests/selection.py), run before the push; no args: the change; args: --list (the selection only), --part i/n (one share of a selection over the 900 s budget, exit 3 names the parts), --budget 0 (no budget) or changed paths from backend/"
 argv = ["python", "-m", "scripts.queue_tests"]
 cwd = "backend"
 timeout = 1800
