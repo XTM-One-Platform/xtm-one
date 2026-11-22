@@ -31,7 +31,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wand2 } from "lucide-react";
 import { ResourceHub } from "@/components/ui/resource-hub";
 import { useNavGroup, hubCards } from "@/components/layout/use-nav-group";
 import { NewFleetDialog } from "@/components/fleets/NewFleetDialog";
@@ -113,7 +112,7 @@ export default function AgentsHub() {
         description="Your agents, the fleets they form and the flows they follow."
         feature={{
           to: "/agents/new",
-          icon: Wand2,
+          icon: "sparkle",
           label: "Create an agent",
           description: "Start from a template or a blank persona, then bind knowledge, tools and assignments.",
           gated: true,

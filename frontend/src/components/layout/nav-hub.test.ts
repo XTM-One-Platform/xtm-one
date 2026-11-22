@@ -9,7 +9,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { Bot } from "lucide-react";
 
 import { resolveNav, type NavFlags } from "./nav-model.ts";
 import { findNavGroup, hubCards, hubPages } from "./nav-hub.ts";
@@ -86,8 +85,8 @@ test("for every role, mode, flag set and AI state, a hub's cards are its group's
 
 test("a visible child without card data fails loudly, never a silent missing card", () => {
   const group = {
-    kind: "group" as const, id: "x", label: "X", icon: Bot,
-    children: [{ kind: "leaf" as const, to: "/a", label: "A", icon: Bot }],
+    kind: "group" as const, id: "x", label: "X", icon: "bot" as const,
+    children: [{ kind: "leaf" as const, to: "/a", label: "A", icon: "bot" as const }],
   };
   assert.throws(() => hubCards(group, {}), /hub "x" has no card data for its child \/a/);
   assert.deepEqual(hubCards(group, { "/a": null }), []);

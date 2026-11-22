@@ -46,7 +46,7 @@ export function NavFamilyHeader({
       <ListPageHeader title={t_i18n(family ? family.label : title)} infoLabel={infoLabel} info={info} actions={actions} />
       {members.length > 1 && (
         <DetailTabs
-          tabs={members.map((member) => ({ key: member.to, label: member.label, icon: member.icon, to: member.to }))}
+          tabs={members.map((member) => ({ key: member.to, label: member.label, glyph: member.icon, to: member.to }))}
           active={to}
         />
       )}
