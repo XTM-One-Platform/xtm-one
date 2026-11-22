@@ -34,6 +34,62 @@ from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
 logger = logging.getLogger(__name__)
 
+#: The filter keys of every Pennylane event (services/pennylane_events.py).
+_PENNYLANE_FILTER_KEYS: dict[str, str] = {
+    "min_amount": "Only records of at least this amount in euros, tax included",
+    "max_amount": "Only records of at most this amount in euros, tax included",
+    "supplier_id": "Only records of these Pennylane supplier ids",
+    "customer_id": "Only records of these Pennylane customer ids",
+    "journal_id": "Only transactions of these journal ids",
+    "bank_account_id": "Only transactions of these bank account ids",
+    "status": "Only invoices in these statuses (payment_status for supplier invoices)",
+    "currency": "Only records in these currencies (EUR, USD...)",
+}
+#: Each Pennylane event: (event, label, description).
+_PENNYLANE_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "supplier_invoice_created",
+        "Supplier invoice created",
+        "Triggers when a supplier invoice is added in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "supplier_invoice_updated",
+        "Supplier invoice updated",
+        "Triggers when a supplier invoice changes in Pennylane (one run per change). Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_created",
+        "Customer invoice created",
+        "Triggers when a customer invoice is created in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_updated",
+        "Customer invoice updated",
+        "Triggers when a customer invoice changes in Pennylane (one run per change). Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_paid",
+        "Customer invoice paid",
+        "Triggers once when a customer invoice is paid in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "transaction_created",
+        "Bank transaction created",
+        "Triggers when a bank transaction is added in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "transaction_matched",
+        "Bank transaction matched",
+        "Triggers when a bank transaction is matched to invoices in Pennylane, again when the "
+        "matched invoices change. Uses polling (every 5 minutes); the first poll starts from now.",
+    ),
+)
 #: The filter keys of every Wordsmith event (the event's ``data`` and envelope, lifted).
 _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "type": "The Wordsmith event type",
@@ -9040,6 +9096,18 @@ PROVIDER_CATALOG = {
         "auth_type": "api_key",
         "fields": ["api_key"],
         "extra_fields": {"company_id": "Company ID (firm token only)"},
+        # Polled from the Company API v2 changelogs (services/pennylane_events.py,
+        # every 5 minutes), each change read with its record.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _PENNYLANE_FILTER_KEYS,
+            }
+            for event, label, description in _PENNYLANE_EVENTS
+        ],
         "setup_guide": {
             "title": "Pennylane API Token Setup",
             "url": "https://app.pennylane.com",

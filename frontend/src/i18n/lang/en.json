@@ -20014,5 +20014,19 @@
   "Re-test passed on {date}": "Re-test passed on {date}",
   "Not reproduced": "Not reproduced",
   "Reproduced": "Reproduced",
-  "Not re-tested yet": "Not re-tested yet"
+  "Not re-tested yet": "Not re-tested yet",
+  "Supplier invoice created": "Supplier invoice created",
+  "Supplier invoice updated": "Supplier invoice updated",
+  "Customer invoice created": "Customer invoice created",
+  "Customer invoice updated": "Customer invoice updated",
+  "Customer invoice paid": "Customer invoice paid",
+  "Bank transaction created": "Bank transaction created",
+  "Bank transaction matched": "Bank transaction matched",
+  "Triggers when a supplier invoice is added in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when a supplier invoice is added in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.",
+  "Triggers when a supplier invoice changes in Pennylane (one run per change). Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when a supplier invoice changes in Pennylane (one run per change). Uses polling (every 5 minutes); the first poll starts from now.",
+  "Triggers when a customer invoice is created in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when a customer invoice is created in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.",
+  "Triggers when a customer invoice changes in Pennylane (one run per change). Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when a customer invoice changes in Pennylane (one run per change). Uses polling (every 5 minutes); the first poll starts from now.",
+  "Triggers once when a customer invoice is paid in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.": "Triggers once when a customer invoice is paid in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.",
+  "Triggers when a bank transaction is added in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when a bank transaction is added in Pennylane. Uses polling (every 5 minutes); the first poll starts from now.",
+  "Triggers when a bank transaction is matched to invoices in Pennylane, again when the matched invoices change. Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when a bank transaction is matched to invoices in Pennylane, again when the matched invoices change. Uses polling (every 5 minutes); the first poll starts from now."
 }
