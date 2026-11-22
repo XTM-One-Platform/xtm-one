@@ -138,13 +138,36 @@ def is_write(op: dict[str, Any]) -> bool:
     return not op.get("read")
 
 
+DETAIL_LIMIT = 300
+_MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_DASH = re.compile(r"\s*[\u2014\u2013]\s*")
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+
+
+def _plain(text: str) -> str:
+    """Vendor prose as plain text: Markdown links reduced to their text, no backticks, no long dashes."""
+    text = _MARKDOWN_LINK.sub(r"\1", text)
+    text = text.replace("`", "").replace("**", "")
+    text = _DASH.sub(", ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _detail(op: dict[str, Any]) -> str:
+    """The vendor detail, plain, cut at the last sentence end within DETAIL_LIMIT (a partial sentence is dropped)."""
+    detail = _plain(str(op.get("description") or ""))
+    if len(detail) <= DETAIL_LIMIT:
+        return detail
+    ends = [m.end() for m in _SENTENCE_END.finditer(detail, 0, DETAIL_LIMIT)]
+    return detail[: ends[-1]] if ends else ""
+
+
 def _description(op: dict[str, Any]) -> str:
     """The tool description: the operation's own words, then how to use it."""
-    summary = str(op["summary"]).rstrip(".")
-    detail = str(op.get("description") or "").strip()
+    summary = _plain(str(op["summary"])).rstrip(".")
+    detail = _detail(op)
     text = summary + "."
     if detail and detail.rstrip(".").lower() != summary.lower():
-        text += " " + detail[:300].rstrip(".") + "."
+        text += " " + detail.rstrip(".") + "."
     if _page_param(op):
         text += " Paged (page, pageSize); all_pages reads up to 20 pages."
     elif _cursor_param(op):

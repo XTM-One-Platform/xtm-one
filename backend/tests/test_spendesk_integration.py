@@ -211,6 +211,29 @@ def test_every_write_is_named_with_a_write_verb_and_asks():
         assert "Sensitive write" in tool.description
 
 
+def test_descriptions_are_plain_and_cut_at_a_sentence_end() -> None:
+    """Vendor prose is cut at a sentence end, never mid-word, with no Markdown link, backtick or long dash."""
+    tools, _ = _tools_for()
+    for op in _tools.operations():
+        detail = _tools._detail(op)
+        assert len(detail) <= _tools.DETAIL_LIMIT, op["name"]
+        if len(_tools._plain(str(op.get("description") or ""))) > _tools.DETAIL_LIMIT:
+            assert not detail or detail[-1] in ".!?", (op["name"], detail[-40:])
+    for tool in tools:
+        text = tool.description
+        assert "](" not in text, tool.name
+        assert "`" not in text, tool.name
+        assert "\u2014" not in text and "\u2013" not in text, tool.name
+        assert text.endswith("."), tool.name
+
+
+def test_detail_drops_a_partial_sentence() -> None:
+    op = {"description": "First sentence. " + "word " * 80, "summary": "Do it"}
+    assert _tools._detail(op) == "First sentence."
+    op = {"description": "See [this guide](/reference/x) \u2014 then `call` it.", "summary": "Do it"}
+    assert _tools._detail(op) == "See this guide, then call it."
+
+
 async def test_writes_carry_an_idempotency_key(spendesk_api):
     api = spendesk_api({"/v1/suppliers/s1": SUPPLIER})
     _, executor = _tools_for()
