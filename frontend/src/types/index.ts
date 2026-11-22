@@ -16541,7 +16541,7 @@ export interface HealthLastInvestigation {
   closed_at: string | null;
 }
 
-/** What "Investigate now" did on one registration: started, or the refusal code of `start_cycle`. */
+/** What "Run checks now" did on one registration: started, or the refusal code of `start_cycle`. */
 interface HealthModuleInvestigationStart {
   registration_id: string;
   cycle_id: string | null;

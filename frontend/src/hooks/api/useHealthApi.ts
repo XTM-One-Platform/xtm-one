@@ -359,8 +359,9 @@ export function useRunHealthAnalysis() {
 }
 
 /**
- * "Investigate now" (#101 S14c, section 12.7): a Module Analyst cycle on every active registration of
- * one module, administrators only. A per-registration refusal comes back in `items`; a refusal of the
+ * "Run checks now" (#101 S15e-2, sections 13.2 and 13.8; "Investigate now" of S14c before it): the
+ * module checker's round on every active registration of one module, administrators only. Its
+ * `["health-overview"]` invalidation refreshes the "Agentic checks" line too. A per-registration refusal comes back in `items`; a refusal of the
  * whole request (`module_analyst_off`, `no_registration`, AI off) is a 409 the card words itself.
  */
 export function useInvestigateHealthModule() {
