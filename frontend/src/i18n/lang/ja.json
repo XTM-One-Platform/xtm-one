@@ -20534,5 +20534,14 @@
   "No collaboration instruction": "連携の指示なし",
   "Search capabilities, members, integrations...": "機能、メンバー、連携を検索...",
   "No capability slot": "機能スロットはありません",
-  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません"
+  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません",
+  "Typed": "手入力",
+  "API": "API",
+  "Exclude from this sync": "この同期から除外",
+  "From {platform}, kept in sync: only the local fields can be edited here.": "{platform} から同期中: ここではローカル項目のみ編集できます。",
+  "From {platform}: only the local fields can be edited here.": "{platform} から取得: ここではローカル項目のみ編集できます。",
+  "{count, plural, one {Remove a synced row?} other {Remove # synced rows?}}": "{count, plural, other {同期された # 行を削除しますか?}}",
+  "They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.": "{platform} からの行です: 除外しない限り、次回の同期実行 ({when}) で再び追加されます。",
+  "They come from {platform}: the next import brings them back unless you exclude them.": "{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。",
+  "The sync never imports them again. You can take them out of its exclusions later.": "同期はこれらを再びインポートしません。後で除外リストから外せます。"
 }
