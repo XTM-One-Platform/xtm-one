@@ -61,6 +61,68 @@ def delivered(payload: Mapping[str, Any]) -> dict[str, str]:
     return {k: str(v).strip() for k, v in meta.items() if isinstance(v, str | int) and str(v).strip()}
 
 
+#: The OpenAEV Scenario field that declares a reachability assertion (OpenAEV REST API, "Reachability assertions").
+ASSERTION_FIELD = "scenario_reachability_assertion"
+
+
+async def stamp_reachability_assertion(
+    event: str, payload: dict[str, Any], *, integration_id: str, verified: bool
+) -> bool | None:
+    """CTEM-26: say on a score degradation whether its scenario is a reachability assertion.
+
+    OpenAEV reports a failed assertion (a target that should not answer answers) as
+    the existing ``SCORE_DEGRADATION`` of the scenario, and the delivery does not say
+    the scenario is an assertion. The scenario is read once with the integration
+    owner's credential and ``reachability_assertion`` is written on the normalized
+    event, so the signal table records an outside-lens exposure (path 5) instead of a
+    mitigation regression (path 8). Verified deliveries only; never raises. The flag
+    read, ``None`` when it was not read (the delivery then stays path 8).
+    """
+    from app.core.config import settings
+
+    meta = payload.get("_openaev_event") if isinstance(payload, dict) else None
+    if not verified or settings.is_copilot_like or event != "scenario_score_degraded" or not isinstance(meta, dict):
+        return None
+    scenario_id = str(meta.get("resource_id") or "").strip()
+    if str(meta.get("resource_type") or "").upper() != "SCENARIO" or not scenario_id:
+        return None
+    try:
+        flag = await _read_assertion_flag(integration_id, scenario_id)
+    except Exception:
+        logger.warning("OpenAEV scenario %s not read for its reachability assertion flag", scenario_id, exc_info=True)
+        return None
+    if flag is not None:
+        meta["reachability_assertion"] = flag
+    return flag
+
+
+async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | None:
+    import uuid
+    from urllib.parse import quote
+
+    from app.core.database import async_session
+    from app.integrations.providers.openaev._common import _api, _headers
+    from app.models.integration import Integration
+    from app.services.integration_tools import _get_token
+
+    async with async_session() as db:
+        integration = await db.get(Integration, uuid.UUID(integration_id))
+        if integration is None or integration.provider != PROVIDER:
+            return None
+        owner = str(integration.user_id) if integration.user_id else None
+        token = await _get_token(db, integration_id, PROVIDER, user_id=owner, integ=integration)
+    if not token or "||" not in str(token):
+        return None
+    base_url, _, api_token = str(token).partition("||")
+    path = f"/api/scenarios/{quote(scenario_id, safe='')}"
+    resp, err = await _api(base_url.strip().rstrip("/"), _headers(api_token.strip()), "get", path, f"GET {path}")
+    if err or resp is None:
+        return None
+    body = resp.json()
+    value = body.get(ASSERTION_FIELD) if isinstance(body, dict) else None
+    return value if isinstance(value, bool) else None
+
+
 def references(case: CtemCase, issues: list[CtemCaseIssue], resource_id: str) -> bool:
     """Whether *case* waits on the OpenAEV object *resource_id* (a validation reference or a member)."""
     if not resource_id:

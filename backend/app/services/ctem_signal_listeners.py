@@ -81,6 +81,10 @@ LISTENERS: tuple[Listener, ...] = (
     Listener("aikido", AIKIDO_ISSUE_EVENTS, ("leaked_secret",), "credential_leak", "world", "code"),
     Listener("aikido", AIKIDO_ISSUE_EVENTS, (), "code_flaw", "inside", "code"),
     Listener("aikido", ("ci_gate_failed", "scan_image_finished"), ("scan",), "code_flaw", "inside", "code"),
+    # CTEM-26: OpenAEV reports a failed reachability assertion (a target that should not answer
+    # answers) as the scenario's SCORE_DEGRADATION; the receiver stamps the assertion flag
+    # (ctem_openaev_events.stamp_reachability_assertion), so it is an outside-lens exposure (path 5).
+    Listener("openaev", ("scenario_score_degraded",), ("scenario:assertion",), "new_exposure", "outside", "asset"),
     Listener("openaev", ("scenario_score_degraded",), ("scenario",), "mitigation_regression", "inside", "asset"),
     # CTEM-13: a finished simulation whose attack path reached a high or very high criticality
     # asset (path 4). OpenAEV names the simulation only, never the asset: the subject is the run.
@@ -293,13 +297,16 @@ def _openaev_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     if not isinstance(meta, dict):
         return None
     kind = _text(meta.get("resource_type")).lower()
-    if row.object_types and kind not in row.object_types:
+    assertion = kind == "scenario" and meta.get("reachability_assertion") is True
+    if row.object_types and (f"{kind}:assertion" if assertion else kind) not in row.object_types:
         return None
     external_id = _text(meta.get("resource_id"))
     if not external_id:
         return None
     message = _text(meta.get("message"))[:300]
     evidence: dict[str, Any] = {"event": _text(meta.get("event_type")), "resource_type": kind}
+    if assertion:
+        evidence["reachability_assertion"] = True
     if message:
         evidence["message"] = message
     url = _text(meta.get("platform_url"))
