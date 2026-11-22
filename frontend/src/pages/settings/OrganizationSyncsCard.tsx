@@ -118,7 +118,7 @@ interface CardProps {
   /**
    * The sections this card lists (#1134 S2): "profile" (crown jewels, PIRs) in Settings,
    * "inventory" (assets, asset groups, tech stack, AI systems) on the Inventory page, "" every sync.
-   * The Sync all schedule shows in each. Settings keeps "" until the Inventory page mounts its own.
+   * The Sync all schedule shows in each; "" is kept for a caller that lists them all.
    */
   scope?: OrganizationSyncScope;
 }
