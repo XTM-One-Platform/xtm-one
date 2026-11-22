@@ -104,6 +104,9 @@ def build_organization_context_tool(
                         if not found_category.field
                         else cats.rows_of(profile, found_category)
                     )
+                    org_id = getattr(row, "organization_id", None)
+                    if found_category.field == "tech_stack" and isinstance(org_id, uuid.UUID):
+                        rows = await _inventory_rows(db, org_id) or rows
                     return cats.render_page(
                         found_category,
                         rows,
@@ -129,6 +132,27 @@ def build_organization_context_tool(
             return (
                 "Error: the organization profile could not be read right now. Say so in your output; do not guess it."
             )
+
+    async def _inventory_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
+        """The tech stack built from the assets' software (#1178, S4); ``[]`` when no asset carries software."""
+        from app.services import organization_asset_store as store
+
+        try:
+            async with db.begin_nested():
+                await store.ensure_built(db, organization_id)
+            if not await store.has_software(db, organization_id):
+                return []
+            page = await store.tech_stack_inventory(db, organization_id, limit=store.MAX_PAGE)
+            items = list(page.items)
+            while len(items) < page.total:
+                more = await store.tech_stack_inventory(db, organization_id, offset=len(items), limit=store.MAX_PAGE)
+                if not more.items:
+                    break
+                items += more.items
+            return items
+        except Exception:  # the profile's typed rows still answer
+            logger.warning("Tech stack inventory read failed", exc_info=True)
+            return []
 
     async def _enterprise_knowledge(db: AsyncSession, profile: OrganizationProfile, query: str, limit: int) -> str:
         from app.services import organization_enterprise_knowledge as ek

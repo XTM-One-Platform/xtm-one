@@ -236,6 +236,24 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
     the address moves when a row above it is removed, so the row gets an `external_id` first).
   - `DELETE /api/v1/organization-context/assets/decisions/{id}`: 204; the keys decide again.
 
+### 9.3 Tech stack from asset software (S4)
+
+`organization_asset_store.tech_stack_inventory` builds the tech stack from `organization_asset_software`: one
+item per vendor and product (keys case-folded), each version seen with the number of assets running it, the
+number of distinct assets running the product (an asset on two versions counts once), the sources that report
+it, and the CPE with its confidence (`resolve_cpe`: a CPE typed in a hand row of `tech_stack` is the
+administrator's override, kept across syncs; then a CPE a source reported; else `unresolved`). The profile's
+`tech_stack` rows stay: a row an asset runs joins its item (`manual: true`), a row no asset runs (a SaaS or a
+cloud service) is an item without versions. Three grouped reads on the `(organization_id, product_key, version)`
+index answer it, so its cost follows the number of products, not of assets.
+
+- `GET /api/v1/organization-context/inventory/tech-stack?q=&offset=&limit=` (any signed-in user): the items,
+  filtered on a vendor or product substring, paginated (`limit` at most 200); "on N assets" is `asset_count`, and
+  `GET /assets/by-software` lists them.
+- `get_organization_context(category="tech_stack")` answers the same items once an asset carries software, and
+  the profile rows before (no change for an organization with no asset software). Agents still write the
+  profile rows through `upsert_organization_rows`, which never overwrites a platform-sourced row.
+
 ## 10. OpenCRQ alignment
 
 OpenCRQ-Platform/opencrq#3152 closed the three divergences: `security_platform` and its 10 subcategories are
