@@ -33,6 +33,9 @@ a host or a web application); container images, registries and IaC templates kee
 in OpenCRQ, OpenAEV and OpenCTI by their own pull requests: an import reads `SOURCE_CODE` as `source_code` as soon
 as a product sends it, and `manage_openaev_asset` sends `GENERIC_ASSET` with no subcategory when the connected
 OpenAEV refuses `SOURCE_CODE`, the exact category staying on the XTM One row. Nothing fails and nothing is lost.
+The fallback runs only when the update itself sets `SOURCE_CODE` on an endpoint not already on it and OpenAEV
+answers a 400 or 422 naming the category; any other error (a 5xx, a timeout, another field refused) is
+answered as it is, so an endpoint is never downgraded by an unrelated failure.
 OpenCTI to XTM One: a `System` is `generic_asset` until a person classifies it.
 
 `ASSET_TAXONOMY` in `organization_context.py` is the one copy in XTM One; the backend validates every row against it.

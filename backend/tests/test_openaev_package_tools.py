@@ -784,7 +784,10 @@ async def test_asset_update_to_source_code_falls_back_on_an_older_openaev(monkey
             return _FakeResp({"asset_id": "e1", "asset_name": "repo", "asset_category": "GENERIC_ASSET"}), None
         puts.append(dict(json))
         if json.get("asset_category") == "SOURCE_CODE":
-            return None, "OpenAEV error 400: asset_category"
+            return None, (
+                "Error: OpenAEV rejected the request to update endpoint — bad request. "
+                'Cannot deserialize value of type `AssetCategory` from String "SOURCE_CODE"'
+            )
         return _FakeResp({}), None
 
     monkeypatch.setattr(assets, "_api", fake)
@@ -798,6 +801,57 @@ async def test_asset_update_to_source_code_falls_back_on_an_older_openaev(monkey
     assert puts[0]["asset_subcategory"] == "CODE_REPOSITORY"
     assert "asset_subcategory" not in puts[1]
     assert "GENERIC_ASSET there" in result.content
+
+
+@pytest.mark.parametrize(
+    ("stored", "args", "error"),
+    [
+        # A server error on a category change: answered as it is.
+        (
+            "GENERIC_ASSET",
+            {"category": "source_code"},
+            "Error: OpenAEV server error (503) while trying to update endpoint. "
+            "The service may be temporarily unavailable.",
+        ),
+        # Another field refused on a category change: answered as it is.
+        (
+            "GENERIC_ASSET",
+            {"category": "source_code", "url": "not a url"},
+            "Error: OpenAEV rejected the request to update endpoint — validation error. asset_url: must be a URL",
+        ),
+        # An endpoint already SOURCE_CODE, an unrelated change refused: never
+        # downgraded (review 6013276149 on #1238).
+        (
+            "SOURCE_CODE",
+            {"description": "new"},
+            "Error: OpenAEV rejected the request to update endpoint — bad request. asset_category",
+        ),
+        # The same endpoint and a transient error.
+        (
+            "SOURCE_CODE",
+            {"description": "new"},
+            "Error: OpenAEV server error (502) while trying to update endpoint.",
+        ),
+    ],
+)
+async def test_asset_update_never_downgrades_on_another_error(monkeypatch, stored, args, error):
+    # xtm-one #1233: only a rejection of the requested newer category falls back.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    puts: list[dict] = []
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        if method == "get":
+            return _FakeResp({"asset_id": "e1", "asset_name": "repo", "asset_category": stored}), None
+        puts.append(dict(json))
+        return None, error
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(executor, "manage_openaev_asset", {"action": "update", "asset_id": "e1", **args})
+    assert len(puts) == 1
+    assert "GENERIC_ASSET" not in result.content
+    assert error in result.content
 
 
 async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):

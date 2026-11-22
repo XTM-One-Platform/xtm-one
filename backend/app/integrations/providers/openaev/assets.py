@@ -49,9 +49,29 @@ _ENDPOINT_INPUT_FIELDS = (
 )
 
 
-#: Categories newer than some OpenAEV releases (xtm-one #1233): a refused update
-#: is sent again as GENERIC_ASSET with no subcategory.
+#: Categories newer than some OpenAEV releases (xtm-one #1233): an update that
+#: sets one of them and is refused for it is sent again as GENERIC_ASSET with no
+#: subcategory.
 _NEWER_CATEGORIES = frozenset({"SOURCE_CODE"})
+
+#: The wording ``format_http_error`` gives a 400 and a 422.
+_REJECTION_MARKERS = ("bad request", "validation error")
+
+
+def _category_refused(err: str | None, category: str) -> bool:
+    """Whether *err* is OpenAEV rejecting *category* itself.
+
+    Only a 400 or 422 whose detail names the category field (``asset_category``
+    or the ``AssetCategory`` enum) or the value counts: a 5xx, a timeout or a
+    rejection of another field (the subcategory included) is answered as it is,
+    never retried with a downgraded category.
+    """
+    if not err:
+        return False
+    low = err.lower()
+    if not any(marker in low for marker in _REJECTION_MARKERS):
+        return False
+    return any(word in low for word in ("asset_category", "assetcategory", category.lower()))
 
 
 def _endpoint_input(current: dict[str, Any]) -> dict[str, Any]:
@@ -144,10 +164,15 @@ def register(
                 "update endpoint", json=body,
             )
             fallback = ""
-            if err and body.get("asset_category") in _NEWER_CATEGORIES:
+            requested = str(changes.get("asset_category") or "")
+            if (
+                requested in _NEWER_CATEGORIES
+                and current.get("asset_category") != requested
+                and _category_refused(err, requested)
+            ):
                 # An OpenAEV that predates the category refuses it: keep the asset
                 # unclassified there (XTM One keeps the exact category).
-                fallback = str(body["asset_category"])
+                fallback = requested
                 body["asset_category"] = "GENERIC_ASSET"
                 body.pop("asset_subcategory", None)
                 _, err = await _api(
