@@ -464,6 +464,7 @@ def narrow_archive(
     max_bytes: int,
     outside_max_bytes: int = NARROW_OUTSIDE_MAX_BYTES,
     outside_budget_bytes: int = NARROW_OUTSIDE_BUDGET_BYTES,
+    max_output_bytes: int | None = None,
 ) -> NarrowedArchive:
     """A repository tar archive read as a stream, repacked with only what a checkout under *paths* reads.
 
@@ -475,7 +476,8 @@ def narrow_archive(
     media files, the large files and the files past the outside budget, never a refusal for them. Member names
     are kept as they are, the top directory included (it names the commit). Raises :class:`ArchiveTooLargeError`
     once the kept files pass *max_bytes* (the message names the bytes under the paths and outside them apart),
-    or when *source* is not a tar archive.
+    once the compressed archive it writes passes *max_output_bytes* (the bytes held in memory, when given), or
+    when *source* is not a tar archive.
     The archive is read once, member by member, so its size is bounded by the disk it is streamed from, never
     by memory.
     """
@@ -522,9 +524,22 @@ def narrow_archive(
                 )
             handle = reader.extractfile(info)
             writer.addfile(info, handle)
+            # The compressor buffers its output, so this check lags by at most its buffer; the one after the
+            # archive is closed is exact.
+            if max_output_bytes is not None and out.tell() > max_output_bytes:
+                raise _output_too_large(wanted, max_output_bytes, under_bytes + detection_bytes + other_bytes)
             if under:
                 narrowed.kept_under += 1
             else:
                 narrowed.kept_outside += 1
+    if max_output_bytes is not None and out.tell() > max_output_bytes:
+        raise _output_too_large(wanted, max_output_bytes, under_bytes + detection_bytes + other_bytes)
     narrowed.data = out.getvalue()
     return narrowed
+
+
+def _output_too_large(wanted: list[str], max_output_bytes: int, selected: int) -> ArchiveTooLargeError:
+    return ArchiveTooLargeError(
+        f"the narrowed archive of {', '.join(wanted)} is over {max_output_bytes // (1024 * 1024)} MB "
+        f"compressed ({_mb(selected)} of files): narrow the sub_paths"
+    )
