@@ -29,6 +29,7 @@ import httpx
 from app.core.egress import egress_client
 from app.integrations.http import (
     TRANSIENT_RETRY_STATUSES,
+    RateLimiter,
     app_token_cache_key,
     get_shared_rate_limiter,
     safe_request,
@@ -165,7 +166,7 @@ class OdooClient:
             await self._http.__aexit__(*exc)
             self._http = None
 
-    def _limiter(self):
+    def _limiter(self) -> RateLimiter:
         cred = self.credential
         return get_shared_rate_limiter(
             f"odoo:{app_token_cache_key('odoo', cred.base_url, cred.database, cred.login, cred.api_key)}",
@@ -174,7 +175,9 @@ class OdooClient:
             max_concurrency=_MAX_IN_FLIGHT,
         )
 
-    async def _post(self, url: str, body: dict[str, Any], headers: dict[str, str], action: str, *, read: bool):
+    async def _post(
+        self, url: str, body: dict[str, Any], headers: dict[str, str], action: str, *, read: bool
+    ) -> httpx.Response:
         if self._http is None:
             raise OdooError("Error: the Odoo client is not open.")
         async with self._limiter().slot():
@@ -221,8 +224,9 @@ class OdooClient:
             )
         data = self._json(resp, action)
         if isinstance(data, dict) and data.get("error"):
-            error = data["error"] if isinstance(data["error"], dict) else {}
-            detail = error.get("data") if isinstance(error.get("data"), dict) else {}
+            error: dict[str, Any] = data["error"] if isinstance(data["error"], dict) else {}
+            raw = error.get("data")
+            detail: dict[str, Any] = raw if isinstance(raw, dict) else {}
             raise OdooError(
                 fault_message(detail.get("name", ""), detail.get("message") or error.get("message", ""), action)
             )
@@ -261,9 +265,7 @@ class OdooClient:
         if resp.status_code in _JSON2_ABSENT and self.transport == "":
             return _ABSENT
         if resp.status_code == 401:
-            raise OdooError(
-                "Error: Odoo refused the API key (401: wrong key, wrong database, or the key was revoked)."
-            )
+            raise OdooError("Error: Odoo refused the API key (401: wrong key, wrong database, or the key was revoked).")
         data = self._json(resp, action)
         if resp.status_code >= 400:
             info = data if isinstance(data, dict) else {}

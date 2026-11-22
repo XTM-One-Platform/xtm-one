@@ -379,6 +379,21 @@ async def test_provider_connectivity(
             f"{base_url}/graphql",
             {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
+    elif provider == "odoo":
+        # The server version, the signed-in user and the companies it sees.
+        from app.integrations.providers.odoo import OdooCredential
+        from app.integrations.providers.odoo import validate_connection as odoo_validate
+
+        ok, message = await odoo_validate(
+            OdooCredential.build(
+                str(extra.get("base_url") or ""),
+                str(extra.get("database") or ""),
+                str(extra.get("login") or ""),
+                token or "",
+                str(extra.get("company_ids") or ""),
+            )
+        )
+        return {"status": "ok" if ok else "error", "message": message}
     elif provider == "metabase":
         base_url = extra.get("base_url", "").rstrip("/")
         if not base_url:

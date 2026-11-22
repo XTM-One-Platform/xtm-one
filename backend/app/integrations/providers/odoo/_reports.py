@@ -111,9 +111,7 @@ async def all_lines(
     return rows[:MAX_LINES], True
 
 
-async def sums_by_account(
-    cli: OdooClient, domain: list[Any], company_ids: Iterable[int]
-) -> dict[int, dict[str, Any]]:
+async def sums_by_account(cli: OdooClient, domain: list[Any], company_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
     """Debit, credit and balance per account for *domain*."""
     companies = list(company_ids)
     out: dict[int, dict[str, Any]] = {}
@@ -336,7 +334,7 @@ def to_csv(headers: list[str], rows: list[list[Any]], *, delimiter: str = ",") -
 
 
 def to_xlsx(headers: list[str], rows: list[list[Any]], *, title: str = "Odoo") -> bytes:
-    from openpyxl import Workbook
+    from openpyxl import Workbook  # type: ignore[import-untyped]
 
     book = Workbook()
     sheet = book.active
