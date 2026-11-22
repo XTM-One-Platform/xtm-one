@@ -4998,6 +4998,47 @@ PROVIDER_CATALOG = {
             "notes": "Authentication uses the X-API-KEY HTTP header. If the key is missing or invalid, the API returns 401 Unauthorized. You can generate multiple API keys from your Concord account.",
         },
     },
+    "dealhub": {
+        "name": "DealHub",
+        "description": (
+            "DealHub CPQ, every documented API: quotes with line items, totals, discounts, playbook "
+            "answers and approval steps, quote documents, DealRoom signers, opportunities; simulate, "
+            "generate, submit for approval, publish and sign quotes; users; price book; versions, "
+            "playbooks, product catalog and hierarchy. Every write asks a person before it runs"
+        ),
+        "logo": "/logos/dealhub.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["cpq"],
+        # A secret bearer token a CPQ administrator generates; the instance
+        # host (api.dealhub.io unless the account is on another instance)
+        # lives in extra config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {"instance_host": "DealHub API host (api.dealhub.io when empty)"},
+        "setup_guide": {
+            "title": "DealHub API token",
+            "url": "https://developers.dealhub.io/docs/authentication-overview",
+            "steps": [
+                "In DealHub, as a CPQ administrator, generate an API token (Settings > Integrations > API).",
+                "Paste the token in the 'API key' field.",
+                "Leave 'DealHub API host' empty for api.dealhub.io, or set your instance's host (a name under dealhub.io).",
+                "Click 'Test Connection': it reads the account's active users.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Quote, Headless and CRM APIs",
+                    "description": "Read quotes, approvals, documents and DealRoom signers; generate, submit, publish and sign quotes (each write asks a person)",
+                },
+                {
+                    "scope": "User, Pricing and Version APIs",
+                    "description": "Read users, prices, versions, playbooks and the product catalog; change them (each write asks a person)",
+                },
+            ],
+            "notes": "DealHub has no API to approve or reject an approval step: approvals are read on the quote and decided in DealHub. The Subskribe billing API has its own credential and is not part of this integration.",
+        },
+    },
     "docusign": {
         "name": "DocuSign",
         "description": "e-Signature — send PDF and Word files of a conversation for signature as envelopes, follow signers, download the signed document, templates (eSignature REST API v2.1)",
