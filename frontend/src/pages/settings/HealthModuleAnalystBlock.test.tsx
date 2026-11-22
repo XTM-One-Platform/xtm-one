@@ -73,6 +73,20 @@ describe("ModuleAnalystBlock", () => {
     expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
+  it("lays the ceilings out one period per row, as the analysis grid and the spend lines", () => {
+    renderWithProviders(<ModuleAnalystBlock draft={draft} editing onChange={() => {}} />);
+    const cells = Array.from(screen.getByTestId("health.module-analyst-ceilings").children);
+    const names = cells.map((cell) => cell.getAttribute("data-testid") ?? cell.textContent);
+    expect(names).toEqual([
+      expect.stringContaining("Tokens per cycle"),
+      "health.module-analyst-cycle-spacer",
+      expect.stringContaining("Tokens per day"),
+      expect.stringContaining("Cost per day (USD)"),
+      expect.stringContaining("Tokens per month"),
+      expect.stringContaining("Cost per month (USD)"),
+    ]);
+  });
+
   it("shows today's and this month's spend on its own ledger, against its own ceilings", async () => {
     renderWithProviders(<ModuleAnalystBlock draft={draft} editing={false} onChange={() => {}} />);
     const spend = await screen.findByTestId("health.module-analyst-spend");

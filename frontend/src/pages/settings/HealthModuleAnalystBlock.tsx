@@ -105,11 +105,13 @@ export function ModuleAnalystBlock({ draft, editing, onChange }: BlockProps) {
         ) : (
           <SettingsReadField label={t_i18n("Investigate the modules")} info={info} value={analyst.enabled ? t_i18n("On") : t_i18n("Off")} />
         )}
-        <SettingsFieldGrid>
-          {ANALYST_CEILING_KEYS.map((key) => {
+        {/* One period per row, as the analysis grid above and the Today / This month spend below:
+            tokens per cycle alone (an empty cell beside it), then the day pair, then the month pair. */}
+        <SettingsFieldGrid data-testid="health.module-analyst-ceilings">
+          {ANALYST_CEILING_KEYS.flatMap((key) => {
             const id = `${fieldId}-${key}`;
             const valid = analystCeilingValid(key, analyst[key]);
-            return (
+            const field = (
               <SettingsField
                 key={key}
                 id={id}
@@ -144,6 +146,9 @@ export function ModuleAnalystBlock({ draft, editing, onChange }: BlockProps) {
                 )}
               </SettingsField>
             );
+            return key === "cycle_tokens"
+              ? [field, <div key="cycle-spacer" className="hidden md:block" aria-hidden data-testid="health.module-analyst-cycle-spacer" />]
+              : [field];
           })}
         </SettingsFieldGrid>
         <ModuleAnalystSpendLines />
