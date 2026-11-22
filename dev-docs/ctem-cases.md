@@ -216,7 +216,19 @@ members are left as the source reports them. A case with a validation plan
 still closes only on its passing validation (#857); a case whose fixed version
 is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
-through the usual reopen rule. The case page is the next slice of #1252.
+through the usual reopen rule.
+
+**On the case page.** An upgrade case draws a "Running versions" card
+(`frontend/src/pages/xtm-one/ctem/CaseRunningVersions.tsx`) from
+`running_versions`: one sentence with the distinct assets and versions, the
+assets still below the fixed version and those on it or later (ICU plurals with
+an `=0` branch), then a table of versions with their asset count, their status
+against the fixed version and their sources as logos (an integration or a
+product by its `ProviderLogo`; `sbom`, `csv`, `manual`, `api` and `agent:*`,
+which carry no brand, by a glyph; the name in the tooltip and for screen
+readers). With no fixed version the card says it is unknown and what was
+checked; with no asset running the product it says the versions come from the
+assets. Nothing on the page asks the user to type a version in the tech stack.
 
 ### 4.3 Recompute
 
@@ -531,34 +543,6 @@ then the existing AI assessment and facts grid unchanged.
   "No open exposure on your stack", or the products that could not be read
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
-
-### 7.2bis Attention score and its points (#1176)
-
-The list's default sort, its "Act on this first" band and the case page's
-"Why this case needs attention now" read one explained score
-(`frontend/src/pages/xtm-one/ctem/case-attention.ts`): the points of each
-reason are added, and each reason is named in the why line. A reason whose
-points are set to 0 adds nothing and is not named (the age when its points per
-day or its cap is 0). Resolved cases and accepted risks score 0.
-
-The points are the organization's, profile field `case_attention`
-(`CaseAttentionWeights` in `services/organization_context.py`, an exposure
-field: never in the agent block or the legacy dump), set by an administrator
-with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
-`PUT /organization-context`). Defaults, each from 0 to 100:
-
-| Reason | Field | Default |
-|---|---|---|
-| Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
-| At least one KEV issue | `kev` | 15 |
-| At least one crown jewel touched | `crown_jewel` | 15 |
-| SLA breached or due date passed | `overdue` | 20 |
-| Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
-| No owner | `no_owner` | 5 |
-| Per day open, capped at `age_max` (default 10) | `age_per_day` | 1 |
-
-A profile saved before the field reads the defaults; every profile save of
-the Settings form carries it whole.
 
 ### 7.3 Case page `/ctem/cases/:id`
 
