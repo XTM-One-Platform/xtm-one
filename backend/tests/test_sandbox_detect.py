@@ -676,6 +676,41 @@ def test_root_generate_check_and_test_scripts_are_checks_of_their_own():
     assert found.checks["node-check-bundle-size"].image == found.checks["node-install"].image
 
 
+def test_a_code_generator_script_is_a_check_whatever_its_name():
+    """A narrow checkout has no generated sources: the codegen script must be offered before types or unit."""
+    root = json.dumps({"packageManager": "yarn@4.18.1", "workspaces": ["graphql", "front"]})
+    graphql = json.dumps(
+        {
+            "scripts": {
+                "check-ts": "tsc -b",
+                "build:types": "graphql-codegen --config graphql-codegen.ts",
+                "build:prod": "run build:types && node builder/builder.ts",
+                "test": "vitest run",
+            }
+        }
+    )
+    front = json.dumps(
+        {
+            "scripts": {
+                "relay": "relay-compiler relay.config.json",
+                "build": "yarn relay && vite build",
+                "dev": "yarn relay && vite",
+                "lint": "eslint .",
+            }
+        }
+    )
+    found = _detect(
+        {"package.json": root, "graphql/package.json": graphql, "front/package.json": front}, extra=("yarn.lock",)
+    )
+    argv = _argv(found)
+    assert argv["graphql:node-build-types"] == ("yarn", "build:types")
+    assert argv["front:node-relay"] == ("yarn", "relay")
+    # A script that only calls another script by name is not a generator of its own.
+    assert not {"graphql:node-build-prod", "front:node-dev"} & set(argv)
+    names = list(found.checks)
+    assert names.index("node-install") < names.index("front:node-relay")
+
+
 def test_a_workspace_member_namespaced_generator_and_gate_scripts_are_checks():
     """A front package of a Yarn workspace: its i18n scripts were met in CI only, and argv is refused."""
     root = json.dumps(
