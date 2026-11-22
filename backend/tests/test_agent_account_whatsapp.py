@@ -9,6 +9,8 @@ from typing import Any
 
 import pytest
 
+from app.services.agent_accounts.conversation import build_turn
+from app.services.agent_accounts.events import AccountEvent, ContextMessage
 from app.services.agent_accounts.providers import ProviderError, ProviderSession, get_provider, providers
 from app.services.agent_accounts.providers import whatsapp as wa
 
@@ -288,12 +290,117 @@ async def test_fetch_context_from_the_store(monkeypatch: pytest.MonkeyPatch) -> 
         assert integration_id == INTEGRATION and conversation_id == "336"
         return rows
 
+    async def sent_replies(integration_id: str, conversation_id: str, limit: int) -> list[ContextMessage]:
+        return []
+
     monkeypatch.setattr("app.services.whatsapp_inbound.read_messages", read_messages)
+    monkeypatch.setattr(wa, "sent_replies", sent_replies)
     event = wa.event_from_row(
         {"wamid": "w3", "conversation_id": "336", "sender": "336", "text": "m3", "received_at": rows[3].received_at}
     )
     context = await wa.WhatsAppProvider().fetch_context(_session(), event, 2)
     assert [m.message_id for m in context] == ["w1", "w2"]
+
+
+def _answered_chat() -> tuple[list[SimpleNamespace], list[ContextMessage], AccountEvent]:
+    """Five messages from the owner, three of them answered, the replies echoed in the store (self-chat)."""
+    start = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
+    rows: list[SimpleNamespace] = []
+    replies: list[ContextMessage] = []
+    minute = 0
+
+    def row(wamid: str, text: str) -> None:
+        nonlocal minute
+        rows.append(
+            SimpleNamespace(
+                wamid=wamid, sender="336", sender_name="Owner", text=text, received_at=start + timedelta(minutes=minute)
+            )
+        )
+        minute += 1
+
+    for i in range(3):
+        row(f"in{i}", f"request {i}")
+        # The gateway stores the echo of the reply in the number's own chat, named after the number.
+        row(f"out{i}", f"labelled answer {i}")
+        replies.append(
+            ContextMessage(
+                message_id=f"out{i}",
+                sender_name="",
+                text=f"answer {i}",
+                created_at=start + timedelta(minutes=minute - 1, seconds=-5),
+                from_account=True,
+            )
+        )
+    row("in3", "request 3")
+    row("in4", "request 4")
+    last = rows[-1]
+    event = wa.event_from_row(
+        {
+            "wamid": "in4",
+            "conversation_id": "336",
+            "sender": "336",
+            "sender_name": "Owner",
+            "text": last.text,
+            "received_at": last.received_at,
+        }
+    )
+    return rows, replies, event
+
+
+def test_answered_messages_are_history_and_only_the_new_batch_is_the_user_message() -> None:
+    rows, replies, event = _answered_chat()
+    context = wa.with_own_replies(rows, replies, event, 20)
+    # Each echo is the account's reply (its own text, no label), never someone else's message.
+    assert [(m.message_id, m.from_account) for m in context] == [
+        ("in0", False),
+        ("out0", True),
+        ("in1", False),
+        ("out1", True),
+        ("in2", False),
+        ("out2", True),
+        ("in3", False),
+    ]
+    assert [m.text for m in context if m.from_account] == ["answer 0", "answer 1", "answer 2"]
+    history, user_message = build_turn(context, event, "Agent")
+    assert [m.role for m in history] == ["user", "assistant", "user", "assistant", "user", "assistant"]
+    assert "request 0" in history[0].content and history[1].content == "answer 0"
+    assert history[-1].content == "answer 2"
+    # The user message: the two messages since the last reply, nothing already answered.
+    assert user_message == "Owner: request 3\nOwner: request 4"
+
+
+def test_replies_without_an_echo_are_placed_at_their_send_time() -> None:
+    rows, replies, event = _answered_chat()
+    # The Cloud API echoes nothing: the store holds the owner's messages alone.
+    received = [row for row in rows if row.wamid.startswith("in")]
+    context = wa.with_own_replies(received, replies, event, 20)
+    assert [m.message_id for m in context] == ["in0", "out0", "in1", "out1", "in2", "out2", "in3"]
+    _, user_message = build_turn(context, event, "Agent")
+    assert user_message == "Owner: request 3\nOwner: request 4"
+
+
+def test_replies_older_than_the_window_are_left_out() -> None:
+    rows, replies, event = _answered_chat()
+    received = [row for row in rows if row.wamid.startswith("in")]
+    context = wa.with_own_replies(received, replies, event, 2)
+    # The window is the last two stored messages before the event: in2 and in3; out2 falls between them.
+    assert [m.message_id for m in context] == ["in2", "out2", "in3"]
+
+
+async def test_fetch_context_keeps_the_store_when_the_replies_are_not_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows, _, event = _answered_chat()
+
+    async def read_messages(integration_id: str, conversation_id: str, limit: int) -> list[SimpleNamespace]:
+        return rows
+
+    async def sent_replies(integration_id: str, conversation_id: str, limit: int) -> list[ContextMessage]:
+        raise RuntimeError("database down")
+
+    monkeypatch.setattr("app.services.whatsapp_inbound.read_messages", read_messages)
+    monkeypatch.setattr(wa, "sent_replies", sent_replies)
+    context = await wa.WhatsAppProvider().fetch_context(_session(), event, 20)
+    assert [m.message_id for m in context] == [r.wamid for r in rows[:-1]]
+    assert not any(m.from_account for m in context)
 
 
 async def test_dispatch_stored_skips_reactions_and_hands_messages(monkeypatch: pytest.MonkeyPatch) -> None:

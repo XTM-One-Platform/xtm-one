@@ -44,6 +44,7 @@ the ones it may not change.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -2576,6 +2577,49 @@ def _delegate_refusal_message(refusal, assignment) -> str:
 #: Files one delegation hands its run, as many as a work item attaches.
 _MAX_DELEGATED_FILES = 20
 
+#: A work item id written in a delegation's task text.
+_TASK_UUID_RE = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
+#: How many ids of a task are looked up, so a long task stays one cheap read.
+_MAX_TASK_ITEM_IDS = 20
+
+
+async def _held_work_item_named(db: Any, task: str, agent_id: Any) -> tuple[str, str] | None:
+    """The first work item *task* names that a live run of *agent_id* holds, as ``(item id, run id)``.
+
+    A delegation to an agent's pick-up assignment while that agent's own run
+    holds the item starts a second run that can only stand down (gap
+    work-item-double-dispatch). Only items owned by *agent_id* and held by a
+    run that is still alive refuse; any other id in the text is ignored.
+    """
+    from sqlalchemy import select
+
+    from app.models.work_item import WorkItem
+    from app.services.work_item import held_by_live_run, holding_runs
+
+    ids: list[uuid.UUID] = []
+    for match in _TASK_UUID_RE.findall(task or ""):
+        value = uuid.UUID(match)
+        if value not in ids:
+            ids.append(value)
+        if len(ids) >= _MAX_TASK_ITEM_IDS:
+            break
+    if not ids or agent_id is None:
+        return None
+    rows = (
+        (await db.execute(select(WorkItem).where(WorkItem.id.in_(ids), WorkItem.owner_agent_id == agent_id)))
+        .scalars()
+        .all()
+    )
+    held = [row for row in rows if getattr(row, "claimed_by_run_id", None) is not None]
+    if not held:
+        return None
+    holders = await holding_runs(db, [row.claimed_by_run_id for row in held])
+    order = {value: index for index, value in enumerate(ids)}
+    for row in sorted(held, key=lambda r: order.get(r.id, len(ids))):
+        if held_by_live_run(row, holders):
+            return str(row.id), str(row.claimed_by_run_id)
+    return None
+
 
 def _delegated_file_ids(file_ids: object) -> tuple[list[str], str | None]:
     """The delegation's file ids, canonical and de-duplicated in order, and the
@@ -2692,6 +2736,14 @@ async def _run_delegate_to_assignment(
                 refusal = await manual_trigger_overlap(db, assignment, agent, uid)
             if refusal is not None:
                 return _delegate_refusal_message(refusal, assignment)
+            held = await _held_work_item_named(db, task, assignment.agent_id)
+            if held is not None:
+                item_id, holder_run_id = held
+                return (
+                    f"Not delegated: work item `{item_id}` named in the task is held by live run "
+                    f"`{holder_run_id}` of the same agent. A second run on it would only stand down: "
+                    "add a note to the item instead, or wait for that run (its id is what `until` takes)."
+                )
             run_scope = manual_trigger_run_scope(assignment, agent, uid)
 
             from app.services.agentic_gate import (
