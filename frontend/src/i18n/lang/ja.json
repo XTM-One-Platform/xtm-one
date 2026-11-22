@@ -20590,11 +20590,10 @@
   "Open cases ranked by priority, KEV, crown jewels touched, due date, owner and age. The line under each case says why it ranks there.": "優先度、KEV、影響を受ける重要資産、期限、担当者、経過日数で順位付けした未解決のケース。各ケースの下の行に順位の理由を示します。",
   "How cases are ranked": "ケースの順位付け方法",
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{assets, plural, other {# 件の資産}}に{count, plural, other {# 件の KEV}}",
+  "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, other {# 件の KEV}}",
   "{count, plural, one {# crown jewel touched} other {# crown jewels touched}}": "{count, plural, other {重要資産 # 件に影響}}",
   "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {本日期限} other {期限まで # 日}}",
   "No owner": "担当者なし",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {本日作成} other {# 日前に作成}}",
-  "Assign an owner": "担当者を割り当て",
-  "Set a due date": "期限を設定",
   "Open the case": "ケースを開く"
 }

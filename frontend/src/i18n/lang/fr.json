@@ -20590,11 +20590,10 @@
   "Open cases ranked by priority, KEV, crown jewels touched, due date, owner and age. The line under each case says why it ranks there.": "Cas ouverts classés par priorité, KEV, joyaux de la couronne touchés, échéance, responsable et ancienneté. La ligne sous chaque cas explique son rang.",
   "How cases are ranked": "Comment les cas sont classés",
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{count, plural, one {# KEV} other {# KEV}} sur {assets, plural, one {# actif} other {# actifs}}",
+  "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, one {# KEV} other {# KEV}}",
   "{count, plural, one {# crown jewel touched} other {# crown jewels touched}}": "{count, plural, one {# joyau de la couronne touché} other {# joyaux de la couronne touchés}}",
   "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {Échéance aujourd'hui} one {Échéance dans # jour} other {Échéance dans # jours}}",
   "No owner": "Sans responsable",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Ouvert aujourd'hui} one {Ouvert il y a # jour} other {Ouvert il y a # jours}}",
-  "Assign an owner": "Attribuer un responsable",
-  "Set a due date": "Fixer une échéance",
   "Open the case": "Ouvrir le cas"
 }
