@@ -20763,5 +20763,8 @@
   "Show the checks": "チェックを表示",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
   "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}",
-  "No asset group yet. Add a source to the inventory to fill it.": "アセットグループはまだありません。インベントリにソースを追加すると表示されます。"
+  "No asset group yet. Add a source to the inventory to fill it.": "アセットグループはまだありません。インベントリにソースを追加すると表示されます。",
+  "Open the inventory": "インベントリを開く",
+  "The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.": "技術スタック、AI システム、資産、資産グループ、エクスポージャーは CTEM > インベントリに移動しました。",
+  "Opens CTEM > Inventory": "CTEM > インベントリを開きます"
 }
