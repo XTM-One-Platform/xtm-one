@@ -202,8 +202,21 @@ for any other case or when no asset runs the product:
 
 Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
-An asset already on the fixed version leaving the case's scope, and the case
-page, are later slices of #1252.
+
+**Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
+an upgrade case with a known fixed version, open or resolved, is checked
+against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
+asset running the product runs the fixed version or later (`all_on_fixed`: at
+least one asset on it, none below, none `unknown` or unreadable), the case
+leaves the scope. An open case resolves with the evidence "every asset running
+the product runs the fixed version or later (asset inventory)" and resolution
+kind `fixed`; a resolved case is not reopened by member issues that stay open
+at source (OpenCTI still relates the CVE to a version nobody runs). The
+members are left as the source reports them. A case with a validation plan
+still closes only on its passing validation (#857); a case whose fixed version
+is unknown never leaves the scope on the inventory; an asset that falls back
+below the fix (or a new one running an old version) brings the case back
+through the usual reopen rule. The case page is the next slice of #1252.
 
 ### 4.3 Recompute
 

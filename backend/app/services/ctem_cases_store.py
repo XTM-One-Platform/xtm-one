@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.services import ctem_case_versions
 from app.services import ctem_cases as rules
 
 if TYPE_CHECKING:
@@ -158,6 +159,13 @@ async def apply_recompute(
     cases = await _scope_cases(db, organization_id, vertical)
     members = await _members(db, [c.id for c in cases])
     by_id = {str(c.id): c for c in cases}
+    # An upgrade case the asset inventory shows fixed on every asset leaves the case scope (#1252): an open
+    # one resolves, a resolved one is not reopened by issues still open at source on a version nobody runs.
+    fixed_in_inventory = {
+        c.id
+        for c in cases
+        if c.state in (*OPEN_STATES, "resolved") and await ctem_case_versions.fixed_in_inventory(db, c)
+    }
     snapshots = [
         rules.CaseSnapshot(
             id=str(c.id),
@@ -167,6 +175,7 @@ async def apply_recompute(
             # A signal member is not a source issue: recompute never adds, reopens or closes it.
             members={f"{r.source}:{r.external_id}": r.open for r in members[c.id] if r.source != "signal"},
             validation_plan=bool(getattr(c, "validation_plan", False)),
+            fixed_in_inventory=c.id in fixed_in_inventory,
         )
         for c in cases
     ]
@@ -237,6 +246,8 @@ async def apply_recompute(
                 )
             )
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
+            if plan.evidence == rules.FIXED_IN_INVENTORY:
+                case.resolution_kind = "fixed"
             case.state = plan.new_state
             case.state_since = now
             _state_event(case, events, now)
