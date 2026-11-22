@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { AttackSurfacePass, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type { AssetIdentitySettings, AttackSurfacePass, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -66,6 +66,8 @@ export interface OrganizationProfile {
   owned_domains?: string[];
   address_ranges?: string[];
   attack_surface?: AttackSurfacePass;
+  /** Asset matching and field precedence (#1178), edited in CTEM > Inventory, Sources. */
+  asset_identity?: AssetIdentitySettings;
 }
 
 export interface OrganizationContextResponse {

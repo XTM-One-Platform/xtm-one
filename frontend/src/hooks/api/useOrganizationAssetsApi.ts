@@ -120,6 +120,31 @@ export function useCanonicalAsset(id: string | undefined, software: { offset: nu
   });
 }
 
+/** The strong identifier kinds, most reliable first (organization_asset_identity.DEFAULT_KEY_ORDER). */
+type IdentityKey = "serial" | "cloud_resource_id" | "device_id" | "mac" | "fqdn" | "hostname";
+
+interface IdentitySettings {
+  key_order: IdentityKey[];
+  /** Per field, the sources or source classes in order; `*` is any other source. */
+  precedence: Record<string, string[]>;
+}
+
+/** How one asset is matched across sources and which source each field shows (#1178): saved, defaults, effective. */
+export interface AssetIdentityResponse {
+  saved: IdentitySettings;
+  defaults: IdentitySettings & { weak_keys: string[]; fallback_precedence: string[]; local_fields: string[] };
+  effective: IdentitySettings;
+}
+
+export function useAssetIdentity() {
+  return useQuery<AssetIdentityResponse>({
+    queryKey: [...KEY, "identity"],
+    queryFn: () => api.get("/organization-context/assets/identity"),
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 /** The tech stack built from the assets' software: per product its kind, versions with asset counts, CPE. */
 export function useTechStackInventory(query: { q?: string; offset: number; limit: number }) {
   const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit });

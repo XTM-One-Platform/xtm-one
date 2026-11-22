@@ -24,9 +24,10 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
+import { InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetLabel, sourceLabel } from "./ctem/inventory";
 
-type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems";
+type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
 
 const ASSETS_URL_KEY = "a_";
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
@@ -232,14 +233,15 @@ const EDIT_CARDS = {
   "asset-groups": ["asset_groups"],
   "tech-stack": ["tech_stack"],
   "ai-systems": ["ai_systems"],
-} as const satisfies Record<InventoryTab, readonly string[]>;
+} as const satisfies Record<Exclude<InventoryTab, "sources">, readonly string[]>;
 
 export default function CtemInventory() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // Editing the profile stays administrator-only, as in Settings; everyone else reads the tables.
   const { isAdmin } = useAuth();
-  const editCards = EDIT_CARDS[tab] ?? EDIT_CARDS.assets;
+  // The Sources tab (slice 3) holds the inventory syncs and asset matching; it embeds no profile card.
+  const editCards = tab === "sources" ? null : (EDIT_CARDS[tab] ?? EDIT_CARDS.assets);
   return (
     <div className="space-y-4">
       <CtemPageHeader
@@ -255,9 +257,12 @@ export default function CtemInventory() {
           { key: "asset-groups", label: "Asset groups" },
           { key: "tech-stack", label: "Tech stack" },
           { key: "ai-systems", label: "AI systems" },
+          { key: "sources", label: "Sources" },
         ]}
       />
-      {tab === "asset-groups" ? (
+      {tab === "sources" ? (
+        <InventorySourcesCard />
+      ) : tab === "asset-groups" ? (
         isAdmin ? null : <AssetGroupsTab />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
@@ -266,7 +271,7 @@ export default function CtemInventory() {
       ) : (
         <AssetsTab />
       )}
-      {isAdmin && <OrganizationSection key={tab} embed={{ cards: editCards }} />}
+      {isAdmin && editCards && <OrganizationSection key={tab} embed={{ cards: editCards }} />}
     </div>
   );
 }

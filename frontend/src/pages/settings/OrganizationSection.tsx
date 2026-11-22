@@ -2211,8 +2211,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.knowledge)} className="space-y-4" data-testid="settings.organization.panel-knowledge">
             {missingIn("knowledge")}
             {exposureCards(["enterprise_knowledge"])}
-            {/* The imports saved with a schedule (#11913): no model, so they stay with AI off too. */}
-            <OrganizationSyncsCard />
+            {/* The imports saved with a schedule (#11913): the business profile's here, the inventory's on CTEM > Inventory > Sources (#1178). */}
+            <OrganizationSyncsCard scope="profile" />
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
           </div>

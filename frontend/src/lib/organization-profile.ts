@@ -51,6 +51,14 @@ export interface ProfileLike {
   address_ranges?: string[];
   /** The opt-in attack surface pass of the outside lens (CTEM-26); kept whole through the form. */
   attack_surface?: AttackSurfacePass;
+  /** How one asset is matched across sources and which source a field shows (#1178), set in CTEM > Inventory; kept whole through the form. */
+  asset_identity?: AssetIdentitySettings;
+}
+
+/** The saved asset identity settings; empty lists and maps keep the engine's defaults. */
+export interface AssetIdentitySettings {
+  key_order: string[];
+  precedence: Record<string, string[]>;
 }
 
 /** The outside lens settings (CTEM-26, `dev-docs/ctem-attack-surface.md` s.1), the backend's defaults below. */
@@ -517,6 +525,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.owned_domains ? { owned_domains: [...profile.owned_domains] } : {}),
     ...(profile.address_ranges ? { address_ranges: [...profile.address_ranges] } : {}),
     ...(profile.attack_surface ? { attack_surface: { ...profile.attack_surface } } : {}),
+    ...(profile.asset_identity ? { asset_identity: { key_order: [...profile.asset_identity.key_order], precedence: { ...profile.asset_identity.precedence } } } : {}),
   };
 }
 
@@ -605,6 +614,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         ...(form.owned_domains ? { owned_domains: form.owned_domains } : {}),
         ...(form.address_ranges ? { address_ranges: form.address_ranges } : {}),
         ...(form.attack_surface ? { attack_surface: form.attack_surface } : {}),
+        ...(form.asset_identity ? { asset_identity: form.asset_identity } : {}),
       },
     };
   } catch (err) {
