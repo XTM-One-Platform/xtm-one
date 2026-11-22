@@ -133,12 +133,15 @@ function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; 
   return { item, busy: investigate.isPending };
 }
 
-/** The investigation body of a module card's AI block: the outcome, when and what started it. */
+/**
+ * The check round body of a module card's AI block: the outcome of the module checker's newest round,
+ * when and what started it (named after the Run checks now action, UX round 1 B1 on #1269).
+ */
 function InvestigationBody({ investigation }: { investigation: HealthLastInvestigation | null | undefined }) {
   const { t_i18n } = useFormatter();
   if (!investigation) {
-    // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
-    return <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>;
+    // The badge line height (24 px), so a card with no round matches its row (UX round 2 B1 on #953).
+    return <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("No check round yet")}</p>;
   }
   return (
     <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
@@ -178,8 +181,8 @@ export function ModuleAnalystBlock({
     return <ModuleAnalysisSummary module={module} hasOpenFindings={hasOpenFindings} overview={overview} extraItems={[investigate.item]} extraBusy={investigate.busy} />;
   }
   return (
-    <section className="space-y-1.5" aria-label={t_i18n("Last investigation")} data-testid={`health-investigation-${module}`}>
-      <AiBlockHeader module={module} caption={t_i18n("Last investigation")} items={[analyse.item, investigate.item]} busy={analyse.busy || investigate.busy} />
+    <section className="space-y-1.5" aria-label={t_i18n("Last check round")} data-testid={`health-investigation-${module}`}>
+      <AiBlockHeader module={module} caption={t_i18n("Last check round")} items={[analyse.item, investigate.item]} busy={analyse.busy || investigate.busy} />
       <InvestigationBody investigation={investigation} />
       {analyse.failed ? <AnalysisStartFailed /> : null}
     </section>

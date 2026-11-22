@@ -393,9 +393,9 @@ export function HealthOverviewTab() {
   const cards = useMemo(() => overview.data?.modules ?? [], [overview.data]);
   const modules = useMemo(() => cards.map((card) => card.module), [cards]);
   // One AI block per module card (#965, #953), administrators only: the newest of the module's analysis
-  // summary (#961) and the Module Analyst's last investigation (section 12.7). An analysed module never
-  // investigated shows its summary; an investigated module with no newer summary shows the investigation
-  // line. Both bodies share one header, and an analyst card's menu always holds Analyse now and
+  // summary (#961) and the module checker's last check round (section 13.2, named after Run checks now,
+  // UX round 1 B1 on #1269). An analysed module with no round shows its summary; a module with no newer
+  // summary shows the Last check round line. Both bodies share one header, and an analyst card's menu always holds Analyse now and
   // Run checks now (UX round 6 B1, B2). No row to show, no footer: a card never carries an empty divider.
   const moduleFooter = (card: (typeof cards)[number]) => {
     if (!isAdmin) return undefined;
@@ -408,10 +408,11 @@ export function HealthOverviewTab() {
     const summaryIsNewer = row !== null && (Number.isNaN(investigatedAt) || analysedAt > investigatedAt);
     if (investigated) {
       // The agentic checks line (#101 S15e, section 13.6) under the card's one AI block: stored reports, no model.
+      // Under the Last check round block it carries the counts only: no second "No check round yet".
       return (
         <div className="space-y-3">
           <ModuleAnalystBlock module={card.module} investigation={investigation} showSummary={summaryIsNewer} hasOpenFindings={hasOpenFindings} overview={analysis.data} />
-          <ModuleCheckReportLine module={card.module} />
+          <ModuleCheckReportLine module={card.module} hideEmpty={!summaryIsNewer} />
         </div>
       );
     }

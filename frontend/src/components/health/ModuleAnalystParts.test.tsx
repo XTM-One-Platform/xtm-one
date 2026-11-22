@@ -63,7 +63,7 @@ describe("ModuleAnalystBlock", () => {
 
   it("says when the module was never investigated", () => {
     renderBlock({ module: "openaev", investigation: null });
-    expect(screen.getByTestId("health-investigation-openaev").textContent).toContain("Not investigated yet");
+    expect(screen.getByTestId("health-investigation-openaev").textContent).toContain("No check round yet");
   });
 
   it("renders the same AI block header whatever the body shows (UX round 6 B1 on #953)", () => {
