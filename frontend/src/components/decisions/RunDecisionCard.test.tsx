@@ -75,6 +75,10 @@ describe("decision view helpers", () => {
   it("keeps the tool and its arguments out of the question, under Technical details", () => {
     const view = approvalDecisionView([proposal("c1")], t);
     expect(view.question).not.toContain("send_email");
+    // The tool's progress label is a line of its own, never inside the question (UX r1 B2).
+    expect(view.question).toBe("Approve this action?");
+    expect(view.context?.[0]).toBeTruthy();
+    expect(approvalDecisionView([proposal("c1"), proposal("c2")], t).question).toContain("Approve these # actions?");
     expect(view.freeText).toBe("none");
     expect(view.technical).toBeTruthy();
   });
@@ -156,6 +160,19 @@ describe("RunDecisionCard", () => {
     fireEvent.change(screen.getByLabelText("Your answer"), { target: { value: "Feed A" } });
     fireEvent.click(screen.getByRole("button", { name: /Send answer/ }));
     expect(onRespond).toHaveBeenCalledWith("r1", "Feed A");
+    cleanup();
+    // The run question is Markdown, rendered (UX r1 B1); Discard sits in the
+    // Send answer row, before it (UX r1 B3).
+    renderWithProviders(
+      <RunDecisionCard runId="r1" question={"Pick the **weekly digest** feed"} proposals={[]} canAnswer onRespond={vi.fn()} onDismiss={vi.fn()} />,
+    );
+    const question = screen.getByTestId("run-decision-question");
+    expect(question.textContent).not.toContain("**");
+    expect(question.querySelector("strong")?.textContent).toBe("weekly digest");
+    const discard = screen.getByTestId("run-decision-discard");
+    const send = screen.getByRole("button", { name: /Send answer/ });
+    expect(discard.parentElement).toBe(send.parentElement);
+    expect(discard.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     cleanup();
     renderWithProviders(<RunDecisionCard runId="r1" proposals={[proposal("c1")]} canAnswer={false} onApprove={vi.fn()} />);
     expect(screen.getByText("Waiting for approval from someone with access to this run.")).toBeTruthy();

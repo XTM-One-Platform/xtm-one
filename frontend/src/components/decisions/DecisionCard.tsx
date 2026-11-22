@@ -61,6 +61,8 @@ export interface DecisionOption {
 /** A decision as a person reads it, whatever asks it. */
 export interface DecisionView {
   question: string;
+  /** The question is Markdown (a run's `request_human_input`): rendered, never shown raw. */
+  questionMarkdown?: boolean;
   /** Plain lines for the reader, one paragraph each (Markdown). */
   context?: readonly string[];
   options: readonly DecisionOption[];
@@ -209,6 +211,7 @@ export function DecisionCard({
   readOnlyNote,
   testId = "decision",
   children,
+  textActions,
 }: {
   view: DecisionView;
   canAnswer: boolean;
@@ -219,8 +222,10 @@ export function DecisionCard({
   readOnlyNote?: string;
   /** The test id prefix of every part (a source keeps its own: work-item-decision). */
   testId?: string;
-  /** What the source adds at the foot of the card (Ask the agent, Discard). */
+  /** What the source adds at the foot of the card (Ask the agent). */
   children?: ReactNode;
+  /** Secondary actions in the free text's action row, before "Send answer" (Discard). */
+  textActions?: ReactNode;
 }) {
   const { t_i18n, intl } = useFormatter();
   const [text, setText] = useState("");
@@ -258,7 +263,8 @@ export function DecisionCard({
         {textLabel}
       </Label>
       <Textarea id={textId} aria-label={textLabel} value={text} rows={2} onChange={(e) => setText(e.target.value)} />
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {textActions}
         <Button variant={options.length > 0 ? "outline" : "default"} className="gap-1" disabled={!text.trim() || pending} onClick={sendText}>
           <Icon name="send" size={16} aria-hidden /> {t_i18n("Send answer")}
         </Button>
@@ -285,9 +291,15 @@ export function DecisionCard({
           </Badge>
         )}
       </div>
-      <p id={`${textId}-question`} className="content-base font-medium text-default-primary whitespace-pre-wrap break-words" data-testid={`${testId}-question`}>
-        {view.question}
-      </p>
+      {view.questionMarkdown ? (
+        <div id={`${textId}-question`} className="content-base font-medium text-default-primary break-words" data-testid={`${testId}-question`}>
+          <ChatMarkdown content={view.question} className="chat-markdown" remoteImages={false} />
+        </div>
+      ) : (
+        <p id={`${textId}-question`} className="content-base font-medium text-default-primary whitespace-pre-wrap break-words" data-testid={`${testId}-question`}>
+          {view.question}
+        </p>
+      )}
       {view.asker && (
         <p className="content-caption text-default-secondary" data-testid={`${testId}-asker`}>
           {t_i18n("Asked by {agent}", { agent: view.asker })}

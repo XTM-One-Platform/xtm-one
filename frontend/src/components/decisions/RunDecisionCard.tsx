@@ -109,11 +109,16 @@ export function approvalDecisions(
 export function approvalDecisionView(proposals: readonly ActionProposal[], t_i18n: Translate): DecisionView {
   const names = proposals.map((p) => toolDisplayName(p.tool_name, t_i18n));
   return {
+    // The tool names are progress labels ("Generating file"): they go on their
+    // own line under the question, never inside it (UX r1 B2 on #1045).
     question:
       proposals.length === 1
-        ? t_i18n("Run “{tool}”?", { tool: names[0] })
-        : t_i18n("{count, plural, one {Run # action: {tools}?} other {Run these # actions: {tools}?}}", { count: proposals.length, tools: names.join(", ") }),
-    context: proposals.length === 1 && proposals[0].tool_description ? [proposals[0].tool_description] : [],
+        ? t_i18n("Approve this action?")
+        : t_i18n("{count, plural, one {Approve # action?} other {Approve these # actions?}}", { count: proposals.length }),
+    context: [
+      names.join(", "),
+      ...(proposals.length === 1 && proposals[0].tool_description ? [proposals[0].tool_description] : []),
+    ],
     options: approvalOptions(proposals, t_i18n),
     freeText: "none",
     technical: (
@@ -149,6 +154,7 @@ export function questionDecisionView(question: string, t_i18n: Translate): Decis
       : [];
   return {
     question,
+    questionMarkdown: true,
     options,
     freeTextLabel: options.length > 0 ? t_i18n("Or answer in your own words") : t_i18n("Your answer"),
   };
@@ -208,13 +214,12 @@ export function RunDecisionCard({
         }
         if (answer.text) onRespond(runId, answer.text);
       }}
-    >
-      {canAnswer && onDismiss && (
-        <div className="flex justify-end">
+      textActions={
+        canAnswer && onDismiss ? (
+          // Same row and height as "Send answer", Discard first (UX r1 B3 on #1045).
           <Button
             variant="ghost"
-            size="sm"
-            className="gap-1.5 text-default-secondary hover:text-feedback-error-primary"
+            className="h-9 gap-1.5 text-default-secondary hover:text-feedback-error-primary"
             disabled={pending}
             onClick={() => onDismiss(runId)}
             data-testid="run-decision-discard"
@@ -222,8 +227,8 @@ export function RunDecisionCard({
             <Icon name="x" size={16} aria-hidden />
             {t_i18n("Discard")}
           </Button>
-        </div>
-      )}
-    </DecisionCard>
+        ) : undefined
+      }
+    />
   );
 }
