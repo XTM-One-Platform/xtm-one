@@ -5,8 +5,8 @@
 # and read the diff before committing it: every added line is a tool that
 # will run unattended on every deployment, including scheduled runs nobody
 # is watching. Tools held back by hand live in HAND_GATED, not here.
-#
-# 133 tools; 60 read-classified tools deliberately held back.
+# No count in this header: a count line changes with every added tool and
+# made every two tool PRs conflict on it; the diff of the body is the count.
 
 openaev:export_openaev_scenario
 openaev:full_text_search_openaev
