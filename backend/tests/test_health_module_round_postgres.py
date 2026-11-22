@@ -194,3 +194,43 @@ async def test_a_second_pass_the_same_day_starts_no_round(xtm_one: None, monkeyp
 
     assert (first, second) == (3, 0)
     assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_the_fleet_data_flow_draws_each_checker_reading_its_modules_integration(xtm_one: None) -> None:
+    """#101 S15f-1, section 13.8: the checkers' inputs are the module integrations, drawn read."""
+    from sqlalchemy import true
+
+    from app.models.fleet import Fleet
+    from app.services.fleet_flow import EDGE_READ, build_fleet_flow
+    from app.services.health.read_only import HEALTH_FLEET_SLUG
+
+    admin = make_user("admin", admin=True)
+    async with health_database() as sessions, sessions() as db:
+        db.add(admin)
+        await db.commit()
+        await fleet_seed.seed_health_fleet(db)
+        registrations = {p: await _register(db, p, admin.id) for p in module_analyst.MODULE_PROVIDERS}
+        await db.commit()
+        reads = await module_analyst.checker_reads(db)
+        fleet = (await db.execute(select(Fleet).where(Fleet.slug == HEALTH_FLEET_SLUG))).scalar_one()
+        flow = await build_fleet_flow(db, fleet, visible_agent_clause=true(), visible_integration_clause=true())
+        checkers = {
+            agent.health_role: agent.id
+            for agent in (
+                await db.execute(select(Agent).where(Agent.health_role.in_(CHECKER_ROLE_BY_PROVIDER.values())))
+            ).scalars()
+        }
+        integrations = {
+            p: (await db.get(PlatformRegistration, rid)).integration_id for p, rid in registrations.items()
+        }
+
+    assert {role: [p for p, _ in pairs] for role, pairs in reads.items()} == {
+        CHECKER_ROLE_BY_PROVIDER[p]: [p] for p in module_analyst.MODULE_PROVIDERS
+    }
+    edges = {(e.source, e.target, e.kind) for e in flow.edges}
+    for provider, role in CHECKER_ROLE_BY_PROVIDER.items():
+        node = f"output:integration:{provider}:{integrations[provider]}"
+        assert (f"agent:{checkers[role]}", node, EDGE_READ) in edges
+    # Read only: no checker draws a write edge.
+    assert not [e for e in flow.edges if e.source in {f"agent:{i}" for i in checkers.values()} and e.kind != EDGE_READ]

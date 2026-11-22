@@ -80,6 +80,17 @@ const names = () =>
     .map((row) => within(row).getAllByRole("cell")[0].textContent);
 
 describe("DataTable", () => {
+  // #1176: grouping keeps the sort inside each group and names each group with its count.
+  it("groups rows under a header row with their count, the sort kept inside each group", () => {
+    renderTable({
+      defaultSort: { key: "runs", direction: "desc" },
+      groupBy: { value: (row) => row.status, label: (value) => `Group ${value}` },
+    });
+    const groups = screen.getAllByTestId("data-table-group-row");
+    expect(groups.map((row) => row.textContent)).toEqual(["Group active2 rows", "Group paused1 row"]);
+    expect(names()).toEqual(["Group active2 rows", "Charlie report", "Alpha mailbox", "Group paused1 row", "Bravo triage"]);
+  });
+
   it("filters by a column value, counts the filter and clears it", () => {
     renderTable();
     const pill = screen.getAllByRole("button", { name: /Status/ }).find((button) => button.hasAttribute("aria-expanded"));
