@@ -41,6 +41,20 @@ export function safeModeOf(v: Pick<Validation, "safe_mode">): keyof typeof SAFE_
 }
 
 /**
+ * The label of the option a person chose on gate A, read from the decision
+ * item's own options (UX round 1 B1: never the key alone). Null when the item
+ * or the option is not visible to the viewer: the card then names the key.
+ */
+export function chosenOptionLabel(
+  options: readonly { key: string; label: string }[] | null | undefined,
+  key: string | null | undefined,
+): string | null {
+  if (!key) return null;
+  const label = options?.find((o) => o.key === key)?.label?.trim();
+  return label || null;
+}
+
+/**
  * Why gate A passed automatically: "safe mode" when the newest reference ran
  * read-only (nothing could change the target, so nothing waits), else the
  * fleet's level or pin. Null when the gate did not pass automatically.

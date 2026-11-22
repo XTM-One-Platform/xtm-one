@@ -17,7 +17,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_OUTCOME_LABEL, latestGate } from "./case-gates";
-import { SAFE_MODE_LABEL, VALIDATION_GATE, autoPassReason, latestValidations, safeModeOf, validationDecisionKey } from "./case-validation";
+import {
+  SAFE_MODE_LABEL,
+  VALIDATION_GATE,
+  autoPassReason,
+  chosenOptionLabel,
+  latestValidations,
+  safeModeOf,
+  validationDecisionKey,
+} from "./case-validation";
 
 /** The result word of a validation reference, translated where drawn. @i18n-keys */
 const RESULT_LABEL = {
@@ -47,9 +55,15 @@ export function CaseValidation({
   const rows = latestValidations(validations);
   const gate = latestGate(history, VALIDATION_GATE);
   const waiting = gate?.to === "waited";
-  // The decision item, read with the viewer's own work-item visibility.
-  const items = useWorkItems({ correlation_key: validationDecisionKey(caseId), open_only: true, limit: 1 }, waiting);
+  const answered = gate?.to === "answered";
+  // The decision item, read with the viewer's own work-item visibility: the
+  // open one while it waits, the closed one once answered (its option labels).
+  const items = useWorkItems(
+    { correlation_key: validationDecisionKey(caseId), open_only: waiting, limit: 1 },
+    waiting || (answered && !!gate?.evidence),
+  );
   const item = waiting ? ((items.data ?? []).find(waitsForAnswer) ?? null) : null;
+  const chosen = answered ? chosenOptionLabel(items.data?.[0]?.ask?.options, gate?.evidence) : null;
   const auto = autoPassReason(gate?.to, rows[0]);
   const who = gate?.to === "answered" ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
 
@@ -70,7 +84,13 @@ export function CaseValidation({
                 : t_i18n(GATE_OUTCOME_LABEL[gate.to as keyof typeof GATE_OUTCOME_LABEL] ?? gate.to ?? "")}
             </span>
             {auto === "fleet_runs" && <span className="text-default-secondary">{t_i18n("The fleet runs this gate without a person")}</span>}
-            {gate.evidence && <span>{t_i18n("Option {option}", { option: gate.evidence })}</span>}
+            {gate.evidence && (
+              <span data-testid="ctem-case-validation-option">
+                {chosen
+                  ? t_i18n("Option {option}: {label}", { option: gate.evidence, label: chosen })
+                  : t_i18n("Option {option}", { option: gate.evidence })}
+              </span>
+            )}
             {who && <span className="text-default-secondary">{t_i18n("by {name}", { name: who })}</span>}
             {gate.at && (
               <span className="ml-auto whitespace-nowrap text-default-secondary">

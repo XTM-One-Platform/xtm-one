@@ -8,7 +8,7 @@ import { screen } from "@testing-library/react";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
-import { autoPassReason, latestValidations, safeModeOf } from "./case-validation";
+import { autoPassReason, chosenOptionLabel, latestValidations, safeModeOf } from "./case-validation";
 
 const state = vi.hoisted(() => ({ items: [] as unknown[], calls: [] as unknown[] }));
 
@@ -59,6 +59,14 @@ describe("case-validation helpers", () => {
     expect(autoPassReason("passed_automatically", { safe_mode: false })).toBe("fleet_runs");
     expect(autoPassReason("waited", SAFE)).toBeNull();
   });
+
+  it("reads the chosen option's label, never inventing one", () => {
+    const options = [{ key: "A", label: "Run it" }, { key: "B", label: "Skip it" }];
+    expect(chosenOptionLabel(options, "A")).toBe("Run it");
+    expect(chosenOptionLabel(options, "C")).toBeNull();
+    expect(chosenOptionLabel(undefined, "A")).toBeNull();
+    expect(chosenOptionLabel(options, null)).toBeNull();
+  });
 });
 
 describe("CaseValidation", () => {
@@ -80,6 +88,24 @@ describe("CaseValidation", () => {
     expect(screen.getByText("Waited for a person")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
     expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Not read-only: a test that changes the target ran");
+  });
+
+  it("names the chosen option's label once a person answered, from the closed decision item", () => {
+    state.items = [{ id: "w1", status: "done", needs_human: false, ask: { question: "Run it?", options: [{ key: "A", label: "Run it" }] } }];
+    const history = [ev({ from: "ctem.validation.non_readonly", to: "answered", reason: "u1", evidence: "A" })];
+    renderWithProviders(
+      <CaseValidation caseId="c1" validations={[SAFE]} history={history} personName={(id) => (id === "u1" ? "Ada" : null)} />,
+    );
+    expect(screen.getByTestId("ctem-case-validation-option").textContent).toBe("Option A: Run it");
+    const call = state.calls.find((c) => (c as { enabled: boolean }).enabled) as { filters: { open_only: boolean } };
+    expect(call.filters.open_only).toBe(false);
+    expect(screen.queryByTestId("unified-decision-card")).toBeNull();
+  });
+
+  it("falls back to the option key when the decision item is not visible", () => {
+    const history = [ev({ from: "ctem.validation.non_readonly", to: "answered", evidence: "A" })];
+    renderWithProviders(<CaseValidation caseId="c1" validations={[SAFE]} history={history} />);
+    expect(screen.getByTestId("ctem-case-validation-option").textContent).toBe("Option A");
   });
 
   it("says a case not validated yet, never blank", () => {

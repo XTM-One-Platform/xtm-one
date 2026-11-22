@@ -20256,6 +20256,7 @@
   "Answered by a person": "Answered by a person",
   "Gate": "Gate",
   "Option {option}": "Option {option}",
+  "Option {option}: {label}": "Option {option}: {label}",
   "Remediation decision": "Remediation decision",
   "Not decided yet: the fleet decides the remediation once the case is validated.": "Not decided yet: the fleet decides the remediation once the case is validated.",
   "Decided by policy": "Decided by policy",
