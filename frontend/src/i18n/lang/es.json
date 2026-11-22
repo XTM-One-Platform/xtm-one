@@ -20819,5 +20819,10 @@
   "Points by the priority of the case.": "Puntos según la prioridad del caso.",
   "Points for what the case holds.": "Puntos según lo que contiene el caso.",
   "Points when the due date is near or has passed.": "Puntos cuando la fecha límite está cerca o ha vencido.",
-  "Points for a case nobody owns and for each day it stays open.": "Puntos para un caso sin responsable y por cada día que sigue abierto."
+  "Points for a case nobody owns and for each day it stays open.": "Puntos para un caso sin responsable y por cada día que sigue abierto.",
+  "Module checks": "Comprobaciones de los módulos",
+  "No check round since the last digest": "Ninguna ronda de comprobaciones desde el último resumen",
+  "Failed most": "Las que más fallaron",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# ronda} other {# rondas}} en {registrations, plural, one {# registro} other {# registros}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# fallida} other {# fallidas}}, {warned, plural, one {# advertencia} other {# advertencias}}"
 }
