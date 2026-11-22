@@ -2001,6 +2001,23 @@ affected_always = [
   "src/no-class-name-assertions.test.ts",
 ]
 
+# CI's "Frontend gates" job (ci.yml frontend-gates, "Whole-tree gates"
+# step), the same command: the ratchet gates and catalog tests that scan the
+# whole tree, so the change that breaks one names none of their files. A
+# pre-push guard: frontend-unit affected=true picks them only when it runs, so
+# a push without it went red on Frontend gates one round later (#1080,
+# src/no-class-name-assertions.test.ts). sh -c because the step's src/*.test.ts
+# is a shell glob; test_ci_suites_in_merge_queue pins the two commands equal.
+[check.frontend-gates]
+description = "the frontend whole-tree gates as CI's 'Frontend gates' job (after frontend-install): tests_unit/, src/*.test.ts, src/i18n/, the settings form kit; a pre-push guard"
+argv = ["sh", "-c", "exec yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts"]
+cwd = "frontend"
+timeout = 900
+image = "nodejs-dev"
+report = "lines"
+needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib"]
+pre_push = ["*.ts", "*.tsx", "*.css", "*.json"]
+
 # The same vitest run in update mode, for a deliberate change to what a test
 # pins: `--update=all` rewrites the __snapshots__ of the files given (never a
 # bare `-u`: its optional value swallows the first file arg, and the whole
