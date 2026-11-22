@@ -20767,5 +20767,10 @@
   "CSV import": "CSV インポート",
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "資産インベントリは {product} を {assets, plural, other {# 件の資産}} で {versions, plural, other {# 個のバージョン}} 報告しています。",
   "Asset count": "資産数",
-  "Versions not listed": "表示されていないバージョン"
+  "Versions not listed": "表示されていないバージョン",
+  "Module checks": "モジュールのチェック",
+  "No check round since the last digest": "前回のダイジェスト以降、チェックラウンドはありません",
+  "Failed most": "失敗の多いチェック",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{registrations, plural, other {# 件の登録}}で{rounds, plural, other {# 回のラウンド}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, other {# 件失敗}}、{warned, plural, other {# 件の警告}}"
 }
