@@ -20564,5 +20564,21 @@
   "Freshness": "Actualidad",
   "Stale: not seen by OpenAEV past the tenant's threshold": "Obsoleto: OpenAEV no lo ha visto más allá del umbral del tenant",
   "{name} (not connected)": "{name} (no conectada)",
-  "Search integrations": "Buscar integraciones"
+  "Search integrations": "Buscar integraciones",
+  "Observed": "Observado",
+  "Previous pass saw {ports}": "El pase anterior vio {ports}",
+  "Answers on {port}, a new port": "Responde en {port}, un puerto nuevo",
+  "Declared not internet-facing in the profile": "Declarado no expuesto a Internet en el perfil",
+  "Answers from the Internet on {ports}": "Responde desde Internet en {ports}",
+  "The name is listed": "El nombre está registrado",
+  "No DNS record backs it": "Ningún registro DNS lo respalda",
+  "Names of {domain} point inside the owned address ranges": "Los nombres de {domain} apuntan dentro de los rangos de direcciones propios",
+  "Points to {ip}, outside them": "Apunta a {ip}, fuera de ellos",
+  "The host last answered on {date}": "El host respondió por última vez el {date}",
+  "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, one {Sin ver desde hace al menos # día} other {Sin ver desde hace al menos # días}}",
+  "Not declared and not seen by an earlier pass": "No declarado y no visto en un pase anterior",
+  "Answers on {ports}": "Responde en {ports}",
+  "Ports that answer": "Puertos que responden",
+  "DNS target": "Destino DNS",
+  "Certificate names": "Nombres del certificado"
 }
