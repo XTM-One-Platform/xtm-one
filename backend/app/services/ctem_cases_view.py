@@ -345,6 +345,11 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],
         "first_seen_at": agg["first_seen_at"].isoformat() if agg["first_seen_at"] else None,
+        # When the case was opened and last changed (#1176): the list's Created, Age and Last change columns.
+        "created_at": case.created_at.isoformat() if case.created_at else None,
+        "updated_at": case.updated_at.isoformat() if case.updated_at else None,
+        # The signals that opened or joined the case, counted on every member, seen or not.
+        "signal_count": sum(1 for r in rows if r.source == SIGNAL_SOURCE),
         "details_unavailable": unavailable,
         # The loop (#857): ids, enums, dates and references only, the same for every viewer.
         "trigger_path": case.trigger_path,
