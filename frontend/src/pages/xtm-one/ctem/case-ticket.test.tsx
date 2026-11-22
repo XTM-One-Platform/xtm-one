@@ -84,6 +84,25 @@ describe("CaseTicketChip", () => {
     expect(screen.getByTestId("ctem-case-ticket-link")).toHaveTextContent("Jira SEC-12");
   });
 
+  it("words the fix in the reader's language on the sync chip (fr)", async () => {
+    const failed: CtemCaseTicket = {
+      ...synced,
+      sync: {
+        state: "error",
+        provider: "jira",
+        error: "no Jira transition of SEC-1043 leads to in_progress",
+        fix: "map a Jira status to this case status in the ticketing sync settings",
+        fix_code: "map_jira_status",
+      },
+    };
+    renderWithProviders(<CaseTicketChip tickets={[failed]} />, { locale: "fr" });
+    screen.getByTestId("ctem-case-ticket-sync").focus();
+    const tip = await screen.findByRole("tooltip");
+    expect(tip).toHaveTextContent("La dernière synchronisation a échoué. Associez un statut Jira");
+    expect(tip.textContent).not.toContain("in_progress");
+    expect(tip.textContent).not.toContain("map a Jira status");
+  });
+
   it("draws no anchor in compact mode (inside a card link)", () => {
     renderWithProviders(<CaseTicketChip tickets={[synced]} compact />);
     expect(screen.queryByTestId("ctem-case-ticket-link")).toBeNull();
