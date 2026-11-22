@@ -20427,5 +20427,11 @@
   "{count, plural, =0 {No crown jewel yet} one {# crown jewel} other {# crown jewels}}": "{count, plural, =0 {重要資産はまだありません} other {重要資産 # 件}}",
   "{count, plural, =0 {no tech stack entry yet} one {# tech stack entry} other {# tech stack entries}}": "{count, plural, =0 {技術スタックはまだありません} other {技術スタック # 件}}",
   "{count, plural, =0 {No automation to switch on} one {# automation switches on} other {# automations switch on}}": "{count, plural, =0 {有効にする自動化はありません} other {# 件の自動化が有効になります}}",
-  "{total, plural, one {{enabled} of # automation on} other {{enabled} of # automations on}}": "{total, plural, other {# 件中 {enabled} 件の自動化が有効}}"
+  "{total, plural, one {{enabled} of # automation on} other {{enabled} of # automations on}}": "{total, plural, other {# 件中 {enabled} 件の自動化が有効}}",
+  "The CTEM loop is set up": "CTEM ループの設定が完了しました",
+  "Every signal now goes through reconcile and the scope gate, and the command center shows where each one stands.": "すべてのシグナルが照合とスコープゲートを通過し、コマンドセンターで各シグナルの状況を確認できます。",
+  "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "テストシグナルを送信してループの動きを確認します。実際の取り込み経路で記録され、そのループトレースが開きます。",
+  "The test signal could not be recorded.": "テストシグナルを記録できませんでした。",
+  "Open the command center": "コマンドセンターを開く",
+  "Send a test signal": "テストシグナルを送信"
 }

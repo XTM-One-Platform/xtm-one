@@ -20427,5 +20427,11 @@
   "{count, plural, =0 {No crown jewel yet} one {# crown jewel} other {# crown jewels}}": "{count, plural, =0 {Aucun actif critique pour l'instant} one {# actif critique} other {# actifs critiques}}",
   "{count, plural, =0 {no tech stack entry yet} one {# tech stack entry} other {# tech stack entries}}": "{count, plural, =0 {aucune entrée de pile technique pour l'instant} one {# entrée de pile technique} other {# entrées de pile technique}}",
   "{count, plural, =0 {No automation to switch on} one {# automation switches on} other {# automations switch on}}": "{count, plural, =0 {Aucune automatisation à activer} one {# automatisation s'active} other {# automatisations s'activent}}",
-  "{total, plural, one {{enabled} of # automation on} other {{enabled} of # automations on}}": "{total, plural, one {{enabled} sur # automatisation active} other {{enabled} sur # automatisations actives}}"
+  "{total, plural, one {{enabled} of # automation on} other {{enabled} of # automations on}}": "{total, plural, one {{enabled} sur # automatisation active} other {{enabled} sur # automatisations actives}}",
+  "The CTEM loop is set up": "La boucle CTEM est configurée",
+  "Every signal now goes through reconcile and the scope gate, and the command center shows where each one stands.": "Chaque signal passe désormais par la réconciliation et le filtre de périmètre, et le centre de commande montre où chacun en est.",
+  "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "Envoyez un signal de test pour voir la boucle avancer : il est enregistré par la vraie entrée et s’ouvre sur sa trace de boucle.",
+  "The test signal could not be recorded.": "Le signal de test n’a pas pu être enregistré.",
+  "Open the command center": "Ouvrir le centre de commande",
+  "Send a test signal": "Envoyer un signal de test"
 }
