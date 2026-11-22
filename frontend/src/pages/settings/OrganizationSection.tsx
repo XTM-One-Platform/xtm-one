@@ -158,6 +158,16 @@ const TAB_FIELDS: Record<ProfileTab, string[]> = Object.fromEntries(
   PROFILE_TABS.map((tab) => [tab, Object.keys(FIELD_LABELS).filter((path) => tabOfField(path) === tab)]),
 ) as Record<ProfileTab, string[]>;
 
+/**
+ * The fixed columns of the crown jewels table, read and edit (UX r2 B1 and B2 on #1174). Below a
+ * 72rem card (1080) Assets and Source step aside, so Business service and Owner keep about 150 px
+ * each, their headers whole and their inputs usable on a synced row. Business service and Owner
+ * share what is left; OpenCRQ holds its header and the sort mark.
+ */
+export const JEWEL_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
+/** The card width below which Assets and Source of the crown jewels table go to the Columns pill. */
+const JEWEL_STEP_ASIDE = "6xl" as const;
+
 /** The values of the crown jewels' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
 /**
@@ -777,12 +787,12 @@ export function OrganizationSection() {
   };
   // Source steps aside below a 72rem card (UX r1 B1 and B2 on #1174): at 1080 the fixed 128 px cut
   // Business service and Owner to nothing. The lock tip and the Source filter still name it there.
-  const SOURCE_WIDTH = 112;
+  const SOURCE_WIDTH = JEWEL_WIDTHS.source;
   const sourceColumn = <R extends { value: Provenance }>(): DataTableColumn<R> => ({
     key: "source",
     header: "Source",
     hideable: true,
-    hideBelow: "6xl",
+    hideBelow: JEWEL_STEP_ASIDE,
     width: SOURCE_WIDTH,
     cell: ({ value }) => sourceCell(value),
     interactive: true,
@@ -799,7 +809,7 @@ export function OrganizationSection() {
     key: "source",
     header: "Source",
     hideable: true,
-    hideBelow: "6xl",
+    hideBelow: JEWEL_STEP_ASIDE,
     width: SOURCE_WIDTH,
     read: (v) => sourceCell(v),
     sortValue: (v) => sourceLabel(v).toLowerCase(),
@@ -829,7 +839,7 @@ export function OrganizationSection() {
     {
       key: "name",
       header: "Crown jewel",
-      width: readWidth(240),
+      width: readWidth(JEWEL_WIDTHS.name),
       cell: ({ value }) => readCell(value.name),
       interactive: true,
       sortValue: sortable<JewelRow>(({ value }) => value.name.toLowerCase()),
@@ -861,7 +871,7 @@ export function OrganizationSection() {
       header: "Criticality",
       hideable: true,
       headerClassName: "w-44",
-      width: readWidth(120),
+      width: readWidth(JEWEL_WIDTHS.criticality),
       cell: ({ value }) => readCell(value.criticality ? optionLabel(CRITICALITY_LABELS, value.criticality) : ""),
       interactive: true,
       sortValue: sortable<JewelRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
@@ -873,6 +883,8 @@ export function OrganizationSection() {
       key: "assets",
       header: "Assets",
       hideable: true,
+      // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
+      hideBelow: JEWEL_STEP_ASIDE,
       cell: ({ value }) => readCell((value.asset_names ?? []).join(", ")),
       interactive: true,
       csv: ({ value }) => (value.asset_names ?? []).join("; "),
@@ -881,8 +893,9 @@ export function OrganizationSection() {
       key: "opencrq",
       header: "OpenCRQ",
       hideable: true,
-      headerClassName: "w-24",
-      width: readWidth(96),
+      // 112 px: the header and its sort mark read whole (96 cut it, UX r2 B2 on #1174).
+      headerClassName: "w-28",
+      width: readWidth(JEWEL_WIDTHS.opencrq),
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
@@ -1028,7 +1041,7 @@ export function OrganizationSection() {
   // The values a free-text field already holds in its list, offered as it is typed (slice 2): 150 rows stay consistent.
   const suggestId = (key: ListKey, field: string) => `${fieldId}-${key}-${field}-suggestions`;
   const jewelEdit: ListEditColumn<Jewel>[] = [
-    { key: "name", header: "Crown jewel", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Crown jewel", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "name", header: "Crown jewel", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Crown jewel", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
@@ -1037,7 +1050,9 @@ export function OrganizationSection() {
       header: "Assets",
       hideable: true,
       // 200 px so "Link assets" and the chevron fit; Business service and Owner share the rest (UX r2 B1 on #12261).
-      width: readWidth(200),
+      // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
+      hideBelow: JEWEL_STEP_ASIDE,
+      width: readWidth(JEWEL_WIDTHS.assets),
       read: (v) => readCell((v.asset_names ?? []).join(", ")),
       edit: (v, set) => {
         const names = v.asset_names ?? [];

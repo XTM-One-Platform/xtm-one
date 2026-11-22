@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
 import type { OrganizationContextResponse } from "@/hooks/api/useOrganizationContextApi";
-import { OrganizationSection } from "./OrganizationSection";
+import { JEWEL_WIDTHS, OrganizationSection } from "./OrganizationSection";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -108,6 +108,22 @@ const READERS = {
     pir_ids: [{ agent_id: "a-2", name: "Threat Relevance Analyst" }],
   },
 };
+
+describe("OrganizationSection crown jewel widths at 1080 (#1174 UX r2 B1 and B2)", () => {
+  // The crown jewels table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
+  const TABLE_AT_1080 = 810;
+  it("leaves Business service and Owner at least 120 px each in edit mode", () => {
+    const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.actions;
+    expect((TABLE_AT_1080 - fixed) / 2).toBeGreaterThanOrEqual(120);
+  });
+  it("leaves Business service room for its header in read mode and keeps OpenCRQ's header whole", () => {
+    const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.opencrq;
+    // "Business service" is 94 px of text, plus 24 px of padding and the sort mark.
+    expect((TABLE_AT_1080 - fixed) / 2).toBeGreaterThanOrEqual(94 + 24 + 16);
+    // "OpenCRQ" is 56 px of text, plus the padding and the sort mark.
+    expect(JEWEL_WIDTHS.opencrq).toBeGreaterThanOrEqual(56 + 24 + 16);
+  });
+});
 
 describe("OrganizationSection used by (#9173 S2)", () => {
   it("names the fleets reading each part, once per card, linked to the fleet page, and only in read mode", async () => {
@@ -386,7 +402,7 @@ describe("OrganizationSection", () => {
     expect(table.dataset.layout).toBe("fixed");
     expect(within(table).getByRole("columnheader", { name: /Crown jewel/ }).style.width).toBe("240px");
     expect(within(table).getByRole("columnheader", { name: /Criticality/ }).style.width).toBe("120px");
-    expect(within(table).getByRole("columnheader", { name: /OpenCRQ/ }).style.width).toBe("96px");
+    expect(within(table).getByRole("columnheader", { name: /OpenCRQ/ }).style.width).toBe("112px");
     expect(within(row).getByText(long)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     // The editor keeps the read widths, so the Actions column never leaves the card (#12261 UX r1 B2; was: auto).
