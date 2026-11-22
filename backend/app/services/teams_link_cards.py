@@ -578,7 +578,11 @@ async def act(db: AsyncSession, verb: str, data: dict, user: User | None, langua
     """
     from app.api.v1.assignments import answer_paused_run
     from app.api.v1.schemas.assignment import RespondToHumanInputRequest
+    from app.services import decision_cards
 
+    if decision_cards.is_decision_data(data):
+        # A decision card of any source (#842, S9): one verb, answered through the router.
+        return await decision_cards.act(db, verb, data, user, language)
     target = target_from_data(data)
     if target is None:
         raise ValueError("card data names no run")
