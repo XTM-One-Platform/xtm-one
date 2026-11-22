@@ -82,6 +82,7 @@ from .crq import register as register_crq
 from .dashboard import register as register_dashboard
 from .findings import register as register_findings
 from .frameworks import register as register_frameworks
+from .health_reads import register as register_health_reads
 from .mitre import register as register_mitre
 from .ops import register as register_ops
 from .procedure_manifest import INSTANCE_LABEL, ManifestProbe, ProbeLater, hidden_refusal
@@ -208,6 +209,7 @@ def build_tools(
     tools += register_control_validation(base_url, headers, executor)
     tools += register_dashboard(base_url, headers, executor)
     tools += register_connectors(base_url, headers, executor)
+    tools += register_health_reads(base_url, headers, executor)
     if "opencrq_manifest" in _kwargs:
         manifest = _kwargs["opencrq_manifest"]
         # One probe per build: what the build's tools and, through the headers, every call's field check read the manifest from.

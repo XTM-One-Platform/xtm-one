@@ -104,6 +104,9 @@ MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
         "list_opencrq_risk_scenarios",
         "get_opencrq_tef_input",
         "get_opencrq_financial_profile",
+        # S15b-2d: module health reads of ``providers/opencrq/health_reads.py``.
+        "get_opencrq_data_health",
+        "get_opencrq_platform_health",
     ),
 }
 

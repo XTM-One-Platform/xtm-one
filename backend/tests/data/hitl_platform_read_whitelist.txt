@@ -56,6 +56,7 @@ opencrq:get_opencrq_crq_what_if
 opencrq:get_opencrq_cve
 opencrq:get_opencrq_cve_exploitation
 opencrq:get_opencrq_cve_finding
+opencrq:get_opencrq_data_health
 opencrq:get_opencrq_evidence
 opencrq:get_opencrq_financial_profile
 opencrq:get_opencrq_financial_summary
@@ -66,6 +67,7 @@ opencrq:get_opencrq_job
 opencrq:get_opencrq_loss_driver
 opencrq:get_opencrq_mitre_technique
 opencrq:get_opencrq_organization
+opencrq:get_opencrq_platform_health
 opencrq:get_opencrq_platform_rbac
 opencrq:get_opencrq_platform_version
 opencrq:get_opencrq_risk_dashboard
