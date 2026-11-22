@@ -4765,8 +4765,8 @@ PROVIDER_CATALOG = {
         ),
         "logo": "/logos/spendesk.svg",
         "category": "integration",
-        "integration_category": "finance",
-        "integration_types": ["spend_management", "expense_management"],
+        "integration_category": "business_operations",
+        "integration_types": ["spend_management"],
         "supports_assignment_webhooks": True,
         "available_events": [
             {

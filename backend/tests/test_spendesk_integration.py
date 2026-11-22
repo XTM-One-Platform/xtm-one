@@ -307,7 +307,7 @@ def test_every_operation_becomes_one_tool_with_a_unique_name():
 
 def test_catalog_entry_and_dispatcher():
     entry = PROVIDER_CATALOG["spendesk"]
-    assert entry["integration_category"] == "finance"
+    assert entry["integration_category"] == "business_operations"
     assert {e["event"] for e in entry["available_events"]} == set(TRIGGER_EVENTS.values())
     assert set(entry["extra_fields"]) == {"environment", "client_id", "webhook_secret"}
     assert PROVIDER_TOOLS["spendesk"] is spendesk.build_tools
