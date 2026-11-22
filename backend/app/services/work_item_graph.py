@@ -136,6 +136,13 @@ def _item_node(item: dict[str, Any], *, outside_filter: bool) -> dict[str, Any]:
         "ask": _ask_view(item.get("ask")) if item.get("needs_human") else None,
         "is_program_root": is_program_root(item),
         "outside_filter": outside_filter,
+        # What the Waiting for me filter reads (work_item `_waits_for_person_clause`),
+        # so the view marks the nodes that wait for the reader as the list rows do.
+        "user_id": item.get("user_id"),
+        "waits_for_user_id": item.get("waits_for_user_id"),
+        "owner_agent_id": item.get("owner_agent_id"),
+        "due_at": item.get("due_at"),
+        "scheduled": bool(item.get("scheduled")),
     }
 
 

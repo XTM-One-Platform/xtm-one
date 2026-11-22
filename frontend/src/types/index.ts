@@ -6525,6 +6525,8 @@ export interface WorkItem {
   blocked_reason?: string | null;
   /** Blocked on a person's decision. */
   needs_human?: boolean;
+  /** The person a needs_human item waits for when not its user (#11893); null otherwise. */
+  waits_for_user_id?: string | null;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
@@ -6747,6 +6749,12 @@ export interface WorkItemGraphItemNode {
   is_program_root: boolean;
   /** A blocker the filter left out, drawn so the chain does not end on nothing. */
   outside_filter: boolean;
+  /** What the Waiting for me filter reads (`waitsForReader`): the node's Waiting for you marker. */
+  user_id: string | null;
+  waits_for_user_id: string | null;
+  owner_agent_id: string | null;
+  due_at: string | null;
+  scheduled: boolean;
 }
 
 /** A pull request, issue, deployment or workflow run an item waits for. */
