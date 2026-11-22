@@ -210,7 +210,7 @@ def test_the_seeded_skill_carries_the_knowledge_and_records_section_as_suggestio
 
     entry = next(s for s in BUILTIN_SKILLS if s["slug"] == "fleet-design-practices")
     content = _resolve_seed_content("skill_content", entry["content"])
-    section = content.split("## 9. Knowledge and records", 1)[1].split("\n## ", 1)[0]
+    section = content.split("## 10. Knowledge and records", 1)[1].split("\n## ", 1)[0]
     for words in ("Working knowledge", "write grant", "read-only", "10 Fleet runbook", "90 Lessons log", "KNOWLEDGE:"):
         assert words in section
     assert not re.search(r"\b(must|never)\b", section, re.I)

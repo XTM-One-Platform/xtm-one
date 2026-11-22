@@ -85,6 +85,33 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value, null, 2) ?? "";
 }
 
+/**
+ * Every argument of a gated call, each labelled from the tool's own
+ * `input_schema`. Shared with the decision card's "Technical details" (#842, S3).
+ */
+export function ProposalArguments({ proposal }: { proposal: ActionProposal }) {
+  const argumentNames = Object.keys(proposal.arguments ?? {});
+  if (argumentNames.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {argumentNames.map((name) => {
+        const schema = argumentSchema(proposal.input_schema ?? {}, name);
+        return (
+          <div key={name} className="text-[11px]">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono-plex text-default-secondary">{name}</span>
+              {schema.description && <span className="text-default-disabled">— {schema.description}</span>}
+            </div>
+            <pre className="mt-0.5 whitespace-pre-wrap break-all font-mono-plex text-default-secondary">
+              {formatValue(proposal.arguments?.[name])}
+            </pre>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ActionProposalCardProps {
   proposal: ActionProposal;
   decision: ApprovalDecision | undefined;
@@ -125,8 +152,6 @@ export function ActionProposalCard({
         : {}),
     });
   };
-
-  const argumentNames = Object.keys(proposal.arguments ?? {});
 
   return (
     <div
@@ -178,26 +203,7 @@ export function ActionProposalCard({
         )}
       </div>
 
-      {argumentNames.length > 0 && (
-        <div className="space-y-1.5">
-          {argumentNames.map((name) => {
-            const schema = argumentSchema(proposal.input_schema ?? {}, name);
-            return (
-              <div key={name} className="text-[11px]">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="font-mono-plex text-default-secondary">{name}</span>
-                  {schema.description && (
-                    <span className="text-default-disabled">— {schema.description}</span>
-                  )}
-                </div>
-                <pre className="mt-0.5 whitespace-pre-wrap break-all font-mono-plex text-default-secondary">
-                  {formatValue(proposal.arguments?.[name])}
-                </pre>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <ProposalArguments proposal={proposal} />
 
       {!expired && !verdict && rejecting && (
         <div ref={rejectPanelRef} className="space-y-1.5 pt-1">
