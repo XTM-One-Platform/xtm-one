@@ -204,7 +204,7 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import ctem_openaev_events, ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -4725,14 +4725,6 @@ async def receive_assignment_webhook(
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
             )
-            if provider == "opencti":
-                # The analyst's mark on a drafted Grouping answers the CTEM review
-                # gate waiting on its coverage request (CTEM-16, #1089).
-                await ctem_analyst_mark.note_event(
-                    provider,
-                    payload,
-                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
-                )
             if provider == "openaev":
                 # An OpenAEV result a CTEM case waits on moves it (CTEM-15, #918).
                 await ctem_openaev_events.note_event(
@@ -4774,9 +4766,16 @@ async def receive_assignment_webhook(
             if provider == "opencti":
                 # A trigger serving tracked organizations (#9157 M4): the run
                 # learns which ones this event concerns.
-                from app.services.organization_events import annotate_payload
+                from app.services.organization_events import annotate_payload, named_in_payload
 
                 annotate_payload(payload, config)
+                # CTEM-29: a report or incident naming a tracked organization is a
+                # third-party event (path 11), recorded once per organization.
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload,
+                    named_in_payload(payload, config),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if wf.trigger_type == "integration_event":
                 if config.get("provider") != provider:
                     logger.warning(
