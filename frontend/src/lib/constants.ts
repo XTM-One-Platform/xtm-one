@@ -376,7 +376,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
-  spendesk: "Spendesk",
+  airwallex: "Airwallex",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -533,7 +533,6 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   crm: "CRM",
   documentation: "Documentation",
   travel: "Travel & Booking",
-  spend_management: "Spend Management",
   compliance: "Compliance",
   data_governance: "Data Governance",
   ediscovery: "eDiscovery",
@@ -586,7 +585,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
   erp: "ERP",
-  finance: "Finance",
+  finance: "Finance & Treasury",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
