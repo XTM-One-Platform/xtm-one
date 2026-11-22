@@ -20781,5 +20781,17 @@
   "Only machines in these states. Empty: every state.": "これらの状態のマシンのみ。空欄: すべての状態。",
   "The health of the Defender sensor on the machine.": "マシン上の Defender センサーの状態。",
   "Only machines at these levels. Empty: every level.": "これらのレベルのマシンのみ。空欄: すべてのレベル。",
-  "The exposure level Defender Vulnerability Management gives the machine.": "Defender Vulnerability Management がマシンに付ける露出レベル。"
+  "The exposure level Defender Vulnerability Management gives the machine.": "Defender Vulnerability Management がマシンに付ける露出レベル。",
+  "FQDN": "FQDN",
+  "Serial number": "シリアル番号",
+  "Entra device ID": "Entra デバイス ID",
+  "OS family": "OS ファミリー",
+  "OS version": "OS バージョン",
+  "OS build": "OS ビルド",
+  "Only when Device owner is on": "デバイスの所有者がオンの場合のみ",
+  "From the operating system, and the device model when the source gives it": "オペレーティングシステムから、ソースが提供する場合はデバイスモデルからも",
+  "OS, compliance and ownership, each as a prefixed tag": "OS、コンプライアンス、所有形態をそれぞれプレフィックス付きタグとして",
+  "OS, exposure level, health and risk, each as a prefixed tag": "OS、露出レベル、正常性、リスクをそれぞれプレフィックス付きタグとして",
+  "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "利用不可: {source} の連携が接続されていません。設定 > 連携 で接続してください。",
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "利用不可: {source} の連携にトークンがありません。設定 > 連携 で再度承認してください。"
 }
