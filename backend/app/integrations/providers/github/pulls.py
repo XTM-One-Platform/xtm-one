@@ -47,7 +47,7 @@ from .checks import _CI_MAX_PAGES, _CI_PAGE_SIZE, ci_verdict, classify_ci, is_co
 from .contents import _json_object
 from .landed import pull_key, pull_probe
 from .merge import conflict_answer, outcome_line
-from .merge_resolution import _branch_tip, ref_moved_and_undone
+from .merge_resolution import _branch_tip, drop_stopped_alignment, ref_moved_and_undone
 
 _SOURCE = "integration:github"
 _MERGE_METHODS = {"MERGE", "SQUASH", "REBASE"}
@@ -1658,6 +1658,50 @@ def register(
             no_op=True,
         )
 
+    async def _drop_stopped_alignment(client: Any, owner: str, name: str, number: int) -> tuple[str, str | None]:
+        """Move the PR branch off the take-the-ref commits a stopped line merge left: ``(note, refusal)``.
+
+        A call stopped between the alignment commits and the merge (a rollout) leaves the conflicting paths
+        holding the base's version. GitHub's update-branch then merges cleanly over them and the PR's own side
+        of those paths is lost without a word (xtm-one #1254: 24 i18n keys). merge_github_branch drops them
+        first; update_branch does the same before asking GitHub, so a repeat resolves both sides again.
+        """
+        repo = f"{owner}/{name}"
+        repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
+        pr_resp, pr_err = await _common.safe_request(
+            client, "get", f"{repo_url}/pulls/{number}", _PROVIDER, f"read PR #{number} in {repo}", headers=headers
+        )
+        if pr_err:
+            return "", None
+        pr = _json_object(pr_resp)
+        head = pr.get("head") if isinstance(pr, dict) else None
+        head_repo = head.get("repo") if isinstance(head, dict) else None
+        branch = _coerce_str(head.get("ref")) if isinstance(head, dict) else ""
+        owner_repo = _coerce_str(head_repo.get("full_name")) if isinstance(head_repo, dict) else ""
+        if not branch or owner_repo != repo:
+            return "", None
+        return await drop_stopped_alignment(client, headers, repo, repo_url, branch)
+
+    async def _update_branch(client: Any, owner: str, name: str, number: int) -> str | ToolResult:
+        """GitHub's update-branch on PR #*number*, or the line merge of :func:`_update_branch_conflict` on a 422."""
+        repo = f"{owner}/{name}"
+        resp, err = await _common.safe_request(
+            client,
+            "put",
+            f"{_BASE_URL}/repos/{owner}/{name}/pulls/{number}/update-branch",
+            _PROVIDER,
+            f"update branch for PR #{number}",
+            headers=_json_headers(headers),
+            json={},
+            expected_statuses={422},
+        )
+        if resp is not None and resp.status_code == 422:
+            return await _update_branch_conflict(client, owner, name, number, resp, err or "")
+        if err:
+            return err
+        await mark_self_action(repo, number)
+        return f"PR #{number} branch update queued: {(resp.json() or {}).get('message', 'Success')}"
+
     async def _update_branch_conflict(
         client: Any, owner: str, name: str, number: int, resp: httpx.Response, err: str
     ) -> str | ToolResult:
@@ -1776,22 +1820,16 @@ def register(
         action = (action or "").strip().lower()
         async with egress_client(timeout=30) as client:
             if action == "update_branch":
-                resp, err = await _common.safe_request(
-                    client,
-                    "put",
-                    f"{_BASE_URL}/repos/{owner}/{name}/pulls/{number}/update-branch",
-                    _PROVIDER,
-                    f"update branch for PR #{number}",
-                    headers=_json_headers(headers),
-                    json={},
-                    expected_statuses={422},
-                )
-                if resp is not None and resp.status_code == 422:
-                    return await _update_branch_conflict(client, owner, name, number, resp, err or "")
-                if err:
-                    return err
-                await mark_self_action(repo, number)
-                return f"PR #{number} branch update queued: {(resp.json() or {}).get('message', 'Success')}"
+                dropped, refusal = await _drop_stopped_alignment(client, owner, name, number)
+                if refusal:
+                    return refusal
+                answer = await _update_branch(client, owner, name, number)
+                if not dropped:
+                    return answer
+                if isinstance(answer, ToolResult):
+                    answer.content = f"{answer.content}\n{dropped}"
+                    return answer
+                return f"{answer}\n{dropped}"
             if action in ("ready_for_review", "enable_automerge"):
                 verb = "marked ready" if action == "ready_for_review" else "set to auto-merge"
                 refusal = await review_loop.review_loop_refusal(client, owner, name, number, headers, verb)

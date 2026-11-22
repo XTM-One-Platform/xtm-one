@@ -37,6 +37,7 @@ import type {
   HealthHistoryPoint,
   HealthModule,
   HealthModuleAnalysis,
+  HealthModuleCheckReports,
   HealthModuleInvestigation,
   HealthName,
   HealthOverview,
@@ -371,6 +372,19 @@ export function useInvestigateHealthModule() {
       void qc.invalidateQueries({ queryKey: ["health-overview"] });
       void qc.invalidateQueries({ queryKey: ["health-cycles"] });
     },
+  });
+}
+
+/**
+ * The latest agentic check report of every registration of one module (#101 S15e, section 13.6),
+ * administrators only: stored rows, no model call, readable with AI off. Refreshed with the overview.
+ */
+export function useHealthModuleChecks(module: HealthModule, options: { enabled?: boolean } = {}) {
+  return useQuery<HealthModuleCheckReports>({
+    queryKey: ["health-overview", "checks", module],
+    queryFn: () => api.get(`/health/modules/${module}/checks`),
+    enabled: options.enabled ?? true,
+    throwOnError: false,
   });
 }
 
