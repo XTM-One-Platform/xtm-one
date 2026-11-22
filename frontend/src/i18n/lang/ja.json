@@ -20256,6 +20256,7 @@
   "Answered by a person": "担当者が回答",
   "Gate": "ゲート",
   "Option {option}": "オプション {option}",
+  "Option {option}: {label}": "オプション {option}: {label}",
   "Remediation decision": "修復の判断",
   "Not decided yet: the fleet decides the remediation once the case is validated.": "未決定: ケースが検証されるとフリートが修復を決定します。",
   "Decided by policy": "ポリシーにより決定",

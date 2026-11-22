@@ -20256,6 +20256,7 @@
   "Answered by a person": "Répondu par une personne",
   "Gate": "Validation",
   "Option {option}": "Option {option}",
+  "Option {option}: {label}": "Option {option} : {label}",
   "Remediation decision": "Décision de remédiation",
   "Not decided yet: the fleet decides the remediation once the case is validated.": "Pas encore décidé : la flotte choisit la remédiation une fois le cas validé.",
   "Decided by policy": "Décidé par la politique",
