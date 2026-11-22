@@ -6069,6 +6069,7 @@
   "Webhook secret": "Webhookシークレット",
   "Webhooks": "Webhook",
   "Webhooks for {provider} are managed by your administrator. Events will be delivered to your agents automatically.": "{provider}のWebhookは管理者によって管理されています。イベントは自動的にエージェントへ配信されます。",
+  "Events from {provider} are picked up by polling. No webhook needs to be configured in {provider}.": "{provider}のイベントは定期的なポーリングで取得されます。{provider}で Webhook を設定する必要はありません。",
   "Website": "ウェブサイト",
   "Weekdays at 8 AM": "平日午前8時",
   "Weekly": "毎週",
