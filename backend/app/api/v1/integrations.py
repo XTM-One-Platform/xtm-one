@@ -3968,32 +3968,6 @@ async def _test_integration(
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
-    # DealHub: the API token is in api_key_enc, the instance host in
-    # extra_config. Validate by reading the account's active users.
-    if integration.provider == "dealhub":
-        from app.integrations.providers.dealhub import (
-            build_dealhub_token,
-        )
-        from app.integrations.providers.dealhub import (
-            validate_connection as dealhub_validate,
-        )
-
-        dealhub_extra: dict[str, object] = {}
-        if integration.extra_config_enc:
-            with suppress(Exception):
-                decrypted = decrypt_json(integration.extra_config_enc)
-                dealhub_extra = decrypted if isinstance(decrypted, dict) else {}
-        dealhub_host = dealhub_extra.get("instance_host")
-        dealhub_secret = (await reveal_field(integration, "api_key_enc")) or ""
-        try:
-            ok, message = await dealhub_validate(
-                build_dealhub_token(dealhub_host if isinstance(dealhub_host, str) else "", dealhub_secret)
-            )
-        except Exception:
-            logger.debug("DealHub connectivity check failed", exc_info=True)
-            ok, message = False, f"{integration.name} connection failed"
-        return {"status": "ok" if ok else "error", "message": message}
-
     # OVHcloud signs each request (application key mode) or mints an OAuth2
     # bearer (service account mode): the secret is in api_key_enc, the rest of
     # the credential in extra_config. Validate with the provider's own read of
@@ -4156,6 +4130,32 @@ async def _test_integration(
             }
         return await test_provider_connectivity(
             "docusign", docusign_token, {}, integration.name, db=db, integration=integration
+        )
+
+    # NetSuite: the compound credential (account, mode, identifiers and the
+    # secret of the API Key field) is assembled from the row the gate above
+    # cleared and handed to the provider's validate_connection.
+    if integration.provider == "netsuite":
+        from app.integrations.providers.netsuite import compound_credential as netsuite_credential
+
+        netsuite_extra: dict = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                netsuite_extra = decrypt_json(integration.extra_config_enc) or {}
+        netsuite_token = netsuite_credential(
+            ((await reveal_field(integration, "api_key_enc")) or "").strip(), netsuite_extra
+        )
+        if not netsuite_token:
+            return {
+                "status": "error",
+                "message": (
+                    "Missing credentials: set the account ID and, for OAuth 2.0 machine-to-machine, the client "
+                    "ID, the certificate ID and the certificate's private key; for Token-Based Authentication, "
+                    "the consumer key and secret, the token ID and the token secret."
+                ),
+            }
+        return await test_provider_connectivity(
+            "netsuite", netsuite_token, {}, integration.name, db=db, integration=integration
         )
 
     # Microsoft Purview in app-only (API-key) mode stores the service principal
