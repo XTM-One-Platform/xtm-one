@@ -125,6 +125,17 @@ describe("organization list edit (#12256)", () => {
     assert.deepEqual(committedValues(rows).map((row) => row.product), ["Jira", "B"]);
   });
 
+  it("leaves a row locked on a patched field as it is in a bulk edit (#1134)", () => {
+    let rows = startRows([tech("Jira", ""), tech("Slack", "")]);
+    const lockedOn = (value: { product: string }, field: string) => value.product === "Jira" && field === "vendor";
+    rows = patchRows(rows, ["r0", "r1"], { vendor: "Acme" }, lockedOn);
+    assert.equal(rows.find((row) => row.key === "r0")?.value.vendor, "");
+    assert.equal(rows.find((row) => row.key === "r1")?.value.vendor, "Acme");
+    // A field the row is not locked on still takes the edit.
+    rows = patchRows(rows, ["r0"], { cpe: "cpe:/a:atlassian:jira" }, lockedOn);
+    assert.equal(rows.find((row) => row.key === "r0")?.value.cpe, "cpe:/a:atlassian:jira");
+  });
+
   it("suggests the values a field already holds, most used first, removed rows left out", () => {
     let rows = startRows([tech("Jira", "Atlassian"), tech("Confluence", "atlassian"), tech("Slack", "Salesforce"), tech("X", " "), tech("Old", "Gone")]);
     rows = removeRow(rows, "r4");

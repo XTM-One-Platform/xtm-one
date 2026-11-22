@@ -6,6 +6,10 @@
  * filled primary. Each goes through POST /ctem-cases/bulk (or /merge), so every
  * case keeps the rules of a single change: accepted risk needs an owner, a
  * reason and an expiry; a refused case is named with its rule, never dropped.
+ *
+ * `only` draws one of the actions alone ("assign" or "due") for one case, with the
+ * same label and the same dialog: the next action of the "Act on this first" band
+ * (#1176, UX round 1 on #1182, B3).
  */
 import { useState } from "react";
 import { Textarea } from "@filigran/design-system";
@@ -84,7 +88,15 @@ function OwnerPicker({ id, value, onChange }: { id: string; value: UserDirectory
   );
 }
 
-export function CasesBulkActions({ cases, onDone }: { cases: CtemCaseSummary[]; onDone: () => void }) {
+export function CasesBulkActions({
+  cases,
+  onDone,
+  only,
+}: {
+  cases: CtemCaseSummary[];
+  onDone: () => void;
+  only?: "assign" | "due";
+}) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const { data: me } = useMe();
@@ -183,29 +195,43 @@ export function CasesBulkActions({ cases, onDone }: { cases: CtemCaseSummary[]; 
 
   return (
     <>
-      <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("assign")} data-testid="ctem-cases-bulk-assign">
-        {t_i18n("Assign owner")}
-      </Button>
-      <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("due")}>
-        {t_i18n("Set due date")}
-      </Button>
-      <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("accept")}>
-        {t_i18n("Accept risk")}
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        className={TOOLBAR_CONTROL_HEIGHT}
-        onClick={() => open("merge")}
-        disabled={count < 2}
-        title={count < 2 ? t_i18n("Select 2 cases or more to merge them") : undefined}
-        data-testid="ctem-cases-bulk-merge"
-      >
-        {t_i18n("Merge")}
-      </Button>
-      <Button size="sm" className={TOOLBAR_CONTROL_HEIGHT} onClick={start} disabled={pending} data-testid="ctem-cases-bulk-start">
-        {t_i18n("Start")}
-      </Button>
+      {only === "assign" && (
+        <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("assign")} data-testid="ctem-cases-single-assign">
+          {t_i18n("Assign owner")}
+        </Button>
+      )}
+      {only === "due" && (
+        <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("due")} data-testid="ctem-cases-single-due">
+          {t_i18n("Set due date")}
+        </Button>
+      )}
+      {!only && (
+        <>
+          <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("assign")} data-testid="ctem-cases-bulk-assign">
+            {t_i18n("Assign owner")}
+          </Button>
+          <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("due")}>
+            {t_i18n("Set due date")}
+          </Button>
+          <Button size="sm" variant="ghost" className={TOOLBAR_CONTROL_HEIGHT} onClick={() => open("accept")}>
+            {t_i18n("Accept risk")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className={TOOLBAR_CONTROL_HEIGHT}
+            onClick={() => open("merge")}
+            disabled={count < 2}
+            title={count < 2 ? t_i18n("Select 2 cases or more to merge them") : undefined}
+            data-testid="ctem-cases-bulk-merge"
+          >
+            {t_i18n("Merge")}
+          </Button>
+          <Button size="sm" className={TOOLBAR_CONTROL_HEIGHT} onClick={start} disabled={pending} data-testid="ctem-cases-bulk-start">
+            {t_i18n("Start")}
+          </Button>
+        </>
+      )}
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">

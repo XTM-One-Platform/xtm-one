@@ -544,7 +544,8 @@ export default function CtemCaseDetail() {
 
       {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
         <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version. Declare the version you run in Settings > Organization > Tech stack.")}
+          {/* The running version comes from the asset inventory, never typed by hand in the tech stack (#1176). */}
+          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version.")}
         </p>
       )}
 

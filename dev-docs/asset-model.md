@@ -200,8 +200,8 @@ longer bound by the profile JSON (5,000 rows) and an asset can carry hundreds of
 The migration (`o1178assets01`) creates the tables and backfills nothing. `organization_asset_store.ensure_built`
 builds an organization's store from its current profile on the first read and rebuilds it when a newer profile
 version is saved (one advisory lock per organization, so two first reads build once). An asset whose canonical key
-is unchanged keeps its id across rebuilds, so an id read from the API stays valid after an unrelated save. Until
-S3 the profile stays the source of the rows and the store is its canonical view; syncs and agent tools write through it in S3.
+is unchanged keeps its id across rebuilds, so an id read from the API stays valid after an unrelated save. The
+profile stays the source of the rows and the store is its canonical view (S3: refreshed at every save, 9.2).
 
 Read API (any signed-in user, primary organization, every list paginated, `limit` at most 200):
 
@@ -211,6 +211,30 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
   source that set it and every source's value, the merge explanation, its records and a page of its software.
 - `GET /api/v1/organization-context/assets/by-software?product=&vendor=&version=`: the assets running a software,
   with the version each runs.
+
+### 9.2 Writes through the store, merge and split (S3)
+
+- **Every save refreshes the store.** `organization_context.save_version` calls
+  `organization_asset_store.refresh_after_save` in the same transaction: a sync run, an import, the form, the
+  agent row tools (`upsert_organization_rows`, `remove_organization_rows`) and a proposal all rebuild the store
+  with the rows they saved. A refresh failure is logged and never fails the save; the next read rebuilds
+  (`ensure_built`).
+- **One asset, several records.** In the `assets` section only (`MULTI_SOURCE_SECTIONS` of
+  `organization_context_import` and `organization_context_rows`), a row whose name matches a row of another
+  source is added beside it as a second record instead of being skipped (import, sync) or refused (agent
+  upsert). The other row is never overwritten: an agent still cannot change a platform-sourced row, and a row of
+  its own source is still keyed on `source` + `external_id`. The store then joins the records on their
+  identifiers (section 9). Asset groups and the name-keyed sections keep one row per name.
+- **Merge and split.** `organization_asset_decisions` (migration `o1178assetdecisions01`) keeps an
+  administrator's `merge` (two to 50 records that are one asset) or `split` (two records that are never one
+  asset), applied by every rebuild through `identity.Decisions`. API, administrators, audited
+  (`entity_type organization_context`, `entity_name asset_decision`):
+  - `GET /api/v1/organization-context/assets/decisions` (any signed-in user): the decisions, newest first.
+  - `POST /api/v1/organization-context/assets/decisions` `{kind, records: [{source, external_id}], reason}`: 201
+    with the decision; 422 for a record the store does not hold, a wrong record count, a decision already
+    recorded, or a record addressed by its position (`row-<index>`, a row typed by hand with no `external_id`:
+    the address moves when a row above it is removed, so the row gets an `external_id` first).
+  - `DELETE /api/v1/organization-context/assets/decisions/{id}`: 204; the keys decide again.
 
 ## 10. OpenCRQ alignment
 

@@ -15,6 +15,11 @@
  * Slice 2: rows are selected with their box and the toolbar sets one field on every selected
  * row (vendor, owner, criticality, kind, exposure) or removes them, each change marked and
  * undoable like a hand edit until Save.
+ *
+ * #1134: a row a platform sync owns is read-only but for its local enrichment fields
+ * (`locked` names, per column, what the open row keeps as text, with a lock and the sync
+ * named on its first cell); removing such rows asks first (`confirmRemove`): they come back
+ * at the next run unless excluded from their sync.
  */
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@filigran/design-system";
@@ -46,6 +51,8 @@ export interface ListEditColumn<V> {
   header: string;
   width?: number;
   hideable?: boolean;
+  /** The DataTable container width below which the column steps aside (still sorted and pickable). */
+  hideBelow?: DataTableColumn<unknown>["hideBelow"];
   headerClassName?: string;
   /** The cell of a closed row. */
   read: (value: V) => ReactNode;
@@ -94,6 +101,8 @@ export function OrganizationListEditor<V>({
   rowTestId,
   emptyLabel,
   bulkFields = [],
+  locked,
+  confirmRemove,
 }: {
   rows: EditRow<V>[];
   onRows: (rows: EditRow<V>[]) => void;
@@ -110,6 +119,10 @@ export function OrganizationListEditor<V>({
   rowTestId?: string;
   emptyLabel: string;
   bulkFields?: BulkField<V>[];
+  /** The lock of a synced row (#1134): its tip, and whether a column stays text when the row is open; omitted = every row is editable. */
+  locked?: { tip: (value: V) => string | null; column: (value: V, key: string) => boolean };
+  /** Asked before synced rows are removed (#1134): false keeps them. */
+  confirmRemove?: (values: V[]) => Promise<boolean>;
 }) {
   const { t_i18n } = useFormatter();
   const box = useRef<HTMLDivElement>(null);
@@ -176,12 +189,13 @@ export function OrganizationListEditor<V>({
     header: column.header,
     width: column.width,
     hideable: column.hideable,
+    hideBelow: column.hideBelow,
     headerClassName: column.headerClassName,
     firstSort: column.firstSort,
     sortValue: column.sortValue ? (row: EditRow<V>) => column.sortValue!(row.base) : undefined,
     cell: (row: EditRow<V>) => {
       // A closed row's cells let the press through to the row, which opens it.
-      if (row.key !== openKey || !column.edit) return column.read(row.value);
+      if (row.key !== openKey || !column.edit || locked?.column(row.value, column.key)) return column.read(row.value);
       const rowIssues = issues.get(row.key) ?? [];
       const invalid = (column.issues ?? []).some((issue) => rowIssues.includes(issue));
       return (
@@ -198,6 +212,7 @@ export function OrganizationListEditor<V>({
     cell: (row) => {
       const reasons = row.removed ? [] : (issues.get(row.key) ?? []);
       const status = rowState(row);
+      const lockTip = locked?.tip(row.value) ?? null;
       return (
         <div className="flex min-w-0 items-center gap-1.5" data-edit-key={row.key} data-open={row.key === openKey ? "true" : undefined}>
           {status !== "unchanged" && (
@@ -213,6 +228,13 @@ export function OrganizationListEditor<V>({
             <Tip content={reasons.map((reason) => t_i18n(reason)).join(" ")}>
               <span role="img" aria-label={reasons.map((reason) => t_i18n(reason)).join(" ")} className="inline-flex shrink-0">
                 <Icon name="triangle-alert" size={16} className="text-feedback-warning-primary" />
+              </span>
+            </Tip>
+          )}
+          {lockTip && (
+            <Tip content={lockTip}>
+              <span role="img" aria-label={lockTip} className="inline-flex shrink-0" data-testid="settings.organization.list-row-locked">
+                <Icon name="lock" size={16} className="text-default-secondary" />
               </span>
             </Tip>
           )}
@@ -246,11 +268,18 @@ export function OrganizationListEditor<V>({
   // The selected rows that still exist and are not removed (a removed or dropped row leaves the selection).
   const [picked, setPicked] = useState<string[]>([]);
   const selected = picked.filter((key) => byKey.has(key) && !byKey.get(key)!.removed);
-  const bulkRemove = () => {
-    if (openKey && selected.includes(openKey)) open(null);
-    onRows(removeRows(rows, selected));
-    setPicked([]);
+  // Synced rows in what goes: asked first (#1134); anything else is removed at once (struck through, Undo until Save).
+  const withConfirm = (keys: string[], remove: () => void) => {
+    const values = keys.flatMap((key) => (byKey.get(key) ? [byKey.get(key)!.value] : []));
+    if (!confirmRemove || !values.some((value) => locked?.tip(value))) return remove();
+    void confirmRemove(values).then((confirmed) => confirmed && remove());
   };
+  const bulkRemove = () =>
+    withConfirm(selected, () => {
+      if (openKey && selected.includes(openKey)) open(null);
+      onRows(removeRows(rows, selected));
+      setPicked([]);
+    });
 
   const counts = changeCounts(rows);
   return (
@@ -276,7 +305,7 @@ export function OrganizationListEditor<V>({
           disabledReason: (key) => (byKey.get(key)?.removed ? t_i18n("Removed: undo it to select it.") : undefined),
           actions: (
             <>
-              {bulkFields.length > 0 && <BulkSet fields={bulkFields} onApply={(patch) => onRows(patchRows(rows, selected, patch as Partial<V>))} />}
+              {bulkFields.length > 0 && <BulkSet fields={bulkFields} onApply={(patch) => onRows(patchRows(rows, selected, patch as Partial<V>, locked?.column))} />}
               <Button variant="secondary" className="gap-1.5" onClick={bulkRemove} data-testid="settings.organization.bulk-remove">
                 <Icon name="trash-2" size={16} aria-hidden /> {t_i18n("Remove")}
               </Button>
@@ -301,10 +330,12 @@ export function OrganizationListEditor<V>({
               )}
               <RowRemoveButton
                 label={t_i18n("Remove")}
-                onClick={() => {
-                  if (row.key === openKey) open(null);
-                  onRows(removeRow(rows, row.key));
-                }}
+                onClick={() =>
+                  withConfirm([row.key], () => {
+                    if (row.key === openKey) open(null);
+                    onRows(removeRow(rows, row.key));
+                  })
+                }
               />
             </>
           )

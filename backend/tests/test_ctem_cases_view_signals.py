@@ -41,6 +41,20 @@ def test_a_signal_only_case_is_shown_to_a_viewer_of_its_signal() -> None:
     assert rendered["priority"] == "critical" and rendered["priority_basis"] == "loop severity"
 
 
+def test_a_case_row_carries_its_dates_and_signal_count() -> None:
+    """The list's Created, Age, Last change and Source signals columns (#1176)."""
+    case = _case()
+    case.created_at = NOW
+    case.updated_at = NOW
+    signal_ids = [uuid.uuid4(), uuid.uuid4()]
+    rows = [CtemCaseIssue(case_id=case.id, source="signal", external_id=str(s), open=True) for s in signal_ids]
+    view = view_of.ViewerView(signals={f"signal:{s}" for s in signal_ids})
+    row = view_of.summary(case, rows, view)
+    assert row is not None
+    assert row["created_at"] == NOW.isoformat() and row["updated_at"] == NOW.isoformat()
+    assert row["signal_count"] == 2
+
+
 def test_case_priority_follows_the_loop_severity_else_the_default_policy() -> None:
     assert view_of.case_priority("P1", []) == "critical"
     assert view_of.case_priority("P2", []) == "high"

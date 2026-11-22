@@ -72,6 +72,30 @@ def test_a_clean_checkout_of_a_gone_ref_is_evictable_and_a_dirty_one_never():
     ]
 
 
+def test_evicting_an_outer_checkout_never_takes_a_nested_one_with_it():
+    outer = _record("prod")
+    inner = build_record(
+        provider="github",
+        repository="acme/lab",
+        ref="feat/lab",
+        commit="0a1b2c3d4e",
+        path="prod/lab",
+        sub_paths=(),
+        files=[("lab.py", b"L\n")],
+    )
+    entries = {**_entries(outer), **_entries(inner)}
+    entries["prod/lab/lab.py"] = SimpleNamespace(size=3, sha256="edited by the agent")
+    found = {f.path: f for f in eviction.footprints(entries, {"prod": outer, "prod/lab": inner})}
+    assert found["prod"].clean and not found["prod/lab"].clean
+    gone = dataclasses.replace(found["prod"], ref_state=eviction.REF_GONE)
+    removed = sorted(eviction.eviction_paths([gone], entries))
+    assert removed == [f"prod/{RECORD_NAME}", "prod/src/a.py", "prod/src/b.py"], (
+        "the nested checkout's edit and record stay: only the deepest root a file sits under decides"
+    )
+    both = sorted(eviction.eviction_paths([gone, dataclasses.replace(found["prod/lab"], changes=0)], entries))
+    assert f"prod/lab/{RECORD_NAME}" in both and "prod/lab/lab.py" in both
+
+
 def test_a_stray_file_beside_a_narrow_checkout_keeps_it():
     narrow = _record("n", sub_paths=("src",))
     entries = _entries(narrow, {"n/notes/todo.md": b"mine"})

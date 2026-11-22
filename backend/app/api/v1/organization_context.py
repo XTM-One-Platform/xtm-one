@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -434,6 +434,98 @@ async def list_assets_of_software(
         db, org, product=product, vendor=vendor, version=version, offset=offset, limit=limit
     )
     return CanonicalAssetsPage(**vars(page))
+
+
+class AssetDecisionRecord(BaseModel):
+    source: str = Field(min_length=1, max_length=80)
+    external_id: str = Field(min_length=1, max_length=200)
+
+
+class AssetDecisionRequest(BaseModel):
+    #: ``merge``: the records are one asset; ``split``: the two records are never one asset.
+    kind: Literal["merge", "split"]
+    records: list[AssetDecisionRecord] = Field(min_length=2, max_length=50)
+    reason: str = Field(default="", max_length=500)
+
+
+@router.get("/assets/decisions")
+async def list_asset_decisions(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The administrators' merge and split decisions the store applies, newest first."""
+    from app.services.organization_asset_store import list_decisions
+
+    org = await _built_store(db)
+    return {"items": await list_decisions(db, org) if org is not None else []}
+
+
+@router.post("/assets/decisions", status_code=201)
+async def record_asset_decision(
+    body: AssetDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Merge source records into one asset, or keep two apart (administrators, audited)."""
+    from app.services.audit import log_audit
+    from app.services.organization_asset_store import DecisionError, decision_dict, record_decision
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="No organization profile yet")
+    try:
+        row = await record_decision(
+            db,
+            org,
+            kind=body.kind,
+            records=[r.model_dump() for r in body.records],
+            reason=body.reason,
+            author_user_id=admin.id,
+        )
+    except DecisionError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    labels = [f"{r['source']}:{r['external_id']}" for r in row.records]
+    await log_audit(
+        db,
+        user=admin,
+        action="configure",
+        entity_type="organization_context",
+        entity_id=row.id,
+        entity_name="asset_decision",
+        summary=f"Asset {row.kind}: " + ", ".join(labels),
+        details={"kind": row.kind, "records": row.records, "reason": row.reason},
+    )
+    await db.commit()
+    return decision_dict(row)
+
+
+@router.delete("/assets/decisions/{decision_id}", status_code=204)
+async def remove_asset_decision(
+    decision_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> None:
+    """Drop a merge or split: the keys decide again (administrators, audited)."""
+    from app.services.audit import log_audit
+    from app.services.organization_asset_store import remove_decision
+
+    org = await _built_store(db)
+    row = await remove_decision(db, org, decision_id) if org is not None else None
+    if row is None:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    await log_audit(
+        db,
+        user=admin,
+        action="delete",
+        entity_type="organization_context",
+        entity_id=decision_id,
+        entity_name="asset_decision",
+        summary=f"Asset {row.kind} removed: "
+        + ", ".join(f"{r['source']}:{r['external_id']}" for r in row.records or []),
+        details={"kind": row.kind, "records": row.records},
+    )
+    await db.commit()
 
 
 @router.get("/assets/{asset_id}")
@@ -1007,13 +1099,14 @@ def _apply_sync_body(row: Any, body: OrganizationSyncRequest, admin: User) -> No
 
 @router.get("/syncs", response_model=list[OrganizationSyncResponse])
 async def list_organization_syncs(
+    scope: Literal["profile", "inventory", ""] = "",
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> list[OrganizationSyncResponse]:
-    """The scheduled syncs of the profile sections, global first (#11913)."""
+    """The scheduled syncs, global first (#11913); *scope* keeps one location's sections (#1134 S2)."""
     from app.services import organization_context_sync as osync
 
-    return [await _sync_response(db, row) for row in await osync.all_syncs(db)]
+    return [await _sync_response(db, row) for row in await osync.all_syncs(db, scope)]
 
 
 @router.post("/syncs", response_model=OrganizationSyncResponse, status_code=201)

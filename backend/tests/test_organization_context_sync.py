@@ -20,6 +20,17 @@ from app.services import organization_context_import as imp
 from app.services import organization_context_sync as osync
 
 
+def test_each_location_lists_only_its_sections() -> None:
+    # #1134 S2 (Sam, 22 Nov 2026): Settings shows the business profile, CTEM > Inventory the inventory.
+    profile, inventory = osync.SECTION_SCOPES["profile"], osync.SECTION_SCOPES["inventory"]
+    assert set(profile) | set(inventory) == set(osync.SYNCABLE_SECTIONS)
+    assert not set(profile) & set(inventory)
+    assert osync.in_scope("crown_jewels", "profile") and not osync.in_scope("crown_jewels", "inventory")
+    assert osync.in_scope("assets", "inventory") and not osync.in_scope("assets", "profile")
+    assert osync.in_scope(osync.ALL_SECTIONS, "profile") and osync.in_scope(osync.ALL_SECTIONS, "inventory")
+    assert all(osync.in_scope(s, "") for s in osync.SYNCABLE_SECTIONS)
+
+
 def _sync(**kwargs) -> SimpleNamespace:
     base = {
         "id": uuid.uuid4(),
