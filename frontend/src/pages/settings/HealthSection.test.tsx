@@ -96,6 +96,8 @@ beforeEach(() => {
         modules: [],
       });
     if (url === "/health/name") return Promise.resolve({ name: "Platform Health", default_name: "Platform Health" });
+    if (url === "/health/settings/spend-limits")
+      return Promise.resolve({ locked: true, locked_reason: "environment", env_var: "PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED", limits: [] });
     return Promise.resolve([]);
   });
   put.mockReset();
@@ -217,6 +219,19 @@ describe("HealthSection read view", () => {
     } finally {
       restore.forEach((undo) => undo());
     }
+  });
+
+  it("locks the Budget and Analysis ceilings and names the variable, the analysis switch kept editable (#1202)", async () => {
+    renderSection();
+    expect(await screen.findByTestId("health.budget-locked")).toHaveTextContent("PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED");
+    expect(screen.getByTestId("health.analysis-locked")).toHaveTextContent("Locked at their defaults");
+    act(() => {
+      screen.getByRole("button", { name: "Edit" }).click();
+    });
+    const spend = screen.getByTestId("settings.health.group.spend");
+    expect(within(spend).queryAllByRole("spinbutton")).toHaveLength(0);
+    expect(within(spend).getByRole("switch", { name: "Analyse the findings" })).toBeInTheDocument();
+    expect(within(spend).getByTestId("health.analysis")).toHaveTextContent("100K");
   });
 
   it("shows the alert emails block, off by default", async () => {

@@ -514,6 +514,19 @@ registration token. The `health_refresh_requested` answer comes with the Health 
   **100,000 tokens and 1 USD a day, 3,100,000 tokens and 31 USD a month**; the analysis
   stays off by default. The lab model quota counter moved only by the analysis calls (9
   before, 11 after two runs of the measurement); no agentic quota counter is involved.
+- **Spend ceilings locked by default (#1202, decided by Sam, 22 Nov 2026).** This spend
+  runs outside the agentic quota, so its ceilings are the only bound on it; an admin who
+  could raise them would buy model usage outside the licence quota. Every spend ceiling
+  (`SPEND_FIELDS` in `services/health/settings.py`: `budget.*`, the four of `analysis`,
+  the five of `module_analyst`) resolves to the built-in defaults above
+  (`apply_spend_lock`, inside `load_health_settings`, so every reader sees the value in
+  force) unless `PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED` is true. While locked, a PUT of
+  the settings that changes a ceiling from the value in force is refused (403,
+  `SpendLimitsLockedError`, nothing written); one that sends the values in force saves its
+  other fields and the row keeps the stored ceilings (`load_stored_health_settings`), so
+  unlocking finds them again. Unlocked, today's behaviour holds, a cleared ceiling still
+  refusing (`ceiling_not_set`). The switches (`analysis.enabled`,
+  `module_analyst.enabled`) stay editable: turning them off only lowers the spend.
 
 ## 7. Settings
 
@@ -524,6 +537,11 @@ One compact "Platform Health" section (Settings > Agents and automations > Platf
 - Analysis: on or off, daily and monthly ceiling, and under them today's and this month's
   analysis spend against each ceiling (`AnalysisSpendLines`, from `GET /health/analysis`;
   moved from the Health page by #961).
+- Spend lock (#1202, section 6): `GET /health/settings/spend-limits` answers `locked`,
+  `locked_reason` (`environment`), `env_var` and, per ceiling, `value` (in force),
+  `default`, `stored` and `source` (`default` | `database`). While locked, the ceilings of
+  the Budget, Analysis and Module Analyst blocks render read-only with a lock and one line
+  naming the variable, in edit mode too; the spend lines and the switches are unchanged.
 - Alert emails: off by default; recipients, minimum severity, immediate for a critical
   finding open for the alert window plus a daily digest, one email per finding and open
   episode. Stored as `HealthSettings.alert_emails` (S12, `services/health/alerts.py`):
@@ -844,6 +862,10 @@ tokens and about 2 USD, under the daily ceiling with headroom for a cycle that r
 cap. Lowering the defaults to the quiet figure would stop the analyst on the day it is
 needed. The production retest replaces the findings estimate; if a cycle with findings
 lands over 55,000 tokens on average, the daily default moves with it.
+
+These ceilings are locked at these defaults unless `PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED`
+is true (#1202, section 6): a stored value is kept, not applied, and the reservation
+(`module_analyst_budget.reserve`) reads the value in force.
 
 Model: the platform routing model, as section 6, unless the measurement shows it cannot
 hold the loop (then the platform default model, priced in the same ledger, and the

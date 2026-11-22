@@ -43,6 +43,7 @@ import type {
   HealthOptIn,
   HealthScheduleMark,
   HealthSettings,
+  HealthSpendLimits,
   HealthSeverity,
   HealthSignal,
   HealthTargetType,
@@ -57,6 +58,7 @@ const BUDGET_KEY = ["health", "budget"] as const;
 const OPT_OUT_KEY = ["health", "opt-out"] as const;
 const NAME_KEY = ["health", "name"] as const;
 const ANALYSIS_KEY = ["health", "analysis"] as const;
+const SPEND_LIMITS_KEY = ["health", "settings", "spend-limits"] as const;
 
 /** What a manager opts in to improvement: an agent or a flow, on the same route shape. */
 export type OptInTarget = "agent" | "flow";
@@ -134,6 +136,15 @@ export function useSaveHealthSettings() {
       void qc.invalidateQueries({ queryKey: ["agents"] });
       syncFlowNodeCatalog(qc);
     },
+  });
+}
+
+/** Whether the spend ceilings are locked at their defaults (#1202) and the variable that unlocks them. */
+export function useHealthSpendLimits(enabled = true) {
+  return useQuery<HealthSpendLimits>({
+    queryKey: SPEND_LIMITS_KEY,
+    queryFn: () => api.get("/health/settings/spend-limits"),
+    enabled,
   });
 }
 

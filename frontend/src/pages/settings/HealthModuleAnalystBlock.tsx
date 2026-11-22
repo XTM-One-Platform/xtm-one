@@ -32,7 +32,7 @@ import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
 import type { HealthAnalysisSpend, HealthModuleAnalystSettings, HealthSettings } from "@/types";
 
-import { BlockTitle, type BlockProps } from "./health-block";
+import { BlockTitle, SpendLockNotice, useSpendLock, type BlockProps } from "./health-block";
 
 /** The design-system glyph the Module Analyst wears on the Health page (`ModuleAnalystParts`). */
 const AnalystGlyph = ({ className }: { className?: string }) => <Icon name="file-search" size={16} className={className} aria-hidden />;
@@ -77,6 +77,9 @@ export function ModuleAnalystBlock({ draft, editing, onChange }: BlockProps) {
   const { count: n, money: usd } = useNumberFormat("USD");
   const fieldId = useId();
   const isXtmOne = useIsXtmOne();
+  // #1202: the ceilings are locked at their defaults; the switch stays editable (off only lowers spend).
+  const { locked, envVar } = useSpendLock();
+  const editable = editing && !locked;
   const analyst = draft.module_analyst as HealthModuleAnalystSettings | undefined;
   if (!isXtmOne || !analyst) return null;
   const setAnalyst = (next: Partial<HealthModuleAnalystSettings>) => onChange({ ...draft, module_analyst: { ...analyst, ...next } });
@@ -105,6 +108,7 @@ export function ModuleAnalystBlock({ draft, editing, onChange }: BlockProps) {
         ) : (
           <SettingsReadField label={t_i18n("Investigate the modules")} info={info} value={analyst.enabled ? t_i18n("On") : t_i18n("Off")} />
         )}
+        {locked && <SpendLockNotice envVar={envVar} testId="health.module-analyst-locked" />}
         {/* One period per row, as the analysis grid above and the Today / This month spend below:
             tokens per cycle alone (an empty cell beside it), then the day pair, then the month pair. */}
         <SettingsFieldGrid data-testid="health.module-analyst-ceilings">
@@ -119,14 +123,14 @@ export function ModuleAnalystBlock({ draft, editing, onChange }: BlockProps) {
                 info={t_i18n(ANALYST_CEILING_INFO[key])}
                 helper={t_i18n("Empty: every Module Analyst model call is refused.")}
                 error={
-                  editing && !valid
+                  editable && !valid
                     ? TOKEN_KEYS.has(key)
                       ? t_i18n("Enter a whole number of 0 or more.")
                       : t_i18n("Enter a number of 0 or more.")
                     : undefined
                 }
               >
-                {editing ? (
+                {editable ? (
                   <Input
                     id={id}
                     aria-labelledby={settingsFieldLabelId(id)}
