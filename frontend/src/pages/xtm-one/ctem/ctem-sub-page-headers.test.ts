@@ -9,20 +9,19 @@ import { describe, expect, it } from "vitest";
 const PAGES = ["ExposureBriefing.tsx", "CtemStageDetail.tsx", "CtemGovernance.tsx", "CtemCaseDetail.tsx"];
 
 describe("CTEM sub page headers", () => {
-  it.each(PAGES)("%s renders CtemPageHeader with a back link and no BackButton or h1 of its own", (file) => {
-    const text = readFileSync(join(process.cwd(), "src", "pages", "xtm-one", file), "utf8");
+  it("CtemCases.tsx, a row of the CTEM menu group, renders CtemPageHeader with the group as its eyebrow and no back link", () => {
+    const text = readFileSync(join(process.cwd(), "src", "pages", "xtm-one", "CtemCases.tsx"), "utf8");
     expect(text).toMatch(/<CtemPageHeader\b/);
-    expect(text).toMatch(/back=\{\{ to: "[^"]+", label: "Back to [^"]+" \}\}/);
+    expect(text).toMatch(/eyebrow=\{<span>\{t_i18n\("CTEM"\)\}<\/span>\}/);
+    expect(text).not.toMatch(/Back to Remediation/);
     expect(text).not.toMatch(/<BackButton\b/);
     expect(text).not.toMatch(/<h1\b/);
   });
 
-  // Cases is a top-level menu entry (#1176): its header has no back link, never "Back to Remediation".
-  it("CtemCases.tsx renders CtemPageHeader with no back link", () => {
-    const text = readFileSync(join(process.cwd(), "src", "pages", "xtm-one", "CtemCases.tsx"), "utf8");
+  it.each(PAGES)("%s renders CtemPageHeader with a back link and no BackButton or h1 of its own", (file) => {
+    const text = readFileSync(join(process.cwd(), "src", "pages", "xtm-one", file), "utf8");
     expect(text).toMatch(/<CtemPageHeader\b/);
-    expect(text).not.toMatch(/back=\{\{/);
-    expect(text).not.toContain("Back to Remediation");
+    expect(text).toMatch(/back=\{\{ to: "[^"]+", label: "Back to [^"]+" \}\}/);
     expect(text).not.toMatch(/<BackButton\b/);
     expect(text).not.toMatch(/<h1\b/);
   });
