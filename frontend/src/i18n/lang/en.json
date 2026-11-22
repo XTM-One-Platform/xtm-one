@@ -20536,5 +20536,21 @@
   "No capability slot": "No capability slot",
   "No slot matches the search and filters": "No slot matches the search and filters",
   "Freshness": "Freshness",
-  "Stale: not seen by OpenAEV past the tenant's threshold": "Stale: not seen by OpenAEV past the tenant's threshold"
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Stale: not seen by OpenAEV past the tenant's threshold",
+  "Observed": "Observed",
+  "Previous pass saw {ports}": "Previous pass saw {ports}",
+  "Answers on {port}, a new port": "Answers on {port}, a new port",
+  "Declared not internet-facing in the profile": "Declared not internet-facing in the profile",
+  "Answers from the Internet on {ports}": "Answers from the Internet on {ports}",
+  "The name is listed": "The name is listed",
+  "No DNS record backs it": "No DNS record backs it",
+  "Names of {domain} point inside the owned address ranges": "Names of {domain} point inside the owned address ranges",
+  "Points to {ip}, outside them": "Points to {ip}, outside them",
+  "The host last answered on {date}": "The host last answered on {date}",
+  "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}",
+  "Not declared and not seen by an earlier pass": "Not declared and not seen by an earlier pass",
+  "Answers on {ports}": "Answers on {ports}",
+  "Ports that answer": "Ports that answer",
+  "DNS target": "DNS target",
+  "Certificate names": "Certificate names"
 }
