@@ -303,6 +303,10 @@ def _transition(
     return row
 
 
+#: The asset groups one validation reference names in its run order (CTEM-12-UI).
+RUN_ORDER_MAX = 20
+
+
 async def record_validation(
     db: AsyncSession,
     case: CtemCase,
@@ -313,6 +317,8 @@ async def record_validation(
     result: str,
     mitigation_only: bool = False,
     note: str | None = None,
+    safe_mode: bool | None = None,
+    run_order: list[str] | None = None,
     actor: str = rules.SYSTEM_ACTOR,
     events: PendingEvents | None = None,
     now: datetime | None = None,
@@ -322,7 +328,10 @@ async def record_validation(
     ``result``: ``passed`` (the exposure is gone), ``not_exposed`` (it never
     was), ``failed`` (still exposed) or ``pending``. ``mitigation_only``: the
     pass proves a mitigation, not the permanent fix, so the case goes to
-    ``mitigated_watching`` and the re-test stays on. The caller commits.
+    ``mitigated_watching`` and the re-test stays on. ``safe_mode`` (CTEM-12):
+    true when only read-only injects ran, false when a non-read-only one ran,
+    None when the module did not say. ``run_order``: the target asset groups in
+    the order they were tested (at most 20 names). The caller commits.
     """
     if result not in VALIDATION_RESULTS:
         raise rules.CaseRuleError(f"unknown validation result {result!r}")
@@ -339,6 +348,11 @@ async def record_validation(
         "mitigation_only": bool(mitigation_only),
         "note": (note or "").strip()[:500] or None,
     }
+    if safe_mode is not None:
+        entry["safe_mode"] = bool(safe_mode)
+    order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
+    if order:
+        entry["run_order"] = order
     case.validations = [*(case.validations or []), entry][-50:]
     case.validation_plan = True
     db.add(_event(case.id, actor, "validation", now, to_value=result, evidence=f"{entry['provider']}:{entry['ref']}"))

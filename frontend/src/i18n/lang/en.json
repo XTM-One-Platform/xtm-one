@@ -20306,5 +20306,13 @@
   "Residual risk": "Residual risk",
   "Time to apply": "Time to apply",
   "Pre-approved runbook": "Pre-approved runbook",
-  "{label}: {value}": "{label}: {value}"
+  "{label}: {value}": "{label}: {value}",
+  "Run order": "Run order",
+  "Validation runs": "Validation runs",
+  "{step}. {group}": "{step}. {group}",
+  "Passed automatically: safe mode": "Passed automatically: safe mode",
+  "Safe mode: read-only checks only": "Safe mode: read-only checks only",
+  "Not read-only: a test that changes the target ran": "Not read-only: a test that changes the target ran",
+  "Not validated yet: the fleet requests read-only checks in OpenAEV once the case is prioritized.": "Not validated yet: the fleet requests read-only checks in OpenAEV once the case is prioritized.",
+  "A test that is not read-only waits for a person: the decision is in their Waiting for you list.": "A test that is not read-only waits for a person: the decision is in their Waiting for you list."
 }

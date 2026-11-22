@@ -49,6 +49,7 @@ import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
 import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
+import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -548,6 +549,8 @@ export default function CtemCaseDetail() {
       <CaseOpenedBy caseId={kase.id} />
 
       <CaseExploitation entries={kase.exploitation} />
+
+      <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
 
       <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
 

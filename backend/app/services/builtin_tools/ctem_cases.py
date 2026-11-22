@@ -290,6 +290,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         kind: str = "retest",
         mitigation_only: bool = False,
         note: str = "",
+        safe_mode: bool | None = None,
+        run_order: list[str] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -316,6 +318,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     result=result,
                     mitigation_only=bool(mitigation_only),
                     note=note or None,
+                    safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                    run_order=[str(n) for n in run_order] if isinstance(run_order, list) else None,
                     actor=agent_id,
                     events=pending,
                 )
@@ -685,6 +689,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "kind": {"type": "string", "description": "validation or retest (default retest)."},
                     "mitigation_only": {"type": "boolean"},
                     "note": {"type": "string"},
+                    "safe_mode": {"type": "boolean", "description": "True when only read-only injects ran."},
+                    "run_order": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Target asset groups in the order they were tested.",
+                    },
                 },
                 "required": ["case_id", "provider", "ref", "result"],
             },
