@@ -20459,5 +20459,12 @@
   "Kept as a fingerprint only, never the value": "フィンガープリントのみ保持し、値は保持しません",
   "Named in": "言及元",
   "Organization criticality": "組織の重要度",
-  "From {source}": "取得元: {source}"
+  "From {source}": "取得元: {source}",
+  "Context: {value}": "コンテキスト: {value}",
+  "Scope: {value}": "範囲: {value}",
+  "Collaboration instruction set": "連携の指示あり",
+  "No collaboration instruction": "連携の指示なし",
+  "Search capabilities, members, integrations...": "機能、メンバー、連携を検索...",
+  "No capability slot": "機能スロットはありません",
+  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません"
 }
