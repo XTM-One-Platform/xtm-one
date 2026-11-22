@@ -18118,6 +18118,7 @@
   "SaaS application": "SaaS application",
   "AI system (asset category)": "AI system",
   "Security platform": "Security platform",
+  "Source code": "Source code",
   "Other asset (to classify)": "Other asset (to classify)",
   "Workstation": "Workstation",
   "Laptop": "Laptop",
@@ -20768,9 +20769,9 @@
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.",
   "Asset count": "Asset count",
   "Versions not listed": "Versions not listed",
-  "Module checks": "Module checks",
-  "No check round since the last digest": "No check round since the last digest",
-  "Failed most": "Failed most",
-  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}",
-  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}"
+  "Code repository": "Code repository",
+  "CI/CD pipeline": "CI/CD pipeline",
+  "Package registry": "Package registry",
+  "Software package": "Software package",
+  "Other code asset": "Other code asset"
 }
