@@ -40,8 +40,6 @@ import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { FleetSetupWizard } from "./FleetSetupWizard";
 import {
-  ECOSYSTEM_CAPABILITIES,
-  ECOSYSTEM_LABELS,
   LOOP_MODULES,
   MODULE_DEGRADED,
   MODULE_NAMES,
@@ -50,7 +48,6 @@ import {
   SETUP_STEP_TITLES,
   connectedModules,
   countFact,
-  ecosystemSlots,
   isSettled,
   loopRuns,
   nextStep,
@@ -61,10 +58,6 @@ import {
   testSignal,
   type SetupStepKey,
 } from "./ctem-loop-setup";
-
-const SLOT_VARIANTS = { filled: "success", empty: "warning", unavailable: "outline" } as const;
-/** @i18n-keys */
-const SLOT_LABELS = { filled: "Bound", empty: "Not bound", unavailable: "None connected" } as const;
 
 export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t_i18n } = useFormatter();
@@ -240,19 +233,10 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
               </ul>
             )}
             {step === "ecosystem" && (
+              // One status per capability (UX r1 B4 of #1209): the card's rows, no second strip read
+              // from other facts; inSetup keeps every exit in a new tab (B3).
               <div className="space-y-3" data-testid="ctem-loop-setup-ecosystem">
-                <ul className="flex flex-wrap gap-x-4 gap-y-2 content-compact">
-                  {ECOSYSTEM_CAPABILITIES.map((capability) => {
-                    const state = ecosystemSlots(facts)[capability];
-                    return (
-                      <li key={capability} className="flex items-center gap-2">
-                        <span>{t_i18n(ECOSYSTEM_LABELS[capability])}</span>
-                        <Badge variant={SLOT_VARIANTS[state]}>{t_i18n(SLOT_LABELS[state])}</Badge>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {fleet.data && <FleetCapabilitySlotsCard fleet={fleet.data} />}
+                {fleet.data && <FleetCapabilitySlotsCard fleet={fleet.data} inSetup />}
               </div>
             )}
             {step === "gates" && fleet.data && (

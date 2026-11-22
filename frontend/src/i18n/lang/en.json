@@ -4156,6 +4156,8 @@
   "No work item on this page can be deleted.": "No work item on this page can be deleted.",
   "Not selectable": "Not selectable",
   "Not set": "Not set",
+  "{count, plural, one {# member not set} other {# members not set}}": "{count, plural, one {# member not set} other {# members not set}}",
+  "No integration": "No integration",
   "Not set (UTC used for AI context)": "Not set (UTC used for AI context)",
   "Not storing": "Not storing",
   "Not suitable for chat": "Not suitable for chat",

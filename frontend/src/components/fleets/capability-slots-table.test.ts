@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { FleetCapabilityType, FleetCapabilityTypeMember } from "@/hooks/api/useFleetApi";
+import en from "@/i18n/lang/en.json";
+import es from "@/i18n/lang/es.json";
+import fr from "@/i18n/lang/fr.json";
+import ja from "@/i18n/lang/ja.json";
 import { sortRows } from "@/lib/table-rows";
 
 import {
@@ -8,6 +12,9 @@ import {
   CAPABILITY_ICONS,
   FALLBACK_CAPABILITY_ICON,
   FLEET_DEFAULTS_OPEN_BY_DEFAULT,
+  NO_INTEGRATION_VALUE,
+  STATUS_LABEL_MAX_CHARS,
+  TYPE_STATE_LABELS,
   builtinValue,
   capabilityIcon,
   customMembers,
@@ -19,8 +26,10 @@ import {
   toggledIds,
   typeCounts,
   typeEditable,
+  typePickerValue,
   typeSearchFields,
   typeStateRank,
+  unsetMembers,
 } from "./capability-slots-table";
 
 const JIRA = { integration_id: "i1", provider: "jira", name: "Jira ITS" };
@@ -96,6 +105,23 @@ describe("capability types table (#1201)", () => {
       expect(CAPABILITY_ICONS[capability]).toBeTruthy();
     expect(new Set(Object.values(CAPABILITY_ICONS)).size).toBe(Object.keys(CAPABILITY_ICONS).length);
     expect(capabilityIcon("quantum_radar")).toBe(FALLBACK_CAPABILITY_ICON);
+  });
+
+  it("sizes the Status column for the longest state label of the four catalogs (UX r1 B5 of #1209)", () => {
+    for (const catalog of [en, fr, es, ja] as Record<string, string>[])
+      for (const key of Object.values(TYPE_STATE_LABELS)) expect((catalog[key] ?? key).length).toBeLessThanOrEqual(STATUS_LABEL_MAX_CHARS);
+  });
+
+  it("names the members a Partial type leaves unset and shows no picker value for it (UX r1 B2 of #1209)", () => {
+    const partial = type("ticketing", "partial", { choice: [JIRA], members: [member("a", { bound: [JIRA] }), member("b")] });
+    expect(unsetMembers(partial).map((m) => m.member_id)).toEqual(["b"]);
+    expect(typePickerValue(partial)).toBe("");
+    expect(typePickerValue({ ...partial, state: "connected", members: [member("a", { bound: [JIRA] })] })).toBe("i1");
+    expect(unsetMembers(type("asset_inventory", "connected", { builtin: INVENTORY }))).toEqual([]);
+  });
+
+  it("writes no integration for the member's No integration option (UX r1 B1 of #1209)", () => {
+    expect(idsForPick(NO_INTEGRATION_VALUE)).toEqual([]);
   });
 
   it("reads a blank collaboration instruction as none in the folded summary", () => {

@@ -46,6 +46,15 @@ export const TYPE_STATE_VARIANTS = {
   none_connected: "outline",
 } as const satisfies Record<FleetCapabilityType["state"], string>;
 
+/**
+ * The longest state label of the four catalogs, in characters ("Ninguna conectada", es), and the
+ * Status column sized from it: 7 px a character at the badge's 12 px, the badge's 8 px padding a
+ * side and the cell's 12 px a side (UX r1 B5 of #1209: "Aucune connectée" was cut at 128 px).
+ * capability-slots-table.test.ts fails when a catalog grows a longer label.
+ */
+export const STATUS_LABEL_MAX_CHARS = 18;
+export const STATUS_COLUMN_WIDTH = STATUS_LABEL_MAX_CHARS * 7 + 16 + 24;
+
 /** What is left to do first: Not bound, Partial, None connected, then Connected. */
 const TYPE_STATE_ORDER: Record<FleetCapabilityType["state"], number> = {
   not_bound: 0,
@@ -59,6 +68,12 @@ export const MULTI_CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(["notific
 
 /** The picker value of a capability's built-in option (never an integration id). */
 const BUILTIN_VALUE_PREFIX = "builtin:";
+
+/**
+ * The picker value of a member's "No integration" choice: a member overridden to none is an
+ * option of the list, never a clear control beside the field (UX r1 B1 of #1209).
+ */
+export const NO_INTEGRATION_VALUE = "none:";
 
 /**
  * One design-system icon per capability of the backend catalog
@@ -137,7 +152,7 @@ export function builtinValue(type: Pick<FleetCapabilityType, "builtin">): string
  * value is that one integration.
  */
 export function idsForPick(value: string): string[] {
-  return !value || value.startsWith(BUILTIN_VALUE_PREFIX) ? [] : [value];
+  return !value || value.startsWith(BUILTIN_VALUE_PREFIX) || value === NO_INTEGRATION_VALUE ? [] : [value];
 }
 
 /**
@@ -152,6 +167,21 @@ export function toggledIds(current: readonly string[], value: string): string[] 
 /** The value a single-choice picker shows: the bound integration, else the built-in option, else nothing. */
 export function pickerValue(type: Pick<FleetCapabilityType, "builtin">, bound: readonly FleetSlotIntegration[]): string {
   return bound[0]?.integration_id ?? builtinValue(type);
+}
+
+/** The members of a type whose slot nothing fills: no integration bound and no built-in option. */
+export function unsetMembers(type: FleetCapabilityType): FleetCapabilityTypeMember[] {
+  return type.builtin ? [] : type.members.filter((member) => member.bound.length === 0);
+}
+
+/**
+ * The value the type picker shows. A Partial type shows none: the fleet choice reads in the
+ * Integration column with how many members are not set, and picking it, the same value
+ * included, writes it on every member without it (UX r1 B2 of #1209: re-picking the shown
+ * value wrote nothing).
+ */
+export function typePickerValue(type: FleetCapabilityType): string {
+  return type.state === "partial" ? "" : pickerValue(type, type.choice);
 }
 
 /** The instruction part of the folded Fleet defaults summary. @i18n-keys */

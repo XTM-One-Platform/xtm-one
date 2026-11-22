@@ -64,6 +64,8 @@ import { useFormatter } from "@/i18n";
 import {
   CAPABILITIES_OPEN_BY_DEFAULT,
   MULTI_CHANNEL_CAPABILITIES,
+  NO_INTEGRATION_VALUE,
+  STATUS_COLUMN_WIDTH,
   TYPE_STATE_LABELS,
   TYPE_STATE_VARIANTS,
   builtinValue,
@@ -76,8 +78,10 @@ import {
   toggledIds,
   typeCounts,
   typeEditable,
+  typePickerValue,
   typeSearchFields,
   typeStateRank,
+  unsetMembers,
 } from "./capability-slots-table";
 import { fleetRefusalMessage } from "./fleet-refusals";
 
@@ -175,13 +179,15 @@ export function FleetCapabilitySlotsCard({
   /**
    * The picker of a type or of one member: a multi-select for a multi-channel capability
    * (the built-in option always on), else one choice with the built-in option pinned first.
+   * Every picker is the same 240 px box with no control outside it (UX r1 B1 of #1209): a
+   * member picker offers "No integration" as an option instead of a clear button beside it.
    */
   const picker = (
     type: FleetCapabilityType,
     bound: readonly FleetSlotIntegration[],
     onPick: (ids: string[]) => void,
     label: string,
-    clearable: boolean,
+    forMember: boolean,
   ) => {
     const builtin = builtinValue(type);
     const builtinLabel = type.builtin ? t_text(type.builtin.label) : "";
@@ -220,15 +226,16 @@ export function FleetCapabilitySlotsCard({
     }));
     const pinned: SelectOption[] = builtin
       ? [{ value: builtin, label: builtinLabel, icon: <Icon name={capabilityIcon(type.capability)} size={16} aria-hidden /> }]
-      : [];
+      : forMember && bound.length > 0
+        ? [{ value: NO_INTEGRATION_VALUE, label: t_i18n("No integration") }]
+        : [];
     return (
       <SearchableSelect
         aria-label={label}
         options={options}
         pinned={pinned}
         searchable="auto"
-        value={pickerValue(type, bound)}
-        clearable={clearable && !builtin}
+        value={forMember ? pickerValue(type, bound) : typePickerValue(type)}
         disabled={busy}
         placeholder={t_i18n("Choose an integration")}
         onValueChange={(value) => onPick(idsForPick(value))}
@@ -271,7 +278,7 @@ export function FleetCapabilitySlotsCard({
     {
       key: "status",
       header: "Status",
-      width: 128,
+      width: STATUS_COLUMN_WIDTH,
       sortValue: typeStateRank,
       csv: (type) => t_i18n(TYPE_STATE_LABELS[type.state]),
       cell: (type) => (
@@ -289,6 +296,11 @@ export function FleetCapabilitySlotsCard({
         <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid={`type-choice-${type.capability}`}>
           {builtinChip(type)}
           {integrationChips(type.choice, `type-bound-${type.capability}`)}
+          {unsetMembers(type).length > 0 && type.choice.length > 0 && (
+            <Badge variant="warning" className="whitespace-nowrap" data-testid={`type-unset-${type.capability}`}>
+              {t_i18n("{count, plural, one {# member not set} other {# members not set}}", { count: unsetMembers(type).length })}
+            </Badge>
+          )}
           {customMembers(type).length > 0 && (
             <Badge variant="secondary" className="whitespace-nowrap">
               {t_i18n("Custom")}
@@ -310,6 +322,14 @@ export function FleetCapabilitySlotsCard({
         t_i18n("Fleet choice for {capability}", { capability: t_text(type.label) }),
         false,
       );
+    // "Connect one" leaves for /integrations: a new tab inside the setup flows (UX r1 B3 of #1209).
+    if (inSetup)
+      return (
+        <Button type="button" variant="outline" className="w-[240px] gap-1.5" onClick={connectOne}>
+          {t_i18n("Connect one")}
+          <Icon name="external-link" size={16} aria-hidden />
+        </Button>
+      );
     // A button of the picker's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
     return (
       <Button type="button" variant="outline" className="w-[240px]" onClick={connectOne}>
@@ -322,7 +342,9 @@ export function FleetCapabilitySlotsCard({
   const membersPanel = (type: FleetCapabilityType) => {
     if (!openTypes.has(type.capability)) return null;
     return (
-      <ul className="space-y-2" data-testid={`type-members-${type.capability}`} aria-label={t_i18n("Members")}>
+      // The opened row pads 16 px a side, the row's actions cell 12 px: -mr-1 puts every member
+      // picker on the type picker's right edge (UX r1 B1 of #1209).
+      <ul className="-mr-1 space-y-2" data-testid={`type-members-${type.capability}`} aria-label={t_i18n("Members")}>
         {type.members.map((member) => (
           <li key={member.member_id} className="flex min-w-0 items-center gap-3" data-testid="fleet-capability-member-row">
             <span className="block min-w-0 flex-1">
