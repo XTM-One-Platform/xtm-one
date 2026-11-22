@@ -21,6 +21,7 @@ from app.models.organization import Organization
 from app.models.organization_asset import (
     OrganizationAsset,
     OrganizationAssetDecision,
+    OrganizationAssetSbom,
     OrganizationAssetSoftware,
     OrganizationAssetSource,
 )
@@ -38,6 +39,7 @@ async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         OrganizationAssetSource,
         OrganizationAssetSoftware,
         OrganizationAssetDecision,
+        OrganizationAssetSbom,
         OrganizationContextVersion,
     ]
     tables = with_referenced_tables([cast(Table, m.__table__) for m in models])

@@ -71,9 +71,16 @@ describe("parseLoopParam", () => {
 
   // CTEM-01-UI: the signals counter opens the signal list, filtered by state.
   it("reads the signal list in one state or every state, and refuses an unknown state", () => {
-    expect(parseLoopParam(signalsParam("watchlist"))).toEqual({ kind: "signals", state: "watchlist" });
-    expect(parseLoopParam(signalsParam(null))).toEqual({ kind: "signals", state: null });
+    expect(parseLoopParam(signalsParam("watchlist"))).toEqual({ kind: "signals", state: "watchlist", path: null });
+    expect(parseLoopParam(signalsParam(null))).toEqual({ kind: "signals", state: null, path: null });
     expect(parseLoopParam("signals:bogus")).toBeNull();
+  });
+
+  // #1189 (davidloiret review on #1194): a path card of the sources dialog opens that path's signals.
+  it("carries one trigger path through the signal list value", () => {
+    expect(signalsParam(null, "new_vulnerability")).toBe("signals:all:new_vulnerability");
+    expect(parseLoopParam(signalsParam("watchlist", "code_flaw"))).toEqual({ kind: "signals", state: "watchlist", path: "code_flaw" });
+    expect(parseLoopParam("signals:all:../x")).toBeNull();
   });
 });
 

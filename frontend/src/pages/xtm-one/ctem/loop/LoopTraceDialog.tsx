@@ -13,12 +13,12 @@
  * cannot read answers "This item is not available to you". The activity
  * stream refreshes the signal query, so a stage lights without a reload.
  */
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Icon } from "@filigran/design-system";
+import { Chip, Icon } from "@filigran/design-system";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useProposeSignalScope,
+  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useCtemSignalPaths, useProposeSignalScope,
   type CtemDecisionRecord, type CtemSignal, type CtemSignalState,
 } from "@/hooks/api/useCtemSignalsApi";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
+import { SignalSourcesDialog, SignalSourcesLink } from "./SignalSourcesDialog";
 
 export const LOOP_PARAM = "loop";
 
@@ -671,18 +672,35 @@ function SignalTraceBody({ id }: { id: string }) {
 }
 
 /**
+ * The label of the trigger path a signal list is narrowed to, read from the
+ * path catalogue (`GET /ctem-signals/paths`): null while it loads, "Unknown"
+ * for an id the catalogue does not hold, never the raw id.
+ */
+function useSignalPathLabel(path: string | null): string | null {
+  const { t_i18n } = useFormatter();
+  const { data, isLoading } = useCtemSignalPaths();
+  if (!path) return null;
+  const found = data?.paths.find((p) => p.id === path);
+  if (found) return t_i18n(found.label);
+  return isLoading ? null : t_i18n("Unknown");
+}
+
+/**
  * The signals in one state (or every state), newest sighting first, each
  * opening its own trace (CTEM-01-UI). The trigger path leads every row: a path
  * with no CVE and no actor reads exactly like a vulnerability.
  */
-function SignalListBody({ state, onState, onOpen }: {
+function SignalListBody({ state, path, onState, onClearPath, onOpen }: {
   state: CtemSignalState | null;
+  /** One trigger path the list is narrowed to (#1189), or null for every path. */
+  path: string | null;
   onState: (state: CtemSignalState | null) => void;
+  onClearPath: () => void;
   onOpen: (id: string) => void;
 }) {
   const { t_i18n, intl } = useFormatter();
   const { count: formatCount, exactCount } = useNumberFormat();
-  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(state);
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(state, 50, true, path);
   const first = data?.pages[0];
   const counts = first?.counts ?? {};
   const total = first?.total ?? 0;
@@ -692,15 +710,35 @@ function SignalListBody({ state, onState, onOpen }: {
     ...CTEM_SIGNAL_STATES.map((s) => ({ key: s, label: t_i18n(SIGNAL_STATE_LABEL[s]), count: counts[s] ?? 0 })),
   ];
   const signals = data?.pages.flatMap((page) => page.signals) ?? [];
+  const pathLabel = useSignalPathLabel(path);
+  const allRef = useRef<HTMLButtonElement>(null);
+  // The chip's delete button leaves with the chip: focus lands on "All", never on the dialog (UX round 3 A1).
+  const clearPath = () => {
+    onClearPath();
+    requestAnimationFrame(() => allRef.current?.focus());
+  };
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid="ctem-signal-list">
       {/* The filters and the "n of N" count stay in view: the list below is the
           only scroller (#877 UX round 1 B2). */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+      {/* The path's label comes from the path catalogue, never from the rows: an
+          empty filtered state has no row, and the id is never shown (UX round 3 B1 on #1194). */}
+      {path && pathLabel && (
+        <Chip
+          label={pathLabel}
+          onDelete={clearPath}
+          deleteLabel={t_i18n("Remove filter {name}", { name: pathLabel })}
+          className="shrink-0"
+          data-testid="ctem-signal-path-filter"
+          data-path={path}
+        />
+      )}
       <div role="group" aria-label={t_i18n("Filter by state")} className="flex flex-wrap gap-1.5">
         {filters.map((f) => (
           <button
             key={f.key ?? "all"}
+            ref={f.key === null ? allRef : undefined}
             type="button"
             aria-pressed={f.key === state}
             onClick={() => onState(f.key)}
@@ -726,7 +764,10 @@ function SignalListBody({ state, onState, onOpen }: {
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : signals.length === 0 ? (
-        <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
+        <div className="flex flex-col items-start gap-2" data-testid="ctem-signal-empty">
+          <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
+          <SignalSourcesLink />
+        </div>
       ) : (
         <ul className="flex max-h-[min(55vh,32rem)] flex-col overflow-y-auto" data-testid="ctem-signal-rows">
           {signals.map((s) => (
@@ -788,6 +829,7 @@ export function LoopTraceDialog() {
     setParams(next, { replace });
   };
   return (
+    <>
     <Dialog open={target !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent className="max-w-4xl" data-testid="ctem-loop-trace">
         <DialogHeader>
@@ -797,7 +839,9 @@ export function LoopTraceDialog() {
         {target?.kind === "signals" ? (
           <SignalListBody
             state={target.state}
-            onState={(state) => go(signalsParam(state), true)}
+            path={target.path}
+            onState={(state) => go(signalsParam(state, target.path), true)}
+            onClearPath={() => go(signalsParam(target.state), true)}
             onOpen={(id) => go(loopParam("signal", id))}
           />
         ) : target?.kind === "signal" ? (
@@ -807,5 +851,8 @@ export function LoopTraceDialog() {
         ) : null}
       </DialogContent>
     </Dialog>
+    {/* The signal sources dialog (#1189) travels with the loop trace: every page that opens one reaches the other. */}
+    <SignalSourcesDialog />
+    </>
   );
 }

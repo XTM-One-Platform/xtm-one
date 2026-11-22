@@ -12,6 +12,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -412,6 +413,19 @@ class _Store:
             counts[r.trigger_path][r.state] += 1
         return counts
 
+    async def activity_by_path(
+        self, _db: Any, *, organization_id: Any, recorded_by: Any, since: datetime
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {p: {"count_30d": 0, "last_signal_at": None} for p in TRIGGER_PATHS}
+        for r in self._mine(organization_id, recorded_by):  # type: ignore[no-untyped-call]
+            row = out[r.trigger_path]
+            if r.last_seen_at >= since:
+                row["count_30d"] = int(row["count_30d"]) + 1
+            last = row["last_signal_at"]
+            if last is None or r.last_seen_at.isoformat() > last:
+                row["last_signal_at"] = r.last_seen_at.isoformat()
+        return out
+
 
 class _Db:
     async def commit(self):
@@ -434,6 +448,13 @@ def store(monkeypatch):
     monkeypatch.setattr(signals, "list_signals", fake.list)
     monkeypatch.setattr(signals, "get_signal", fake.get)
     monkeypatch.setattr(signals, "counts_by_path", fake.counts_by_path)
+    monkeypatch.setattr(signals, "activity_by_path", fake.activity_by_path)
+    fake.bound = set()  # type: ignore[attr-defined]
+
+    async def _bound(_db: Any, _user_id: Any) -> set[tuple[str, str]]:
+        return set(fake.bound)  # type: ignore[attr-defined]
+
+    monkeypatch.setattr("app.services.ctem_signal_sources.bound_sources", _bound)
     return fake
 
 
@@ -583,6 +604,23 @@ async def test_the_paths_count_only_the_signals_the_caller_reads_and_say_not_con
     assert alice["stale_asset"]["configured"] is True
     assert alice["surface_drift"] == {**alice["surface_drift"], "total": 0, "configured": False}
     assert alice["new_vulnerability"]["configured"] is True and alice["new_vulnerability"]["total"] == 0
+
+
+async def test_the_paths_name_their_sources_status_and_30_day_activity(client: Any, store: Any) -> None:
+    """#1189: sources with their bound flag, a status that never reads connected without a bound source, 30-day counts."""
+    store.bound = {("opencti", "listener")}
+    async with client as http:
+        await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))  # type: ignore[no-untyped-call]
+        paths = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]}
+    vuln = paths["new_vulnerability"]
+    assert vuln["status"] == "connected" and vuln["description"]
+    assert {(s["provider"], s["kind"], s["bound"]) for s in vuln["sources"]} == {
+        ("opencti", "listener", True),
+        ("opencti", "pir_playbook", False),
+    }
+    assert paths["code_flaw"]["status"] == "not_connected"
+    assert paths["stale_asset"]["count_30d"] == 1 and paths["stale_asset"]["last_signal_at"]
+    assert paths["surface_drift"]["count_30d"] == 0 and paths["surface_drift"]["last_signal_at"] is None
 
 
 def _watchlisted(store, owner, *, code="below_scope_threshold", criticality="medium"):

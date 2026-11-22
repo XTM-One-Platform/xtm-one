@@ -301,6 +301,34 @@ async def counts_by_path(
     return counts
 
 
+async def activity_by_path(
+    db: AsyncSession, *, organization_id: uuid.UUID, recorded_by: str | None, since: datetime
+) -> dict[str, dict[str, Any]]:
+    """Per trigger path, the signals the reader may see last seen since *since* and the newest sighting (#1189).
+
+    Same visibility as :func:`counts_by_path`. Every path is present:
+    ``{"count_30d": 0, "last_signal_at": None}`` for a path with nothing.
+    """
+    out: dict[str, dict[str, Any]] = {p: {"count_30d": 0, "last_signal_at": None} for p in TRIGGER_PATHS}
+    recent = _visible(
+        select(CtemSignal.trigger_path, func.count()).where(CtemSignal.last_seen_at >= since),
+        organization_id=organization_id,
+        recorded_by=recorded_by,
+    ).group_by(CtemSignal.trigger_path)
+    for path, number in (await db.execute(recent)).all():
+        if path in out:
+            out[path]["count_30d"] = int(number)
+    newest = _visible(
+        select(CtemSignal.trigger_path, func.max(CtemSignal.last_seen_at)),
+        organization_id=organization_id,
+        recorded_by=recorded_by,
+    ).group_by(CtemSignal.trigger_path)
+    for path, last in (await db.execute(newest)).all():
+        if path in out:
+            out[path]["last_signal_at"] = _iso(last)
+    return out
+
+
 async def observed_by_case(
     db: AsyncSession, case_ids: list[uuid.UUID], *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> dict[uuid.UUID, list[datetime]]:
@@ -356,23 +384,48 @@ def to_dict(signal: CtemSignal) -> dict[str, Any]:
     }
 
 
-def path_catalog(counts: dict[str, dict[str, int]] | None = None) -> list[dict[str, Any]]:
+def path_catalog(
+    counts: dict[str, dict[str, int]] | None = None,
+    *,
+    bound: set[tuple[str, str]] | None = None,
+    activity: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """The 12 trigger paths, with their default lens and whether a listener maps an event to them.
 
     With *counts* (:func:`counts_by_path`), each path also carries its signals
     by state and ``configured``: a listener feeds it or it holds a signal. A
     path that is neither reads "not configured", never 0 (CTEM-30, #937).
+
+    Every path also carries ``description`` and its ``sources``
+    (``ctem_signal_sources``), each ``bound`` per *bound*, and ``status``:
+    ``connected``, ``not_connected`` or ``agents_api`` (no source: agents and
+    the API only, never connected). With *activity* (:func:`activity_by_path`):
+    ``count_30d`` and ``last_signal_at`` (#1189).
     """
     from app.services.ctem_signal_listeners import paths_with_listener
+    from app.services.ctem_signal_sources import PATH_DESCRIPTIONS, path_sources, path_status
 
     listened = paths_with_listener()
     out: list[dict[str, Any]] = []
     for path, (label, lens) in PATH_CATALOG.items():
-        row: dict[str, Any] = {"id": path, "label": label, "default_lens": lens, "listener": path in listened}
+        sources = path_sources(path, bound)
+        row: dict[str, Any] = {
+            "id": path,
+            "label": label,
+            "default_lens": lens,
+            "listener": path in listened,
+            "description": PATH_DESCRIPTIONS.get(path, ""),
+            "sources": sources,
+            "status": path_status(sources),
+        }
         if counts is not None:
             by_state = counts.get(path) or {s: 0 for s in SIGNAL_STATES}
             row["counts"] = by_state
             row["total"] = sum(by_state.values())
             row["configured"] = row["listener"] or row["total"] > 0
+        if activity is not None:
+            seen = activity.get(path) or {}
+            row["count_30d"] = int(seen.get("count_30d") or 0)
+            row["last_signal_at"] = seen.get("last_signal_at")
         out.append(row)
     return out
