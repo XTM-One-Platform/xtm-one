@@ -18118,6 +18118,7 @@
   "SaaS application": "SaaSアプリケーション",
   "AI system (asset category)": "AIシステム",
   "Security platform": "セキュリティプラットフォーム",
+  "Source code": "ソースコード",
   "Other asset (to classify)": "その他の資産（分類待ち）",
   "Workstation": "ワークステーション",
   "Laptop": "ノートPC",
@@ -20751,5 +20752,10 @@
   "OpenCTI Systems are owned by its connectors.": "OpenCTI のシステムはそのコネクタが管理しています。",
   "OpenAEV has no AI system object to write.": "OpenAEV には書き込める AI システムのオブジェクトがありません。",
   "OpenAEV software inventory is read from its agents.": "OpenAEV のソフトウェアインベントリはそのエージェントから読み取られます。",
-  "This pairing reads only.": "この組み合わせは読み取り専用です。"
+  "This pairing reads only.": "この組み合わせは読み取り専用です。",
+  "Code repository": "コードリポジトリ",
+  "CI/CD pipeline": "CI/CD パイプライン",
+  "Package registry": "パッケージレジストリ",
+  "Software package": "ソフトウェアパッケージ",
+  "Other code asset": "その他のコード資産"
 }
