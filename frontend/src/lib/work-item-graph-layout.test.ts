@@ -238,6 +238,24 @@ test("a collapsed group is one node; its edges move onto it, deduplicated", () =
   assert.ok(!laid.edges.some((e) => e.drawnSource === e.drawnTarget), "no edge inside a collapsed group");
 });
 
+const ROUTE_CLEARANCE = 8;
+
+/** The longest run two polylines' axis-aligned segments keep side by side, closer than `within` px. */
+function sharedRun(a: readonly { x: number; y: number }[], b: readonly { x: number; y: number }[], within: number): number {
+  let longest = 0;
+  for (let i = 1; i < a.length; i++) {
+    for (let j = 1; j < b.length; j++) {
+      const [p, q, r, s] = [a[i - 1], a[i], b[j - 1], b[j]];
+      if (p.y === q.y && r.y === s.y && Math.abs(p.y - r.y) < within) {
+        longest = Math.max(longest, Math.min(Math.max(p.x, q.x), Math.max(r.x, s.x)) - Math.max(Math.min(p.x, q.x), Math.min(r.x, s.x)));
+      } else if (p.x === q.x && r.x === s.x && Math.abs(p.x - r.x) < within) {
+        longest = Math.max(longest, Math.min(Math.max(p.y, q.y), Math.max(r.y, s.y)) - Math.max(Math.min(p.y, q.y), Math.min(r.y, s.y)));
+      }
+    }
+  }
+  return longest;
+}
+
 // UX r3 B1 on #1067: a program child in another owner's zone, so the program
 // edge crosses zones (the drawing where Program to P2 ran through P1).
 const crossZoneNodes: WorkItemGraphNode[] = [
@@ -273,9 +291,35 @@ test("no edge segment runs inside a card that is not one of its ends, in every l
             assert.ok(e.points.length >= 2, `${where}: ${e.id} has a route`);
             for (const [id, card] of cards) {
               if (id === e.drawnSource || id === e.drawnTarget) continue;
+              // UX r4 B1: the route keeps 8 px off every card that is not one of its ends.
+              const kept = { x: card.x - ROUTE_CLEARANCE + 0.5, y: card.y - ROUTE_CLEARANCE + 0.5, width: card.width + 2 * ROUTE_CLEARANCE - 1, height: card.height + 2 * ROUTE_CLEARANCE - 1 };
               for (let i = 1; i < e.points.length; i++) {
                 assert.ok(!segmentCrossesBox(e.points[i - 1], e.points[i], card), `${where}: ${e.id} runs through ${id}`);
+                assert.ok(!segmentCrossesBox(e.points[i - 1], e.points[i], kept), `${where}: ${e.id} runs within ${ROUTE_CLEARANCE} px of ${id}`);
               }
+            }
+          }
+          // UX r4 B1: unrelated edges never share a corridor, and no route rides a zone frame.
+          for (let a = 0; a < laid.edges.length; a++) {
+            for (let b = a + 1; b < laid.edges.length; b++) {
+              const ea = laid.edges[a];
+              const eb = laid.edges[b];
+              if ([ea.drawnSource, ea.drawnTarget].some((id) => id === eb.drawnSource || id === eb.drawnTarget)) continue;
+              const shared = sharedRun(ea.points, eb.points, 4);
+              assert.ok(shared <= 1, `${where}: ${ea.id} and ${eb.id} share ${shared} px of one line`);
+            }
+          }
+          for (const zone of laid.zones) {
+            const frame = [
+              { x: zone.x, y: zone.y },
+              { x: zone.x + zone.width, y: zone.y },
+              { x: zone.x + zone.width, y: zone.y + zone.height },
+              { x: zone.x, y: zone.y + zone.height },
+              { x: zone.x, y: zone.y },
+            ];
+            for (const e of laid.edges) {
+              const ride = sharedRun(e.points, frame, ROUTE_CLEARANCE);
+              assert.ok(ride <= 20, `${where}: ${e.id} rides the frame of ${zone.group.key} for ${ride} px`);
             }
           }
         }

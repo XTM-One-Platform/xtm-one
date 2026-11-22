@@ -332,6 +332,72 @@ const EDGE_CLEARANCE = 10;
 const EDGE_STUB = 16;
 /** What a bend costs a route, in pixels of length: a longer route with fewer bends reads better. */
 const BEND_COST = 40;
+/** The spacing of parallel lanes: two unrelated edges never run closer than this along one line. */
+const EDGE_LANE = 10;
+/** What each pixel run alongside another edge or a zone frame costs a route. */
+const SHARED_RUN_COST = 25;
+
+/**
+ * A stretch a route should not run along: another edge's axis-aligned segment or
+ * a zone frame's side. `horizontal` stretches lie at y = `at` from `from` to `to`.
+ */
+interface RouteBand {
+  horizontal: boolean;
+  at: number;
+  from: number;
+  to: number;
+  /** How close counts as running along it. */
+  within: number;
+}
+
+/** The axis-aligned segments of a route, as bands other routes keep a lane from. */
+function routeBands(points: readonly Point[], within = EDGE_LANE - 2): RouteBand[] {
+  const bands: RouteBand[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    if (a.y === b.y && a.x !== b.x) bands.push({ horizontal: true, at: a.y, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x), within });
+    else if (a.x === b.x && a.y !== b.y) bands.push({ horizontal: false, at: a.x, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y), within });
+  }
+  return bands;
+}
+
+/** The four sides of a zone frame, as bands a route keeps off. */
+function frameBands(box: Box, within = EDGE_LANE): RouteBand[] {
+  const right = box.x + box.width;
+  const bottom = box.y + box.height;
+  return [
+    { horizontal: true, at: box.y, from: box.x, to: right, within },
+    { horizontal: true, at: bottom, from: box.x, to: right, within },
+    { horizontal: false, at: box.x, from: box.y, to: bottom, within },
+    { horizontal: false, at: right, from: box.y, to: bottom, within },
+  ];
+}
+
+/** The length a segment on line `at` (from `a` to `b`) runs along the bands of its direction. */
+function alongBands(bands: readonly RouteBand[], at: number, a: number, b: number): number {
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  let run = 0;
+  for (const band of bands) {
+    if (Math.abs(band.at - at) >= band.within) continue;
+    const overlap = Math.min(hi, band.to) - Math.max(lo, band.from);
+    if (overlap > 0) run += overlap;
+  }
+  return run;
+}
+
+/** The length a route runs along any of `bands`. */
+function runAlong(points: readonly Point[], bands: readonly RouteBand[]): number {
+  const horizontal = bands.filter((b) => b.horizontal);
+  const vertical = bands.filter((b) => !b.horizontal);
+  let run = 0;
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    if (a.y === b.y) run += alongBands(horizontal, a.y, a.x, b.x);
+    else if (a.x === b.x) run += alongBands(vertical, a.x, a.y, b.y);
+  }
+  return run;
+}
 
 /** Whether the segment a-b runs inside `box` (its border excluded): Liang-Barsky clipping. */
 export function segmentCrossesBox(a: Point, b: Point, box: Box): boolean {
@@ -409,12 +475,46 @@ function indexOf(values: readonly number[], value: number): number {
  * obstacles' sides, where a grid segment is either wholly inside a box or wholly
  * outside it. `null` when `bounds` holds no such route.
  */
-function gridRoute(from: Point, to: Point, startStep: number, endStep: number, obstacles: readonly Box[], bounds: Box): Point[] | null {
+function gridRoute(
+  from: Point,
+  to: Point,
+  startStep: number,
+  endStep: number,
+  obstacles: readonly Box[],
+  bounds: Box,
+  bands: readonly RouteBand[] = [],
+): Point[] | null {
   const right = bounds.x + bounds.width;
   const bottom = bounds.y + bounds.height;
   const within = obstacles.filter((b) => b.x < right && b.x + b.width > bounds.x && b.y < bottom && b.y + b.height > bounds.y);
-  const xs = uniqueSorted([bounds.x, right, from.x, to.x, ...within.flatMap((b) => [Math.max(b.x, bounds.x), Math.min(b.x + b.width, right)])]);
-  const ys = uniqueSorted([bounds.y, bottom, from.y, to.y, ...within.flatMap((b) => [Math.max(b.y, bounds.y), Math.min(b.y + b.height, bottom)])]);
+  // The lanes beside each band: where a route runs next to another edge or a frame, not on it.
+  const near = bands.filter((b) =>
+    b.horizontal ? b.at > bounds.y && b.at < bottom && b.to > bounds.x && b.from < right : b.at > bounds.x && b.at < right && b.to > bounds.y && b.from < bottom,
+  );
+  const lanes = (horizontal: boolean, lo: number, hi: number) =>
+    near
+      .filter((b) => b.horizontal === horizontal)
+      .flatMap((b) => [1, 2, 3].flatMap((k) => [b.at - k * EDGE_LANE - (b.within - EDGE_LANE + 2), b.at + k * EDGE_LANE + (b.within - EDGE_LANE + 2)]))
+      .filter((v) => v > lo && v < hi);
+  const xs = uniqueSorted([
+    bounds.x,
+    right,
+    from.x,
+    to.x,
+    ...within.flatMap((b) => [Math.max(b.x, bounds.x), Math.min(b.x + b.width, right)]),
+    ...lanes(false, bounds.x, right),
+  ]);
+  const ys = uniqueSorted([
+    bounds.y,
+    bottom,
+    from.y,
+    to.y,
+    ...within.flatMap((b) => [Math.max(b.y, bounds.y), Math.min(b.y + b.height, bottom)]),
+    ...lanes(true, bounds.y, bottom),
+  ]);
+  // The bands each grid line runs near, so a step's shared run is read off a short list.
+  const nearRow = ys.map((y) => near.filter((b) => b.horizontal && Math.abs(b.at - y) < b.within));
+  const nearColumn = xs.map((x) => near.filter((b) => !b.horizontal && Math.abs(b.at - x) < b.within));
   const nx = xs.length;
   const ny = ys.length;
   const cell = (i: number, j: number) => j * nx + i;
@@ -509,7 +609,8 @@ function gridRoute(from: Point, to: Point, startStep: number, endStep: number, o
       const through = d < 2 ? blockedH[cell(Math.min(i, ni), j)] : blockedV[cell(i, Math.min(j, nj))];
       if (through) continue;
       const length = d < 2 ? Math.abs(xs[ni] - xs[i]) : Math.abs(ys[nj] - ys[j]);
-      const nc = c + length + (d === dir ? 0 : BEND_COST);
+      const shared = d < 2 ? alongBands(nearRow[j], ys[j], xs[i], xs[ni]) : alongBands(nearColumn[i], xs[i], ys[j], ys[nj]);
+      const nc = c + length + SHARED_RUN_COST * shared + (d === dir ? 0 : BEND_COST);
       const ns = next * 4 + d;
       if (nc < cost[ns]) {
         cost[ns] = nc;
@@ -554,30 +655,51 @@ function union(boxes: readonly Box[]): Box {
  * drawn, both ends included). Ranked layouts leave a card on its trailing side
  * and enter on its leading one (`lr`: right to left, `tb`: bottom to top);
  * force and radial float, on the sides facing each other. The direct route is
- * kept when it clears every other card; else the edge goes around.
+ * kept when it clears every other card and runs along none of `bands` (the
+ * routes already drawn, the zone frames); else the edge goes around, in a lane
+ * of its own.
  */
-export function routeEdge(source: Box, target: Box, ranked: "lr" | "tb" | null, cards: readonly Box[], extent: Box): Point[] {
+export function routeEdge(
+  source: Box,
+  target: Box,
+  ranked: "lr" | "tb" | null,
+  cards: readonly Box[],
+  extent: Box,
+  bands: readonly RouteBand[] = [],
+): Point[] {
   let p1: Point;
   let p2: Point;
-  let direct: Point[];
+  // The direct candidates: the ranked step with its middle run shifted lane by lane, or the floating line.
+  const directs: Point[][] = [];
   if (ranked === "lr") {
     p1 = { x: source.x + source.width, y: source.y + source.height / 2 };
     p2 = { x: target.x, y: target.y + target.height / 2 };
     const midX = (p1.x + p2.x) / 2;
-    direct = p2.x - p1.x >= 2 * EDGE_STUB ? [p1, { x: midX, y: p1.y }, { x: midX, y: p2.y }, p2] : [];
+    for (const shift of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const x = Math.round(midX + shift * EDGE_LANE);
+      if (x - p1.x >= EDGE_STUB && p2.x - x >= EDGE_STUB) directs.push([p1, { x, y: p1.y }, { x, y: p2.y }, p2]);
+    }
   } else if (ranked === "tb") {
     p1 = { x: source.x + source.width / 2, y: source.y + source.height };
     p2 = { x: target.x + target.width / 2, y: target.y };
     const midY = (p1.y + p2.y) / 2;
-    direct = p2.y - p1.y >= 2 * EDGE_STUB ? [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2] : [];
+    for (const shift of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const y = Math.round(midY + shift * EDGE_LANE);
+      if (y - p1.y >= EDGE_STUB && p2.y - y >= EDGE_STUB) directs.push([p1, { x: p1.x, y }, { x: p2.x, y }, p2]);
+    }
   } else {
     const ends = floatingEndpoints(source, target);
     p1 = ends.source;
     p2 = ends.target;
-    direct = [p1, p2];
+    directs.push([p1, p2]);
   }
+  const direct = directs[0] ?? [];
   const others = cards.filter((card) => card !== source && card !== target);
-  if (direct.length && routeIsClear(direct, others.map((card) => inflate(card, EDGE_CLEARANCE)))) return simplify(direct);
+  const kept = others.map((card) => inflate(card, EDGE_CLEARANCE));
+  for (const candidate of directs) {
+    const route = simplify(candidate);
+    if (routeIsClear(route, kept) && runAlong(route, bands) === 0) return route;
+  }
 
   const sourceSide = ranked === "lr" ? "right" : ranked === "tb" ? "bottom" : sideOfPoint(p1, source);
   const targetSide = ranked === "lr" ? "left" : ranked === "tb" ? "top" : sideOfPoint(p2, target);
@@ -589,12 +711,13 @@ export function routeEdge(source: Box, target: Box, ranked: "lr" | "tb" | null, 
   const endStep = stepOf({ x: -inward.x, y: -inward.y });
   const whole = inflate(union([extent, { x: Math.min(s1.x, s2.x), y: Math.min(s1.y, s2.y), width: Math.abs(s1.x - s2.x), height: Math.abs(s1.y - s2.y) }]), 4 * EDGE_CLEARANCE);
   // Room to go around: grown from the two ends until it holds the whole drawing.
-  for (const clearance of [EDGE_CLEARANCE, 1]) {
+  // The ends' own cards stay obstacles beyond their stubs; the other cards are kept 8 px off at least.
+  for (const clearance of [EDGE_CLEARANCE, 8, 1]) {
     const obstacles = cards.map((card) => inflate(card, clearance));
     for (let margin = 200; ; margin *= 2) {
       const local = inflate({ x: Math.min(s1.x, s2.x), y: Math.min(s1.y, s2.y), width: Math.abs(s1.x - s2.x), height: Math.abs(s1.y - s2.y) }, margin);
       const covers = local.x <= whole.x && local.y <= whole.y && local.x + local.width >= whole.x + whole.width && local.y + local.height >= whole.y + whole.height;
-      const route = gridRoute(s1, s2, startStep, endStep, obstacles, covers ? whole : local);
+      const route = gridRoute(s1, s2, startStep, endStep, obstacles, covers ? whole : local, bands);
       if (route) return simplify([p1, ...route, p2]);
       if (covers) break;
     }
@@ -702,22 +825,31 @@ export function layoutWorkItemGraph(
   }
   const layoutEdges = edges.map((edge) => ({ source: edge.drawnSource, target: edge.drawnTarget }));
 
-  const routed = (positions: Map<string, { x: number; y: number }>): LaidOutGraph["edges"] => {
+  // Each edge is routed in turn; a later one keeps a lane off the routes drawn
+  // before it (unless they share an end: a fan in or out may merge) and off the zone frames.
+  const routed = (positions: Map<string, { x: number; y: number }>, zones: readonly Box[]): LaidOutGraph["edges"] => {
     const boxes = new Map([...positions].map(([id, p]) => [id, { x: p.x, y: p.y, width: size(id).width, height: size(id).height }] as const));
     const cards = [...boxes.values()];
     if (cards.length === 0) return [];
-    const extent = union(cards);
+    const extent = union(zones.length ? [...cards, ...zones] : cards);
     const ranked = layout === "hierarchy-lr" ? "lr" : layout === "hierarchy-tb" ? "tb" : null;
+    const frames = zones.flatMap((zone) => frameBands(zone));
+    const drawnRoutes: { ends: [string, string]; bands: RouteBand[] }[] = [];
     return edges.flatMap((edge) => {
       const source = boxes.get(edge.drawnSource);
       const target = boxes.get(edge.drawnTarget);
-      return source && target ? [{ ...edge, points: routeEdge(source, target, ranked, cards, extent) }] : [];
+      if (!source || !target) return [];
+      const ends = [edge.drawnSource, edge.drawnTarget];
+      const bands = [...frames, ...drawnRoutes.filter((r) => !r.ends.some((id) => ends.includes(id))).flatMap((r) => r.bands)];
+      const points = routeEdge(source, target, ranked, cards, extent, bands);
+      drawnRoutes.push({ ends: [edge.drawnSource, edge.drawnTarget], bands: routeBands(points) });
+      return [{ ...edge, points }];
     });
   };
 
   if (groups.length === 0) {
     const positions = layoutPart(layout, nodes.map((node) => node.id), layoutEdges, size);
-    return { positions, zones: [], edges: routed(positions), collapsed: [] };
+    return { positions, zones: [], edges: routed(positions, []), collapsed: [] };
   }
 
   // Each expanded group is laid out with its own edges; a collapsed group is one node.
@@ -746,5 +878,5 @@ export function layoutWorkItemGraph(
     for (const [id, p] of part.points) positions.set(id, { x: x + inset.x + p.x, y: y + inset.y + p.y });
     if (part.group) zones.push({ x, y, width: part.size.width, height: part.size.height, group: part.group });
   });
-  return { positions, zones, edges: routed(positions), collapsed };
+  return { positions, zones, edges: routed(positions, zones), collapsed };
 }
