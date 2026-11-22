@@ -348,17 +348,6 @@ An agent keeps a Google Sheets spreadsheet up to date the way a person does, as 
 
 They use the OAuth scope `https://www.googleapis.com/auth/spreadsheets`, which the integration requests, or the `https://www.googleapis.com/auth/drive` scope it already held: an integration authorized before shows a permissions change, and works without re-authorizing. The Google Cloud project of the integration's OAuth client must have the **Google Sheets API** enabled; until it is, the tools say so.
 
-### Pennylane: ledger, invoices, bank transactions and analytics
-
-An agent connected to Pennylane (Company API v2) reads and keeps the books the way an accountant does in Pennylane. One integration per Pennylane company: paste a company API token, or a firm token with the **Company ID** it should act on.
-
-- **Ledger.** `search_pennylane_ledger_entry_lines` filters lines by date range, journal, ledger account (or an account number prefix such as `606`) and analytical category, with account and journal labels and page totals. `get_pennylane_trial_balance` sums every account over a period; `create_pennylane_export` starts a FEC, general ledger or analytical general ledger export that `get_pennylane_export` reads once ready. Ledger entries are created and updated only when balanced.
-- **Invoices.** Customer and supplier invoices list by date, party, status, number or analytical category; `get_pennylane_invoice` gives the lines, payments and matched bank transactions, `download_pennylane_invoice_pdf` puts the PDF in the conversation. Customer invoices are created as drafts; finalizing, sending and the e-invoicing calls are their own tools.
-- **Banking.** Bank transactions list with what they are matched to (`unmatched_only=true` for what is left to reconcile); matching, lettering and analytical categorisation are tools, as are bank accounts, bank establishments and SEPA, GoCardless and Pro account mandates.
-- **Changes.** `list_pennylane_changes` reads Pennylane's changelogs (four weeks) for incremental reads.
-- **Events.** An assignment can trigger on `supplier_invoice_created`, `supplier_invoice_updated`, `customer_invoice_created`, `customer_invoice_updated`, `customer_invoice_paid` (once per invoice), `transaction_created` and `transaction_matched` (again when the matched invoices change). They are polled from the changelogs every 5 minutes, starting from the moment the trigger is enabled, and each change is read with its record. Filter keys: `min_amount` and `max_amount` (euros, tax included), `supplier_id`, `customer_id`, `journal_id`, `bank_account_id`, `status` (the payment status of a supplier invoice) and `currency`; any other payload field (`invoice_number`, `label`...) is filtered with the usual operators.
-- **Guardrails.** A tool is a read when its endpoint is a GET, else a write, so a read-only binding withholds every write. Marking an invoice paid, a supplier payment status, bank account and mandate writes, sending a document and deletions wait for a person's approval at each call. The tools that show or change bank data form one group (`BANK_DETAIL_TOOLS`) a deny list can withhold. A missing scope is named in the error; the token is never echoed.
-
 ### Ashby: candidates, applications, interviews and scorecards
 
 An agent connected to Ashby works the recruiting pipeline the way a recruiter reads it in Ashby.
@@ -450,6 +439,7 @@ define(['N/search', 'N/file', 'N/render', 'N/record', 'N/encode'], (search, file
 });
 ```
 
+- **Events.** An assignment can start on NetSuite changes, polled every 5 minutes with SuiteQL (no script to deploy): *Vendor bill created or changed*, *Invoice created or changed* (invoices and credit memos), *Payment created or changed* (customer and vendor payments), *Journal entry created or changed* (journal entries and intercompany journals) and *Accounting period changed* (closed, reopened, locked or unlocked). Filters: `subsidiary_id`, `transaction_types`, `status`, `min_amount` and `change_kinds` (`created`, `updated`) on the transaction events, `states` on the period event. The first poll starts from now. The role needs SuiteAnalytics Workbook (SuiteQL) and view access to the transactions and periods it watches.
 - **Limits.** NetSuite's concurrency limit (HTTP 429) is retried with backoff; a role missing a permission, or a transaction in a closed or locked period, is answered as such.
 
 ### HubSpot: activity, forms, sequences and the inbound report
@@ -503,7 +493,7 @@ GitHub offers no upload API for comments, so an agent attaches a file of the con
 
 ### GitHub: a comment never posted twice
 
-An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line as the new comment, nothing is committed or posted and the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
+An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line and holds the same text as the new comment, nothing is committed or posted. A comment that shares only the first line (a verdict header reused for a new round or a new head) does not stop the post. When the post is skipped, the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
 
 ### GitHub: a comment corrected in place
 
