@@ -37,11 +37,20 @@ async function draftFromPlatforms() {
   await pickDraft("From the platforms");
   fireEvent.click(await screen.findByRole("button", { name: "Quick setup" }));
 }
-/** Renders the page on one of its tabs (#12329); none is the first tab. */
+/** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
+const INVENTORY_CARDS = {
+  technology: ["tech_stack", "ai_systems"],
+  exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens"],
+} as const;
+/**
+ * Renders the page on one of its tabs (#12329); none is the first tab. The Technology and Exposure cards render
+ * as CTEM > Inventory mounts them (#1178), since Settings no longer draws them.
+ */
 function renderPage(tab?: string) {
+  const embedded = tab === "technology" || tab === "exposure" ? INVENTORY_CARDS[tab] : null;
   return renderWithProviders(
-    <MemoryRouter initialEntries={[tab ? `/settings/organization/profile/${tab}` : "/settings/organization"]}>
-      <OrganizationSection />
+    <MemoryRouter initialEntries={[embedded ? "/ctem/inventory" : tab ? `/settings/organization/profile/${tab}` : "/settings/organization"]}>
+      <OrganizationSection embed={embedded ? { cards: embedded } : undefined} />
     </MemoryRouter>,
   );
 }
@@ -142,10 +151,6 @@ describe("OrganizationSection used by (#9173 S2)", () => {
     await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(1));
     const [jewels] = screen.getAllByTestId("settings.organization.used-by");
     expect(within(jewels).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/fleets/f-1", "/fleets/f-2"]);
-    // No visible fleet reads the tech stack or the AI systems: nothing is shown there.
-    openTab(/^Technology/);
-    await waitFor(() => expect(screen.queryByTestId("settings.organization.used-by")).toBeNull());
-
     openTab(/^Identity and risk/);
     await waitFor(() => expect(screen.getAllByTestId("settings.organization.used-by")).toHaveLength(3));
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
@@ -241,14 +246,25 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 });
 
 describe("OrganizationSection tabs (#12329)", () => {
-  it("renders five tabs, only the active panel, and opens the tab the URL names", async () => {
-    renderPage("exposure");
+  it("renders the three Settings tabs, only the active panel, and opens the tab the URL names (#1178)", async () => {
+    renderPage("business");
     const tabs = await screen.findAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business", "Technology", "Exposure", "Knowledge and sources"]);
-    expect(screen.getByRole("tab", { name: /^Exposure/ }).getAttribute("aria-selected")).toBe("true");
+    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business", "Knowledge and sources"]);
+    expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.getByTestId("settings.organization.assets-exposure")).toBeTruthy();
+    expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
+    // One line points to CTEM > Inventory, where the technology and exposure cards live.
+    expect(screen.getByTestId("settings.organization.inventory-pointer").textContent).toContain("CTEM > Inventory");
+  });
+
+  it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
+    renderPage("exposure");
+    expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("settings.organization.inventory-pointer")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
     expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
   });
 
@@ -276,7 +292,7 @@ describe("OrganizationSection tabs (#12329)", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "120" } });
     expect(screen.getByTestId("settings.organization.tab-identity.unsaved")).toBeTruthy();
-    openTab(/^Technology/);
+    openTab(/^Business/);
     expect(await screen.findByTestId("settings.save-bar")).toBeTruthy();
     openTab(/^Identity and risk/);
     expect(((await screen.findByRole("textbox", { name: "Loaded hourly rate" })) as HTMLInputElement).value).toBe("120");
@@ -285,14 +301,14 @@ describe("OrganizationSection tabs (#12329)", () => {
   });
 
   it("lists the missing fields on their own tab only, and a refused Save opens the tab of the bad field", async () => {
-    renderPage("exposure");
-    await screen.findByTestId("settings.organization.assets-exposure");
+    renderPage("business");
+    await screen.findByTestId("settings.organization.crown-jewels");
     expect(screen.queryByTestId("settings.organization.missing")).toBeNull();
     openTab(/^Identity and risk/);
     expect((await screen.findByTestId("settings.organization.missing")).textContent).toContain("Loaded hourly rate");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "abc" } });
-    openTab(/^Exposure/);
+    openTab(/^Business/);
     fireEvent.click(within(await screen.findByTestId("settings.save-bar")).getByRole("button", { name: "Save" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     await waitFor(() => expect(document.activeElement).toBe(rate));
@@ -314,12 +330,12 @@ describe("OrganizationSection", () => {
   });
 
   it("shows the completeness per tab and opens the form on a missing field (#9173 S1c, #12329)", async () => {
-    renderPage("technology");
+    renderPage("business");
     const overview = await screen.findByTestId("settings.organization.overview");
     expect(overview.textContent).toContain("3 fields not filled");
-    // Identity and risk: 10 contract fields, 3 of them missing; Technology: both filled.
+    // Identity and risk: 10 contract fields, 3 of them missing; the Technology tab left for CTEM > Inventory (#1178).
     expect(screen.getByTestId("settings.organization.tab-identity.completeness").textContent).toBe("7/10");
-    expect(screen.getByTestId("settings.organization.tab-technology.completeness").textContent).toBe("2/2");
+    expect(screen.queryByTestId("settings.organization.tab-technology.completeness")).toBeNull();
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     // The missing fields sit on their own tab: the jump starts there.
     openTab(/^Identity and risk/);
@@ -367,25 +383,28 @@ describe("OrganizationSection", () => {
     expect(within(row).getByText(/^Critical/)).toBeTruthy();
     expect(within(row).queryByRole("textbox")).toBeNull();
     expect(within(row).queryByRole("combobox")).toBeNull();
-    openTab(/^Technology/);
-    const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
-    // CPE and Version (CTEM-11, #928) are both empty: each reads Not set.
-    expect(within(tech).getAllByText("Not set")).toHaveLength(2);
-    expect(within(tech).queryByRole("textbox")).toBeNull();
-    expect(screen.queryByPlaceholderText("cpe:2.3:a:vendor:product:*")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    openTab(/^Business/);
     // In edit a row still reads as text until opened (#12256): one row of fields at a time.
     const jewel = await screen.findByTestId("settings.organization.crown-jewel-row");
     await waitFor(() => expect(within(jewel).queryByRole("textbox")).toBeNull());
     fireEvent.click(within(screen.getByTestId("settings.organization.crown-jewel-row")).getByText("Payments"));
     expect(await screen.findByDisplayValue("Payments")).toBeTruthy();
     expect(screen.getAllByRole("combobox", { name: "Criticality" })).toHaveLength(1);
-    // The whole form spans the tabs: the tech stack edits on its own tab.
-    openTab(/^Technology/);
+  });
+
+  it("reads the tech stack rows as text on CTEM > Inventory and edits a row as fields (#1178)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, tech_stack: [{ product: "CrowdStrike Falcon", vendor: "CrowdStrike", cpe: "" }] } } : base(path),
+    );
+    renderPage("technology");
+    const tech = (await screen.findByText("CrowdStrike Falcon")).closest("tr")!;
+    // CPE and Version (CTEM-11, #928) are both empty: each reads Not set.
+    expect(within(tech).getAllByText("Not set")).toHaveLength(2);
+    expect(within(tech).queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
     fireEvent.click(await screen.findByText("CrowdStrike Falcon"));
     expect(await screen.findByRole("textbox", { name: "CPE (optional)" })).toBeTruthy();
-    expect(screen.queryByDisplayValue("Payments")).toBeNull();
   });
 
   it("bounds the columns so a long name is cut inside the card, in read mode and while editing (UX r2 B2 on #10804, UX r1 B2 on #12261)", async () => {
@@ -426,7 +445,6 @@ describe("OrganizationSection", () => {
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
     // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
     expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("settings.organization.tab-technology.unsaved")).toBeTruthy();
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
@@ -462,16 +480,12 @@ describe("OrganizationSection", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Edit Asset groups/ }));
     const card = screen.getByTestId("settings.organization.asset-groups");
     const bar = await within(card).findByTestId("settings.save-bar");
-    // The page Edit and the other cards' Edit wait for this card; the form is not opened.
-    expect((screen.getByTestId("settings.organization.edit") as HTMLButtonElement).disabled).toBe(true);
-    // The other cards of the tab wait for this one; the tab carries the unsaved marker once a value changed (#12329).
+    // The other cards wait for this one; the form is not opened.
     expect((screen.getByRole("button", { name: /Edit Assets and exposure/ }) as HTMLButtonElement).disabled).toBe(true);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
-    expect(screen.queryByTestId("settings.organization.tab-exposure.unsaved")).toBeNull();
     fireEvent.change(within(card).getByDisplayValue("Edge"), { target: { value: "Edge network" } });
     expect(save.disabled).toBe(false);
-    expect(screen.getByTestId("settings.organization.tab-exposure.unsaved")).toBeTruthy();
     fireEvent.click(save);
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
     const [, body] = put.mock.calls[0] as [string, { profile: { asset_groups: { description: string }[]; tech_stack: unknown[] }; source: string }];
@@ -612,10 +626,8 @@ describe("OrganizationSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add a product" }));
     const product = await screen.findByRole("textbox", { name: "Product" });
     fireEvent.change(product, { target: { value: "Jira" } });
-    // B1: the page-wide Edit would open the whole form and drop the card's rows.
-    const pageEdit = screen.getByTestId("settings.organization.edit") as HTMLButtonElement;
-    expect(pageEdit.disabled).toBe(true);
-    fireEvent.click(pageEdit);
+    // B1: the card keeps its row (CTEM > Inventory draws no page-wide Edit, #1178).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(editor.getAttribute("data-changes")).toBe("1");
     // B3: the pager moves while the added row is open.
     fireEvent.click(within(editor).getByRole("button", { name: "Next page" }));
@@ -1038,11 +1050,9 @@ describe("OrganizationSection", () => {
     expect(panel.textContent).not.toContain("tenant id");
     // The drafted PIR shows by its OpenCTI name in the picker (UX B1).
     expect(await screen.findByText("Ransomware on energy")).toBeTruthy();
-    // The draft opened the first tab it filled; the drafted tech stack is on its own tab, both marked (#12329).
+    // The draft opened the first tab it filled, marked (#12329); the drafted tech stack is named in the panel and
+    // saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(screen.getByTestId("settings.organization.tab-identity.drafted")).toBeTruthy();
-    expect(screen.getByTestId("settings.organization.tab-technology.drafted")).toBeTruthy();
-    openTab(/^Technology/);
-    expect(await screen.findByText("CrowdStrike Falcon")).toBeTruthy();
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));

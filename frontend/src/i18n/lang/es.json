@@ -20763,5 +20763,8 @@
   "Show the checks": "Ver las comprobaciones",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
   "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}",
-  "No asset group yet. Add a source to the inventory to fill it.": "Aún no hay ningún grupo de activos. Añada una fuente al inventario para rellenarlo."
+  "No asset group yet. Add a source to the inventory to fill it.": "Aún no hay ningún grupo de activos. Añada una fuente al inventario para rellenarlo.",
+  "Open the inventory": "Abrir el inventario",
+  "The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.": "La pila tecnológica, los sistemas de IA, los activos, los grupos de activos y la exposición están ahora en CTEM > Inventario.",
+  "Opens CTEM > Inventory": "Abre CTEM > Inventario"
 }

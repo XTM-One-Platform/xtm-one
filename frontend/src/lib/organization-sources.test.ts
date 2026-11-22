@@ -30,7 +30,7 @@ describe("organization sources (#1134 S2 part 2)", () => {
 
   it("links a chip to its tab and card, filtered on the source where the table has a Source filter", () => {
     expect(sourceSectionHref("crown_jewels", "OpenCRQ")).toBe("/settings/organization/profile/business?card=crown_jewels&ocj_f_source=OpenCRQ");
-    expect(sourceSectionHref("tech_stack", "Typed")).toBe("/settings/organization/profile/technology?card=tech_stack&ots_f_source=Typed");
-    expect(sourceSectionHref("assets_exposure", "OpenCTI")).toBe("/settings/organization/profile/exposure?card=assets_exposure");
+    expect(sourceSectionHref("tech_stack", "Typed")).toBe("/ctem/inventory/tech-stack?card=tech_stack&ots_f_source=Typed");
+    expect(sourceSectionHref("assets_exposure", "OpenCTI")).toBe("/ctem/inventory?card=assets_exposure");
   });
 });

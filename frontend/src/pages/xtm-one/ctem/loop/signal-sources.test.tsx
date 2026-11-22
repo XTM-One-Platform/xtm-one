@@ -66,7 +66,8 @@ describe("signal source rules", () => {
 
   it("sends Connect to the right page: a listener to its integration, a pass and the playbook to the organization profile", () => {
     expect(connectHref({ provider: "aikido", kind: "listener" })).toBe("/integrations/new?provider=aikido");
-    expect(connectHref({ provider: "shodan", kind: "pass" })).toContain("/settings/organization");
+    // The outside lens card lives on CTEM > Inventory (#1178).
+    expect(connectHref({ provider: "shodan", kind: "pass" })).toContain("/ctem/inventory");
     expect(connectHref({ provider: "opencti", kind: "pir_playbook" })).toContain("/settings/organization");
     expect(connectTarget(PATHS[0])?.kind).toBe("pir_playbook");
     expect(connectTarget(PATHS[2])).toBeNull();

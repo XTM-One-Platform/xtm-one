@@ -20763,5 +20763,8 @@
   "Show the checks": "Show the checks",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# not run} other {# not run}}",
   "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}",
-  "No asset group yet. Add a source to the inventory to fill it.": "No asset group yet. Add a source to the inventory to fill it."
+  "No asset group yet. Add a source to the inventory to fill it.": "No asset group yet. Add a source to the inventory to fill it.",
+  "Open the inventory": "Open the inventory",
+  "The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.": "The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.",
+  "Opens CTEM > Inventory": "Opens CTEM > Inventory"
 }

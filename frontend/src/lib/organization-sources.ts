@@ -7,7 +7,7 @@
  * Pure, so the panel and its tests share it.
  */
 
-import { profileTabPath, type ProfileCard, PROFILE_CARD_PARAM, PROFILE_CARD_TAB } from "./organization-profile-tabs";
+import { profileCardHref, type ProfileCard } from "./organization-profile-tabs";
 import { sourceKind, sourcePlatform, type Provenance, type SourceKind } from "./organization-provenance";
 
 /** The profile lists that carry a row source, in the order of the tabs. */
@@ -96,8 +96,8 @@ const SECTION_CARD: Record<SourcedSection, ProfileCard> = {
  */
 export function sourceSectionHref(section: SourcedSection, sourceLabel: string): string {
   const card = SECTION_CARD[section];
-  const params = new URLSearchParams({ [PROFILE_CARD_PARAM]: card });
+  const params = new URLSearchParams();
   const prefix = SOURCE_FILTER_PREFIX[section];
   if (prefix) params.set(`${prefix}f_source`, sourceLabel);
-  return `${profileTabPath(PROFILE_CARD_TAB[card])}?${params.toString()}`;
+  return profileCardHref(card, params);
 }
