@@ -20422,5 +20422,16 @@
   "Attached on {date}": "Attached on {date}",
   "Attached the treatment plan": "Attached the treatment plan",
   "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.",
-  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "A plan exists in OpenCRQ: restricted to OpenCRQ readers"
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "A plan exists in OpenCRQ: restricted to OpenCRQ readers",
+  "Analyst review": "Analyst review",
+  "Analyst review skipped by policy": "Analyst review skipped by policy",
+  "The fleet requests the coverage without a person": "The fleet requests the coverage without a person",
+  "the analyst's mark in OpenCTI": "the analyst's mark in OpenCTI",
+  "Unnamed Grouping": "Unnamed Grouping",
+  "The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.": "The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.",
+  "A Grouping exists in OpenCTI: restricted to OpenCTI readers": "A Grouping exists in OpenCTI: restricted to OpenCTI readers",
+  "Drafted the threat package": "Drafted the threat package",
+  "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.",
+  "Threat package drafted, coverage not requested yet": "Threat package drafted, coverage not requested yet",
+  "Coverage requested in OpenCTI": "Coverage requested in OpenCTI"
 }

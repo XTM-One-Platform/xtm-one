@@ -216,6 +216,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         exploitation: list[dict[str, Any]] | None = None,
         gate: dict[str, Any] | None = None,
         treatment_plan: dict[str, Any] | None = None,
+        threat_package: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -278,6 +279,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     history = (await store.events_of(db, [case.id])).get(case.id, [])
                     case_loop.record_treatment_plan(
                         db, case, treatment_plan, view_of.treatment_plan_of(history), actor=agent_id
+                    )
+                if threat_package is not None:
+                    history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    case_loop.record_threat_package(
+                        db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
                     )
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
@@ -627,7 +633,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
                 "reading of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision. in_progress needs an owner; "
+                "the decision, or the threat package of the review step. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -683,6 +689,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "url": {"type": "string"},
                         },
                         "required": ["id"],
+                    },
+                    "threat_package": {
+                        "type": "object",
+                        "description": (
+                            "The OpenCTI Grouping the review step drafted for this case (its id, name and page "
+                            "url) and the security coverage requested on it (coverage_id), once requested."
+                        ),
+                        "properties": {
+                            "grouping_id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                            "coverage_id": {"type": "string"},
+                        },
+                        "required": ["grouping_id"],
                     },
                 },
                 "required": ["case_id"],

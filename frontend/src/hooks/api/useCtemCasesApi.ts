@@ -177,6 +177,22 @@ export interface CtemCaseTreatmentPlan {
   at: string | null;
 }
 
+/**
+ * The threat package the review step drafted for a case (CTEM-16-UI, #1115):
+ * the OpenCTI Grouping and the security coverage requested on it. `restricted`
+ * true for a viewer who does not read OpenCTI: then only `coverage_requested`
+ * and `at` are served.
+ */
+export interface CtemCaseThreatPackage {
+  restricted: boolean;
+  coverage_requested: boolean;
+  grouping_id?: string;
+  name?: string | null;
+  url?: string | null;
+  coverage_id?: string | null;
+  at: string | null;
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
@@ -185,6 +201,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   exploitation?: CtemCaseExploitation[];
   /** Null when no plan is attached; absent on an API older than #1068. */
   treatment_plan?: CtemCaseTreatmentPlan | null;
+  /** Null when no package is attached; absent on an API older than #1115. */
+  threat_package?: CtemCaseThreatPackage | null;
   ticketing?: CtemTicketingTarget;
 }
 
