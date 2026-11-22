@@ -20751,5 +20751,16 @@
   "OpenCTI Systems are owned by its connectors.": "OpenCTI のシステムはそのコネクタが管理しています。",
   "OpenAEV has no AI system object to write.": "OpenAEV には書き込める AI システムのオブジェクトがありません。",
   "OpenAEV software inventory is read from its agents.": "OpenAEV のソフトウェアインベントリはそのエージェントから読み取られます。",
-  "This pairing reads only.": "この組み合わせは読み取り専用です。"
+  "This pairing reads only.": "この組み合わせは読み取り専用です。",
+  "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.": "エクスポージャー管理ループを開始するエクスポージャーの変化、その発生元、および各変化に対するループの判断。",
+  "About signals": "シグナルについて",
+  "Where this signal is in the exposure management loop, and why.": "このシグナルがエクスポージャー管理ループのどこにあるか、およびその理由。",
+  "Search signal, path or source": "シグナル、パス、ソースを検索",
+  "No signal seen yet: your sources are connected and nothing reached the loop.": "まだシグナルはありません: ソースは接続されていますが、ループに到達したものはありません。",
+  "No signal yet: no source is connected.": "まだシグナルはありません: 接続されているソースがありません。",
+  "No signal matches these filters": "これらのフィルターに一致するシグナルはありません",
+  "{connected} of {total}": "{connected} / {total}",
+  "Open signal sources": "シグナルソースを開く",
+  "Trigger path": "トリガーパス",
+  "State and why": "状態と理由"
 }

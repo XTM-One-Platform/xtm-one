@@ -10,6 +10,7 @@
  * its chip and says so, never an empty cell.
  */
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
@@ -242,7 +243,8 @@ export function DecisionReason({
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
         <SignalStateChip state={state} />
-        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n, formatDay)}</span>
+        {/* Cut with an ellipsis and named whole by the tooltip in a narrow column (UX r1 B2 on #1272). */}
+        <TruncatedText text={decisionSentence(decision, t_i18n, formatDay)} className="content-compact text-default-secondary" />
       </div>
       {next && (
         <p className="content-compact text-default-primary" data-testid="ctem-decision-next-step">
