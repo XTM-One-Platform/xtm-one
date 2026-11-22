@@ -234,9 +234,23 @@ def evicted_line(evicted: Iterable[Footprint], *, pruned: bool = False) -> str:
 
 
 def eviction_paths(chosen: Iterable[Footprint], entries: Iterable[str]) -> list[str]:
-    """The workspace files the evicted checkouts hold (their records included)."""
-    roots = [f.path for f in chosen]
-    return [p for p in entries if any(is_under(p, r) for r in roots)]
+    """The workspace files the evicted checkouts hold (their records included).
+
+    A file is removed with the deepest checkout root that holds it, as
+    :func:`footprints` counts it: a checkout nested inside an evicted one (a
+    lab checked out under a product tree) keeps its files unless it is
+    chosen itself, so evicting a clean outer tree never takes an inner
+    checkout, clean or not, with it.
+    """
+    entries = list(entries)
+    roots = {f.path for f in chosen}
+    every_root = set(checkout_roots(entries)) | roots
+    out: list[str] = []
+    for path in entries:
+        holders = [r for r in every_root if is_under(path, r)]
+        if holders and max(holders, key=len) in roots:
+            out.append(path)
+    return out
 
 
 def refusal_hint(found: list[Footprint], *, limit: int = MAX_LISTED, pruned: bool = False) -> str:
