@@ -32,6 +32,7 @@ the old endpoint is refused here too; every refusal is written to
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -44,7 +45,11 @@ from app.models.decision import SOURCE_TYPES, Decision, DecisionEvent
 from app.models.decision_hooks import answer_surface
 
 #: The surfaces an answer may name; anything else is recorded as ``router``.
-SURFACES: frozenset[str] = frozenset({"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "mail"})
+SURFACES: frozenset[str] = frozenset(
+    {"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "mail"}
+    # The channels an answer link (S9b, ``decision_answer_links``) is sent on.
+    | {"teams_chat", "teams_channel", "google_chat", "email"}
+)
 
 
 @dataclass(frozen=True)
@@ -220,6 +225,25 @@ async def answer_decision(
         raise
     finally:
         answer_surface.reset(token)
+    if row is not None:
+        # The link cards a Microsoft account sent for it show the decided state (S9b, I.4 (b), (c)).
+        from app.services.decision_graph_cards import has_sent_cards
+
+        if await has_sent_cards(db, row.id):
+            schedule_card_refresh(row.id)
     from app.models.decision import public_id
 
     return {"id": public_id(ref.source_type, ref.source_id), **result}
+
+
+#: The refreshes in flight: a reference keeps each task alive until it ends.
+_REFRESHES: set[asyncio.Task[None]] = set()
+
+
+def schedule_card_refresh(decision_id: uuid.UUID) -> None:
+    """Update the sent link cards of *decision_id* in the background; the answer never waits for Graph."""
+    from app.services.decision_graph_cards import refresh_after_answer
+
+    task = asyncio.get_running_loop().create_task(refresh_after_answer(decision_id))
+    _REFRESHES.add(task)
+    task.add_done_callback(_REFRESHES.discard)
