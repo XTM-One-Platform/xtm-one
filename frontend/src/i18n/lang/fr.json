@@ -20654,5 +20654,15 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Retirer # ligne synchronisée ?} other {Retirer # lignes synchronisées ?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : la prochaine exécution de sa synchronisation, {when}, la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : la prochaine exécution de leur synchronisation, {when}, les ramène sauf si vous les excluez.}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : le prochain import la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : le prochain import les ramène sauf si vous les excluez.}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}",
+  "Add a sync": "Ajouter une synchronisation",
+  "Start with your sources": "Commencez par vos sources",
+  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Choisissez une plateforme, les sections qu'elle remplit, prévisualisez les lignes, puis gardez-les synchronisées.",
+  "No sync yet": "Aucune synchronisation",
+  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, one {# synchronisation} other {# synchronisations}}",
+  "Feeds no section yet": "N'alimente encore aucune section",
+  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{section} depuis {source} : {count, plural, one {# ligne} other {# lignes}}",
+  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "Qui alimente le profil : les lignes de chaque plateforme sont tenues par sa synchronisation et en lecture seule ici ; les lignes saisies, CSV, API et d'agent restent les vôtres.",
+  "The OpenCRQ sync failed": "La synchronisation OpenCRQ a échoué",
+  "Sync with OpenCRQ now": "Synchroniser avec OpenCRQ"
 }

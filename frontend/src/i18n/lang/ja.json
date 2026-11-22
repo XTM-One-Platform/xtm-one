@@ -20654,5 +20654,15 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, other {同期された # 行を削除しますか?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回の同期実行 ({when}) で再び追加されます。}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}",
+  "Add a sync": "同期を追加",
+  "Start with your sources": "ソースから始める",
+  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "プラットフォームと埋めるセクションを選び、行をプレビューしてから同期を維持します。",
+  "No sync yet": "同期なし",
+  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, other {# 件の同期}}",
+  "Feeds no section yet": "まだどのセクションにも供給していません",
+  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{source} からの{section}: {count, plural, other {# 行}}",
+  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "プロファイルの供給元: 各プラットフォームの行はその同期が管理し、ここでは読み取り専用です。入力、CSV、API、エージェントの行はあなたが管理します。",
+  "The OpenCRQ sync failed": "OpenCRQ の同期に失敗しました",
+  "Sync with OpenCRQ now": "今すぐ OpenCRQ と同期"
 }
