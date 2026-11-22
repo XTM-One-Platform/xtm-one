@@ -14,52 +14,70 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The capability slots of a fleet's home members (#914, slice 4), on the
- * fleet page's Members view: each role's slots (ticketing, notification,
- * EDR/XDR, scanner...) filled, empty or unavailable, and binding a connected
- * integration to a slot in one click (`GET /fleets/{id}/capability-slots`,
- * `POST|DELETE /fleets/{id}/members/{member}/slots/{capability}`).
+ * The capabilities a fleet's home members need (#914 slice 4), on the fleet
+ * page's Members view, the CTEM loop setup dialog and the fleet setup wizard.
+ *
+ * One row per capability type (#1201): capability icon and label, how many
+ * members use it, its status (Connected, Partial, Not bound, None
+ * connected), the fleet choice with its provider logos and the picker that
+ * writes it on every member slot of that type
+ * (`PUT /fleets/{id}/capabilities/{capability}`). A built-in option ("XTM One
+ * inventory (built in)", "In XTM One only") is offered first and fills the
+ * slot without an integration; notification takes several channels at once
+ * and its built-in option stays on. A row expands to its members, each with
+ * its own picker (`PUT /fleets/{id}/members/{member}/slots/{capability}`): a
+ * member whose set differs from the fleet choice reads "Custom" and can be
+ * reset. A type change asks before it replaces a custom member's choice.
  *
  * On a built-in fleet a binding is the customer layer: kept by every release,
  * while the fleet's members, handovers and gates stay locked. The card is not
- * shown when no member's role declares a slot.
- *
- * Capabilities first (#1128): the card opens expanded on the shared DataTable,
- * one row per member x slot (capability icon and label, member and role,
- * status, bound integrations with their provider logo, the bind action),
- * searchable, filtered by status and capability, Not bound first, paged by
- * the table so the Members table below stays close. Pure logic:
- * `capability-slots-table.ts`. Also embedded by the CTEM loop setup dialog
- * and the fleet setup wizard (#1151): `inSetup` keeps every action inside the
- * wizard (no collapse, rows open nothing, "Connect one" in a new tab).
+ * shown when no member's role declares a slot. Pure logic:
+ * `capability-slots-table.ts`. `inSetup` keeps every action inside the wizard
+ * (no collapse, no link out, "Connect one" in a new tab).
  */
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { useBindFleetSlot, useFleetCapabilitySlots, useUnbindFleetSlot, type Fleet } from "@/hooks/api/useFleetApi";
+import {
+  useFleetCapabilitySlots,
+  useSetFleetCapability,
+  useSetFleetMemberSlot,
+  type Fleet,
+  type FleetCapabilityType,
+  type FleetCapabilityTypeMember,
+  type FleetSlotIntegration,
+} from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
 
 import {
   CAPABILITIES_OPEN_BY_DEFAULT,
-  SLOT_STATE_LABELS,
-  SLOT_STATE_VARIANTS,
+  MULTI_CHANNEL_CAPABILITIES,
+  TYPE_STATE_LABELS,
+  TYPE_STATE_VARIANTS,
+  builtinValue,
   capabilityIcon,
-  capabilityOptions,
-  capabilitySlotRows,
-  slotCounts,
-  slotRowSearchFields,
-  slotStateRank,
-  type CapabilitySlotRow,
+  customMembers,
+  idsForPick,
+  integrationIds,
+  overwritableCustomMembers,
+  pickerValue,
+  toggledIds,
+  typeCounts,
+  typeEditable,
+  typeSearchFields,
+  typeStateRank,
 } from "./capability-slots-table";
 import { fleetRefusalMessage } from "./fleet-refusals";
 
@@ -73,8 +91,8 @@ export function FleetCapabilitySlotsCard({
   fleet: Fleet;
   /**
    * Inside the setup wizard (#1151, UX r1 B2 and A1, r2 B4): always expanded, no collapse,
-   * a row opens nothing (no same-tab way out of the wizard), and "Connect one" opens
-   * /integrations in a new tab with the slots read again when this tab regains focus.
+   * nothing links out of the wizard in the same tab, and "Connect one" opens /integrations
+   * in a new tab with the slots read again when this tab regains focus.
    */
   inSetup?: boolean;
 }) {
@@ -82,20 +100,22 @@ export function FleetCapabilitySlotsCard({
   const { toast } = useToast();
   const { data, isLoading, error, refetch } = useFleetCapabilitySlots(fleet.id);
   const [expanded, setOpen] = useState(CAPABILITIES_OPEN_BY_DEFAULT);
+  const [openTypes, setOpenTypes] = useState<ReadonlySet<string>>(new Set());
   const open = inSetup || expanded;
-  const bind = useBindFleetSlot(fleet.id);
-  const unbind = useUnbindFleetSlot(fleet.id);
+  const setType = useSetFleetCapability(fleet.id);
+  const setMember = useSetFleetMemberSlot(fleet.id);
+  const [confirmElement, confirm] = useConfirm();
   const navigate = useNavigate();
-  if (isLoading || error || !data || data.members.length === 0) return null;
-  const rows = capabilitySlotRows(data.members);
-  if (rows.length === 0) return null;
-  const { connected, total } = slotCounts(data.members);
-  const busy = bind.isPending || unbind.isPending;
+  if (isLoading || error || !data) return null;
+  const types = (data.types ?? []).filter((type) => type.members.length > 0);
+  if (types.length === 0) return null;
+  const { connected, total } = typeCounts(types);
+  const busy = setType.isPending || setMember.isPending;
   const refused = (err: Error) =>
     toast({ title: t_i18n("The binding could not be changed"), description: fleetRefusalMessage(err, t_i18n), variant: "error" });
   const help = fleet.is_builtin
-    ? t_i18n("Connect your tools to each member. Your bindings are kept by every release; the members and their handovers stay the product's.")
-    : t_i18n("Connect your tools to each member.");
+    ? t_i18n("Choose the tools of each capability once for the whole fleet; a member can keep its own. Your choices are kept by every release; the members and their handovers stay the product's.")
+    : t_i18n("Choose the tools of each capability once for the whole fleet; a member can keep its own.");
   const integrationName = (integration: { name: string; provider: string }) => integration.name || integration.provider;
   const connectOne = () => {
     if (!inSetup) {
@@ -105,31 +125,141 @@ export function FleetCapabilitySlotsCard({
     window.addEventListener("focus", () => void refetch(), { once: true });
     window.open("/integrations", "_blank", "noopener,noreferrer");
   };
+  const toggleType = (type: FleetCapabilityType) =>
+    setOpenTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type.capability)) next.delete(type.capability);
+      else next.add(type.capability);
+      return next;
+    });
 
-  const columns: DataTableColumn<CapabilitySlotRow>[] = [
+  // The fleet choice: every editable member of the type, a custom one only once the person confirms.
+  const chooseForType = async (type: FleetCapabilityType, ids: string[]) => {
+    const custom = overwritableCustomMembers(type);
+    const overrideCustom =
+      custom.length > 0 &&
+      (await confirm({
+        title: t_i18n("Replace the custom choices?"),
+        description: t_i18n(
+          "{count, plural, one {# member has its own choice for {capability}. Replace it with the fleet choice?} other {# members have their own choice for {capability}. Replace them with the fleet choice?}}",
+          { count: custom.length, capability: t_text(type.label) },
+        ),
+        confirmLabel: t_i18n("Replace"),
+        cancelLabel: t_i18n("Keep their choice"),
+        variant: "warning",
+      }));
+    setType.mutate({ capability: type.capability, integrationIds: ids, overrideCustom }, { onError: refused });
+  };
+  const chooseForMember = (type: FleetCapabilityType, member: FleetCapabilityTypeMember, ids: string[]) =>
+    setMember.mutate({ memberId: member.member_id, capability: type.capability, integrationIds: ids }, { onError: refused });
+
+  const builtinChip = (type: FleetCapabilityType) =>
+    type.builtin && (
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5">
+        <Icon name={capabilityIcon(type.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
+        <TruncatedText text={t_text(type.builtin.label)} />
+      </span>
+    );
+  const integrationChips = (integrations: readonly FleetSlotIntegration[], testId: string) =>
+    integrations.map((integration) => (
+      <span
+        key={integration.integration_id}
+        className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5"
+        data-testid={testId}
+      >
+        <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />
+        <TruncatedText text={integrationName(integration)} />
+      </span>
+    ));
+
+  /**
+   * The picker of a type or of one member: a multi-select for a multi-channel capability
+   * (the built-in option always on), else one choice with the built-in option pinned first.
+   */
+  const picker = (
+    type: FleetCapabilityType,
+    bound: readonly FleetSlotIntegration[],
+    onPick: (ids: string[]) => void,
+    label: string,
+    clearable: boolean,
+  ) => {
+    const builtin = builtinValue(type);
+    const builtinLabel = type.builtin ? t_text(type.builtin.label) : "";
+    if (MULTI_CHANNEL_CAPABILITIES.has(type.capability)) {
+      const current = integrationIds(bound);
+      return (
+        <MultiSelect
+          aria-label={label}
+          options={[
+            ...(builtin ? [{ value: builtin, label: builtinLabel }] : []),
+            ...type.candidates.map((candidate) => ({ value: candidate.integration_id, label: integrationName(candidate) })),
+          ]}
+          sort={false}
+          selected={builtin ? [builtin, ...current] : current}
+          onToggle={(value) => onPick(toggledIds(current, value))}
+          disabled={busy}
+          placeholder={t_i18n("Choose an integration")}
+          searchPlaceholder={t_i18n("Search integrations...")}
+          emptyOptionsLabel={t_i18n("No integration connected")}
+          noMatchLabel={t_i18n("No match")}
+          maxVisibleChips="fit"
+          className="w-[200px]"
+        />
+      );
+    }
+    const options: SelectOption[] = type.candidates.map((candidate) => ({
+      value: candidate.integration_id,
+      label: integrationName(candidate),
+      keywords: [candidate.provider],
+      icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
+    }));
+    const pinned: SelectOption[] = builtin
+      ? [{ value: builtin, label: builtinLabel, icon: <Icon name={capabilityIcon(type.capability)} size={16} aria-hidden /> }]
+      : [];
+    return (
+      <SearchableSelect
+        aria-label={label}
+        options={options}
+        pinned={pinned}
+        searchable="auto"
+        value={pickerValue(type, bound)}
+        clearable={clearable && !builtin}
+        disabled={busy}
+        placeholder={t_i18n("Choose an integration")}
+        onValueChange={(value) => onPick(idsForPick(value))}
+        className="w-[200px]"
+      />
+    );
+  };
+
+  const columns: DataTableColumn<FleetCapabilityType>[] = [
     {
       key: "capability",
       header: "Capability",
-      sortValue: (row) => t_text(row.slot.label),
-      csv: (row) => t_text(row.slot.label),
-      cell: (row) => (
+      sortValue: (type) => t_text(type.label),
+      csv: (type) => t_text(type.label),
+      cell: (type) => (
         <span className="flex min-w-0 items-center gap-2">
-          <Icon name={capabilityIcon(row.slot.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
-          <TruncatedText text={t_text(row.slot.label)} />
+          <Icon
+            name={openTypes.has(type.capability) ? "chevron-down" : "chevron-right"}
+            size={16}
+            className="shrink-0 text-default-secondary"
+            aria-hidden
+          />
+          <Icon name={capabilityIcon(type.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
+          <TruncatedText text={t_text(type.label)} />
         </span>
       ),
     },
     {
-      key: "member",
-      header: "Member",
-      sortValue: (row) => row.member.name,
-      csv: (row) => row.member.name,
-      cell: (row) => (
-        <span className="block min-w-0">
-          <TruncatedText text={row.member.name || t_i18n("Unknown agent")} className="max-w-[240px] font-medium" />
-          {row.member.role_label && (
-            <TruncatedText text={row.member.role_label} className="max-w-[240px] content-caption text-default-secondary" />
-          )}
+      key: "members",
+      header: "Members",
+      width: 112,
+      sortValue: (type) => type.members.length,
+      csv: (type) => String(type.members.length),
+      cell: (type) => (
+        <span className="whitespace-nowrap text-default-secondary">
+          {t_i18n("{count, plural, one {# member} other {# members}}", { count: type.members.length })}
         </span>
       ),
     },
@@ -137,11 +267,11 @@ export function FleetCapabilitySlotsCard({
       key: "status",
       header: "Status",
       width: 128,
-      sortValue: slotStateRank,
-      csv: (row) => t_i18n(SLOT_STATE_LABELS[row.slot.state]),
-      cell: (row) => (
-        <Badge variant={SLOT_STATE_VARIANTS[row.slot.state]} className="whitespace-nowrap">
-          {t_i18n(SLOT_STATE_LABELS[row.slot.state])}
+      sortValue: typeStateRank,
+      csv: (type) => t_i18n(TYPE_STATE_LABELS[type.state]),
+      cell: (type) => (
+        <Badge variant={TYPE_STATE_VARIANTS[type.state]} className="whitespace-nowrap">
+          {t_i18n(TYPE_STATE_LABELS[type.state])}
         </Badge>
       ),
     },
@@ -149,75 +279,93 @@ export function FleetCapabilitySlotsCard({
       key: "integration",
       header: "Integration",
       hideable: true,
-      interactive: true,
-      csv: (row) => row.slot.bound.map(integrationName).join(", "),
-      cell: (row) => (
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {row.slot.bound.map((integration) => (
-            <span
-              key={integration.integration_id}
-              className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5"
-              data-testid={`slot-bound-${row.key}`}
-            >
-              <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />
-              <TruncatedText text={integrationName(integration)} />
-              {row.member.can_edit && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                  disabled={busy}
-                  aria-label={t_i18n("Unbind {name}", { name: integrationName(integration) })}
-                  onClick={() =>
-                    unbind.mutate(
-                      { memberId: row.member.member_id, capability: row.slot.capability, integrationId: integration.integration_id },
-                      { onError: refused },
-                    )
-                  }
-                >
-                  <Icon name="x" size={16} aria-hidden />
-                </Button>
-              )}
-            </span>
-          ))}
+      csv: (type) => [type.builtin ? t_text(type.builtin.label) : "", ...type.choice.map(integrationName)].filter(Boolean).join(", "),
+      cell: (type) => (
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid={`type-choice-${type.capability}`}>
+          {builtinChip(type)}
+          {integrationChips(type.choice, `type-bound-${type.capability}`)}
+          {customMembers(type).length > 0 && (
+            <Badge variant="secondary" className="whitespace-nowrap">
+              {t_i18n("Custom")}
+            </Badge>
+          )}
         </span>
       ),
     },
   ];
 
-  // The bind action of a row: its last column, which never opens the row (the member's agent).
-  const bindAction = (row: CapabilitySlotRow) => {
-    if (!row.member.can_edit) return null;
-    if (row.slot.candidates.length > 0)
-      return (
-        <SearchableSelect
-          aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(row.slot.label) })}
-          options={row.slot.candidates.map((candidate) => ({
-            value: candidate.integration_id,
-            label: integrationName(candidate),
-            keywords: [candidate.provider],
-            icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
-          }))}
-          searchable="auto"
-          value=""
-          disabled={busy}
-          placeholder={t_i18n("Bind an integration")}
-          onValueChange={(integrationId) => {
-            if (integrationId)
-              bind.mutate({ memberId: row.member.member_id, capability: row.slot.capability, integrationId }, { onError: refused });
-          }}
-          className="w-[200px]"
-        />
+  // The type picker: its last column, which never opens the row.
+  const typeAction = (type: FleetCapabilityType) => {
+    if (!typeEditable(type)) return null;
+    if (type.candidates.length > 0 || type.builtin)
+      return picker(
+        type,
+        type.choice,
+        (ids) => void chooseForType(type, ids),
+        t_i18n("Fleet choice for {capability}", { capability: t_text(type.label) }),
+        false,
       );
-    // A button of the bind select's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
-    if (row.slot.state === "unavailable")
-      return (
-        <Button type="button" variant="outline" className="w-[200px]" onClick={connectOne}>
-          {t_i18n("Connect one")}
-        </Button>
-      );
-    return null;
+    // A button of the picker's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
+    return (
+      <Button type="button" variant="outline" className="w-[200px]" onClick={connectOne}>
+        {t_i18n("Connect one")}
+      </Button>
+    );
+  };
+
+  // The members of an opened type, each pre-filled with the fleet choice, overridable and resettable.
+  const membersPanel = (type: FleetCapabilityType) => {
+    if (!openTypes.has(type.capability)) return null;
+    return (
+      <ul className="space-y-2" data-testid={`type-members-${type.capability}`} aria-label={t_i18n("Members")}>
+        {type.members.map((member) => (
+          <li key={member.member_id} className="flex min-w-0 items-center gap-3" data-testid="fleet-capability-member-row">
+            <span className="block min-w-0 flex-1">
+              {inSetup ? (
+                <TruncatedText text={member.name || t_i18n("Unknown agent")} className="max-w-[240px] font-medium" />
+              ) : (
+                <Link to={`/agents/${member.agent_id}`} className="block max-w-[240px] truncate font-medium hover:underline">
+                  {member.name || t_i18n("Unknown agent")}
+                </Link>
+              )}
+              {member.role_label && (
+                <TruncatedText text={member.role_label} className="max-w-[240px] content-caption text-default-secondary" />
+              )}
+            </span>
+            {member.custom && (
+              <Badge variant="secondary" className="whitespace-nowrap">
+                {t_i18n("Custom")}
+              </Badge>
+            )}
+            {member.can_edit ? (
+              <>
+                {member.custom && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => chooseForMember(type, member, integrationIds(type.choice))}
+                  >
+                    {t_i18n("Reset to fleet choice")}
+                  </Button>
+                )}
+                {(type.candidates.length > 0 || type.builtin) &&
+                  picker(
+                    type,
+                    member.bound,
+                    (ids) => chooseForMember(type, member, ids),
+                    t_i18n("{capability} for {member}", { capability: t_text(type.label), member: member.name }),
+                    true,
+                  )}
+              </>
+            ) : (
+              <span className="flex min-w-0 flex-wrap items-center gap-1.5">{integrationChips(member.bound, "member-bound")}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
   };
 
   return (
@@ -232,7 +380,10 @@ export function FleetCapabilitySlotsCard({
               <InfoTip label={t_i18n("What capability slots are")} content={help} />
             </h3>
             <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-capability-slots-summary">
-              {t_i18n("{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}", { connected, total })}
+              {t_i18n("{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}", {
+                connected,
+                total,
+              })}
             </span>
           </div>
           {!inSetup && (
@@ -252,43 +403,40 @@ export function FleetCapabilitySlotsCard({
         {open && (
           <div id="fleet-capability-slots-rows">
             <DataTable
-              rows={rows}
+              rows={types}
               columns={columns}
-              rowKey={(row) => row.key}
-              // In the setup wizard a row opens nothing: a same-tab link to the agent would close the wizard (UX r2 B4).
-              rowHref={inSetup ? undefined : (row) => `/agents/${row.member.agent_id}`}
-              rowActions={bindAction}
+              rowKey={(type) => type.capability}
+              onRowClick={toggleType}
+              expandedRow={membersPanel}
+              rowActions={typeAction}
               rowActionsWidth={224}
-              // Fixed columns: at 1080 the flexible ones truncate instead of pushing the bind select out of the card.
+              // Fixed columns: at 1080 the flexible ones truncate instead of pushing the picker out of the card.
               layout="fixed"
               defaultSort={{ key: "status", direction: "asc" }}
-              searchFields={(row) => slotRowSearchFields(row, t_text(row.slot.label))}
+              searchFields={(type) => typeSearchFields(type, t_text(type.label))}
               searchPlaceholder={t_i18n("Search capabilities, members, integrations...")}
               filters={[
                 {
                   key: "status",
                   label: "Status",
-                  values: (row) => [row.slot.state],
+                  values: (type) => [type.state],
                   // An ordinal scale: what is left to bind first.
                   ordered: true,
-                  options: (["empty", "unavailable", "filled"] as const).map((state) => ({ value: state, label: t_i18n(SLOT_STATE_LABELS[state]) })),
-                },
-                {
-                  key: "capability",
-                  label: "Capability",
-                  values: (row) => [row.slot.capability],
-                  options: capabilityOptions(rows).map((option) => ({ value: option.value, label: t_text(option.label) })),
+                  options: (["not_bound", "partial", "none_connected", "connected"] as const).map((state) => ({
+                    value: state,
+                    label: t_i18n(TYPE_STATE_LABELS[state]),
+                  })),
                 },
               ]}
               defaultPageSize={SLOTS_PAGE_SIZE}
               emptyLabel={t_i18n("No capability slot")}
               noResultsLabel={t_i18n("No slot matches the search and filters")}
               framed={false}
-              rowLines={2}
               rowTestId="fleet-capability-slot-row"
             />
           </div>
         )}
+        {confirmElement}
       </CardContent>
     </Card>
   );

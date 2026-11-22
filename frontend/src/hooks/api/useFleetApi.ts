@@ -482,7 +482,7 @@ export function useFleetFlow(fleetId: string | null | undefined, shown = true) {
 }
 
 /** An integration as a capability slot shows it (`FleetSlotIntegration`, #914 slice 2). */
-interface FleetSlotIntegration {
+export interface FleetSlotIntegration {
   integration_id: string;
   provider: string;
   /** Empty when the reader cannot see the bound integration. */
@@ -490,12 +490,46 @@ interface FleetSlotIntegration {
 }
 
 /** One capability a member's role can use, and how it is filled (`FleetCapabilitySlot`). */
-export interface FleetCapabilitySlot {
+interface FleetCapabilitySlot {
   capability: string;
   label: string;
   state: "filled" | "empty" | "unavailable";
   bound: FleetSlotIntegration[];
   candidates: FleetSlotIntegration[];
+  /** The built-in option, when the capability has one: it fills the slot by itself (#1201). */
+  builtin?: FleetSlotBuiltin | null;
+}
+
+/** A capability's built-in option (`FleetSlotBuiltin`, #1201): served by XTM One, never stored as a binding. */
+interface FleetSlotBuiltin {
+  key: string;
+  label: string;
+  /** Always active: an external integration adds to it and it cannot be removed. */
+  always_on: boolean;
+}
+
+/** One member using a capability type, in the expanded type row (`FleetCapabilityTypeMember`, #1201). */
+export interface FleetCapabilityTypeMember {
+  member_id: string;
+  agent_id: string;
+  name: string;
+  role_label: string;
+  can_edit: boolean;
+  bound: FleetSlotIntegration[];
+  /** Its bound set differs from the fleet choice: an override ("Custom"). */
+  custom: boolean;
+}
+
+/** A capability across the fleet's members: one row of the type view (`FleetCapabilityType`, #1201). */
+export interface FleetCapabilityType {
+  capability: string;
+  label: string;
+  state: "connected" | "partial" | "not_bound" | "none_connected";
+  /** The fleet choice: the bound set most members share. */
+  choice: FleetSlotIntegration[];
+  candidates: FleetSlotIntegration[];
+  members: FleetCapabilityTypeMember[];
+  builtin?: FleetSlotBuiltin | null;
 }
 
 /** The capability slots of one home member (`FleetMemberSlots`). */
@@ -513,6 +547,8 @@ export interface FleetMemberSlots {
 export interface FleetCapabilitySlots {
   fleet_id: string;
   members: FleetMemberSlots[];
+  /** The same slots grouped by capability (#1201): one row per type. */
+  types: FleetCapabilityType[];
 }
 
 /** Each home member's capability slots: configuration only, never a run or quota (#914). */
@@ -1623,39 +1659,50 @@ export function useUpdateFleetMember(fleetId: string) {
   });
 }
 
-/** A slot write: the member, the capability and the integration. */
-export interface FleetSlotWrite {
-  memberId: string;
+/** The fleet choice of a capability: exactly these integrations on every member slot of that type (#1201). */
+export interface FleetCapabilityWrite {
   capability: string;
-  integrationId: string;
+  /** Empty leaves the built-in option alone, when the capability has one. */
+  integrationIds: string[];
+  /** Also write the members whose slot is custom; otherwise they keep their override. */
+  overrideCustom: boolean;
 }
 
 /**
- * Bind a connected integration to a member's capability slot, in one click
- * (`POST /fleets/{id}/members/{member}/slots/{capability}`); on a built-in it
- * is the customer layer, kept by every seed run. The caller says the refusal.
+ * Write the fleet choice of a capability on every member slot of that type
+ * (`PUT /fleets/{id}/capabilities/{capability}`, #1201). The caller says the refusal.
  */
-export function useBindFleetSlot(fleetId: string) {
+export function useSetFleetCapability(fleetId: string) {
   const invalidate = useInvalidateFleet();
-  return useMutation<FleetMemberSlots, Error, FleetSlotWrite>({
-    mutationFn: ({ memberId, capability, integrationId }) =>
-      api.post<FleetMemberSlots>(
-        `/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}`,
-        { integration_id: integrationId },
-      ),
+  return useMutation<FleetCapabilitySlots, Error, FleetCapabilityWrite>({
+    mutationFn: ({ capability, integrationIds, overrideCustom }) =>
+      api.put<FleetCapabilitySlots>(`/fleets/${fleetId}/capabilities/${encodeURIComponent(capability)}`, {
+        integration_ids: integrationIds,
+        override_custom: overrideCustom,
+      }),
     onSettled: invalidate,
     meta: OWN_ERROR_TOAST,
   });
 }
 
-/** Unbind an integration from a member's capability slot. The caller says the refusal. */
-export function useUnbindFleetSlot(fleetId: string) {
+/** One member's exact slot: an override, or its reset to the fleet choice (#1201). */
+export interface FleetMemberSlotWrite {
+  memberId: string;
+  capability: string;
+  integrationIds: string[];
+}
+
+/**
+ * Set exactly these integrations on one member's slot
+ * (`PUT /fleets/{id}/members/{member}/slots/{capability}`, #1201). The caller says the refusal.
+ */
+export function useSetFleetMemberSlot(fleetId: string) {
   const invalidate = useInvalidateFleet();
-  return useMutation<FleetMemberSlots, Error, FleetSlotWrite>({
-    mutationFn: ({ memberId, capability, integrationId }) =>
-      api.delete<FleetMemberSlots>(
-        `/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}/${integrationId}`,
-      ),
+  return useMutation<FleetMemberSlots, Error, FleetMemberSlotWrite>({
+    mutationFn: ({ memberId, capability, integrationIds }) =>
+      api.put<FleetMemberSlots>(`/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}`, {
+        integration_ids: integrationIds,
+      }),
     onSettled: invalidate,
     meta: OWN_ERROR_TOAST,
   });

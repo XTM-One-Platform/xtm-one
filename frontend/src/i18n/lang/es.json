@@ -20619,5 +20619,19 @@
   "Choose how much the fleet does without asking a person. You can change it, and each gate, later on the fleet page.": "Elija cuánto hace la flota sin preguntar a una persona. Podrá cambiarlo, y cada validación, más tarde en la página de la flota.",
   "Who the automations run as, and which ones to switch on. An automation that needs a module this user has not connected stays off.": "Con qué usuario se ejecutan las automatizaciones y cuáles activar. Una automatización que necesita un módulo que este usuario no ha conectado sigue desactivada.",
   "What switches on when you confirm. Nothing is enabled before this step.": "Lo que se activa al confirmar. Nada se activa antes de este paso.",
-  "Run setup again": "Volver a ejecutar la configuración"
+  "Run setup again": "Volver a ejecutar la configuración",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own. Your choices are kept by every release; the members and their handovers stay the product's.": "Elija una vez las herramientas de cada capacidad para toda la flota; un miembro puede conservar las suyas. Sus elecciones se conservan en cada versión; los miembros y sus traspasos siguen siendo los del producto.",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own.": "Elija una vez las herramientas de cada capacidad para toda la flota; un miembro puede conservar las suyas.",
+  "Replace the custom choices?": "¿Reemplazar las elecciones personalizadas?",
+  "{count, plural, one {# member has its own choice for {capability}. Replace it with the fleet choice?} other {# members have their own choice for {capability}. Replace them with the fleet choice?}}": "{count, plural, one {# miembro tiene su propia elección para {capability}. ¿Reemplazarla por la elección de la flota?} other {# miembros tienen su propia elección para {capability}. ¿Reemplazarlas por la elección de la flota?}}",
+  "Keep their choice": "Conservar su elección",
+  "No integration connected": "Ninguna integración conectada",
+  "Fleet choice for {capability}": "Elección de la flota para {capability}",
+  "{capability} for {member}": "{capability} para {member}",
+  "Reset to fleet choice": "Volver a la elección de la flota",
+  "{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}": "{total, plural, one {{connected} de # capacidad conectada} other {{connected} de # capacidades conectadas}}",
+  "XTM One inventory (built in)": "Inventario de XTM One (integrado)",
+  "In XTM One only": "Solo en XTM One",
+  "Vulnerability intelligence": "Inteligencia de vulnerabilidades",
+  "External attack surface": "Superficie de ataque externa"
 }

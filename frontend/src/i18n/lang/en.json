@@ -20619,5 +20619,19 @@
   "Choose how much the fleet does without asking a person. You can change it, and each gate, later on the fleet page.": "Choose how much the fleet does without asking a person. You can change it, and each gate, later on the fleet page.",
   "Who the automations run as, and which ones to switch on. An automation that needs a module this user has not connected stays off.": "Who the automations run as, and which ones to switch on. An automation that needs a module this user has not connected stays off.",
   "What switches on when you confirm. Nothing is enabled before this step.": "What switches on when you confirm. Nothing is enabled before this step.",
-  "Run setup again": "Run setup again"
+  "Run setup again": "Run setup again",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own. Your choices are kept by every release; the members and their handovers stay the product's.": "Choose the tools of each capability once for the whole fleet; a member can keep its own. Your choices are kept by every release; the members and their handovers stay the product's.",
+  "Choose the tools of each capability once for the whole fleet; a member can keep its own.": "Choose the tools of each capability once for the whole fleet; a member can keep its own.",
+  "Replace the custom choices?": "Replace the custom choices?",
+  "{count, plural, one {# member has its own choice for {capability}. Replace it with the fleet choice?} other {# members have their own choice for {capability}. Replace them with the fleet choice?}}": "{count, plural, one {# member has its own choice for {capability}. Replace it with the fleet choice?} other {# members have their own choice for {capability}. Replace them with the fleet choice?}}",
+  "Keep their choice": "Keep their choice",
+  "No integration connected": "No integration connected",
+  "Fleet choice for {capability}": "Fleet choice for {capability}",
+  "{capability} for {member}": "{capability} for {member}",
+  "Reset to fleet choice": "Reset to fleet choice",
+  "{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}": "{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}",
+  "XTM One inventory (built in)": "XTM One inventory (built in)",
+  "In XTM One only": "In XTM One only",
+  "Vulnerability intelligence": "Vulnerability intelligence",
+  "External attack surface": "External attack surface"
 }
