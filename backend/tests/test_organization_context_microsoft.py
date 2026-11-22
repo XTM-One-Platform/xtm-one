@@ -52,6 +52,13 @@ def test_sources_are_offered_for_assets_only() -> None:
     assert SOURCE_FILTERS[("assets", "intune")][:2] == ("operating_system", "compliance")
 
 
+def test_not_connected_reason_names_the_source_integration_once() -> None:
+    # The import card prefixes "Not available:" and appends where to connect it: the reason says only what is missing.
+    assert microsoft.not_connected_message("intune") == "no Microsoft Intune integration is connected"
+    assert microsoft.not_connected_message("defender") == "no Microsoft Defender integration is connected"
+    assert "not connected" not in microsoft.not_connected_message("intune")
+
+
 def test_intune_device_row_carries_identity_and_os() -> None:
     row = microsoft.intune_device_row(INTUNE_DEVICE)
     entry = AssetEntry.model_validate(row)

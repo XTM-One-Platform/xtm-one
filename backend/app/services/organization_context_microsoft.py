@@ -310,6 +310,12 @@ def missing_scope_message(source: str, status: int) -> str:
     )
 
 
+def not_connected_message(source: str) -> str:
+    """Why *source* cannot be read: no integration of its own provider (the import card adds where to connect it)."""
+    label = "Microsoft Intune" if source == INTUNE else "Microsoft Defender"
+    return f"no {label} integration is connected"
+
+
 # ── Connection (I/O) ──────────────────────────────────────────────────
 
 
@@ -339,7 +345,7 @@ async def access_token(db: Any, user_id: str, source: str) -> tuple[str | None, 
     integ = await _integration(db, user_id, provider)
     label = "Microsoft Intune" if source == INTUNE else "Microsoft Defender"
     if integ is None:
-        return None, f"not connected: connect a {label} integration first"
+        return None, not_connected_message(source)
     token = await it._get_token(db, str(integ.id), provider, user_id=user_id)
     if not token:
         return None, f"no token for the {label} integration: authorize it again"
@@ -360,8 +366,7 @@ async def connection_status(db: Any, user_id: str, source: str) -> tuple[bool, s
     provider = INTUNE if source == INTUNE else DEFENDER
     integ = await _integration(db, user_id, provider)
     if integ is None:
-        label = "Microsoft Intune" if source == INTUNE else "Microsoft Defender"
-        return False, f"not connected: connect a {label} integration first"
+        return False, not_connected_message(source)
     return True, ""
 
 

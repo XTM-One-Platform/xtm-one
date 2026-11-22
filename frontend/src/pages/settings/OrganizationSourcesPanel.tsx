@@ -22,7 +22,7 @@ import { SOURCED_SECTION_LABELS, sourceSectionHref, summarizeSources, type Sourc
 
 interface Props {
   profile: Partial<Record<"crown_jewels" | "tech_stack" | "ai_systems" | "assets_exposure" | "asset_groups", readonly Provenance[] | undefined>>;
-  /** The source keys with an integration (opencti, openaev, opencrq; intune and defender through a Microsoft integration). */
+  /** The source keys with an integration (opencti, openaev, opencrq; once their own integration (intune, defender) is connected (#1251)). */
   connected: readonly string[];
   /** Opens the import stepper; disabled while the form is in edit. */
   onAddSync: () => void;
