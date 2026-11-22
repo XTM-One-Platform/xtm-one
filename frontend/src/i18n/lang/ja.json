@@ -20136,6 +20136,7 @@
   "Not reproduced": "再現なし",
   "Reproduced": "再現あり",
   "Not re-tested yet": "未再テスト",
+  "Quick filters": "クイックフィルター",
   "What you can change on this built-in agent": "この組み込みエージェントで変更できる項目",
   "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.": "各リリースは製品がロックする部分を書き換え、お客様の設定は保持します。ロックされた部分を変更するには、フリートを複製してください。",
   "Locked by the product": "製品によるロック",
