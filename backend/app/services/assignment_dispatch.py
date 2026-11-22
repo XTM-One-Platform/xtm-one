@@ -590,6 +590,7 @@ async def read_dispatch_stats(db) -> dict[str, Any]:
 
     from app.models.assignment import Assignment, AssignmentRun
     from app.services.assignment_engine import QUEUED_RUN_STATUS, _queue_blocking_statuses
+    from app.services.decision_waits import holds_assignment
 
     now = datetime.now(UTC)
     hold_on_approval = bool(settings.assignment_queue_hold_on_awaiting_human)
@@ -608,7 +609,7 @@ async def read_dispatch_stats(db) -> dict[str, Any]:
                 func.count().filter(AssignmentRun.status == "awaiting_human"),
             )
             .where(
-                AssignmentRun.status.in_(_queue_blocking_statuses()),
+                holds_assignment(AssignmentRun, _queue_blocking_statuses()),
                 AssignmentRun.assignment_id.is_not(None),
             )
             .group_by(AssignmentRun.assignment_id)
