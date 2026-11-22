@@ -90,16 +90,49 @@ def _options(ask: dict[str, Any]) -> list[dict[str, Any]]:
     return [o for o in ask.get("options") or [] if str(o.get("key") or "")]
 
 
+def _outcome(view: Any, ask: dict[str, Any], language: str) -> list[str]:
+    """The decided state of a closed decision, said as the Teams and Slack decided cards say it (UX round 1, B1).
+
+    Who chose which option (or the tool verdicts), the answer's text, or that
+    the decision expired or is no longer needed: never an invitation to answer.
+    """
+    from app.services.decision_cards import _approval_verdicts, _option_label
+
+    row = view.decision
+    if row.status != "answered":
+        key = "card_decision_expired" if row.status == "expired" else "card_decision_cancelled"
+        return [notice(key, language)]
+    answer = row.answer if isinstance(getattr(row, "answer", None), dict) else {}
+    who = _clip(view.answered_by_name or notice("card_someone", language), 60)
+    verdicts = _approval_verdicts(answer, ask, row.kind, language, who)
+    if verdicts is not None:
+        lines = ["".join(str(run.get("text") or "") for run in verdicts.get("inlines") or [])]
+    else:
+        label = answer.get("label")
+        chosen = _clip(label, 60) if label else _option_label(ask, answer.get("option"), row.kind, language)
+        lines = [
+            notice("card_decided_option", language, name=who, option=chosen)
+            if chosen
+            else notice("card_answered_by", language, name=who)
+        ]
+    if answer.get("text"):
+        lines.append(_clip(answer.get("text"), 400))
+    return lines
+
+
 def _body(view: Any, ask: dict[str, Any], language: str, *, answerable: bool) -> str:
     from app.services.decision_cards import _label, _page_base, _utc
 
     kind = view.decision.kind
+    closed = view.decision.status != "open"
     lines = [_clip(ask.get("question"), 400)]
     context = str(ask.get("context") or "").strip()
     if context:
         lines.append(_clip(context, 400))
+    if closed:
+        lines.extend(_outcome(view, ask, language))
     recommendation = str(ask.get("recommendation") or "")
-    for option in _options(ask):
+    for option in [] if closed else _options(ask):
         if kind == "tool_approval" and not option.get("effect"):
             continue
         line = f"- {_label(option, kind, language, 60)}"
@@ -108,11 +141,11 @@ def _body(view: Any, ask: dict[str, Any], language: str, *, answerable: bool) ->
         if option.get("effect"):
             line += f": {_clip(option['effect'], 120)}"
         lines.append(line)
-    deadline = _utc(ask.get("deadline"))
+    deadline = None if closed else _utc(ask.get("deadline"))
     if deadline:
         lines.append(f"{notice('card_label_deadline', language)}: {deadline.replace('T', ' ').rstrip('Z')} UTC")
     if view.page_path:
-        prefix = "" if answerable else f"{notice('card_decide_in_xtm', language)} "
+        prefix = "" if answerable or closed else f"{notice('card_decide_in_xtm', language)} "
         lines.append(f"{prefix}{notice('card_open', language)}: {_page_base()}{view.page_path}")
     text = "\n".join(line for line in lines if line)
     if len(text) <= _MAX_BODY:
@@ -180,7 +213,11 @@ def render_whatsapp_decision(view: Any, language: str) -> dict[str, Any] | None:
 
 
 def decision_text(view: Any, language: str) -> str:
-    """The plain text of a decision the buttons cannot carry: its question and the link to answer in XTM One."""
+    """The plain text of a decision the buttons cannot carry, with the link to it in XTM One.
+
+    An open decision invites the reader to answer there; a closed one states
+    its outcome instead (who chose what, expired, no longer needed).
+    """
     row = view.decision
     ask = row.ask if isinstance(row.ask, dict) else {}
     return _body(view, ask, language, answerable=False)

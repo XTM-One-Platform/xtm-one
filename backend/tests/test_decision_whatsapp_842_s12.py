@@ -96,7 +96,6 @@ def test_four_to_ten_options_are_a_list():
     [
         _row(ask=_ask(11)),
         _row(ask={"question": "Why?", "options": []}),
-        _row(status="answered"),
     ],
 )
 def test_what_buttons_cannot_carry_is_text_with_the_link(row):
@@ -106,6 +105,42 @@ def test_what_buttons_cannot_carry_is_text_with_the_link(row):
     assert text.startswith("Ship" if row.ask.get("options") else "Why?")
     assert notice("card_decide_in_xtm", "en") in text
     assert str(SOURCE_ID) in text
+
+
+def test_an_answered_decision_states_its_outcome_and_never_asks_again():
+    row = _row(
+        status="answered",
+        answer={"option": "B", "text": "Tonight is fine."},
+        ask=_ask(2, deadline="2026-11-23T09:00:00Z"),
+    )
+    view = _view(row, answered_by_name="Ada Lovelace")
+    assert wa.render_whatsapp_decision(view, "en") is None
+    text = wa.decision_text(view, "en")
+    assert notice("card_decided_option", "en", name="Ada Lovelace", option="Option 1") in text
+    assert "Tonight is fine." in text
+    assert notice("card_decide_in_xtm", "en") not in text
+    assert "(Recommended)" not in text
+    assert notice("card_label_deadline", "en") not in text
+    assert text.endswith(f"https://xtm.example.com/tasks/work-items/{SOURCE_ID}")
+
+
+@pytest.mark.parametrize(
+    ("status", "key"), [("expired", "card_decision_expired"), ("cancelled", "card_decision_cancelled")]
+)
+def test_a_closed_unanswered_decision_says_so(status, key):
+    view = _view(_row(status=status))
+    text = wa.decision_text(view, "fr")
+    assert notice(key, "fr") in text
+    assert notice("card_decide_in_xtm", "fr") not in text
+    assert str(SOURCE_ID) in text
+
+
+def test_an_answered_tool_approval_states_the_verdicts():
+    ask = {"question": "Run it?", "options": [{"key": k, "label": k} for k in ("approve", "reject")]}
+    row = _row(kind="tool_approval", ask=ask, status="answered", answer={"decisions": {"c1": "approve"}})
+    text = wa.decision_text(_view(row, answered_by_name="Ada"), "en")
+    assert notice("card_decided_option", "en", name="Ada", option=notice("card_approve", "en")) in text
+    assert notice("card_decide_in_xtm", "en") not in text
 
 
 def test_a_long_body_keeps_the_link_line_whole():
