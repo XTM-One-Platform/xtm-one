@@ -471,6 +471,9 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # step, stored on the settings row; it reaches no model and enables nothing (the
     # fleet enable step goes through enable_fleet_automations, which is gated).
     "record_setup_step",
+    # Settings > Platform "Reset onboarding": an administrator clearing that stored
+    # answer and progress so the setup is proposed again; it reaches no model.
+    "reset_setup_prompt",
     # Settings > Organization, tracked organizations (#9157): an administrator
     # adding, editing, archiving an organization or saving its profile. Stored
     # company data reaching no model; monitoring stays off.
@@ -1457,11 +1460,6 @@ _EXEMPT_DETERMINISTIC_TOOLING = {
     # no model call, licence-gated like the fleet.
     "bind_fleet_member_slot",
     "unbind_fleet_member_slot",
-    # The fleet choice of a capability written on every member slot of that
-    # type, and one member's exact override or reset (#1201): the same
-    # integration bindings as a one-click bind, no model call, licence-gated.
-    "set_fleet_capability",
-    "set_fleet_member_slot",
     # A custom fleet's approval gate catalog stored (#10014): configuration
     # computed in code, no model call, licence-gated like the fleet. Adding
     # gates only adds pauses, so AI off must not block it either.
