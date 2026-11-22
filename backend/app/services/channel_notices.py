@@ -532,6 +532,43 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Ouvrir dans XTM One",
         "ja": "XTM One で開く",
     },
+    # --- The link buttons of the objects of a decision's ask (#1177) ------
+    "card_link_pull_request": {
+        "en": "Open PR #{number}",
+        "es": "Abrir la PR #{number}",
+        "fr": "Ouvrir la PR #{number}",
+        "ja": "PR #{number} を開く",
+    },
+    "card_link_issue": {
+        "en": "Open issue #{number}",
+        "es": "Abrir la incidencia #{number}",
+        "fr": "Ouvrir l'issue #{number}",
+        "ja": "Issue #{number} を開く",
+    },
+    "card_link_ticket": {
+        "en": "Open the ticket",
+        "es": "Abrir el ticket",
+        "fr": "Ouvrir le ticket",
+        "ja": "チケットを開く",
+    },
+    "card_link_ticket_key": {
+        "en": "Open {key}",
+        "es": "Abrir {key}",
+        "fr": "Ouvrir {key}",
+        "ja": "{key} を開く",
+    },
+    "card_link_page": {
+        "en": "Open the page",
+        "es": "Abrir la página",
+        "fr": "Ouvrir la page",
+        "ja": "ページを開く",
+    },
+    "card_link_document": {
+        "en": "Open the document",
+        "es": "Abrir el documento",
+        "fr": "Ouvrir le document",
+        "ja": "ドキュメントを開く",
+    },
     "card_no_access": {
         "en": "This run doesn't exist or you don't have access to it.",
         "es": "Esta ejecución no existe o no tiene acceso a ella.",

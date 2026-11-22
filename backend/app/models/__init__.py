@@ -99,6 +99,7 @@ import app.models.oauth_client
 import app.models.oauth_default
 import app.models.orchestration
 import app.models.organization
+import app.models.organization_asset
 import app.models.organization_context
 import app.models.platform_build
 import app.models.platform_event_task_watch

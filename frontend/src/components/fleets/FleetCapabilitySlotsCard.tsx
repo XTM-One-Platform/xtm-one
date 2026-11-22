@@ -29,8 +29,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * status, bound integrations with their provider logo, the bind action),
  * searchable, filtered by status and capability, Not bound first, paged by
  * the table so the Members table below stays close. Pure logic:
- * `capability-slots-table.ts`. Also embedded by the CTEM loop setup dialog:
- * its props stay `{ fleet }`.
+ * `capability-slots-table.ts`. Also embedded by the CTEM loop setup dialog
+ * and the fleet setup wizard (#1151): `inSetup` keeps every action inside the
+ * wizard (no collapse, rows open nothing, "Connect one" in a new tab).
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -65,11 +66,23 @@ import { fleetRefusalMessage } from "./fleet-refusals";
 /** Ten rows a page: the Members table stays one short scroll away (no nested scroll box). */
 const SLOTS_PAGE_SIZE = 10;
 
-export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
+export function FleetCapabilitySlotsCard({
+  fleet,
+  inSetup = false,
+}: {
+  fleet: Fleet;
+  /**
+   * Inside the setup wizard (#1151, UX r1 B2 and A1, r2 B4): always expanded, no collapse,
+   * a row opens nothing (no same-tab way out of the wizard), and "Connect one" opens
+   * /integrations in a new tab with the slots read again when this tab regains focus.
+   */
+  inSetup?: boolean;
+}) {
   const { t_i18n, t_text } = useFormatter();
   const { toast } = useToast();
-  const { data, isLoading, error } = useFleetCapabilitySlots(fleet.id);
-  const [open, setOpen] = useState(CAPABILITIES_OPEN_BY_DEFAULT);
+  const { data, isLoading, error, refetch } = useFleetCapabilitySlots(fleet.id);
+  const [expanded, setOpen] = useState(CAPABILITIES_OPEN_BY_DEFAULT);
+  const open = inSetup || expanded;
   const bind = useBindFleetSlot(fleet.id);
   const unbind = useUnbindFleetSlot(fleet.id);
   const navigate = useNavigate();
@@ -84,6 +97,14 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
     ? t_i18n("Connect your tools to each member. Your bindings are kept by every release; the members and their handovers stay the product's.")
     : t_i18n("Connect your tools to each member.");
   const integrationName = (integration: { name: string; provider: string }) => integration.name || integration.provider;
+  const connectOne = () => {
+    if (!inSetup) {
+      navigate("/integrations");
+      return;
+    }
+    window.addEventListener("focus", () => void refetch(), { once: true });
+    window.open("/integrations", "_blank", "noopener,noreferrer");
+  };
 
   const columns: DataTableColumn<CapabilitySlotRow>[] = [
     {
@@ -167,36 +188,36 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
 
   // The bind action of a row: its last column, which never opens the row (the member's agent).
   const bindAction = (row: CapabilitySlotRow) => {
-        if (!row.member.can_edit) return null;
-        if (row.slot.candidates.length > 0)
-          return (
-            <SearchableSelect
-              aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(row.slot.label) })}
-              options={row.slot.candidates.map((candidate) => ({
-                value: candidate.integration_id,
-                label: integrationName(candidate),
-                keywords: [candidate.provider],
-                icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
-              }))}
-              searchable="auto"
-              value=""
-              disabled={busy}
-              placeholder={t_i18n("Bind an integration")}
-              onValueChange={(integrationId) => {
-                if (integrationId)
-                  bind.mutate({ memberId: row.member.member_id, capability: row.slot.capability, integrationId }, { onError: refused });
-              }}
-              className="w-[200px]"
-            />
-          );
-        // A button of the bind select's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
-        if (row.slot.state === "unavailable")
-          return (
-            <Button type="button" variant="outline" className="w-[200px]" onClick={() => navigate("/integrations")}>
-              {t_i18n("Connect one")}
-            </Button>
-          );
-        return null;
+    if (!row.member.can_edit) return null;
+    if (row.slot.candidates.length > 0)
+      return (
+        <SearchableSelect
+          aria-label={t_i18n("Bind an integration to {slot}", { slot: t_text(row.slot.label) })}
+          options={row.slot.candidates.map((candidate) => ({
+            value: candidate.integration_id,
+            label: integrationName(candidate),
+            keywords: [candidate.provider],
+            icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
+          }))}
+          searchable="auto"
+          value=""
+          disabled={busy}
+          placeholder={t_i18n("Bind an integration")}
+          onValueChange={(integrationId) => {
+            if (integrationId)
+              bind.mutate({ memberId: row.member.member_id, capability: row.slot.capability, integrationId }, { onError: refused });
+          }}
+          className="w-[200px]"
+        />
+      );
+    // A button of the bind select's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
+    if (row.slot.state === "unavailable")
+      return (
+        <Button type="button" variant="outline" className="w-[200px]" onClick={connectOne}>
+          {t_i18n("Connect one")}
+        </Button>
+      );
+    return null;
   };
 
   return (
@@ -214,17 +235,19 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
               {t_i18n("{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}", { connected, total })}
             </span>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto shrink-0"
-            aria-expanded={open}
-            aria-controls="fleet-capability-slots-rows"
-            onClick={() => setOpen((value) => !value)}
-          >
-            {open ? t_i18n("Hide slots") : t_i18n("Show slots")}
-          </Button>
+          {!inSetup && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto shrink-0"
+              aria-expanded={open}
+              aria-controls="fleet-capability-slots-rows"
+              onClick={() => setOpen((value) => !value)}
+            >
+              {open ? t_i18n("Hide slots") : t_i18n("Show slots")}
+            </Button>
+          )}
         </div>
         {open && (
           <div id="fleet-capability-slots-rows">
@@ -232,7 +255,8 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
               rows={rows}
               columns={columns}
               rowKey={(row) => row.key}
-              rowHref={(row) => `/agents/${row.member.agent_id}`}
+              // In the setup wizard a row opens nothing: a same-tab link to the agent would close the wizard (UX r2 B4).
+              rowHref={inSetup ? undefined : (row) => `/agents/${row.member.agent_id}`}
               rowActions={bindAction}
               rowActionsWidth={224}
               // Fixed columns: at 1080 the flexible ones truncate instead of pushing the bind select out of the card.

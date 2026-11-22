@@ -67,4 +67,43 @@ def test_the_plan_leaves_the_input_profile_untouched_and_summarizes():
     summary = plan.summary()
     assert summary["linked"] == [{"crown_jewel": "SCADA", "opencrq_asset_id": "a1"}]
     assert summary["pushed_to_opencrq"] == []
-    assert set(summary) == {"linked", "pushed_to_opencrq", "pulled_from_opencrq", "ambiguous", "not_in_opencrq"}
+    assert set(summary) == {
+        "linked",
+        "pushed_to_opencrq",
+        "pulled_from_opencrq",
+        "ambiguous",
+        "not_in_opencrq",
+        "in_sync",
+    }
+    assert summary["in_sync"] is False
+
+
+def test_an_empty_profile_against_opencrq_is_proposed_the_import_never_already_agree() -> None:
+    # Sam's case (#1134): every jewel deleted, OpenCRQ holds high assets; the plan must not read "agree".
+    plan = plan_sync(
+        _profile(),
+        [
+            {"id": "a1", "name": "ERP", "criticality": "high"},
+            {"id": "a2", "name": "SCADA", "criticality": "very_high"},
+            {"id": "a3", "name": "Wiki", "criticality": "medium"},
+        ],
+    )
+    assert [a for a, _ in plan.pulled] == ["a1", "a2"]
+    rows = {j.name: (j.criticality, j.source, j.external_id) for j in plan.profile.crown_jewels}
+    assert rows == {"ERP": ("high", "opencrq", "a1"), "SCADA": ("critical", "opencrq", "a2")}
+    assert plan.profile_changed and not plan.in_sync
+
+
+def test_the_reconcile_pulls_by_the_sync_threshold() -> None:
+    assets = [{"id": "a1", "name": "ERP", "criticality": "medium"}]
+    assert plan_sync(_profile(), assets).pulled == []
+    assert plan_sync(_profile(), assets, "medium").pulled == [("a1", "ERP")]
+    assert plan_sync(_profile(), assets, "bogus").pulled == []
+
+
+def test_a_profile_matching_opencrq_is_in_sync() -> None:
+    plan = plan_sync(
+        _profile({"name": "ERP", "criticality": "high", "opencrq_asset_id": "a1"}),
+        [{"id": "a1", "name": "ERP", "criticality": "high"}],
+    )
+    assert plan.in_sync and plan.summary()["in_sync"] is True

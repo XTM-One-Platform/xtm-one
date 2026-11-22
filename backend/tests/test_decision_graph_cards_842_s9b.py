@@ -49,6 +49,7 @@ def _decision(**over: Any) -> Any:
         "answered_at": None,
         "answered_by": None,
         "surface": None,
+        "recipient": None,
     }
     base.update(over)
     return SimpleNamespace(**base)

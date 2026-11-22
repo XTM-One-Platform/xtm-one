@@ -251,18 +251,18 @@ def _answer_block(view: DecisionView, ask: dict[str, Any], language: str) -> dic
 
 
 def _link_block(view: DecisionView, ask: dict[str, Any], language: str) -> dict[str, Any] | None:
+    from app.services.decision_ask import card_links
+
     elements: list[dict[str, Any]] = []
-    for index, link in enumerate((ask.get("links") or [])[:_MAX_LINKS]):
-        url = str(link.get("url") or "")
-        if url.startswith(("https://", "http://")):
-            elements.append(
-                {
-                    "type": "button",
-                    "action_id": f"xtm.decision.link:{index}",
-                    "text": _plain(link.get("label") or url, _MAX_BUTTON),
-                    "url": url[:3000],
-                }
-            )
+    for index, link in enumerate(card_links(ask, language, limit=_MAX_LINKS)):
+        elements.append(
+            {
+                "type": "button",
+                "action_id": f"xtm.decision.link:{index}",
+                "text": _plain(link["label"], _MAX_BUTTON),
+                "url": link["url"][:3000],
+            }
+        )
     if view.page_path:
         elements.append(
             {
