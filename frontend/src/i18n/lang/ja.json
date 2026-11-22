@@ -20413,7 +20413,7 @@
   "The loop ranks every signal against your crown jewels and tech stack, and opens tickets in your ticketing project.": "ループは各シグナルを重要資産と技術スタックに照らして順位付けし、チケットプロジェクトにチケットを作成します。",
   "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.": "ループはこのプラットフォームに接続されたモジュールで動作します。どのモジュールでも動作し、他がない場合にできないことを示します。",
   "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.": "ループのエージェントが使うツールをバインドします。空のスロットはできることを制限するだけで、何も壊れません。",
-  "Choose which actions wait for a person. Out of the box every gated action waits; you can change it later on the fleet page.": "人の承認を待つアクションを選びます。既定では承認対象のアクションはすべて待機します。後でフリートページで変更できます。",
+  "Choose how much the fleet does without asking a person. The line under the levels says what waits at the level picked; you can change it later on the fleet page.": "フリートが人に確認せずに実行する範囲を選びます。レベルの下の行に、選んだレベルで承認待ちになる操作が表示されます。後でフリートのページから変更できます。",
   "Before anything runs: what the CTEM loop fleet switches on and how many runs a month to expect.": "実行前に、CTEM ループフリートが有効にするものと月あたりの想定実行回数を確認します。",
   "One switch turns on the CTEM loop fleet's automations. They run as you. Nothing ran before this step.": "1 つのスイッチで CTEM ループフリートの自動化を有効にします。あなたとして実行されます。この手順の前には何も実行されていません。",
   "Without OpenCTI: no threat or vulnerability signals from intelligence; cases start only from other sources.": "OpenCTI がない場合: インテリジェンスからの脅威・脆弱性シグナルはなく、ケースは他のソースからのみ開始されます。",
