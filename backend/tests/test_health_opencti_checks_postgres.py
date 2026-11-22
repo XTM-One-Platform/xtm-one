@@ -109,6 +109,30 @@ def test_the_opencti_checks_are_registered_on_the_engine() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_restarting_opencti_opens_no_queue_consumers_finding_until_its_grace_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#958: a restart stamped on the snapshot keeps opencti.queue_consumers from opening for the grace."""
+    monkeypatch.setattr(engine, "OPEN_AFTER_FAILS", 2)
+    async with _temp_database("hoc_restart") as sessions, sessions() as db:
+        reg = await _register(db, T0, UNHEALTHY)
+        row = (
+            await db.execute(select(PlatformHealthSnapshot).where(PlatformHealthSnapshot.registration_id == reg.id))
+        ).scalar_one()
+        row.restarted_at = T0
+        await db.flush()
+        for minutes in (0, 5):
+            await _set_snapshot(db, reg, UNHEALTHY, T0 + timedelta(minutes=minutes))
+            await _pass(db, T0 + timedelta(minutes=minutes))
+        assert ("opencti.queue_consumers", "") not in await _open(db)
+        # Past the grace, a sustained failure is a real outage: it opens on the second read.
+        for minutes in (10, 15):
+            await _set_snapshot(db, reg, UNHEALTHY, T0 + timedelta(minutes=minutes))
+            await _pass(db, T0 + timedelta(minutes=minutes))
+        assert ("opencti.queue_consumers", "") in await _open(db)
+
+
+@pytest.mark.asyncio
 async def test_an_unhealthy_snapshot_opens_one_finding_per_cause_and_resolves_once_healthy() -> None:
     async with _temp_database("hoc_findings") as sessions, sessions() as db:
         reg = await _register(db, T0, UNHEALTHY)

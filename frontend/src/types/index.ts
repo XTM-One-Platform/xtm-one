@@ -2125,6 +2125,10 @@ export interface Agent {
   enabled: boolean;
   is_builtin: boolean;
   is_company_managed: boolean;
+  /** A built-in's organization notes, appended after its persona (#914). */
+  customer_notes?: string | null;
+  /** The customer-layer fields a person set on a built-in, kept across seed runs (#914). */
+  customer_fields?: string[] | null;
   is_public_catalog?: boolean;
   /** The catalog download carries the code of personal custom tools. */
   catalog_include_personal_tools?: boolean;
@@ -16299,6 +16303,8 @@ export interface HealthAlertEmailSettings {
   min_severity: "critical" | "warning" | "info";
   immediate: boolean;
   digest: boolean;
+  /** Minutes a critical finding stays open before its immediate email (default 15, 0 to 1440). */
+  alert_after_minutes?: number;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */

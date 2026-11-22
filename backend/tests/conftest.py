@@ -291,6 +291,23 @@ def _no_platform_event_dispatch(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _health_findings_open_on_one_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Platform Health findings open on the first failing read here, with no startup grace.
+
+    The check suites pin what each check reads, one pass at a time. In production a
+    finding opens on its second failing read in a row and XTM One's availability
+    checks have a grace after the process starts (#958); the tests OF that rule
+    (``test_health_restart_grace.py``) put the production values back.
+    """
+    from datetime import timedelta
+
+    from app.services.health import engine
+
+    monkeypatch.setattr(engine, "OPEN_AFTER_FAILS", 1)
+    monkeypatch.setattr(engine, "STARTUP_GRACE", timedelta(0))
+
+
+@pytest.fixture(autouse=True)
 def _agents_in_no_fleet(monkeypatch):
     """Keep the coordination scope's fleet read out of the unit suite.
 
