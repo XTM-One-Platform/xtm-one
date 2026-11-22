@@ -20136,6 +20136,7 @@
   "Not reproduced": "Not reproduced",
   "Reproduced": "Reproduced",
   "Not re-tested yet": "Not re-tested yet",
+  "Quick filters": "Quick filters",
   "What you can change on this built-in agent": "What you can change on this built-in agent",
   "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.": "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.",
   "Locked by the product": "Locked by the product",

@@ -20136,6 +20136,7 @@
   "Not reproduced": "No reproducido",
   "Reproduced": "Reproducido",
   "Not re-tested yet": "Aún sin nueva prueba",
+  "Quick filters": "Filtros rápidos",
   "What you can change on this built-in agent": "Lo que puede cambiar en este agente integrado",
   "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.": "Cada versión reescribe lo que el producto bloquea y conserva lo que es suyo. Para cambiar la parte bloqueada, duplique la flota.",
   "Locked by the product": "Bloqueado por el producto",
