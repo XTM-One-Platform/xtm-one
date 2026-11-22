@@ -97,10 +97,6 @@ run it once now with run_organization_sync and report the counts.
 
 **In one click.** On **Settings > Organization**, **Draft > From a connected integration** opens a dialog: pick a connected integration, turn on **Keep the assets in sync every day** if you want the scheduled assignment, then **Open the chat**. The chat opens with the agent and its preview instruction ready to send; nothing is saved until you confirm in the chat. The dialog calls `POST /api/v1/organization-context/fill-agent`, which, with an `integration_id`, creates that agent for you: bound to the integration read-only and to **Organization Profile Editing**, its persona and its first prompt written for the platform (Intune devices are mapped on the server, any other platform's devices are mapped by the agent with their own id as `external_id`). With `schedule` true it also creates the assignment **Keep my assets in sync from <integration>** (`cron` `0 6 * * *` by default, `timezone` optional). A second call for the same integration reuses the agent and the assignment. The call creates nothing when AI is off or unlicensed.
 
-## Sources
-
-At the top of **Settings > Organization**, the `Sources` panel says who feeds the profile before the tabs say what it holds. It lists each connected platform (OpenCTI, OpenAEV, OpenCRQ) with its number of syncs, then the rows typed by hand, imported from CSV, written through the API or kept by an agent. Each source shows one chip per section it fills (crown jewels, tech stack, AI systems, assets, asset groups) with its number of rows; a chip opens that section's tab, filtered on the source where its table has a `Source` filter. `Add a sync` opens the import stepper: pick a section and a platform, preview the rows, then turn on `Keep in sync`. With no source yet, the panel says where to start.
-
 ## Edit the profile
 
 Select `Edit`, change what you need, then `Save`. `Cancel` drops your changes.
@@ -136,15 +132,17 @@ OpenCRQ lists the same assets as supporting assets, each with its own criticalit
 - an OpenCRQ asset at or above the minimum criticality of your OpenCRQ crown-jewel sync (`High` when you have none, the same threshold as the import) that no crown jewel names is added as a crown jewel of the matching criticality, marked as coming from OpenCRQ. An empty list of crown jewels against an OpenCRQ that holds such assets is always proposed the import, never reported as already in agreement;
 - a name that matches several assets, and a crown jewel linked to an asset OpenCRQ no longer holds, are reported and left unchanged.
 
-`Apply` makes the changes on both sides and saves a new version of the profile when the crown jewels change. The check is not available while you are editing the profile: save or cancel first.
-
-Once crown jewels are kept in sync from OpenCRQ (see [Keep a section in sync](#keep-a-section-in-sync)), the card shows `Sync with OpenCRQ now` instead: it runs that sync at once, with its own filters and rules, so there is one mechanism for OpenCRQ, not two. OpenCRQ is read with your own OpenCRQ access. See [XTM One in OpenCRQ](../usage/xtm-suite/opencrq.md).
+`Apply` makes the changes on both sides and saves a new version of the profile when the crown jewels change. The check is not available while you are editing the profile: save or cancel first. OpenCRQ is read with your own OpenCRQ access. See [XTM One in OpenCRQ](../usage/xtm-suite/opencrq.md).
 
 ## Tech stack
 
 The tech stack lists the products you run, so that agents can match vulnerabilities to them. `Add a product` adds a row with the `Product`, its `Vendor` and, optionally, its `CPE`: the standard product identifier that vulnerability records use, which makes the match exact.
 
 When your assets carry their installed software (from a sync or an import), the tech stack agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. `GET /api/v1/organization-context/inventory/tech-stack` answers the same list, and `GET /api/v1/organization-context/assets/by-software?product=` lists the assets running a product.
+
+### Software from an SBOM
+
+An SBOM (software bill of materials) lists what an application or a container image is made of. An administrator can import one on an asset with `POST /api/v1/organization-context/assets/{asset_id}/sbom` (a CycloneDX JSON or SPDX JSON file in the `file` field): its components join the asset's software with the source `sbom`, with their CPE and package URL when the SBOM gives them, and with the component that bundles them (the NGINX inside an ingress controller image, for example). A component without a version is listed as `unknown`. Importing the same SBOM again replaces what it gave; another SBOM on the same asset adds to it. The SBOM stays with the asset when a sync merges it with another record. A file over 10,000 components is refused: split it per application or image.
 
 ## AI systems inventory
 
