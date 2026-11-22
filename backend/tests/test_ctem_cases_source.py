@@ -7,8 +7,8 @@ writes nothing when a product cannot answer, and the API throttles and gates it.
 from __future__ import annotations
 
 import uuid
-from typing import Any
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
