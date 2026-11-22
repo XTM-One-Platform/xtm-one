@@ -569,12 +569,20 @@ reads Platform Health as a plain user unless it owns or is shared an agent.
 | `GET /api/v1/health...` | Administrator | Group manager, agent owner, plain user |
 |---|---|---|
 | `/name`, `/me/opt-out`, `/pets` | 200 | 200 |
-| `/overview`, `/findings` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
+| `/overview`, `/findings`, `/findings?agentic=` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
 | `/history` | 200 | 200, empty |
 | `/improvements`, `/cycles`, `/signals` without a target | 200 | 404 (one managed target only, `?agent_id=` or `?target_type=&target_id=`) |
 | `/settings`, `/budget`, `/schedules`, `/analysis`, `/me/companion`, `/me/activity` | 200 | 403 |
 
 `POST /analysis/{module}/run` is refused `ai_disabled` (403, `detail.code`) while AI is off.
+
+Module Analyst (S14e, section 12): a module card's `last_investigation` is filled for an
+administrator only, on OpenCTI, OpenAEV and OpenCRQ, so never in Copilot mode (no module
+card there); every other reader gets `null` on every card. `POST /modules/{module}/investigate`
+is an administrator's (403 for the three other roles in every mode); for an administrator it
+answers 404 in Copilot mode (the module is not present), 403 `ai_disabled` while AI is off,
+and in XTM One mode the analyst's own refusals of section 12.7 (409 `module_analyst_off`,
+`no_registration`) or 202.
 
 ### 8.2 Link guard (S13, pinned by `frontend/src/lib/health-link-guard.test.ts`)
 
@@ -588,6 +596,9 @@ improvements inbox, cycles list, profile opt-out) link only to the target's own 
 checks access itself. The guard lists every Health file with its audience: a new file fails
 until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
 its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).
+The Module Analyst surfaces are classified there as administrators' (S14e):
+`ModuleAnalystParts.tsx` through the Overview, `HealthModuleAnalystBlock.tsx` through the
+Settings section.
 
 ## 9. Platform email (SMTP) integration
 

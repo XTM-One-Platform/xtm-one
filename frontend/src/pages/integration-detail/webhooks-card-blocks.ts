@@ -4,6 +4,15 @@ import type { Integration, ProviderCatalogItem } from "@/types";
 import { usesAdminOAuthApp } from "./admin-oauth-app";
 import { isWhatsAppGateway } from "./whatsapp-gateway";
 
+/**
+ * Whether at least one event of the provider can arrive by webhook (mechanism
+ * webhook or hybrid). A provider whose events are all polled (NetSuite,
+ * OpenCRQ) never calls the integration webhook URL, so no screen shows it.
+ */
+export function hasWebhookDeliveredEvents(catalogEntry: ProviderCatalogItem | undefined): boolean {
+  return !!catalogEntry?.available_events.some((e) => e.mechanism !== "polling");
+}
+
 /** Which blocks the Webhooks card of the Configuration tab renders. */
 interface WebhooksCardBlocks {
   /** Microsoft 365: events are polled, no webhook to configure. */
@@ -36,9 +45,8 @@ export function webhooksCardBlocks(
   const hasWebhookPath = !!catalogEntry?.webhook_path && !isWhatsAppGateway(integration);
   const hasEvents = !!catalogEntry && catalogEntry.available_events.length > 0;
   // The integration webhook URL only matters for events that can arrive by
-  // webhook: a provider whose events are all polled (OpenCRQ) has no outbound
-  // webhook to point at it, and the Event Triggers card already says polling.
-  const hasWebhookEvents = !!catalogEntry?.available_events.some((e) => e.mechanism !== "polling");
+  // webhook: the Event Triggers card already says polling for the others.
+  const hasWebhookEvents = hasWebhookDeliveredEvents(catalogEntry);
   const isAdminProvisioned = usesAdminOAuthApp(integration, catalogEntry);
   const isMicrosoft = provider === "microsoft";
   const isSlack = provider === "slack";
