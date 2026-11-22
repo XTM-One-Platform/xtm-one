@@ -12,6 +12,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -353,3 +354,112 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
         "update_ctem_case", case_id=str(env.case.id), gate={"key": "ticket.create", "outcome": "waited"}
     )
     assert refused.startswith("Refused:") and env.db.commits == commits
+
+
+_REMEDIATION_OPTIONS = [
+    {"key": "A", "label": "Disable HTTP/2", "cost": 6000, "expected_loss_before": 500, "expected_loss_after": 50},
+    {"key": "B", "label": "Upgrade", "cost": 45000, "expected_loss_before": 500, "expected_loss_after": 10},
+]
+
+
+def _remediation_env(
+    monkeypatch: pytest.MonkeyPatch, *, pin: str | None, threshold: float | None, opencrq: bool = True
+) -> list[dict[str, Any]]:
+    """CTEM-17: the fleet catalog, the profile threshold, OpenCRQ access and the work item writer, faked."""
+    from app.services import fleet_autonomy, fleet_runs, organization_context, organization_context_opencrq
+    from app.services import work_item as work_item_module
+
+    fleet_id = uuid.uuid4()
+
+    async def _homes(_db: object, _agents: object) -> dict[uuid.UUID, SimpleNamespace]:
+        return {uuid.UUID(AGENT): SimpleNamespace(fleet_id=fleet_id)}
+
+    async def _autonomy(_db: object, _fleet: object) -> tuple[str, list[dict[str, str]]]:
+        gate: dict[str, str] = {"key": "ctem.remediation.decision", "impact": "high"}
+        if pin:
+            gate["pin"] = pin
+        return "low", [gate]
+
+    async def _connection(_db: object, _user: object) -> tuple[str, dict[str, str]] | str:
+        return ("https://crq", {}) if opencrq else "no access"
+
+    async def _version(_db: object, _org: object = None) -> SimpleNamespace:
+        return SimpleNamespace(profile={"risk_appetite": {"approval_threshold": threshold}})
+
+    created: list[dict[str, Any]] = []
+
+    async def _create(**kw: Any) -> dict[str, str]:
+        created.append(kw)
+        return {"id": "item-1"}
+
+    monkeypatch.setattr(fleet_runs, "home_fleet_defaults_of", _homes)
+    monkeypatch.setattr(fleet_autonomy, "fleet_autonomy_for_run", _autonomy)
+    monkeypatch.setattr(organization_context_opencrq, "_opencrq_connection", _connection)
+    monkeypatch.setattr(organization_context, "current_version", _version)
+    monkeypatch.setattr(work_item_module, "create_work_item", _create)
+    return created
+
+
+async def test_the_remediation_decision_is_decided_by_policy_out_of_the_box(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = _remediation_env(monkeypatch, pin=None, threshold=None)
+    body = json.loads(
+        await env.call(
+            "decide_ctem_case_remediation", case_id=str(env.case.id), options=_REMEDIATION_OPTIONS, recommendation="A"
+        )
+    )
+    assert body["decided"] is True and body["option"] == "A" and created == []
+    gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [(g.from_value, g.to_value) for g in gates] == [("ctem.remediation.decision", "passed_automatically")]
+    assert env.db.commits == 1
+
+
+async def test_the_remediation_decision_waits_above_a_set_threshold_as_one_unified_decision(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = _remediation_env(monkeypatch, pin=None, threshold=100)
+    body = json.loads(
+        await env.call(
+            "decide_ctem_case_remediation", case_id=str(env.case.id), options=_REMEDIATION_OPTIONS, recommendation="A"
+        )
+    )
+    assert body["decided"] is False and body["decision_item_id"] == "item-1"
+    (item,) = created
+    assert item["needs_human"] is True and item["ask"]["recommendation"] == "A"
+    assert item["correlation_key"] == f"ctem:remediation:{env.case.id}"
+    gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [g.to_value for g in gates] == ["waited"]
+    assert "expected loss 500" in body["reason"]
+    trail = [r.reason or "" for r in env.db.added if isinstance(r, CtemCaseEvent)]
+    assert trail and all("500" not in t and "cost" not in t and "threshold 100" not in t for t in trail)
+
+
+async def test_a_decider_without_opencrq_read_gets_no_figures_on_the_waiting_decision(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = _remediation_env(monkeypatch, pin="wait", threshold=None, opencrq=False)
+    body = json.loads(
+        await env.call(
+            "decide_ctem_case_remediation", case_id=str(env.case.id), options=_REMEDIATION_OPTIONS, recommendation="B"
+        )
+    )
+    assert body["figures_shown"] is False
+    assert all("expected loss" not in o["effect"] for o in created[0]["ask"]["options"])
+
+
+async def test_a_person_answer_is_written_on_the_case(env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    _remediation_env(monkeypatch, pin="wait", threshold=None)
+    body = json.loads(
+        await env.call(
+            "decide_ctem_case_remediation",
+            case_id=str(env.case.id),
+            options=_REMEDIATION_OPTIONS,
+            recommendation="A",
+            answered_by="user-1",
+            answered_option="B",
+        )
+    )
+    assert body == {"decided": True, "option": "B", "by": "user-1"}
+    gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [(g.to_value, g.reason, g.evidence) for g in gates] == [("answered", "user-1", "B")]

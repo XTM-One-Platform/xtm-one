@@ -778,6 +778,13 @@ class Settings(BaseSettings):
     # routed agent alone.
     channel_agent_mentions_enabled: bool = False
 
+    # Human gates (#842, S2b, dev-docs/human-gates.md section 8): the inbox,
+    # the bell and the decision cards read the ``decisions`` table only when
+    # this is on AND the backfill count check finds every open gate covered
+    # (``decision_backfill.read_switch``). Off by default: the readers keep
+    # reading each engine's own columns, which the dual write keeps current.
+    decisions_read_enabled: bool = False
+
     # --- Worker (SAQ) ---
     worker_concurrency: int = 20  # Max concurrent background jobs
     worker_job_timeout: int = 600  # Max seconds per job (10 min default)
@@ -1093,6 +1100,11 @@ class Settings(BaseSettings):
     # safe for assignments whose HITL pause does not leave shared state
     # half-written.
     assignment_queue_hold_on_awaiting_human: bool = True
+    # Hours after which a run paused for a person stops holding its assignment
+    # (human-gates.md section 7, F3): later triggers run, the run stays
+    # resumable. Applies to scheduled, event and delivery runs; a chat-started
+    # run always holds. 0 turns the release off.
+    human_gate_queue_release_hours: float = 4.0
     # Max distinct assignments that promote queued deliveries per drain. The
     # drain runs on every reconciler cycle, and the enqueue and the end of every
     # assignment run wake it, so the rest follow within a cycle.

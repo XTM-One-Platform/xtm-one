@@ -240,7 +240,8 @@ def _apply(session: Session, source_type: str, source_id: Any, transition: Trans
         session.add(DecisionEvent(decision_id=closed, event="cancelled", detail={"reason": transition[1]}))
 
 
-def _deadline(ask: dict[str, Any]) -> datetime | None:
+def deadline_of(ask: dict[str, Any]) -> datetime | None:
+    """The ask's deadline as a datetime, ``None`` when absent or unreadable."""
     raw = ask.get("deadline") if isinstance(ask, dict) else None
     if not raw:
         return None
@@ -248,6 +249,41 @@ def _deadline(ask: dict[str, Any]) -> datetime | None:
         return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+#: What a gate opens with: (kind, ask, recipient, deadline).
+Opening = tuple[str, dict[str, Any], str, datetime | None]
+
+
+def run_opening(run: Any) -> Opening:
+    """The decision a paused run opens, from its columns (an ORM object or a row)."""
+    kind, ask = run_ask(run.human_input_question, run.messages, run.pending_approvals)
+    recipient = owner_recipient(run.user_id, company_managed=bool(run.is_company_managed))
+    return kind, ask, recipient, deadline_of(ask)
+
+
+def flow_opening(run: Any, state: Any) -> Opening:
+    """The decision a flow run's Ask-user park opens; *state* is the run's state."""
+    waiting = (state if isinstance(state, dict) else {}).get("waiting") or {}
+    ask = {"question": str(waiting.get("question") or "A person's answer is needed")}
+    # A company flow asks the company (section 6: an explicit recipient, not a router exception).
+    recipient = owner_recipient(run.user_id, company_managed=bool(run.is_company_managed), company="company")
+    return "flow_ask", ask, recipient, None
+
+
+def work_item_opening(item: Any) -> Opening:
+    """The decision a work item waiting for a person opens."""
+    ask = dict(item.ask) if isinstance(item.ask, dict) and item.ask.get("question") else {}
+    if not ask:
+        ask = {"question": str(item.blocked_reason or item.title or "A person's answer is needed")}
+    recipient = owner_recipient(item.waits_for_user_id or item.user_id)
+    return "work_item", ask, recipient, deadline_of(ask)
+
+
+def open_flow_park(state: Any) -> bool:
+    """A flow run's state holds an unreleased Ask-user park."""
+    waiting = state.get("waiting") if isinstance(state, dict) else None
+    return isinstance(waiting, dict) and waiting.get("kind") == "human" and not waiting.get("released")
 
 
 def _sync_run(session: Session, run: Any) -> None:
@@ -271,13 +307,7 @@ def _sync_run(session: Session, run: Any) -> None:
         elif last.get("response"):
             answer = {"text": last["response"]}
     transition = run_transition(old_status, new_status, answered=answered, answer=answer, actor=actor)
-
-    def opener() -> tuple[str, dict[str, Any], str, datetime | None]:
-        kind, ask = run_ask(run.human_input_question, run.messages, run.pending_approvals)
-        recipient = owner_recipient(run.user_id, company_managed=bool(run.is_company_managed))
-        return kind, ask, recipient, _deadline(ask)
-
-    _apply(session, "run", run.id, transition, opener)
+    _apply(session, "run", run.id, transition, lambda: run_opening(run))
 
 
 def _sync_flow_run(session: Session, run: Any) -> None:
@@ -285,15 +315,7 @@ def _sync_flow_run(session: Session, run: Any) -> None:
     if not changed:
         return
     transition = flow_transition(old_state, new_state)
-
-    def opener() -> tuple[str, dict[str, Any], str, datetime | None]:
-        waiting = (new_state or {}).get("waiting") or {}
-        ask = {"question": str(waiting.get("question") or "A person's answer is needed")}
-        # A company flow asks the company (section 6: an explicit recipient, not a router exception).
-        recipient = owner_recipient(run.user_id, company_managed=bool(run.is_company_managed), company="company")
-        return "flow_ask", ask, recipient, None
-
-    _apply(session, "flow_run", run.id, transition, opener)
+    _apply(session, "flow_run", run.id, transition, lambda: flow_opening(run, new_state))
 
 
 def _sync_work_item(session: Session, item: Any) -> None:
@@ -306,15 +328,7 @@ def _sync_work_item(session: Session, item: Any) -> None:
     # by an earlier decision never answers a later one.
     answer = payload.get("answer") if (payload_changed and not new_needs) else None
     transition = work_item_transition(old_needs, new_needs, answer=answer)
-
-    def opener() -> tuple[str, dict[str, Any], str, datetime | None]:
-        ask = dict(item.ask) if isinstance(item.ask, dict) and item.ask.get("question") else {}
-        if not ask:
-            ask = {"question": str(item.blocked_reason or item.title or "A person's answer is needed")}
-        recipient = owner_recipient(item.waits_for_user_id or item.user_id)
-        return "work_item", ask, recipient, _deadline(ask)
-
-    _apply(session, "work_item", item.id, transition, opener)
+    _apply(session, "work_item", item.id, transition, lambda: work_item_opening(item))
 
 
 @event.listens_for(Session, "before_flush")

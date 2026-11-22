@@ -105,6 +105,7 @@ _DOWNLOAD_REASON = (
 
 HAND_GATED: dict[str, str] = {
     "download_opencti_file": _DOWNLOAD_REASON,
+    "download_airwallex_financial_report": _DOWNLOAD_REASON,
     "download_anyrun_analysis_file": _DOWNLOAD_REASON,
     "download_ashby_candidate_file": _DOWNLOAD_REASON,
     "download_ashby_interview_transcript": _DOWNLOAD_REASON,
@@ -141,6 +142,7 @@ HAND_GATED: dict[str, str] = {
     "download_microsoft_chat_message_image": _DOWNLOAD_REASON,
     "download_microsoft_file": _DOWNLOAD_REASON,
     "download_microsoft_meeting_recording": _DOWNLOAD_REASON,
+    "download_netsuite_file": _DOWNLOAD_REASON,
     "download_notion_file": _DOWNLOAD_REASON,
     "download_onepassword_file": _DOWNLOAD_REASON,
     "download_perk_invoice_pdf": _DOWNLOAD_REASON,
