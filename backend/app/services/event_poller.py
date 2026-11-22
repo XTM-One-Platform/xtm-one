@@ -61,8 +61,7 @@ from app.integrations.providers.microsoft._message_type import message_type
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import dealhub_events, jira_events, opencrq_job_events
-from app.services import jira_events, netsuite_events, opencrq_job_events
+from app.services import dealhub_events, jira_events, netsuite_events, opencrq_job_events
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
