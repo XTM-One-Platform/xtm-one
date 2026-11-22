@@ -360,6 +360,46 @@ async def test_keep_both_on_a_binary_is_refused_before_any_write():
     assert both.startswith("Error: keep 'both' cannot settle 'logo.png'") and fake.commits == []
 
 
+_MOVED = (
+    "Error: Merging 'main' into 'feat/x' of acme/app conflicts: 'main' now points at 333333333333, not at "
+    "222222222222 the resolutions were checked against. Nothing was written."
+)
+
+
+def test_a_ref_that_moved_with_nothing_left_on_the_branch_is_retryable() -> None:
+    from app.integrations.providers.github.merge_resolution import ref_moved_and_undone
+
+    back = (
+        "'feat/x' was moved back to 111111111111, its head before this call, so the alignment commits left its history."
+    )
+    undone = _MOVED.replace("Nothing was written.", back)
+    assert ref_moved_and_undone(_MOVED) and ref_moved_and_undone(undone)
+    assert not ref_moved_and_undone(_MOVED.replace("Nothing was written.", "The undo failed."))
+    assert not ref_moved_and_undone("Error: merging 'main' into 'feat/x' of acme/app conflicts, so nothing was merged.")
+
+
+@pytest.mark.asyncio
+async def test_update_branch_runs_the_line_merge_again_when_the_base_moved_meanwhile() -> None:
+    # xtm-one #405: main moved between the conflict check and the merge; one more pass lands it.
+    fake = _fixture(9, "main 9\n")
+    answers = AsyncMock(side_effect=[_MOVED, "Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"])
+    with patch(_SAFE_REQUEST, new=fake), patch("app.integrations.providers.github.pulls.conflict_answer", new=answers):
+        result = await _tool("manage_github_pr")(repo="acme/app", number=7, action="update_branch")
+
+    assert answers.await_count == 2
+    assert result.startswith("GitHub refused to update the branch of PR #7 on a conflict; merged line by line"), result
+
+
+@pytest.mark.asyncio
+async def test_update_branch_retries_a_moved_base_once_only() -> None:
+    fake = _fixture(9, "main 9\n")
+    answers = AsyncMock(side_effect=[_MOVED, _MOVED, _MOVED])
+    with patch(_SAFE_REQUEST, new=fake), patch("app.integrations.providers.github.pulls.conflict_answer", new=answers):
+        result = await _tool("manage_github_pr")(repo="acme/app", number=7, action="update_branch")
+
+    assert answers.await_count == 2 and "now points at 333333333333" in result
+
+
 # ---------------------------------------------------------------------------
 # The read budget is per path, not one total (#9040)
 # ---------------------------------------------------------------------------
