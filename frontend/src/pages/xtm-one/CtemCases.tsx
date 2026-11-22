@@ -16,7 +16,9 @@ import { caseAttention, caseOpenedAt } from "./ctem/case-attention";
 import { CasesAttentionBand } from "./ctem/CasesAttentionBand";
 import { useCaseAttentionWeights } from "./ctem/useCaseAttentionWeights";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn, type DataTableGroupBy } from "@/components/ui/data-table";
+import { caseGroupLabel, caseGroupRank, caseGroupValue, readCaseGroupBy, type CaseGroupBy } from "./ctem/cases-grouping";
+import { CasesGroupByPill } from "./ctem/CasesGroupByPill";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
@@ -67,6 +69,18 @@ export default function CtemCases() {
     );
   };
   const [selected, setSelected] = useState<string[]>([]);
+  // The grouping is in the URL too (`?c_group=`), so a link keeps it.
+  const groupKey = readCaseGroupBy(searchParams.get("c_group"));
+  const setGroupKey = (next: CaseGroupBy) =>
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === "none") params.delete("c_group");
+        else params.set("c_group", next);
+        return params;
+      },
+      { replace: true },
+    );
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const now = useNow();
@@ -80,6 +94,19 @@ export default function CtemCases() {
   const counts = data?.counts;
   const total = counts ? CTEM_CASE_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
   const rows = tab === "all" ? cases : cases.filter((c) => c.state === tab);
+  const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
+    if (groupKey === "none") return undefined;
+    return {
+      value: (c) => caseGroupValue(groupKey, c),
+      rank: caseGroupRank(groupKey),
+      label: (value) =>
+        groupKey === "owner"
+          ? value
+            ? (owners?.find((o) => o.id === value)?.full_name ?? t_i18n("Unknown user"))
+            : t_i18n("Unassigned")
+          : t_i18n(caseGroupLabel(groupKey, value)),
+    };
+  }, [groupKey, owners, t_i18n]);
 
   const DAY_MS = 24 * 3600 * 1000;
   const ageDays = (c: CtemCaseSummary) => {
@@ -312,6 +339,8 @@ export default function CtemCases() {
             />
           ),
         }}
+        groupBy={groupBy}
+        toolbar={<CasesGroupByPill value={groupKey} onChange={setGroupKey} />}
         defaultSort={{ key: "attention", direction: "desc" }}
         defaultPageSize={25}
         searchFields={(c) => [c.title, c.product_label, c.fixed_version]}
