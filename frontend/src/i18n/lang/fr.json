@@ -20431,5 +20431,18 @@
   "The most tokens the Module Analyst may spend in a UTC day, every module included, e.g. 500000. A model call that would cross it is refused.": "Le plus de jetons que le Module Analyst peut dépenser en un jour UTC, tous modules compris, par ex. 500000. Un appel de modèle qui le dépasserait est refusé.",
   "The most the Module Analyst may cost in a UTC day, in US dollars, e.g. 4. A model call that would cross it is refused.": "Le coût maximal du Module Analyst en un jour UTC, en dollars US, par ex. 4. Un appel de modèle qui le dépasserait est refusé.",
   "The most tokens the Module Analyst may spend in a calendar month, e.g. 10000000. A model call that would cross it is refused.": "Le plus de jetons que le Module Analyst peut dépenser en un mois civil, par ex. 10000000. Un appel de modèle qui le dépasserait est refusé.",
-  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "Le coût maximal du Module Analyst en un mois civil, en dollars US, par ex. 60. Un appel de modèle qui le dépasserait est refusé."
+  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "Le coût maximal du Module Analyst en un mois civil, en dollars US, par ex. 60. Un appel de modèle qui le dépasserait est refusé.",
+  "No crown jewel depends on this organization": "Aucun actif critique ne dépend de cette organisation",
+  "Not exposed: the account is disabled": "Non exposé : le compte est désactivé",
+  "Becomes a case once a crown jewel depends on this organization": "Devient un cas dès qu'un actif critique dépend de cette organisation",
+  "Becomes a case if the account is enabled again": "Devient un cas si le compte est réactivé",
+  "Owned domain": "Domaine détenu",
+  "Email address": "Adresse e-mail",
+  "Report: {name}": "Rapport : {name}",
+  "Incident: {name}": "Incident : {name}",
+  "Observed as": "Observé comme",
+  "Kept as a fingerprint only, never the value": "Conservé uniquement sous forme d'empreinte, jamais la valeur",
+  "Named in": "Cité dans",
+  "Organization criticality": "Criticité de l'organisation",
+  "From {source}": "Depuis {source}"
 }

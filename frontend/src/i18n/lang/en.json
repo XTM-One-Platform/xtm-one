@@ -20431,5 +20431,18 @@
   "The most tokens the Module Analyst may spend in a UTC day, every module included, e.g. 500000. A model call that would cross it is refused.": "The most tokens the Module Analyst may spend in a UTC day, every module included, e.g. 500000. A model call that would cross it is refused.",
   "The most the Module Analyst may cost in a UTC day, in US dollars, e.g. 4. A model call that would cross it is refused.": "The most the Module Analyst may cost in a UTC day, in US dollars, e.g. 4. A model call that would cross it is refused.",
   "The most tokens the Module Analyst may spend in a calendar month, e.g. 10000000. A model call that would cross it is refused.": "The most tokens the Module Analyst may spend in a calendar month, e.g. 10000000. A model call that would cross it is refused.",
-  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused."
+  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.",
+  "No crown jewel depends on this organization": "No crown jewel depends on this organization",
+  "Not exposed: the account is disabled": "Not exposed: the account is disabled",
+  "Becomes a case once a crown jewel depends on this organization": "Becomes a case once a crown jewel depends on this organization",
+  "Becomes a case if the account is enabled again": "Becomes a case if the account is enabled again",
+  "Owned domain": "Owned domain",
+  "Email address": "Email address",
+  "Report: {name}": "Report: {name}",
+  "Incident: {name}": "Incident: {name}",
+  "Observed as": "Observed as",
+  "Kept as a fingerprint only, never the value": "Kept as a fingerprint only, never the value",
+  "Named in": "Named in",
+  "Organization criticality": "Organization criticality",
+  "From {source}": "From {source}"
 }

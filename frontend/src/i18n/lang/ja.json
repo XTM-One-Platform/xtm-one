@@ -20431,5 +20431,18 @@
   "The most tokens the Module Analyst may spend in a UTC day, every module included, e.g. 500000. A model call that would cross it is refused.": "Module Analyst が UTC の 1 日に全モジュール合計で使えるトークンの上限です (例: 500000)。上限を超えるモデル呼び出しは拒否されます。",
   "The most the Module Analyst may cost in a UTC day, in US dollars, e.g. 4. A model call that would cross it is refused.": "Module Analyst の UTC の 1 日あたりの費用上限 (米ドル) です (例: 4)。上限を超えるモデル呼び出しは拒否されます。",
   "The most tokens the Module Analyst may spend in a calendar month, e.g. 10000000. A model call that would cross it is refused.": "Module Analyst が暦月に使えるトークンの上限です (例: 10000000)。上限を超えるモデル呼び出しは拒否されます。",
-  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "Module Analyst の暦月あたりの費用上限 (米ドル) です (例: 60)。上限を超えるモデル呼び出しは拒否されます。"
+  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "Module Analyst の暦月あたりの費用上限 (米ドル) です (例: 60)。上限を超えるモデル呼び出しは拒否されます。",
+  "No crown jewel depends on this organization": "この組織に依存する重要資産はありません",
+  "Not exposed: the account is disabled": "露出なし: アカウントは無効です",
+  "Becomes a case once a crown jewel depends on this organization": "重要資産がこの組織に依存するとケースになります",
+  "Becomes a case if the account is enabled again": "アカウントが再び有効になるとケースになります",
+  "Owned domain": "所有ドメイン",
+  "Email address": "メールアドレス",
+  "Report: {name}": "レポート: {name}",
+  "Incident: {name}": "インシデント: {name}",
+  "Observed as": "観測された形式",
+  "Kept as a fingerprint only, never the value": "フィンガープリントのみ保持し、値は保持しません",
+  "Named in": "言及元",
+  "Organization criticality": "組織の重要度",
+  "From {source}": "取得元: {source}"
 }

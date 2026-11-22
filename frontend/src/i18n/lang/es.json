@@ -20431,5 +20431,18 @@
   "The most tokens the Module Analyst may spend in a UTC day, every module included, e.g. 500000. A model call that would cross it is refused.": "El máximo de tokens que el Module Analyst puede gastar en un día UTC, todos los módulos incluidos, p. ej. 500000. Se rechaza una llamada de modelo que lo superaría.",
   "The most the Module Analyst may cost in a UTC day, in US dollars, e.g. 4. A model call that would cross it is refused.": "El coste máximo del Module Analyst en un día UTC, en dólares estadounidenses, p. ej. 4. Se rechaza una llamada de modelo que lo superaría.",
   "The most tokens the Module Analyst may spend in a calendar month, e.g. 10000000. A model call that would cross it is refused.": "El máximo de tokens que el Module Analyst puede gastar en un mes natural, p. ej. 10000000. Se rechaza una llamada de modelo que lo superaría.",
-  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "El coste máximo del Module Analyst en un mes natural, en dólares estadounidenses, p. ej. 60. Se rechaza una llamada de modelo que lo superaría."
+  "The most the Module Analyst may cost in a calendar month, in US dollars, e.g. 60. A model call that would cross it is refused.": "El coste máximo del Module Analyst en un mes natural, en dólares estadounidenses, p. ej. 60. Se rechaza una llamada de modelo que lo superaría.",
+  "No crown jewel depends on this organization": "Ningún activo crítico depende de esta organización",
+  "Not exposed: the account is disabled": "No expuesto: la cuenta está desactivada",
+  "Becomes a case once a crown jewel depends on this organization": "Se convierte en un caso cuando un activo crítico dependa de esta organización",
+  "Becomes a case if the account is enabled again": "Se convierte en un caso si la cuenta se vuelve a activar",
+  "Owned domain": "Dominio propio",
+  "Email address": "Dirección de correo electrónico",
+  "Report: {name}": "Informe: {name}",
+  "Incident: {name}": "Incidente: {name}",
+  "Observed as": "Observado como",
+  "Kept as a fingerprint only, never the value": "Se guarda solo como huella, nunca el valor",
+  "Named in": "Citado en",
+  "Organization criticality": "Criticidad de la organización",
+  "From {source}": "Desde {source}"
 }
