@@ -96,8 +96,9 @@ def test_the_refusals_and_the_user_links_draw():
     assert refusal["kind"] == "private" and len(refusal["payload"]["texts"]) == len(module.REFUSALS)
     assert "Only visible to you" in module.figure("refusal", "ja")
     links = module.build("user-links", "en")
-    assert links["kind"] == "text" and "Ship tonight: http" in links["payload"]["text"]
-    assert "<a href=" in module.figure("user-links", "en")
+    assert links["kind"] == "text" and "|Ship tonight>" in links["payload"]["text"]
+    drawn = module.figure("user-links", "en")
+    assert ">Ship tonight</a>" in drawn and ">http" not in drawn
 
 
 def test_the_pages_answer_each_theme_and_width():

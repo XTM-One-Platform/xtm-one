@@ -11,6 +11,7 @@ posted as a user carries the signed answer links of S9b.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -274,11 +275,44 @@ def test_a_message_posted_as_a_user_carries_the_signed_answer_links(monkeypatch)
     monkeypatch.setattr(settings, "secret_key", "test-secret")
     row = _row(id=ROW_ID)
     text = cards.link_message(row, RECIPIENT)
-    urls = [line.split(": ", 1)[1] for line in text.splitlines() if "/decide/" in line]
-    assert len(urls) == 3
-    token = urls[0].rsplit("/", 1)[1]
+    marked = re.findall(r"<(https?://[^|>]+/decide/[^|>]+)\|([^>]+)>", text)
+    assert len(marked) == 3
+    token = marked[0][0].rsplit("/", 1)[1]
     link = links.read_token(token)
     assert (link.option, link.surface, link.recipient_id) == ("A", "google_chat", RECIPIENT)
+
+
+def test_a_message_posted_as_a_user_shows_labels_never_raw_urls(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "secret_key", "test-secret")
+    for language in ("en", "es", "fr", "ja"):
+        text = cards.link_message(_row(id=ROW_ID), RECIPIENT, language)
+        # Every /decide/ URL sits inside <url|label>: none is printed for a person to read.
+        assert not re.search(r"(?<!<)https?://\S*/decide/", text)
+        assert f"|{notice('card_answer_with_text', language)}>" in text
+
+
+def test_a_link_label_cannot_close_the_markup():
+    assert cards._link_label("Ship <now> | later") == "Ship \u2039now\u203a \u00a6 later"
+    assert cards._link_label("  ") == "?"
+
+
+def test_the_user_link_message_falls_back_to_a_translated_question(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "secret_key", "test-secret")
+    row = _row(id=ROW_ID, ask={k: v for k, v in ASK.items() if k != "question"})
+    text = cards.link_message(row, RECIPIENT, "fr")
+    assert text.splitlines()[0] == notice("card_decision_waiting", "fr")
+
+
+def test_the_answered_time_is_a_labelled_row_with_no_fixed_colour():
+    row = _row(status="answered", answer={"option": "A"}, answered_at=datetime(2026, 11, 22, 8, 0, tzinfo=UTC))
+    payload = cards.render_google_chat_decision(_view(row), "fr")
+    assert "<font" not in json.dumps(payload)
+    rows = [w["decoratedText"] for w in _widgets(payload) if "decoratedText" in w]
+    assert {"topLabel": notice("card_label_answered_at", "fr"), "text": "2026-11-22 08:00 UTC"} in rows
 
 
 @pytest.mark.asyncio

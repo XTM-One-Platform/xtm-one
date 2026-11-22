@@ -292,7 +292,10 @@ def _decided_widgets(view: DecisionView, ask: dict[str, Any], language: str) -> 
         widgets.append(_paragraph(_escape(_clip(answer.get("text"), _MAX_QUESTION))))
     when = _utc(row.answered_at.isoformat() if row.answered_at else None)
     if when:
-        widgets.append(_paragraph(f'<font color="#5f6368">{_escape(when)}</font>'))
+        # A labelled row, no fixed colour: Chat draws it in its own text colour on either theme.
+        widgets.append(
+            {"decoratedText": {"topLabel": notice("card_label_answered_at", language), "text": _escape(when)}}
+        )
     return widgets
 
 
@@ -716,7 +719,7 @@ async def deliver_work_item_card(db: AsyncSession, decision: Decision, item: Any
             async with factory(sender, str(spec["integration"]), "google") as call:
                 sent, answer = await call(
                     "send_google_chat_message",
-                    {"space_name": str(spec["space"]), "message": link_message(decision, recipient)},
+                    {"space_name": str(spec["space"]), "message": link_message(decision, recipient, language)},
                 )
             if not sent:
                 error, permanent = answer[:500] or "not sent", notify.is_permanent_refusal(answer)
@@ -737,8 +740,21 @@ async def deliver_work_item_card(db: AsyncSession, decision: Decision, item: Any
     return error is None
 
 
-def link_message(decision: Decision, recipient_id: Any) -> str:
-    """The text a message posted as a user carries: the question and one signed answer link per option (S9b)."""
-    from app.services.decision_answer_links import link_text
+def _link_label(label: str) -> str:
+    """*label* safe inside Chat's ``<url|label>`` markup: the characters that would close it are swapped."""
+    return " ".join(label.split()).replace("|", "\u00a6").replace("<", "\u2039").replace(">", "\u203a") or "?"
 
-    return link_text(decision, recipient_id, LINK_SURFACE)
+
+def link_message(decision: Decision, recipient_id: Any, language: str | None = None) -> str:
+    """The text a message posted as a user carries: the question and one signed answer link per option (S9b).
+
+    Each link is Chat's ``<url|label>`` markup, so the person reads the option
+    ("Ship tonight"), never the signed URL; the strings come from the catalog
+    in *language*.
+    """
+    from app.services.decision_answer_links import answer_links, question_lines
+
+    lines = question_lines(decision, language)
+    for link in answer_links(decision, recipient_id, LINK_SURFACE, language):
+        lines.append(f"\u2022 <{link['url']}|{_link_label(link['label'])}>")
+    return "\n".join(lines)

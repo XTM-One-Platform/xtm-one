@@ -179,7 +179,7 @@ def _caller(answers: list, calls: list):
 @pytest.mark.asyncio
 async def test_where_the_app_is_not_the_google_integration_posts_the_answer_links_as_a_user(monkeypatch):
     monkeypatch.setattr(cards, "send_to_space", AsyncMock(return_value=False))
-    monkeypatch.setattr(cards, "link_message", lambda decision, recipient: f"links for {recipient}")
+    monkeypatch.setattr(cards, "link_message", lambda decision, recipient, language=None: f"links for {recipient}")
     calls: list = []
     db = _Db()
     item = _item({"channel": "google_chat", "space": "spaces/ROOM", "integration": "Google"})

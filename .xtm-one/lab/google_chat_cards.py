@@ -185,7 +185,7 @@ def build(state: str, language: str) -> dict[str, Any]:
         return {"kind": "private", "payload": {"texts": texts}, "under": under}
     if state == "user-links":
         # A message posted as a person (user auth): Chat draws no card for it, it carries the S9b links.
-        text = cards.link_message(_row("work_item", "work_item", ASK), RECIPIENT_ID)  # type: ignore[arg-type]
+        text = cards.link_message(_row("work_item", "work_item", ASK), RECIPIENT_ID, language)  # type: ignore[arg-type]
         return {"kind": "text", "payload": {"text": text}, "under": None}
     raise KeyError(state)
 
@@ -194,6 +194,8 @@ def build(state: str, language: str) -> dict[str, Any]:
 
 _ALLOWED_TAGS = re.compile(r'<(/?)(b|i|u|code|br|font)(?: color="(#[0-9a-fA-F]{6})")?>')
 _URL = re.compile(r"(https?://[^\s<]+)")
+#: Chat's link markup ``<url|label>`` in a text message, as ``html.escape`` leaves it.
+_CHAT_LINK = re.compile(r"&lt;(https?://[^\s|]+?)\|(.+?)&gt;")
 
 
 def chat_html(text: str) -> str:
@@ -286,8 +288,15 @@ def private(texts: list[str]) -> str:
     )
 
 
+def _user_line(line: str) -> str:
+    """One escaped line of a text message: ``<url|label>`` drawn as the label linked, a bare URL as itself."""
+    if _CHAT_LINK.search(line):
+        return _CHAT_LINK.sub(r'<a href="\1">\2</a>', line)
+    return _URL.sub(r'<a href="\1">\1</a>', line)
+
+
 def user_text(text: str) -> str:
-    lines = "<br>".join(_URL.sub(r'<a href="\1">\1</a>', html.escape(line)) for line in text.splitlines())
+    lines = "<br>".join(_user_line(html.escape(line, quote=False)) for line in text.splitlines())
     return ('<div class="msg"><div class="avatar person">A</div><div class="body"><div class="who"><b>Ada Lovelace'
             f'</b><span class="time">8:00 AM</span></div><div class="w-text">{lines}</div></div></div>')
 
