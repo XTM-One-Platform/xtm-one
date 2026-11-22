@@ -15,7 +15,7 @@ upgrade twice. Downgrade drops the column and restores the default false; the
 a person typed).
 
 Revision ID: o1134prov01
-Revises: c1110ctemsurface1
+Revises: s1087setupver1
 Create Date: 2026-11-22 10:00:00.000000
 """
 
@@ -32,7 +32,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "o1134prov01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "c1110ctemsurface1"
+down_revision: str | Sequence[str] | None = "s1087setupver1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
