@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The Module Analyst's triggers (#101 S14a-2b, ``dev-docs/platform-health.md`` 12.2)."""
+"""The module checkers' triggers (#101 S14a-2b and S15a-2, ``dev-docs/platform-health.md`` 12.2, 13.2)."""
 
 from __future__ import annotations
 
@@ -34,8 +34,9 @@ def _due(current: str, last: dict | None, fired_at: datetime | None, now: dateti
     )
 
 
-def test_a_registration_never_looked_at_gets_its_daily_cycle() -> None:
-    assert _due(module_analyst.empty_set_hash(), None, None) == "daily"
+def test_a_registration_never_looked_at_is_due_the_round_not_a_change() -> None:
+    assert _due(module_analyst.empty_set_hash(), None, None) is None
+    assert module_analyst.round_due(None, NOW) is True
 
 
 def test_a_new_finding_set_starts_a_change_cycle() -> None:
@@ -47,14 +48,19 @@ def test_the_debounce_holds_a_change_inside_the_window() -> None:
     assert _due("changed", {"hash": "before"}, NOW - timedelta(minutes=30)) is None
 
 
-def test_an_unchanged_set_waits_for_the_next_utc_day() -> None:
-    assert _due("same", {"hash": "same"}, NOW - timedelta(hours=11)) is None
-    assert _due("same", {"hash": "same"}, NOW - timedelta(hours=13)) == "daily"
+def test_an_unchanged_set_is_never_a_change() -> None:
+    """The S14 ``daily`` branch is gone: the daily look is the module round's (13.2)."""
+    assert _due("same", {"hash": "same"}, NOW - timedelta(hours=13)) is None
 
 
-def test_a_change_cycle_covers_the_day() -> None:
-    """A registration a change-triggered cycle covered today gets no daily one (12.2)."""
-    assert _due("same", {"hash": "same", "trigger": "change"}, NOW - timedelta(minutes=5)) is None
+def test_the_round_waits_for_the_next_utc_day() -> None:
+    assert module_analyst.round_due(NOW - timedelta(hours=11), NOW) is False
+    assert module_analyst.round_due(NOW - timedelta(hours=13), NOW) is True
+
+
+def test_a_change_cycle_covers_the_day_for_the_round() -> None:
+    """A registration any cycle covered this UTC day is not handed to the round again (13.2)."""
+    assert module_analyst.round_due(NOW - timedelta(minutes=5), NOW) is False
 
 
 def test_the_settings_are_on_by_default_with_a_two_hour_debounce() -> None:
