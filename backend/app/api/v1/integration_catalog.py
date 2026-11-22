@@ -29,8 +29,8 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
-from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
-from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
+from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
+from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -46,13 +46,6 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
 }
-#: The filter keys of every Spendesk webhook event (the delivery envelope).
-_SPENDESK_FILTER_KEYS: dict[str, str] = {
-    "event.entity": "The Spendesk entity type of the event: payables or settlements",
-    "event.eventType": "The event type: created or prepared",
-    "companyId": "The Spendesk company (entity) that sent the event",
-    "data.id": "The id of the payable or settlement the event names",
-}
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
@@ -65,6 +58,14 @@ _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "payload.code_repo_id": "The code repository the event names, when it carries one",
     "payload.code_repo_name": "The code repository name, when the event carries one",
     "payload.team_id": "The responsible team, when the event carries one",
+}
+#: The filter keys of every Airwallex webhook event (the Event object it delivers).
+_AIRWALLEX_FILTER_KEYS: dict[str, str] = {
+    "name": "The Airwallex event type (payout.transfer.paid, deposit.settled...)",
+    "account_id": "The Airwallex account (entity) the event belongs to",
+    "data.object.currency": "The currency of the object, when it carries one",
+    "data.object.amount": "The amount of the object, when it carries one",
+    "data.object.status": "The status of the object the event is about",
 }
 #: The label of each Wordsmith event type in the trigger picker.
 _WORDSMITH_EVENT_LABELS: dict[str, str] = {
@@ -4753,75 +4754,87 @@ PROVIDER_CATALOG = {
             ],
         },
     },
-    "spendesk": {
-        "name": "Spendesk",
+    "airwallex": {
+        "name": "Airwallex",
         "description": (
-            "Spendesk spend management, the whole Public API, multi-entity: wallet summary, wallet "
-            "loads and settlements, card payments and transactions, requests, payables (expenses, "
-            "invoices, card payments) with receipt downloads and missing receipts, cards, members, "
-            "cost centres, analytical fields, expense categories, suppliers (bank details masked), "
-            "chart of accounts, accounting journals and webhooks; every write asks a person, plus "
-            "webhook triggers"
+            "Airwallex global business accounts, one integration per account or entity: balances and "
+            "balance history, financial transactions, global accounts, deposits, transfers, beneficiaries, "
+            "FX rates and conversions, cards and card transactions, invoices, payment intents, "
+            "settlements, payment links and financial reports, with webhook triggers. Write tools "
+            "(beneficiaries, transfers, FX quotes and conversions, cards and cardholders, payment links, "
+            "billing invoices) ask a person on every call. Bank and card numbers are masked."
         ),
-        "logo": "/logos/spendesk.svg",
+        "logo": "/logos/airwallex.svg",
         "category": "integration",
         "integration_category": "business_operations",
-        "integration_types": ["spend_management"],
+        "integration_types": ["finance"],
         "supports_assignment_webhooks": True,
         "available_events": [
             {
-                "event": SPENDESK_TRIGGER_EVENTS[event],
+                "event": AIRWALLEX_TRIGGER_EVENTS[event],
                 "label": label,
+                # One description for every event (the label names it), so the
+                # trigger picker reads it in the viewer's language.
                 "description": (
-                    "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk "
-                    "(the create_spendesk_webhook tool) pointing to the webhook URL shown below."
+                    "Triggers on this Airwallex webhook event. Add a webhook for it in "
+                    "Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL "
+                    "shown below."
                 ),
                 "mechanism": "webhook",
-                "filter_keys": _SPENDESK_FILTER_KEYS,
+                "filter_keys": _AIRWALLEX_FILTER_KEYS,
             }
-            for event, label in SPENDESK_EVENT_TYPES.items()
+            for event, label in AIRWALLEX_EVENT_TYPES.items()
         ],
-        # OAuth2 client credentials: the client secret is the stored secret.
         "auth_type": "api_key",
         "supported_auth_types": ["api_key"],
         "fields": ["api_key"],
         "extra_fields": {
-            "environment": "Spendesk environment",
-            "client_id": "Public API client ID",
-            "webhook_secret": "Webhook signing secret (x-spendesk-webhook-signature)",
+            "environment": "Airwallex environment",
+            "client_id": "Client ID",
+            "login_as": "Account ID to sign in as (organisation keys only)",
+            "webhook_secret": "Webhook secret (x-signature)",
         },
         "extra_field_options": {
             "environment": [
-                {"value": "production", "label": "Production - public-api.spendesk.com"},
-                {"value": "sandbox", "label": "Sandbox - public-api.demo.spendesk.com"},
+                {"value": "production", "label": "Production - api.airwallex.com"},
+                {"value": "demo", "label": "Sandbox - api-demo.airwallex.com"},
             ],
         },
         "setup_guide": {
-            "title": "Spendesk Public API credential",
-            "url": "https://developer.spendesk.com/reference/general",
+            "title": "Airwallex API key",
+            "url": "https://www.airwallex.com/docs/developer-tools/api/manage-api-keys",
             "steps": [
-                "In Spendesk, as an account owner, open Settings > Integrations > API access and create a Public API credential, at organisation level to reach every entity.",
-                "Grant the scopes the agents need: the :read scopes for a read-only binding, the :write scopes for approvals, cards, suppliers, members and bookkeeping.",
-                "Pick the environment, paste the client ID in the 'Public API client ID' field and the client secret in the 'API key' field.",
-                "Optional, for webhook triggers: create a webhook with the create_spendesk_webhook tool pointing to the webhook URL shown below, and paste the secret it answers in the 'Webhook signing secret' field.",
-                "Click 'Test Connection': it mints a token and lists the organisation's entities.",
+                "In Airwallex, as an account admin, open Settings > Developer > API keys and create an API key (or a restricted key with the permissions below).",
+                "Paste the Client ID in the 'Client ID' field and the API key in the 'API key' field, and pick the environment.",
+                "One integration per Airwallex account (legal entity). An organisation key reaching several accounts: set 'Account ID to sign in as', or let the tools pass on_behalf_of per call.",
+                "Every write tool (transfer, beneficiary, conversion, card, payment link, invoice) asks a person before it runs; bind the integration read-only to withhold them from an agent.",
+                "Optional, for webhook triggers: in Settings > Developer > Webhooks, add a webhook pointing to the webhook URL shown below, subscribe to the events and paste its secret in 'Webhook secret (x-signature)'.",
+                "Click 'Test Connection': it signs in and reads the account.",
             ],
             "permissions": [
                 {
-                    "scope": "payable:read, transaction:read, request:read",
-                    "description": "Read payables, receipts, transactions and requests",
+                    "scope": "Balances, Wallet, Global accounts: view",
+                    "description": "Read balances, balance history, financial transactions and global accounts",
                 },
                 {
-                    "scope": "settlement:read, wallet-summary:read, wallet-load:read",
-                    "description": "Read the wallet, its loads and settlements",
+                    "scope": "Payouts, Transfers, Beneficiaries: view",
+                    "description": "Read transfers and beneficiaries",
                 },
                 {
-                    "scope": "card:read, user:read, supplier:read, cost-center:read",
-                    "description": "Read cards, members, suppliers and cost centres",
+                    "scope": "FX: view",
+                    "description": "Read rates, quotes and conversions",
                 },
                 {
-                    "scope": "the :write scopes",
-                    "description": "Optional: every write tool, each asks a person before it runs",
+                    "scope": "Issuing: view",
+                    "description": "Read cards, cardholders and card transactions",
+                },
+                {
+                    "scope": "Billing, Payments, Reports: view",
+                    "description": "Read invoices, payment intents, settlements and generate financial reports",
+                },
+                {
+                    "scope": "Payouts, FX, Issuing: edit",
+                    "description": "The write tools: each asks a person before it runs",
                 },
             ],
         },
@@ -9839,8 +9852,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "intel471": "__dummy__||__dummy__",
     # Aikido's token is region||client_id||client_secret.
     "aikido": "eu||__dummy__||__dummy__",
-    # Spendesk's token is environment||client_id||client_secret.
-    "spendesk": "production||__dummy__||__dummy__",
+    # Airwallex's token is environment||client_id||login_as||api_key.
+    "airwallex": "production||__dummy__||||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
