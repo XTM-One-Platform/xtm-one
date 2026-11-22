@@ -320,7 +320,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   filigran_ai: "Filigran AI",
   planhat: "Planhat",
   metabase: "Metabase",
-  odoo: "Odoo",
   openaev: "OpenAEV",
   opencti: "OpenCTI",
   opencrq: "OpenCRQ",
@@ -413,6 +412,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   giphy: "GIPHY",
   credly: "Credly",
   concord: "Concord",
+  dealhub: "DealHub",
   ashby: "Ashby",
   linkedin: "LinkedIn",
   x: "X (Twitter)",
@@ -589,6 +589,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   accounting: "Accounting",
   erp: "ERP",
   finance: "Finance & Treasury",
+  cpq: "Quoting (CPQ)",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -780,7 +781,6 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   filigran_ai: "/logos/filigran.svg",
   planhat: "/logos/planhat.svg",
   metabase: "/logos/metabase.svg",
-  odoo: "/logos/odoo.svg",
   grafana: "/logos/grafana.svg",
   openaev: "/logos/openaev.svg",
   opencti: "/logos/opencti.svg",
@@ -872,6 +872,7 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   giphy: "/logos/giphy.svg",
   credly: "/logos/credly.svg",
   concord: "/logos/concord.svg",
+  dealhub: "/logos/dealhub.svg",
   ashby: "/logos/ashby.svg",
   linkedin: "/logos/linkedin.svg",
   x: "/logos/x.svg",
