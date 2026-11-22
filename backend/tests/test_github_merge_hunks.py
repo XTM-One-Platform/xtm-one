@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -244,6 +245,59 @@ async def test_a_clean_line_merge_lands_in_one_call():
     assert result.startswith("Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"), result
     assert fake.merged and MERGE[:12] in result
     assert fake.sides["ours"]["src/frictions.py"] == _edit(_edit(BASE_FILE, 3, "branch 3\n"), 9, "main 9\n")
+
+
+def _catalog(keys: dict[str, str]) -> str:
+    return json.dumps(keys, indent=2) + "\n"
+
+
+CATALOG = "frontend/src/i18n/lang/en.json"
+CATALOG_BASE = {f"k{n}": f"v{n}" for n in range(12)}
+
+
+def test_merge_path_names_the_json_keys_the_branch_removed() -> None:
+    """#1095: a stale copy of a catalog removes main's keys without a conflict; the merge names them."""
+    ours = {k: v for k, v in CATALOG_BASE.items() if k not in ("k3", "k4")}
+    merge = merge_path(
+        CATALOG,
+        _catalog(CATALOG_BASE).encode(),
+        _catalog(ours).encode(),
+        _catalog({**CATALOG_BASE, "k9": "main"}).encode(),
+    )
+    assert merge.clean and merge.removed_keys == ("k3", "k4")
+    assert "k3" not in json.loads(merge.merged or "{}")
+
+
+def test_a_key_both_sides_removed_or_a_plain_file_names_nothing() -> None:
+    both_gone = {k: v for k, v in CATALOG_BASE.items() if k != "k3"}
+    merge = merge_path(
+        CATALOG,
+        _catalog(CATALOG_BASE).encode(),
+        _catalog(both_gone).encode(),
+        _catalog({**both_gone, "k9": "main"}).encode(),
+    )
+    assert merge.clean and merge.removed_keys == ()
+    plain = merge_path(
+        "notes.txt", BASE_FILE.encode(), _edit(BASE_FILE, 3, "").encode(), _edit(BASE_FILE, 9, "x\n").encode()
+    )
+    assert plain.removed_keys == ()
+
+
+@pytest.mark.asyncio
+async def test_a_landed_merge_names_the_catalog_keys_the_branch_removed() -> None:
+    ours = {k: v for k, v in CATALOG_BASE.items() if k != "k5"}
+    fake = FakeGitHub(
+        {CATALOG: _catalog(CATALOG_BASE)},
+        {CATALOG: _catalog(ours)},
+        {CATALOG: _catalog({**CATALOG_BASE, "k11": "main"})},
+    )
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _tool("merge_github_branch")(repo="acme/app", branch="feat/x")
+
+    assert result.startswith("Merged 'main' into 'feat/x'"), result
+    assert "Keys the branch removed that the merge base and the ref still hold (1 path(s))" in result
+    assert f"- {CATALOG}: k5" in result
+    assert result.rstrip().splitlines()[-1].startswith("Final head: ")
 
 
 @pytest.mark.asyncio
