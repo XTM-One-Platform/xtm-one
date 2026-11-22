@@ -590,6 +590,7 @@ ee:
   - backend/app/services/provisioning.py
   - backend/app/services/quota_exhausted_notice.py
   - backend/app/services/rollout_counters.py
+  - backend/app/services/slack_decision_cards.py
   - backend/app/services/storage_purge.py
   - backend/app/services/teams_link_cards.py
   - frontend/src/components/ui/a2a-unavailable-notice.tsx
@@ -728,7 +729,6 @@ ce:
   - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
-  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
