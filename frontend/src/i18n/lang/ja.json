@@ -20179,6 +20179,7 @@
   "Account suspended": "アカウントが停止",
   "Global account closed": "グローバル口座が閉鎖",
   "Finance & Treasury": "財務と資金管理",
+  "Accounting": "会計",
   "Triggers on this Airwallex webhook event. Add a webhook for it in Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL shown below.": "この Airwallex Webhook イベントで起動します。Airwallex > Settings > Developer > Webhooks で、下に表示される Webhook URL を指す Webhook を追加してください。",
   "What you can change on this built-in agent": "この組み込みエージェントで変更できる項目",
   "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.": "各リリースは製品がロックする部分を書き換え、お客様の設定は保持します。ロックされた部分を変更するには、フリートを複製してください。",
