@@ -20046,7 +20046,7 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
-  "Asset turned stale": "アセットが古くなりました",
+  "Asset turned stale": "アセット陳腐化",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
   "OpenAEV result received": "OpenAEV の結果を受信",
@@ -20527,5 +20527,7 @@
   "Drafted the threat package": "脅威パッケージを作成しました",
   "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "脅威パッケージはまだありません。ケースのトリアージ後、フリートが OpenCTI に作成します。",
   "Threat package drafted, coverage not requested yet": "脅威パッケージを作成しました。カバレッジはまだ要求していません",
-  "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました"
+  "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました",
+  "Freshness": "鮮度",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "陳腐化: テナントのしきい値を超えて OpenAEV で確認されていません"
 }
