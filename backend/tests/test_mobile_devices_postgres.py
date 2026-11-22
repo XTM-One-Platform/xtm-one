@@ -218,7 +218,7 @@ async def test_a_waiting_work_item_entry_stays_unread_through_the_dismiss_route(
     monkeypatch.setattr(work_item, "list_work_items_waiting_for_person", _waiting)
     async with _world() as (scratch, owner, _other, _admin), _client(scratch.sessions, owner) as client:
         feed = (await client.get("/api/v1/notifications")).json()
-        entry = next(i for i in feed["items"] if i["kind"] == "work_item_waiting")
+        entry = next(i for i in feed["items"] if i["kind"] == "decision" and i["source"] == "work_item")
         assert entry["id"] == f"work_item:{item_id}"
         assert entry["unread"] is True
         assert (await client.post(f"/api/v1/notifications/{entry['id']}/dismiss")).status_code == 204
@@ -248,8 +248,8 @@ async def test_mark_all_read_never_reads_a_waiting_decision(
             await _paused_run(db, owner)
         async with _client(scratch.sessions, owner) as client:
             feed = (await client.get("/api/v1/notifications")).json()
-            pinned = [i for i in feed["items"] if i["kind"] in {"hitl", "work_item_waiting"}]
-            assert {i["kind"] for i in pinned} == {"hitl", "work_item_waiting"}
+            pinned = [i for i in feed["items"] if i["kind"] == "decision"]
+            assert {i["source"] for i in pinned} == {"run", "work_item"}
             assert all(i["unread"] for i in pinned)
             for entry in pinned:
                 assert (await client.post(f"/api/v1/notifications/{entry['id']}/dismiss")).status_code == 204

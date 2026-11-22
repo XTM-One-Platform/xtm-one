@@ -38,6 +38,7 @@ from app.integrations.providers.opencrq import frameworks as opencrq_frameworks
 from app.integrations.providers.opencrq import mitre as opencrq_mitre
 from app.integrations.providers.opencrq import ops as opencrq_ops
 from app.integrations.providers.opencrq import risk as opencrq_risk
+from app.integrations.providers.opencrq import treatment as opencrq_treatment
 from app.tools.base import CallableToolExecutor, ToolCall
 
 TOKEN = "https://demo.opencrq.io||test-token"
@@ -909,6 +910,7 @@ class Write:
 
 
 NEW_ASSESSMENT = "01a13ab1-cf5c-77d0-a7a8-74a2b60f9edf"
+PLAN_ID = "01a13ab2-1c3d-7e4f-8a5b-6c7d8e9f0a1b"
 BUSINESS_VALUE_CATEGORIES = [
     "5ed6b543-76b5-546b-88e1-dc713a1a0f7e",
     "4e8336c9-87a8-5a6b-9089-2f279c89df79",
@@ -1254,7 +1256,178 @@ WRITES = {
         {"evidenceId": EVIDENCE},
         ("Deleted evidence " + EVIDENCE,),
     ),
+    # CTEM-18 (#1055): treatment-plans/treatment-plans-router.ts, TreatmentPlanCreateSchema and MovesSchema.
+    "create_opencrq_treatment_plan_with_its_decision": Write(
+        "create_opencrq_treatment_plan",
+        {
+            "organization_id": ORGANIZATION,
+            "name": " Disable HTTP/2 now, migrate by January ",
+            "owner_id": ANSWER_OWNER,
+            "start_date": "2026-11-22",
+            "end_date": "2027-01-31",
+            "rationale": "CTEM case remediation decision",
+            "cost_one_off": 6000,
+            "cost_recurring_annual": 0,
+            "moves": [
+                {"capability_id": CAPABILITY, "target_strength": "l2"},
+                {"capability_id": CAPABILITY, "target_strength": "L3", "target_coverage": "L2"},
+            ],
+        },
+        opencrq_treatment,
+        "treatmentPlans.createTreatmentPlan",
+        {
+            "name": "Disable HTTP/2 now, migrate by January",
+            "rationale": "CTEM case remediation decision",
+            "ownerId": ANSWER_OWNER,
+            "startDate": "2026-11-22",
+            "endDate": "2027-01-31",
+            "costOneOff": 6000.0,
+            "costRecurringAnnual": 0.0,
+            "organizationId": ORGANIZATION,
+            "moves": [{"capabilityId": CAPABILITY, "targetStrengthRung": "L3", "targetCoverageBucket": "L2"}],
+        },
+        ("Created treatment plan 'Disable HTTP/2 now, migrate by January' (id: " + PLAN_ID + ")", "1 control move(s)"),
+        overrides={"treatmentPlans.createTreatmentPlan": PLAN_ID},
+    ),
+    "create_opencrq_treatment_plan_sends_only_what_it_was_given": Write(
+        "create_opencrq_treatment_plan",
+        {"organization_id": ORGANIZATION, "name": "Plan", "rationale": ""},
+        opencrq_treatment,
+        "treatmentPlans.createTreatmentPlan",
+        {"name": "Plan", "organizationId": ORGANIZATION},
+        ("Created treatment plan 'Plan' (id: " + PLAN_ID + ")",),
+        overrides={"treatmentPlans.createTreatmentPlan": PLAN_ID},
+    ),
+    "update_opencrq_treatment_plan_sets_and_clears": Write(
+        "update_opencrq_treatment_plan",
+        {"treatment_plan_id": PLAN_ID, "end_date": "2027-02-28", "rationale": "", "owner_id": "", "cost_one_off": ""},
+        opencrq_treatment,
+        # treatment-plans-router.ts: updateTreatmentPlan {id, values: TreatmentPlanValuesSchema.partial()}
+        "treatmentPlans.updateTreatmentPlan",
+        {"id": PLAN_ID, "values": {"rationale": None, "ownerId": None, "endDate": "2027-02-28", "costOneOff": None}},
+        ("Updated treatment plan " + PLAN_ID,),
+    ),
+    "set_opencrq_treatment_plan_moves_replaces_them": Write(
+        "set_opencrq_treatment_plan_moves",
+        {"treatment_plan_id": PLAN_ID, "moves": [{"capability_id": CAPABILITY, "target_coverage": "L3"}]},
+        opencrq_treatment,
+        "treatmentPlans.setTreatmentPlanScope",
+        {
+            "planId": PLAN_ID,
+            "moves": [{"capabilityId": CAPABILITY, "targetStrengthRung": None, "targetCoverageBucket": "L3"}],
+        },
+        ("now plans 1 control move(s)", "coverage L3"),
+    ),
+    "set_opencrq_treatment_plan_moves_empties_them": Write(
+        "set_opencrq_treatment_plan_moves",
+        {"treatment_plan_id": PLAN_ID, "moves": []},
+        opencrq_treatment,
+        "treatmentPlans.setTreatmentPlanScope",
+        {"planId": PLAN_ID, "moves": []},
+        ("now plans no control move",),
+    ),
+    "add_opencrq_treatment_plan_moves_adds_them": Write(
+        "add_opencrq_treatment_plan_moves",
+        {"treatment_plan_id": PLAN_ID, "moves": [{"capability_id": CAPABILITY, "target_strength": "L1"}]},
+        opencrq_treatment,
+        "treatmentPlans.addTreatmentPlanMoves",
+        {
+            "planId": PLAN_ID,
+            "moves": [{"capabilityId": CAPABILITY, "targetStrengthRung": "L1", "targetCoverageBucket": None}],
+        },
+        ("Added 1 control move(s) to treatment plan " + PLAN_ID,),
+    ),
 }
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "refusal"),
+    [
+        pytest.param("create_opencrq_treatment_plan", {"name": "P"}, "organization_id must be", id="no scope"),
+        pytest.param(
+            "create_opencrq_treatment_plan", {"organization_id": ORGANIZATION}, "name is required", id="no name"
+        ),
+        pytest.param(
+            "create_opencrq_treatment_plan",
+            {"organization_id": ORGANIZATION, "name": "P", "start_date": "2027-02-01", "end_date": "2027-01-01"},
+            "end_date cannot be before start_date",
+            id="inverted period",
+        ),
+        pytest.param(
+            "create_opencrq_treatment_plan",
+            {"organization_id": ORGANIZATION, "name": "P", "start_date": "2027-02-30"},
+            "YYYY-MM-DD",
+            id="no such date",
+        ),
+        pytest.param(
+            "create_opencrq_treatment_plan",
+            {"organization_id": ORGANIZATION, "name": "P", "cost_one_off": -1},
+            "cost_one_off must be a number of at least 0",
+            id="negative cost",
+        ),
+        pytest.param(
+            "create_opencrq_treatment_plan",
+            {"organization_id": ORGANIZATION, "name": "P", "owner_id": "sam"},
+            "owner_id must be an OpenCRQ user UUID",
+            id="owner by name",
+        ),
+        pytest.param(
+            "update_opencrq_treatment_plan",
+            {"treatment_plan_id": PLAN_ID},
+            "at least one field",
+            id="nothing to update",
+        ),
+        pytest.param(
+            "update_opencrq_treatment_plan",
+            {"treatment_plan_id": PLAN_ID, "name": " "},
+            "name cannot be empty",
+            id="empty name",
+        ),
+        pytest.param(
+            "add_opencrq_treatment_plan_moves",
+            {"treatment_plan_id": PLAN_ID, "moves": []},
+            "at least one move",
+            id="no move",
+        ),
+        pytest.param(
+            "add_opencrq_treatment_plan_moves",
+            {"treatment_plan_id": PLAN_ID, "moves": [{"capability_id": CAPABILITY}]},
+            "give target_strength, target_coverage or both",
+            id="move without target",
+        ),
+        pytest.param(
+            "set_opencrq_treatment_plan_moves",
+            {"treatment_plan_id": PLAN_ID, "moves": [{"capability_id": CAPABILITY, "target_strength": "L9"}]},
+            "target_strength must be one of L0, L1, L2, L3",
+            id="unknown rung",
+        ),
+        pytest.param(
+            "set_opencrq_treatment_plan_moves",
+            {"treatment_plan_id": "plan", "moves": []},
+            "plan UUID",
+            id="plan by name",
+        ),
+    ],
+)
+async def test_a_treatment_plan_write_that_cannot_be_sent_is_refused_before_any_call(
+    tool: str, args: dict[str, Any], refusal: str
+) -> None:
+    with _recorded_trpc(opencrq_treatment, {}) as calls:
+        out = await _run(tool, **args)
+    assert calls == []
+    assert refusal in out
+
+
+async def test_a_treatment_plan_write_opencrq_refuses_is_reported_and_nothing_is_claimed() -> None:
+    """The call carries the acting user's token: OpenCRQ's refusal (no write right) is the answer."""
+
+    async def refused(*args: Any, **kwargs: Any) -> tuple[None, str]:
+        return None, "Error: OpenCRQ refused to create treatment plan (403 FORBIDDEN)."
+
+    with patch.object(opencrq_treatment, "_trpc", refused), patch.object(opencrq_common, "_trpc", refused):
+        out = (await _execute("create_opencrq_treatment_plan", organization_id=ORGANIZATION, name="P")).content
+    assert "403" in out
+    assert "Created" not in out
 
 
 @pytest.mark.parametrize("case", WRITES.values(), ids=list(WRITES))

@@ -136,7 +136,12 @@ def _checks(path: str, base_text: str, ours_text: str, theirs_text: str) -> dict
     base_lines = base_text.splitlines(keepends=True)
     ours_added = {line.strip() for line in _added(base_lines, ours_text.splitlines(keepends=True))}
     theirs_added = {line.strip() for line in _added(base_lines, theirs_text.splitlines(keepends=True))}
-    both = tuple(sorted(line for line in ours_added & theirs_added if _MEANINGFUL_RE.search(line)))
+    # A line the base already holds is a recurring line of the file (a dict key every provider block opens
+    # with): each side adding it in its own block is two additions, not one written twice.
+    base_held = {line.strip() for line in base_lines}
+    both = tuple(
+        sorted(line for line in ours_added & theirs_added if _MEANINGFUL_RE.search(line) and line not in base_held)
+    )
     ours_counts = Counter(line.strip() for line in ours_text.splitlines())
     theirs_counts = Counter(line.strip() for line in theirs_text.splitlines())
     return {
