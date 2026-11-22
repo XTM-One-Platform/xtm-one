@@ -238,7 +238,15 @@ export function WaitingForYou({ toolbarLead }: { toolbarLead?: ReactNode } = {})
         rowTestId="waiting-for-you-row"
         onRowClick={(row) => setOpenId(row.id)}
       />
-      {open && <DecisionDialog key={open.id} row={open} onClose={() => setOpenId(null)} />}
+      {/* The answer closes its own row only: it resolves once every invalidated list is read
+          again, after the answered row has left and the reader may have opened the next one. */}
+      {open && (
+        <DecisionDialog
+          key={open.id}
+          row={open}
+          onClose={() => setOpenId((current) => (current === open.id ? null : current))}
+        />
+      )}
     </div>
   );
 }
