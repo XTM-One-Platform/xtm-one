@@ -132,6 +132,7 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
+from app.services.decision_waits import holds_assignment
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
     ASSIGNMENT_RUN_COMPLETED,
@@ -618,7 +619,7 @@ async def has_active_run(
     """
     conditions = [
         AssignmentRun.assignment_id == assignment_id,
-        AssignmentRun.status.in_(list(ACTIVE_RUN_STATUSES)),
+        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
     ]
     if user_id is not None:
         conditions.append(AssignmentRun.user_id == user_id)
@@ -635,7 +636,7 @@ async def count_active_runs(db: AsyncSession, assignment_id: _uuid.UUID) -> int:
     result = await db.execute(
         select(func.count(AssignmentRun.id)).where(
             AssignmentRun.assignment_id == assignment_id,
-            AssignmentRun.status.in_(list(ACTIVE_RUN_STATUSES)),
+            holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
         )
     )
     return int(result.scalar_one() or 0)
@@ -650,7 +651,7 @@ async def find_active_run(
     """The newest run of the assignment in an active state, scoped like :func:`has_active_run`."""
     conditions = [
         AssignmentRun.assignment_id == assignment_id,
-        AssignmentRun.status.in_(list(ACTIVE_RUN_STATUSES)),
+        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
     ]
     if user_id is not None:
         conditions.append(AssignmentRun.user_id == user_id)
@@ -10431,7 +10432,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
             AssignmentRun.trigger_context["type"].as_string(),
         ).where(
             AssignmentRun.assignment_id == assignment_id,
-            AssignmentRun.status.in_(_queue_blocking_statuses()),
+            holds_assignment(AssignmentRun, _queue_blocking_statuses()),
         )
     )
     rows = result.all()
@@ -11281,7 +11282,7 @@ async def _load_queue_states(
                         ~select(in_flight.id)
                         .where(
                             in_flight.assignment_id == AssignmentRun.assignment_id,
-                            in_flight.status.in_(_queue_blocking_statuses()),
+                            holds_assignment(in_flight, _queue_blocking_statuses()),
                             in_flight_key == queued_key,
                         )
                         .exists(),
@@ -11303,7 +11304,7 @@ async def _load_queue_states(
                 )
                 .where(
                     AssignmentRun.assignment_id.in_(ids),
-                    AssignmentRun.status.in_(_queue_blocking_statuses()),
+                    holds_assignment(AssignmentRun, _queue_blocking_statuses()),
                 )
                 .group_by(AssignmentRun.assignment_id)
             )
