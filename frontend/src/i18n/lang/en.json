@@ -20634,7 +20634,7 @@
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}",
   "Open the case": "Open the case",
   "Onboarding": "Onboarding",
-  "Show the guided setup again on the next sign-in or page load, as after a fresh install.": "Show the guided setup again on the next sign-in or page load, as after a fresh install.",
+  "Show the guided setup again now, as after a fresh install.": "Show the guided setup again now, as after a fresh install.",
   "Reset onboarding": "Reset onboarding",
   "Reset onboarding?": "Reset onboarding?",
   "The guided setup is proposed again to administrators. Your organization profile, integrations and fleets are not changed.": "The guided setup is proposed again to administrators. Your organization profile, integrations and fleets are not changed.",
