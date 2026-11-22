@@ -20696,5 +20696,12 @@
   "The evidence health pass finds a supporting asset with no evidence": "La passe de santé des preuves trouve un actif de soutien sans preuve",
   "Not computed yet": "Pas encore calculé",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} n'a pas répondu à {time}, cas inchangés.} other {{products} n'ont pas répondu à {time}, cas inchangés.}}",
-  "Open the {product} integration": "Ouvrir l'intégration {product}"
+  "Open the {product} integration": "Ouvrir l'intégration {product}",
+  "Empty: OpenCRQ is not connected.": "Vide : OpenCRQ n’est pas connecté.",
+  "Connect OpenCRQ": "Connecter OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "Aucune automatisation ne traite ce cas : la flotte de la boucle CTEM n’est pas configurée.",
+  "Waiting for {agent}, working this case since {since}.": "En attente de {agent}, qui traite ce cas depuis le {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "En attente d’une étape de la flotte, qui traite ce cas depuis le {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Ouvert à partir des vulnérabilités OpenCTI rapprochées de votre inventaire",
+  "Opened from OpenAEV findings on your assets": "Ouvert à partir des constats OpenAEV sur vos actifs"
 }
