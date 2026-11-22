@@ -9128,6 +9128,67 @@ PROVIDER_CATALOG = {
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
         },
     },
+    "quotapath": {
+        "name": "QuotaPath",
+        "description": (
+            "Sales commission management - users, teams and managers, compensation plans and paths, "
+            "quotas, deals and their crediting, payouts (earned, paid, still owed), commission totals "
+            "by rep, team, plan and period, CSV payout and deal reports. Commission amounts are people "
+            "data; every write asks a person"
+        ),
+        "logo": "/logos/quotapath.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["sales_compensation"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "available_events": [
+            {
+                "event": "payout_updated",
+                "label": "Payout created or updated",
+                "description": (
+                    "Triggers when a QuotaPath payout is created or changes (a deal credited, a rate or "
+                    "quota changed). Uses polling (every 15 min); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+            },
+            {
+                "event": "payout_resolved",
+                "label": "Payout resolved",
+                "description": (
+                    "Triggers when a QuotaPath payout is resolved (the period paid out). Uses polling "
+                    "(every 15 min); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+            },
+            {
+                "event": "payout_unresolved",
+                "label": "Payout newly owed",
+                "description": (
+                    "Triggers when a payout appears among the unresolved ones (commission owed, the "
+                    "accrual). Uses polling (every 15 min); what is owed when the trigger is enabled "
+                    "does not run."
+                ),
+                "mechanism": "polling",
+            },
+        ],
+        "setup_guide": {
+            "title": "QuotaPath API Key Setup",
+            "url": "https://api.quotapath.com/docs/",
+            "steps": [
+                "Sign in to QuotaPath as a workspace admin.",
+                "Open Settings > Integrations and generate an API key.",
+                "Paste the key in the field below. Test Connection reads the workspace users.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Workspace API key",
+                    "description": "Reads users, teams, plans, quotas, deals and payouts; writes deals, quotas and imports (each write asks a person)",
+                },
+            ],
+            "notes": "QuotaPath sends the key as 'Authorization: Token <key>' to https://api.quotapath.com/v1. Its public API has no disputes, adjustments, draws, payout-period approval or lock, CRM sync status, statement PDFs or webhooks: those stay in the QuotaPath application, and events are polled.",
+        },
+    },
     "linkedin": {
         "name": "LinkedIn",
         "description": "Posts (text, images, video, documents), Pages (Organizations), Analytics, Comments, Reactions",
