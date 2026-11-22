@@ -961,6 +961,8 @@ class ImportSourceStatus(BaseModel):
     available: bool
     #: Why the platform cannot feed the section (empty when it can).
     reason: str = ""
+    #: The reason as a code the dialog words in the user's language: ``not_connected``, ``no_token`` or empty.
+    reason_code: str = ""
     #: The filters this source supports for the section.
     filters: list[str]
 
@@ -1013,6 +1015,7 @@ async def list_organization_import_sources(
                     source=source,
                     available=statuses[source].available,
                     reason=statuses[source].reason,
+                    reason_code=statuses[source].reason_code,
                     filters=list(imp.SOURCE_FILTERS.get((section, source), ())),
                 )
                 for source in imp.SECTION_SOURCES[section]

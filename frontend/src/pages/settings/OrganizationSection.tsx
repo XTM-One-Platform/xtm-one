@@ -614,8 +614,15 @@ export function OrganizationSection() {
     navigate("/chat");
   };
   const connectedPlatforms = [...new Set(integrations.map((integration) => integration.provider).filter((provider) => provider in PLATFORM_NAMES))];
-  // The Sources panel also lists Intune and Defender once their own integration (intune, defender) is connected (#1251).
-  const connectedSources = [...new Set(integrations.flatMap((integration) => importSourcesOfProvider(integration.provider)))];
+  // The Sources panel also lists Intune and Defender once their own integration (intune, defender) is connected (#1251):
+  // a row created but never authorized, or disconnected, cannot be read, so it does not list them (UX round 1 B1).
+  const connectedSources = [
+    ...new Set(
+      integrations.flatMap((integration) =>
+        integration.provider in PLATFORM_NAMES || integration.status === "connected" ? importSourcesOfProvider(integration.provider) : [],
+      ),
+    ),
+  ];
   const draftMenuItems: OverflowMenuItem[] = [
     { id: "draft-platforms", label: t_i18n("From the platforms"), icon: Import, onSelect: () => setPlatformImportOpen(true) },
     {

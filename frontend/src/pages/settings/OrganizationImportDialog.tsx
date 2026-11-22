@@ -199,6 +199,14 @@ const PROFILE_FIELDS = {
   external_id: "External ID",
   product: "Product",
   kind: "Kind",
+  hostname: "Hostname",
+  fqdn: "FQDN",
+  serial: "Serial number",
+  device_id: "Entra device ID",
+  os_family: "OS family",
+  os_version: "OS version",
+  os_build: "OS build",
+  last_seen: "Last seen",
 } as const;
 type ProfileField = keyof typeof PROFILE_FIELDS;
 
@@ -210,6 +218,10 @@ const MAPPING_NOTES = {
   aiKind: "Always Model API",
   aiExposure: "Public when internet-facing, else internal",
   veryHighCritical: "Very high becomes Critical",
+  deviceOwner: "Only when Device owner is on",
+  osTaxonomy: "From the operating system, and the device model when the source gives it",
+  deviceTags: "OS, compliance and ownership, each as a prefixed tag",
+  machineTags: "OS, exposure level, health and risk, each as a prefixed tag",
 } as const;
 
 /** One profile field: the source attribute(s) it reads, and the fallback when the source gives none. */
@@ -221,6 +233,8 @@ interface MappingRow {
 }
 
 const ASSET_FIELDS: ProfileField[] = ["name", "type", "criticality", "exposure", "environment", "owner", "group", "tags", "external_id"];
+/** An endpoint source also fills the identity keys and the operating system of the asset (#1251). */
+const DEVICE_FIELDS: ProfileField[] = [...ASSET_FIELDS, "hostname", "fqdn", "serial", "device_id", "os_family", "os_version", "os_build", "last_seen"];
 
 /** How the source's attributes map to the profile, per section and source; the profile fields absent here are "not provided". */
 const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> = {
@@ -245,6 +259,39 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "owner", from: ["x_opencti_owner"], fallback: "createdBy" },
       { to: "tags", from: ["objectLabel"], note: "platformMarkings" },
       { to: "external_id", from: ["id"] },
+    ],
+  },
+  "assets:intune": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["deviceName"] },
+      { to: "type", from: ["operatingSystem", "chassisType", "model"], note: "osTaxonomy" },
+      { to: "owner", from: ["userDisplayName"], note: "deviceOwner" },
+      { to: "tags", from: ["operatingSystem", "complianceState", "managedDeviceOwnerType"], note: "deviceTags" },
+      { to: "external_id", from: ["id"] },
+      { to: "hostname", from: ["deviceName"] },
+      { to: "fqdn", from: ["deviceName"] },
+      { to: "serial", from: ["serialNumber"] },
+      { to: "device_id", from: ["azureADDeviceId"] },
+      { to: "os_family", from: ["operatingSystem"] },
+      { to: "os_version", from: ["osVersion"] },
+      { to: "last_seen", from: ["lastSyncDateTime"] },
+    ],
+  },
+  "assets:defender": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["computerDnsName"] },
+      { to: "type", from: ["osPlatform"], note: "osTaxonomy" },
+      { to: "tags", from: ["osPlatform", "exposureLevel", "healthStatus", "riskScore"], note: "machineTags" },
+      { to: "external_id", from: ["id"] },
+      { to: "hostname", from: ["computerDnsName"] },
+      { to: "fqdn", from: ["computerDnsName"] },
+      { to: "device_id", from: ["aadDeviceId"] },
+      { to: "os_family", from: ["osPlatform"] },
+      { to: "os_version", from: ["version"] },
+      { to: "os_build", from: ["osBuild"] },
+      { to: "last_seen", from: ["lastSeen"] },
     ],
   },
   "asset_groups:openaev": { fields: ["name", "external_id"], rows: [{ to: "name", from: ["asset_group_name"] }, { to: "external_id", from: ["asset_group_id"] }] },
@@ -620,7 +667,11 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             description={
               entry.available
                 ? t_i18n("Connected and readable with your account.")
-                : t_i18n("Not available: {reason}. Connect it in Settings > Integrations.", { reason: entry.reason || t_i18n("not connected") })
+                : entry.reason_code === "not_connected"
+                  ? t_i18n("Not available: no {source} integration is connected. Connect it in Settings > Integrations.", { source: IMPORT_SOURCE_NAMES[entry.source] ?? entry.source })
+                  : entry.reason_code === "no_token"
+                    ? t_i18n("Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.", { source: IMPORT_SOURCE_NAMES[entry.source] ?? entry.source })
+                    : t_i18n("Not available: {reason}. Connect it in Settings > Integrations.", { reason: entry.reason || t_i18n("not connected") })
             }
           />
         ))}

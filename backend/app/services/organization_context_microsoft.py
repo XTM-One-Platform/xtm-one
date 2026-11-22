@@ -310,10 +310,34 @@ def missing_scope_message(source: str, status: int) -> str:
     )
 
 
+#: Why a source is not available, as a code the import card words in the user's language (#1251, UX round 1 B3).
+REASON_NOT_CONNECTED = "not_connected"
+REASON_NO_TOKEN = "no_token"  # noqa: S105 - a reason code, not a secret
+
+
 def not_connected_message(source: str) -> str:
     """Why *source* cannot be read: no integration of its own provider (the import card adds where to connect it)."""
     label = "Microsoft Intune" if source == INTUNE else "Microsoft Defender"
     return f"no {label} integration is connected"
+
+
+def no_token_message(source: str) -> str:
+    """Why *source* cannot be read: its integration exists but holds no credential to read with."""
+    label = "Microsoft Intune" if source == INTUNE else "Microsoft Defender"
+    return f"no token for the {label} integration: authorize it again"
+
+
+def has_credential(integ: Any) -> bool:
+    """Whether an integration row can be read with (no API call): connected, with a stored credential.
+
+    A row created but never authorized, or disconnected, is not a readable source (#1251, UX round 1 B1).
+    """
+    if getattr(integ, "status", "") != "connected":
+        return False
+    return any(
+        getattr(integ, field, None)
+        for field in ("access_token_enc", "refresh_token_enc", "api_key_enc", "client_secret_enc", "extra_config_enc")
+    )
 
 
 # ── Connection (I/O) ──────────────────────────────────────────────────
@@ -348,7 +372,7 @@ async def access_token(db: Any, user_id: str, source: str) -> tuple[str | None, 
         return None, not_connected_message(source)
     token = await it._get_token(db, str(integ.id), provider, user_id=user_id)
     if not token:
-        return None, f"no token for the {label} integration: authorize it again"
+        return None, no_token_message(source)
     if source == INTUNE:
         return token, ""
     if token == "__oauth__":  # noqa: S105 - the delegated marker of integration_tools, not a secret
@@ -361,13 +385,18 @@ async def access_token(db: Any, user_id: str, source: str) -> tuple[str | None, 
     return (mde, "") if mde else (None, f"no token for the {label} integration: check its app registration")
 
 
-async def connection_status(db: Any, user_id: str, source: str) -> tuple[bool, str]:
-    """Whether *source* has an integration this administrator may read with (no API call)."""
+async def connection_status(db: Any, user_id: str, source: str) -> tuple[bool, str, str]:
+    """Whether *source* has an integration this administrator may read with (no API call).
+
+    Answers ``(available, reason, reason_code)``; the code is one of ``not_connected`` and ``no_token``.
+    """
     provider = INTUNE if source == INTUNE else DEFENDER
     integ = await _integration(db, user_id, provider)
     if integ is None:
-        return False, not_connected_message(source)
-    return True, ""
+        return False, not_connected_message(source), REASON_NOT_CONNECTED
+    if not has_credential(integ):
+        return False, no_token_message(source), REASON_NO_TOKEN
+    return True, "", ""
 
 
 # ── Reading (I/O) ─────────────────────────────────────────────────────

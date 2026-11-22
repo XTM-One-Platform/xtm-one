@@ -59,6 +59,53 @@ def test_not_connected_reason_names_the_source_integration_once() -> None:
     assert "not connected" not in microsoft.not_connected_message("intune")
 
 
+class _Row:
+    def __init__(self, status: str = "connected", **fields: Any) -> None:
+        self.status = status
+        for name in ("access_token_enc", "refresh_token_enc", "api_key_enc", "client_secret_enc", "extra_config_enc"):
+            setattr(self, name, fields.get(name))
+
+
+def test_a_source_is_readable_only_when_its_integration_is_connected_with_a_credential() -> None:
+    # UX round 1 B1: an integration created but never authorized, or disconnected, is not "connected and readable".
+    assert microsoft.has_credential(_Row(access_token_enc="x", refresh_token_enc="y"))
+    assert microsoft.has_credential(_Row(api_key_enc="x"))
+    assert not microsoft.has_credential(_Row())
+    assert not microsoft.has_credential(_Row(status="disconnected", api_key_enc="x"))
+    assert not microsoft.has_credential(_Row(status="pending", access_token_enc="x"))
+
+
+def _status(monkeypatch: pytest.MonkeyPatch, row: Any) -> tuple[bool, str, str]:
+    async def _found(db: Any, user_id: str, provider: str) -> Any:
+        return row
+
+    monkeypatch.setattr(microsoft, "_integration", _found)
+    return asyncio.run(microsoft.connection_status(None, "u", "defender"))
+
+
+def test_connection_status_answers_a_reason_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    # UX round 1 B3: the dialog words the reason from the code in the user's language.
+    assert _status(monkeypatch, None) == (False, microsoft.not_connected_message("defender"), "not_connected")
+    assert _status(monkeypatch, _Row(status="disconnected")) == (
+        False,
+        microsoft.no_token_message("defender"),
+        "no_token",
+    )
+    assert _status(monkeypatch, _Row(api_key_enc="x")) == (True, "", "")
+
+
+def test_every_import_source_has_a_mapping_in_the_dialog() -> None:
+    # UX round 1 B2: the Mapping step of the import stepper lists a row per profile field for every source.
+    import pathlib
+
+    dialog = (
+        pathlib.Path(__file__).resolve().parents[2] / "frontend/src/pages/settings/OrganizationImportDialog.tsx"
+    ).read_text(encoding="utf-8")
+    for section, sources in SECTION_SOURCES.items():
+        for source in sources:
+            assert f'"{section}:{source}"' in dialog, f"no MAPPINGS entry for {section}:{source}"
+
+
 def test_intune_device_row_carries_identity_and_os() -> None:
     row = microsoft.intune_device_row(INTUNE_DEVICE)
     entry = AssetEntry.model_validate(row)

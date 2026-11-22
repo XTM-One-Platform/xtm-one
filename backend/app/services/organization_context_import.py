@@ -161,6 +161,8 @@ class SourceStatus:
     source: str
     available: bool
     reason: str = ""
+    #: The reason as a code the dialog words in the user's language (empty: word ``reason`` as given).
+    reason_code: str = ""
 
 
 @dataclass
@@ -661,11 +663,11 @@ async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, 
 
     for source in microsoft.SOURCES:
         try:
-            available, reason = await microsoft.connection_status(db, str(user_id), source)
+            available, reason, code = await microsoft.connection_status(db, str(user_id), source)
         except Exception as exc:
             logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
-            available, reason = False, "unreadable"
-        statuses[source] = SourceStatus(source=source, available=available, reason=reason)
+            available, reason, code = False, "unreadable", ""
+        statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
     return statuses
 
 

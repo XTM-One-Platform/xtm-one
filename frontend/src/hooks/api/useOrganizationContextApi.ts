@@ -413,7 +413,8 @@ export interface ImportSourcesResponse {
     section: ImportSectionKey;
     /** The profile field the section writes. */
     field: string;
-    sources: { source: ImportSourceKey; available: boolean; reason: string; filters: string[] }[];
+    /** reason_code: `not_connected` or `no_token` when the dialog words the reason itself (#1251); empty: `reason` as given. */
+    sources: { source: ImportSourceKey; available: boolean; reason: string; reason_code?: string; filters: string[] }[];
   }[];
 }
 

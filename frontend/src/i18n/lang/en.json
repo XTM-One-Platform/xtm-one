@@ -20781,5 +20781,17 @@
   "Only machines in these states. Empty: every state.": "Only machines in these states. Empty: every state.",
   "The health of the Defender sensor on the machine.": "The health of the Defender sensor on the machine.",
   "Only machines at these levels. Empty: every level.": "Only machines at these levels. Empty: every level.",
-  "The exposure level Defender Vulnerability Management gives the machine.": "The exposure level Defender Vulnerability Management gives the machine."
+  "The exposure level Defender Vulnerability Management gives the machine.": "The exposure level Defender Vulnerability Management gives the machine.",
+  "FQDN": "FQDN",
+  "Serial number": "Serial number",
+  "Entra device ID": "Entra device ID",
+  "OS family": "OS family",
+  "OS version": "OS version",
+  "OS build": "OS build",
+  "Only when Device owner is on": "Only when Device owner is on",
+  "From the operating system, and the device model when the source gives it": "From the operating system, and the device model when the source gives it",
+  "OS, compliance and ownership, each as a prefixed tag": "OS, compliance and ownership, each as a prefixed tag",
+  "OS, exposure level, health and risk, each as a prefixed tag": "OS, exposure level, health and risk, each as a prefixed tag",
+  "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "Not available: no {source} integration is connected. Connect it in Settings > Integrations.",
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations."
 }
