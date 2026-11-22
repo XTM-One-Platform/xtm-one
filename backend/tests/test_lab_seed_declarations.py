@@ -4732,6 +4732,41 @@ def test_the_lab_turns_the_platform_tools_mcp_server_on_unless_lab_xtm_mcp_is_0(
     assert seed.index("seed_xtm_mcp(token, base)") < seed.index("seeded.json")
 
 
+def test_the_module_health_lab_turns_platform_health_on_through_the_real_settings_route():
+    """#101 S15d-3: ``LAB_PLATFORM_HEALTH=on`` puts Platform Health on, every other setting kept; off leaves it."""
+    calls: list = []
+    stored = {"enabled": False, "module_analyst": {"enabled": True}}
+
+    def api(method, path, token=None, body=None):
+        calls.append((method, path, token, body))
+        if method == "PUT":
+            stored.update(body)
+        return dict(stored)
+
+    base = "http://localhost:3100"
+    names = ("LAB_PLATFORM_HEALTH_STATES", "lab_switch", "seed_platform_health")
+    ns = _lab_namespace(*names, api=api)
+    assert ns["seed_platform_health"]("admin-token", base) == {} and calls == []
+    ns = _lab_namespace(*names, env={"LAB_PLATFORM_HEALTH": "on"}, api=api)
+    assert ns["seed_platform_health"]("admin-token", base) == {
+        "Platform Health": {"id": "enabled", "url": f"{base}/health"},
+    }
+    assert calls[1] == (
+        "PUT",
+        "/health/settings",
+        "admin-token",
+        {"enabled": True, "module_analyst": {"enabled": True}},
+    )
+    seed = _lab_source("seed_entities")
+    assert "seed_platform_health(token, base)" in seed and "skipped['Platform Health']" in seed
+    assert seed.index("seed_suite_registrations(token, base)") > seed.index("seed_platform_health(token, base)")
+    assert seed.index("seed_platform_health(token, base)") < seed.index("seeded.json")
+    services = _services()
+    lab = services["lab-module-health"]
+    assert "LAB_PLATFORM_HEALTH" not in services["lab"]["env"]
+    assert lab["env"] == {**services["lab-live"]["env"], "LAB_PLATFORM_HEALTH": "on", "LAB_WORKER": "1"}
+
+
 def test_the_lab_peer_clears_its_default_agent_so_profile_renders_the_general_assistant_tools():
     """#10210: as lab-peer, /profile shows "Reset to defaults"; the clear is read back on /auth/me."""
     calls: list = []

@@ -42,6 +42,12 @@ The settings are one section. A bar at its top (**On this page**) jumps to its f
 | Durations | How long an applied proposal is watched for a regression (7 days), how long a flow that replaces an assignment runs in shadow first (3 days), how long it is watched after the switch (7 days), and how many shadow runs it needs (5). |
 | Dry-run | Every write of every Platform Health agent is logged instead of executed: memory changes, proposals, sandbox copies. Digests count what was logged. |
 
+### Spend limits locked by default
+
+Platform Health spends outside the agentic quota: its own ceilings are the only bound on that spend. They are therefore **locked by default**. In the **Spend limits** group, the ceilings of the Budget, Analysis and Module Analyst blocks show their built-in defaults, read-only, with a lock and the variable that unlocks them; a change to one of them is refused. A value stored before the lock is kept, not applied.
+
+To change them, set `PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED=true` in the platform's environment and restart: the stored values apply again and the ceilings are editable. The switches of the analysis and of the Module Analyst stay editable either way, since turning them off only lowers the spend. `GET /api/v1/health/settings/spend-limits` reports the lock and, for each ceiling, the value in force, its default, the stored value and its source (`default` or `database`).
+
 ### Name
 
 The **Name** field sets the name the entry points ("Improve with …") and the refusals use. The page, the navigation entry, the Settings section, the orchestrator agent, its fleet and its workspace always read **Platform Health**: the fleet is built in, so the platform writes that name on them at every start, over a former Concierge name too. Left empty, the name is **Platform Health**. It is 1 to 40 characters, without line breaks or control characters; leading and trailing spaces are trimmed.

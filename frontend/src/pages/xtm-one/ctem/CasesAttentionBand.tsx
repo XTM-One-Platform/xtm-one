@@ -18,22 +18,23 @@ import { useFormatter } from "@/i18n";
 import { CasesBulkActions } from "./CasesBulkActions";
 import { CasePriorityChip } from "./cases-shared";
 import { CtemWidgetHeader } from "./CtemWidgetHeader";
-import { rankByAttention, type CaseAttentionReason, type CaseNextAction } from "./case-attention";
+import { rankByAttention, type CaseAttention, type CaseAttentionReason, type CaseNextAction } from "./case-attention";
 
 /** How many cases the band shows. */
 const ATTENTION_BAND_SIZE = 3;
 
 /** The bulk dialog a next action opens; "open_case" is a link. */
-const NEXT_ACTION_DIALOG: Partial<Record<CaseNextAction, "assign" | "due">> = {
+export const NEXT_ACTION_DIALOG: Partial<Record<CaseNextAction, "assign" | "due">> = {
   assign: "assign",
   set_due: "due",
 };
 
-export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; now: number }) {
+/**
+ * The one-line why of an attention score, in the reader's language: the list band
+ * and the case page say it with the same words (#1176).
+ */
+export function useAttentionWhy(): (attention: CaseAttention) => string {
   const { t_i18n } = useFormatter();
-  const top = rankByAttention(cases, now).slice(0, ATTENTION_BAND_SIZE);
-  if (top.length === 0) return null;
-
   const reasonText = (r: CaseAttentionReason): string | null => {
     switch (r.kind) {
       case "kev":
@@ -55,6 +56,14 @@ export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; n
         return null; // the priority is the chip
     }
   };
+  return (attention) => attention.reasons.map(reasonText).filter((s): s is string => Boolean(s)).join(", ");
+}
+
+export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; now: number }) {
+  const { t_i18n } = useFormatter();
+  const whyOf = useAttentionWhy();
+  const top = rankByAttention(cases, now).slice(0, ATTENTION_BAND_SIZE);
+  if (top.length === 0) return null;
 
   return (
     <Card data-testid="ctem-cases-attention">
@@ -67,7 +76,7 @@ export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; n
         />
         <ol className="flex flex-col divide-y divide-[var(--border-elevation-subtle-soft)]">
           {top.map(({ kase, attention }) => {
-            const why = attention.reasons.map(reasonText).filter((s): s is string => Boolean(s)).join(", ");
+            const why = whyOf(attention);
             return (
               <li key={kase.id} className="flex items-center gap-3 py-2" data-testid="ctem-cases-attention-row">
                 <CasePriorityChip priority={kase.priority} />

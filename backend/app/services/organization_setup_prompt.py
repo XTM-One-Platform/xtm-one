@@ -140,6 +140,34 @@ def record_step(row: PlatformSettings, *, step: str, state: StepState, version: 
     return steps
 
 
+def reset_answer(row: PlatformSettings) -> bool:
+    """Forget the instance's answer and step progress, so the setup is proposed again.
+
+    Settings > Platform "Reset onboarding": the four answer columns and the
+    step progress are cleared, so the next administrator page load is proposed
+    the current version from its first step, as after a fresh install. Only the
+    proposal state is touched: the organization profile, integrations, fleets,
+    automations and slot bindings keep what the earlier run saved. Returns
+    False when there was nothing to clear.
+    """
+    cleared = any(
+        value is not None
+        for value in (
+            row.organization_setup_prompted_at,
+            row.organization_setup_prompted_by_user_id,
+            row.organization_setup_prompt_outcome,
+            row.setup_prompt_version,
+            row.setup_prompt_progress,
+        )
+    )
+    row.organization_setup_prompted_at = None
+    row.organization_setup_prompted_by_user_id = None
+    row.organization_setup_prompt_outcome = None
+    row.setup_prompt_version = None
+    row.setup_prompt_progress = None
+    return cleared
+
+
 async def has_saved_profile(db: AsyncSession) -> bool:
     from app.services import organization_context as org_context
 

@@ -2733,6 +2733,13 @@ class Settings(BaseSettings):
     # counting, not sandbox availability) has no XTM-One-vs-Copilot distinction.
     disable_sandbox_quota_usage: bool = False
     ai_catalog_enabled: bool = False
+    # Platform Health spends outside the agentic quota (dev-docs/platform-health.md
+    # sections 6 and 12.5), bounded only by its own spend ceilings (Budget,
+    # Analysis, Module Analyst). False by default: those ceilings are locked at
+    # their built-in defaults, read-only in Settings > Platform Health and a write
+    # to them refused; a stored value is kept, not applied. True: the stored
+    # values apply and the ceilings are editable again. Blank is unset.
+    platform_health_spend_limits_unlocked: bool = False
     # When True, every agent tool of an admin (the agent builder, the flow
     # builder, the trace inspection and the work-items delegation, in chat and
     # on the XTM One MCP server) sees only the admin's three tiers, like every

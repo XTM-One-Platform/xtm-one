@@ -48,6 +48,7 @@ import { MiniTrend } from "./ctem-viz";
 import { CtemScoreTip } from "./CtemScoreTip";
 import { LifecycleHeader } from "./LifecycleHeader";
 import { SignalCounter } from "./loop/SignalCounter";
+import { SignalSourcesButton } from "./loop/SignalSourcesDialog";
 import { assessmentBusy } from "./landing-refresh";
 import { historyWindow, seriesChange } from "./trend-window";
 
@@ -391,8 +392,17 @@ export function LifecycleBandCard({
     <Card className="@container flex flex-col" data-testid="ctem-lifecycle-band">
       <CardContent ref={contentRef} className="flex flex-col gap-3 p-4">
         <LifecycleHeader live={live} covered={covered} total={total} onExport={onExport} />
-        {/* The ring key, once for the strip, short labels on one row; the definitions are in the tooltips. */}
+        {/* Signals first: they start the loop (#1189). Then the ring key, once for the strip, short labels on
+            one row; the definitions are in the tooltips. Wide card: the key at the right end of the row; narrower:
+            the signals on a line of their own, the key on the next one, both on the card's left edge. */}
         <div className="flex flex-wrap items-center gap-4 content-caption text-default-secondary" data-testid="ctem-story-key">
+          {signals && (
+            <span className="flex min-w-0 basis-full items-center gap-1 @5xl:basis-auto" data-testid="ctem-story-key-signals">
+              <SignalCounter counts={signals.counts} onOpen={signals.onOpen} />
+              <SignalSourcesButton />
+            </span>
+          )}
+          <span className="flex flex-wrap items-center gap-4 @5xl:ml-auto" data-testid="ctem-story-key-rings">
           <Tip content={measuredHelp}>
             <span className="inline-flex items-center gap-1.5" tabIndex={0}>
               <Icon name="database" size={16} /> {t_i18n("Outer ring: Measured (quantitative)")}
@@ -403,13 +413,7 @@ export function LifecycleBandCard({
               <Icon name="building-2" size={16} /> {t_i18n("Inner ring: In your context (qualitative)")}
             </span>
           </Tip>
-          {/* Wide card: at the right end of the ring key row. Narrower: a line of
-              its own on the card's left edge, never pushed right (#877 UX round 1 B3). */}
-          {signals && (
-            <span className="min-w-0 basis-full @5xl:ml-auto @5xl:basis-auto">
-              <SignalCounter counts={signals.counts} onOpen={signals.onOpen} />
-            </span>
-          )}
+          </span>
         </div>
         <div className="relative">
           {/* The track the stages sit on: one line through the rings' row. */}
