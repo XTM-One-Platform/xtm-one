@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { AttackSurfacePass, CaseAttentionProfile, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type { AssetIdentitySettings, AttackSurfacePass, CaseAttentionProfile, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -13,6 +13,8 @@ interface CrownJewel {
   owner: string;
   criticality: "low" | "medium" | "high" | "critical";
   opencrq_asset_id: string;
+  /** The assets and asset groups (by name) it runs on (#11543); absent when none is named. */
+  asset_names?: string[];
   /** Where the row came from (#1134): manual, csv, api, agent:<id> or a platform. */
   source?: string;
   external_id?: string;
@@ -68,10 +70,11 @@ export interface OrganizationProfile {
   attack_surface?: AttackSurfacePass;
   /** The points of the Cases attention score (#1176); absent on an older backend: the defaults. */
   case_attention?: CaseAttentionProfile;
-  /** Parts edited elsewhere (CTEM-28, #1216, #1178), carried whole by every profile save. */
+  /** Parts edited elsewhere (CTEM-28, #1216), carried whole by every profile save. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
-  asset_identity?: Record<string, unknown>;
+  /** Asset matching and field precedence (#1178), edited in CTEM > Inventory, Sources. */
+  asset_identity?: AssetIdentitySettings;
 }
 
 export interface OrganizationContextResponse {
