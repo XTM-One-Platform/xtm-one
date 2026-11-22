@@ -210,6 +210,17 @@ export const test = base.extend<{
       viewport: { width: 1920, height: 1080 },
       locale: 'en-US',
       timezoneId: 'UTC',
+      // The installed app's service worker (`public/sw.js`, registered at boot by
+      // `src/lib/pwa.ts`) has a fetch handler, so Chromium hands every request of
+      // the page to it first. With `page.route` active on the same page (the
+      // failed-direction test of 04-ui-inbound-vs-outbound) a lazy route chunk
+      // could stay unanswered: merge_group run 45016235050, the click on the
+      // binding moved the URL to /integrations/<id>, IntegrationDetail loaded,
+      // its dependency circle-question-mark-*.js never answered and the old page
+      // stayed on screen for 15 s (browser-log.json: serviceWorkers 1). Playwright
+      // documents routing as unsupported under a service worker; no test of this
+      // suite exercises it, so it is blocked here, as stale-build-notice does.
+      serviceWorkers: 'block',
     });
     const page = await context.newPage();
     const browserLog = recordBrowserLog(page);

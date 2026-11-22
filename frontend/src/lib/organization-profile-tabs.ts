@@ -36,6 +36,7 @@ export const PROFILE_CARD_TAB = {
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
+  outside_lens: "exposure",
   enterprise_knowledge: "knowledge",
   scheduled_imports: "knowledge",
   context_injection: "knowledge",
@@ -69,6 +70,9 @@ export const PROFILE_FIELD_CARD = {
   prioritization_policy: "prioritization_policy",
   accepted_risks: "prioritization_policy",
   posture_target: "prioritization_policy",
+  owned_domains: "outside_lens",
+  address_ranges: "outside_lens",
+  attack_surface: "outside_lens",
   enterprise_knowledge: "enterprise_knowledge",
   tracked_organizations: "tracked_organizations",
 } as const satisfies Record<string, ProfileCard>;
