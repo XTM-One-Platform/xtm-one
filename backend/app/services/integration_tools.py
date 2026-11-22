@@ -4945,6 +4945,27 @@ def _make_park_full_ci_fn(context: dict[str, Any]) -> Callable[..., Awaitable[bo
     return _park
 
 
+def _make_branch_lease_check_fn(context: dict[str, Any]) -> Callable[[str, str], Awaitable[str | None]] | None:
+    """The ``check_branch_lease`` callback the GitHub branch-moving tools get.
+
+    Bound to the calling run (``context["run_id"]``) and its person: a branch
+    another LIVE run leases (``hold="take"``) answers the refusal text, so the
+    write stands down. ``None`` outside a run: there is no holder to compare.
+    """
+    run_id = str(context.get("run_id") or "").strip()
+    if not run_id:
+        return None
+    user_id = context.get("user_id") or None
+
+    async def _check(repo: str, branch: str) -> str | None:
+        from app.services.shared_state_pull_requests import branch_lease_refusal, live_branch_lease
+
+        lease = await live_branch_lease(repo, branch, user_id=user_id, run_id=run_id)
+        return branch_lease_refusal(repo, branch, lease) if lease else None
+
+    return _check
+
+
 def _make_record_push_fn(
     context: dict[str, Any],
     record: Callable[..., Awaitable[str]] | None,
@@ -6565,6 +6586,10 @@ async def _build_integration_tools_inner(
                     _park = _make_park_full_ci_fn(context)
                     if _park is not None:
                         _builder_kwargs["park_full_ci"] = _park
+                    # A branch another live run leases is not moved by this run.
+                    _lease_check = _make_branch_lease_check_fn(context)
+                    if _lease_check is not None:
+                        _builder_kwargs["check_branch_lease"] = _lease_check
                     # An enforced repository Scope(s) is a hard boundary on the
                     # GitHub tools.
                     from app.integrations.providers.github.scope import (
