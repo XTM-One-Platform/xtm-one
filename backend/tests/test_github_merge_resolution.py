@@ -858,6 +858,34 @@ async def test_a_replay_after_a_stop_between_resolution_chunks_writes_the_missin
 
 
 @pytest.mark.asyncio
+async def test_a_keep_only_replay_over_a_stopped_resolution_names_it_instead_of_no_change():
+    ours, theirs = _catalogues("branch "), _catalogues("main ")
+    resolutions = [{"path": path, "keep": "branch"} for path in ours]
+    fake = FakeGitHub(ours, theirs, both=sorted(ours))
+    fake.stop_armed = True
+    with patch(_SAFE_REQUEST, new=_stop_at_second_resolution_chunk(fake)):
+        with pytest.raises(_WorkerStop):
+            await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        assert fake.tip_headline.endswith("(1/2)")
+        written = len(fake.commits)
+        fake.stop_armed = False
+        result = await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+
+    # A keep is settled per hunk and cannot be checked by blob id: the stopped (1/2) tip is named, never hidden.
+    assert result.startswith("Error: ") and "left at part 1 of 2" in result, result
+    assert all(path in result for path in ours) and "No change" not in result
+    assert len(fake.commits) == written
+
+
+def test_merge_github_branch_is_replay_safe_so_a_resumed_turn_finishes_a_stopped_resolution():
+    executor = MagicMock()
+    executor.register = MagicMock()
+    definitions = build_tools("fake-token", executor)
+    merge = next(tool for tool in definitions if tool.name == "merge_github_branch")
+    assert merge.replay_safe is True
+
+
+@pytest.mark.asyncio
 async def test_an_already_merged_branch_missing_a_resolution_it_did_not_leave_writes_nothing():
     ours, theirs = _sides()
     fake = FakeGitHub(ours, theirs, both=["src/a.py"])

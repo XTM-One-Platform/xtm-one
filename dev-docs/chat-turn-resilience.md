@@ -604,6 +604,14 @@ twenty pasted files, its result) dropped every round.
   leaves its calls out, so the first repeat runs. Observed: across nine
   rollouts a resumed run's `render_video_scene`, whose job never queued, was
   refused on every resume until an argument changed (issue #8819).
+  `merge_github_branch` is replay-safe too: its repeat drops the alignment
+  commits a stopped call left, answers a merge already landed, and writes the
+  resolution chunks a call stopped at `Resolve the merge of <ref>: N files
+  (k/n)` left unwritten (`finish_stopped_resolution`); a replay whose
+  resolutions cannot be checked by blob id (`keep` only) over such a tip is an
+  error naming the stopped commit, never "No change". Observed: a rollout cut a
+  call after `(1/2)`, the resumed turn refused the repeat, and the branch read
+  mergeable with two locale catalogs missing the PR's keys (issue #1205).
 
 - **A declared read runs at once.** The name classifier fails safe to a
   write on a verb it cannot read (`compare`, `inspect`) and on a read whose
