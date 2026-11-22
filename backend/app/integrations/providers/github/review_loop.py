@@ -23,8 +23,10 @@ from typing import Any
 
 from . import _common
 
-#: The machine-readable first line of a review-loop verdict comment.
-_MARKER = re.compile(r"\A\s*UX-LOOP\s+round=(?P<round>\d+)\s+verdict=(?P<verdict>[A-Za-z_]+)")
+#: The machine-readable first line of a review-loop verdict comment. It may be posted as code: wrapped in
+#: backticks (`` `UX-LOOP ...` ``) or opened by a fence (```` ``` ```` then the marker on the next line).
+#: Prose that cites a marker mid-sentence is not one.
+_MARKER = re.compile(r"\A\s*(?:`{3,}[^\n]*\n\s*)?`*\s*UX-LOOP\s+round=(?P<round>\d+)\s+verdict=(?P<verdict>[A-Za-z_]+)")
 
 #: The newest comments read: a verdict is among the latest, never page one of a long thread.
 MAX_COMMENTS = 50
