@@ -28,6 +28,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon, Textarea } from "@filigran/design-system";
 
+import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { useUpdateAgent } from "@/hooks/api/useAgentApi";
 import { useSkillVersions, useSkills } from "@/hooks/api/useSkillApi";
+import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 import {
   CUSTOMER_NOTES_MAX_CHARS,
@@ -107,6 +109,8 @@ function OrganizationNotes({ agent, canEdit }: { agent: Agent; canEdit: boolean 
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const update = useUpdateAgent();
+  // PUT /agents/{id} sits behind the AI gate: with AI off a save would only refuse.
+  const aiOff = useAiActionDisabled();
   const stored = agent.customer_notes ?? "";
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? stored;
@@ -154,9 +158,11 @@ function OrganizationNotes({ agent, canEdit }: { agent: Agent; canEdit: boolean 
                 <Button type="button" variant="secondary" size="sm" onClick={() => setDraft(null)} disabled={update.isPending}>
                   {t_i18n("Cancel")}
                 </Button>
-                <Button type="button" size="sm" onClick={save} disabled={update.isPending}>
-                  {t_i18n("Save")}
-                </Button>
+                <AiDisabledTip>
+                  <Button type="button" size="sm" onClick={save} disabled={aiOff || update.isPending}>
+                    {t_i18n("Save")}
+                  </Button>
+                </AiDisabledTip>
             </div>
           )}
         </>
