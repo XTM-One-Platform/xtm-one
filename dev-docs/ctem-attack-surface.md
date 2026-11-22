@@ -27,7 +27,9 @@ reachability assertions belong to OpenAEV (CTEM-27).
 ## 2. The pass
 
 `services/ctem_attack_surface.py`, called by the autonomous tick after the case
-sweep, at most once per cadence window (Redis slot `ctem:attack-surface:pass`).
+sweep, at most once per cadence window (Redis slot `ctem:attack-surface:pass`). The slot is kept only by
+a pass that committed: a skipped pass (no credential yet) or a failed provider read gives it back, so the
+next tick retries.
 
 1. Read: the provider reader (`ShodanSurfaceReader`) lists the DNS records of
    each owned domain and the banners of each owned domain and range, one
@@ -45,7 +47,7 @@ sweep, at most once per cadence window (Redis slot `ctem:attack-surface:pass`).
 | Path | Fires when |
 |---|---|
 | 5 `new_exposure` | A declared asset with `internet_facing: no` answers; a declared asset answers on a port the previous pass did not see. |
-| 6 `stale_asset` | A name resolves to nothing; a name of an owned domain points outside the owned ranges; a host an earlier pass saw is unseen for `stale_after_days`. |
+| 6 `stale_asset` | A listed name that no DNS record of any type backs (a name with only MX, TXT or NS records is not dangling); a name of an owned domain points outside the owned ranges; a host an earlier pass saw is unseen for `stale_after_days`. |
 | 7 `surface_drift` | A host neither declared nor seen by an earlier pass (the reconcile leaves it `to_validate`); a new port on an undeclared host. |
 
 The first pass sets the baseline: it raises paths 5 and 6 (they compare with

@@ -173,6 +173,138 @@ async def test_the_shodan_reader_builds_one_observation_per_host(monkeypatch: py
     assert by_host["old.corp.example"].resolves is False
 
 
+@pytest.mark.asyncio
+async def test_a_name_backed_only_by_mx_or_txt_records_is_not_dangling(monkeypatch: pytest.MonkeyPatch) -> None:
+    answers = {
+        "/dns/domain/corp.example": {
+            "subdomains": ["_dmarc", "mail", "old"],
+            "data": [
+                {"subdomain": "_dmarc", "type": "TXT", "value": "v=DMARC1; p=reject"},
+                {"subdomain": "mail", "type": "MX", "value": "mx.provider.example"},
+            ],
+        },
+    }
+
+    async def _get(self: Any, path: str, action: str, params: Any = None) -> Any:
+        return answers.get(path, {})
+
+    monkeypatch.setattr(surface.ShodanSurfaceReader, "_get", _get)
+    observed = await surface.ShodanSurfaceReader("k").observe(["corp.example"], [])
+    dangling = sorted(o.host for o in observed if o.resolves is False)
+    assert dangling == ["old.corp.example"]
+
+
+# ── the schedule ────────────────────────────────────────────────────────
+
+
+class _SlotRedis:
+    def __init__(self) -> None:
+        self.keys: set[str] = set()
+
+    async def set(self, key: str, value: str, nx: bool = False, ex: int | None = None) -> bool | None:
+        if nx and key in self.keys:
+            return None
+        self.keys.add(key)
+        return True
+
+    async def delete(self, key: str) -> None:
+        self.keys.discard(key)
+
+
+class _TickDb:
+    def __init__(self) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+def _tick_db() -> Any:
+    return _TickDb()
+
+
+def _patch_tick(monkeypatch: pytest.MonkeyPatch, redis: _SlotRedis) -> None:
+    import uuid
+    from types import SimpleNamespace
+
+    from app.core import redis as redis_module
+    from app.services import ctem_case_loop, organizations
+
+    profile = _profile(attack_surface={"enabled": True, "integration": str(uuid.uuid4())})
+
+    async def _client() -> _SlotRedis:
+        return redis
+
+    async def _primary(db: Any) -> Any:
+        return SimpleNamespace(id=uuid.uuid4())
+
+    async def _current(db: Any, organization_id: Any) -> Any:
+        return SimpleNamespace(profile=profile.model_dump())
+
+    async def _publish(pending: Any) -> None:
+        return None
+
+    monkeypatch.setattr(redis_module, "redis_client", _client)
+    monkeypatch.setattr(organizations, "get_primary", _primary)
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_pass_gives_the_cadence_slot_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = _SlotRedis()
+    _patch_tick(monkeypatch, redis)
+
+    async def _no_reader(db: Any, profile: Any) -> str:
+        return "no credential could be resolved for the attack surface integration"
+
+    monkeypatch.setattr(surface, "reader_for", _no_reader)
+    result = await surface.scheduled_pass(_tick_db())
+    assert result is not None and str(result["skipped"]).startswith("no credential")
+    assert redis.keys == set()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_provider_read_gives_the_cadence_slot_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = _SlotRedis()
+    _patch_tick(monkeypatch, redis)
+
+    async def _reader(db: Any, profile: Any) -> Any:
+        return object()
+
+    async def _fail(db: Any, **kw: Any) -> Any:
+        raise surface.SurfaceReadError("Shodan answered 503")
+
+    monkeypatch.setattr(surface, "reader_for", _reader)
+    monkeypatch.setattr(surface, "run_pass", _fail)
+    db = _tick_db()
+    assert await surface.scheduled_pass(db) == {"skipped": "Shodan answered 503"}
+    assert db.rollbacks == 1 and redis.keys == set()
+
+
+@pytest.mark.asyncio
+async def test_a_committed_pass_keeps_the_cadence_slot(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = _SlotRedis()
+    _patch_tick(monkeypatch, redis)
+
+    async def _reader(db: Any, profile: Any) -> Any:
+        return object()
+
+    async def _ok(db: Any, **kw: Any) -> dict[str, Any]:
+        return {"pending": [], "counts": {"new_exposure": 0}}
+
+    monkeypatch.setattr(surface, "reader_for", _reader)
+    monkeypatch.setattr(surface, "run_pass", _ok)
+    db = _tick_db()
+    assert await surface.scheduled_pass(db) == {"new_exposure": 0}
+    assert db.commits == 1 and redis.keys == {"ctem:attack-surface:pass"}
+    assert await surface.scheduled_pass(db) is None
+
+
 # ── segregation ─────────────────────────────────────────────────────────
 
 

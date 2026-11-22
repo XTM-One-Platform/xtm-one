@@ -450,9 +450,11 @@ class ShodanSurfaceReader:
                 name = f"{sub}.{domain}" if sub else domain
                 kind = str(record.get("type") or "").upper()
                 value = str(record.get("value") or "").strip().rstrip(".").lower()
+                # A record of any type (MX, TXT, NS included) backs the name: only a
+                # listed name that no record backs resolves to nothing (path 6).
+                named.add(host_key(name))
                 if kind in {"A", "AAAA", "CNAME"}:
                     obs = _host(name)
-                    named.add(host_key(name))
                     if value:
                         obs.dns_target = obs.dns_target or value
                         if kind in {"A", "AAAA"}:
@@ -530,15 +532,29 @@ async def reader_for(db: AsyncSession, profile: Any) -> SurfaceReader | str:
 # ── the schedule ────────────────────────────────────────────────────────
 
 
+_CADENCE_SLOT_KEY = "ctem:attack-surface:pass"
+
+
 async def pass_due(cadence_hours: int) -> bool:
     """Take the pass slot for this cadence window; True when this tick runs it (or Redis is unavailable)."""
     try:
         from app.core.redis import redis_client
 
         client = await redis_client()
-        return bool(await client.set("ctem:attack-surface:pass", "1", nx=True, ex=max(1, cadence_hours) * 3600))
+        return bool(await client.set(_CADENCE_SLOT_KEY, "1", nx=True, ex=max(1, cadence_hours) * 3600))
     except Exception:  # no Redis: the pass runs; it is idempotent (signals dedupe on their key)
         return True
+
+
+async def release_pass_slot() -> None:
+    """Give the slot back after a pass that did not complete, so the next tick retries it."""
+    try:
+        from app.core.redis import redis_client
+
+        client = await redis_client()
+        await client.delete(_CADENCE_SLOT_KEY)
+    except Exception:  # no Redis: there is no slot to give back
+        logger.debug("CTEM attack surface pass slot not released: Redis unavailable")
 
 
 async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
@@ -557,17 +573,25 @@ async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
         return None
     if not await pass_due(surface.cadence_hours):
         return None
-    reader = await reader_for(db, profile)
-    if isinstance(reader, str):
-        logger.info("CTEM attack surface pass skipped: %s", reader)
-        return {"skipped": reader}
+    completed = False
     try:
-        result = await run_pass(db, organization_id=primary.id, profile=profile, reader=reader)
-    except SurfaceReadError as exc:
-        await db.rollback()
-        logger.warning("CTEM attack surface pass: provider read failed: %s", exc)
-        return {"skipped": str(exc)}
-    await db.commit()
+        reader = await reader_for(db, profile)
+        if isinstance(reader, str):
+            logger.info("CTEM attack surface pass skipped: %s", reader)
+            return {"skipped": reader}
+        try:
+            result = await run_pass(db, organization_id=primary.id, profile=profile, reader=reader)
+        except SurfaceReadError as exc:
+            await db.rollback()
+            logger.warning("CTEM attack surface pass: provider read failed: %s", exc)
+            return {"skipped": str(exc)}
+        await db.commit()
+        completed = True
+    finally:
+        # The slot is kept only by a pass that committed: a skipped or failed
+        # pass (no credential yet, a provider 5xx or rate limit) retries next tick.
+        if not completed:
+            await release_pass_slot()
     await ctem_case_loop.publish_pending(result["pending"])
     counts: dict[str, Any] = result["counts"]
     return counts
