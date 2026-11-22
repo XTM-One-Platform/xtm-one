@@ -17,13 +17,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * The agentic checks of an OpenCTI, OpenAEV or OpenCRQ card (#101 S15e, dev-docs/platform-health.md
  * section 13.6): the counts of the module checker's latest round on every registration (passed,
  * warnings, failed, not run), when it ran, and every check with its verdict, recommendation or
- * reason in the shared popover. Stored reports only (`GET /health/modules/{module}/checks`), no
+ * reason in the shared popover, grouped by registration when the module has several (UX round 1 B1).
+ * Stored reports only (`GET /health/modules/{module}/checks`), no
  * model call: readable with AI off. Administrators only, as the card's AI block.
  */
 import { Badge } from "@/components/ui/badge";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { useHealthModuleChecks } from "@/hooks/api/useHealthApi";
+import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { useFormatter } from "@/i18n";
 import { HEALTH_MODULE_LABELS, checkTitle } from "@/lib/health-modules";
 import type { HealthCheckVerdict, HealthModule, HealthModuleCheckEntry, HealthModuleCheckReport } from "@/types";
@@ -46,6 +48,18 @@ const VERDICT_BADGE: Record<HealthCheckVerdict, "success" | "warning" | "destruc
 /** Failed first, then warnings, not run, passed: what needs a look leads the list. */
 const VERDICT_ORDER: HealthCheckVerdict[] = ["fail", "warn", "not_run", "pass"];
 
+const verdictRank = (check: HealthModuleCheckEntry) => {
+  const rank = VERDICT_ORDER.indexOf(check.verdict);
+  return rank < 0 ? VERDICT_ORDER.indexOf("not_run") : rank;
+};
+
+/** One registration's latest round: its checks, failed first. */
+interface CheckRoundGroup {
+  registrationId: string;
+  finishedAt: string;
+  checks: HealthModuleCheckEntry[];
+}
+
 export interface CheckRoundTotals {
   passed: number;
   warned: number;
@@ -53,23 +67,28 @@ export interface CheckRoundTotals {
   notRun: number;
   /** The newest round's end, ISO. */
   finishedAt: string;
-  checks: HealthModuleCheckEntry[];
+  /** One group per registration, the one with the most severe check first. */
+  groups: CheckRoundGroup[];
 }
 
 /** The latest round of every registration, summed: one module card, one line. Null when none ran. */
 export function checkRoundTotals(reports: HealthModuleCheckReport[]): CheckRoundTotals | null {
   if (!reports.length) return null;
   const finishedAt = reports.map((report) => report.finished_at).reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a));
-  const checks = reports
-    .flatMap((report) => report.checks)
-    .sort((a, b) => VERDICT_ORDER.indexOf(a.verdict) - VERDICT_ORDER.indexOf(b.verdict));
+  const groups = reports
+    .map((report) => ({
+      registrationId: report.registration_id,
+      finishedAt: report.finished_at,
+      checks: [...report.checks].sort((a, b) => verdictRank(a) - verdictRank(b)),
+    }))
+    .sort((a, b) => Math.min(...a.checks.map(verdictRank), VERDICT_ORDER.length) - Math.min(...b.checks.map(verdictRank), VERDICT_ORDER.length));
   return {
     passed: reports.reduce((sum, report) => sum + report.passed, 0),
     warned: reports.reduce((sum, report) => sum + report.warned, 0),
     failed: reports.reduce((sum, report) => sum + report.failed, 0),
     notRun: reports.reduce((sum, report) => sum + report.not_run, 0),
     finishedAt,
-    checks,
+    groups,
   };
 }
 
@@ -90,28 +109,58 @@ function CheckRow({ module, check }: { module: HealthModule; check: HealthModule
   );
 }
 
+/** The checks of one registration's round; the heading (name and round end) only when the module has several. */
+function CheckGroup({ module, group, name }: { module: HealthModule; group: CheckRoundGroup; name: string | null }) {
+  const { t_i18n } = useFormatter();
+  const rows = group.checks.map((check, index) => <CheckRow key={`${check.id}-${index}`} module={module} check={check} />);
+  if (name === null) return <>{rows}</>;
+  return (
+    <li className="space-y-1.5" data-testid="health-check-group">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-elevation-subtle-soft pb-1">
+        <h5 className="min-w-0 truncate content-compact font-medium text-default-primary">{name}</h5>
+        <span className="inline-flex shrink-0 items-center gap-1 content-caption text-default-secondary">
+          {t_i18n("As of")} <DateTimeCell value={group.finishedAt} />
+        </span>
+      </div>
+      <ul className="space-y-2">{rows}</ul>
+    </li>
+  );
+}
+
 /** The agentic checks line of a module card: nothing while loading or on a read error. */
 export function ModuleCheckReportLine({ module }: { module: HealthModule }) {
   const { t_i18n } = useFormatter();
   const { data } = useHealthModuleChecks(module);
+  const { data: registrations } = usePlatformRegistrations();
   if (!data) return null;
   const totals = checkRoundTotals(data.items);
+  const grouped = (totals?.groups.length ?? 0) > 1;
+  const nameOf = (registrationId: string) => {
+    const registration = registrations?.find((row) => row.id === registrationId);
+    return registration?.platform_title || registration?.platform_url || t_i18n(HEALTH_MODULE_LABELS[module]);
+  };
+  const hasChecks = totals?.groups.some((group) => group.checks.length > 0) ?? false;
   return (
-    <section className="space-y-1" aria-label={t_i18n("Agentic checks")} data-testid={`health-checks-${module}`}>
-      <p className="content-compact font-medium text-default-secondary">{t_i18n("Agentic checks")}</p>
+    <section className="space-y-1" aria-labelledby={`health-checks-heading-${module}`} data-testid={`health-checks-${module}`}>
+      <h4 id={`health-checks-heading-${module}`} className="content-caption font-medium uppercase tracking-wider text-default-secondary">
+        {t_i18n("Agentic checks")}
+      </h4>
       {!totals ? (
         <p className="content-compact text-default-secondary">{t_i18n("No check round yet")}</p>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
-          <span className="tabular-nums text-default-primary" data-testid="health-checks-counts">
+        <>
+          <p className="tabular-nums content-compact text-default-primary" data-testid="health-checks-counts">
             {t_i18n(
               "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}",
               { passed: totals.passed, warned: totals.warned, failed: totals.failed },
             )}
             {totals.notRun ? `, ${t_i18n("{count, plural, one {# not run} other {# not run}}", { count: totals.notRun })}` : ""}
-          </span>
-          <DateTimeCell value={totals.finishedAt} />
-          {totals.checks.length ? (
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 content-caption text-default-secondary" data-testid="health-checks-meta">
+            <span className="inline-flex items-center gap-1">
+              {t_i18n("As of")} <DateTimeCell value={totals.finishedAt} />
+            </span>
+          {hasChecks ? (
             <InfoPopover
               label={t_i18n("Show the checks")}
               icon={t_i18n("Show the checks")}
@@ -124,14 +173,15 @@ export function ModuleCheckReportLine({ module }: { module: HealthModule }) {
               triggerTestId={`health-checks-expand-${module}`}
               popoverTestId={`health-checks-list-${module}`}
             >
-              <ul className="max-h-80 space-y-2 overflow-y-auto">
-                {totals.checks.map((check, index) => (
-                  <CheckRow key={`${check.id}-${index}`} module={module} check={check} />
+              <ul className={grouped ? "max-h-80 space-y-3 overflow-y-auto" : "max-h-80 space-y-2 overflow-y-auto"}>
+                {totals.groups.map((group) => (
+                  <CheckGroup key={group.registrationId} module={module} group={group} name={grouped ? nameOf(group.registrationId) : null} />
                 ))}
               </ul>
             </InfoPopover>
           ) : null}
-        </div>
+          </div>
+        </>
       )}
     </section>
   );
