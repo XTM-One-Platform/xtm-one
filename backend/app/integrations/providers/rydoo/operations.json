@@ -43,7 +43,7 @@
   "name": "get_rydoo_conflict_approver_branches",
   "method": "GET",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/branches",
-  "summary": "The branches an conflict approver of an approval line covers",
+  "summary": "The branches a conflict approver of an approval line covers",
   "group": "approval_flows",
   "query": []
  },
@@ -51,7 +51,7 @@
   "name": "get_rydoo_conflict_approver_custom_field_values",
   "method": "GET",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/customFieldValues",
-  "summary": "The custom field values an conflict approver of an approval line covers",
+  "summary": "The custom field values a conflict approver of an approval line covers",
   "group": "approval_flows",
   "query": []
  },
@@ -59,7 +59,7 @@
   "name": "get_rydoo_conflict_approver_groups",
   "method": "GET",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/groups",
-  "summary": "The groups an conflict approver of an approval line covers",
+  "summary": "The groups a conflict approver of an approval line covers",
   "group": "approval_flows",
   "query": []
  },
@@ -67,7 +67,7 @@
   "name": "get_rydoo_conflict_approver_projects",
   "method": "GET",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/projects",
-  "summary": "The projects an conflict approver of an approval line covers",
+  "summary": "The projects a conflict approver of an approval line covers",
   "group": "approval_flows",
   "query": []
  },
@@ -147,7 +147,7 @@
   "name": "replace_rydoo_conflict_approver_branches",
   "method": "PUT",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/branches",
-  "summary": "Replace the branches an conflict approver covers",
+  "summary": "Replace the branches a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -155,7 +155,7 @@
   "name": "replace_rydoo_conflict_approver_custom_field_values",
   "method": "PUT",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/customFieldValues",
-  "summary": "Replace the custom field values an conflict approver covers",
+  "summary": "Replace the custom field values a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -163,7 +163,7 @@
   "name": "replace_rydoo_conflict_approver_groups",
   "method": "PUT",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/groups",
-  "summary": "Replace the groups an conflict approver covers",
+  "summary": "Replace the groups a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -171,7 +171,7 @@
   "name": "replace_rydoo_conflict_approver_projects",
   "method": "PUT",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/projects",
-  "summary": "Replace the projects an conflict approver covers",
+  "summary": "Replace the projects a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -219,7 +219,7 @@
   "name": "update_rydoo_conflict_approver_branches",
   "method": "PATCH",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/branches",
-  "summary": "Add or remove branches an conflict approver covers",
+  "summary": "Add or remove branches a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -227,7 +227,7 @@
   "name": "update_rydoo_conflict_approver_custom_field_values",
   "method": "PATCH",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/customFieldValues",
-  "summary": "Add or remove custom field values an conflict approver covers",
+  "summary": "Add or remove custom field values a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -235,7 +235,7 @@
   "name": "update_rydoo_conflict_approver_groups",
   "method": "PATCH",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/groups",
-  "summary": "Add or remove groups an conflict approver covers",
+  "summary": "Add or remove groups a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
@@ -243,7 +243,7 @@
   "name": "update_rydoo_conflict_approver_projects",
   "method": "PATCH",
   "path": "/v2/approvers/conflict/{approverLine}/{approverId}/projects",
-  "summary": "Add or remove projects an conflict approver covers",
+  "summary": "Add or remove projects a conflict approver covers",
   "group": "approval_flows",
   "query": []
  },
