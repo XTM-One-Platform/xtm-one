@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2105 tools across 117 providers; 55 held back by hand.
+# 2135 tools across 118 providers; 56 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1215,6 +1215,36 @@ notion:list_notion_templates
 notion:list_notion_users
 notion:query_notion_database
 notion:search_notion
+odoo:count_odoo_records
+odoo:export_odoo_report
+odoo:get_odoo_aged_balance
+odoo:get_odoo_general_ledger
+odoo:get_odoo_journal_entry
+odoo:get_odoo_lock_dates
+odoo:get_odoo_model_fields
+odoo:get_odoo_trial_balance
+odoo:list_odoo_accounts
+odoo:list_odoo_analytic_accounts
+odoo:list_odoo_assets
+odoo:list_odoo_bank_statement_lines
+odoo:list_odoo_bank_statements
+odoo:list_odoo_companies
+odoo:list_odoo_currencies
+odoo:list_odoo_currency_rates
+odoo:list_odoo_fiscal_positions
+odoo:list_odoo_journal_bank_accounts
+odoo:list_odoo_journals
+odoo:list_odoo_partner_bank_accounts
+odoo:list_odoo_partners
+odoo:list_odoo_payments
+odoo:list_odoo_products
+odoo:list_odoo_taxes
+odoo:read_odoo_records
+odoo:search_odoo_analytic_lines
+odoo:search_odoo_invoices
+odoo:search_odoo_journal_entries
+odoo:search_odoo_journal_items
+odoo:search_read_odoo_records
 onepassword:get_onepassword_activity
 onepassword:get_onepassword_item
 onepassword:get_onepassword_otp
