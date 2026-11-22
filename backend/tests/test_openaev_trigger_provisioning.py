@@ -139,6 +139,43 @@ async def test_an_api_error_is_recorded_not_raised():
     assert state["status"] == "error" and "403" in state["error"]
 
 
+async def test_an_optional_event_an_older_openaev_refuses_keeps_the_other_triggers():
+    # CTEM-13: an OpenAEV that predates CRITICAL_ASSET_REACHED refuses that trigger only.
+    inner = FakeOpenAEV()
+
+    async def older(method, path, body):
+        if method == "post" and (body or {}).get("notification_trigger_event_types") == ["CRITICAL_ASSET_REACHED"]:
+            raise prov.OpenAEVApiError("400 Bad Request")
+        return await inner(method, path, body)
+
+    spec = {**SPEC, "events": ["critical_asset_reached", "finding_created", "simulation_finished"]}
+    state = await prov.reconcile(older, spec, None, url=URL, secret="s", now=NOW)
+    assert state["status"] == "provisioned"
+    assert set(state["trigger_ids"]) == {"finding_created", "simulation_finished"}
+    assert state["unsupported_events"] == ["critical_asset_reached"]
+    # A newer OpenAEV takes it at the next check.
+    again = await prov.reconcile(inner, spec, state, url=URL, secret="s", now=NOW)
+    assert set(again["trigger_ids"]) == set(spec["events"]) and "unsupported_events" not in again
+
+
+async def test_a_required_event_refused_is_still_an_error():
+    async def refuses_findings(method, path, body):
+        if method == "post" and path == "/api/notification-triggers":
+            raise prov.OpenAEVApiError("400 Bad Request")
+        return {"notifier_id": "n1"}
+
+    state = await prov.reconcile(refuses_findings, SPEC, None, url=URL, secret="s", now=NOW)
+    assert state["status"] == "error"
+
+
+def test_the_critical_asset_event_maps_to_its_openaev_trigger():
+    body = prov.trigger_body(SPEC, "critical_asset_reached", "n1")
+    assert body["notification_trigger_resource_type"] == "SIMULATION"
+    assert body["notification_trigger_event_types"] == ["CRITICAL_ASSET_REACHED"]
+    assert "notification_trigger_filters" not in body
+    assert "critical_asset_reached" in prov.OPTIONAL_EVENTS
+
+
 async def test_remove_deletes_triggers_then_notifier():
     api = FakeOpenAEV()
     state = await prov.reconcile(api, SPEC, None, url=URL, secret="s", now=NOW)
