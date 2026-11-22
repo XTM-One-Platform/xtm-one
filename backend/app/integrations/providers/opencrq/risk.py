@@ -7,6 +7,7 @@
 * ``delete_opencrq_risk_scenarios`` - bulk-delete risk scenarios.
 * ``get_opencrq_scenario_exposure`` - derived supporting assets, highest impact first.
 * ``get_opencrq_cve_exploitation``   - how a CVE would be exploited on a scenario's assets.
+* ``get_opencrq_attack_path_reach``  - what a finding on a supporting asset reaches along the attack paths.
 * ``list_opencrq_attack_outcomes``  - attack outcome taxonomy.
 * ``get_opencrq_attack_outcome``    - outcome detail + MITRE techniques.
 * ``get_opencrq_financial_summary`` - CRQ financial impact of a scenario.
@@ -50,6 +51,8 @@ _EXPOSURE_PAGE_SIZE = 30
 # The assets one CVE exploitation read lists; the summary per exposure counts the whole walk.
 _EXPLOITATION_PAGE_SIZE = 30
 _CVE_ID = re.compile(r"^CVE-\d{4}-\d{4,}$")
+# The hops and reached assets one attack-path read lists; the header counts them all.
+_ATTACK_PATH_PAGE_SIZE = 40
 _EXPOSURE_LABELS = {"internet_facing": "internet-facing", "internal": "internal", "unknown": "exposure unknown"}
 
 
@@ -160,6 +163,76 @@ def _fmt_cve_exploitation(answer: dict[str, Any]) -> tuple[str, str]:
     else:
         lines.append("  Assets: the scenario reaches no supporting asset.")
     return f"Exploitation on the scenario's assets ({total} reached):", "\n".join(lines)
+
+
+def _attack_path_asset_name(asset: object) -> str:
+    """An asset of the attack-path reach by its name, else its derived name, else its id."""
+    if not isinstance(asset, dict):
+        return "unknown asset"
+    return (
+        _one_line(asset.get("name"), 200)
+        or _one_line(asset.get("derivedName"), 200)
+        or _one_line(asset.get("assetId"), 60)
+        or "unknown asset"
+    )
+
+
+def _fmt_attack_path_reach(answer: dict[str, Any]) -> tuple[str, str]:
+    """The header (counts, outside the quarantine) and the body (asset names, inside it).
+
+    ``getAttackPathReach`` of OpenCRQ's supporting-assets router (043206a5): a hop runs from
+    ``toAssetId`` (the side nearer the origin) to ``fromAssetId`` (the asset it reaches), proven by
+    an OpenAEV execution or inferred, with the simulation that showed it.
+    """
+    origin = answer.get("origin") if isinstance(answer.get("origin"), dict) else {}
+    reached = [a for a in (answer.get("reachedAssets") or []) if isinstance(a, dict)]
+    hops = [h for h in (answer.get("hops") or []) if isinstance(h, dict)]
+    primary = [p for p in (answer.get("primaryAssets") or []) if isinstance(p, dict)]
+    names = {str(origin.get("assetId")): _attack_path_asset_name(origin)}
+    names.update({str(a.get("assetId")): _attack_path_asset_name(a) for a in reached})
+    proven = sum(1 for h in hops if h.get("nature") == "proven")
+    lines = [
+        f"Origin: {names[str(origin.get('assetId'))]} ({_exposure_label(origin.get('exposure'))}"
+        + (f", criticality {_one_line(origin.get('criticality'), 20)}" if origin.get("criticality") else "")
+        + ")"
+    ]
+    if hops:
+        lines.append("  Hops (nearest first):")
+        for h in hops[:_ATTACK_PATH_PAGE_SIZE]:
+            source = names.get(str(h.get("toAssetId")), _one_line(h.get("toAssetId"), 60))
+            target = names.get(str(h.get("fromAssetId")), _one_line(h.get("fromAssetId"), 60))
+            nature = "proven" if h.get("nature") == "proven" else "inferred"
+            evidence = f", simulation {_one_line(h.get('evidenceRef'), 60)}" if h.get("evidenceRef") else ""
+            lines.append(f"    - {source} -> {target} ({nature}{evidence}, last reported {_one_line(h.get('lastReportedAt'), 30)})")
+        if len(hops) > _ATTACK_PATH_PAGE_SIZE:
+            lines.append(f"    ... and {len(hops) - _ATTACK_PATH_PAGE_SIZE} more.")
+    else:
+        lines.append("  Hops: no attack path leaves this asset.")
+    if reached:
+        lines.append("  Reached assets:")
+        for a in reached[:_ATTACK_PATH_PAGE_SIZE]:
+            details = [f"depth {a.get('depth')}", _exposure_label(a.get("exposure"))]
+            if a.get("criticality"):
+                details.append(f"criticality {_one_line(a.get('criticality'), 20)}")
+            lines.append(f"    - {names[str(a.get('assetId'))]} ({', '.join(details)})")
+        if len(reached) > _ATTACK_PATH_PAGE_SIZE:
+            lines.append(f"    ... and {len(reached) - _ATTACK_PATH_PAGE_SIZE} more.")
+    if primary:
+        lines.append("  Primary assets behind (blast radius):")
+        for p in primary[:_ATTACK_PATH_PAGE_SIZE]:
+            through = ", ".join(names.get(str(i), _one_line(i, 60)) for i in (p.get("throughAssetIds") or []))
+            label = _one_line(p.get("primaryAssetName"), 200) or _one_line(p.get("primaryAssetId"), 60)
+            lines.append(f"    - {label}" + (f" (through {through})" if through else ""))
+    else:
+        lines.append("  Primary assets behind: none reached.")
+    stale = answer.get("staleAfterDays")
+    if _is_count(stale):
+        lines.append(f"  Hops unconfirmed for {stale} days are left out as stale.")
+    header = (
+        f"Attack-path reach ({len(reached)} asset(s) reached, {len(hops)} hop(s), {proven} proven, "
+        f"{len(primary)} primary asset(s) behind):"
+    )
+    return header, "\n".join(lines)
 
 
 def _fmt_threat_relevance_settings(settings: dict) -> str:
@@ -560,6 +633,30 @@ def register(
             "cve exploitation (cve title and supporting asset names)",
         )
 
+    async def get_opencrq_attack_path_reach(supporting_asset_id: str = "", tenant_id: str = "") -> str:
+        asset_id = (supporting_asset_id or "").strip()
+        try:
+            uuid.UUID(asset_id)
+        except ValueError:
+            return "supporting_asset_id is required, an OpenCRQ supporting asset UUID."
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        answer, err = await _trpc(
+            base_url,
+            headers,
+            "supportingAssets.getAttackPathReach",
+            "read the attack-path reach of the supporting asset",
+            input={"supportingAssetId": asset_id},
+            tenant_id=tenant or "",
+        )
+        if err:
+            return err
+        if not isinstance(answer, dict):
+            return f"OpenCRQ answered no attack-path reach for supporting asset {asset_id}."
+        header, body = _fmt_attack_path_reach(answer)
+        return _quarantined(header, body, "attack-path reach (supporting and primary asset names)")
+
     async def get_opencrq_attack_outcome(
         attack_outcome_id: str = "",
         organization_id: str = "",
@@ -838,6 +935,7 @@ def register(
     executor.register("update_opencrq_risk_tolerance", update_opencrq_risk_tolerance)
     executor.register("get_opencrq_scenario_exposure", get_opencrq_scenario_exposure)
     executor.register("get_opencrq_cve_exploitation", get_opencrq_cve_exploitation)
+    executor.register("get_opencrq_attack_path_reach", get_opencrq_attack_path_reach)
     executor.register("list_opencrq_attack_outcomes", list_opencrq_attack_outcomes)
     executor.register("get_opencrq_attack_outcome", get_opencrq_attack_outcome)
     executor.register("get_opencrq_financial_summary", get_opencrq_financial_summary)
@@ -1113,6 +1211,27 @@ def register(
                     **_tenant_prop,
                 },
                 "required": ["risk_scenario_id", "cve_id"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencrq_attack_path_reach",
+            description=(
+                "What a finding on an OpenCRQ supporting asset reaches along the attack paths "
+                "OpenAEV showed: the hops nearest first, each proven by an execution or inferred "
+                "with its simulation, the assets reached and the primary assets behind them "
+                "(the blast radius). Stale hops are left out."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "supporting_asset_id": {
+                        "type": "string",
+                        "description": "Supporting asset UUID (the asset the finding is on).",
+                    },
+                    **_tenant_prop,
+                },
+                "required": ["supporting_asset_id"],
             },
             source=_SOURCE,
         ),
