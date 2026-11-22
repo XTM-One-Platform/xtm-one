@@ -6464,7 +6464,7 @@ export interface WorkItemAskOption {
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
-interface WorkItemAsk {
+export interface WorkItemAsk {
   question: string;
   /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
   context?: string | null;
@@ -6525,8 +6525,6 @@ export interface WorkItem {
   blocked_reason?: string | null;
   /** Blocked on a person's decision. */
   needs_human?: boolean;
-  /** The person a needs_human item waits for when not its user (#11893); null otherwise. */
-  waits_for_user_id?: string | null;
   /** The decision itself, for an item waiting for a person (#9437); null on a legacy item. */
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
@@ -6749,12 +6747,6 @@ export interface WorkItemGraphItemNode {
   is_program_root: boolean;
   /** A blocker the filter left out, drawn so the chain does not end on nothing. */
   outside_filter: boolean;
-  /** What the Waiting for me filter reads (`waitsForReader`): the node's Waiting for you marker. */
-  user_id: string | null;
-  waits_for_user_id: string | null;
-  owner_agent_id: string | null;
-  due_at: string | null;
-  scheduled: boolean;
 }
 
 /** A pull request, issue, deployment or workflow run an item waits for. */
@@ -13146,6 +13138,8 @@ export interface FlowRunDetail extends FlowRunSummary {
   /** Human-in-the-loop: the Ask-user node awaiting an answer + its question. */
   awaiting_input_node_id?: string | null;
   awaiting_input_question?: string | null;
+  /** The Ask-user node's structured ask when it lists options (#842, S6); null for free text. */
+  awaiting_input_ask?: WorkItemAsk | null;
   trigger_payload: Record<string, unknown> | null;
   trigger_context: Record<string, unknown> | null;
   steps: FlowRunStep[];
