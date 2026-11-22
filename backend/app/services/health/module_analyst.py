@@ -67,6 +67,12 @@ MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
     "opencti": (
         "get_opencti_platform_version",
         "list_opencti_playbook_states",
+        # The module health reads of S15b-2 (same file), platform-wide.
+        "list_opencti_background_tasks",
+        "get_opencti_managers",
+        "get_opencti_platform_queues",
+        "list_opencti_stream_consumers",
+        "get_opencti_licence",
         "get_opencti_entity_stats",
         "query_opencti_activity",
         "list_opencti_drafts",
