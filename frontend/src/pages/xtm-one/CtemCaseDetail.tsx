@@ -49,7 +49,7 @@ import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
 import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
-import { CaseValidation } from "./ctem/CaseValidation";
+import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -122,6 +122,8 @@ const EVENT_LABEL: Record<string, string> = {
   retest_requested: "Re-test started: the ticket is done",
   // A loop gate of the fleet's catalog (CTEM-34, #975; shown by CTEM-17-UI).
   gate: "Gate",
+  // The OpenCRQ treatment plan of the remediation decision (CTEM-18-UI, #1068).
+  treatment_plan: "Attached the treatment plan",
 };
 
 /** The status word of a `ticket` history row, translated where drawn (#1032). */
@@ -550,9 +552,9 @@ export default function CtemCaseDetail() {
 
       <CaseExploitation entries={kase.exploitation} />
 
-      <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
-
       <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
+
+      <CaseTreatmentPlan plan={kase.treatment_plan} />
 
       <Card>
         <CardHeader>
@@ -682,7 +684,7 @@ export default function CtemCaseDetail() {
                     ) : null;
                   })()}
                 {e.reason && e.kind !== "gate" && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && (
+                {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && (
                   <span className="text-default-secondary">
                     {e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}
                   </span>
