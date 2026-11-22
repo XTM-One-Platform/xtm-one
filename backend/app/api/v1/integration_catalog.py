@@ -5808,6 +5808,80 @@ PROVIDER_CATALOG = {
             "notes": "For Metabase, the API key format is: enter your Metabase base URL in the extra config field, and the API key in the API Key field. The tools will use both to connect to your instance. For full functionality, ensure the API key has write permissions.",
         },
     },
+    "odoo": {
+        "name": "Odoo",
+        "description": "ERP & Accounting (multi-company) - Chart of accounts, Journals, Journal entries and items, Trial balance, General ledger, Aged receivable and payable, FEC-style exports (CSV / XLSX), Invoices, Bills and credit notes (with attachments), Payments and reconciliation, Bank statements, Taxes, Fiscal positions, Analytic accounts, Fixed assets, Currencies, Lock dates, Products, and any model through generic search_read (JSON-2 API, JSON-RPC fallback)",
+        "logo": "/logos/odoo.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {
+            "base_url": "Odoo URL (e.g. https://example.odoo.com)",
+            "database": "Database name",
+            "login": "Login (the user's email)",
+            "company_ids": "Default company ids, comma-separated (optional)",
+        },
+        # Polled from the records' create / write dates (providers/odoo/events.py,
+        # every 60 s): the external API has no outbound webhook.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": {
+                    "company": "Only records of these companies (ids or names)",
+                    "journal": "Only records of these journals (ids, codes or names)",
+                    "state": "Only records in these Odoo states (draft, posted, cancel; payments: in_process, paid...)",
+                },
+            }
+            for event, label, description in (
+                (
+                    "journal_entry_posted",
+                    "Journal entry posted",
+                    "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "vendor_bill_created",
+                    "Vendor bill created",
+                    "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "payment_registered",
+                    "Payment registered",
+                    "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+            )
+        ],
+        "setup_guide": {
+            "title": "Odoo API Key Setup",
+            "url": "https://www.odoo.com/documentation/latest/developer/reference/external_api.html",
+            "steps": [
+                "Sign in to Odoo as the user the agents act as (a dedicated user is best: its access rights and companies bound what the tools reach).",
+                "Open the user menu > My Profile (Preferences) > Account Security and create a New API Key named '{APP_NAME}'.",
+                "Paste the key in the API Key field below.",
+                "Fill in the Odoo URL, the database name (Settings > Activate developer mode shows it; on odoo.com it is usually the subdomain) and the login.",
+                "Optionally list default company ids; every tool also takes company_ids, and list_odoo_companies names them.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Accounting / Invoicing: Billing or Accountant",
+                    "description": "Chart of accounts, journals, entries and items, reports, invoices, bills, payments, bank statements, taxes, analytics, assets, lock dates",
+                },
+                {
+                    "scope": "Allowed companies",
+                    "description": "The companies the user may switch to are the companies the tools reach (allowed_company_ids)",
+                },
+                {
+                    "scope": "Contacts",
+                    "description": "Partners and partner bank accounts",
+                },
+            ],
+            "notes": "Odoo 19+ answers the JSON-2 API (bearer API key); older versions are reached through JSON-RPC with the same key. Read or write follows the Odoo operation: every write tool (create, update, post, cancel, reset, register a payment, reconcile, lock dates, generic create / write / unlink / method) asks a person on every call. Bank account numbers answer masked to their last 4 characters. Bind read-only to withhold every write tool. See https://www.odoo.com/documentation/latest/developer/reference/external_api.html.",
+        },
+    },
     "databricks": {
         "name": "Databricks",
         "description": "Lakehouse: SQL Warehouses, Unity Catalog, Jobs & Workflows, Model Serving, Vector Search, and files - volume, DBFS and workspace files (notebooks exported) read, stored as files of the conversation, and written from any file of the conversation",
