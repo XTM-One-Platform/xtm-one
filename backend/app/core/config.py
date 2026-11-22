@@ -452,6 +452,10 @@ class Settings(BaseSettings):
     log_level: str = ""  # "debug" | "info" | "warning" | "error" | "critical" — empty = auto (debug→DEBUG, else INFO)
     log_format: str = ""  # "json" | "console" — empty = auto (json in prod, console when debug)
     secret_key: str = ""
+    # Former SECRET_KEY values, comma-separated, still accepted when a decision
+    # answer link (``/decide/<token>``, #842) signed before a key rotation is
+    # opened; new links are always signed with SECRET_KEY. Empty: none.
+    decision_link_previous_secrets: str = ""
 
     # --- Vault references ---
     # How long a secret read from a vault (``vault://<provider>/<path>#<key>``)
