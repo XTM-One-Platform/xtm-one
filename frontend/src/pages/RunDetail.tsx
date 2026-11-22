@@ -67,7 +67,6 @@ import { RunFrictionsCard } from "@/components/ui/run-frictions-card";
 import { HeldBadge } from "@/components/ui/held-badge";
 import { runHeldReason } from "@/lib/held";
 import { orderRunTree } from "@/lib/run-tree";
-import { approvalCodesIn, approvalReply } from "@/lib/hitl-approval";
 import { isTriggerMetadataKey } from "@/lib/trigger-context";
 import { formatFailureCause } from "@/lib/failure-causes";
 import { Button } from "@/components/ui/button";
@@ -81,7 +80,7 @@ import { useAssignmentRunDetail, useRespondToHumanInput, useDismissRun, useDelet
 import { RunActionRequests } from "@/components/runs/RunActionRequests";
 import { A2ARunExchange } from "@/components/runs/A2ARunExchange";
 import { a2aNoResultText } from "@/components/runs/a2a-no-result-text";
-import { ActionProposalList } from "@/components/ui/action-proposal";
+import { RunDecisionCard } from "@/components/decisions/RunDecisionCard";
 import { useLangfuseConfig } from "@/hooks/api/useSettingsApi";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useChatSendEnabled } from "@/hooks/usePlatformConfig";
@@ -898,16 +897,11 @@ export default function RunDetail() {
   const chatSendEnabled = useChatSendEnabled();
   const { toast } = useToast();
   const [ConfirmEl, confirm] = useConfirm();
-  const [hitlResponse, setHitlResponse] = useState("");
   const [followupPrompt, setFollowupPrompt] = useState("");
   // How a follow-up runs: a new background run (default) or an interactive
   // chat seeded with this run's history (for troubleshooting).
   const [followupMode, setFollowupMode] = useState<"background" | "chat">("background");
   const [promptOpen, setPromptOpen] = useState(false);
-  const speech = useSpeechToText({
-    onTranscript: (text) =>
-      setHitlResponse((prev) => (prev ? prev + " " : "") + text.trim()),
-  });
   const followupSpeech = useSpeechToText({
     onTranscript: (text) =>
       setFollowupPrompt((prev) => (prev ? prev + " " : "") + text.trim()),
@@ -959,7 +953,6 @@ export default function RunDetail() {
   const isFreeTextPending = isHitlPending && pendingApprovals.length === 0;
   // Company-managed runs: everyone sees the pause, only admins can resolve it.
   const canInteractHitl = !run.is_company_managed || isAdmin;
-  const approvalCodes = isHitlPending ? approvalCodesIn(run.human_input_question) : [];
   // Resolved HITL rounds — from the durable history, with a legacy fallback
   // for runs resolved before the history column existed (their live fields
   // survived because they never went through the resume-clear path).
@@ -1082,154 +1075,39 @@ export default function RunDetail() {
           its pasted link. Listed to the people who may answer it. */}
       <RunActionRequests runId={run.id} enabled={isHitlPending && canInteractHitl} />
 
-      {/* Per-tool approval — structured proposals. Takes precedence over
-          the free-text block below, exactly as on the run card: a gated pause
-          sets ``human_input_question`` too ("Approval required before running:
-          …"), so without this the reviewer was handed a text box and asked to
-          type an answer to a question that only has three answers. */}
-      {isApprovalPending && (
-        <Card className="border-feedback-warning-primary/30">
-          <CardHeader>
-            <CardTitle className="content-base flex items-center gap-2 text-feedback-warning-primary">
-              <div className="h-5 w-5 rounded-full bg-feedback-warning-primary/20 flex items-center justify-center animate-pulse">
-                <Hand className="h-3 w-3 text-feedback-warning-primary" />
-              </div>
-              {t_i18n("Approval Needed")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {canInteractHitl ? (
-              <ActionProposalList
-                proposals={pendingApprovals}
-                isSubmitting={submitApprovals.isPending}
-                submitFailed={submitApprovals.isError}
-                onSubmit={(decisions) =>
-                  submitApprovals.mutate(
-                    { runId: run.id, decisions },
-                    {
-                      onSuccess: () =>
-                        toast({ title: t_i18n("Decision recorded: assignment resuming"), variant: "success" }),
-                      onError: (err) =>
-                        toast({ title: t_i18n("Could not submit decisions"), description: err.message, variant: "error" }),
-                    },
-                  )
-                }
-              />
-            ) : (
-              <p className="content-compact text-feedback-warning-primary">
-                {t_i18n("Waiting for approval from someone with access to this run.")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Human-in-the-loop — awaiting free-text input */}
-      {isFreeTextPending && run.human_input_question && (
-        <Card className="border-feedback-warning-primary/30">
-          <CardHeader>
-            <CardTitle className="content-base flex items-center gap-2 text-feedback-warning-primary">
-              <div className="h-5 w-5 rounded-full bg-feedback-warning-primary/20 flex items-center justify-center animate-pulse">
-                <Hand className="h-3 w-3 text-feedback-warning-primary" />
-              </div>
-              {t_i18n("Agent Needs Your Input")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-sm bg-feedback-warning-primary/5 p-4 content-base text-default-secondary">
-              <ChatMarkdown content={run.human_input_question} />
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (hitlResponse.trim()) {
-                  respondHitl.mutate(
-                    { runId: run.id, response: hitlResponse.trim() },
-                    {
-                      onSuccess: () => {
-                        toast({ title: t_i18n("Response sent: assignment resuming"), variant: "success" });
-                        setHitlResponse("");
-                      },
-                    },
-                  );
-                }
-              }}
-              className="space-y-3"
-            >
-              <div className="relative">
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-sm border border-feedback-warning-primary/20 bg-elevation-default px-3 py-2 pr-10 content-base placeholder:text-default-secondary focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-feedback-warning-primary/50"
-                  placeholder={t_i18n("Type your response to the agent...")}
-                  value={hitlResponse}
-                  onChange={(e) => setHitlResponse(e.target.value)}
-                />
-                {speech.isSupported && (
-                  <Tip content={speech.isListening ? t_i18n("Stop dictation") : t_i18n("Dictate response")}>
-                    <button
-                      type="button"
-                      onClick={speech.toggle}
-                      className={cn(
-                        "absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-sm transition-colors",
-                        speech.isListening
-                          ? "bg-feedback-warning-primary/20 text-feedback-warning-tertiary animate-pulse"
-                          : "text-default-secondary hover:text-feedback-warning-tertiary hover:bg-feedback-warning-primary/10",
-                      )}
-                    >
-                      {speech.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                    </button>
-                  </Tip>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {approvalCodes.length > 0 && (
-                  <Tip content={t_i18n("Replies {reply} and resumes the run", { reply: approvalReply(approvalCodes) })}>
-                    <Button
-                      type="button"
-                      disabled={respondHitl.isPending}
-                      className="gap-1.5 bg-feedback-success-primary/15 text-feedback-success-primary hover:bg-feedback-success-primary/25"
-                      onClick={() => {
-                        speech.stop();
-                        respondHitl.mutate(
-                          { runId: run.id, response: approvalReply(approvalCodes) },
-                          {
-                            onSuccess: () => {
-                              toast({ title: t_i18n("Response sent: assignment resuming"), variant: "success" });
-                              setHitlResponse("");
-                            },
-                          },
-                        );
-                      }}
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                      {approvalCodes.length === 1
-                        ? t_i18n("Approve {code}", { code: approvalCodes[0] })
-                        : t_i18n("Approve all ({count})", { count: approvalCodes.length })}
-                    </Button>
-                  </Tip>
-                )}
-                <Button
-                  type="submit"
-                  disabled={!hitlResponse.trim() || respondHitl.isPending}
-                  className="gap-1.5 bg-feedback-warning-primary/20 text-feedback-warning-tertiary hover:bg-feedback-warning-primary/30"
-                  onClick={() => speech.stop()}
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  {respondHitl.isPending ? t_i18n("Sending...") : t_i18n("Send Response & Resume")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={dismissRun.isPending}
-                  className="gap-1.5 text-default-secondary hover:text-feedback-error-primary hover:bg-feedback-error-primary/10"
-                  onClick={() => { speech.stop(); dismissRun.mutate(run.id, { onSuccess: () => toast({ title: t_i18n("Run dismissed"), variant: "success" }) }); }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                  {dismissRun.isPending ? t_i18n("Dismissing...") : t_i18n("Discard")}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+      {/* The pause on the one decision card (#842, S3): a tool approval
+          when proposals are pending (they take precedence, exactly as on the
+          run card: a gated pause sets ``human_input_question`` too), else the
+          run's question with its free text. */}
+      {(isApprovalPending || (isFreeTextPending && run.human_input_question)) && (
+        <RunDecisionCard
+          // A failed approval remounts the card so its controls answer again.
+          key={`${run.id}-${submitApprovals.isError ? "failed" : "ok"}`}
+          runId={run.id}
+          question={run.human_input_question}
+          proposals={isApprovalPending ? pendingApprovals : []}
+          canAnswer={canInteractHitl}
+          pending={submitApprovals.isPending || respondHitl.isPending || dismissRun.isPending}
+          onApprove={(runId, decisions) =>
+            submitApprovals.mutate(
+              { runId, decisions },
+              {
+                onSuccess: () => toast({ title: t_i18n("Decision recorded: assignment resuming"), variant: "success" }),
+                onError: (err) =>
+                  toast({ title: t_i18n("Could not submit decisions"), description: err.message, variant: "error" }),
+              },
+            )
+          }
+          onRespond={(runId, response) =>
+            respondHitl.mutate(
+              { runId, response },
+              { onSuccess: () => toast({ title: t_i18n("Response sent: assignment resuming"), variant: "success" }) },
+            )
+          }
+          onDismiss={(runId) =>
+            dismissRun.mutate(runId, { onSuccess: () => toast({ title: t_i18n("Run dismissed"), variant: "success" }) })
+          }
+        />
       )}
 
       {/* Resolved HITL rounds — persisted history: answered/dismissed state,

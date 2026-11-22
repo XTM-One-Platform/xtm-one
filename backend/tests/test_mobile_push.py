@@ -87,7 +87,7 @@ def _activity(activity_type="notification", **metadata):
         ),
         (
             _activity(notification_source="flow_hitl", flow_id=UUID_A, flow_run_id=UUID_B),
-            "flow_hitl",
+            "decision",
             f"/flows/library/{UUID_A}?run={UUID_B}",
         ),
         (_activity(notification_source="flow", flow_id="not-a-uuid"), "flow", "/flows"),
@@ -164,7 +164,12 @@ def _run(status="completed", question=None, summary="The weekly brief found 3 ne
 def test_a_run_waiting_on_a_human_is_urgent_and_unread_until_answered() -> None:
     item = present_run(_run("awaiting_human", question="Approve isolating 3 gateways?"))
     assert item is not None
-    assert (item.kind, item.route, item.run_id) == ("hitl", f"/operations/executions/{RUN_ID}", RUN_ID)
+    assert (item.kind, item.source, item.route, item.run_id) == (
+        "decision",
+        "run",
+        f"/operations/executions/{RUN_ID}",
+        RUN_ID,
+    )
     assert item.awaiting_answer is True
     assert is_unread(item, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set()) is True
     # #991: opening or dismissing it never reads a decision still waiting.

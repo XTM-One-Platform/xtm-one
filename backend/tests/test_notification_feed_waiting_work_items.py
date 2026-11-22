@@ -25,14 +25,14 @@ def _waiting(**overrides):
 def test_a_waiting_item_is_an_urgent_bell_entry_that_opens_the_item():
     item = feed.present_waiting_work_item(_waiting())
     assert item is not None
-    assert item.kind == "work_item_waiting"
+    assert (item.kind, item.source) == ("decision", "work_item")
     assert item.id == f"work_item:{ITEM_ID}"
     assert item.route == f"/tasks/work-items/{ITEM_ID}"
     assert item.title == "A or B?"
-    assert item.subtitle == "Waiting for your decision"
+    assert item.subtitle is None
     assert item.summary is None
-    assert "work_item_waiting" in feed.URGENT_KINDS
-    assert "work_item_waiting" in feed.NOTIFICATION_KINDS
+    assert {"decision", "work_item_waiting"} <= feed.URGENT_KINDS
+    assert {"decision", "work_item_waiting"} <= set(feed.NOTIFICATION_KINDS)
 
 
 def test_the_bell_says_the_question_and_the_deadline_only():
@@ -117,7 +117,9 @@ async def test_a_flow_ask_stays_unread_until_answered_then_reads_like_any_entry(
     waiting_run = "9e4f5a3b-4444-4a5b-9c7d-2e3f4a5b6c7d"
     answered_run = "0f5a6b4c-5555-4a5b-9c7d-2e3f4a5b6c7d"
     entries = [_flow_entry(waiting_run), _flow_entry(answered_run)]
-    assert all(e is not None and e.kind == "flow_hitl" and not e.awaiting_answer for e in entries)
+    assert all(
+        e is not None and (e.kind, e.source) == ("decision", "flow_run") and not e.awaiting_answer for e in entries
+    )
 
     rows = [
         SimpleNamespace(id=waiting_run, status="awaiting", state={"waiting": {"kind": "human"}}),

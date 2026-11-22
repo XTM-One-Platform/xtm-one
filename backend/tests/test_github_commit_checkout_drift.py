@@ -427,3 +427,66 @@ async def test_two_consecutive_from_checkout_commits_on_one_branch_both_land():
     assert second.startswith("Committed 1 file change(s)"), second
     assert _committed(fake) == {"src/app.py": second_text}
     assert "Merged with the branch" not in second
+
+
+# --- #1040: a record moved by a commit to a tip whose other files the workspace never held ---
+
+
+def _moved_record_sink(workspace: dict[str, bytes | None], new_file: bytes) -> _DriftSink:
+    """Checkout read at FORK; a first commit from it wrote src/new.py on feat/x and moved the record to TIP."""
+    import dataclasses
+
+    from app.services.sandbox_workspace.checkout import RecordedFile
+
+    sink = _DriftSink(workspace)
+    files = dict(sink.record.files)
+    files["src/new.py"] = RecordedFile(sha256=hashlib.sha256(new_file).hexdigest(), size=len(new_file))
+    sink.record = dataclasses.replace(
+        sink.record, commit=TIP, base_commit=FORK, branch={"src/new.py": "A"}, files=files
+    )
+    return sink
+
+
+@pytest.mark.asyncio
+async def test_a_file_the_moved_record_never_wrote_is_merged_with_the_tip_not_written_over_it():
+    """#1040: checkout at FORK, branch cut at TIP (TIP changed src/app.py), commit 1 wrote src/new.py only.
+
+    The record moved to TIP, the tip itself: the workspace still holds src/app.py at FORK plus the edit,
+    so writing it whole reverted what TIP added. It is merged with FORK as the ancestor.
+    """
+    commit, _ = _commit_tool()
+    new_file = b"new\n"
+    sink = _moved_record_sink(
+        {"src/app.py": b"ONE (workspace)\ntwo\nthree\nfour\nfive\n", "src/new.py": new_file}, new_file
+    )
+    fake = _MovedBranch(
+        {"src/app.py": BASE_TEXT}, {"src/app.py": BRANCH_TEXT, "src/new.py": new_file}, fork={"src/app.py": BASE_TEXT}
+    )
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "current_workspace", return_value=sink):
+        result = await commit(repo="acme/app", message="feat(app): y", from_checkout="app", branch="feat/x")
+
+    both = b"ONE (workspace)\ntwo\nthree\nfour\nFIVE (branch)\n"
+    assert result.startswith("Committed 1 file change(s)"), result
+    # The tip's last line is kept: no silent revert of what the branch held before the first commit.
+    assert _committed(fake) == {"src/app.py": both}
+    assert "Merged with the branch" in result and "src/app.py" in result
+    [advanced] = sink.advanced
+    assert advanced["rewrites"] == {"src/app.py": both}
+
+
+@pytest.mark.asyncio
+async def test_a_moved_record_writes_a_file_its_own_commit_wrote_as_the_workspace_has_it():
+    commit, _ = _commit_tool()
+    new_file = b"new\n"
+    edited = b"new (second commit)\n"
+    sink = _moved_record_sink({"src/app.py": BASE_TEXT, "src/new.py": edited}, new_file)
+    fake = _MovedBranch(
+        {"src/app.py": BASE_TEXT}, {"src/app.py": BASE_TEXT, "src/new.py": new_file}, fork={"src/app.py": BASE_TEXT}
+    )
+    with patch(_SAFE_REQUEST, new=fake), patch.object(contents, "current_workspace", return_value=sink):
+        result = await commit(repo="acme/app", message="feat(app): z", from_checkout="app", branch="feat/x")
+
+    assert result.startswith("Committed 1 file change(s)"), result
+    assert _committed(fake) == {"src/new.py": edited}
+    assert "Merged with the branch" not in result
+    assert not any("/git/blobs/" in url for _method, url in fake.calls)

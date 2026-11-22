@@ -61,6 +61,7 @@ const SURFACES: Readonly<Record<string, Audience>> = {
   "pages/profile/HealthCompanionCard.tsx": { kind: "admin-self" },
   "pages/profile/HealthOptOutRow.tsx": { kind: "any" },
   "pages/settings/HealthAlertEmailsBlock.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
+  "pages/settings/HealthModuleAnalystBlock.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
   "pages/settings/HealthModuleThresholdsBlock.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
   "pages/settings/HealthPetLibrary.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
   "pages/settings/HealthSection.tsx": { kind: "admin-via", via: "pages/Settings.tsx" },
