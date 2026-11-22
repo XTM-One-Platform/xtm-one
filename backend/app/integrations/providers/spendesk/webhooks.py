@@ -36,9 +36,7 @@ def trigger_event(entity: str, event_type: str) -> str:
 
 
 #: The trigger event key of each subscribable Spendesk event.
-TRIGGER_EVENTS: dict[str, str] = {
-    event: trigger_event(*event.split(":", 1)) for event in EVENT_TYPES
-}
+TRIGGER_EVENTS: dict[str, str] = {event: trigger_event(*event.split(":", 1)) for event in EVENT_TYPES}
 
 
 def _digests(body: bytes, secret: str) -> list[str]:

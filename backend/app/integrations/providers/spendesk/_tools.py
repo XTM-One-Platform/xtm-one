@@ -36,8 +36,8 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from app.integrations.file_delivery import deliver_file, fetch_file, file_content_type
 from app.core.egress import egress_client
+from app.integrations.file_delivery import deliver_file, fetch_file, file_content_type
 from app.tools.base import CallableToolExecutor, ToolDefinition, ToolResult
 
 from ._client import PROVIDER, SOURCE, SpendeskClient, seg
@@ -217,8 +217,9 @@ def _schema(op: dict[str, Any]) -> tuple[dict[str, Any], list[str], set[str]]:
 def _rows(data: Any) -> list[Any]:
     if isinstance(data, dict):
         for key in ("data", "payables"):
-            if isinstance(data.get(key), list):
-                return data[key]
+            rows = data.get(key)
+            if isinstance(rows, list):
+                return rows
     return data if isinstance(data, list) else [data]
 
 
@@ -227,8 +228,10 @@ def _paging_note(data: Any) -> str:
     if not isinstance(data, dict):
         return ""
     cursor = data.get("nextCursor")
-    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-    pagination = meta.get("pagination") if isinstance(meta.get("pagination"), dict) else {}
+    meta_value = data.get("meta")
+    meta: dict[str, Any] = meta_value if isinstance(meta_value, dict) else {}
+    pagination_value = meta.get("pagination")
+    pagination: dict[str, Any] = pagination_value if isinstance(pagination_value, dict) else {}
     cursor = cursor or pagination.get("nextCursor")
     if cursor:
         return f" (next cursor {cursor})"
@@ -365,8 +368,13 @@ def _download_tools(
     async def _deliver(url: str, name: str, what: str) -> str | ToolResult:
         async with egress_client(timeout=60) as storage:
             fetched = await fetch_file(
-                storage, "get", url, provider=PROVIDER, action=f"download {what}",
-                max_bytes=MAX_FILE_BYTES, follow_redirects=True,
+                storage,
+                "get",
+                url,
+                provider=PROVIDER,
+                action=f"download {what}",
+                max_bytes=MAX_FILE_BYTES,
+                follow_redirects=True,
             )
         if isinstance(fetched, str):
             return fetched
@@ -384,7 +392,9 @@ def _download_tools(
         payable_id: str, company_id: str = "", index: int = 0
     ) -> str | ToolResult:
         resp, err = await client.request(
-            "GET", f"/v1/payables/{seg(payable_id)}/attachments", "list the payable's attachments",
+            "GET",
+            f"/v1/payables/{seg(payable_id)}/attachments",
+            "list the payable's attachments",
             company_id=company_id or None,
         )
         if err or resp is None:
@@ -403,7 +413,9 @@ def _download_tools(
         purchase_order_id: str, company_id: str = ""
     ) -> str | ToolResult:
         resp, err = await client.request(
-            "GET", f"/v1/purchase-orders/{seg(purchase_order_id)}/document", "read the purchase order document",
+            "GET",
+            f"/v1/purchase-orders/{seg(purchase_order_id)}/document",
+            "read the purchase order document",
             company_id=company_id or None,
         )
         if err or resp is None:
@@ -415,8 +427,9 @@ def _download_tools(
         return await _deliver(url, f"spendesk-po-{purchase_order_id}.pdf", f"purchase order {purchase_order_id}")
 
     entity = {_COMPANY_ARG: dict(_COMPANY_SCHEMA)}
-    defs = [
+    defs: list[tuple[str, Callable[..., Awaitable[str | ToolResult]], str, dict[str, Any], list[str]]] = [
         (
+            "download_spendesk_payable_attachment",
             download_spendesk_payable_attachment,
             "Download a receipt or invoice attached to a payable (expense, card payment, invoice) into the "
             "conversation. A payable with no attachment is a missing receipt. Scope: payable:read.",
@@ -428,6 +441,7 @@ def _download_tools(
             ["payable_id"],
         ),
         (
+            "download_spendesk_purchase_order_document",
             download_spendesk_purchase_order_document,
             "Download a purchase order's PDF document into the conversation. Scope: experimental:purchase-order:read.",
             {"purchase_order_id": {"type": "string", "description": "The purchase order id."}, **entity},
@@ -435,13 +449,18 @@ def _download_tools(
         ),
     ]
     tools = []
-    for fn, description, props, required in defs:
-        executor.register(fn.__name__, fn)
+    for name, fn, description, props, required in defs:
+        executor.register(name, fn)
         tools.append(
             ToolDefinition(
-                name=fn.__name__,
+                name=name,
                 description=description,
-                input_schema={"type": "object", "properties": props, "required": required, "additionalProperties": False},
+                input_schema={
+                    "type": "object",
+                    "properties": props,
+                    "required": required,
+                    "additionalProperties": False,
+                },
                 source=SOURCE,
                 priority=1,
                 read_only=True,

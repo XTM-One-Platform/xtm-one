@@ -100,9 +100,7 @@ def normalize_environment(value: str | None) -> str:
 
 def build_spendesk_token(environment: str, client_id: str, client_secret: str) -> str:
     """The compound token, the one shape ``_get_token`` and the tests build."""
-    return "||".join(
-        (normalize_environment(environment), (client_id or "").strip(), (client_secret or "").strip())
-    )
+    return "||".join((normalize_environment(environment), (client_id or "").strip(), (client_secret or "").strip()))
 
 
 def parse_spendesk_token(token: str) -> SpendeskCredentials:

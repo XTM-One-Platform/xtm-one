@@ -52,6 +52,7 @@ Signature validation (both endpoints):
   - OpenCTI: token-based (X-OpenCTI-Token header)
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
+  - Spendesk: x-spendesk-webhook-signature header (HMAC-SHA256)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -191,6 +192,9 @@ from app.core.utils import (
 from app.integrations.providers.aikido.webhooks import SIGNATURE_HEADER as AIKIDO_SIGNATURE_HEADER
 from app.integrations.providers.aikido.webhooks import trigger_event as aikido_trigger_event
 from app.integrations.providers.aikido.webhooks import verify_signature as verify_aikido_signature
+from app.integrations.providers.spendesk.webhooks import SIGNATURE_HEADER as SPENDESK_SIGNATURE_HEADER
+from app.integrations.providers.spendesk.webhooks import event_key as spendesk_event_key
+from app.integrations.providers.spendesk.webhooks import verify_signature as verify_spendesk_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -2174,6 +2178,13 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if request.headers.get(AIKIDO_SIGNATURE_HEADER) and isinstance(aikido_event, str):
         return aikido_trigger_event(aikido_event)
 
+    # Spendesk: ``event.entity`` and ``event.eventType`` name the event
+    # (payables + created -> payables_created), signed per delivery.
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER):
+        spendesk_key = spendesk_event_key(payload)
+        if spendesk_key:
+            return spendesk_key
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2203,6 +2214,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         and isinstance(payload.get("event_type"), str)
     ):
         return aikido_trigger_event(payload["event_type"])
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER) and spendesk_event_key(payload):
+        return spendesk_event_key(payload)
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2540,6 +2553,7 @@ def _verify_signature(
     linkedin_sig = request.headers.get("X-LI-Signature", "")
     perk_sig = request.headers.get("Tk-Signature", "")
     aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
+    spendesk_sig = request.headers.get(SPENDESK_SIGNATURE_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2574,6 +2588,11 @@ def _verify_signature(
         ok, reason = verify_aikido_signature(body, secret, aikido_sig)
         if not ok:
             raise HTTPException(status_code=401, detail=f"Invalid Aikido webhook signature: {reason}")
+    elif spendesk_sig:
+        # Spendesk signs the payload (hex HMAC-SHA256) with the webhook secret.
+        ok, reason = verify_spendesk_signature(body, secret, spendesk_sig)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Spendesk webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):
