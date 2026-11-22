@@ -152,6 +152,50 @@ def test_a_tool_approval_reads_its_options_in_the_viewer_language(language):
     assert placeholder == [notice("card_reason", language)]
 
 
+@pytest.mark.parametrize("language", ["en", "es", "fr", "ja"])
+def test_a_tool_approval_choice_is_required_before_send(language):
+    """UX round 2, B1: Teams checks the choice before sending, with a message saying which one to make."""
+    row = _row(source_type="run", kind="tool_approval", ask=_APPROVAL_ASK)
+    sets = [n for n in _walk(cards.render_decision_card(_view(row), language)) if n.get("type") == "Input.ChoiceSet"]
+    assert [(s.get("isRequired"), s.get("errorMessage")) for s in sets] == [
+        (True, notice("card_choose_approval", language))
+    ]
+    other = [n for n in _walk(cards.render_decision_card(_view(), language)) if n.get("type") == "Input.ChoiceSet"]
+    assert [s.get("isRequired") for s in other] == [None]
+
+
+@pytest.mark.parametrize(
+    ("verdicts", "expected"),
+    [
+        ({"c1": "approve", "c2": "approve"}, ("card_decided_option", {"option": "card_approve"})),
+        ({"c1": "approve_always"}, ("card_decided_option", {"option": "card_approve_always"})),
+        ({"c1": "reject"}, ("card_decided_option", {"option": "card_reject"})),
+        ({"c1": "reject", "c2": "approve", "c3": "approve"}, ("card_decided_tools", None)),
+    ],
+    ids=["all-approved", "approved-always", "rejected", "mixed"],
+)
+@pytest.mark.parametrize("language", ["en", "fr", "ja"])
+def test_an_answered_tool_approval_says_its_outcome(verdicts, expected, language):
+    """UX round 2, B2: the decided card says approved, approved always or rejected, never only who answered."""
+    row = _row(
+        source_type="run",
+        kind="tool_approval",
+        ask=_APPROVAL_ASK,
+        status="answered",
+        answer={"decisions": verdicts},
+        answered_at=datetime(2026, 11, 22, 1, 0, tzinfo=UTC),
+    )
+    card = cards.render_decision_card(_view(row, answered_by_name="Ada Lovelace"), language)
+    texts = _texts(card)
+    key, values = expected
+    if values:
+        assert notice(values["option"], language) in texts
+    else:
+        assert f"{notice('card_approve', language)} (2), {notice('card_reject', language)} (1)" in texts
+    assert notice(key, language).split("{name}")[1].split("{")[0] in texts
+    assert _executes(card) == []
+
+
 def test_a_tool_approval_shows_the_calls_it_decides():
     """UX round 1, B4: the tool and its arguments for the decider, the tool alone for another viewer."""
     row = _row(source_type="run", kind="tool_approval", ask=_APPROVAL_ASK)
@@ -347,6 +391,24 @@ async def test_an_empty_click_and_an_answered_decision_answer_nothing(monkeypatc
     )
     assert notice("card_decision_already_answered", "en") in _texts(card)
     answer.assert_not_awaited()
+
+
+@pytest.mark.parametrize("text", [None, "looks fine"])
+@pytest.mark.asyncio
+async def test_a_tool_approval_sent_without_a_choice_says_which_choice(monkeypatch, text):
+    """UX round 2, B1: a reason alone never answers an approval and never reads as a generic failure."""
+    answer = AsyncMock()
+    monkeypatch.setattr("app.services.decision_router.answer_decision", answer)
+    _patch_reads(monkeypatch, _row(source_type="run", kind="tool_approval", ask=_APPROVAL_ASK))
+    data = {"kind": "decision", "id": f"run:{SOURCE_ID}", "d": str(ROW_ID)}
+    if text:
+        data["text"] = text
+    card = await cards.act(_Db(), cards.VERB_DECISION_ANSWER, data, SimpleNamespace(id=uuid.uuid4()), "fr")
+    answer.assert_not_awaited()
+    texts = _texts(card)
+    assert notice("card_choose_approval", "fr") in texts
+    assert notice("card_decision_failed", "fr") not in texts
+    assert notice("card_answer_empty", "fr") not in texts
 
 
 @pytest.mark.asyncio

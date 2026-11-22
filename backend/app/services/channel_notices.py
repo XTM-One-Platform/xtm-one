@@ -718,6 +718,12 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Choisissez Approuver ou Rejeter pour chaque outil.",
         "ja": "すべてのツールについて［承認］または［却下］を選択してください。",
     },
+    "card_choose_approval": {
+        "en": "Choose Approve, Approve always or Reject.",
+        "es": "Elija Aprobar, Aprobar siempre o Rechazar.",
+        "fr": "Choisissez Approuver, Toujours approuver ou Rejeter.",
+        "ja": "［承認］、［常に承認］、［却下］のいずれかを選択してください。",
+    },
     "card_answer_empty": {
         "en": "Write an answer first.",
         "es": "Escriba primero una respuesta.",
@@ -832,6 +838,12 @@ NOTICES: dict[str, dict[str, str]] = {
         "es": "{name} eligió {option}.",
         "fr": "{name} a choisi {option}.",
         "ja": "{name} が {option} を選びました。",
+    },
+    "card_decided_tools": {
+        "en": "{name} decided the tools: {verdicts}.",
+        "es": "{name} decidió sobre las herramientas: {verdicts}.",
+        "fr": "{name} a décidé pour les outils : {verdicts}.",
+        "ja": "{name} がツールについて判断しました: {verdicts}。",
     },
     "card_decision_expired": {
         "en": "This decision expired without an answer.",

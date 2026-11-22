@@ -275,7 +275,17 @@ def _answer_actions(
         choices.append({"title": title, "value": key})
     body: list[dict[str, Any]] = []
     if choices:
-        body.append({"type": "Input.ChoiceSet", "id": "option", "style": "expanded", "choices": choices})
+        choice_set: dict[str, Any] = {
+            "type": "Input.ChoiceSet",
+            "id": "option",
+            "style": "expanded",
+            "choices": choices,
+        }
+        if kind == "tool_approval":
+            # A tool approval is answered by its choice alone: Teams checks it before sending (B1 of UX round 2).
+            choice_set["isRequired"] = True
+            choice_set["errorMessage"] = notice("card_choose_approval", language)
+        body.append(choice_set)
     body.append(
         {
             "type": "Input.Text",
@@ -347,6 +357,40 @@ def render_decision_card(
     return card
 
 
+def _approval_verdicts(
+    answer: dict[str, Any], ask: dict[str, Any], kind: str, language: str, who: str
+) -> dict[str, Any] | None:
+    """The outcome of an answered tool approval, said with the catalog labels (B2 of UX round 2).
+
+    The row stores ``{"decisions": {tool_call_id: verdict}}``: one verdict for
+    every call reads "Ada chose Approve.", mixed verdicts count each one.
+    """
+    decisions = answer.get("decisions")
+    if kind != "tool_approval" or not isinstance(decisions, dict) or not decisions:
+        return None
+    counts: dict[str, int] = {}
+    for verdict in decisions.values():
+        key = str(verdict or "")
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return None
+    labels = {
+        key: notice(_APPROVAL_LABEL_NOTICE[key], language)
+        if key in _APPROVAL_LABEL_NOTICE
+        else (_option_label(ask, key, kind, language) or key)
+        for key in counts
+    }
+    if len(counts) == 1:
+        (only,) = labels.values()
+        return _runs(notice("card_decided_option", language), name=who, option=only)
+    order = [key for key in _APPROVAL_LABEL_NOTICE if key in counts] + sorted(
+        key for key in counts if key not in _APPROVAL_LABEL_NOTICE
+    )
+    summary = ", ".join(f"{labels[key]} ({counts[key]})" for key in order)
+    return _runs(notice("card_decided_tools", language), name=who, verdicts=summary)
+
+
 def _decided_body(view: DecisionView, ask: dict[str, Any], language: str) -> list[dict[str, Any]]:
     row = view.decision
     if row.status != "answered":
@@ -354,13 +398,17 @@ def _decided_body(view: DecisionView, ask: dict[str, Any], language: str) -> lis
         return [_text(notice(key, language), isSubtle=True)]
     answer = row.answer if isinstance(row.answer, dict) else {}
     who = _clip(view.answered_by_name or notice("card_someone", language), _MAX_NAME)
-    label = answer.get("label")
-    chosen = _clip(label, _MAX_LABEL) if label else _option_label(ask, answer.get("option"), row.kind, language)
-    body = [
-        _runs(notice("card_decided_option", language), name=who, option=chosen)
-        if chosen
-        else _runs(notice("card_answered_by", language), name=who)
-    ]
+    verdicts = _approval_verdicts(answer, ask, row.kind, language, who)
+    if verdicts is not None:
+        body = [verdicts]
+    else:
+        label = answer.get("label")
+        chosen = _clip(label, _MAX_LABEL) if label else _option_label(ask, answer.get("option"), row.kind, language)
+        body = [
+            _runs(notice("card_decided_option", language), name=who, option=chosen)
+            if chosen
+            else _runs(notice("card_answered_by", language), name=who)
+        ]
     if answer.get("text"):
         body.append(_text(_clip(answer.get("text"), _MAX_QUESTION), isSubtle=True))
     when = _utc(row.answered_at.isoformat() if row.answered_at else None)
@@ -550,6 +598,11 @@ async def act(db: AsyncSession, verb: str, data: dict[str, Any], user: Any, lang
         )
     option = str(data.get("option") or "").strip() or None
     text = str(data.get("text") or "")[:_MAX_TEXT].strip() or None
+    if option is None and row.kind == "tool_approval":
+        # A reason never answers an approval: say which choice is missing, not a generic failure.
+        return render_decision_card(
+            await load_view(db, row, user, language), language, banner=notice("card_choose_approval", language)
+        )
     if option is None and text is None:
         return render_decision_card(
             await load_view(db, row, user, language), language, banner=notice("card_answer_empty", language)
