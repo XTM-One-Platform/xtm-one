@@ -110,6 +110,17 @@ describe("LifecycleBandCard, the exposure story strip", () => {
     expect(key.textContent).toContain("Inner ring: In your context (qualitative)");
   });
 
+  it("puts the signals first in the key row, the ring legend after them, with the signal sources button (#1189)", () => {
+    band({ signals: { counts: { new: 2 }, onOpen: () => {} } });
+    const key = screen.getByTestId("ctem-story-key");
+    const children = Array.from(key.children);
+    const signalsAt = children.indexOf(screen.getByTestId("ctem-story-key-signals"));
+    const ringsAt = children.indexOf(screen.getByTestId("ctem-story-key-rings"));
+    expect(signalsAt).toBe(0);
+    expect(ringsAt).toBeGreaterThan(signalsAt);
+    expect(within(key).getByRole("button", { name: "Signal sources" })).toBeTruthy();
+  });
+
   it("prints both readings as labelled figures beside the ring, not only rings (#11689)", () => {
     band();
     const scoping = column("scoping");
