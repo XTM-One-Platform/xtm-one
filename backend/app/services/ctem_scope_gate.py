@@ -188,6 +188,11 @@ def _verdict(evidence: dict[str, Any]) -> str:
     return str(evidence.get("verdict") or "").strip().lower()
 
 
+def _account_disabled(evidence: dict[str, Any]) -> bool:
+    """Whether the evidence says the account is disabled (OpenCTI ``is_disabled``, a directory check)."""
+    return evidence.get("account_disabled") is True or evidence.get("account_enabled") is False
+
+
 # ── reconcile ──────────────────────────────────────────────────────────
 
 
@@ -200,10 +205,29 @@ class Resolution:
     crown_jewels: list[str] = field(default_factory=list)
     products: list[str] = field(default_factory=list)
     keys: list[str] = field(default_factory=list)
+    #: CTEM-29: the owned domain an identity subject belongs to.
+    domains: list[str] = field(default_factory=list)
 
     @property
     def resolved(self) -> bool:
-        return bool(self.assets or self.groups or self.crown_jewels or self.products)
+        return bool(self.assets or self.groups or self.crown_jewels or self.products or self.domains)
+
+
+def identity_domain(ref: str) -> str:
+    """The domain of an account or an email address (``jdoe@corp.example`` gives ``corp.example``)."""
+    text = str(ref or "").strip().lower().rstrip(".")
+    return text.rsplit("@", 1)[1] if "@" in text else ""
+
+
+def owned_domain_of(profile: OrganizationProfile, ref: str) -> str:
+    """The owned domain of *profile* an identity *ref* is on (a subdomain counts), ``""`` when none."""
+    domain = identity_domain(ref)
+    if not domain:
+        return ""
+    for owned in profile.owned_domains:
+        if domain == owned or domain.endswith(f".{owned}"):
+            return owned
+    return ""
 
 
 def _product_matches(product: str, ref: str) -> bool:
@@ -251,9 +275,15 @@ def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
     for group in profile.asset_groups:
         if {stable_key(group.name), stable_key(group.external_id)} & wanted - {""}:
             out.groups.append(group.name)
+    # CTEM-29: the crown jewels a tracked organization's services support, named in the evidence.
+    named = {n.strip().lower() for n in _evidence_list(facts.evidence, "crown_jewels")}
     for jewel in profile.crown_jewels:
-        if {stable_key(jewel.name), stable_key(jewel.opencrq_asset_id)} & wanted - {""}:
+        if {stable_key(jewel.name), stable_key(jewel.opencrq_asset_id)} & wanted - {""} or jewel.name.lower() in named:
             out.crown_jewels.append(jewel.name)
+    if facts.subject_kind == "identity":
+        owned = owned_domain_of(profile, facts.subject_ref)
+        if owned:
+            out.domains.append(owned)
     software = _evidence_list(facts.evidence, "software", "products", "cpe")
     if facts.subject_kind == "software":
         software.insert(0, facts.subject_ref)
@@ -420,7 +450,17 @@ def decide(
             code="excluded_by_policy",
             params={"kind": str(exclusion["kind"]), "value": str(exclusion["value"])},
         )
+    if facts.subject_kind == "identity" and _account_disabled(facts.evidence):
+        # CTEM-29: a leaked credential of a disabled account is no way in.
+        return done("discarded", "not exposed: the account is disabled", code="account_disabled")
     if not resolution.resolved:
+        if facts.subject_kind == "third_party":
+            # CTEM-29: a third party no crown jewel depends on is watched, never a case.
+            return done(
+                "watchlist",
+                "no crown jewel depends on this organization",
+                code="no_dependency",
+            )
         return done(
             "to_validate",
             "subject not resolved to an asset, a crown jewel or the tech stack",
@@ -434,10 +474,15 @@ def decide(
             sources.append({"from": "asset", "name": asset.name, "criticality": ASSET_TO_SCOPE[asset.criticality]})
     jewels = _jewels_of(profile, resolution)
     sources += [{"from": "crown_jewel", "name": n, "criticality": c} for n, c in jewels]
+    sources += [
+        {"from": "owned_domain", "name": d, "criticality": policy.identity_criticality} for d in resolution.domains
+    ]
     jewel_ids = [
         j.opencrq_asset_id for j in profile.crown_jewels if j.name in {n for n, _ in jewels} and j.opencrq_asset_id
     ]
     asset_ids = [a.external_id for a in resolution.assets if a.source == "opencrq" and a.external_id] + jewel_ids
+    # CTEM-29: the OpenCRQ supporting assets a tracked organization's services are.
+    asset_ids += _evidence_list(facts.evidence, "opencrq_asset_ids")
     held = scenarios.for_keys(asset_ids, [a.name.lower() for a in resolution.assets]) if scenarios.connected else []
     sources += [{"from": "risk_scenario", "name": s.name, "criticality": s.criticality} for s in held]
     criticality = _highest([s["criticality"] for s in sources])

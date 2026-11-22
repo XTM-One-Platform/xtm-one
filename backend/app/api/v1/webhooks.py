@@ -4766,9 +4766,16 @@ async def receive_assignment_webhook(
             if provider == "opencti":
                 # A trigger serving tracked organizations (#9157 M4): the run
                 # learns which ones this event concerns.
-                from app.services.organization_events import annotate_payload
+                from app.services.organization_events import annotate_payload, named_in_payload
 
                 annotate_payload(payload, config)
+                # CTEM-29: a report or incident naming a tracked organization is a
+                # third-party event (path 11), recorded once per organization.
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload,
+                    named_in_payload(payload, config),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if wf.trigger_type == "integration_event":
                 if config.get("provider") != provider:
                     logger.warning(
