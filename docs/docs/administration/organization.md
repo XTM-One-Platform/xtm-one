@@ -140,6 +140,10 @@ The tech stack lists the products you run, so that agents can match vulnerabilit
 
 When your assets carry their installed software (from a sync or an import), the tech stack agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. `GET /api/v1/organization-context/inventory/tech-stack` answers the same list, and `GET /api/v1/organization-context/assets/by-software?product=` lists the assets running a product.
 
+### Software from an SBOM
+
+An SBOM (software bill of materials) lists what an application or a container image is made of. An administrator can import one on an asset with `POST /api/v1/organization-context/assets/{asset_id}/sbom` (a CycloneDX JSON or SPDX JSON file in the `file` field): its components join the asset's software with the source `sbom`, with their CPE and package URL when the SBOM gives them, and with the component that bundles them (the NGINX inside an ingress controller image, for example). A component without a version is listed as `unknown`. Importing the same SBOM again replaces what it gave; another SBOM on the same asset adds to it. The SBOM stays with the asset when a sync merges it with another record. A file over 10,000 components is refused: split it per application or image.
+
 ## AI systems inventory
 
 The AI systems inventory lists the AI your organization runs or exposes, so that AI security work knows what to test. `Add an AI system` adds a row with:
