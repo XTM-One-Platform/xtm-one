@@ -20696,5 +20696,15 @@
   "The evidence health pass finds a supporting asset with no evidence": "証跡ヘルスパスが証跡のない支援資産を検出した",
   "Not computed yet": "未計算",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, other {{products} は {time} に応答しませんでした。ケースは変更されていません。}}",
-  "Open the {product} integration": "{product} の連携を開く"
+  "Open the {product} integration": "{product} の連携を開く",
+  "Add a sync": "同期を追加",
+  "Start with your sources": "ソースから始める",
+  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "プラットフォームと埋めるセクションを選び、行をプレビューしてから同期を維持します。",
+  "No sync yet": "同期なし",
+  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, other {# 件の同期}}",
+  "Feeds no section yet": "まだどのセクションにも供給していません",
+  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{source} からの{section}: {count, plural, other {# 行}}",
+  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "プロファイルの供給元: 各プラットフォームの行はその同期が管理し、ここでは読み取り専用です。入力、CSV、API、エージェントの行はあなたが管理します。",
+  "The OpenCRQ sync failed": "OpenCRQ の同期に失敗しました",
+  "Sync with OpenCRQ now": "今すぐ OpenCRQ と同期"
 }

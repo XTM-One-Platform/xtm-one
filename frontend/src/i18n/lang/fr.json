@@ -20696,5 +20696,15 @@
   "The evidence health pass finds a supporting asset with no evidence": "La passe de santé des preuves trouve un actif de soutien sans preuve",
   "Not computed yet": "Pas encore calculé",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} n'a pas répondu à {time}, cas inchangés.} other {{products} n'ont pas répondu à {time}, cas inchangés.}}",
-  "Open the {product} integration": "Ouvrir l'intégration {product}"
+  "Open the {product} integration": "Ouvrir l'intégration {product}",
+  "Add a sync": "Ajouter une synchronisation",
+  "Start with your sources": "Commencez par vos sources",
+  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Choisissez une plateforme, les sections qu'elle remplit, prévisualisez les lignes, puis gardez-les synchronisées.",
+  "No sync yet": "Aucune synchronisation",
+  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, one {# synchronisation} other {# synchronisations}}",
+  "Feeds no section yet": "N'alimente encore aucune section",
+  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{section} depuis {source} : {count, plural, one {# ligne} other {# lignes}}",
+  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "Qui alimente le profil : les lignes de chaque plateforme sont tenues par sa synchronisation et en lecture seule ici ; les lignes saisies, CSV, API et d'agent restent les vôtres.",
+  "The OpenCRQ sync failed": "La synchronisation OpenCRQ a échoué",
+  "Sync with OpenCRQ now": "Synchroniser avec OpenCRQ"
 }
