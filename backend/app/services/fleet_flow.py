@@ -27,7 +27,10 @@ only, never invented:
 * **Outputs** (right): one node per integration a member is bound to, the edge
   ``write`` when a write tool is reachable and ``read`` when the binding is
   read-only or its allow list names reads only; a ``work_items`` node for a
-  member with the coordination tools.
+  member with the coordination tools. A member that reads an integration it is
+  not bound to (the Platform Health module checkers, wired at run start from a
+  module registration, #101 S15f) draws a ``read`` edge to it too
+  (``implicit_reads``).
 
 Every assignment of a home member is exactly one ``trigger`` edge, disabled
 ones included (drawn greyed with the reason). Nothing here starts a run or
@@ -243,10 +246,13 @@ def assemble_fleet_flow(
     agents: Sequence[FlowAgent],
     assignments: Iterable[FlowAssignment],
     integrations: Mapping[uuid.UUID, FlowIntegration],
+    implicit_reads: Mapping[uuid.UUID, Sequence[tuple[str, uuid.UUID]]] | None = None,
 ) -> FleetFlow:
     """The flow of *agents* (home members, tree order) from their configuration.
 
-    Pure: the same inputs draw the same nodes and edges in the same order.
+    *implicit_reads* maps a member to the ``(provider, integration id)`` it reads
+    without a binding (always ``read``, never a write). Pure: the same inputs draw
+    the same nodes and edges in the same order.
     """
     flow = FleetFlow()
     by_id = {a.id: a for a in agents}
@@ -345,6 +351,20 @@ def assemble_fleet_flow(
                         reason=None if agent.enabled else REASON_AGENT_DISABLED,
                     )
                 )
+        for provider, iid in sorted((implicit_reads or {}).get(agent.id, ()), key=lambda r: (r[0], str(r[1]))):
+            node = integration_node(LANE_OUTPUT, provider, iid, outputs)
+            if node.id in seen:
+                continue
+            seen.add(node.id)
+            write_edges.append(
+                FlowEdge(
+                    source=target_agent,
+                    target=node.id,
+                    kind=EDGE_READ,
+                    enabled=agent.enabled,
+                    reason=None if agent.enabled else REASON_AGENT_DISABLED,
+                )
+            )
         bound_providers = {str(p) for p in (agent.integration_bindings or {})}
         for provider in sorted({str(p) for p in (agent.integration_template_bindings or []) if p}):
             if provider in bound_providers:
@@ -488,7 +508,21 @@ async def build_fleet_flow(
         )
         for aid, agent_id, name, trigger_type, config, enabled, paused, prompt, check in found
     ]
+    implicit_reads: dict[uuid.UUID, list[tuple[str, uuid.UUID]]] = {}
+    from app.services.health.read_only import is_health_fleet
+
+    if is_health_fleet(fleet):
+        from app.services.health.module_analyst import checker_reads
+
+        reads = await checker_reads(db)
+        for agent in agents:
+            row = agent_rows.get(agent.id)
+            role = getattr(row, "health_role", None) if row is not None else None
+            if row is not None and row.is_company_managed and role in reads:
+                implicit_reads[agent.id] = reads[role]
     integration_ids: set[uuid.UUID] = set()
+    for found_reads in implicit_reads.values():
+        integration_ids.update(iid for _provider, iid in found_reads)
     for agent in agents:
         for raw in (agent.integration_bindings or {}).values():
             integration_ids.update(_ids(raw))
@@ -516,7 +550,9 @@ async def build_fleet_flow(
             integrations[iid] = FlowIntegration(
                 id=iid, provider=provider, name=name, status=str(status or ""), visible=iid in seen
             )
-    return assemble_fleet_flow(agents=agents, assignments=assignments, integrations=integrations)
+    return assemble_fleet_flow(
+        agents=agents, assignments=assignments, integrations=integrations, implicit_reads=implicit_reads
+    )
 
 
 __all__ = [

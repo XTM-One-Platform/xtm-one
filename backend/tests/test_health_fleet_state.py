@@ -138,7 +138,9 @@ def test_the_shipped_documentation_validates_and_names_no_fleet_action() -> None
 
     assert set(clean_sections(PLATFORM_HEALTH_DOC)) == set(DOC_SECTIONS)
     parts = clean_structured(PLATFORM_HEALTH_STRUCTURED)
-    assert parts and len(parts["triggers"]) == 5
+    assert parts and len(parts["triggers"]) == 6
+    # The daily module round of the checkers (#101 S15f, section 13.8).
+    assert "Module checks" in [t["name"] for t in parts["triggers"]]
     text = " ".join(PLATFORM_HEALTH_DOC.values()).lower()
     for phrase in ("switch each automation on", "from the fleet page", "handover", "manual only"):
         assert phrase not in text
