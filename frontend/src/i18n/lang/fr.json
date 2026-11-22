@@ -20048,10 +20048,6 @@
   "Restricted asset": "Actif restreint",
   "Techniques in attack order": "Techniques dans l’ordre de l’attaque",
   "Recorded how it would be exploited": "A enregistré comment elle serait exploitée",
-  "{starts}, next {time}": "{starts}, prochain {time}",
-  "{starts}, off in Settings": "{starts}, désactivé dans les Paramètres",
-  "Platform Health is off in Settings": "Platform Health est désactivé dans les Paramètres",
-  "Platform Health switched on in Settings": "Platform Health activé dans les Paramètres",
   "Under 1 hour": "Moins d'une heure",
   "Proposed changes": "Modifications proposées",
   "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, one {# attend une décision} other {# attendent une décision}}",
@@ -20067,5 +20063,10 @@
   "Re-test passed on {date}": "Nouveau test réussi le {date}",
   "Not reproduced": "Non reproduit",
   "Reproduced": "Reproduit",
-  "Not re-tested yet": "Pas encore retesté"
+  "Not re-tested yet": "Pas encore retesté",
+  "Spend Management": "Gestion des dépenses",
+  "Payable created": "Dépense créée",
+  "Payable prepared for accounting": "Dépense préparée pour la comptabilité",
+  "Settlement created": "Règlement créé",
+  "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk (the create_spendesk_webhook tool) pointing to the webhook URL shown below.": "Se déclenche sur cet événement webhook Spendesk. Créez un webhook dans Spendesk (l’outil create_spendesk_webhook) vers l’URL de webhook ci-dessous."
 }
