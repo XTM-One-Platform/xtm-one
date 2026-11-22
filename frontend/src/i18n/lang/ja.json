@@ -5567,6 +5567,7 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "Webhook URLは作成後にアサインメントIDを使って自動生成されます。",
   "The whole request body is passed to the agent as the trigger payload.": "リクエストボディ全体がトリガーのペイロードとしてエージェントに渡されます。",
   "Theme": "テーマ",
+  "Pastel colours": "パステルカラー",
   "Theme Color": "テーマカラー",
   "Theme configuration": "テーマ設定",
   "There are no objects on the platform yet.": "プラットフォームにはまだオブジェクトがありません。",
@@ -20868,5 +20869,6 @@
   "Restore coverage": "カバレッジの復元",
   "Unknown user": "不明なユーザー",
   "{count, plural, one {# row} other {# rows}}": "{count, plural, other {# 行}}",
-  "Group by: {group}": "グループ化: {group}"
+  "Group by: {group}": "グループ化: {group}",
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "重大度、ステータス、マーキングの色を柔らかい色調にします。オフ: すべての製品で共通の標準色。"
 }
