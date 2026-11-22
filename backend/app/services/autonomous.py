@@ -1749,6 +1749,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Sent %d work item notification(s)", notified)
         except Exception as e:
             logger.error("Work-item notification error: %s", format_exception_message(e), exc_info=True)
+        # The decision card of a work item waiting for a person, posted in the
+        # Teams chat or channel its notify ask names, as its agent (#842 S9b).
+        try:
+            from app.services.decision_graph_cards import deliver_work_item_cards
+
+            carded = await deliver_work_item_cards()
+            if carded:
+                logger.info("Sent %d decision card(s)", carded)
+        except Exception as e:
+            logger.error("Decision card error: %s", format_exception_message(e), exc_info=True)
         # The timers runs armed for a date (arm_timer): each due one raises
         # timer.due once, or is skipped when its unless condition is met.
         try:

@@ -406,6 +406,9 @@ class PrioritizationPolicy(BaseModel):
     #: set, a campaign, a malware...). Read live from OpenCTI at delivery, never the delivered score.
     pir_min_score_vulnerability: int = Field(default=70, ge=0, le=100)
     pir_min_score_threat: int = Field(default=75, ge=0, le=100)
+    #: CTEM review step (CTEM-16): the label an analyst sets on the drafted Grouping in OpenCTI to
+    #: approve its coverage request when the gate ``ctem.analyst_review`` waits (empty: analyst-reviewed).
+    analyst_review_label: str = Field(default="", max_length=100)
     #: CTEM-29: the scope criticality of an identity of an owned domain (a leaked credential, path 10).
     identity_criticality: Literal["low", "medium", "high", "critical"] = "high"
 

@@ -140,6 +140,7 @@ SPA_FIRST_SEGMENTS: frozenset[str] = frozenset(
         "ctem",
         "dashboard",
         "dashboards",
+        "decide",
         "desktop",
         "evaluations",
         "files",
