@@ -968,12 +968,12 @@ def event_filter_reason(
         return jira_filter_reason(
             payload, filter_config, self_account_id=str(signals.get("jira_self_account_id") or "")
         )
-    if payload.get("provider") == "odoo":
-        from app.integrations.providers.odoo.events import EVENTS as ODOO_EVENTS
-        from app.integrations.providers.odoo.events import filter_reason as odoo_filter_reason
+    if payload.get("provider") == "netsuite":
+        from app.services.netsuite_events import EVENTS as NETSUITE_EVENTS
+        from app.services.netsuite_events import filter_reason as netsuite_filter_reason
 
-        if event in ODOO_EVENTS:
-            return odoo_filter_reason(payload, filter_config)
+        if event in NETSUITE_EVENTS:
+            return netsuite_filter_reason(payload, filter_config)
     if event == "calendar_event_changed":
         kinds = {k.casefold() for k in _strings(filter_config.get("change_kinds"))}
         if kinds and str(payload.get("change_kind") or "").casefold() not in kinds:
