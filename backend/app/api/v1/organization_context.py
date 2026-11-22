@@ -13,7 +13,8 @@ the connected OpenCTI's PIRs for the PIR picker (administrators);
 proposed from chat (#9484, S-a2); ``GET /readers`` names the fleets that
 read each part of the profile (#9173, S2); ``GET /setup-prompt`` and
 ``POST /setup-prompt`` carry the first-login setup proposal, shown once per
-instance (#9173, S3). The
+instance (#9173, S3); ``DELETE /setup-prompt`` forgets its answer so it is
+proposed again (Settings > Platform, Reset onboarding). The
 rules are ``services/organization_context.py``'s; agents read the same
 profile through ``get_organization_context``.
 """
@@ -1422,6 +1423,42 @@ async def record_setup_step(
 
     row = await get_platform_settings(db)
     prompt.record_step(row, step=body.step, state=body.state)
+    await db.commit()
+    state = prompt.state_of(propose=prompt.should_propose(is_admin=True, is_xtm_one=True, row=row), row=row)
+    return _setup_response(state, has_profile=await prompt.has_saved_profile(db))
+
+
+@router.delete("/setup-prompt", response_model=SetupPromptResponse)
+async def reset_setup_prompt(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SetupPromptResponse:
+    """Forget the answer and step progress of the setup proposal (administrators, audited).
+
+    Settings > Platform "Reset onboarding": the guided setup is proposed again
+    to administrators from its first step, as after a fresh install. Only the
+    proposal state is cleared; the organization profile, integrations, fleets,
+    automations and slot bindings are not changed. XTM One mode only: in
+    Copilot mode there is no setup to propose, so the call is refused (409).
+    """
+    from app.api.v1.platform_settings_helpers import get_platform_settings
+    from app.core.config import settings
+    from app.services import organization_setup_prompt as prompt
+    from app.services.audit import log_audit
+
+    if settings.is_copilot_like:
+        raise HTTPException(status_code=409, detail="The guided setup exists in XTM One mode only.")
+    row = await get_platform_settings(db)
+    if prompt.reset_answer(row):
+        await log_audit(
+            db,
+            user=admin,
+            action="configure",
+            entity_type="organization_context",
+            entity_name="setup_prompt",
+            summary=f"Reset the setup proposal {prompt.SETUP_VERSION}",
+            details={"version": prompt.SETUP_VERSION},
+        )
     await db.commit()
     state = prompt.state_of(propose=prompt.should_propose(is_admin=True, is_xtm_one=True, row=row), row=row)
     return _setup_response(state, has_profile=await prompt.has_saved_profile(db))

@@ -75,7 +75,7 @@ const MODE_READERS: Record<string, [ModeClass, string]> = {
   "pages/agent-detail/ConfigTab.tsx": ["built-in agents", "built-in agents are product-managed in XTM One mode"],
   "pages/settings/HealthModuleAnalystBlock.tsx": ["domain content", "Module Analyst spend limits of Platform Health (OpenCTI, OpenAEV, OpenCRQ modules); Copilot mode has no module"],
   "pages/settings/HealthModuleThresholdsBlock.tsx": ["domain content", "OpenCTI / OpenAEV module thresholds of Platform Health; Copilot mode has no module"],
-  "pages/settings/ParametersSection.tsx": ["domain content", "XTM Hub registration card; edition badge (licence)"],
+  "pages/settings/ParametersSection.tsx": ["domain content", "XTM Hub registration card; Reset onboarding card (guided setup, XTM One mode only); edition badge (licence)"],
   "pages/settings/QuotasSection.tsx": ["licence and edition", "agentic quota source and edition cards"],
   "pages/settings/RoiUnitsSection.tsx": ["domain content", "title and order of the mode's built-in ROI catalog"],
 };
