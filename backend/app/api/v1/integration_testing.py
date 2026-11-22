@@ -850,6 +850,15 @@ async def test_provider_connectivity(
 
         ok, message = await docusign_validate(token)
         return {"status": "ok" if ok else "error", "message": message}
+    elif provider == "pennylane":
+        # GET /me names the company and the token's scopes; a firm token names
+        # its company in the optional company_id field (X-Company-Id).
+        from app.integrations.providers.pennylane import validate_connection as pennylane_validate
+
+        company_id = str(extra.get("company_id") or "").strip()
+        credential = f"{company_id}||{token or ''}" if company_id else (token or "")
+        ok, message = await pennylane_validate(credential)
+        return {"status": "ok" if ok else "error", "message": message}
     elif provider == "netsuite":
         # The credential is the provider's compound token (account, mode and
         # the M2M or TBA material): its validate_connection mints the token
@@ -867,12 +876,6 @@ async def test_provider_connectivity(
         from app.integrations.providers.ashby import validate_connection as ashby_validate
 
         ok, message = await ashby_validate(token)
-        return {"status": "ok" if ok else "error", "message": message}
-    elif provider == "quotapath":
-        # A read of the users list through the provider's own client.
-        from app.integrations.providers.quotapath import validate_connection as quotapath_validate
-
-        ok, message = await quotapath_validate(token or "")
         return {"status": "ok" if ok else "error", "message": message}
     elif provider == "wordsmith":
         # GET /me through the provider's own client: the region host, the

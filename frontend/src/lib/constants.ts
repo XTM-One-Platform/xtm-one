@@ -319,7 +319,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   figma: "Figma",
   filigran_ai: "Filigran AI",
   planhat: "Planhat",
-  quotapath: "QuotaPath",
   metabase: "Metabase",
   openaev: "OpenAEV",
   opencti: "OpenCTI",
@@ -427,6 +426,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   google_a2a: "Google Agent Platform A2A",
   nova: "Nova Prompt Safety",
   netsuite: "NetSuite",
+  pennylane: "Pennylane",
 };
 
 // ── MCP transport display names ─────────────────────────────────────────────
@@ -538,7 +538,6 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   data_governance: "Data Governance",
   ediscovery: "eDiscovery",
   hr: "HR & People",
-  sales_compensation: "Sales Compensation",
   design: "Design",
   siem: "SIEM",
   email_security: "Email Security",
@@ -586,6 +585,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
+  accounting: "Accounting",
   erp: "ERP",
   finance: "Finance & Treasury",
 } as const;
@@ -778,7 +778,6 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   figma: "/logos/figma.svg",
   filigran_ai: "/logos/filigran.svg",
   planhat: "/logos/planhat.svg",
-  quotapath: "/logos/quotapath.svg",
   metabase: "/logos/metabase.svg",
   grafana: "/logos/grafana.svg",
   openaev: "/logos/openaev.svg",
