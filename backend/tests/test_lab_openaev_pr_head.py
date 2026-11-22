@@ -58,6 +58,12 @@ def test_the_backend_is_awaited_on_its_unauthenticated_route():
     assert "{HEALTH_PATH}" in SCRIPT.read_text(encoding="utf-8")
 
 
+def test_the_lab_turns_every_preview_feature_on():
+    """A PR behind an OpenAEV preview flag renders its screens in the lab, not the flag-off fallback."""
+    module = _module()
+    assert module.backend_env()["OPENAEV_ENABLED_DEV_FEATURES"] == module.PREVIEW_FEATURES == "*"
+
+
 def test_the_backend_boots_on_the_lab_stores():
     module = _module()
     env = module.backend_env()
