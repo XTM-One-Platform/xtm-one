@@ -20244,6 +20244,7 @@
   "This answer link is not valid.": "Ce lien de réponse n’est pas valide.",
   "It may be incomplete or the decision no longer exists. Open the original message again.": "Il est peut-être incomplet, ou la décision n’existe plus. Rouvrez le message d’origine.",
   "The decision could not be loaded.": "La décision n’a pas pu être chargée.",
+  "Recording your answer": "Enregistrement de votre réponse",
   "Recording your answer: {option}": "Enregistrement de votre réponse : {option}",
   "{source} · {by}": "{source} · {by}",
   "Confirm: {option}": "Confirmer : {option}",

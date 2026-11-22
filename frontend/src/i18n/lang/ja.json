@@ -20244,6 +20244,7 @@
   "This answer link is not valid.": "この回答リンクは無効です。",
   "It may be incomplete or the decision no longer exists. Open the original message again.": "リンクが不完全か、判断が存在しなくなった可能性があります。元のメッセージを開き直してください。",
   "The decision could not be loaded.": "判断を読み込めませんでした。",
+  "Recording your answer": "回答を記録しています",
   "Recording your answer: {option}": "回答を記録しています: {option}",
   "{source} · {by}": "{source} · {by}",
   "Confirm: {option}": "確認: {option}",
