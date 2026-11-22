@@ -20765,7 +20765,6 @@
   "Signals in 30 days": "Signals in 30 days",
   "Cases opened": "Cases opened",
   "Trigger paths connected": "Trigger paths connected",
-  "Connected sources": "Connected sources",
   "No source connected yet": "No source connected yet",
   "{count, plural, one {# signal in all} other {# signals in all}}": "{count, plural, one {# signal in all} other {# signals in all}}",
   "{count, plural, one {# new} other {# new}}": "{count, plural, one {# new} other {# new}}",

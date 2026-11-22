@@ -169,9 +169,18 @@ describe("Signals summary strip", () => {
     expect(within(strip).getByText("2 new")).toBeTruthy();
     expect(within(strip).getByText("4 on the watchlist")).toBeTruthy();
     expect(within(strip).getByText("1/2")).toBeTruthy();
-    expect(within(strip).getByText("1 source connected")).toBeTruthy();
-    const logos = within(screen.getByTestId("ctem-signals-summary-sources")).getAllByRole("listitem");
+    const logos = within(screen.getByRole("list", { name: "1 source connected" })).getAllByRole("listitem");
     expect(logos.map((l) => l.getAttribute("data-provider"))).toEqual(["shodan"]);
+  });
+
+  it("keeps the four cards footerless, the logos and the Sources link on the fourth card's subtitle line (UX r4 B2 on #1272)", async () => {
+    renderPage("/ctem/signals", { total: 10, counts: { to_validate: 3 }, signals: [] }, paths);
+    const strip = await screen.findByTestId("ctem-signals-summary");
+    expect(within(strip).getAllByTestId("stat-card-value")).toHaveLength(4);
+    expect(within(strip).queryAllByTestId("stat-card-footer")).toHaveLength(0);
+    const sources = within(strip).getByTestId("ctem-signals-summary-sources");
+    expect(sources.closest("p")).not.toBeNull();
+    expect(within(sources).getByTestId("ctem-signals-summary-sources-link").textContent).toBe("Sources");
   });
 
   it("opens the Signals tab on the state a card names", async () => {

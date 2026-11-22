@@ -20765,7 +20765,6 @@
   "Signals in 30 days": "Señales en 30 días",
   "Cases opened": "Casos abiertos",
   "Trigger paths connected": "Rutas de activación conectadas",
-  "Connected sources": "Orígenes conectados",
   "No source connected yet": "Aún no hay ningún origen conectado",
   "{count, plural, one {# signal in all} other {# signals in all}}": "{count, plural, one {# señal en total} other {# señales en total}}",
   "{count, plural, one {# new} other {# new}}": "{count, plural, one {# nueva} other {# nuevas}}",

@@ -9,7 +9,12 @@
  * - To validate: the signals waiting for a person, the new ones under it.
  * - Cases opened: the signals that opened a case, the watchlist under it.
  * - Trigger paths connected: N of the live catalogue, the connected sources'
- *   logos under it.
+ *   logos and the Sources link on its subtitle line.
+ *
+ * One row of four footerless cards from 1024 px up, every card the height of a
+ * plain StatCard (UX round 4 on #1272: a 2x2 strip at 1080 pushed the table out
+ * of its fit-to-viewport mode and the page scrolled; only the fourth card had a
+ * footer, so the other three carried a void under their subtitle).
  *
  * The state counts are the key row's (`useRecentCtemSignals`, the same read the
  * command center makes), so the page and the key row never disagree. The first
@@ -38,8 +43,8 @@ const ValidateGlyph = (({ className }: { className?: string }) => <Icon name="li
 const CaseGlyph = (({ className }: { className?: string }) => <Icon name="briefcase" size={16} className={className} />) as unknown as Glyph;
 const SourcesGlyph = (({ className }: { className?: string }) => <Icon name="satellite-dish" size={16} className={className} />) as unknown as Glyph;
 
-/** How many connected sources the fourth card shows by logo; the rest is "+N". */
-const LOGOS_SHOWN = 6;
+/** How many connected sources the fourth card shows by logo on its subtitle line; the rest is "+N". */
+const LOGOS_SHOWN = 3;
 
 function providerName(provider: string): string {
   return CTEM_PRODUCT_INFO[provider]?.name ?? INTEGRATION_PROVIDER_NAMES[provider] ?? provider;
@@ -68,7 +73,7 @@ export function SignalsSummaryStrip() {
   const pending = "-";
 
   return (
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4" data-testid="ctem-signals-summary">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-testid="ctem-signals-summary">
       <StatCard
         icon={SignalsGlyph}
         label={t_i18n("Signals in 30 days")}
@@ -95,35 +100,40 @@ export function SignalsSummaryStrip() {
         label={t_i18n("Trigger paths connected")}
         value={pathData ? `${count(connected)}/${count(paths.length)}` : pending}
         exact={pathData ? t_i18n("{connected} of {total} trigger paths connected", { connected: exactCount(connected), total: exactCount(paths.length) }) : undefined}
-        subtitle={t_i18n("{count, plural, one {# source connected} other {# sources connected}}", { count: providers.length })}
-        footer={
-          <div className="flex min-w-0 items-center gap-2" data-testid="ctem-signals-summary-sources">
+        subtitle={
+          /* Spans only: StatCard renders the subtitle inside a <p>. One caption line, so the
+             card keeps the height of the three cards beside it (UX round 4 B2 on #1272). */
+          <span className="flex min-w-0 items-center gap-2" data-testid="ctem-signals-summary-sources">
             {shown.length > 0 ? (
-              <ul className="flex min-w-0 items-center gap-1.5" aria-label={t_i18n("Connected sources")}>
+              <span
+                role="list"
+                className="flex min-w-0 items-center gap-1"
+                aria-label={t_i18n("{count, plural, one {# source connected} other {# sources connected}}", { count: providers.length })}
+              >
                 {shown.map((provider) => (
-                  <li key={provider} data-provider={provider}>
+                  <span role="listitem" key={provider} data-provider={provider} className="inline-flex">
                     <Tip content={providerName(provider)}>
-                      <span className={cn("inline-flex size-6 items-center justify-center rounded-sm bg-elevation-hover", BUTTON_ROLE_FOCUS_RING)} tabIndex={0}>
+                      <span className={cn("inline-flex size-4 items-center justify-center rounded-sm", BUTTON_ROLE_FOCUS_RING)} tabIndex={0}>
                         <ProviderLogo provider={provider} className="size-4" />
                       </span>
                     </Tip>
-                  </li>
+                  </span>
                 ))}
                 {providers.length > shown.length && (
-                  <li className="content-caption tabular-nums text-default-secondary">+{count(providers.length - shown.length)}</li>
+                  <span role="listitem" className="tabular-nums">+{count(providers.length - shown.length)}</span>
                 )}
-              </ul>
+              </span>
             ) : (
-              <span className="content-caption text-default-secondary">{t_i18n("No source connected yet")}</span>
+              <span className="min-w-0 truncate">{t_i18n("No source connected yet")}</span>
             )}
             <RouterLink
               to={SIGNAL_SOURCES_PATH}
-              className={cn("ml-auto shrink-0 rounded-sm content-caption text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+              className={cn("ml-auto shrink-0 rounded-sm text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
               data-testid="ctem-signals-summary-sources-link"
             >
               {t_i18n("Sources")}
             </RouterLink>
-          </div>
+          </span>
         }
       />
     </div>
