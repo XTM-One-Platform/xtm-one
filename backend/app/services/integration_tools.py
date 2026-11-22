@@ -120,6 +120,7 @@ from app.integrations.providers.mistral import build_tools as mistral_tools
 from app.integrations.providers.mitre_atlas import build_tools as mitre_atlas_tools
 from app.integrations.providers.mitre_attack import build_tools as mitre_attack_tools
 from app.integrations.providers.n8n import build_tools as n8n_tools
+from app.integrations.providers.netsuite import build_tools as netsuite_tools
 from app.integrations.providers.newsapi import build_tools as newsapi_tools
 from app.integrations.providers.notion import build_tools as notion_tools
 from app.integrations.providers.onepassword import build_tools as onepassword_tools
@@ -151,7 +152,6 @@ from app.integrations.providers.recorded_future import (
     build_tools as recorded_future_tools,
 )
 from app.integrations.providers.rss import build_tools as rss_tools
-from app.integrations.providers.rydoo import build_tools as rydoo_tools
 from app.integrations.providers.securityscorecard import (
     build_tools as securityscorecard_tools,
 )
@@ -1001,6 +1001,7 @@ PROVIDER_TOOLS = {
     "concord": concord_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
+    "netsuite": netsuite_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
     "hibob": hibob_tools,
@@ -1044,7 +1045,6 @@ PROVIDER_TOOLS = {
     "aws_security": aws_security_tools,
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
-    "rydoo": rydoo_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1138,12 +1138,12 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "linkedin",
         "metabase",
         "microsoft",
+        "netsuite",
         "notion",
         "onepassword",
         "openaev",
         "opencti",
         "perk",
-        "rydoo",
         "servicenow",
         "slack",
         "tanium",
@@ -2782,6 +2782,35 @@ async def _get_token(
         # error instead of the tools silently disappearing.
         return f"{region}||{project}||{customer}||{sa_json}"
 
+    # --- NetSuite ---
+    # The API Key field holds the secret (the certificate's private key for
+    # OAuth 2.0 machine-to-machine, the token secret for TBA); the account,
+    # the mode and the other identifiers live in extra_config. The provider
+    # mints or signs its own requests, so the OAuth refresh below does not
+    # apply. The secret is the last field (split greedily).
+    if provider == "netsuite":
+        extra = {}
+        if integ.extra_config_enc:
+            try:
+                extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (netsuite): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        from app.integrations.providers.netsuite import compound_credential as netsuite_credential
+
+        compound = netsuite_credential((await reveal_field(integ, "api_key_enc")) or "", extra)
+        if not compound:
+            logger.warning(
+                "Integration '%s' (netsuite) is missing the account ID, the secret or the identifiers "
+                "of its authentication mode.",
+                integ.name,
+            )
+            return None
+        return compound
+
     # --- DocuSign JWT Grant ("API Key" mode) ---
     # The RSA private key lives in api_key_enc; the integration key, the user
     # to impersonate, the environment and the account live in extra_config.
@@ -2930,27 +2959,6 @@ async def _get_token(
                 )
         aikido_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return aikido_token_from_config(aikido_secret, aikido_extra)
-
-    # --- Rydoo (OAuth2 client credentials, one company, branches as entities) ---
-    # The client secret is the API key column; the client id lives in
-    # extra_config. The provider gets ``client_id||client_secret``.
-    if provider == "rydoo":
-        from app.integrations.providers.rydoo import (
-            token_from_config as rydoo_token_from_config,
-        )
-
-        rydoo_extra = {}
-        if integ.extra_config_enc:
-            try:
-                rydoo_extra = await _reveal_extra(integ)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to decrypt extra_config for '%s' (rydoo): %s",
-                    integ.name,
-                    format_exception_message(exc),
-                )
-        rydoo_secret = (await reveal_field(integ, "api_key_enc")) or ""
-        return rydoo_token_from_config(rydoo_secret, rydoo_extra)
 
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
