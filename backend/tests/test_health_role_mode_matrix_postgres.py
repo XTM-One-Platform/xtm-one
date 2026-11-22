@@ -11,6 +11,11 @@ module cards of the mode for an administrator, the generic cards of their
 own scope for everyone else) and that the one AI action of the page, the
 analysis run, is refused with ``ai_disabled`` while AI is off.
 
+Module Analyst (#101 S14e, section 12): the agentic filter of ``/findings``
+opens like the list it filters, the last investigation of a module card is an
+administrator's in the XTM One modes only, and "Investigate now" answers each
+role in each mode as section 8.1 says.
+
 ``integration``-marked; skips when PostgreSQL is unreachable.
 """
 
@@ -19,7 +24,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -27,6 +32,7 @@ from fastapi import FastAPI
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
 from app.api import deps
+from app.api.v1 import platform as platform_api
 from app.api.v1 import (
     platform_health,
     platform_health_analysis,
@@ -37,6 +43,8 @@ from app.api.v1 import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.group import Group, GroupManager, GroupMember
+from app.models.health import HealthCycle
+from app.models.platform_registration import PlatformRegistration
 from app.services import agentic_gate, ai_state
 from app.services.health.engine import CheckResult, record_results
 from tests.health_support import health_database, make_agent, make_user
@@ -56,6 +64,7 @@ READS: dict[str, int] = {
     "/me/opt-out": 200,
     "/overview": 200,
     "/findings": 200,
+    "/findings?agentic=true": 200,
     "/history?days=7": 200,
     "/improvements": 404,
     "/cycles": 404,
@@ -82,8 +91,13 @@ def mode(request, monkeypatch) -> str:
     async def _verdict(_db):
         return agentic_gate.AgenticVerdict(refusal=None)
 
+    async def _licensed(_db) -> bool:
+        return True
+
     monkeypatch.setattr(ai_state, "is_ai_enabled", _ai)
     monkeypatch.setattr(agentic_gate, "agentic_verdict", _verdict)
+    # The licence half of require_agentic_ai ("Investigate now"): licensed in every mode.
+    monkeypatch.setattr(platform_api, "is_agentic_ai_enabled", _licensed)
     return value
 
 
@@ -197,6 +211,85 @@ async def test_the_overview_shows_each_role_the_cards_of_its_scope(mode: str) ->
     assert seen["agent_owner"] == (GENERIC, "managed", 1)
     assert seen["group_manager"] == (GENERIC, "managed", 0)
     assert seen["plain_user"] == (GENERIC, "managed", 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", MODES, indirect=True)
+async def test_the_last_investigation_is_an_administrators_in_the_xtm_one_modes(mode: str) -> None:
+    async with health_database() as sessions:
+        people = await _people(sessions)
+        registration = await _opencti_investigated(sessions)
+        cards: dict[str, dict[str, object]] = {}
+        for role in ROLES:
+            async with _client(sessions, people[role]) as client:
+                overview = (await client.get("/api/v1/health/overview")).json()
+            cards[role] = {card["module"]: card["last_investigation"] for card in overview["modules"]}
+
+    if mode == "copilot":
+        assert "opencti" not in cards["admin"]
+    else:
+        assert cards["admin"]["opencti"]["registration_id"] == str(registration)
+        assert cards["admin"]["openaev"] is None
+    for role in ROLES:
+        assert all(last is None for module, last in cards[role].items() if role != "admin" or module != "opencti"), (
+            f"{mode}: {role} sees a last investigation it should not"
+        )
+
+
+#: "Investigate now" on OpenCTI per mode for an administrator, Platform Health left off:
+#: Copilot has no OpenCTI (404), ``ai_disabled`` refuses the agentic action first (403),
+#: XTM One reaches the analyst's own switch (409 ``module_analyst_off``).
+INVESTIGATE_ADMIN = {"copilot": 404, "xtm_one": 409, "ai_disabled": 403}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", MODES, indirect=True)
+async def test_investigate_now_answers_each_role_as_the_matrix_says(mode: str) -> None:
+    async with health_database() as sessions:
+        people = await _people(sessions)
+        answers: dict[str, httpx.Response] = {}
+        for role in ROLES:
+            async with _client(sessions, people[role]) as client:
+                answers[role] = await client.post("/api/v1/health/modules/opencti/investigate")
+
+    assert answers["admin"].status_code == INVESTIGATE_ADMIN[mode]
+    if mode == "ai_disabled":
+        assert answers["admin"].json()["detail"]["code"] == ai_state.AI_DISABLED_CODE
+    if mode == "xtm_one":
+        assert answers["admin"].json()["detail"]["code"] == "module_analyst_off"
+    others = {role: answers[role].status_code for role in ROLES if role != "admin"}
+    assert others == dict.fromkeys(others, 403), f"{mode}: {others}"
+
+
+async def _opencti_investigated(sessions) -> uuid.UUID:
+    """An OpenCTI registration with one completed Module Analyst cycle."""
+    registration = uuid.uuid4()
+    now = datetime.now(UTC)
+    async with sessions() as db:
+        db.add(
+            PlatformRegistration(
+                id=registration,
+                platform_identifier="opencti",
+                platform_url="https://cti.example.com",
+                platform_title="OpenCTI",
+                platform_version="6.9.0",
+            )
+        )
+        await db.flush()
+        db.add(
+            HealthCycle(
+                specialist="module_analyst",
+                trigger="schedule",
+                target_type="module",
+                target_id=registration,
+                month=now.strftime("%Y-%m"),
+                status="completed",
+                opened_at=now - timedelta(minutes=5),
+                closed_at=now,
+            )
+        )
+        await db.commit()
+    return registration
 
 
 @pytest.mark.asyncio
