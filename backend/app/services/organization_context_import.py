@@ -768,18 +768,41 @@ def opencti_systems_query(taxonomy: bool) -> str:
     )
 
 
-_OCTI_SYSTEM_FIELDS = 'query XtmOrganizationImportSystemFields { __type(name: "System") { fields { name } } }'
+#: One System with the attributes the import reads: no introspection, which OpenCTI disables by default
+#: since OpenCTI-Platform/opencti#19370.
+_OCTI_SYSTEM_PROBE = (
+    "query XtmOrganizationImportSystemTaxonomy {\n"
+    f"  systems(first: 1) {{ edges {{ node {{ id {_OCTI_SYSTEM_TAXONOMY} }} }} }}\n"
+    "}\n"
+)
+#: The names an OpenCTI before #19943 refuses in the probe: an attribute, or the Systems list itself.
+_OCTI_SYSTEM_PROBE_NAMES = (*OPENCTI_SYSTEM_ATTRIBUTES.values(), "x_opencti_owner", "systems")
 
 
-async def opencti_has_system_taxonomy(client: Any, base_url: str, headers: dict[str, Any]) -> bool:
-    """Whether this OpenCTI carries the System taxonomy of OpenCTI-Platform/opencti#19943 (introspection)."""
+def opencti_lacks_system_taxonomy(error: str) -> bool:
+    """True when OpenCTI refused the probe because its schema predates #19943 (a validation error)."""
+    lowered = (error or "").lower()
+    if 'unknown type "system"' in lowered:
+        return True
+    return "cannot query field" in lowered and any(f'"{name}"' in lowered for name in _OCTI_SYSTEM_PROBE_NAMES)
+
+
+async def opencti_has_system_taxonomy(client: Any, base_url: str, headers: dict[str, Any]) -> tuple[bool, str | None]:
+    """Whether this OpenCTI carries the System taxonomy of OpenCTI-Platform/opencti#19943.
+
+    Answers ``(True, None)`` when the probe runs (an empty list included), ``(False, None)`` when OpenCTI
+    refuses the taxonomy fields as unknown (an older OpenCTI), and ``(False, error)`` on any other failure
+    (authentication, network, server error): an unreadable OpenCTI is never read as an older one.
+    """
     from app.integrations.providers.opencti._common import _graphql
 
-    data, err = await _graphql(client, base_url, headers, _OCTI_SYSTEM_FIELDS, {})
-    if err:
-        return False
-    names = {str((f or {}).get("name")) for f in (((data or {}).get("__type") or {}).get("fields") or [])}
-    return set(OPENCTI_SYSTEM_ATTRIBUTES.values()) <= names
+    _data, err = await _graphql(client, base_url, headers, _OCTI_SYSTEM_PROBE, {})
+    if not err:
+        return True, None
+    if opencti_lacks_system_taxonomy(err):
+        return False, None
+    logger.warning("Organization import: OpenCTI System taxonomy probe failed: %s", err)
+    return False, err
 
 
 async def _read_opencti(
@@ -804,7 +827,9 @@ async def _read_opencti(
             return ReadResult(rows=rows, total=len(rows))
         if section != "assets":
             return ReadResult(error=f"OpenCTI cannot feed {section}")
-        taxonomy = await opencti_has_system_taxonomy(client, base_url, headers)
+        taxonomy, err = await opencti_has_system_taxonomy(client, base_url, headers)
+        if err:
+            return ReadResult(error=f"OpenCTI: {err}")
         if not taxonomy:
             # An OpenCTI before #19943 rejects a filter on attributes it does not have.
             filters = {k: v for k, v in filters.items() if k not in OPENCTI_SYSTEM_ATTRIBUTES}
@@ -972,9 +997,10 @@ async def _opencti_options(db: AsyncSession, user_id: str) -> FilterOptions:
             result.options["creator"] = [
                 _option(n["id"], n.get("name")) for n in _edges(data, "creators") if n.get("id")
             ]
-        if not await opencti_has_system_taxonomy(client, base_url, headers):
+        taxonomy, err = await opencti_has_system_taxonomy(client, base_url, headers)
+        if not taxonomy:
             for key in OPENCTI_SYSTEM_ATTRIBUTES:
-                result.unavailable[key] = "no_system_taxonomy"
+                result.unavailable[key] = "unreadable" if err else "no_system_taxonomy"
             return result
         for key, category in OPENCTI_SYSTEM_VOCABULARIES.items():
             vocab, err = await _graphql(client, base_url, headers, _OCTI_VOCABULARY, {"category": category})
