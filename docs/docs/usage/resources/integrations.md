@@ -390,6 +390,57 @@ A DocuSign integration lets an agent send a PDF or Word file of the conversation
   A delivery that no stored key signs is refused, and an integration with no key refuses every delivery. Each envelope change runs an assignment once, whether Connect or the 15-minute check reads it first. A delivery that cannot run when it arrives (AI turned off, the assignment's queue full) is left for the check.
 - **Knowing when a document is signed.** An assignment with an *Integration event* trigger on DocuSign runs its agent when an envelope is completed (`envelope_completed`), declined (`envelope_declined`), voided (`envelope_voided`), or when one signer signs (`recipient_completed`). The platform checks DocuSign every 15 minutes and starts from the moment the trigger is enabled; each envelope change runs the assignment once, with the envelope id, its subject, the signers and who signed or declined. Filters narrow it to some envelopes (`envelope_ids`), signers (`signer_emails`, addresses or domains), senders (`sender_emails`) or subjects (`subject_contains`). A typical use: on `envelope_completed`, download the signed copy with `download_docusign_document` and send it on.
 
+### NetSuite: finance across subsidiaries
+
+A NetSuite integration gives the agents the ERP of a OneWorld (multi-subsidiary) company: reads, writes and the sensitive writes asked first.
+
+- **Two ways to connect.** *OAuth 2.0 machine-to-machine* (recommended): an integration record with the Client Credentials grant, a certificate uploaded under Setup > Integration > OAuth 2.0 Client Credentials (M2M) Setup; paste the client ID and the certificate ID, and the certificate's private key in the API Key field. *Token-Based Authentication*: the consumer key and secret and the token ID, the token secret in the API Key field. A sandbox account ID such as `1234567_SB1` works as is. The setup guide lists every role permission, family by family; Test Connection lists the subsidiaries the role reaches.
+- **Reading.** `run_netsuite_suiteql` runs any SuiteQL SELECT (paged, up to 5,000 rows); `describe_netsuite_records` lists the record types and their fields; `get_netsuite_record` and `list_netsuite_records` read any record. The finance tools answer with the currency, the subsidiary and the period of every amount: subsidiaries, accounting periods (closed, AP, AR and all locked), the chart of accounts, departments, classes, locations, currencies and exchange rates, customers, vendors, items, transactions by type with filters (subsidiary, period, account, entity, status, dates, minimum amount), one transaction with its accounting lines, the trial balance, income statement and balance sheet of one subsidiary or consolidated to it, AR and AP aging, intercompany balances by subsidiary and counterparty, bank lines, and the bank details of a vendor or customer.
+- **Writing.** `create_netsuite_record` and `update_netsuite_record` change master data (customers, vendors, items, segments). Posting transactions (`create_netsuite_transaction` / `update_netsuite_transaction`: bills, invoices, credit memos, payments, journals, intercompany journals), `set_netsuite_period_status` (close, reopen, lock), `set_netsuite_entity_bank_details` and `call_netsuite_restlet` (except GET) ask a person on every call, whatever the agent's approval settings. Each family is its own tool, so a binding keeps only the ones it needs.
+- **Saved searches, files and attachments.** `run_netsuite_saved_search`, `download_netsuite_file` (a file cabinet file or a transaction as PDF, into the conversation) and `attach_netsuite_file` go through a small companion RESTlet the administrator deploys once (Customization > Scripting > Scripts > New, a RESTlet deployed for the integration role; the RESTlets scope on the integration record and in the OAuth scopes field), then enters its script and deployment IDs on the integration:
+
+```javascript
+/**
+ * @NApiVersion 2.1
+ * @NScriptType Restlet
+ */
+define(['N/search', 'N/file', 'N/render', 'N/record', 'N/encode'], (search, file, render, record, encode) => {
+  const post = (body) => {
+    try {
+      if (body.action === 'search') {
+        const s = search.load({ id: body.id });
+        const cols = s.columns.map((c) => c.label || c.name);
+        const rows = [];
+        s.run().getRange({ start: 0, end: Math.min(body.limit || 200, 1000) }).forEach((r) => {
+          const row = {};
+          s.columns.forEach((c, i) => { row[cols[i]] = r.getText(c) || r.getValue(c); });
+          rows.push(row);
+        });
+        return { rows, more: rows.length >= Math.min(body.limit || 200, 1000) };
+      }
+      if (body.action === 'file' || body.action === 'pdf') {
+        const f = body.action === 'file'
+          ? file.load({ id: body.id })
+          : render.transaction({ entityId: Number(body.id), printMode: render.PrintMode.PDF });
+        const text = f.isText ? encode.convert({ string: f.getContents(), inputEncoding: encode.Encoding.UTF_8,
+          outputEncoding: encode.Encoding.BASE_64 }) : f.getContents();
+        return { name: f.name, type: f.fileType === 'PDF' ? 'application/pdf' : '', content: text };
+      }
+      if (body.action === 'attach') {
+        record.attach({ record: { type: 'file', id: body.file }, to: { type: body.type, id: body.id } });
+        return { ok: true };
+      }
+      return { error: `unknown action ${body.action}` };
+    } catch (e) {
+      return { error: e.message };
+    }
+  };
+  return { post };
+});
+```
+
+- **Limits.** NetSuite's concurrency limit (HTTP 429) is retried with backoff; a role missing a permission, or a transaction in a closed or locked period, is answered as such.
+
 ### HubSpot: activity, forms, sequences and the inbound report
 
 An agent connected to HubSpot reads what happened to a record the way its activity tab shows it, from HubSpot alone.
