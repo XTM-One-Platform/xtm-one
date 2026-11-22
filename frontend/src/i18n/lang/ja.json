@@ -20046,7 +20046,7 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
-  "Asset turned stale": "アセット陳腐化",
+  "Asset turned stale": "アセットが古くなりました",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
   "OpenAEV result received": "OpenAEV の結果を受信",
@@ -20528,6 +20528,11 @@
   "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "脅威パッケージはまだありません。ケースのトリアージ後、フリートが OpenCTI に作成します。",
   "Threat package drafted, coverage not requested yet": "脅威パッケージを作成しました。カバレッジはまだ要求していません",
   "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました",
-  "Freshness": "鮮度",
-  "Stale: not seen by OpenAEV past the tenant's threshold": "陳腐化: テナントのしきい値を超えて OpenAEV で確認されていません"
+  "Context: {value}": "コンテキスト: {value}",
+  "Scope: {value}": "範囲: {value}",
+  "Collaboration instruction set": "連携の指示あり",
+  "No collaboration instruction": "連携の指示なし",
+  "Search capabilities, members, integrations...": "機能、メンバー、連携を検索...",
+  "No capability slot": "機能スロットはありません",
+  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません"
 }
