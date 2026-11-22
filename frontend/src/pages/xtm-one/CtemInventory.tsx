@@ -21,9 +21,10 @@ import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetLabel, sourceLabel } from "./ctem/inventory";
 
-type InventoryTab = "assets" | "tech-stack";
+type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems";
 
 const ASSETS_URL_KEY = "a_";
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
@@ -235,10 +236,20 @@ export default function CtemInventory() {
         active={tab}
         tabs={[
           { key: "assets", label: "Assets" },
+          { key: "asset-groups", label: "Asset groups" },
           { key: "tech-stack", label: "Tech stack" },
+          { key: "ai-systems", label: "AI systems" },
         ]}
       />
-      {tab === "tech-stack" ? <TechStackTab /> : <AssetsTab />}
+      {tab === "asset-groups" ? (
+        <AssetGroupsTab />
+      ) : tab === "tech-stack" ? (
+        <TechStackTab />
+      ) : tab === "ai-systems" ? (
+        <AiSystemsTab />
+      ) : (
+        <AssetsTab />
+      )}
     </div>
   );
 }

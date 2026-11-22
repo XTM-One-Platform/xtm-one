@@ -20757,5 +20757,6 @@
   "In XTM One only": "In XTM One only",
   "Vulnerability intelligence": "Vulnerability intelligence",
   "Asset inventory": "Asset inventory",
-  "External attack surface": "External attack surface"
+  "External attack surface": "External attack surface",
+  "No asset group yet. Add a source to the inventory to fill it.": "No asset group yet. Add a source to the inventory to fill it."
 }
