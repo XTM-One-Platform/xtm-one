@@ -20534,5 +20534,7 @@
   "No collaboration instruction": "No collaboration instruction",
   "Search capabilities, members, integrations...": "Search capabilities, members, integrations...",
   "No capability slot": "No capability slot",
-  "No slot matches the search and filters": "No slot matches the search and filters"
+  "No slot matches the search and filters": "No slot matches the search and filters",
+  "Freshness": "Freshness",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Stale: not seen by OpenAEV past the tenant's threshold"
 }
