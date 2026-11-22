@@ -115,11 +115,23 @@ describe("Signals page", () => {
     expect(get).toHaveBeenCalledWith(expect.stringContaining("state=to_validate"));
     fireEvent.click(rows[0]);
     await waitFor(() => expect(location()).toContain("signal="));
-    expect(await screen.findByTestId("ctem-loop-trace")).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    // The trace body sits in its own scroll box, so the table keeps its room (UX r1 B1 on #1272).
-    expect(screen.getByTestId("ctem-loop-trace").contains(screen.getByTestId("ctem-loop-trace-scroll"))).toBe(true);
+    const trace = await screen.findByTestId("ctem-loop-trace");
+    // The trace opens in the side sheet, out of the page flow: nothing is inserted above the table,
+    // so the table stays the page's last block and keeps its own scroller (UX r2 B1 on #1272).
+    const sheet = screen.getByRole("dialog", { name: "Loop trace" });
+    expect(sheet.contains(trace)).toBe(true);
+    expect(sheet.contains(rows[0])).toBe(false);
+    expect(trace.contains(screen.getByTestId("ctem-loop-trace-scroll"))).toBe(true);
     fireEvent.click(screen.getByTestId("ctem-loop-trace-close"));
+    await waitFor(() => expect(location()).not.toContain("signal="));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes the loop trace on Escape", async () => {
+    const signals = [signal(1)];
+    renderPage(`/ctem/signals?signal=${signals[0].id}`, { total: 1, counts: { to_validate: 1 }, signals });
+    expect(await screen.findByRole("dialog", { name: "Loop trace" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(location()).not.toContain("signal="));
   });
 

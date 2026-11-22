@@ -17,12 +17,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { SlideOver } from "@/components/ui/slide-over";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
   CTEM_SIGNAL_STATES,
@@ -237,25 +237,32 @@ function SignalsTab() {
           })),
         ]}
       />
-      {view.signal && (
-        <Card data-testid="ctem-loop-trace">
-          <CardHeader className="flex flex-row items-start justify-between gap-3">
+      {/* The trace opens in the side sheet, out of the page flow: the table stays the page's last
+          block, keeps its fit-to-viewport scroller and the open row in view, and the page never
+          scrolls (UX r2 B1 on #1272; an inline card above the table dropped it out of its fit mode). */}
+      <SlideOver
+        open={!!view.signal}
+        onClose={() => setParam(SIGNALS_PARAMS.signal, null)}
+        label={t_i18n("Loop trace")}
+        width="w-[min(560px,45vw)]"
+      >
+        <div className="flex h-full min-h-0 flex-col" data-testid="ctem-loop-trace">
+          <div className="flex items-start justify-between gap-3 border-b border-elevation-subtle p-4">
             <div className="flex min-w-0 flex-col gap-1">
-              <CardTitle>{t_i18n("Loop trace")}</CardTitle>
+              <h2 className="title-sm">{t_i18n("Loop trace")}</h2>
               <p className="content-compact text-default-secondary">{t_i18n("Where this signal is in the exposure management loop, and why.")}</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setParam(SIGNALS_PARAMS.signal, null)} data-testid="ctem-loop-trace-close">
               <Icon name="x" size={16} aria-hidden />
               {t_i18n("Close")}
             </Button>
-          </CardHeader>
-          {/* Its own scroller, capped, so the table under it keeps the room the window has left and
-              the page never scrolls while a trace is open (UX r1 B1 on #1272). */}
-          <CardContent className="max-h-[30vh] overflow-y-auto" data-testid="ctem-loop-trace-scroll">
-            <SignalTraceBody id={view.signal} />
-          </CardContent>
-        </Card>
-      )}
+          </div>
+          {/* The sheet's only scroller: the trace body. */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="ctem-loop-trace-scroll">
+            {view.signal && <SignalTraceBody id={view.signal} />}
+          </div>
+        </div>
+      </SlideOver>
       <DataTable
         rows={signals}
         layout="fixed"
