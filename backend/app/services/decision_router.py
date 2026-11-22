@@ -228,10 +228,12 @@ async def answer_decision(
     finally:
         answer_surface.reset(token)
     if row is not None:
-        # The link cards a Microsoft account sent for it show the decided state (S9b, I.4 (b), (c)).
+        # The link cards a Microsoft account sent for it show the decided state (S9b, I.4 (b), (c)),
+        # and so do the cards the Google Chat app posted (S11, I.4 (d)).
+        from app.services import google_chat_decision_cards as chat_cards
         from app.services.decision_graph_cards import has_sent_cards
 
-        if await has_sent_cards(db, row.id):
+        if await has_sent_cards(db, row.id) or await chat_cards.has_sent_cards(db, row.id):
             schedule_card_refresh(row.id)
     from app.models.decision import public_id
 

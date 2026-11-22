@@ -216,7 +216,7 @@ def router(monkeypatch):
 
 
 def _db():
-    return SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+    return SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock(), refresh=AsyncMock())
 
 
 @pytest.mark.asyncio

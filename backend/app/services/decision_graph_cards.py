@@ -304,7 +304,7 @@ async def deliver_work_item_cards(*, limit: int = _SEND_BATCH, caller: CallerFac
                 # The Chat app's card, else the link message as a user (#842, S11).
                 from app.services.google_chat_decision_cards import deliver_work_item_card
 
-                sent += int(await deliver_work_item_card(db, decision, item))
+                sent += int(await deliver_work_item_card(db, decision, item, caller=caller))
                 continue
             target = card_target(item)
             recipient = recipient_user_id(decision.recipient)

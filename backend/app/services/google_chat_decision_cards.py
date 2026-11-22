@@ -411,6 +411,9 @@ async def answer(
     row = await _row_for(db, {"id": public})
     if row is None:
         return None, None
+    # The engine answered on a session of its own (a work item): the row this
+    # session holds is the one read before the answer, so it is read again.
+    await db.refresh(row)
     view = await load_view(db, row, user, language)
     return render_google_chat_decision(view, language), None
 
@@ -503,6 +506,31 @@ async def patch_message(token: str, message_name: str, message: dict[str, Any]) 
     return resp.status_code == 200
 
 
+async def _sent_cards(db: AsyncSession, decision_id: Any) -> list[dict[str, Any]]:
+    """The ``notified`` details of the cards the app posted for *decision_id* (each names its message)."""
+    from sqlalchemy import select
+
+    from app.models.decision import DecisionEvent
+
+    rows = (
+        (
+            await db.execute(
+                select(DecisionEvent.detail).where(
+                    DecisionEvent.decision_id == decision_id, DecisionEvent.event == "notified"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [d for d in rows if isinstance(d, dict) and d.get("via") == VIA_CARD and d.get("message_name")]
+
+
+async def has_sent_cards(db: AsyncSession, decision_id: Any) -> bool:
+    """Whether the Chat app posted a card for *decision_id*: an answer then schedules their edit."""
+    return bool(await _sent_cards(db, decision_id))
+
+
 async def update_sent_cards(db: AsyncSession, decision: Decision, *, token: str | None = None) -> dict[str, int]:
     """Replace every card the app sent for a decided *decision* with its decided state, as the app.
 
@@ -510,25 +538,10 @@ async def update_sent_cards(db: AsyncSession, decision: Decision, *, token: str 
     covers an answer given anywhere else. A refused edit is counted, never
     raised. Returns ``{"updated": n, "refused": m}``.
     """
-    from sqlalchemy import select
-
-    from app.models.decision import DecisionEvent
-
     counts = {"updated": 0, "refused": 0}
     if decision.status == "open":
         return counts
-    rows = (
-        (
-            await db.execute(
-                select(DecisionEvent.detail).where(
-                    DecisionEvent.decision_id == decision.id, DecisionEvent.event == "notified"
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    sent = [d for d in rows if isinstance(d, dict) and d.get("via") == VIA_CARD and d.get("message_name")]
+    sent = await _sent_cards(db, decision.id)
     if not sent:
         return counts
     token = token if token is not None else await app_token()
