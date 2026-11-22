@@ -20,21 +20,48 @@ import type { CaseAttentionProfile } from "@/lib/organization-profile";
 
 type Key = keyof CaseAttentionProfile;
 
-/** Each field, its English label and helper (translated at render), and its bounds (backend CaseAttentionWeights). @i18n-keys */
-export const WEIGHT_FIELDS: { key: Key; label: string; helper: string; min: number; max: number }[] = [
-  { key: "priority_critical", label: "Critical priority", helper: "Points for a critical case", min: 0, max: 100 },
-  { key: "priority_high", label: "High priority", helper: "Points for a high case", min: 0, max: 100 },
-  { key: "priority_medium", label: "Medium priority", helper: "Points for a medium case", min: 0, max: 100 },
-  { key: "priority_low", label: "Low priority", helper: "Points for a low case", min: 0, max: 100 },
-  { key: "kev", label: "KEV", helper: "Points when the case holds a KEV issue", min: 0, max: 100 },
-  { key: "crown_jewel", label: "Crown jewel touched", helper: "Points when the case touches a crown jewel", min: 0, max: 100 },
-  { key: "overdue", label: "Overdue", helper: "Points when the due date or the SLA has passed", min: 0, max: 100 },
-  { key: "due_soon", label: "Due soon", helper: "Points when the due date is near", min: 0, max: 100 },
-  { key: "due_soon_days", label: "Due soon within (days)", helper: "How near the due date is, from 1 to 90 days", min: 1, max: 90 },
-  { key: "no_owner", label: "No owner", helper: "Points when nobody owns the case", min: 0, max: 100 },
-  { key: "age_per_day", label: "Per day open", helper: "Points for each day the case is open", min: 0, max: 100 },
-  { key: "age_max", label: "Age cap", helper: "The most points the age adds", min: 0, max: 100 },
-];
+/** The label of each field, translated where drawn. @i18n-keys */
+const WEIGHT_LABEL = {
+  priority_critical: "Critical priority",
+  priority_high: "High priority",
+  priority_medium: "Medium priority",
+  priority_low: "Low priority",
+  kev: "KEV",
+  crown_jewel: "Crown jewel touched",
+  overdue: "Overdue",
+  due_soon: "Due soon",
+  due_soon_days: "Due soon within (days)",
+  no_owner: "No owner",
+  age_per_day: "Per day open",
+  age_max: "Age cap",
+} as const satisfies Record<Key, string>;
+
+/** The helper line of each field, translated where drawn. @i18n-keys */
+const WEIGHT_HELPER = {
+  priority_critical: "Points for a critical case",
+  priority_high: "Points for a high case",
+  priority_medium: "Points for a medium case",
+  priority_low: "Points for a low case",
+  kev: "Points when the case holds a KEV issue",
+  crown_jewel: "Points when the case touches a crown jewel",
+  overdue: "Points when the due date or the SLA has passed",
+  due_soon: "Points when the due date is near",
+  due_soon_days: "How near the due date is, from 1 to 90 days",
+  no_owner: "Points when nobody owns the case",
+  age_per_day: "Points for each day the case is open",
+  age_max: "The most points the age adds",
+} as const satisfies Record<Key, string>;
+
+/** Each field in display order with its bounds (backend CaseAttentionWeights). */
+export const WEIGHT_FIELDS: { key: Key; label: string; helper: string; min: number; max: number }[] = (
+  Object.keys(WEIGHT_LABEL) as Key[]
+).map((key) => ({
+  key,
+  label: WEIGHT_LABEL[key],
+  helper: WEIGHT_HELPER[key],
+  min: key === "due_soon_days" ? 1 : 0,
+  max: key === "due_soon_days" ? 90 : 100,
+}));
 
 /** A typed value: a whole number within the field's bounds, else null. */
 export function parseWeight(text: string, min: number, max: number): number | null {
