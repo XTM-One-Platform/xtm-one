@@ -236,6 +236,11 @@ async def save_organization_context(
     problems = check_links(profile)
     if problems:
         raise HTTPException(status_code=422, detail=problems[0])
+    from app.services.ctem_ticketing import target_problem
+
+    ticketing_problem = await target_problem(db, profile)
+    if ticketing_problem:
+        raise HTTPException(status_code=422, detail=ticketing_problem)
     # Every save stores each PIR with its OpenCTI name, whoever sent the ids (form, drafts, API; #11589).
     profile = await name_saved_pirs(db, user_id=admin.id, profile=profile)
     try:

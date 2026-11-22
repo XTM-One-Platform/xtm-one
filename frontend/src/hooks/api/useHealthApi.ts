@@ -37,6 +37,7 @@ import type {
   HealthHistoryPoint,
   HealthModule,
   HealthModuleAnalysis,
+  HealthModuleInvestigation,
   HealthName,
   HealthOverview,
   HealthOptIn,
@@ -342,6 +343,23 @@ export function useRunHealthAnalysis() {
   return useMutation({
     mutationFn: (module: HealthModule) => api.post<HealthModuleAnalysis>(`/health/analysis/${module}/run`, {}),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ANALYSIS_KEY }),
+  });
+}
+
+/**
+ * "Investigate now" (#101 S14c, section 12.7): a Module Analyst cycle on every active registration of
+ * one module, administrators only. A per-registration refusal comes back in `items`; a refusal of the
+ * whole request (`module_analyst_off`, `no_registration`, AI off) is a 409 the card words itself.
+ */
+export function useInvestigateHealthModule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (module: HealthModule) => api.post<HealthModuleInvestigation>(`/health/modules/${module}/investigate`, {}),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["health-overview"] });
+      void qc.invalidateQueries({ queryKey: ["health-cycles"] });
+    },
   });
 }
 

@@ -17,7 +17,8 @@ Mounted under ``/api/v1/health`` beside the other Platform Health routers,
 administrators only:
 
 * ``GET /analysis``: the latest analysis per module present, the ceilings and
-  today's and this month's spend (readable with AI off: it reads stored rows);
+  today's and this month's spend (readable with AI off: it reads stored rows),
+  and the Module Analyst's own ceilings and spend (``module_analyst``, #101 S14d);
 * ``POST /analysis/{module}/run``: an on-demand analysis of one module, gated by
   ``require_ai_enabled`` and refused over the ceiling like a scheduled one.
 """
@@ -68,6 +69,21 @@ class AnalysisCeilings(BaseModel):
     month_cost_usd: Decimal | None
 
 
+class ModuleAnalystCeilings(AnalysisCeilings):
+    cycle_tokens: int | None
+
+
+class ModuleAnalystSpendRow(BaseModel):
+    """The Module Analyst row of Spend limits (#101 S14d, dev-docs 12.5 and 12.7): its own ledger."""
+
+    enabled: bool
+    #: ``False`` while a ceiling is unset: every model call of the analyst is then refused.
+    ceilings_set: bool
+    ceilings: ModuleAnalystCeilings
+    day: AnalysisSpend
+    month: AnalysisSpend
+
+
 class AnalysisOverview(BaseModel):
     enabled: bool
     #: ``False`` while a ceiling is unset: every analysis is then refused.
@@ -76,6 +92,7 @@ class AnalysisOverview(BaseModel):
     day: AnalysisSpend
     month: AnalysisSpend
     modules: list[ModuleAnalysis]
+    module_analyst: ModuleAnalystSpendRow
 
 
 def _module(module: str, row: HealthModuleAnalysis | None) -> ModuleAnalysis:
@@ -104,6 +121,26 @@ def _module(module: str, row: HealthModuleAnalysis | None) -> ModuleAnalysis:
     )
 
 
+async def _module_analyst_row(db: AsyncSession, now: datetime) -> ModuleAnalystSpendRow:
+    from app.services.health import module_analyst_budget
+
+    settings = (await load_health_settings(db)).module_analyst
+    spent = await module_analyst_budget.spend(db, now)
+    return ModuleAnalystSpendRow(
+        enabled=settings.enabled,
+        ceilings_set=settings.ceilings_set(),
+        ceilings=ModuleAnalystCeilings(
+            cycle_tokens=settings.cycle_tokens,
+            day_tokens=settings.day_tokens,
+            day_cost_usd=settings.day_cost_usd,
+            month_tokens=settings.month_tokens,
+            month_cost_usd=settings.month_cost_usd,
+        ),
+        day=AnalysisSpend(**spent["day"]),
+        month=AnalysisSpend(**spent["month"]),
+    )
+
+
 async def _overview(db: AsyncSession) -> AnalysisOverview:
     settings = (await load_health_settings(db)).analysis
     modules = present_modules()
@@ -126,6 +163,7 @@ async def _overview(db: AsyncSession) -> AnalysisOverview:
         day=AnalysisSpend(**spent["day"]),
         month=AnalysisSpend(**spent["month"]),
         modules=[_module(module, rows.get(module)) for module in modules],
+        module_analyst=await _module_analyst_row(db, datetime.now(UTC)),
     )
 
 

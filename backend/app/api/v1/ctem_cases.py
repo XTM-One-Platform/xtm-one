@@ -35,6 +35,8 @@ from app.services import ctem_cases as rules
 from app.services import ctem_cases_source as source
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
+from app.services import ctem_loop_measures as measures
+from app.services import ctem_signals as signal_store
 from app.services.ctem_verticals import normalize_vertical
 from app.services.organizations import get_primary
 
@@ -328,6 +330,33 @@ async def recompute_slot(user_id: str, vertical: str) -> bool:
         )
     except Exception:  # no Redis: the endpoint stays usable, only unthrottled
         return True
+
+
+@router.get("/measures")
+async def ctem_loop_measures(
+    vertical: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """How fast the loop runs on the cases the caller sees (CTEM-30, #937): signal to case, to
+    validation, to decision, to passing re-test, and the share of resolved cases closed on proof.
+
+    Read from the case history and the origin signals the caller may read; a
+    measure with no sample is ``null`` with a count of 0, never 0 hours.
+    """
+    _require_xtm_one()
+    vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
+    primary = await get_primary(db)
+    if primary is None:
+        return {"vertical": vertical, "measures": measures.summarize([], {}, {})}
+    cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
+    view = await view_of.viewer_view(db, str(user.id), vertical)
+    seen = [case for case, rows in cases if view_of.summary(case, rows, view) is not None]
+    ids = [case.id for case in seen]
+    events = await store.events_of(db, ids)
+    reader = None if getattr(user, "is_admin", False) else str(user.id)
+    observed = await signal_store.observed_by_case(db, ids, organization_id=primary.id, recorded_by=reader)
+    return {"vertical": vertical, "measures": measures.summarize(seen, events, observed)}
 
 
 @router.get("/{case_id}")
