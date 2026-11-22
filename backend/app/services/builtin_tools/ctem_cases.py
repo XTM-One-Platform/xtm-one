@@ -693,7 +693,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "threat_package": {
                         "type": "object",
                         "description": (
-                            "The OpenCTI Grouping the review step drafted for this case (its id, name and page "
+                            "The Grouping the review step drafted for this case in the threat intelligence "
+                            "platform (its id, name and page "
                             "url) and the security coverage requested on it (coverage_id), once requested."
                         ),
                         "properties": {

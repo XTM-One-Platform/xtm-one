@@ -693,7 +693,7 @@ def record_threat_package(
     found = _GROUPING_ID.match(grouping_id)
     if found is None:
         raise rules.CaseRuleError(
-            "threat_package.grouping_id must be the OpenCTI Grouping id (its UUID or grouping--<uuid>)"
+            "threat_package.grouping_id must be the OpenCTI Grouping id (its UUID, or its STIX id: grouping-- then the UUID)"
         )
     url = str(package.get("url") or "").strip()
     match = _GROUPING_URL.match(url) if url else None
