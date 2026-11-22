@@ -1,15 +1,15 @@
-// Which event mechanisms make the integration webhook URL relevant. The create
-// form and the Configuration tab both read these: a provider whose events are
-// all polled (Pennylane, OpenCRQ) shows the polling line, never a webhook URL
-// nobody configures (#1009).
+// The integration webhook URL is shown (on the New integration form and on the
+// Webhooks card) only when an event of the provider can arrive by webhook: a
+// provider whose events are all polled, such as NetSuite, never calls it.
 
 import { describe, expect, it } from "vitest";
 
 import type { ProviderCatalogItem } from "@/types";
-import { hasOnlyPolledEvents, hasWebhookEvents } from "./webhooks-card-blocks";
+import { hasWebhookDeliveredEvents } from "./webhooks-card-blocks";
 
 const catalog = (mechanisms: string[]) =>
   ({
+    name: "Provider",
     available_events: mechanisms.map((mechanism, index) => ({
       event: `event_${index}`,
       label: `Event ${index}`,
@@ -18,27 +18,21 @@ const catalog = (mechanisms: string[]) =>
     })),
   }) as unknown as ProviderCatalogItem;
 
-describe("hasWebhookEvents / hasOnlyPolledEvents", () => {
-  it("a polling-only provider has no webhook events and shows the polling line", () => {
-    const entry = catalog(["polling", "polling", "polling"]);
-    expect(hasWebhookEvents(entry)).toBe(false);
-    expect(hasOnlyPolledEvents(entry)).toBe(true);
+describe("hasWebhookDeliveredEvents", () => {
+  it("is false for a polling-only provider", () => {
+    expect(hasWebhookDeliveredEvents(catalog(["polling", "polling", "polling", "polling", "polling"]))).toBe(false);
+  });
+
+  it("is false for a provider with no event or no catalog entry", () => {
+    expect(hasWebhookDeliveredEvents(catalog([]))).toBe(false);
+    expect(hasWebhookDeliveredEvents(undefined)).toBe(false);
   });
 
   it.each([
     ["webhook", ["webhook"]],
     ["hybrid", ["hybrid"]],
     ["mixed polling and webhook", ["polling", "webhook"]],
-  ])("a provider with %s events keeps the webhook URL", (_label, mechanisms) => {
-    const entry = catalog(mechanisms);
-    expect(hasWebhookEvents(entry)).toBe(true);
-    expect(hasOnlyPolledEvents(entry)).toBe(false);
-  });
-
-  it("a provider with no events shows neither", () => {
-    expect(hasWebhookEvents(catalog([]))).toBe(false);
-    expect(hasOnlyPolledEvents(catalog([]))).toBe(false);
-    expect(hasWebhookEvents(undefined)).toBe(false);
-    expect(hasOnlyPolledEvents(undefined)).toBe(false);
+  ])("is true for %s events", (_label, mechanisms) => {
+    expect(hasWebhookDeliveredEvents(catalog(mechanisms))).toBe(true);
   });
 });
