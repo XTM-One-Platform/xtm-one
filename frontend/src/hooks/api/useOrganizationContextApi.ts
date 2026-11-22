@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { AttackSurfacePass, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type { AttackSurfacePass, CaseAttentionProfile, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -66,6 +66,12 @@ export interface OrganizationProfile {
   owned_domains?: string[];
   address_ranges?: string[];
   attack_surface?: AttackSurfacePass;
+  /** The points of the Cases attention score (#1176); absent on an older backend: the defaults. */
+  case_attention?: CaseAttentionProfile;
+  /** Parts edited elsewhere (CTEM-28, #1216, #1178), carried whole by every profile save. */
+  evidence_health?: Record<string, unknown>;
+  cases_recompute?: Record<string, unknown>;
+  asset_identity?: Record<string, unknown>;
 }
 
 export interface OrganizationContextResponse {
@@ -405,16 +411,14 @@ export function useDraftOrganizationContext() {
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
-/** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
-export type ImportSourceKey = "openaev" | "opencti" | "opencrq" | "intune" | "defender";
+export type ImportSourceKey = "openaev" | "opencti" | "opencrq";
 
 export interface ImportSourcesResponse {
   sections: {
     section: ImportSectionKey;
     /** The profile field the section writes. */
     field: string;
-    /** reason_code: `not_connected` or `no_token` when the dialog words the reason itself (#1251); empty: `reason` as given. */
-    sources: { source: ImportSourceKey; available: boolean; reason: string; reason_code?: string; filters: string[] }[];
+    sources: { source: ImportSourceKey; available: boolean; reason: string; filters: string[] }[];
   }[];
 }
 
