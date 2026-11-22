@@ -20703,5 +20703,10 @@
   "Waiting for {agent}, working this case since {since}.": "Waiting for {agent}, working this case since {since}.",
   "Waiting for a fleet step, working this case since {since}.": "Waiting for a fleet step, working this case since {since}.",
   "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
-  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets"
+  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets",
+  "Agentic checks": "Agentic checks",
+  "No check round yet": "No check round yet",
+  "Show the checks": "Show the checks",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# not run} other {# not run}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}"
 }
