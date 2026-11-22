@@ -18118,6 +18118,7 @@
   "SaaS application": "SaaS application",
   "AI system (asset category)": "AI system",
   "Security platform": "Security platform",
+  "Source code": "Source code",
   "Other asset (to classify)": "Other asset (to classify)",
   "Workstation": "Workstation",
   "Laptop": "Laptop",
@@ -20767,5 +20768,10 @@
   "CSV import": "CSV import",
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.",
   "Asset count": "Asset count",
-  "Versions not listed": "Versions not listed"
+  "Versions not listed": "Versions not listed",
+  "Code repository": "Code repository",
+  "CI/CD pipeline": "CI/CD pipeline",
+  "Package registry": "Package registry",
+  "Software package": "Software package",
+  "Other code asset": "Other code asset"
 }

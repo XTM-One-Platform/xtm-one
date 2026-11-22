@@ -18118,6 +18118,7 @@
   "SaaS application": "Application SaaS",
   "AI system (asset category)": "Système d'IA",
   "Security platform": "Plateforme de sécurité",
+  "Source code": "Code source",
   "Other asset (to classify)": "Autre actif (à classer)",
   "Workstation": "Poste de travail",
   "Laptop": "Ordinateur portable",
@@ -20767,5 +20768,10 @@
   "CSV import": "Import CSV",
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "L'inventaire des actifs signale {product} sur {assets, plural, one {# actif} other {# actifs}} en {versions, plural, one {# version} other {# versions}}.",
   "Asset count": "Nombre d'actifs",
-  "Versions not listed": "Versions non listées"
+  "Versions not listed": "Versions non listées",
+  "Code repository": "Dépôt de code",
+  "CI/CD pipeline": "Pipeline CI/CD",
+  "Package registry": "Registre de paquets",
+  "Software package": "Paquet logiciel",
+  "Other code asset": "Autre actif de code"
 }
