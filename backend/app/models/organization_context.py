@@ -150,8 +150,13 @@ class OrganizationContextSync(Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     batch_type: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default=text("''"))
-    #: Remove the rows this source wrote before that it no longer returns (default: kept).
-    remove_gone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    #: Remove the rows this source wrote before that it no longer returns: a deletion upstream deletes the
+    #: row here (default since #1134; a truncated or failed read removes nothing).
+    remove_gone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    #: The source ids an administrator excluded from this sync (#1134): never imported, removed if present.
+    excluded_external_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     frequency: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")
     #: Hour and minute of the run in ``timezone`` (the hour is ignored hourly).
     hour: Mapped[int] = mapped_column(Integer, nullable=False, default=6, server_default=text("6"))

@@ -186,13 +186,15 @@ The draft is a proposal, never a save. In **Settings > Organization**, open **Dr
 
 OpenCTI Systems carry a category, a criticality, an exposure, an environment, an owner and a platform from the OpenCTI release that ships OpenCTI-Platform/opencti#19943; the import reads them. On an older OpenCTI those filters are hidden and every System takes the type you pick on the filters step, which is otherwise used only for Systems with no category. The owner falls back to the System's author; the platform and the markings are kept as `platform:` and `marking:` tags.
 
-An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as **no longer in** the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use `GET /api/v1/organization-context/import/options`, `POST /api/v1/organization-context/import/preview` and `POST /api/v1/organization-context/import/apply` (`remove_gone` removes the rows no longer in the platform).
+Every row of every list section (crown jewels, tech stack, AI systems, assets, asset groups) records where it comes from: its **source** (`manual` when typed, `csv`, `api`, `agent:<agent id>`, or the platform: `opencti`, `openaev`, `opencrq`), its id in that platform (`external_id`) and the sync that wrote it (`sync_id`). A crown jewel saved with only its OpenCRQ link, or an AI system with only its OpenAEV link, reads as a row of that platform.
+
+An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a crown jewel's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as **no longer in** the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use `GET /api/v1/organization-context/import/options`, `POST /api/v1/organization-context/import/preview` and `POST /api/v1/organization-context/import/apply` (`remove_gone` removes the rows no longer in the platform).
 
 ## Keep a section in sync
 
 An import can also be saved as a **sync** that runs again on a schedule, so the profile follows the platform: on the import's preview, switch on **Keep in sync** and pick the schedule, then select **Import and keep in sync** (or **Save the sync** when nothing is new today). Only the sections the import feeds can be synced: assets, asset groups, AI systems, tech stack, crown jewels and PIRs. The name, sector, regions, size, currency, risk appetite and the other typed fields are never synced.
 
-A sync keeps the source, the filters, the batch type and the choice for the rows that left the platform (kept by default, or removed), and a schedule:
+A sync keeps the source, the filters, the batch type, the choice for the rows that left the platform (removed by default: a deletion upstream deletes the row in XTM One; switch it off to keep them), its exclusion list (`excluded_external_ids`: the platform's rows it never imports, a stored copy included) and a schedule:
 
 - **Hourly**, at a minute of the hour.
 - **Daily**, at a time in a time zone.
@@ -208,6 +210,8 @@ Each run follows the import rules:
 - A row typed by hand, uploaded as CSV or written through the API is never overwritten.
 - A run reads with the platform token of the administrator who saved the sync. When that administrator is no longer active or no longer an administrator, or the platform token is missing or revoked, the sync pauses and shows the reason. Saving it again resumes it with your own token.
 - Two runs of one sync never overlap.
+- A run whose read was cut (more rows than one run reads) or failed removes nothing.
+- The rows a run writes carry the sync's id; a row whose id is on the exclusion list is left out and its stored copy removed. The last run counts the excluded rows.
 - Every run that changed the profile or failed, and every change to a sync, is written to the audit log.
 
 The syncs run on the platform's scheduler, with no model call, AI on or off. The API is `GET`, `POST /api/v1/organization-context/syncs`, `PUT` and `DELETE /syncs/{id}`, and `POST /syncs/{id}/run`.

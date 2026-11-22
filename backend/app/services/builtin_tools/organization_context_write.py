@@ -309,6 +309,7 @@ def build_organization_context_write_tools(
             "source": sync.source,
             "filters": sync.filters or {},
             "remove_gone": sync.remove_gone,
+            "excluded_external_ids": list(getattr(sync, "excluded_external_ids", None) or []),
             "schedule": {
                 "frequency": sync.frequency,
                 "hour": sync.hour,
@@ -343,7 +344,7 @@ def build_organization_context_write_tools(
         source: str = "",
         filters: dict[str, Any] | None = None,
         batch_type: str = "",
-        remove_gone: bool = False,
+        remove_gone: bool = True,
         frequency: str = "daily",
         hour: int = 6,
         minute: int = 0,
@@ -642,7 +643,10 @@ def build_organization_context_write_tools(
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object"},
                     "batch_type": {"type": "string"},
-                    "remove_gone": {"type": "boolean", "description": "Remove the source's rows it no longer has."},
+                    "remove_gone": {
+                        "type": "boolean",
+                        "description": "Remove the source's rows it no longer has (default true).",
+                    },
                     "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
                     "hour": {"type": "integer"},
                     "minute": {"type": "integer"},
