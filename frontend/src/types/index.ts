@@ -16555,6 +16555,40 @@ export interface HealthModuleInvestigation {
   items: HealthModuleInvestigationStart[];
 }
 
+/** A module checker's verdict on one check (section 13.6). */
+export type HealthCheckVerdict = "pass" | "warn" | "fail" | "not_run";
+
+/** One check of a module check report: the playbook check id, its verdict, and why. */
+export interface HealthModuleCheckEntry {
+  id: string;
+  verdict: HealthCheckVerdict;
+  category: string;
+  recommendation: string | null;
+  reason: string | null;
+  evidence: HealthAnalystEvidence[];
+  finding_id: string | null;
+}
+
+/** The latest check round of one registration of a module (#101 S15c, section 13.6). */
+export interface HealthModuleCheckReport {
+  report_id: string;
+  registration_id: string;
+  cycle_id: string;
+  started_at: string | null;
+  finished_at: string;
+  passed: number;
+  warned: number;
+  failed: number;
+  not_run: number;
+  checks: HealthModuleCheckEntry[];
+}
+
+/** `GET /health/modules/{module}/checks` (administrators): one report per registration. */
+export interface HealthModuleCheckReports {
+  module: HealthModule;
+  items: HealthModuleCheckReport[];
+}
+
 /** One read the Module Analyst made to back a recommendation. */
 interface HealthAnalystEvidence {
   tool?: string;
