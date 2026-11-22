@@ -25,6 +25,16 @@ profile block, not contract fields. Per-asset expectations stay out of the
 profile: `assets_exposure[].internet_facing` is the only declaration;
 reachability assertions belong to OpenAEV (CTEM-27).
 
+Settings > Organization > Exposure edits them in the card "Owned domains and
+outside lens" (`OrganizationOutsideLensCard.tsx`, #1140 slice 2; administrators,
+like the PUT): the domains and ranges are normalised in the page exactly as the
+backend does (`normalizeDomain`, `normalizeAddressRange` in
+`frontend/src/lib/organization-profile.ts`), a refused range blocks Save. The
+provider picker lists the connected integrations whose provider is in
+`SUPPORTED_PROVIDERS`, read from `GET /api/v1/organization-context/attack-surface/providers`,
+so a new reader shows up there with no frontend change. Every other profile
+save carries the four fields whole (`toForm` / `fromForm`).
+
 Agents set them like any profile field: `update_organization_context`
 (administrator, a new version at once) and `propose_organization_context_change`
 (a pending proposal an administrator accepts field by field) accept the three
