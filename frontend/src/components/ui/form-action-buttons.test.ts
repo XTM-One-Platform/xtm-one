@@ -381,7 +381,6 @@ describe("form action buttons at 36 px, Cancel then primary", () => {
   it.each([
     ["ApplyPresetDialog.tsx"],
     ["FleetBulkDialog.tsx"],
-    ["FleetEnableDialog.tsx"],
     ["ForkFleetDialog.tsx"],
     ["NewFleetDialog.tsx"],
     ["OrganizationScopeDialog.tsx"],
