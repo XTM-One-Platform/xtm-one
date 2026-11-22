@@ -20536,5 +20536,21 @@
   "No capability slot": "Aucun emplacement de fonctionnalité",
   "No slot matches the search and filters": "Aucun emplacement ne correspond à la recherche et aux filtres",
   "Freshness": "Fraîcheur",
-  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsolète : non vu par OpenAEV au-delà du seuil du tenant"
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsolète : non vu par OpenAEV au-delà du seuil du tenant",
+  "Observed": "Observé",
+  "Previous pass saw {ports}": "Le passage précédent a vu {ports}",
+  "Answers on {port}, a new port": "Répond sur {port}, un nouveau port",
+  "Declared not internet-facing in the profile": "Déclaré non exposé à Internet dans le profil",
+  "Answers from the Internet on {ports}": "Répond depuis Internet sur {ports}",
+  "The name is listed": "Le nom est répertorié",
+  "No DNS record backs it": "Aucun enregistrement DNS ne le soutient",
+  "Names of {domain} point inside the owned address ranges": "Les noms de {domain} pointent dans les plages d'adresses détenues",
+  "Points to {ip}, outside them": "Pointe vers {ip}, hors de ces plages",
+  "The host last answered on {date}": "L'hôte a répondu pour la dernière fois le {date}",
+  "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, one {Non vu depuis au moins # jour} other {Non vu depuis au moins # jours}}",
+  "Not declared and not seen by an earlier pass": "Non déclaré et non vu par un passage précédent",
+  "Answers on {ports}": "Répond sur {ports}",
+  "Ports that answer": "Ports qui répondent",
+  "DNS target": "Cible DNS",
+  "Certificate names": "Noms du certificat"
 }
