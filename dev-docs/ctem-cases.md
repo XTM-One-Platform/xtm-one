@@ -189,9 +189,14 @@ for any other case or when no asset runs the product:
 - `versions`: one row per version of the case's product (its label, or vendor
   and product), the number of distinct assets running it and its sources, the
   most assets first, at most 50 (`more_versions` counts the rest);
+  `asset_count` is the number of distinct assets running the product;
 - with a fixed version known: each row's `status` (`below_fixed`, `fixed`,
   `not_comparable` for `unknown` or an unreadable version) and the totals
-  `assets_below_fixed`, `assets_on_fixed`, `assets_not_comparable`;
+  `assets_below_fixed`, `assets_on_fixed`, `assets_not_comparable`. Each asset
+  is counted once, by its worst version (below the fixed one, else not
+  comparable, else fixed), so an asset running two versions or reported under
+  two vendor and product spellings never inflates them and the three totals add
+  up to `asset_count`;
 - with no fixed version: `fixed_version_checked` names the sources looked in
   (section 4.2bis, steps 1 and 2); nothing asks the user to type a version.
 

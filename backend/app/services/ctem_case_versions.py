@@ -10,7 +10,8 @@ version typed in the tech stack. This module answers, for one case:
   of assets running each and the sources that report it;
 - against the case's fixed version when it is known, how many assets are still
   below it and how many already run it or later (an ``unknown`` or unreadable
-  version is counted apart, never guessed below or above);
+  version is counted apart, never guessed below or above); each asset is
+  counted once in these totals, even when it runs several versions;
 - when the fixed version is unknown, the sources that were checked for it.
 
 :func:`running_versions` is pure (testable); :func:`read_running_versions`
@@ -79,41 +80,43 @@ def running_versions(
 ) -> dict[str, Any] | None:
     """The running versions of the case's product (pure); ``None`` when no asset runs it.
 
-    *rows* hold one entry per version with ``vendor``, ``product``, ``version``,
-    ``asset_count`` and ``sources``. The answer lists versions with the most
-    assets first, and with a fixed version known, counts the assets below it,
-    at or above it, and those whose version cannot be compared.
+    *rows* hold one entry per (vendor, product, version) with ``vendor``,
+    ``product``, ``version``, ``asset_ids`` and ``sources``. The answer lists
+    versions with the most assets first, and with a fixed version known, counts
+    the assets below it, at or above it, and those whose version cannot be
+    compared. Each asset is counted once in those totals: an asset running a
+    version below the fixed one is below, else one with a version that cannot
+    be compared is not comparable, else it is on the fixed version, so the
+    totals add up to ``asset_count``, the distinct assets running the product.
     """
     merged: dict[str, dict[str, Any]] = {}
     for row in rows:
         if not matches_case(product_label, row.get("vendor"), row.get("product")):
             continue
         version = str(row.get("version") or "").strip() or UNKNOWN
-        entry = merged.setdefault(version, {"version": version, "asset_count": 0, "sources": set()})
-        entry["asset_count"] += int(row.get("asset_count") or 0)
+        entry = merged.setdefault(version, {"version": version, "assets": set(), "sources": set()})
+        entry["assets"].update(str(a) for a in row.get("asset_ids") or () if a)
         entry["sources"].update(str(s) for s in row.get("sources") or () if s)
     if not merged:
         return None
     fixed = (fixed_version or "").strip() or None
-    below = at_or_above = not_comparable = 0
+    # Per asset, the worst status of its versions: below_fixed, then not_comparable, then fixed.
+    rank = {"below_fixed": 0, "not_comparable": 1, "fixed": 2}
+    asset_status: dict[str, str] = {}
     versions: list[dict[str, Any]] = []
     for entry in merged.values():
         status = None
         if fixed:
             cmp = fixed_versions.compare_versions(entry["version"], fixed)
-            if cmp is None:
-                status = "not_comparable"
-                not_comparable += entry["asset_count"]
-            elif cmp < 0:
-                status = "below_fixed"
-                below += entry["asset_count"]
-            else:
-                status = "fixed"
-                at_or_above += entry["asset_count"]
+            status = "not_comparable" if cmp is None else "below_fixed" if cmp < 0 else "fixed"
+            for asset in entry["assets"]:
+                current = asset_status.get(asset)
+                if current is None or rank[status] < rank[current]:
+                    asset_status[asset] = status
         versions.append(
             {
                 "version": entry["version"],
-                "asset_count": entry["asset_count"],
+                "asset_count": len(entry["assets"]),
                 "sources": sorted(entry["sources"]),
                 **({"status": status} if status else {}),
             }
@@ -125,12 +128,14 @@ def running_versions(
         "versions": versions[:MAX_VERSIONS],
         "more_versions": max(0, len(versions) - MAX_VERSIONS),
         "version_count": len(versions),
+        "asset_count": len({a for e in merged.values() for a in e["assets"]}),
         "sources": sorted({s for v in versions for s in v["sources"]}),
     }
     if fixed:
-        answer["assets_below_fixed"] = below
-        answer["assets_on_fixed"] = at_or_above
-        answer["assets_not_comparable"] = not_comparable
+        statuses = list(asset_status.values())
+        answer["assets_below_fixed"] = statuses.count("below_fixed")
+        answer["assets_on_fixed"] = statuses.count("fixed")
+        answer["assets_not_comparable"] = statuses.count("not_comparable")
     else:
         answer["fixed_version_checked"] = list(FIXED_VERSION_SOURCES)
     return answer
@@ -177,10 +182,10 @@ async def read_running_versions(
             "vendor": vendor,
             "product": product,
             "version": version,
-            "asset_count": int(count),
+            "asset_ids": [str(a) for a in asset_ids or ()],
             "sources": sorted(named.get((vk, pk, version), ())),
         }
-        for vk, pk, version, vendor, product, count in counted
+        for vk, pk, version, vendor, product, asset_ids in counted
     ]
     return running_versions(rows, product_label=product_label, fixed_version=fixed_version)
 
@@ -188,7 +193,7 @@ async def read_running_versions(
 async def _read_rows(
     db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...]
 ) -> tuple[list[Any], dict[tuple[str, str, str], set[str]]]:
-    """The (vendor, product, version) groups with their asset counts, and the sources of each."""
+    """The (vendor, product, version) groups with their distinct asset ids, and the sources of each."""
     soft = OrganizationAssetSoftware
     where = (soft.organization_id == organization_id, soft.product_key.in_(keys))
     counted = list(
@@ -200,7 +205,7 @@ async def _read_rows(
                     soft.version,
                     func.min(soft.vendor),
                     func.min(soft.product),
-                    func.count(func.distinct(soft.asset_id)),
+                    func.array_agg(func.distinct(soft.asset_id)),
                 )
                 .where(*where)
                 .group_by(soft.vendor_key, soft.product_key, soft.version)

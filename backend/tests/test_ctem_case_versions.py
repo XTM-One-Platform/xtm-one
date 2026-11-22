@@ -12,8 +12,17 @@ import pytest
 from app.services import ctem_case_versions as versions
 
 
-def _row(version: str, count: int, *, vendor: str = "Microsoft", product: str = "Windows", sources=("intune",)):
-    return {"vendor": vendor, "product": product, "version": version, "asset_count": count, "sources": list(sources)}
+def _row(
+    version: str,
+    count: int = 0,
+    *,
+    vendor: str = "Microsoft",
+    product: str = "Windows",
+    sources=("intune",),
+    assets=None,
+):
+    ids = list(assets) if assets is not None else [f"{vendor}/{product}/{version}/{i}" for i in range(count)]
+    return {"vendor": vendor, "product": product, "version": version, "asset_ids": ids, "sources": list(sources)}
 
 
 def test_versions_are_listed_with_their_asset_counts_and_sources():
@@ -80,6 +89,28 @@ def test_the_same_version_from_two_rows_is_one_entry():
     )
     assert answer is not None
     assert answer["versions"] == [{"version": "1.2", "asset_count": 7, "sources": ["intune", "sbom"]}]
+    assert answer["asset_count"] == 7
+
+
+def test_an_asset_is_counted_once_in_the_totals():
+    # a1 runs two versions (one below, one fixed), a2 is reported under two spellings of one version,
+    # a3 runs an unknown version and the fixed one.
+    answer = versions.running_versions(
+        [
+            _row("8.0.1", assets=("a1",), vendor="Oracle", product="Java"),
+            _row("8.0.9", assets=("a1", "a3"), vendor="Oracle", product="Java"),
+            _row("8.0.1", assets=("a2",), vendor="", product="Oracle Java"),
+            _row("8.0.1", assets=("a2",), vendor="Oracle", product="Java"),
+            _row("unknown", assets=("a3",), vendor="Oracle", product="Java"),
+        ],
+        product_label="Oracle Java",
+        fixed_version="8.0.9",
+    )
+    assert answer is not None
+    assert {v["version"]: v["asset_count"] for v in answer["versions"]} == {"8.0.1": 2, "8.0.9": 2, "unknown": 1}
+    assert answer["asset_count"] == 3
+    # The worst version of each asset decides: a1 and a2 below, a3 not comparable, none on fixed alone.
+    assert (answer["assets_below_fixed"], answer["assets_on_fixed"], answer["assets_not_comparable"]) == (2, 0, 1)
 
 
 @pytest.mark.asyncio
