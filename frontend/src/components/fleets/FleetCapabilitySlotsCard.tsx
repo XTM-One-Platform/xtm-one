@@ -44,6 +44,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useBindFleetSlot, useFleetCapabilitySlots, useUnbindFleetSlot, type Fleet } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
 
@@ -93,9 +94,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
       cell: (row) => (
         <span className="flex min-w-0 items-center gap-2">
           <Icon name={capabilityIcon(row.slot.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
-          <span className="truncate" title={t_text(row.slot.label)}>
-            {t_text(row.slot.label)}
-          </span>
+          <TruncatedText text={t_text(row.slot.label)} />
         </span>
       ),
     },
@@ -106,10 +105,10 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
       csv: (row) => row.member.name,
       cell: (row) => (
         <span className="block min-w-0">
-          <span className="block max-w-[240px] truncate font-medium" title={row.member.name || undefined}>
-            {row.member.name || t_i18n("Unknown agent")}
-          </span>
-          {row.member.role_label && <span className="block max-w-[240px] truncate content-caption text-default-secondary">{row.member.role_label}</span>}
+          <TruncatedText text={row.member.name || t_i18n("Unknown agent")} className="max-w-[240px] font-medium" />
+          {row.member.role_label && (
+            <TruncatedText text={row.member.role_label} className="max-w-[240px] content-caption text-default-secondary" />
+          )}
         </span>
       ),
     },
@@ -140,9 +139,7 @@ export function FleetCapabilitySlotsCard({ fleet }: { fleet: Fleet }) {
               data-testid={`slot-bound-${row.key}`}
             >
               <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />
-              <span className="truncate" title={integrationName(integration)}>
-                {integrationName(integration)}
-              </span>
+              <TruncatedText text={integrationName(integration)} />
               {row.member.can_edit && (
                 <Button
                   type="button"
