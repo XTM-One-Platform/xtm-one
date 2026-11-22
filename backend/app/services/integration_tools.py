@@ -49,6 +49,7 @@ from app.integrations.http import format_http_error, format_network_error
 from app.integrations.providers.abusech import build_tools as abusech_tools
 from app.integrations.providers.abuseipdb import build_tools as abuseipdb_tools
 from app.integrations.providers.aikido import build_tools as aikido_tools
+from app.integrations.providers.airwallex import build_tools as airwallex_tools
 from app.integrations.providers.anomali import build_tools as anomali_tools
 from app.integrations.providers.anthropic import build_tools as anthropic_tools
 from app.integrations.providers.anyrun import build_tools as anyrun_tools
@@ -164,7 +165,6 @@ from app.integrations.providers.shodan import build_tools as shodan_tools
 from app.integrations.providers.slack import build_tools as slack_tools
 from app.integrations.providers.slack_bot import build_tools as slack_bot_tools
 from app.integrations.providers.socradar import build_tools as socradar_tools
-from app.integrations.providers.spendesk import build_tools as spendesk_tools
 from app.integrations.providers.splunk import build_tools as splunk_tools
 from app.integrations.providers.sublime import build_tools as sublime_tools
 from app.integrations.providers.sumologic import build_tools as sumologic_tools
@@ -1046,7 +1046,7 @@ PROVIDER_TOOLS = {
     "aws_security": aws_security_tools,
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
-    "spendesk": spendesk_tools,
+    "airwallex": airwallex_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1113,7 +1113,7 @@ CHANNEL_BOT_TOOLS = {
 _PERSIST_FILE_PROVIDERS = frozenset(
     {
         "aikido",
-        "spendesk",
+        "airwallex",
         "anyrun",
         "ashby",
         "bluesky",
@@ -2963,27 +2963,27 @@ async def _get_token(
         aikido_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return aikido_token_from_config(aikido_secret, aikido_extra)
 
-    # --- Spendesk (OAuth2 client credentials, production or sandbox host) ---
-    # The client secret is the API key column; the environment and the client
-    # id live in extra_config. The provider gets ``environment||client_id||secret``
-    # (partial when a part is missing, so a call names what to fix).
-    if provider == "spendesk":
-        from app.integrations.providers.spendesk import (
-            token_from_config as spendesk_token_from_config,
+    # --- Airwallex (client id + API key exchanged for a 30-minute bearer) ---
+    # The API key is the API key column; the environment, the client id, the
+    # account to log in as live in extra_config.
+    # The provider gets ``environment||client_id||login_as||api_key``.
+    if provider == "airwallex":
+        from app.integrations.providers.airwallex import (
+            token_from_config as airwallex_token_from_config,
         )
 
-        spendesk_extra = {}
+        airwallex_extra = {}
         if integ.extra_config_enc:
             try:
-                spendesk_extra = await _reveal_extra(integ)
+                airwallex_extra = await _reveal_extra(integ)
             except Exception as exc:
                 logger.warning(
-                    "Failed to decrypt extra_config for '%s' (spendesk): %s",
+                    "Failed to decrypt extra_config for '%s' (airwallex): %s",
                     integ.name,
                     format_exception_message(exc),
                 )
-        spendesk_secret = (await reveal_field(integ, "api_key_enc")) or ""
-        return spendesk_token_from_config(spendesk_secret, spendesk_extra)
+        airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return airwallex_token_from_config(airwallex_secret, airwallex_extra)
 
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
