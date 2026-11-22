@@ -186,3 +186,12 @@ def test_profile_interval_defaults_to_15_minutes_and_refuses_under_5():
     assert OrganizationProfile().cases_recompute.interval_minutes == 15
     with pytest.raises(ValidationError):
         CasesRecompute(interval_minutes=4)
+
+
+def test_the_interval_stays_out_of_the_legacy_dump_and_the_agent_block():
+    from app.services import organization_context as oc
+
+    assert "cases_recompute" in oc.EXPOSURE_FIELDS
+    profile = oc.parse_profile({"name": "Acme", "cases_recompute": {"interval_minutes": 30}})
+    assert profile.cases_recompute.interval_minutes == 30
+    assert "cases_recompute" not in oc.legacy_dump(profile)

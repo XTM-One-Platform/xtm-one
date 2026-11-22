@@ -152,6 +152,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "attack_surface",
     # CTEM-28: read by the evidence health pass, never dumped into the always-on block.
     "evidence_health",
+    # Cases recompute interval (#1216): read by the scheduled cases pass, never dumped into the always-on block.
+    "cases_recompute",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
