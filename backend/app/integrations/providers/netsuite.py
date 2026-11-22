@@ -432,20 +432,13 @@ def _money(value: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tools
+# Client: the signed REST calls and the paged SuiteQL read the tools and the poller share
 # ---------------------------------------------------------------------------
 
 
-def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> list[ToolDefinition]:
-    fields = parse_token(token)
-    if not fields.get("account_id"):
-        return []
-    account = fields["account_id"]
-    base = rest_base(account)
-    persist_file_fn = kwargs.get("persist_file_fn")
-    companion_script, _sep, companion_deploy = (fields.get("companion") or "").partition(":")
-    if not (_SCRIPT_ID.match(companion_script) and _SCRIPT_ID.match(companion_deploy)):
-        companion_script = companion_deploy = ""
+def _client(fields: Mapping[str, str]) -> tuple[Any, Any, Any]:
+    """``(_headers, _call, _suiteql)`` bound to one parsed credential."""
+    base = rest_base(fields["account_id"])
 
     async def _headers(method: str, url: str, query: Mapping[str, str]) -> tuple[dict[str, str] | None, str | None]:
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -526,6 +519,36 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
                 break
             offset += len(items)
         return rows, has_more, total, None
+
+    return _headers, _call, _suiteql
+
+
+async def read_suiteql(token: str, sql: str, max_rows: int, action: str) -> tuple[list[dict], bool, str | None]:
+    """``(rows, has_more, error)`` of one SuiteQL read on a compound credential (the event poller)."""
+    fields = parse_token(token)
+    if not fields.get("account_id"):
+        return [], False, "Error: the NetSuite integration has no account ID."
+    _headers, _call, _suiteql = _client(fields)
+    rows, has_more, _total, err = await _suiteql(sql, max_rows, action)
+    return rows, has_more, err
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+
+def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> list[ToolDefinition]:
+    fields = parse_token(token)
+    if not fields.get("account_id"):
+        return []
+    account = fields["account_id"]
+    base = rest_base(account)
+    persist_file_fn = kwargs.get("persist_file_fn")
+    companion_script, _sep, companion_deploy = (fields.get("companion") or "").partition(":")
+    if not (_SCRIPT_ID.match(companion_script) and _SCRIPT_ID.match(companion_deploy)):
+        companion_script = companion_deploy = ""
+    _headers, _call, _suiteql = _client(fields)
 
     async def _query_text(sql: str, max_rows: int, action: str, header: str = "") -> str:
         rows, has_more, total, err = await _suiteql(sql, max_rows, action)

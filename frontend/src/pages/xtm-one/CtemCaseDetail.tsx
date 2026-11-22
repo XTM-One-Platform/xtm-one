@@ -47,6 +47,7 @@ import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } 
 import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
+import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -117,6 +118,8 @@ const EVENT_LABEL: Record<string, string> = {
   ticket: "Ticket status",
   // The ticket reached done and the sync asked for the re-test (CTEM-19-UI, #1032).
   retest_requested: "Re-test started: the ticket is done",
+  // The OpenCRQ treatment plan of the remediation decision (CTEM-18-UI, #1068).
+  treatment_plan: "Attached the treatment plan",
 };
 
 /** The status word of a `ticket` history row, translated where drawn (#1032). */
@@ -541,6 +544,8 @@ export default function CtemCaseDetail() {
 
       <CaseExploitation entries={kase.exploitation} />
 
+      <CaseTreatmentPlan plan={kase.treatment_plan} />
+
       <Card>
         <CardHeader>
           <CardTitle>{t_i18n("Issues")}</CardTitle>
@@ -651,7 +656,7 @@ export default function CtemCaseDetail() {
                   <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
                 )}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && (
+                {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && (
                   <span className="text-default-secondary">{e.evidence}</span>
                 )}
                 {e.at && (

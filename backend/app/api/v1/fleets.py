@@ -1430,6 +1430,7 @@ async def fleet_source_changes_endpoint(
         changed=found.changed,
         diff_available=found.diff_available,
         changes=[FleetSourceChange(**c) for c in found.changes],
+        successor=found.successor,
     )
 
 

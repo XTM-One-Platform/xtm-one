@@ -391,6 +391,9 @@ async def _notify_teams(
         )
         return
 
+    if run.status == "awaiting_human" and await _send_run_decision_card(db, run, user, conv_ref):
+        return
+
     # TeamsChannel handles Markdown normalization, chunking against the
     # Teams activity size cap, and the required Activity.from field.
     channel = TeamsChannel(
@@ -416,6 +419,29 @@ async def _notify_teams(
             message,
             is_company=False,
         )
+
+
+async def _send_run_decision_card(db: AsyncSession, run: AssignmentRun, user: object, conv_ref: dict[str, str]) -> bool:
+    """Send the paused run's decision as its Teams card, answered in place (#842, S9, I.2).
+
+    ``False`` when the run has no open decision or the card was not taken:
+    the caller then sends its text as before.
+    """
+    from app.services.decision_card_delivery import open_decision, send_decision_card
+
+    try:
+        decision = await open_decision(db, "run", run.id)
+        if decision is None:
+            return False
+        conversation = {
+            "service_url": str(conv_ref["service_url"]),
+            "conversation_id": str(conv_ref["conversation_id"]),
+            "conversation_type": "",
+        }
+        return await send_decision_card(db, decision, conversation, viewer=user, language=notice_language(user))
+    except Exception as exc:
+        logger.warning("Teams decision card for run %s not sent: %s", run.id, format_exception_message(exc))
+        return False
 
 
 async def _notify_slack(
