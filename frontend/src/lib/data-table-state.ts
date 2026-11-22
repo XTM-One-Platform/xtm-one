@@ -135,3 +135,21 @@ export function writeTableState(
   }
   return next;
 }
+
+/**
+ * `params` with every filter of a page dropped in one write: the page's own filter keys
+ * (`keys`: a status, a view, a fleet, an owner...), the table's search, column filters and
+ * page under `prefix`, and the legacy unprefixed `q` and `page`. What is not a filter stays:
+ * the sort, the page size, the visibility segment, an open item. A page whose filters
+ * live outside the table passes this as the table's `onClearAll`, so "Clear all filters"
+ * clears what its count counts (#1001: the count stayed and the button looked dead).
+ */
+export function clearFilterParams(params: URLSearchParams, keys: readonly string[], prefix = ""): URLSearchParams {
+  const next = new URLSearchParams(params);
+  const filterPrefix = `${prefix}f_`;
+  for (const name of [...new Set(next.keys())]) {
+    if (name.startsWith(filterPrefix)) next.delete(name);
+  }
+  for (const name of [...keys, `${prefix}q`, `${prefix}page`, "q", "page"]) next.delete(name);
+  return next;
+}

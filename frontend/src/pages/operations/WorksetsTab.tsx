@@ -54,7 +54,7 @@ import { useToast } from "@/components/ui/toast";
 import { useTick } from "@/hooks/useTick";
 import { useViewMode } from "@/hooks/useViewMode";
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
-import { readTableState, type DataTableDefaults } from "@/lib/data-table-state";
+import { clearFilterParams, readTableState, type DataTableDefaults } from "@/lib/data-table-state";
 import { cn, formatCompactNumber, pluralize } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
 import {
@@ -312,7 +312,7 @@ export default function WorksetsTab({
 
   // The table's state lives in the URL (`wks_` keys): the server searches, filters, sorts and
   // pages the whole list (dev-docs/reference/data-tables.md, slice 8b).
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const table = readTableState(searchParams, URL_KEY, DEFAULTS);
   const search = table.search.trim() || undefined;
   const statuses = (table.filters.status ?? []).filter((value): value is "active" | "resolved" => value === "active" || value === "resolved");
@@ -456,6 +456,8 @@ export default function WorksetsTab({
           showFleetPicker ? <FleetFilter value={fleet} onChange={setFleet} /> : undefined
         }
         externalFilterCount={showFleetPicker && fleet ? 1 : 0}
+        // Clear all clears the fleet it counts with the table's own filters, in one write (#1001).
+        onClearAll={() => setSearchParams((prev) => clearFilterParams(prev, lockedFleet ? [] : ["fleet", "agent"], URL_KEY), { replace: true })}
         exportName="worksets"
         isLoading={landing || isLoading}
         isError={isError}

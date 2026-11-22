@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { waitsForReader } from "./work-item-context.ts";
 import { criticalLeaves, focusChains, shownGraph } from "./work-item-graph.ts";
 import type { WorkItemGraph, WorkItemGraphItemNode, WorkItemGraphNode } from "../types/index.ts";
 
@@ -17,6 +18,11 @@ function item(id: string, extra: Partial<WorkItemGraphItemNode> = {}): WorkItemG
     ask: null,
     is_program_root: false,
     outside_filter: false,
+    user_id: null,
+    waits_for_user_id: null,
+    owner_agent_id: null,
+    due_at: null,
+    scheduled: false,
     ...extra,
   };
 }
@@ -99,4 +105,13 @@ test("the critical leaf is the item only a person can release", () => {
   // C also waiting for an open pull request is no longer a leaf: an event may release it.
   const withRef = { ...graph, edges: [...graph.edges, edge("C", "ref:pr", "ref")] };
   assert.deepEqual([...criticalLeaves(withRef)], []);
+});
+
+test("a graph item node answers the Waiting for me rule as a list row does (#1001)", () => {
+  const asked = item("W", { needs_human: true, user_id: "u-1" });
+  assert.equal(waitsForReader(asked, "u-1"), true);
+  assert.equal(waitsForReader(asked, "u-2"), false);
+  assert.equal(waitsForReader({ ...asked, waits_for_user_id: "u-2" }, "u-2"), true);
+  assert.equal(waitsForReader({ ...asked, status: "done" }, "u-1"), false);
+  assert.equal(waitsForReader({ ...asked, scheduled: true }, "u-1"), false);
 });

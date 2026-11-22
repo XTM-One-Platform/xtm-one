@@ -92,6 +92,15 @@ describe("DataTable", () => {
     expect(screen.getByTestId("location").textContent).not.toContain("f_status");
   });
 
+  // UX round 1 on xtm-one #1004, B1: a toolbar filter (a Status pill) counted on its own
+  // pill still offers Clear all, which runs the page's clear.
+  it("offers Clear all for a toolbar filter outside the Filters badge", () => {
+    const onClearAll = vi.fn();
+    renderTable({ toolbarFilterActive: true, onClearAll });
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
+    expect(onClearAll).toHaveBeenCalledTimes(1);
+  });
+
   describe("lists every filter's options alphabetically (#12289)", () => {
     const openPill = (name: string) => {
       const pill = screen.getAllByRole("button", { name: new RegExp(name) }).find((button) => button.hasAttribute("aria-expanded"));
