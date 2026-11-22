@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2033 tools across 116 providers; 53 held back by hand.
+# 2032 tools across 116 providers; 54 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -133,7 +133,6 @@ aikido:list_aikido_users
 aikido:list_aikido_virtual_machines
 aikido:list_aikido_webhooks
 aikido:list_aikido_zen_users
-airwallex:download_airwallex_financial_report
 airwallex:export_airwallex_financial_report
 airwallex:get_airwallex_account
 airwallex:get_airwallex_beneficiary

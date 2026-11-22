@@ -4776,8 +4776,9 @@ PROVIDER_CATALOG = {
                 # One description for every event (the label names it), so the
                 # trigger picker reads it in the viewer's language.
                 "description": (
-                    "Triggers on this Airwallex webhook event. Add a webhook for it in Airwallex "
-                    "(Settings > Developer > Webhooks) pointing to the webhook URL shown below."
+                    "Triggers on this Airwallex webhook event. Add a webhook for it in "
+                    "Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL "
+                    "shown below."
                 ),
                 "mechanism": "webhook",
                 "filter_keys": _AIRWALLEX_FILTER_KEYS,
