@@ -2528,13 +2528,16 @@ async def test_checkout_rebase_repeat_while_its_job_runs_answers_that_job(store,
     composite, executor, _archives, _reads = await _rebasable(store)
     gate = asyncio.Event()
     real = jobs.rebase_running
+    tasks: list[asyncio.Task] = []
 
     async def slow(workspace, key, run_id, label, work):
         async def held():
             await gate.wait()
             return await work()
 
-        return await real(workspace, key, run_id, label, held)
+        task = await real(workspace, key, run_id, label, held)
+        tasks.append(task)
+        return task
 
     monkeypatch.setattr(jobs, "rebase_running", slow)
     monkeypatch.setattr(jobs, "POLL_WAIT", 0.05)
@@ -2545,9 +2548,12 @@ async def test_checkout_rebase_repeat_while_its_job_runs_answers_that_job(store,
     sync_repeat = await _call(composite, "sandbox_checkout_rebase", checkout="repo", ref="main")
     assert f"Rebase {run_id}" in sync_repeat.content
     assert await jobs.rebase_landed(executor.session, {"checkout": "repo", "ref": "main"}) is False
+    assert len(tasks) == 1, "the repeats answered the running job, no second rebase"
     gate.set()
+    # Wait for the job itself, not a 0.05 s poll: under xdist load the rebase outlives a short poll.
+    await tasks[0]
     done = await _call(composite, "sandbox_checkout_rebase", checkout="repo", run_id=run_id)
-    assert done.content.startswith("workspace/repo/: rebased from acme/repo@v1")
+    assert done.content.startswith("workspace/repo/: rebased from acme/repo@v1"), done.content
 
 
 async def test_checkout_rebase_job_lost_with_its_worker_is_reported_and_unknown_ids_refused(store):

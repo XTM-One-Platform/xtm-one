@@ -259,6 +259,7 @@ async def investigate_module(
     from app.api.v1.platform_health_findings import ANALYST_MODULES, present_modules
     from app.services.audit import log_audit
     from app.services.health.cycles import start_cycle
+    from app.services.health.fleet_seed import CHECKS_KEY_BY_PROVIDER
     from app.services.health.module_analyst import active_registrations
     from app.services.health.settings import load_health_settings
 
@@ -280,7 +281,7 @@ async def investigate_module(
     for registration_id in registrations:
         result = await start_cycle(
             db,
-            key="module_analyst",
+            key=CHECKS_KEY_BY_PROVIDER[module],
             trigger="on_demand",
             target_type="module",
             target_id=registration_id,

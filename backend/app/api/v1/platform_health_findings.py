@@ -281,9 +281,10 @@ async def _analyst_recommendations(
 
 
 async def _last_investigations(db: AsyncSession) -> dict[str, LastInvestigation]:
-    """The Module Analyst's newest cycle per analysed module, over all of the module's registrations."""
+    """The module checkers' newest cycle per analysed module, over all of the module's registrations."""
     from app.models.health import HealthCycle
     from app.models.platform_registration import PlatformRegistration
+    from app.services.health.identity import MODULE_CHECKER_ROLES
 
     latest: dict[str, LastInvestigation] = {}
     for module in ANALYST_MODULES:
@@ -295,7 +296,7 @@ async def _last_investigations(db: AsyncSession) -> dict[str, LastInvestigation]
                 .join(PlatformRegistration, PlatformRegistration.id == HealthCycle.target_id)
                 .where(
                     HealthCycle.target_type == "module",
-                    HealthCycle.specialist == "module_analyst",
+                    HealthCycle.specialist.in_(sorted(MODULE_CHECKER_ROLES)),
                     PlatformRegistration.platform_identifier == module,
                 )
                 .order_by(HealthCycle.opened_at.desc())

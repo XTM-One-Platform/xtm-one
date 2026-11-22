@@ -4552,12 +4552,12 @@ async def execute_assignment_run(
             "quota_reason": "exempt_builtin",
         }
         charged = False
-        # The Platform Health Module Analyst runs outside the agentic quota under
-        # its own ceiling (#101 S14b, dev-docs/platform-health.md 12.5): decided
-        # from the seeded rows alone, never from the trigger or the payload.
-        from app.services.health.module_analyst_budget import is_module_analyst_run
+        # The Platform Health module checkers run outside the agentic quota under
+        # their own ceiling (#101 S14b and S15, dev-docs/platform-health.md 12.5, 13.1):
+        # decided from the seeded rows alone, never from the trigger or the payload.
+        from app.services.health.module_analyst_budget import is_module_checker_run
 
-        _module_analyst_exempt = is_module_analyst_run(agent, assignment)
+        _module_analyst_exempt = is_module_checker_run(agent, assignment)
         if _module_analyst_exempt:
             _quota_trace_meta["quota_reason"] = "exempt_module_analyst"
         if not _module_analyst_exempt and not _run_is_quota_exempt(agent, run):

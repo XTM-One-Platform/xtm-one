@@ -227,14 +227,23 @@ async def _finding_set_hashes(db: AsyncSession) -> dict[str, str]:
     return {registration: finding_set_hash(findings) for registration, findings in grouped.items()}
 
 
-async def _start(db: AsyncSession, registration_id: uuid.UUID, trigger: ModuleTrigger, current_hash: str, now: datetime) -> bool:
-    """Start one cycle on *registration_id* and record what came of it; whether it started. Commits."""
+async def _start(
+    db: AsyncSession,
+    registration_id: uuid.UUID,
+    provider: str,
+    trigger: ModuleTrigger,
+    current_hash: str,
+    now: datetime,
+) -> bool:
+    """Start one cycle of *provider*'s checker on *registration_id* and record what came of it;
+    whether it started. Commits."""
     from app.models.health_cycle import HealthSignalState
     from app.services.health.cycles import start_cycle
+    from app.services.health.fleet_seed import CHECKS_KEY_BY_PROVIDER
 
     result = await start_cycle(
         db,
-        key="module_analyst",
+        key=CHECKS_KEY_BY_PROVIDER[provider],
         trigger="signal" if trigger == "change" else "schedule",
         target_type="module",
         target_id=registration_id,
@@ -306,8 +315,8 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
         ).scalars()
     }
     interval = timedelta(minutes=health.module_analyst.change_min_interval_minutes)
-    due: list[tuple[uuid.UUID, ModuleTrigger, str]] = []
-    for registration_id, _provider in registrations:
+    due: list[tuple[uuid.UUID, str, ModuleTrigger, str]] = []
+    for registration_id, provider in registrations:
         state = states.get(registration_id)
         current = hashes.get(str(registration_id), empty_set_hash())
         trigger = due_trigger(
@@ -318,12 +327,12 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
             change_min_interval=interval,
         )
         if trigger is not None:
-            due.append((registration_id, trigger, current))
+            due.append((registration_id, provider, trigger, current))
     # Changes first: a daily look waits for the next pass when the pass is full.
-    due.sort(key=lambda item: item[1] != "change")
+    due.sort(key=lambda item: item[2] != "change")
     started = 0
-    for registration_id, trigger, current in due[:MAX_STARTS_PER_PASS]:
-        started += int(await _start(db, registration_id, trigger, current, now))
+    for registration_id, provider, trigger, current in due[:MAX_STARTS_PER_PASS]:
+        started += int(await _start(db, registration_id, provider, trigger, current, now))
     return started
 
 
