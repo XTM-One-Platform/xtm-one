@@ -31,8 +31,7 @@ from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVE
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
 from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
 from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
-from app.integrations.providers.rydoo.webhooks import EVENT_TYPES as RYDOO_EVENT_TYPES
-from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TRIGGER_EVENTS
+from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -161,13 +160,6 @@ _AIRWALLEX_FILTER_KEYS: dict[str, str] = {
     "data.object.currency": "The currency of the object, when it carries one",
     "data.object.amount": "The amount of the object, when it carries one",
     "data.object.status": "The status of the object the event is about",
-}
-#: The filter keys of every Rydoo expense webhook event (the delivery is flat).
-_RYDOO_FILTER_KEYS: dict[str, str] = {
-    "eventType": "The Rydoo event type (ExpenseSubmitted, ExpenseApproved, ExpenseRejected...)",
-    "expenseId": "The expense the event names",
-    "userId": "The employee who owns the expense",
-    "companyId": "The Rydoo company that sent the event",
 }
 #: The label of each Wordsmith event type in the trigger picker.
 _WORDSMITH_EVENT_LABELS: dict[str, str] = {
@@ -4941,63 +4933,6 @@ PROVIDER_CATALOG = {
             ],
         },
     },
-    "rydoo": {
-        "name": "Rydoo",
-        "description": (
-            "Rydoo expense management, the whole public API: expenses ready for accounting by branch "
-            "(legal entity), user, group or trip, expense detail with VAT lines, receipts (download and "
-            "upload), reject, report and reimburse, reimbursements and jobs, card and bank transactions, "
-            "users, groups, roles and treasurer permissions, approval and control flows, projects, "
-            "categories, custom fields (cost centres, GL codes), trips, guests, linked accounts, branch "
-            "exchange rates, e-invoices and payment methods (bank details masked), plus expense webhook "
-            "triggers"
-        ),
-        "logo": "/logos/rydoo.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["finance", "expense_management"],
-        # Rydoo activates one webhook URL per company (through its CSM): the
-        # integration's URL, not one per assignment.
-        "available_events": [
-            {
-                "event": RYDOO_TRIGGER_EVENTS[event],
-                "label": label,
-                "description": (
-                    "Triggers on this Rydoo expense webhook event. Rydoo activates the webhook on request "
-                    "(your CSM or connect@rydoo.com) for the webhook URL shown below. Without it, schedule "
-                    "the list_rydoo_exported_expenses tool instead."
-                ),
-                "mechanism": "webhook",
-                "filter_keys": _RYDOO_FILTER_KEYS,
-            }
-            for event, label in RYDOO_EVENT_TYPES.items()
-        ],
-        # OAuth2 client credentials: the client secret is the stored secret.
-        "auth_type": "api_key",
-        "supported_auth_types": ["api_key"],
-        "fields": ["api_key"],
-        "extra_fields": {
-            "client_id": "API client ID",
-            "webhook_token": "Webhook token (a long random secret you choose; needed for webhook triggers, see the setup guide)",
-        },
-        "setup_guide": {
-            "title": "Rydoo API client",
-            "url": "https://developers.rydoo.com/reference/authentication",
-            "steps": [
-                "Ask Rydoo (your CSM or connect@rydoo.com) for API access: Rydoo issues a client ID and a client secret for the company.",
-                "Paste the client ID in the 'API client ID' field and the client secret in the 'API key' field.",
-                "Click 'Test Connection': it mints a token and lists the company's branches (legal entities).",
-                "Optional, for webhook triggers: set 'Webhook token' to a long random secret, then give Rydoo the webhook URL shown below followed by ?token=<webhook token> and ask them to activate the expense webhook. A delivery without the token, or with no token configured, is refused.",
-                "Every write tool (reject, mark reported or reimbursed, create or update a user, group, project, list item or payment method) asks a person on each call; bind read-only to withhold them.",
-            ],
-            "permissions": [
-                {
-                    "scope": "api_xpd2",
-                    "description": "The Rydoo public API scope (company-wide: every branch)",
-                },
-            ],
-        },
-    },
     "wiz": {
         "name": "Wiz",
         "description": (
@@ -5250,6 +5185,55 @@ PROVIDER_CATALOG = {
                 },
             ],
             "notes": "Authentication uses the X-API-KEY HTTP header. If the key is missing or invalid, the API returns 401 Unauthorized. You can generate multiple API keys from your Concord account.",
+        },
+    },
+    "dealhub": {
+        "name": "DealHub",
+        "description": (
+            "DealHub CPQ, every documented API: quotes with line items, totals, discounts, playbook "
+            "answers and approval steps, quote documents, DealRoom signers, opportunities; simulate, "
+            "generate, submit for approval, publish and sign quotes; users; price book; versions, "
+            "playbooks, product catalog and hierarchy. Every write asks a person before it runs"
+        ),
+        "logo": "/logos/dealhub.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["cpq"],
+        # A secret bearer token a CPQ administrator generates; the instance
+        # host (api.dealhub.io unless the account is on another instance)
+        # lives in extra config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "instance_host": "DealHub API host (api.dealhub.io when empty)",
+            "webhook_token": "Webhook token (real-time quote events; several tokens separated by commas while rotating)",
+        },
+        # Quote events: DealHub webhooks (Token authentication) in real time,
+        # polling of the quote statuses every 15 minutes as the fallback
+        # (services/dealhub_events.py).
+        "available_events": _dealhub_catalog_events(),
+        "setup_guide": {
+            "title": "DealHub API token",
+            "url": "https://developers.dealhub.io/docs/authentication-overview",
+            "steps": [
+                "In DealHub, as a CPQ administrator, generate an API token (Settings > Integrations > API).",
+                "Paste the token in the 'API key' field.",
+                "Leave 'DealHub API host' empty for api.dealhub.io, or set your instance's host (a name under dealhub.io).",
+                "Click 'Test Connection': it reads the account's active users.",
+                "Optional, real-time quote events: generate a long random token and paste it in 'Webhook token'; in DealHub, System Settings > API Settings > Webhooks, add a webhook whose URL is this integration's webhook URL ({base_url}/api/hooks/integrations/<integration id>), select the quote events and the Token authentication type with the same token. Without it, the events are polled every 15 minutes.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Quote, Headless and CRM APIs",
+                    "description": "Read quotes, approvals, documents and DealRoom signers; generate, submit, publish and sign quotes (each write asks a person)",
+                },
+                {
+                    "scope": "User, Pricing and Version APIs",
+                    "description": "Read users, prices, versions, playbooks and the product catalog; change them (each write asks a person)",
+                },
+            ],
+            "notes": "DealHub has no API to approve or reject an approval step: approvals are read on the quote and decided in DealHub. The Subskribe billing API has its own credential and is not part of this integration.",
         },
     },
     "docusign": {
@@ -10109,8 +10093,6 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "aikido": "eu||__dummy__||__dummy__",
     # Airwallex's token is environment||client_id||login_as||api_key.
     "airwallex": "production||__dummy__||||__dummy__",
-    # Rydoo's token is client_id||client_secret.
-    "rydoo": "__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
