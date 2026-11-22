@@ -43,6 +43,7 @@ import {
 import dagre from "dagre";
 import { useEffect, useMemo, useState } from "react";
 import { Icon, Spinner } from "@filigran/design-system";
+import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -209,9 +210,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
         <Badge variant="secondary" className={cn("content-caption", STATUS_TONE[node.status])}>{t_i18n(status)}</Badge>
         {/* The list row's Waiting for you marker, same tone (#1001). */}
         {data.waitingForYou && (
-          <Badge variant="secondary" className="shrink-0 gap-1 content-caption bg-accent/10 text-accent" data-testid="work-item-graph-waiting-for-you">
-            <Icon name="users" size={16} aria-hidden /> {t_i18n("Waiting for you")}
-          </Badge>
+          <WaitingForYouBadge testId="work-item-graph-waiting-for-you" />
         )}
         {priority && <Badge variant="secondary" className="content-caption">{t_i18n(priority)}</Badge>}
         {node.owner_agent?.name && (

@@ -76,6 +76,7 @@ import {
   blockedWithoutReason, pendingBlockedRefs, waitsForReader,
 } from "@/lib/work-item-context";
 import { BlockedStatusBadge } from "@/components/work-items/BlockedStatusBadge";
+import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
 import type { WorkItem, WorkItemStatus } from "@/types";
 import { FleetAgentPickerGroup } from "@/components/fleets/FleetAgentPickerGroup";
 import { useFleetParam } from "@/hooks/useFleetParam";
@@ -940,13 +941,7 @@ export default function WorkItemsTab({
                 <OpsChipStrip testId="work-item-chips">
                 {/* A decision or an item owed by the reader: the Waiting for me population (#1001). */}
                 {waitsForReader(item, user?.id) && (
-                  <Badge
-                    variant="secondary"
-                    className="content-compact gap-1 bg-accent/10 text-accent"
-                    data-testid="work-item-waiting-for-you"
-                  >
-                    <User className="h-3 w-3" aria-hidden /> {t_i18n("Waiting for you")}
-                  </Badge>
+                  <WaitingForYouBadge testId="work-item-waiting-for-you" />
                 )}
                 {/* A blocked item that says nothing of what it waits for. */}
                 {!scheduled && blockedWithoutReason(item) && <WorkItemNoReasonChip />}
