@@ -39,6 +39,10 @@ simulations, injects and findings. The events map to triggers as follows
   / ``DELETE`` (CTEM-15, #918);
 * ``asset_created`` / ``asset_updated``: resource ``ASSET``, ``CREATE`` /
   ``UPDATE``;
+* ``asset_stale``: resource ``ASSET``, ``UPDATE``, filtered on
+  ``asset_status`` = ``STALE``: OpenAEV's freshness job raises one asset
+  update when an asset stays unseen past the tenant's
+  ``asset_stale_after_days`` (off at 0), a path 6 signal of the CTEM loop;
 * ``vulnerability_created``: resource ``VULNERABILITY``, ``CREATE``;
 * ``scenario_score_degraded``: resource ``SCENARIO``, ``SCORE_DEGRADATION``
   (OpenAEV's semantic event, valid on scenarios only): a mitigation that was
@@ -90,6 +94,7 @@ EVENTS: dict[str, tuple[str, str, str | None, tuple[str, ...]]] = {
     "finding_deleted": ("FINDING", "DELETE", None, ()),
     "asset_created": ("ASSET", "CREATE", None, ()),
     "asset_updated": ("ASSET", "UPDATE", None, ()),
+    "asset_stale": ("ASSET", "UPDATE", "asset_status", ("STALE",)),
     "vulnerability_created": ("VULNERABILITY", "CREATE", None, ()),
     "scenario_score_degraded": ("SCENARIO", "SCORE_DEGRADATION", None, ()),
 }

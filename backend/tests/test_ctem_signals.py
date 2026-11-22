@@ -106,6 +106,7 @@ def test_listeners_cover_the_paths_whose_events_exist_today():
         "code_flaw",
         "mitigation_regression",
         "credential_leak",
+        "stale_asset",
     }
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
@@ -557,6 +558,7 @@ async def test_the_paths_endpoint_names_the_listened_paths(client):
         "code_flaw",
         "mitigation_regression",
         "credential_leak",
+        "stale_asset",
     }
 
 

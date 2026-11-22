@@ -6135,6 +6135,15 @@ PROVIDER_CATALOG = {
                 "mechanism": "webhook",
             },
             {
+                "event": "asset_stale",
+                "label": "Asset turned stale",
+                "description": (
+                    "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's "
+                    "stale threshold (off until the threshold is set)."
+                ),
+                "mechanism": "webhook",
+            },
+            {
                 "event": "vulnerability_created",
                 "label": "Vulnerability created",
                 "description": "Triggers when a vulnerability is created in OpenAEV.",
