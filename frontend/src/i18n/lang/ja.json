@@ -20564,5 +20564,20 @@
   "Freshness": "鮮度",
   "Stale: not seen by OpenAEV past the tenant's threshold": "陳腐化: テナントのしきい値を超えて OpenAEV で確認されていません",
   "{name} (not connected)": "{name}（未接続）",
-  "Search integrations": "インテグレーションを検索"
+  "Search integrations": "インテグレーションを検索",
+  "Evidence health": "証跡の健全性",
+  "Evidence expired: older than the re-test delay": "証跡の期限切れ：再テスト期間より古い",
+  "Attested by a person only, never measured by a connector": "人による証明のみ、コネクタでの測定なし",
+  "Reported by a connector, never measured": "コネクタが報告、測定なし",
+  "Blind spot: no source reports this asset": "死角：この資産を報告するソースなし",
+  "Blind spot: the version is unknown": "死角：バージョン不明",
+  "Blind spot: a connector sync emptied": "死角：コネクタ同期が空になった",
+  "Connector sync": "コネクタ同期",
+  "{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open": "{kind}：{previous} 行から {latest, plural, other {# 行}}、検出結果は未解決のまま",
+  "{kind}: emptied; its findings stay open": "{kind}：空、検出結果は未解決のまま",
+  "No evidence since": "最終証跡",
+  "Never measured": "測定なし",
+  "Risk scenario": "リスクシナリオ",
+  "{origin}, last reported {date}": "{origin}、最終報告 {date}",
+  "No source reports this asset": "この資産を報告するソースなし"
 }
