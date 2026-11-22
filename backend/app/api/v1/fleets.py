@@ -169,7 +169,6 @@ from app.services.fleet_autonomy import (
     fleet_gates,
     gate_catalog,
     normalize_level,
-    with_live_step_gates,
 )
 from app.services.fleet_control import (
     enable_fleet,
@@ -1455,7 +1454,6 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
     from app.services.fleet_gate_proposals import fleet_effective_gates
 
     effective = await fleet_effective_gates(db, fleet.id)
-    catalog = gate_catalog(fleet.autonomy_level, effective[1] if effective else [])
     # Any generation running on the server (#10316, #10817): the page derives its spinner from it on mount.
     generation = await generation_state(fleet.id)
     return FleetDocumentationResponse(
@@ -1468,13 +1466,12 @@ async def _documentation_response(db: AsyncSession, user: User, fleet: Fleet) ->
         out_of_date=view.out_of_date,
         local=view.local,
         restored_from=view.restored_from,
-        # A step's approval badge follows the gate it names at the live level and pins (#1074).
-        structured=with_live_step_gates(view.structured, catalog),
+        structured=view.structured,
         prerequisite_states=[FleetPrerequisiteState(**vars(s)) for s in states],
         live_prerequisites=[FleetLivePrerequisite(**vars(line)) for line in live],
         autonomy_level=effective_level(fleet.autonomy_level),
         # The gates the runs enforce, computed ones included (#10153): the page says what holds.
-        autonomy_catalog=catalog,
+        autonomy_catalog=gate_catalog(fleet.autonomy_level, effective[1] if effective else []),
         findings=view.findings,
         dismissed_findings=view.dismissed_findings,
         generating=generation.generating,

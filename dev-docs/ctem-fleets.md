@@ -1904,7 +1904,7 @@ risk) declare one gate per loop stage, from
 |---|---|---|---|
 | `ctem.validation.non_readonly` | Validate: an OpenAEV test that is not read-only | high | the OpenAEV launches |
 | `ctem.analyst_review` | Review of the threat package | low | none |
-| `ctem.remediation.decision` | Decide the remediation option | high | none |
+| `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
 | `ctem.production_change` | A change applied on production through an integration | high | none |
 | `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none |
@@ -1962,18 +1962,6 @@ fleets `p10153fltpin1` had moved (created before #10164 merged, no level
 change in the audit log), so no member's run prompt changes. A custom fleet that declares gates and has no pins stored keeps acting on its
 declared gates alone until a person applies a level. A built-in fleet acts on
 its seeded catalog alone.
-
-**Step badges follow the catalog (#1074).** A step of the structured
-documentation may name the gate it stands for (`DocStep.gate_key`, a catalog
-key such as `ctem.mobilize`). `GET /fleets/{id}/documentation` derives that
-step's `gate` (the About page's "A person approves first" badge) from the
-same effective catalog it returns as `autonomy_catalog`
-(`fleet_autonomy.with_live_step_gates`), level and pins applied, so the About
-page and the Approval tab never disagree at any level or pin. A step without a
-key, or naming a gate the catalog does not hold, keeps its stored flag. The
-built-in steps name their keys and their stored flags equal the seeded level
-(Low: `ctem.mobilize` alone waits), checked for every built-in fleet by
-`test_builtin_fleet_docs.py`.
 
 **Set by instructions (#10168, B2-I).** A fleet whose approvals live in its
 personas, guardrails and skills (no platform gate) has a second position on
@@ -2198,11 +2186,11 @@ Low and waits at the higher levels; the personas propose such a change as a
 `needs_human` work item and never make it.
 
 Known limits, stated in the fleet documentation: OpenCRQ is in beta until
-its general availability (February 2027); XTM One reads treatment plans and
-budget reviews only (`list_opencrq_treatment_plans`,
-`list_opencrq_budget_reviews`), so the fleet recommends (work items keyed
-`opencrq:risk-budget-desk:recommendation:`) and a person writes the plan in
-OpenCRQ. The `investment_case_written` minutes are a desk assumption
+its general availability (February 2027); XTM One reads budget reviews only
+(`list_opencrq_budget_reviews`) and writes a treatment plan only through the
+`opencrq.register.write` gate (`create_opencrq_treatment_plan` and the move
+tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items keyed
+`opencrq:risk-budget-desk:recommendation:`) and a person approves the plan write. The `investment_case_written` minutes are a desk assumption
 (`LABEL_ASSUMPTION`) until a sourced figure replaces them.
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.

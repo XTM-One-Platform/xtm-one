@@ -146,6 +146,10 @@ def test_register_writes_are_gated_and_nothing_waits_at_low():
         "update_opencrq_risk_scenario",
         "update_opencrq_loss_estimates",
         "update_opencrq_risk_tolerance",
+        "create_opencrq_treatment_plan",
+        "update_opencrq_treatment_plan",
+        "set_opencrq_treatment_plan_moves",
+        "add_opencrq_treatment_plan_moves",
     }
 
 
@@ -159,7 +163,7 @@ def test_the_seeded_documentation_names_every_automation_and_the_known_limits():
     for section in ("purpose", "use_case", "flow", "objects_created", "prerequisites"):
         assert doc[section].strip(), section
     assert "beta" in doc["prerequisites"] and "February 2027" in doc["prerequisites"]
-    assert "reads its treatment plans and budget reviews only" in doc["prerequisites"]
+    assert "writes a treatment plan only through the register write gate" in doc["prerequisites"]
     assert "OpenCTI is never required" in doc["purpose"]
 
 
