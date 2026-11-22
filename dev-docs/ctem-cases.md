@@ -544,6 +544,34 @@ then the existing AI assessment and facts grid unchanged.
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
 
+### 7.2bis Attention score and its points (#1176)
+
+The list's default sort, its "Act on this first" band and the case page's
+"Why this case needs attention now" read one explained score
+(`frontend/src/pages/xtm-one/ctem/case-attention.ts`): the points of each
+reason are added, and each reason is named in the why line. A reason whose
+points are set to 0 adds nothing and is not named (the age when its points per
+day or its cap is 0). Resolved cases and accepted risks score 0.
+
+The points are the organization's, profile field `case_attention`
+(`CaseAttentionWeights` in `services/organization_context.py`, an exposure
+field: never in the agent block or the legacy dump), set by an administrator
+with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
+`PUT /organization-context`). Defaults, each from 0 to 100:
+
+| Reason | Field | Default |
+|---|---|---|
+| Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
+| At least one KEV issue | `kev` | 15 |
+| At least one crown jewel touched | `crown_jewel` | 15 |
+| SLA breached or due date passed | `overdue` | 20 |
+| Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
+| No owner | `no_owner` | 5 |
+| Per day open, capped at `age_max` (default 10) | `age_per_day` | 1 |
+
+A profile saved before the field reads the defaults; every profile save of
+the Settings form carries it whole.
+
 ### 7.3 Case page `/ctem/cases/:id`
 
 - Header: the CTEM header band (`CtemPageHeader`) with the shared
@@ -668,8 +696,6 @@ No decision structure is stored on the case: the decision is the gate `ctem.reme
 A decision is recorded in OpenCRQ as a treatment plan through four OpenCRQ provider tools on the procedures OpenCRQ already serves (`providers/opencrq/treatment.py`): `create_opencrq_treatment_plan` (`treatmentPlans.createTreatmentPlan`: name, owner, period, one-off and annual cost, rationale, first control moves), `update_opencrq_treatment_plan` (`updateTreatmentPlan`, partial: an empty value clears a nullable field), `set_opencrq_treatment_plan_moves` (`setTreatmentPlanScope`, replaces the moves) and `add_opencrq_treatment_plan_moves` (`addTreatmentPlanMoves`). A move is a control capability with its target strength rung and coverage bucket (L0 to L3, a target left out keeps that axis); OpenCRQ re-prices the plan after a change of its moves. No new OpenCRQ entity: the accepted residual risk is the evidence dismissal `risk_accepted` with a reason code (`update_opencrq_evidence_state`), its expiry the profile policy `accepted_risks`. Every call carries the acting user's own OpenCRQ token (per-user JWT): a user OpenCRQ refuses gets that refusal and nothing is written for them. Gates: on a CTEM loop fleet the four tools are rules of `ctem.remediation.decision` (runs out of the box, a pin or Full human gates makes it wait, so the plan follows the decision without a second approval); on the risk budget desk they are rules of `opencrq.register.write`. Tests: `tests/test_opencrq_tool_contracts.py`, `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
 On the case (CTEM-18-UI, #1068): `create_opencrq_treatment_plan` answers the plan's OpenCRQ link (`Link:` line, `/treatment-plans/<id>`), and the fleet attaches the plan to the case with `update_ctem_case` `treatment_plan` {id, name, url} (`ctem_case_loop.record_treatment_plan`: the id a UUID, the url the OpenCRQ page of that id, else refused; the same plan again writes nothing). No migration: one `treatment_plan` case event (`to` the id, `reason` the name, `evidence` the url). The case detail serves `treatment_plan`, the newest such event, as the exploitation reading (#936): id, name and link only to a viewer whose own OpenCRQ read is available, `{restricted: true, at}` to anyone else, and the history row of that kind carries no value for them. The case page shows it in a "Treatment plan" card (name linked to OpenCRQ, attach date; never blank) and the history line "Attached the treatment plan". The accepted residual risk and its expiry stay where they were: the accepted-risk card of the case and Governance & Risk > Accepted risks. Tests: `tests/test_ctem_case_treatment_plan.py`, `frontend/src/pages/xtm-one/ctem/case-treatment-plan.test.tsx`.
-
-Attack path and blast radius (CTEM-23-UI, #1289): `get_opencrq_attack_path_reach` (`providers/opencrq/risk.py`) reads OpenCRQ's `supportingAssets.getAttackPathReach` for one supporting asset: the hops nearest first (each proven by an OpenAEV execution or inferred, with its simulation), the assets reached with their depth and criticality, and the primary assets behind them; hops unconfirmed past OpenCRQ's stale delay are left out. The triage analyst calls it on the matched asset with the highest impact and the orchestrator writes it with `update_ctem_case` `attack_path` (`ctem_case_loop.record_attack_path`: origin required, a hop with no end dropped, a nature other than proven read as inferred, capped at 40 hops and reached assets and 20 primary assets, replaced whole). Column `ctem_cases.attack_path` (JSON, `{}` until the first read; migration `c1289ctemattackpath1`). One `attack_path` case event per change, its evidence the counts alone. A hop also keeps `simulation_name`, `simulation_url` (an absolute http(s) page, else dropped) and `seen_at` (the ISO date of the execution, from OpenCRQ's last reported date). The case detail serves `attack_path` like the exploitation reading: asset names and the simulation name and page only to a viewer who reads OpenCRQ, else `Restricted`; the raw simulation id is never served; `null` before the first read. The case page shows the card "Attack path and blast radius" under "How it would be exploited" (`ctem/CaseAttackPath.tsx`): the origin as "Attack starts from", each hop with a Proven chip (high tone) or an Inferred chip (info tone), and for a proven hop "Proven by <simulation name>, <date>" (or "Proven by an OpenAEV simulation, <date>"), linked to the simulation page when there is one (UX round 1 on #1296).
 
 Granted to the built-in CTEM loop orchestrators (vulnerability prioritization,
 threat response, which run a case from `ctem_case.opened`, #891), the
