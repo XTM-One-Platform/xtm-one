@@ -3968,6 +3968,32 @@ async def _test_integration(
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
+    # DealHub: the API token is in api_key_enc, the instance host in
+    # extra_config. Validate by reading the account's active users.
+    if integration.provider == "dealhub":
+        from app.integrations.providers.dealhub import (
+            build_dealhub_token,
+        )
+        from app.integrations.providers.dealhub import (
+            validate_connection as dealhub_validate,
+        )
+
+        dealhub_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                dealhub_extra = decrypted if isinstance(decrypted, dict) else {}
+        dealhub_host = dealhub_extra.get("instance_host")
+        dealhub_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await dealhub_validate(
+                build_dealhub_token(dealhub_host if isinstance(dealhub_host, str) else "", dealhub_secret)
+            )
+        except Exception:
+            logger.debug("DealHub connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
     # OVHcloud signs each request (application key mode) or mints an OAuth2
     # bearer (service account mode): the secret is in api_key_enc, the rest of
     # the credential in extra_config. Validate with the provider's own read of
