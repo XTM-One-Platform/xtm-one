@@ -6069,6 +6069,7 @@
   "Webhook secret": "Secreto del webhook",
   "Webhooks": "Webhooks",
   "Webhooks for {provider} are managed by your administrator. Events will be delivered to your agents automatically.": "Los webhooks de {provider} los gestiona su administrador. Los eventos se entregarán a sus agentes automáticamente.",
+  "Events from {provider} are picked up by polling. No webhook needs to be configured in {provider}.": "Los eventos de {provider} se recogen por sondeo periódico. No es necesario configurar ningún webhook en {provider}.",
   "Website": "Sitio web",
   "Weekdays at 8 AM": "Días laborables a las 8 AM",
   "Weekly": "Semanal",

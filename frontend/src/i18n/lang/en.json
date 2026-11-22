@@ -6074,6 +6074,7 @@
   "Webhook secret": "Webhook secret",
   "Webhooks": "Webhooks",
   "Webhooks for {provider} are managed by your administrator. Events will be delivered to your agents automatically.": "Webhooks for {provider} are managed by your administrator. Events will be delivered to your agents automatically.",
+  "Events from {provider} are picked up by polling. No webhook needs to be configured in {provider}.": "Events from {provider} are picked up by polling. No webhook needs to be configured in {provider}.",
   "Website": "Website",
   "Weekdays at 8 AM": "Weekdays at 8 AM",
   "Weekly": "Weekly",
