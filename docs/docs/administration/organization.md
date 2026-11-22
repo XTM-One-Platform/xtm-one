@@ -251,6 +251,8 @@ An outbound run writes with the token of the administrator who saved the sync, l
 | AI systems | OpenAEV | Inbound: OpenAEV has no AI system object to write |
 | Tech stack | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
 
+In **Syncs**, the **Direction** column shows each sync's master, and **Edit** sets it: **Outbound** is offered only where the platform can be written, otherwise it is greyed out with the reason. Changing the direction shows that the new direction starts clean before you save.
+
 `GET /api/v1/organization-context/syncs/directions` lists, per section and platform, the directions a sync may take and why outbound is not offered.
 
 The syncs run on the platform's scheduler, with no model call, AI on or off. The API is `GET`, `POST /api/v1/organization-context/syncs`, `PUT` and `DELETE /syncs/{id}`, and `POST /syncs/{id}/run`; `direction` is `inbound` or `outbound`.
