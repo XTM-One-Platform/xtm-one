@@ -1057,14 +1057,17 @@ PLATFORM_HEALTH_DOC: dict[str, str] = {
         "Built in and on by default. The Memory Steward tidies agent memory every day, the Quality "
         "Analyst and the Flow Lab review agents and flows every week, and a weekly digest summarizes "
         "what was found and fixed. A signal (a feedback drop, a failure rate, a cost increase, a model "
-        "change) starts an investigation of the agent or flow concerned."
+        "change) starts an investigation of the agent or flow concerned. In XTM One, the OpenCTI, OpenAEV "
+        "and OpenCRQ Health Checkers run each module's health checks once a day, read-only through the "
+        "module's integration, and report every check with its evidence."
     ),
     "triggers": (
         "- **Signals**: a feedback drop, a failure rate, a cost increase or a model change on an agent or a flow.\n"
         "- **Memory review**: daily, on the schedule set in Settings.\n"
         "- **Quality review**: weekly, on the schedule set in Settings.\n"
         "- **Flow review**: weekly, on the schedule set in Settings.\n"
-        "- **Weekly digest**: on the schedule set in Settings."
+        "- **Weekly digest**: on the schedule set in Settings.\n"
+        "- **Module checks**: daily, on every registered OpenCTI, OpenAEV and OpenCRQ (XTM One)."
     ),
     "flow": (
         "1. Detect: a schedule fires or a signal crosses its threshold.\n"
@@ -1072,7 +1075,7 @@ PLATFORM_HEALTH_DOC: dict[str, str] = {
         "3. Propose: a finding and, when one helps, an improvement proposal a person decides on.\n"
         "4. Report: the weekly digest lists the cycles closed."
     ),
-    "objects_created": "Health cycles, findings, improvement proposals and the weekly digest.",
+    "objects_created": "Health cycles, findings, module check reports, improvement proposals and the weekly digest.",
     "prerequisites": (
         "Platform Health switched on in Settings > Agents and automations > Platform Health, where its "
         "schedules, signals and budget are set. The fleet itself is built in and read-only."
@@ -1092,6 +1095,7 @@ PLATFORM_HEALTH_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Quality review", "filter": "Weekly, on the schedule set in Settings"},
         {"module": "schedule", "name": "Flow review", "filter": "Weekly, on the schedule set in Settings"},
         {"module": "schedule", "name": "Weekly digest", "filter": "On the schedule set in Settings"},
+        {"module": "schedule", "name": "Module checks", "filter": "Daily, on every registered module (XTM One)"},
     ],
     "steps": [
         {"title": "Detect", "detail": "A schedule fires or a signal crosses its threshold."},
@@ -1100,7 +1104,10 @@ PLATFORM_HEALTH_STRUCTURED: dict[str, Any] = {
         {"title": "Report", "detail": "The weekly digest lists the cycles closed."},
     ],
     "objects": [
-        {"module": "platform", "objects": ["Health cycles", "Findings", "Improvement proposals", "Weekly digest"]},
+        {
+            "module": "platform",
+            "objects": ["Health cycles", "Findings", "Module check reports", "Improvement proposals", "Weekly digest"],
+        },
     ],
 }
 
