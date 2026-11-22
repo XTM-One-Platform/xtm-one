@@ -176,6 +176,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
     async def _create(title: str = "", issue_ids: list[str] | None = None, reason: str = "") -> str:
         from app.core.database import async_session
+        from app.services import ctem_case_loop as case_loop
         from app.services import ctem_cases as rules
         from app.services import ctem_cases_store as store
         from app.services import ctem_cases_view as view_of
@@ -186,6 +187,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if org_id is None or scope is None:
                     return "No organization is set up yet: no case can be created."
                 view = await view_of.viewer_view(db, str(scope), vertical)
+                pending = case_loop.PendingEvents()
                 case = await store.create_manual_case(
                     db,
                     organization_id=org_id,
@@ -195,8 +197,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     visible=set(view.open_ids),
                     actor=agent_id,
                     reason=(reason or "").strip() or None,
+                    events=pending,
                 )
                 await db.commit()
+                await case_loop.publish_pending(pending)
                 shown = await _shown(db, case.id, org_id, vertical)
                 return _dump({"created": shown[2] if shown else {"id": str(case.id), "title": case.title}})
         except rules.CaseRuleError as exc:

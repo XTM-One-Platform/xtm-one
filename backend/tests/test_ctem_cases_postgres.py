@@ -12,6 +12,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -339,6 +340,149 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
                 source_ids=[target.id],
                 actor=str(owner_id),
             )
+
+
+def _names(events: Any) -> list[str]:
+    return [name for name, _, _ in events.items]
+
+
+async def test_a_reader_case_raises_its_events_once_and_takes_the_severity_of_its_priority() -> None:
+    """#1206: opened on a new case, nothing on a repeat, resolved when all close, reopened after."""
+    from app.services import ctem_case_loop as loop
+
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        events = loop.PendingEvents()
+        await store.apply_recompute(
+            session, organization_id=org_id, vertical="cyber", issues=[_issue("v1", "CVE-1")], events=events, now=NOW
+        )
+        await session.commit()
+        case = (await session.execute(select(CtemCase))).scalar_one()
+        assert _names(events) == [loop.CASE_OPENED]
+        assert events.items[0][1]["case_id"] == str(case.id)
+        # CVSS 9.8 is critical: the scope gate's P1 and its 24 hour SLA, no human ranks it.
+        assert (case.severity, case.sla_due_at) == ("P1", NOW + timedelta(hours=24))
+
+        again = loop.PendingEvents()
+        await store.apply_recompute(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            issues=[_issue("v1", "CVE-1")],
+            events=again,
+            now=NOW + timedelta(hours=1),
+        )
+        await session.commit()
+        assert again.items == []
+        assert await loop.announce_unannounced(session, events=again, now=NOW) == 0
+
+        closing = loop.PendingEvents()
+        await store.apply_recompute(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            issues=[],
+            closed=["opencti:v1"],
+            events=closing,
+            now=NOW + timedelta(hours=2),
+        )
+        await session.commit()
+        assert _names(closing) == [loop.CASE_RESOLVED]
+
+        reopening = loop.PendingEvents()
+        await store.apply_recompute(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            issues=[_issue("v1", "CVE-1")],
+            events=reopening,
+            now=NOW + timedelta(hours=3),
+        )
+        await session.commit()
+        assert _names(reopening) == [loop.CASE_REOPENED]
+        announced = (
+            await session.execute(
+                select(CtemCaseEvent).where(CtemCaseEvent.case_id == case.id, CtemCaseEvent.kind == store.ANNOUNCED)
+            )
+        ).scalars()
+        assert len(list(announced)) == 1
+
+
+async def test_a_lower_priority_read_never_relaxes_the_severity() -> None:
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        low = rules.SourceIssue(
+            source="opencti", external_id="v1", name="CVE-1", product="Tomcat", vendor="Apache", fixed_version="9.0.98"
+        )
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=[low], now=NOW)
+        await session.commit()
+        case = (await session.execute(select(CtemCase))).scalar_one()
+        assert (case.severity, case.sla_due_at) == ("P3", NOW + timedelta(hours=720))
+        await store.apply_recompute(
+            session, organization_id=org_id, vertical="cyber", issues=[low, _issue("v2", "CVE-2")], now=NOW
+        )
+        await session.commit()
+        await session.refresh(case)
+        assert (case.severity, case.sla_due_at) == ("P1", NOW + timedelta(hours=24))
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=[low], now=NOW)
+        await session.commit()
+        await session.refresh(case)
+        assert case.severity == "P1"
+
+
+async def test_the_backfill_announces_every_open_case_once() -> None:
+    """#1206: cases written before their own event raise ctem_case.opened once on the sweep, never twice."""
+    from app.services import ctem_case_loop as loop
+
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        issues = [_issue("v1", "CVE-1")]
+        other = rules.SourceIssue(
+            source="opencti", external_id="n1", name="CVE-9", product="nginx", vendor="F5", fixed_version="1.27.3"
+        )
+        # Written without events: what every case of a build before #1206 looks like.
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=[*issues, other], now=NOW)
+        await session.commit()
+        cases = (await session.execute(select(CtemCase))).scalars().all()
+        assert len(cases) == 2
+        resolved = next(c for c in cases if c.product_label and "nginx" in c.product_label.lower())
+        resolved.state = "resolved"
+        await session.commit()
+
+        first = loop.PendingEvents()
+        assert await loop.announce_unannounced(session, events=first, now=NOW) == 1
+        await session.commit()
+        assert _names(first) == [loop.CASE_OPENED]
+        assert first.items[0][1]["case_id"] != str(resolved.id)
+
+        second = loop.PendingEvents()
+        assert await loop.announce_unannounced(session, events=second, now=NOW) == 0
+        assert second.items == []
+        assert await loop.announce_unannounced(session, events=None, now=NOW) == 0
+
+
+async def test_a_manual_split_announces_the_new_case() -> None:
+    from app.services import ctem_case_loop as loop
+
+    async with _database() as sessions, sessions() as session:
+        org_id, owner_id = await _seed(session)
+        issues = [_issue("v1", "CVE-1"), _issue("v2", "CVE-2")]
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=issues, now=NOW)
+        events = loop.PendingEvents()
+        manual = await store.create_manual_case(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            title="Tomcat on the DMZ",
+            member_ids=["opencti:v2"],
+            visible={"opencti:v1", "opencti:v2"},
+            actor=str(owner_id),
+            events=events,
+            now=NOW,
+        )
+        await session.commit()
+        assert _names(events) == [loop.CASE_OPENED]
+        assert events.items[0][1]["case_id"] == str(manual.id)
 
 
 async def test_the_schema_refuses_an_incomplete_accepted_risk():
