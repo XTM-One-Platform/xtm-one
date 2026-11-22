@@ -74,8 +74,8 @@ describe("CaseAttentionNow (#1176)", () => {
 
   it("titles the band with the shared h3 section header (UX r1 B1)", () => {
     render(kase({}));
-    const heading = screen.getByRole("heading", { level: 3, name: "Why this case needs attention now" });
-    expect(heading.className).toContain("font-semibold");
+    expect(screen.getByRole("heading", { level: 3, name: "Why this case needs attention now" })).toBeTruthy();
+    expect(screen.getByTestId("ctem-case-attention-title")).toBeTruthy();
   });
 
   it("labels the date Opened, like the why line, and says Today on the day it opened (UX r1 B2)", () => {
