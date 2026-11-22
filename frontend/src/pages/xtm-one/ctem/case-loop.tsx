@@ -66,7 +66,9 @@ export function slaSentence(countdown: NonNullable<ReturnType<typeof slaCountdow
  * The loop marks of a case: reopened by a failed re-test, escalated past its
  * SLA, closed on a passing re-test (CTEM-14-UI: resolved, and its latest
  * validation is a re-test that passed; `closedAt` and `closedProvider` say
- * when and where, never the run's internal reference: UX round 1 on #962, B3).
+ * when and where, never the run's internal reference: UX round 1 on #962, B3),
+ * or closed at source (CTEM-25-UI: resolved, and its latest validation is a
+ * passing `rescan`, the source closed every member, e.g. Aikido `issue.closed`).
  */
 export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" | "sla_breached_at">): {
   reopened: boolean;
@@ -74,21 +76,26 @@ export function caseLoopMarks(c: Pick<CtemCaseSummary, "state" | "validations" |
   closedOnRetest: boolean;
   closedAt: string | null;
   closedProvider: string | null;
+  closedAtSource: boolean;
 } {
   const open = OPEN_STATES.has(c.state);
   const last = c.validations?.length ? c.validations[c.validations.length - 1] : undefined;
-  const closedOnRetest = c.state === "resolved" && last?.kind === "retest" && (last.result === "passed" || last.result === "not_exposed");
+  const passing = c.state === "resolved" && (last?.result === "passed" || last?.result === "not_exposed");
+  const closedOnRetest = passing && last?.kind === "retest";
+  const closedAtSource = passing && last?.kind === "rescan";
+  const closed = closedOnRetest || closedAtSource;
   return {
     reopened: open && last?.result === "failed",
     escalated: open && Boolean(c.sla_breached_at),
     closedOnRetest,
-    closedAt: closedOnRetest && last ? last.at : null,
-    closedProvider: closedOnRetest && last ? (PROVIDER_NAMES[last.provider] ?? null) : null,
+    closedAt: closed && last ? last.at : null,
+    closedProvider: closed && last ? (PROVIDER_NAMES[last.provider] ?? null) : null,
+    closedAtSource,
   };
 }
 
 /** Product names of the validation providers a case can carry. */
-const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI" };
+const PROVIDER_NAMES: Readonly<Record<string, string>> = { openaev: "OpenAEV", opencti: "OpenCTI", aikido: "Aikido Security" };
 
 /** The re-test words of an OpenAEV member of a case (CTEM-14-UI). @i18n-keys */
 const RETEST_LABELS = {
@@ -157,6 +164,13 @@ function closedSentence(provider: string | null, date: string | null, t_i18n: Tr
   return t_i18n("Closed on passing re-test");
 }
 
+/** The sentence behind "Closed at source": the source closed every member of the case. */
+function closedAtSourceSentence(provider: string | null, date: string | null, t_i18n: Translate): string {
+  if (provider && date) return t_i18n("{provider} closed every finding of this case on {date}", { provider, date });
+  if (date) return t_i18n("The source closed every finding of this case on {date}", { date });
+  return t_i18n("Closed at source");
+}
+
 function CaseSeverityChip({ severity }: { severity: CtemCaseSeverity | null | undefined }) {
   if (!severity) return null;
   return <Chip label={severity} severity={SEVERITY_CHIP[severity]} className="shrink-0" />;
@@ -180,7 +194,8 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
   const tabIndex = useTriggerTabIndex();
   const marks = caseLoopMarks(c);
   const countdown = OPEN_STATES.has(c.state) ? slaCountdown(c.sla_due_at, now) : null;
-  if (!countdown && !marks.reopened && !marks.escalated && !marks.closedOnRetest) return null;
+  if (!countdown && !marks.reopened && !marks.escalated && !marks.closedOnRetest && !marks.closedAtSource) return null;
+  const closedDate = marks.closedAt ? intl.formatDate(marks.closedAt, { dateStyle: "medium" }) : null;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 content-caption" data-testid="ctem-case-loop-line">
       {countdown && (
@@ -202,11 +217,7 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
       )}
       {marks.closedOnRetest && (
         <Tip
-          content={closedSentence(
-            marks.closedProvider,
-            marks.closedAt ? intl.formatDate(marks.closedAt, { dateStyle: "medium" }) : null,
-            t_i18n,
-          )}
+          content={closedSentence(marks.closedProvider, closedDate, t_i18n)}
         >
           <span
             tabIndex={tabIndex}
@@ -215,6 +226,18 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
           >
             <Icon name="circle-check" size={16} aria-hidden />
             {t_i18n("Closed on passing re-test")}
+          </span>
+        </Tip>
+      )}
+      {marks.closedAtSource && (
+        <Tip content={closedAtSourceSentence(marks.closedProvider, closedDate, t_i18n)}>
+          <span
+            tabIndex={tabIndex}
+            className={cn("flex items-center gap-1 text-default-primary", TIP_WRAP_FOCUS_RING)}
+            data-testid="ctem-case-closed-at-source"
+          >
+            <Icon name="circle-check" size={16} aria-hidden />
+            {t_i18n("Closed at source")}
           </span>
         </Tip>
       )}
