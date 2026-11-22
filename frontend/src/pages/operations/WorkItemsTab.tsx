@@ -1392,6 +1392,7 @@ export default function WorkItemsTab({
                     graph={graph}
                     isLoading={graphLoading}
                     onOpenItem={(id) => openDetails({ id } as WorkItem)}
+                    readerId={user?.id}
                   />
                 )
               : undefined

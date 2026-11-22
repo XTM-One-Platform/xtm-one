@@ -54,7 +54,7 @@ import { useFitToViewport } from "@/hooks/useFitToViewport";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/work-item-context";
+import { PRIORITY_LABELS, STATUS_LABELS, waitsForReader } from "@/lib/work-item-context";
 import { criticalLeaves, focusChains, shownGraph } from "@/lib/work-item-graph";
 import type {
   WorkItemGraph,
@@ -118,6 +118,8 @@ type GraphNodeData = {
   node: WorkItemGraphNode;
   focus: FocusState;
   critical: boolean;
+  /** The item waits for the reader (the Waiting for me population, #1001): its marker. */
+  waitingForYou: boolean;
   onOpen?: (id: string) => void;
   onSelect: (id: string) => void;
 };
@@ -174,6 +176,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
       data-node-id={node.id}
       data-focus={data.focus}
       data-critical={data.critical || undefined}
+      data-waiting-for-you={data.waitingForYou || undefined}
       className={cn(
         "flex h-full w-full flex-col gap-1 rounded-md border border-elevation-subtle border-s-4 bg-elevation-default px-2.5 py-2 text-start",
         STATUS_BAR[node.status],
@@ -204,6 +207,12 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
       </div>
       <div className="flex min-w-0 items-center gap-1">
         <Badge variant="secondary" className={cn("content-caption", STATUS_TONE[node.status])}>{t_i18n(status)}</Badge>
+        {/* The list row's Waiting for you marker, same tone (#1001). */}
+        {data.waitingForYou && (
+          <Badge variant="secondary" className="shrink-0 gap-1 content-caption bg-accent/10 text-accent" data-testid="work-item-graph-waiting-for-you">
+            <Icon name="users" size={16} aria-hidden /> {t_i18n("Waiting for you")}
+          </Badge>
+        )}
         {priority && <Badge variant="secondary" className="content-caption">{t_i18n(priority)}</Badge>}
         {node.owner_agent?.name && (
           <span className="flex min-w-0 items-center gap-1 content-caption text-default-secondary">
@@ -330,10 +339,13 @@ export function WorkItemGraphView({
   graph,
   isLoading,
   onOpenItem,
+  readerId,
 }: {
   graph: WorkItemGraph | undefined;
   isLoading: boolean;
   onOpenItem: (id: string) => void;
+  /** The signed-in reader: the nodes that wait for them carry the Waiting for you marker. */
+  readerId?: string;
 }) {
   const { t_i18n } = useFormatter();
   const colorMode = useColorMode();
@@ -370,6 +382,7 @@ export function WorkItemGraphView({
           node,
           focus,
           critical: critical.has(node.id),
+          waitingForYou: node.kind === "item" && !node.outside_filter && waitsForReader(node, readerId),
           onOpen: node.kind === "item" ? onOpenItem : undefined,
           onSelect: selectNode,
         },
@@ -379,7 +392,7 @@ export function WorkItemGraphView({
         focusable: false,
       };
     });
-  }, [shown, positions, chains, selected, critical, onOpenItem]);
+  }, [shown, positions, chains, selected, critical, onOpenItem, readerId]);
 
   const edges = useMemo<Edge[]>(() => {
     if (!shown) return [];

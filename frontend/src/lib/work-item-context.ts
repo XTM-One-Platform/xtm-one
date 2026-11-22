@@ -220,7 +220,10 @@ const TERMINAL_STATUSES: ReadonlySet<WorkItemStatus> = new Set(["done", "cancell
  * no agent owns, open past its due date. A scheduled item never waits for anyone.
  */
 export function waitsForReader(
-  item: Pick<WorkItem, "needs_human" | "waits_for_user_id" | "status" | "user_id" | "owner_agent_id" | "due_at" | "scheduled">,
+  // A list row (`scheduled` its view) or a graph item node (`scheduled` a flag).
+  item: Pick<WorkItem, "needs_human" | "waits_for_user_id" | "status" | "user_id" | "owner_agent_id" | "due_at"> & {
+    scheduled: WorkItem["scheduled"] | boolean;
+  },
   readerId: string | undefined,
   now: number = Date.now(),
 ): boolean {

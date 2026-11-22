@@ -6745,6 +6745,12 @@ export interface WorkItemGraphItemNode {
   is_program_root: boolean;
   /** A blocker the filter left out, drawn so the chain does not end on nothing. */
   outside_filter: boolean;
+  /** What the Waiting for me filter reads (`waitsForReader`): the node's Waiting for you marker. */
+  user_id: string | null;
+  waits_for_user_id: string | null;
+  owner_agent_id: string | null;
+  due_at: string | null;
+  scheduled: boolean;
 }
 
 /** A pull request, issue, deployment or workflow run an item waits for. */

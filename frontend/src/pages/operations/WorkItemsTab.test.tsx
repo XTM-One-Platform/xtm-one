@@ -965,7 +965,8 @@ describe("Work Items Clear all filters", () => {
   it("drops view, owner, fleet, status and search, keeps item, vis and sort", () => {
     // The fleet key waits on the reader's fleet access here; clearFilterParams' own test covers it.
     renderAt("&view=waiting&agent=agent-1&status=blocked&wi_q=deploy&q=old&stale=stale&wi_sort=due:asc&item=regular&wi_page=2");
-    fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters" })[0]);
+    // `item` opens the detail dialog, which hides the page behind it from the role query.
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear all filters", hidden: true })[0]);
     const params = new URLSearchParams(LOCATION.search);
     for (const key of ["view", "agent", "status", "wi_q", "q", "stale", "wi_page"]) expect(params.has(key), key).toBe(false);
     expect(params.get("vis")).toBe("mine");
@@ -996,7 +997,8 @@ describe("Work Items Clear all filters", () => {
     ITEMS = [];
     try {
       renderAt("&view=waiting&status=blocked");
-      fireEvent.click(screen.getByTestId("work-items-empty-clear-all"));
+      // The view narrows the list, so the empty list is the table's no-results line and its Clear all.
+      fireEvent.click(within(screen.getByTestId("data-table-no-results")).getByRole("button", { name: "Clear all filters" }));
       const params = new URLSearchParams(LOCATION.search);
       expect(params.has("view")).toBe(false);
       expect(params.has("status")).toBe(false);

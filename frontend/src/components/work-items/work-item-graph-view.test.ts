@@ -40,6 +40,12 @@ test("the fit reserves the in-frame bar at the top, so no node is fitted under i
   assert.match(VIEW, /fitView\(FIT_VIEW_OPTIONS\)/);
 });
 
+test("an item node that waits for the reader carries the list's Waiting for you marker (#1001)", () => {
+  // Same rule as the list rows (waitsForReader), never on a blocker drawn outside the filter.
+  assert.match(VIEW, /waitingForYou: node\.kind === "item" && !node\.outside_filter && waitsForReader\(node, readerId\)/);
+  assert.match(VIEW, /data-testid="work-item-graph-waiting-for-you"/);
+});
+
 test("the graph glyph of the view switch is the design system's Icon (UX r1 B4 on #979)", () => {
   assert.equal(/from "lucide-react"[^\n]*Network|\bNetwork\b,/.test(TOGGLE), false);
   assert.match(TOGGLE, /<Icon name="network"/);
