@@ -222,6 +222,26 @@ export function useRecordSetupStep() {
 }
 
 /**
+ * How many times Reset onboarding succeeded in this page session: a client-only
+ * counter, never fetched. The setup proposal reopens on a new value only, not on
+ * a refetch of the setup-prompt query (which any `organization-context`
+ * invalidation triggers with identical data).
+ */
+const SETUP_PROMPT_RESETS_KEY = [...KEY, "setup-prompt-resets"] as const;
+
+export function useOrganizationSetupPromptResets(): number {
+  const { data } = useQuery<number>({
+    queryKey: SETUP_PROMPT_RESETS_KEY,
+    queryFn: () => 0,
+    enabled: false,
+    initialData: 0,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  return data;
+}
+
+/**
  * Reset onboarding (`DELETE /organization-context/setup-prompt`, administrators,
  * XTM One mode): the answer and step progress are forgotten, so the guided setup
  * is proposed again as after a fresh install. Nothing else is changed.
@@ -232,6 +252,7 @@ export function useResetOrganizationSetupPrompt() {
     mutationFn: () => api.delete("/organization-context/setup-prompt"),
     onSuccess: (state) => {
       qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.setQueryData<number>(SETUP_PROMPT_RESETS_KEY, (count) => (count ?? 0) + 1);
       qc.invalidateQueries({ queryKey: [...KEY, "setup-prompt"] });
       qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
     },
@@ -384,8 +405,7 @@ export function useDraftOrganizationContext() {
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
-/** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
-export type ImportSourceKey = "openaev" | "opencti" | "opencrq" | "intune" | "defender";
+export type ImportSourceKey = "openaev" | "opencti" | "opencrq";
 
 export interface ImportSourcesResponse {
   sections: {

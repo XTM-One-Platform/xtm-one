@@ -289,20 +289,12 @@ def build_organization_context_write_tools(
                     "applied": False,
                     "notice": SHARED_CONTEXT_NOTICE,
                 }
-                if plan.error or not apply:
-                    return json.dumps(answer, default=str)
-                if not (plan.new or plan.updated) or plan.profile is None:
-                    # An endpoint source (#1251) may change only the software of known devices.
-                    if plan.software and await imp.store_endpoint_software(db, plan):
-                        await db.commit()
-                        answer.update(applied=True)
+                if plan.error or not apply or not (plan.new or plan.updated) or plan.profile is None:
                     return json.dumps(answer, default=str)
                 sources = imp.provenance(plan, used)
                 row = await org_context.save_version(
                     db, plan.profile, source="draft", author_user_id=person.id, sources=sources
                 )
-                if plan.software:
-                    await imp.store_endpoint_software(db, plan)
                 await db.commit()
                 answer.update(applied=True, version=row.version)
                 return json.dumps(answer, default=str)
@@ -318,6 +310,7 @@ def build_organization_context_write_tools(
             "filters": sync.filters or {},
             "remove_gone": sync.remove_gone,
             "excluded_external_ids": list(getattr(sync, "excluded_external_ids", None) or []),
+            "direction": getattr(sync, "direction", None) or "inbound",
             "schedule": {
                 "frequency": sync.frequency,
                 "hour": sync.hour,
@@ -358,6 +351,7 @@ def build_organization_context_write_tools(
         minute: int = 0,
         weekday: int = 0,
         timezone: str = "UTC",
+        direction: str = "inbound",
     ) -> str:
         import json
 
@@ -387,6 +381,7 @@ def build_organization_context_write_tools(
                     minute=int(minute),
                     weekday=int(weekday),
                     timezone=timezone or "UTC",
+                    direction=direction or "inbound",
                 )
                 db.add(sync)
                 await db.flush()
@@ -655,6 +650,7 @@ def build_organization_context_write_tools(
                         "type": "boolean",
                         "description": "Drop rows gone from the source (default true).",
                     },
+                    "direction": {"type": "string", "enum": ["inbound", "outbound"]},
                     "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
                     "hour": {"type": "integer"},
                     "minute": {"type": "integer"},

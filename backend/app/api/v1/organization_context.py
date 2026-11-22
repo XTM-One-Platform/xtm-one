@@ -978,7 +978,7 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal["openaev", "opencti", "opencrq", "intune", "defender"]
+    source: Literal["openaev", "opencti", "opencrq"]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1042,7 +1042,7 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal["openaev", "opencti", "opencrq", "intune", "defender"],
+    source: Literal["openaev", "opencti", "opencrq"],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -1111,18 +1111,11 @@ async def apply_organization_import(
     response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
     removes = plan.remove_gone and bool(plan.gone)
     if not (plan.new or plan.updated or removes) or plan.profile is None:
-        if not plan.error and plan.software:
-            # An endpoint source (#1251): only the software changed (a re-run with new versions).
-            changed = await imp.store_endpoint_software(db, plan)
-            await db.commit()
-            response.applied = bool(changed)
         return response
     try:
         saved = await org_context.save_version(
             db, plan.profile, source="draft", author_user_id=admin.id, sources=imp.provenance(plan, body.filters)
         )
-        if not plan.error and plan.software:
-            await imp.store_endpoint_software(db, plan)
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -1137,13 +1130,16 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", ""] = ""
+    source: Literal["openaev", "opencti", "opencrq", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).
     remove_gone: bool = True
     #: The source ids this sync never imports (#1134); omitted: the stored list is kept.
     excluded_external_ids: list[str] | None = None
+    #: inbound: the platform is the master; outbound: the XTM One list is (#1134 S3, GET /syncs/directions).
+    #: Omitted: the stored direction is kept (inbound for a new sync), so an edit never resets an outbound sync.
+    direction: Literal["inbound", "outbound"] | None = None
     frequency: Literal["hourly", "daily", "weekly"] = "daily"
     hour: int = 6
     minute: int = 0
@@ -1161,6 +1157,9 @@ class OrganizationSyncResponse(BaseModel):
     batch_type: str
     remove_gone: bool
     excluded_external_ids: list[str] = []
+    direction: str = "inbound"
+    #: Outbound: how many platform rows this sync created and keeps in step.
+    outbound_count: int = 0
     frequency: str
     hour: int
     minute: int
@@ -1186,6 +1185,8 @@ async def _sync_response(db: AsyncSession, row: Any) -> OrganizationSyncResponse
         batch_type=row.batch_type,
         remove_gone=row.remove_gone,
         excluded_external_ids=list(row.excluded_external_ids or []),
+        direction=getattr(row, "direction", None) or "inbound",
+        outbound_count=len(getattr(row, "outbound_ids", None) or {}),
         frequency=row.frequency,
         hour=row.hour,
         minute=row.minute,
@@ -1209,6 +1210,34 @@ def _apply_sync_body(row: Any, body: OrganizationSyncRequest, admin: User) -> No
         osync.define(row, owner_id=admin.id, **body.model_dump())
     except osync.SyncRefusedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+class SyncDirectionSupport(BaseModel):
+    section: str
+    source: str
+    directions: list[str]
+    #: Why outbound is not offered (empty when it is).
+    reason: str = ""
+
+
+@router.get("/syncs/directions", response_model=list[SyncDirectionSupport])
+async def list_organization_sync_directions(
+    admin: User = Depends(require_admin),
+) -> list[SyncDirectionSupport]:
+    """Per section and platform, the directions a sync may take and why outbound is not offered (#1134 S3)."""
+    from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
+
+    return [
+        SyncDirectionSupport(
+            section=section,
+            source=source,
+            directions=list(outbound.directions(section, source)[0]),
+            reason=outbound.directions(section, source)[1],
+        )
+        for section, sources in imp.SECTION_SOURCES.items()
+        for source in sources
+    ]
 
 
 @router.get("/syncs", response_model=list[OrganizationSyncResponse])
