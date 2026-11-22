@@ -12,12 +12,16 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_case_loop as loop
 from app.services import ctem_cases as rules
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 NOW = datetime(2026, 11, 21, 10, 0, tzinfo=UTC)
 ORG = uuid.uuid4()
@@ -451,6 +455,34 @@ async def test_a_failed_validation_on_an_open_case_only_records_it():
         FakeSession(), case, provider="openaev", kind="check", ref="r", result="failed", now=NOW
     )
     assert case.state == "needs_attention" and case.validations[-1]["result"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_a_validation_records_safe_mode_and_run_order_when_given() -> None:
+    case = _case()
+    await loop.record_validation(
+        cast("AsyncSession", FakeSession()),
+        case,
+        provider="openaev",
+        kind="validation",
+        ref="sc-1",
+        result="pending",
+        safe_mode=True,
+        run_order=[" DMZ web ", "", "Core"] + [f"g{i}" for i in range(30)],
+        now=NOW,
+    )
+    entry = case.validations[-1]
+    assert entry["safe_mode"] is True
+    assert entry["run_order"][:2] == ["DMZ web", "Core"] and len(entry["run_order"]) == loop.RUN_ORDER_MAX
+
+
+@pytest.mark.asyncio
+async def test_a_validation_without_safe_mode_keeps_the_entry_shape() -> None:
+    case = _case()
+    await loop.record_validation(
+        cast("AsyncSession", FakeSession()), case, provider="openaev", kind="check", ref="r", result="pending", now=NOW
+    )
+    assert "safe_mode" not in case.validations[-1] and "run_order" not in case.validations[-1]
 
 
 @pytest.mark.asyncio
