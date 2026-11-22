@@ -265,7 +265,7 @@ def render_decision_card(view: DecisionView, language: str, *, banner: str | Non
     else:
         body.extend(_ask_body(ask, language, show_effects=False))
         body.extend(_decided_body(view, ask, language))
-    return ensure_full_width_card(
+    card: dict[str, Any] = ensure_full_width_card(
         {
             "type": "AdaptiveCard",
             "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -275,6 +275,7 @@ def render_decision_card(view: DecisionView, language: str, *, banner: str | Non
             "actions": [*actions, *_link_actions(view, ask, language)],
         }
     )
+    return card
 
 
 def _decided_body(view: DecisionView, ask: dict[str, Any], language: str) -> list[dict[str, Any]]:
@@ -407,7 +408,7 @@ async def load_view(db: AsyncSession, decision: Decision, user: Any, language: s
     )
 
 
-async def _row_for(db: AsyncSession, data: dict) -> Decision | None:
+async def _row_for(db: AsyncSession, data: dict[str, Any]) -> Decision | None:
     """The decision row the card data names, or ``None``: a client may send anything."""
     from app.services.decision_router import resolve
 

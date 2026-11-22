@@ -333,6 +333,16 @@ JSON: they pass a decision.
   `xtm.decision.answer` (option or text) with `xtm.run.decide` and
   `xtm.run.answer` kept as aliases for cards already in conversations.
 
+As built (S9, Teams bot path (a)): `services/decision_cards.py` renders the
+card and answers `xtm.decision.answer` through `decision_router.answer_decision`
+(surface `teams_card`); `services/decision_card_delivery.py` records every
+conversation the bot hears from (`teams:bot_conversation:<id>` in Redis, 90
+days, a channel thread recorded as its channel) and posts the card there.
+`work_item_notify` sends the item's open decision as the bot's card when the
+bot is in the target (the person's 1:1 with the bot, the chat or the channel),
+else the account's text as before; the D notify path (`notify.py`
+`_notify_teams`) sends a paused run's open decision as the card to its owner.
+
 ### I.3 Answering in place
 
 A button calls the answer router of E as the person who clicked: identity by
