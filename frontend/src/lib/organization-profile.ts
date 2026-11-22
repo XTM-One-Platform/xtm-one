@@ -7,13 +7,15 @@
  * The server validates again (ISO codes, bounds) and names the bad field.
  */
 
+import type { Provenance } from "./organization-provenance";
+
 export interface ProfileLike {
   name: string;
   sector: string;
   sub_sector: string;
   regions: string[];
   size: string;
-  crown_jewels: {
+  crown_jewels: ({
     name: string;
     business_service: string;
     owner: string;
@@ -21,10 +23,10 @@ export interface ProfileLike {
     opencrq_asset_id: string;
     /** The assets and asset groups (by name) the crown jewel runs on (#11543, groups apart since #11781). */
     asset_names?: string[];
-  }[];
+  } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
-  tech_stack: { product: string; vendor: string; cpe: string; version?: string }[];
-  ai_systems: { name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string }[];
+  tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
+  ai_systems: ({ name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string } & Provenance)[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615): the page never labels a PIR with its id. */
   pir_names?: Record<string, string>;
