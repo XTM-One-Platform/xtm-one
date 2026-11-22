@@ -3206,6 +3206,29 @@ def seed_xtm_mcp(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"Platform Tools MCP Server": {"id": "xtm_mcp_enabled", "url": f"{base}/profile/mcp"}}
 
 
+#: ``LAB_PLATFORM_HEALTH``: ``off`` (default) leaves Platform Health off, as on a new platform; ``on`` turns it on
+#: (#101 S15d-3), so the module round of the registered modules runs in ``[service.lab-module-health]``.
+LAB_PLATFORM_HEALTH_STATES = ("off", "on")
+
+
+def seed_platform_health(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Platform Health on under ``LAB_PLATFORM_HEALTH=on`` (#101 S15d-3); nothing otherwise.
+
+    Turned on through the real ``GET`` then ``PUT /health/settings`` (every other setting kept as read, the
+    module checks included), read back on ``GET /health/settings``. May raise: the caller logs and skips.
+    """
+    if lab_switch("LAB_PLATFORM_HEALTH", LAB_PLATFORM_HEALTH_STATES) != "on":
+        return {}
+    settings = api("GET", "/health/settings", token)
+    if not isinstance(settings, dict):
+        raise RuntimeError("GET /health/settings answered no settings object")
+    api("PUT", "/health/settings", token, {**settings, "enabled": True})
+    after = api("GET", "/health/settings", token)
+    if not isinstance(after, dict) or after.get("enabled") is not True:
+        raise RuntimeError("GET /health/settings answers Platform Health off after the change")
+    return {"Platform Health": {"id": "enabled", "url": f"{base}/health"}}
+
+
 #: The agent whose welcome screen shows suggestion chips: ``GET /chat/suggestions`` answers an agent's own
 #: ``web_suggested_prompts`` and nothing else, so with no agent carrying some the chatbot's welcome screen
 #: never renders its chips. The third is long enough for the design system's Chip to cut it at 250 px.
@@ -7089,6 +7112,10 @@ def seed_entities() -> None:
         seeded.update(seed_xtm_mcp(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["Platform Tools MCP Server"] = str(exc)[:600]
+    try:
+        seeded.update(seed_platform_health(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["Platform Health"] = str(exc)[:600]
     try:
         seeded.update(seed_chat_suggestions(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
