@@ -20696,5 +20696,10 @@
   "The evidence health pass finds a supporting asset with no evidence": "The evidence health pass finds a supporting asset with no evidence",
   "Not computed yet": "Not computed yet",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}",
-  "Open the {product} integration": "Open the {product} integration"
+  "Open the {product} integration": "Open the {product} integration",
+  "Agentic checks": "Agentic checks",
+  "No check round yet": "No check round yet",
+  "Show the checks": "Show the checks",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# not run} other {# not run}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}"
 }

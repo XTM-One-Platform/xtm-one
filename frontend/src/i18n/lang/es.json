@@ -20696,5 +20696,10 @@
   "The evidence health pass finds a supporting asset with no evidence": "La pasada de salud de evidencias halla un activo de apoyo sin evidencia",
   "Not computed yet": "Aún no calculado",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} no respondió a las {time}, casos sin cambios.} other {{products} no respondieron a las {time}, casos sin cambios.}}",
-  "Open the {product} integration": "Abrir la integración de {product}"
+  "Open the {product} integration": "Abrir la integración de {product}",
+  "Agentic checks": "Comprobaciones agénticas",
+  "No check round yet": "Aún no hay ninguna ronda de comprobaciones",
+  "Show the checks": "Ver las comprobaciones",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}"
 }
