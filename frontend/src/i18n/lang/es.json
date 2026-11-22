@@ -20751,5 +20751,21 @@
   "OpenCTI Systems are owned by its connectors.": "Los sistemas de OpenCTI pertenecen a sus conectores.",
   "OpenAEV has no AI system object to write.": "OpenAEV no tiene ningún objeto de sistema de IA que escribir.",
   "OpenAEV software inventory is read from its agents.": "El inventario de software de OpenAEV se lee de sus agentes.",
-  "This pairing reads only.": "Esta combinación es de solo lectura."
+  "This pairing reads only.": "Esta combinación es de solo lectura.",
+  "Running versions": "Versiones en uso",
+  "this product": "este producto",
+  "No asset in the inventory reports {product}: the running versions come from the assets (Intune, Defender, an SBOM, OpenAEV).": "Ningún activo del inventario informa de {product}: las versiones en uso vienen de los activos (Intune, Defender, un SBOM, OpenAEV).",
+  "{count, plural, =0 {No asset is below {version}} one {# asset still below {version}} other {# assets still below {version}}}": "{count, plural, =0 {Ningún activo por debajo de {version}} one {# activo aún por debajo de {version}} other {# activos aún por debajo de {version}}}",
+  "{count, plural, =0 {No asset runs {version} or later yet} one {# asset runs {version} or later} other {# assets run {version} or later}}": "{count, plural, =0 {Ningún activo usa aún {version} o posterior} one {# activo usa {version} o posterior} other {# activos usan {version} o posterior}}",
+  "{count, plural, one {# asset runs a version that cannot be compared} other {# assets run a version that cannot be compared}}": "{count, plural, one {# activo usa una versión que no se puede comparar} other {# activos usan una versión que no se puede comparar}}",
+  "{count, plural, one {# more version not listed} other {# more versions not listed}}": "{count, plural, one {# versión más no listada} other {# versiones más no listadas}}",
+  "No version": "Ninguna versión",
+  "Below the fixed version": "Por debajo de la versión corregida",
+  "On the fixed version or later": "En la versión corregida o posterior",
+  "Cannot be compared": "No se puede comparar",
+  "SBOM": "SBOM",
+  "CSV import": "Importación CSV",
+  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "El inventario de activos informa de {product} en {assets, plural, one {# activo} other {# activos}} con {versions, plural, one {# versión} other {# versiones}}.",
+  "Asset count": "Número de activos",
+  "Versions not listed": "Versiones no listadas"
 }
