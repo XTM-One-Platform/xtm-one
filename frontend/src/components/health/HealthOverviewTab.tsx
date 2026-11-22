@@ -396,7 +396,7 @@ export function HealthOverviewTab() {
   // summary (#961) and the Module Analyst's last investigation (section 12.7). An analysed module never
   // investigated shows its summary; an investigated module with no newer summary shows the investigation
   // line. Both bodies share one header, and an analyst card's menu always holds Analyse now and
-  // Investigate now (UX round 6 B1, B2). No row to show, no footer: a card never carries an empty divider.
+  // Run checks now (UX round 6 B1, B2). No row to show, no footer: a card never carries an empty divider.
   const moduleFooter = (card: (typeof cards)[number]) => {
     if (!isAdmin) return undefined;
     const hasOpenFindings = card.critical + card.warning + card.info > 0;

@@ -227,7 +227,7 @@ export function ModuleAnalysisSummary({
   module: HealthModule;
   hasOpenFindings: boolean;
   overview: HealthAnalysisOverview | undefined;
-  /** The card's other AI actions (Investigate now on an analyst module), after Analyse now. */
+  /** The card's other AI actions (Run checks now on an analyst module), after Analyse now. */
   extraItems?: OverflowMenuItem[];
   extraBusy?: boolean;
 }) {
