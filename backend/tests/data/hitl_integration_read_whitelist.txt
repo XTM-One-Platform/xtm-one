@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2004 tools across 116 providers; 53 held back by hand.
+# 2033 tools across 116 providers; 54 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -133,6 +133,48 @@ aikido:list_aikido_users
 aikido:list_aikido_virtual_machines
 aikido:list_aikido_webhooks
 aikido:list_aikido_zen_users
+airwallex:export_airwallex_financial_report
+airwallex:get_airwallex_account
+airwallex:get_airwallex_beneficiary
+airwallex:get_airwallex_card
+airwallex:get_airwallex_card_limits
+airwallex:get_airwallex_card_transaction
+airwallex:get_airwallex_cardholder
+airwallex:get_airwallex_connected_account
+airwallex:get_airwallex_conversion
+airwallex:get_airwallex_deposit
+airwallex:get_airwallex_financial_report
+airwallex:get_airwallex_financial_transaction
+airwallex:get_airwallex_fx_quote
+airwallex:get_airwallex_fx_rate
+airwallex:get_airwallex_global_account
+airwallex:get_airwallex_invoice
+airwallex:get_airwallex_payment_intent
+airwallex:get_airwallex_payment_link
+airwallex:get_airwallex_settlement
+airwallex:get_airwallex_transfer
+airwallex:get_airwallex_wallet_info
+airwallex:list_airwallex_balance_history
+airwallex:list_airwallex_balances
+airwallex:list_airwallex_beneficiaries
+airwallex:list_airwallex_card_transactions
+airwallex:list_airwallex_cardholders
+airwallex:list_airwallex_cards
+airwallex:list_airwallex_connected_accounts
+airwallex:list_airwallex_conversions
+airwallex:list_airwallex_deposits
+airwallex:list_airwallex_financial_reports
+airwallex:list_airwallex_financial_transactions
+airwallex:list_airwallex_global_account_transactions
+airwallex:list_airwallex_global_accounts
+airwallex:list_airwallex_invoice_line_items
+airwallex:list_airwallex_invoices
+airwallex:list_airwallex_payment_intents
+airwallex:list_airwallex_payment_links
+airwallex:list_airwallex_settlements
+airwallex:list_airwallex_transfers
+airwallex:list_airwallex_webhooks
+airwallex:validate_airwallex_beneficiary
 anomali:get_anomali_observable
 anomali:get_anomali_passive_dns
 anomali:get_anomali_status
@@ -1465,19 +1507,6 @@ qualys:list_qualys_hosts
 qualys:list_qualys_reports
 qualys:list_qualys_scanner_appliances
 qualys:list_qualys_scans
-quotapath:export_quotapath_deals
-quotapath:export_quotapath_payouts
-quotapath:get_quotapath_commission_totals
-quotapath:get_quotapath_deal
-quotapath:list_quotapath_deals
-quotapath:list_quotapath_payouts
-quotapath:list_quotapath_plans
-quotapath:list_quotapath_quota_assignments
-quotapath:list_quotapath_quota_values
-quotapath:list_quotapath_resolved_payouts
-quotapath:list_quotapath_teams
-quotapath:list_quotapath_unresolved_payouts
-quotapath:list_quotapath_users
 ransomware_live:get_ransomlive_csirt_contacts
 ransomware_live:get_ransomlive_group
 ransomware_live:get_ransomlive_iocs

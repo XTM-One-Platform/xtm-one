@@ -319,7 +319,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   figma: "Figma",
   filigran_ai: "Filigran AI",
   planhat: "Planhat",
-  quotapath: "QuotaPath",
   metabase: "Metabase",
   openaev: "OpenAEV",
   opencti: "OpenCTI",
@@ -377,6 +376,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
+  airwallex: "Airwallex",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -537,7 +537,6 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   data_governance: "Data Governance",
   ediscovery: "eDiscovery",
   hr: "HR & People",
-  sales_compensation: "Sales Compensation",
   design: "Design",
   siem: "SIEM",
   email_security: "Email Security",
@@ -586,7 +585,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
   erp: "ERP",
-  finance: "Finance",
+  finance: "Finance & Treasury",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -777,7 +776,6 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   figma: "/logos/figma.svg",
   filigran_ai: "/logos/filigran.svg",
   planhat: "/logos/planhat.svg",
-  quotapath: "/logos/quotapath.svg",
   metabase: "/logos/metabase.svg",
   grafana: "/logos/grafana.svg",
   openaev: "/logos/openaev.svg",
