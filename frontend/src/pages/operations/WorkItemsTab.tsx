@@ -26,6 +26,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { WaitingForYou } from "@/components/decisions/WaitingForYou";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { VisibilityEmptyHint } from "@/components/ui/visibility-filter";
@@ -1158,6 +1159,9 @@ export default function WorkItemsTab({
           )}
         </div>
       )}
+
+      {/* "Waiting for me" lists every open decision first, whatever asked it (#842, S5). */}
+      {waitingForMe && <WaitingForYou />}
 
       {/* One records table (dev-docs/reference/data-tables.md, slice 8d): search, Visibility,
           the Status pill (on the row itself), the view, scope, fleet and owner filters (Filters
