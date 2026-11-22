@@ -64,7 +64,7 @@ export interface Size {
   height: number;
 }
 
-export interface Box {
+interface Box {
   x: number;
   y: number;
   width: number;
@@ -171,8 +171,8 @@ export function graphGroups(
 const NODE_SEP = 28;
 const RANK_SEP = 90;
 /** A zone: its header (name, count, collapse button) and its inner margin. */
-export const ZONE_HEADER = 40;
-export const ZONE_PAD = 20;
+const ZONE_HEADER = 40;
+const ZONE_PAD = 20;
 const ZONE_GAP = 48;
 
 /** One drawing of `ids` laid out, top-left corners, from 0,0. */

@@ -14,9 +14,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Tasks > Work Items, Graph view (#968): the items the list's filters match
- * and what they wait for, laid out left to right with dagre (a waiter left of
- * what it waits for). Nodes are items (status colour of the list badges, owner
+ * Tasks > Work Items, Graph view (#968, fleet-grade in #1062): the items the
+ * list's filters match and what they wait for, drawn as a progression: a
+ * prerequisite left of (above, in Top down) what it releases, the arrow reading
+ * "unblocks" (`lib/work-item-graph-layout`). The fleet graph's toolbar above the
+ * canvas (layout, Group by, focus mode, Legend), its status line under it, the
+ * shared canvas surface (`graph-canvas.css`). Nodes are items (status colour of the list badges, owner
  * agent, priority, the decision card's question when a person is asked),
  * references (pull request, issue, deployment, workflow run, with their state
  * and link) and people. Selecting a node is focus mode: its upstream and
@@ -40,23 +43,39 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import dagre from "dagre";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon, Spinner } from "@filigran/design-system";
 import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
 
+import "@/components/ui/graph-canvas.css";
+import { AgentGraphStatusLine, AgentGraphToolbar, type AgentGraphCounter } from "@/components/ui/agent-graph-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { InfoTip } from "@/components/ui/info-tip";
+import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { useAgents } from "@/hooks/api/useAgentApi";
 import { useColorMode } from "@/hooks/useColorMode";
 import { useFitToViewport } from "@/hooks/useFitToViewport";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
 import { cn } from "@/lib/utils";
 import { PRIORITY_LABELS, STATUS_LABELS, waitsForReader } from "@/lib/work-item-context";
+import type { AgentFlowFocusMode } from "@/lib/agent-flow-focus";
 import { criticalLeaves, focusChains, shownGraph } from "@/lib/work-item-graph";
+import {
+  DEFAULT_WORK_ITEM_GRAPH_LAYOUT,
+  GROUP_NODE_SIZE,
+  WORK_ITEM_GRAPH_GROUP_BYS,
+  WORK_ITEM_GRAPH_LAYOUTS,
+  graphGroups,
+  groupNodeId,
+  layoutWorkItemGraph,
+  type GraphGroup,
+  type WorkItemGraphGroupBy,
+  type WorkItemGraphLayout,
+} from "@/lib/work-item-graph-layout";
 import type {
   WorkItemGraph,
   WorkItemGraphItemNode,
@@ -118,6 +137,8 @@ type FocusState = "none" | "selected" | "lit" | "dim";
 type GraphNodeData = {
   node: WorkItemGraphNode;
   focus: FocusState;
+  /** Top down: the edges enter a node on top and leave at the bottom. */
+  vertical: boolean;
   critical: boolean;
   /** The item waits for the reader (the Waiting for me population, #1001): its marker. */
   waitingForYou: boolean;
@@ -128,14 +149,10 @@ type GraphNodeData = {
 const HIDDEN_HANDLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0 } as const;
 
 /**
- * The canvas's own fit padding, on mount and after a resize. The top side reserves the
- * controls bar inside the frame (top-2 plus its height, room for one wrap) so no node is
- * fitted under it (UX r2 B1 on #979); the other sides keep the 12% margin.
+ * The canvas's own fit padding, on mount, after a resize and after the drawing changes.
+ * The controls sit in the toolbar above the canvas (#1062), so no side is reserved.
  */
-const GRAPH_BAR_INSET_PX = 64;
-const FIT_VIEW_OPTIONS = {
-  padding: { top: `${GRAPH_BAR_INSET_PX}px`, right: 0.12, bottom: 0.12, left: 0.12 },
-} as const;
+const FIT_VIEW_OPTIONS = { padding: 0.12 } as const;
 
 /**
  * A node's keyboard side of a button: Tab reaches it, Enter and Space select it.
@@ -154,11 +171,12 @@ function focusClass(focus: FocusState): string {
   return "";
 }
 
-function Handles() {
+/** An edge enters on the leading side and leaves on the trailing one: left and right, or top and bottom in Top down. */
+function Handles({ vertical = false }: { vertical?: boolean }) {
   return (
     <>
-      <Handle type="target" position={Position.Left} isConnectable={false} style={HIDDEN_HANDLE} />
-      <Handle type="source" position={Position.Right} isConnectable={false} style={HIDDEN_HANDLE} />
+      <Handle type="target" position={vertical ? Position.Top : Position.Left} isConnectable={false} style={HIDDEN_HANDLE} />
+      <Handle type="source" position={vertical ? Position.Bottom : Position.Right} isConnectable={false} style={HIDDEN_HANDLE} />
     </>
   );
 }
@@ -187,7 +205,7 @@ function ItemNode({ data }: NodeProps<Node<GraphNodeData>>) {
         BUTTON_ROLE_FOCUS_RING,
       )}
     >
-      <Handles />
+      <Handles vertical={data.vertical} />
       <div className="flex min-w-0 items-center gap-1.5">
         {node.is_program_root && <Icon name="network" size={16} className="shrink-0 text-accent" aria-hidden />}
         <TruncatedText text={node.title} className="flex-1 content-compact font-medium text-default-primary" />
@@ -252,7 +270,7 @@ function RefNode({ data }: NodeProps<Node<GraphNodeData>>) {
         BUTTON_ROLE_FOCUS_RING,
       )}
     >
-      <Handles />
+      <Handles vertical={data.vertical} />
       <span className="flex min-w-0 items-center gap-1 content-caption text-default-secondary">
         {kind}
         {node.url && (
@@ -292,14 +310,86 @@ function PersonNode({ data }: NodeProps<Node<GraphNodeData>>) {
         BUTTON_ROLE_FOCUS_RING,
       )}
     >
-      <Handles />
+      <Handles vertical={data.vertical} />
       <Icon name="users" size={16} className="shrink-0 text-feedback-warning-tertiary" aria-hidden />
       <TruncatedText text={name} className="content-compact text-default-primary" />
     </div>
   );
 }
 
-const NODE_TYPES = { item: ItemNode, ref: RefNode, person: PersonNode };
+/** A group drawn as a zone (#1062): its name, its count and its collapse button; the members sit inside. */
+type ZoneData = {
+  name: string;
+  groupKey: string;
+  count: number;
+  onToggle: (key: string) => void;
+};
+
+function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
+  const { t_i18n } = useFormatter();
+  return (
+    <div
+      className="h-full w-full rounded-lg border border-dashed border-elevation-subtle"
+      data-testid="work-item-graph-zone"
+      data-group={data.groupKey}
+    >
+      <div className="flex min-w-0 items-center gap-2 px-2 py-1.5">
+        <button
+          type="button"
+          aria-expanded
+          aria-label={t_i18n("Collapse {name}", { name: data.name })}
+          className={cn("nodrag shrink-0 rounded-sm p-0.5 text-default-secondary hover:text-default-primary", BUTTON_ROLE_FOCUS_RING)}
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onToggle(data.groupKey);
+          }}
+          data-testid="work-item-graph-zone-collapse"
+        >
+          <Icon name="chevron-down" size={16} aria-hidden />
+        </button>
+        <TruncatedText text={data.name} className="flex-1 content-compact font-medium text-default-primary" />
+        <span className="shrink-0 content-caption tabular-nums text-default-secondary">
+          {t_i18n("{count, plural, one {# node} other {# nodes}}", { count: data.count })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** A collapsed group: one node with its name and count, the edges of its members moved onto it. */
+type CollapsedData = ZoneData & { vertical: boolean };
+
+function CollapsedGroupNode({ data }: NodeProps<Node<CollapsedData>>) {
+  const { t_i18n } = useFormatter();
+  return (
+    <div
+      className="flex h-full w-full items-center gap-2 rounded-md border border-dashed border-elevation-subtle bg-elevation-default px-2.5"
+      data-testid="work-item-graph-collapsed-group"
+      data-group={data.groupKey}
+    >
+      <Handles vertical={data.vertical} />
+      <button
+        type="button"
+        aria-expanded={false}
+        aria-label={t_i18n("Expand {name}", { name: data.name })}
+        className={cn("nodrag shrink-0 rounded-sm p-0.5 text-default-secondary hover:text-default-primary", BUTTON_ROLE_FOCUS_RING)}
+        onClick={(event) => {
+          event.stopPropagation();
+          data.onToggle(data.groupKey);
+        }}
+        data-testid="work-item-graph-zone-expand"
+      >
+        <Icon name="chevron-right" size={16} aria-hidden />
+      </button>
+      <TruncatedText text={data.name} className="flex-1 content-compact font-medium text-default-primary" />
+      <span className="shrink-0 content-caption tabular-nums text-default-secondary">
+        {t_i18n("{count, plural, one {# node} other {# nodes}}", { count: data.count })}
+      </span>
+    </div>
+  );
+}
+
+const NODE_TYPES = { item: ItemNode, ref: RefNode, person: PersonNode, zone: ZoneNode, collapsed: CollapsedGroupNode };
 
 function NetworkIcon({ className }: { className?: string }) {
   return <Icon name="network" size={16} className={className} aria-hidden />;
@@ -310,29 +400,40 @@ function nodeSize(node: WorkItemGraphNode): { width: number; height: number } {
   return { width: SMALL_W, height: SMALL_H };
 }
 
-/** Dagre, left to right: a waiter left of what it waits for, a program root left of its children. */
-function layout(nodes: WorkItemGraphNode[], edges: { source: string; target: string }[]) {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", ranksep: 90, nodesep: 28, edgesep: 16 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const node of nodes) g.setNode(node.id, nodeSize(node));
-  for (const edge of edges) g.setEdge(edge.source, edge.target);
-  dagre.layout(g);
-  return new Map(
-    nodes.map((node) => {
-      const { x, y } = g.node(node.id);
-      const { width, height } = nodeSize(node);
-      return [node.id, { x: Math.round(x - width / 2), y: Math.round(y - height / 2) }] as const;
-    }),
-  );
-}
-
 const EDGE_STROKE = {
   blocked_on: "var(--text-default-secondary)",
   ref: "var(--text-default-secondary)",
   person: "var(--color-feedback-alert-primary, var(--text-default-secondary))",
   program: "var(--color-accent, var(--text-default-secondary))",
 } as const;
+
+/** How a focus shows: the chain alone, or the whole graph with the rest dimmed (the fleet map's modes). */
+const FOCUS_MODES: readonly AgentFlowFocusMode[] = ["dim", "isolate"];
+
+/** A display choice of the graph kept per reader, like List | Graph (`useViewMode`). */
+function useStoredChoice<T extends string>(key: string, allowed: readonly T[], fallback: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return allowed.includes(stored as T) ? (stored as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  const set = useCallback(
+    (next: T) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, next);
+      } catch { /* quota exceeded or private browsing */ }
+    },
+    [key],
+  );
+  return [value, set];
+}
+
+/** The status of a prerequisite whose release is under way: its edges march toward what it releases. */
+const IN_FLIGHT = new Set<WorkItemStatus>(["claimed", "in_progress"]);
 
 export function WorkItemGraphView({
   graph,
@@ -348,22 +449,86 @@ export function WorkItemGraphView({
 }) {
   const { t_i18n } = useFormatter();
   const colorMode = useColorMode();
+  const { data: agents } = useAgents();
+  const [layoutChoice, setLayoutChoice] = useStoredChoice<WorkItemGraphLayout>(
+    "copilot-graph:work-items:layout",
+    WORK_ITEM_GRAPH_LAYOUTS,
+    DEFAULT_WORK_ITEM_GRAPH_LAYOUT,
+  );
+  const [groupBy, setGroupBy] = useStoredChoice<WorkItemGraphGroupBy>("copilot-graph:work-items:group-by", WORK_ITEM_GRAPH_GROUP_BYS, "none");
+  const [focusMode, setFocusMode] = useState<AgentFlowFocusMode>("dim");
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => new Set());
   const [showDone, setShowDone] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   // A second select of the selected node clears the focus.
   const selectNode = (id: string) => setSelected((current) => (current === id ? null : id));
+  const toggleGroup = useCallback(
+    (key: string) =>
+      setCollapsedKeys((current) => {
+        const next = new Set(current);
+        if (!next.delete(key)) next.add(key);
+        return next;
+      }),
+    [],
+  );
+  const vertical = layoutChoice === "hierarchy-tb";
 
   const shown = useMemo(() => (graph ? shownGraph(graph, { showDone }) : null), [graph, showDone]);
-  const positions = useMemo(() => (shown ? layout(shown.nodes, shown.edges) : new Map()), [shown]);
   const critical = useMemo(() => (shown ? criticalLeaves(shown) : new Set<string>()), [shown]);
   const chains = useMemo(
     () => (shown && selected && shown.nodes.some((n) => n.id === selected) ? focusChains(shown.edges, selected) : null),
     [shown, selected],
   );
+  // Show only: the focused chain alone is laid out; Highlight keeps the whole graph and dims the rest.
+  const visible = useMemo(() => {
+    if (!shown || !chains || !selected || focusMode !== "isolate") return shown;
+    const kept = new Set([selected, ...chains.upstream, ...chains.downstream]);
+    return {
+      ...shown,
+      nodes: shown.nodes.filter((node) => kept.has(node.id)),
+      edges: shown.edges.filter((edge) => kept.has(edge.source) && kept.has(edge.target)),
+    };
+  }, [shown, chains, selected, focusMode]);
+  const fleetOfAgent = useMemo(
+    () => new Map((agents ?? []).flatMap((a) => (a.fleet?.fleet_id ? [[a.id, { id: a.fleet.fleet_id, name: a.fleet.fleet_name }] as const] : []))),
+    [agents],
+  );
+  const groups = useMemo(
+    () => (visible ? graphGroups(visible.nodes, visible.edges, groupBy, { fleetOfAgent }) : []),
+    [visible, groupBy, fleetOfAgent],
+  );
+  const laid = useMemo(
+    () => (visible ? layoutWorkItemGraph(visible.nodes, visible.edges, { layout: layoutChoice, groups, collapsedKeys, sizeOf: nodeSize }) : null),
+    [visible, layoutChoice, groups, collapsedKeys],
+  );
+  const groupName = useCallback((group: GraphGroup) => (group.translate ? t_i18n(group.label) : group.label), [t_i18n]);
 
-  const nodes = useMemo<Node<GraphNodeData>[]>(() => {
-    if (!shown) return [];
-    return shown.nodes.map((node) => {
+  const nodes = useMemo<Node[]>(() => {
+    if (!visible || !laid) return [];
+    const fixed = { draggable: false, connectable: false, selectable: false, focusable: false } as const;
+    // Zones first: drawn under their members.
+    const zones: Node[] = laid.zones.map((zone) => ({
+      id: `zone:${zone.group.key}`,
+      type: "zone",
+      position: { x: zone.x, y: zone.y },
+      width: zone.width,
+      height: zone.height,
+      data: { name: groupName(zone.group), groupKey: zone.group.key, count: zone.group.members.length, onToggle: toggleGroup },
+      zIndex: -1,
+      ...fixed,
+    }));
+    const collapsed: Node[] = laid.collapsed.map((group) => ({
+      id: groupNodeId(group.key),
+      type: "collapsed",
+      position: laid.positions.get(groupNodeId(group.key)) ?? { x: 0, y: 0 },
+      width: GROUP_NODE_SIZE.width,
+      height: GROUP_NODE_SIZE.height,
+      data: { name: groupName(group), groupKey: group.key, count: group.members.length, onToggle: toggleGroup, vertical },
+      ...fixed,
+    }));
+    const drawn: Node[] = visible.nodes.flatMap((node) => {
+      const position = laid.positions.get(node.id);
+      if (!position) return [];
       let focus: FocusState = "none";
       if (chains && selected) {
         if (node.id === selected) focus = "selected";
@@ -371,38 +536,35 @@ export function WorkItemGraphView({
         else focus = "dim";
       }
       const size = nodeSize(node);
-      return {
-        id: node.id,
-        type: node.kind,
-        position: positions.get(node.id) ?? { x: 0, y: 0 },
-        width: size.width,
-        height: size.height,
-        data: {
-          node,
-          focus,
-          critical: critical.has(node.id),
-          waitingForYou: node.kind === "item" && !node.outside_filter && waitsForReader(node, readerId),
-          onOpen: node.kind === "item" ? onOpenItem : undefined,
-          onSelect: selectNode,
-        },
-        draggable: false,
-        connectable: false,
-        selectable: false,
-        focusable: false,
+      const data: GraphNodeData = {
+        node,
+        focus,
+        vertical,
+        critical: critical.has(node.id),
+        waitingForYou: node.kind === "item" && !node.outside_filter && waitsForReader(node, readerId),
+        onOpen: node.kind === "item" ? onOpenItem : undefined,
+        onSelect: selectNode,
       };
+      return [{ id: node.id, type: node.kind, position, width: size.width, height: size.height, data, ...fixed }];
     });
-  }, [shown, positions, chains, selected, critical, onOpenItem, readerId]);
+    return [...zones, ...collapsed, ...drawn];
+  }, [visible, laid, chains, selected, critical, onOpenItem, readerId, vertical, groupName, toggleGroup]);
 
   const edges = useMemo<Edge[]>(() => {
-    if (!shown) return [];
-    return shown.edges.map((edge) => {
+    if (!visible || !laid) return [];
+    const byId = new Map(visible.nodes.map((node) => [node.id, node]));
+    return laid.edges.map((edge) => {
       const dim = chains ? !chains.edges.has(edge.id) : false;
       const stroke = EDGE_STROKE[edge.kind];
+      // Drawn from the prerequisite to what it releases (#1062): a prerequisite being worked on marches.
+      const prerequisite = byId.get(edge.drawnSource);
+      const animated = edge.kind !== "program" && prerequisite?.kind === "item" && IN_FLIGHT.has(prerequisite.status);
       return {
         id: edge.id,
-        source: edge.source,
-        target: edge.target,
+        source: edge.drawnSource,
+        target: edge.drawnTarget,
         type: "smoothstep",
+        animated,
         markerEnd: edge.kind === "program" ? undefined : { type: MarkerType.ArrowClosed, color: stroke, width: 16, height: 16 },
         style: {
           stroke,
@@ -415,9 +577,28 @@ export function WorkItemGraphView({
         data: { kind: edge.kind },
       };
     });
-  }, [shown, chains]);
+  }, [visible, laid, chains]);
 
-  const loading = isLoading || !graph || !shown;
+  const loading = isLoading || !graph || !shown || !visible;
+  const layoutKey = `${layoutChoice}|${groupBy}|${[...collapsedKeys].join(",")}|${focusMode}|${visible?.nodes.length ?? 0}`;
+  const groupByLabels: Record<WorkItemGraphGroupBy, string> = {
+    none: t_i18n("None"),
+    program: t_i18n("Program"),
+    owner: t_i18n("Owner agent"),
+    fleet: t_i18n("Fleet"),
+    prefix: t_i18n("Key prefix"),
+    status: t_i18n("Status"),
+    priority: t_i18n("Priority"),
+  };
+  const focusLabels: Record<AgentFlowFocusMode, string> = { isolate: t_i18n("Show only"), dim: t_i18n("Highlight") };
+  const counters: AgentGraphCounter[] = shown
+    ? [
+        { key: "items", label: t_i18n("{count, plural, one {item} other {items}}", { count: shown.nodes.filter((n) => n.kind === "item").length }), value: shown.nodes.filter((n) => n.kind === "item").length },
+        { key: "links", label: t_i18n("{count, plural, one {link} other {links}}", { count: shown.edges.length }), value: shown.edges.length },
+        { key: "person", label: t_i18n("waiting for a person"), value: new Set(shown.edges.filter((e) => e.kind === "person").map((e) => e.source)).size, live: true },
+        { key: "isolated", label: t_i18n("with no dependency, in the list view"), value: shown.isolated },
+      ]
+    : [];
   return (
     <GraphFrame
       testId={loading ? undefined : "work-item-graph"}
@@ -427,96 +608,115 @@ export function WorkItemGraphView({
           : undefined
       }
     >
-      {isLoading || !graph || !shown ? (
+      {loading ? (
         <div className="flex h-full items-center justify-center" role="status" aria-label={t_i18n("Loading...")}>
           {/* A full-surface loader (design standards s.0bis(5), UX r1 A2 on #979). */}
           <Spinner size="xl" />
         </div>
       ) : (
         <>
-          {/* The canvas controls sit in a bar inside the canvas frame, never in a row between
-              the toolbar and the canvas or under it (UX r1 B2 and B3 on #979). */}
-          <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start gap-2" data-testid="work-item-graph-bar">
-            <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-2 rounded-sm border border-elevation-subtle bg-elevation-default px-1.5 py-1 content-compact text-default-secondary">
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={showDone}
-                onClick={() => setShowDone((value) => !value)}
-                data-testid="work-item-graph-show-done"
-              >
-                <Icon name={showDone ? "eye-off" : "eye"} size={16} aria-hidden />
-                {showDone ? t_i18n("Hide done and cancelled") : t_i18n("Show done and cancelled")}
-              </Button>
-              {shown.isolated > 0 && (
-                <span data-testid="work-item-graph-isolated">
-                  {t_i18n("{count, plural, one {# item with no dependency, in the list view} other {# items with no dependency, in the list view}}", { count: shown.isolated })}
-                </span>
-              )}
-              {graph.truncated && (
-                <span className="text-feedback-warning-tertiary" data-testid="work-item-graph-truncated">
-                  {t_i18n("Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.", { count: GRAPH_NODE_CAP })}
-                </span>
-              )}
-              <InfoTip
-                label={t_i18n("Legend")}
-                content={
-                  <ul className="space-y-1" data-testid="work-item-graph-legend">
-                    <li>{t_i18n("Arrow: waits for")}</li>
-                    <li>{t_i18n("Dashed line: program and its items")}</li>
-                    <li>{t_i18n("Dashed border: outside the filters")}</li>
-                    <li>{t_i18n("Red border: only a person can release it")}</li>
-                  </ul>
-                }
-              />
+          {/* The fleet graph's toolbar above the canvas (#1062): layout, grouping, focus, the legend. */}
+          <AgentGraphToolbar
+            layout={layoutChoice}
+            layouts={WORK_ITEM_GRAPH_LAYOUTS}
+            onLayoutChange={(next) => setLayoutChoice(next as WorkItemGraphLayout)}
+            legend={
+              <ul className="flex flex-col gap-2" data-testid="work-item-graph-legend">
+                <li>{t_i18n("Arrow: unblocks")}</li>
+                <li>{t_i18n("Moving dashes: its prerequisite is in progress")}</li>
+                <li>{t_i18n("Dashed line: program and its items")}</li>
+                <li>{t_i18n("Dashed border: outside the filters")}</li>
+                <li>{t_i18n("Red border: only a person can release it")}</li>
+              </ul>
+            }
+          >
+            <div className="flex items-center gap-2">
+              <span className="content-compact text-default-secondary" aria-hidden="true">
+                {t_i18n("Group by")}
+              </span>
+              <Select value={groupBy} onValueChange={(next) => setGroupBy(next as WorkItemGraphGroupBy)}>
+                <SelectTrigger className="w-40" aria-label={t_i18n("Group by")} data-testid="work-item-graph-group-by">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WORK_ITEM_GRAPH_GROUP_BYS.map((key) => (
+                    <SelectItem key={key} value={key}>
+                      {groupByLabels[key]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={showDone}
+              onClick={() => setShowDone((value) => !value)}
+              data-testid="work-item-graph-show-done"
+            >
+              <Icon name={showDone ? "eye-off" : "eye"} size={16} aria-hidden />
+              {showDone ? t_i18n("Hide done and cancelled") : t_i18n("Show done and cancelled")}
+            </Button>
             {selected && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="pointer-events-auto ms-auto"
-                onClick={() => setSelected(null)}
-                data-testid="work-item-graph-clear-focus"
+              <div className="flex items-center gap-2">
+                <SegmentedFilter
+                  options={FOCUS_MODES.map((key) => ({ key, label: focusLabels[key] }))}
+                  value={focusMode}
+                  onChange={setFocusMode}
+                  ariaLabel={t_i18n("Focus display")}
+                  testId="work-item-graph-focus-mode"
+                />
+                <Button variant="outline" size="sm" onClick={() => setSelected(null)} data-testid="work-item-graph-clear-focus">
+                  <Icon name="x" size={16} aria-hidden /> {t_i18n("Clear focus")}
+                </Button>
+              </div>
+            )}
+            {graph.truncated && (
+              <span className="content-compact text-feedback-warning-tertiary" data-testid="work-item-graph-truncated">
+                {t_i18n("Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.", { count: GRAPH_NODE_CAP })}
+              </span>
+            )}
+          </AgentGraphToolbar>
+          <div className="graph-canvas relative min-h-0 flex-1" data-testid="work-item-graph-canvas">
+            {visible.nodes.length === 0 ? (
+              <div className="flex h-full items-center justify-center">
+                <EmptyState
+                  variant="inset"
+                  icon={NetworkIcon}
+                  title={t_i18n("No dependency to draw")}
+                  description={t_i18n("None of the items these filters match waits for another item, a pull request, a deployment or a person.")}
+                />
+              </div>
+            ) : (
+              <ReactFlow
+                colorMode={colorMode}
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={NODE_TYPES}
+                fitView
+                fitViewOptions={FIT_VIEW_OPTIONS}
+                minZoom={0.1}
+                maxZoom={2}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                // The pointer side of a node (UX r1 B1 on #979): with a click handler React Flow
+                // gives the node wrapper pointer events, so a click selects it (focus mode) and
+                // its open button and cut-text tooltips are reachable with the mouse. A zone or a
+                // collapsed group is no item: a click there clears the focus, as on the pane.
+                onNodeClick={(_, node) => (node.type === "zone" || node.type === "collapsed" ? setSelected(null) : selectNode(node.id))}
+                onPaneClick={() => setSelected(null)}
+                proOptions={{ hideAttribution: true }}
               >
-                <Icon name="x" size={16} aria-hidden /> {t_i18n("Clear focus")}
-              </Button>
+                <FitOnResize layoutKey={layoutKey} />
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--flow-grid)" />
+                <Controls showInteractive={false} position="bottom-left" />
+                <MiniMap pannable zoomable position="bottom-right" />
+              </ReactFlow>
             )}
           </div>
-          {shown.nodes.length === 0 ? (
-            <div className="flex h-full items-center justify-center pt-12">
-              <EmptyState
-                icon={NetworkIcon}
-                title={t_i18n("No dependency to draw")}
-                description={t_i18n("None of the items these filters match waits for another item, a pull request, a deployment or a person.")}
-              />
-            </div>
-          ) : (
-            <ReactFlow
-              colorMode={colorMode}
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={NODE_TYPES}
-              fitView
-              fitViewOptions={FIT_VIEW_OPTIONS}
-              minZoom={0.1}
-              maxZoom={2}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={false}
-              // The pointer side of a node (UX r1 B1 on #979): with a click handler React Flow
-              // gives the node wrapper pointer events, so a click selects it (focus mode) and
-              // its open button and cut-text tooltips are reachable with the mouse.
-              onNodeClick={(_, node) => selectNode(node.id)}
-              onPaneClick={() => setSelected(null)}
-              proOptions={{ hideAttribution: true }}
-              style={{ background: "transparent" }}
-            >
-              <FitOnResize />
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--flow-grid)" />
-              <Controls showInteractive={false} position="bottom-left" />
-              <MiniMap pannable zoomable position="bottom-right" />
-            </ReactFlow>
-          )}
+          {/* The counters under the canvas, the fleet graph's status line (#1062). */}
+          <AgentGraphStatusLine counters={counters} />
         </>
       )}
     </GraphFrame>
@@ -524,10 +724,10 @@ export function WorkItemGraphView({
 }
 
 /**
- * The canvas frame: the page's last block, as tall as the window has room for
- * (`useFitToViewport`, the bound the list and grid views take), so the page never
- * scrolls in Graph view (UX r1 B2 on #979). Before the first measure, or outside the
- * app's page, the former cap.
+ * The graph's card: toolbar, canvas and status line, the page's last block, as tall as
+ * the window has room for (`useFitToViewport`, the bound the list and grid views take),
+ * so the page never scrolls in Graph view (UX r1 B2 on #979). Before the first measure,
+ * or outside the app's page, the former cap.
  */
 function GraphFrame({ testId, label, children }: { testId?: string; label?: string; children: React.ReactNode }) {
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
@@ -539,7 +739,7 @@ function GraphFrame({ testId, label, children }: { testId?: string; label?: stri
       data-scroll-fit={room === undefined ? "capped" : room === null ? "page" : "viewport"}
       style={typeof room === "number" ? { height: room } : undefined}
       className={cn(
-        "relative w-full overflow-hidden rounded-md border border-elevation-subtle",
+        "relative flex w-full flex-col overflow-hidden rounded-md border border-elevation-subtle bg-elevation-default",
         typeof room !== "number" && "h-[calc(100dvh-16rem)] min-h-96",
       )}
       role={label ? "group" : undefined}
@@ -550,13 +750,16 @@ function GraphFrame({ testId, label, children }: { testId?: string; label?: stri
   );
 }
 
-/** Fits the graph again when the canvas changes size (UX r1 A1 on #979): `fitView` alone runs on mount. */
-function FitOnResize() {
+/**
+ * Fits the graph again when the canvas changes size (UX r1 A1 on #979) or its drawing
+ * changes (a layout, a grouping, a group collapsed, #1062): `fitView` alone runs on mount.
+ */
+function FitOnResize({ layoutKey }: { layoutKey: string }) {
   const { fitView } = useReactFlow();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   useEffect(() => {
     if (width > 0 && height > 0) void fitView(FIT_VIEW_OPTIONS);
-  }, [width, height, fitView]);
+  }, [width, height, layoutKey, fitView]);
   return null;
 }

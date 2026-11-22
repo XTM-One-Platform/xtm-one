@@ -126,7 +126,7 @@ test("group by program: the root and its children share a group, the rest is No 
   const program = groups.find((g) => g.key === "program:R")!;
   assert.deepEqual([...program.members].sort(), ["K1", "K2", "R"]);
   assert.equal(program.label, "R");
-  assert.equal(groups.at(-1)!.label, "No program", "the no-group bucket comes last");
+  assert.equal(groups[groups.length - 1].label, "No program", "the no-group bucket comes last");
 });
 
 test("group by owner: a reference and a person join the group of the item that waits for them", () => {
