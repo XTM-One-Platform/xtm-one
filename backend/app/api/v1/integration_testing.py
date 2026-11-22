@@ -877,6 +877,12 @@ async def test_provider_connectivity(
 
         ok, message = await ashby_validate(token)
         return {"status": "ok" if ok else "error", "message": message}
+    elif provider == "quotapath":
+        # A read of the users list through the provider's own client.
+        from app.integrations.providers.quotapath import validate_connection as quotapath_validate
+
+        ok, message = await quotapath_validate(token or "")
+        return {"status": "ok" if ok else "error", "message": message}
     elif provider == "wordsmith":
         # GET /me through the provider's own client: the region host, the
         # rate limiter and Wordsmith's error_code reading are the runtime's.

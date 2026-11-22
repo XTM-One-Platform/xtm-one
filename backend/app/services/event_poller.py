@@ -58,6 +58,7 @@ from app.integrations.providers import docusign
 from app.integrations.providers.google import GMAIL_API
 from app.integrations.providers.microsoft import GRAPH_API
 from app.integrations.providers.microsoft._message_type import message_type
+from app.integrations.providers.quotapath import events as quotapath_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
@@ -135,6 +136,8 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
+    # QuotaPath payouts (providers/quotapath/events.py): no webhook in its API.
+    **dict.fromkeys(sorted(quotapath_events.EVENTS), quotapath_events.POLL_INTERVAL_SECONDS),
     # Pennylane changelogs (pennylane_events): no webhook to a company token.
     **dict.fromkeys(sorted(pennylane_events.EVENTS), pennylane_events.POLL_INTERVAL_SECONDS),
     # NetSuite change events (netsuite_events): SuiteQL every 5 min, within the account's concurrency limit.
@@ -871,6 +874,9 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
+    if provider == quotapath_events.PROVIDER and event_type in quotapath_events.EVENTS:
+        return await _poll_quotapath_payouts(access_token, event_type, wf, redis)
+
     if provider == pennylane_events.PROVIDER and event_type in pennylane_events.EVENTS:
         return await _poll_pennylane_changes(access_token, event_type, wf, redis)
 
@@ -974,6 +980,39 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     return [
         opencrq_job_events.run_event(run, event_type, base_url=base_url, tenant_id=tenant) for run in page.items
     ]
+
+
+async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
+    """Poll the QuotaPath payouts of *event_type* since the last check (``quotapath.events``).
+
+    The cursor is a Unix time in seconds: the updated-since lists read from it
+    (inclusive, the seen set skipping a payout already run); the unresolved
+    list has no time filter and the seen set alone tells a new payout. The
+    first poll starts from now.
+    """
+    cursor_key = f"event_cursor:{wf.id}"
+    since = await redis.get(cursor_key)
+    now = int(datetime.now(UTC).timestamp())
+    if not since:
+        await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
+        if event_type == "payout_unresolved":
+            # Mark what is owed today seen, so enabling the trigger replays nothing.
+            rows, err = await quotapath_events.list_payouts(api_key, event_type, None)
+            for row in rows if not err else []:
+                msg_id = quotapath_events.payout_event(row, event_type)["message_id"]
+                if msg_id:
+                    await claim_seen(redis, wf.id, msg_id)
+        return []
+    try:
+        since_ts = int(since.decode() if isinstance(since, bytes) else since)
+    except ValueError:
+        since_ts = now
+    rows, err = await quotapath_events.list_payouts(api_key, event_type, since_ts)
+    if err:
+        logger.warning("QuotaPath payout poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+    await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
+    return [quotapath_events.payout_event(row, event_type) for row in rows]
 
 
 async def _poll_pennylane_changes(
