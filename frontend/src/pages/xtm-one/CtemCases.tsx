@@ -197,9 +197,11 @@ export default function CtemCases() {
 
   return (
     <div className="space-y-6">
-      {/* The one CTEM header band (#11660): the definition behind the "i". */}
+      {/* The one CTEM header band (#11660): the definition behind the "i".
+          Cases is a row of the CTEM menu group, not a page under
+          Remediation: the breadcrumb names the group, no back link. */}
       <CtemPageHeader
-        back={{ to: "/ctem/remediation", label: "Back to Remediation" }}
+        eyebrow={<span>{t_i18n("CTEM")}</span>}
         title={t_i18n("Cases")}
         hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
         hintLabel={t_i18n("About cases")}

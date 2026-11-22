@@ -129,7 +129,8 @@ export interface NavLeaf {
    */
   family?: NavFamilyMember[];
   /** As `NavGroup.keywords`: other words the ⌘K palette finds the row by
-   *  (English, never shown). Cases answers "CTEM" (#1135). */
+   *  (English, never shown), a group's child row included. Cases answers
+   *  "CTEM" (#1135). */
   keywords?: string[];
 }
 
@@ -217,12 +218,23 @@ export const NAV_SECTIONS: NavSection[] = [
          keeps "Dashboards" with no name collision. */
       { ...leaf("/", "house", "Home"), alsoActive: ["/dashboard", "/briefing", "/ctem"] },
       aiLeaf("/chat", "message-square", "Chat", (f) => f.chat),
-      /* The record of the CTEM loop (#1135): case owners outside the CISO
-         reach it without the command center. XTM One mode only, like the
-         CTEM routes; a plain leaf, so cases stay readable with AI off. Its
-         route is longer than Home's `alsoActive` "/ctem", so a case page
-         lights this row and the other CTEM pages still light Home. */
-      { ...leaf("/ctem/cases", "clipboard-check", "Cases", (f) => f.ctemCases), keywords: ["CTEM", "Exposure cases"] },
+      /* The records of the CTEM loop (#1135, Sam 22 Nov 2026): a group of its
+         own between Chat and Orchestration, so case owners outside the CISO
+         reach them without the command center. XTM One mode only, like the
+         CTEM routes; plain leaves, so they stay readable with AI off. No hub
+         page: the heading only folds the group. Each route is longer than
+         Home's `alsoActive` "/ctem", so a case page lights Cases and the
+         other CTEM pages still light Home. Assets joins it with its page. */
+      {
+        kind: "group",
+        id: "ctem",
+        label: "CTEM",
+        icon: "radar",
+        keywords: ["Exposure management"],
+        children: [
+          { ...leaf("/ctem/cases", "clipboard-check", "Cases", (f) => f.ctemCases), keywords: ["CTEM", "Exposure cases"] },
+        ],
+      },
       /* The agents and what they form and follow (#9301): the label opens a
          hub of cards, like Agent Studio and Tools & Integrations (N2c), and
          the list is a child row of its own. The group row carries no lock
@@ -585,7 +597,7 @@ export function navDestinations(sections: NavSection[]): NavDestination[] {
           }
           continue;
         }
-        out.push({ to: child.to, label: child.label, icon: child.icon, parent: entry.label, ...lockOf(child) });
+        out.push({ to: child.to, label: child.label, icon: child.icon, parent: entry.label, ...(child.keywords ? { keywords: child.keywords } : {}), ...lockOf(child) });
       }
     }
   }
