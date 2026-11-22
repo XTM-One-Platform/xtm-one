@@ -711,9 +711,9 @@ ce:
   - backend/app/enterprise
   - backend/app/integrations/providers/aikido  # a connector
   - backend/app/integrations/providers/airwallex  # a connector
-  - backend/app/integrations/providers/spendesk  # a connector
   - backend/app/integrations/providers/ashby  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
+  - backend/app/integrations/providers/dealhub  # a connector
   - backend/app/integrations/providers/drata  # a connector
   - backend/app/integrations/providers/entra  # a connector
   - backend/app/integrations/providers/github  # a connector
