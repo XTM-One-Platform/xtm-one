@@ -148,13 +148,17 @@ def option_label(ask: dict[str, Any] | None, key: str) -> str:
     return key
 
 
-def answer_links(decision: Decision, recipient_id: uuid.UUID, surface: str) -> list[dict[str, str]]:
-    """One ``{key, label, url}`` per option, then the free-text link, for one recipient."""
+def answer_links(
+    decision: Decision, recipient_id: uuid.UUID, surface: str, language: str | None = None
+) -> list[dict[str, str]]:
+    """One ``{key, label, url}`` per option, then the free-text link (labelled in *language*), for one recipient."""
+    from app.services.channel_notices import notice
+
     base = settings.frontend_url.rstrip("/")
     expires = expiry_for(decision.deadline)
     options = [o for o in (decision.ask or {}).get("options") or [] if o.get("key")]
     rows = [(str(o["key"]), str(o.get("label") or o["key"])) for o in options]
-    rows.append((TEXT_OPTION, "Answer with text"))
+    rows.append((TEXT_OPTION, notice("card_answer_with_text", language)))
     return [
         {
             "key": key,
@@ -177,7 +181,7 @@ def link_card(decision: Decision, recipient_id: uuid.UUID, surface: str) -> dict
     body: list[dict[str, Any]] = [
         {
             "type": "TextBlock",
-            "text": str(ask.get("question") or "A decision is waiting for you"),
+            "text": _question(ask, None),
             "weight": "Bolder",
             "size": "Medium",
             "wrap": True,
@@ -220,14 +224,27 @@ def link_card(decision: Decision, recipient_id: uuid.UUID, surface: str) -> dict
     }
 
 
-def link_text(decision: Decision, recipient_id: uuid.UUID, surface: str) -> str:
-    """The plain-text form (email, a Google Chat message as a user): the question and one link per option."""
+def _question(ask: dict[str, Any], language: str | None) -> str:
+    """The ask's question, else the catalog's "a decision is waiting" line in *language*."""
+    from app.services.channel_notices import notice
+
+    return str(ask.get("question") or notice("card_decision_waiting", language))
+
+
+def question_lines(decision: Decision, language: str | None = None) -> list[str]:
+    """The lines above the links of a text form: the question, the context, then a blank line."""
     ask = decision.ask or {}
-    lines = [str(ask.get("question") or "A decision is waiting for you")]
+    lines = [_question(ask, language)]
     if ask.get("context"):
         lines += ["", str(ask["context"])]
     lines.append("")
-    for link in answer_links(decision, recipient_id, surface):
+    return lines
+
+
+def link_text(decision: Decision, recipient_id: uuid.UUID, surface: str, language: str | None = None) -> str:
+    """The plain-text form (email): the question and one link per option, in *language*."""
+    lines = question_lines(decision, language)
+    for link in answer_links(decision, recipient_id, surface, language):
         lines.append(f"{link['label']}: {link['url']}")
     return "\n".join(lines)
 
