@@ -336,7 +336,7 @@ JSON: they pass a decision.
 ### I.2 Every path that sends a decision uses it
 
 - The notify path of D (the bell copy sent to Teams, Slack or email).
-- `work_item_notify` (`teams_dm`, `teams_channel`, `email` and the other targets).
+- `work_item_notify` (`teams_dm`, `teams_channel` and the other targets).
 - An agent posting a decision itself: the channel send tools take a
   `decision` argument (the ask contract) instead of hand-made card JSON, and a
   decision posted this way is the same decision the inbox lists (one id, one
@@ -534,6 +534,43 @@ verification is done.
 | S11 | Google Chat: cardsV2 renderer with app auth, `CARD_CLICKED` handler with token verification; user-auth sends carry the answer links of S9b | yes | e2e per I.6, path (d), app and user auth, in a DM and a space |
 | S12 | WhatsApp (1:1): reply buttons or list, button reply webhook mapped to the open decision; Discord and Telegram if their APIs allow | yes | e2e per I.6 (1:1 only for WhatsApp) |
 
+S12 as built (`services/decision_whatsapp.py`): 1 to 3 options are reply
+buttons, 4 to 10 a list, anything else (more options, a free-text question,
+a tool approval with more calls than a card shows, an answered decision) is
+text with the link to the decision. Buttons whose 20-character clipped titles
+read the same are sent as a list, and list rows that still collide as text.
+A closed decision states its outcome (who chose what and when, in UTC, or
+expired, or no longer needed) instead of the options. An open tool approval
+lists its calls as the Teams card of S9 does: `card_tools_awaiting`, then one
+line per tool name, plus the redacted arguments when the viewer decides (the
+send tool builds the message with no reader: names only); past
+`MAX_TOOLS_SHOWN` calls, `card_too_many_tools` with the count. Over the
+1,024-character body, arguments go first; a message that still cannot name
+every call is sent as text, so buttons never decide a call they did not
+name. Each reply id is
+`xtm.d:<decisions row id>:<option key>`; the webhook answers a 1:1
+`button_reply` or `list_reply` through the router as the sender's linked
+WhatsApp identity (surface `whatsapp_card`), never routes it to an agent, and
+answers in the chat with the decided state or the refusal (WhatsApp cannot
+edit a sent interactive message). Agents send it with
+`send_whatsapp_bot_message(to, decision=...)`. Checked for the other two:
+Telegram's Bot API allows it (an `inline_keyboard` whose `callback_data`, 64
+bytes, holds the row id and key; `callback_query` on the existing webhook;
+`editMessageReplyMarkup` for the decided state); Discord allows it only
+through message components answered on an Interactions endpoint (Ed25519
+signature, a 3-second deadline), which the gateway adapter does not expose
+today. Both are left out of this slice.
+
+Render for review: WhatsApp offers no surface a review can open, so every lab
+answers `GET /api/v1/lab/whatsapp-decision` (on the preview, `/api` is
+proxied) with each state drawn from the real `render_whatsapp_decision` /
+`decision_text` payload and the `answer_reply` texts, laid out as a WhatsApp
+chat (body formatting, footer, reply buttons, the list button and its opened
+sheet; the Cloud API payload under each). Query: `lang` (en, es, fr, ja),
+`theme` (light, dark), `width` (phone 390 px, desktop 760 px), `state` (one
+id); `/api/v1/lab/whatsapp-decision/index` links them all
+(`.xtm-one/lab/whatsapp_decision_preview.py`).
+
 S2 as built: `app/models/decision.py` (the tables), `app/models/decision_hooks.py`
 (one `before_flush` hook writes the dual write from the engines' own columns, so
 no engine write path calls it: a run entering `awaiting_human`, a flow
@@ -560,44 +597,6 @@ rows the backfill wrote and keeps answered ones as audit. Still owed after
 S2b: the missed scheduled one-off decision (its own slice: the scheduled
 item's writes are refused by `_refuse_scheduled`, so it needs its own answer
 function) and a Playwright e2e of the router (S3, with the card).
-
-S9b as built: `app/services/decision_answer_links.py` mints and reads the
-token (HMAC-SHA256 under a key derived from `SECRET_KEY`, the previous keys of
-`DECISION_LINK_PREVIOUS_SECRETS` still read after a rotation; decision row,
-option or `text`, one recipient, surface, expiry = deadline else 7 days) and
-builds the link card (`Action.OpenUrl` only, accepted by `parse_card`), the
-plain-text form and the decided card. `GET /api/v1/decisions/links/{token}`
-reads a link without answering; `POST .../links/{token}/answer` answers
-through `decision_router.answer_decision` with the link's surface
-(`teams_chat`, `teams_channel`, `google_chat`, `email`). A non-recipient gets
-403 and a `refused` event; a bad signature 404; an expired link 410; a decision
-no longer open shows its decided state and answers nothing (the engine's own
-row lock decides a race: the loser gets 409 internally and the decided view).
-The page is `frontend/src/pages/DecisionLink.tsx` (`/decide/:token`, outside
-the shell, sign-in return); an open decision is drawn by the shared
-`DecisionCard` (context as Markdown, deadline, options, recommended pill), the
-free text open on the `text` link, where an option picked on the card is sent
-as `option` (an option link refuses any other option with 400). `app/services/decision_graph_cards.py` sends: the
-scheduler tick (`deliver_work_item_cards`, next to the notification delivery)
-posts the card of every open work item decision whose `payload.notify` names a
-Microsoft integration and a `chat_id`, a `team_id` + `channel_id` or, with
-channel `email`, an address, as the item's agent through its own Graph tools
-(`work_item_notify.agent_graph_caller`: bindings, scope, deny list and approval
-gate apply), once (`notified` event naming the message), at most 3 tries,
-stopped at once by a permanent refusal; only a single-user recipient gets links
-(a group or `company` has no single reader). Paths (b) and (c) are the same
-code: the integration the agent posts with is a user, a service account or an
-agent account. Once answered, `update_sent_cards` edits every sent message to
-the decided card as its sender (`update_microsoft_chat_message` /
-`update_microsoft_channel_message`, scheduled in the background by the
-router); a refused edit is logged and counted, and the links of the old card
-open the decided page (the I.4 fallback). The PostgreSQL e2e
-(`tests/test_decision_answer_links_842_s9b_postgres.py`) runs I.6 for (b) and
-(c) on a 1:1 chat, a group chat and a channel plus email, with Graph as the
-only stub; the edit as its sender against a live tenant is the production
-retest of the slice. Not in S9b: the run HITL, tool approval and flow Ask-user
-sources send no link card yet (their notify paths are S9's), and Google Chat as
-a user is S11.
 
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
 (prompt), `agent_builder` tool texts, `hitl_whitelist` / `tools/approval.py` /
