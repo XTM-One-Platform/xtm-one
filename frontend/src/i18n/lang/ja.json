@@ -20466,5 +20466,21 @@
   "Kept as a fingerprint only, never the value": "フィンガープリントのみ保持し、値は保持しません",
   "Named in": "言及元",
   "Organization criticality": "組織の重要度",
-  "From {source}": "取得元: {source}"
+  "From {source}": "取得元: {source}",
+  "Observed": "観測",
+  "Previous pass saw {ports}": "前回のパスで確認: {ports}",
+  "Answers on {port}, a new port": "新しいポート {port} で応答",
+  "Declared not internet-facing in the profile": "プロファイルでインターネット非公開と宣言",
+  "Answers from the Internet on {ports}": "インターネットから {ports} で応答",
+  "The name is listed": "名前は登録済み",
+  "No DNS record backs it": "対応する DNS レコードなし",
+  "Names of {domain} point inside the owned address ranges": "{domain} の名前は所有アドレス範囲内を指す",
+  "Points to {ip}, outside them": "範囲外の {ip} を指す",
+  "Last seen on {date}": "最終確認: {date}",
+  "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, other {少なくとも # 日間未確認}}",
+  "Not declared and not seen by an earlier pass": "未宣言で、以前のパスでも未確認",
+  "Answers on {ports}": "{ports} で応答",
+  "Ports that answer": "応答するポート",
+  "DNS target": "DNS ターゲット",
+  "Certificate names": "証明書の名前"
 }
