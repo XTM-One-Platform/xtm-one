@@ -13,6 +13,10 @@ interface CrownJewel {
   owner: string;
   criticality: "low" | "medium" | "high" | "critical";
   opencrq_asset_id: string;
+  /** Where the row came from (#1134): manual, csv, api, agent:<id> or a platform. */
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
 }
 
 interface TechStackEntry {
@@ -21,6 +25,9 @@ interface TechStackEntry {
   cpe: string;
   /** The version the organization runs, optional (CTEM-11): absent on a profile saved before it. */
   version?: string;
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
 }
 
 interface AiSystem {
@@ -29,6 +36,9 @@ interface AiSystem {
   owner: string;
   exposure: "internal" | "partner" | "public";
   openaev_asset_id: string;
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
 }
 
 export interface OrganizationProfile {
@@ -459,6 +469,8 @@ export interface OrganizationSync {
   filters: Record<string, string | string[]>;
   batch_type: string;
   remove_gone: boolean;
+  /** The source ids this sync never imports (#1134); omitted in a body: the stored list is kept. */
+  excluded_external_ids?: string[];
   frequency: SyncFrequency;
   hour: number;
   minute: number;
@@ -476,7 +488,7 @@ export interface OrganizationSync {
 
 export type OrganizationSyncBody = Pick<
   OrganizationSync,
-  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
+  "section" | "source" | "filters" | "batch_type" | "remove_gone" | "excluded_external_ids" | "frequency" | "hour" | "minute" | "weekday" | "timezone" | "enabled"
 >;
 
 const SYNCS = [...KEY, "syncs"] as const;
