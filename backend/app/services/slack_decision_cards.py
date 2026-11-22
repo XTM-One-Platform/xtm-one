@@ -85,12 +85,13 @@ _MAX_LINKS = 3
 
 def _plain(text: str, limit: int = _MAX_SECTION, *, keep_lines: bool = False) -> dict[str, Any]:
     """A plain-text object: a value from an ask is never read as mrkdwn."""
-    if keep_lines:
-        value = str(text or "")
-        value = value if len(value) <= limit else value[: limit - 1] + "…"
-    else:
-        value = _clip(text, limit)
+    value = _clip_lines(str(text or ""), limit) if keep_lines else _clip(text, limit)
     return {"type": "plain_text", "text": value or " ", "emoji": False}
+
+
+def _clip_lines(text: str, limit: int = _MAX_SECTION) -> str:
+    """*text* cut at *limit* with its line breaks kept (``_clip`` folds every space, newlines included)."""
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _escape(text: str) -> str:
@@ -172,7 +173,7 @@ def _ask_blocks(ask: dict[str, Any], kind: str, language: str, *, show_effects: 
             line += f": {_escape(_clip(option['effect'], _MAX_EFFECT))}"
         lines.append(f"• {line}")
     if lines:
-        blocks.append(_section({"type": "mrkdwn", "text": _clip("\n".join(lines), _MAX_SECTION), "verbatim": True}))
+        blocks.append(_section({"type": "mrkdwn", "text": _clip_lines("\n".join(lines)), "verbatim": True}))
     deadline = _slack_date(ask.get("deadline"), language)
     if deadline:
         blocks.append(
@@ -193,7 +194,7 @@ def _proposal_blocks(view: DecisionView, language: str) -> list[dict[str, Any]]:
     lines = [f"*{_escape(notice('card_tools_awaiting', language))}*"]
     for proposal in view.proposals:
         lines.append(f"`{_escape(_clip(proposal.get('tool_name') or '?', _MAX_NAME))}`")
-    return [_section({"type": "mrkdwn", "text": _clip("\n".join(lines), _MAX_SECTION), "verbatim": True})]
+    return [_section({"type": "mrkdwn", "text": _clip_lines("\n".join(lines)), "verbatim": True})]
 
 
 def _answer_block(view: DecisionView, ask: dict[str, Any], language: str) -> dict[str, Any] | None:

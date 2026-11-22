@@ -125,6 +125,16 @@ def test_an_open_card_says_whom_it_waits_for_and_escapes_ask_text():
     assert question["text"]["text"] == "*Ship the fix tonight?*"
 
 
+def test_each_option_keeps_its_own_line():
+    """The options list was folded onto one line by ``_clip`` (seen in the render lab, UX round 1 of #1086)."""
+    message = cards.render_slack_decision(_view(), "en")
+    options = next(b for b in message["blocks"] if b["type"] == "section" and "•" in b["text"]["text"])
+    assert options["text"]["text"].split("\n") == [
+        "• *Ship* (Recommended): deploys at 22:00",
+        "• *Wait*: ships Monday",
+    ]
+
+
 @pytest.mark.parametrize(
     ("source_type", "kind", "ask", "source_notice"),
     [
