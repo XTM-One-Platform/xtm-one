@@ -117,10 +117,12 @@ opencrq:list_opencrq_users
 opencrq:search_opencrq_cves
 opencrq:search_opencrq_mitre_techniques
 opencti:get_opencti_container_full
+opencti:get_opencti_data_health
 opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_error_rate
 opencti:get_opencti_licence
 opencti:get_opencti_managers
 opencti:get_opencti_platform_queues
