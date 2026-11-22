@@ -20841,5 +20841,19 @@
   "No check round since the last digest": "No check round since the last digest",
   "Failed most": "Failed most",
   "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}",
-  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}"
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}",
+  "No grouping": "No grouping",
+  "Fix family": "Fix family",
+  "Upgrade": "Upgrade",
+  "Patch": "Patch",
+  "Course of action": "Course of action",
+  "Close exposure": "Close exposure",
+  "Decommission": "Decommission",
+  "Rotate credential": "Rotate credential",
+  "Restore control": "Restore control",
+  "Supplier action": "Supplier action",
+  "Restore coverage": "Restore coverage",
+  "Unknown user": "Unknown user",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# row} other {# rows}}",
+  "Group by: {group}": "Group by: {group}"
 }
