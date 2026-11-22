@@ -251,7 +251,9 @@ def build_operation_tools(
     return tools
 
 
-def _build_one(op: Operation, client: RydooClient, executor: CallableToolExecutor, persist_file_fn: Any) -> ToolDefinition:
+def _build_one(
+    op: Operation, client: RydooClient, executor: CallableToolExecutor, persist_file_fn: Any
+) -> ToolDefinition:
     async def handler(file_context: FileContext | None = None, **kwargs: Any) -> str | ToolResult:
         return await call(op, client, kwargs, file_context=file_context, persist_file_fn=persist_file_fn)
 
@@ -295,11 +297,14 @@ async def call(
             return "Error: body must be the JSON object the Rydoo API reference documents for this operation."
         kwargs["body"] = body
     if op.upload_field:
-        piped = await read_pipe_file(file_context, str(args.get("file_id") or ""), max_bytes=MAX_UPLOAD_BYTES, target=PROVIDER)
+        piped = await read_pipe_file(
+            file_context, str(args.get("file_id") or ""), max_bytes=MAX_UPLOAD_BYTES, target=PROVIDER
+        )
         if isinstance(piped, str):
             return ToolResult(tool_call_id="", content=piped, is_error=True)
         data, filename, content_type = piped
-        fields = args.get("fields") if isinstance(args.get("fields"), dict) else {}
+        raw_fields = args.get("fields")
+        fields: dict[str, Any] = raw_fields if isinstance(raw_fields, dict) else {}
         kwargs["files"] = [Upload(op.upload_field, filename, data, content_type)]
         kwargs["form"] = {str(k): str(v) for k, v in fields.items() if v is not None}
         if op.name in _IDEMPOTENT_UPLOADS:

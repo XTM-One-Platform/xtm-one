@@ -44,7 +44,7 @@ from app.integrations.http import (
 PROVIDER = "Rydoo"
 SOURCE = "integration:rydoo"
 API_BASE = "https://api.rydoo.com"
-TOKEN_URL = "https://accounts.rydoo.com/connect/token"
+SIGN_IN_URL = "https://accounts.rydoo.com/connect/token"
 SCOPE = "api_xpd2"
 
 _TIMEOUT = 60
@@ -144,7 +144,7 @@ class RydooClient:
             resp, err = await safe_request(
                 client,
                 "post",
-                TOKEN_URL,
+                SIGN_IN_URL,
                 PROVIDER,
                 "sign in with the client ID and secret",
                 headers={

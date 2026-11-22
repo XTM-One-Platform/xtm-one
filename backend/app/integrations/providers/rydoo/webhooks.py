@@ -14,7 +14,7 @@ exported-expenses tool is the polling fallback.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeGuard
 
 #: Every expense event the webhook sends (Rydoo guide, 22 May 2026).
 EVENT_TYPES: dict[str, str] = {
@@ -49,7 +49,7 @@ def trigger_event(rydoo_event: str) -> str:
 TRIGGER_EVENTS: dict[str, str] = {event: trigger_event(event) for event in EVENT_TYPES}
 
 
-def is_delivery(payload: Any) -> bool:
+def is_delivery(payload: object) -> TypeGuard[dict[str, Any]]:
     """A Rydoo expense webhook delivery: its envelope keys and a known event type."""
     if not isinstance(payload, dict):
         return False

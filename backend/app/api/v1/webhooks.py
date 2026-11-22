@@ -52,6 +52,7 @@ Signature validation (both endpoints):
   - OpenCTI: token-based (X-OpenCTI-Token header)
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
+  - Rydoo: unsigned expense events, gated by the static token below
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -191,6 +192,8 @@ from app.core.utils import (
 from app.integrations.providers.aikido.webhooks import SIGNATURE_HEADER as AIKIDO_SIGNATURE_HEADER
 from app.integrations.providers.aikido.webhooks import trigger_event as aikido_trigger_event
 from app.integrations.providers.aikido.webhooks import verify_signature as verify_aikido_signature
+from app.integrations.providers.rydoo.webhooks import is_delivery as is_rydoo_delivery
+from app.integrations.providers.rydoo.webhooks import trigger_event as rydoo_trigger_event
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -2174,6 +2177,12 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if request.headers.get(AIKIDO_SIGNATURE_HEADER) and isinstance(aikido_event, str):
         return aikido_trigger_event(aikido_event)
 
+    # Rydoo: a flat expense event (eventType, expenseId, companyId); the
+    # trigger key is rydoo_ and its snake form (ExpenseApproved ->
+    # rydoo_expense_approved).
+    if is_rydoo_delivery(payload):
+        return rydoo_trigger_event(payload["eventType"])
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2203,6 +2212,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         and isinstance(payload.get("event_type"), str)
     ):
         return aikido_trigger_event(payload["event_type"])
+    if is_rydoo_delivery(payload):
+        return rydoo_trigger_event(payload["eventType"])
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
