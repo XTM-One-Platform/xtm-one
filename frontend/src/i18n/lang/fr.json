@@ -20385,5 +20385,19 @@
   "Attached the treatment plan": "A rattaché le plan de traitement",
   "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "Pas encore de plan de traitement : la décision de remédiation en écrit un dans OpenCRQ quand OpenCRQ est connecté.",
   "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "Un plan existe dans OpenCRQ : réservé aux lecteurs d'OpenCRQ",
-  "Finance": "Finance"
+  "Finance": "Finance",
+  "Package": "Paquet",
+  "Leaked secret": "Secret divulgué",
+  "Dependency": "Dépendance",
+  "Finding type": "Type de constat",
+  "Closed at source": "Clos à la source",
+  "Infrastructure as code": "Infrastructure as code",
+  "Malware": "Logiciel malveillant",
+  "End of life": "Fin de vie",
+  "Surface monitoring": "Surveillance de surface",
+  "SLA": "SLA",
+  "Breached in the source": "Dépassé dans la source",
+  "{installed}, fixed in {fixed}": "{installed}, corrigé en {fixed}",
+  "{provider} closed every finding of this case on {date}": "{provider} a clos tous les constats de ce cas le {date}",
+  "The source closed every finding of this case on {date}": "La source a clos tous les constats de ce cas le {date}"
 }
