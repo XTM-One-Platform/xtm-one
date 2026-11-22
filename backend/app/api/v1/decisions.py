@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_agentic_ai
+from app.api.deps import get_current_user, require_admin, require_agentic_ai
 from app.api.v1.schemas.assignment import ApprovalDecision
 from app.core.database import get_db
 from app.models.user import User
@@ -45,6 +45,18 @@ class DecisionAnswer(BaseModel):
     decisions: Annotated[list[ApprovalDecision] | None, Field(max_length=50)] = None
     #: Where the answer was given (web, inbox, bell, push, teams_card...).
     surface: Annotated[str | None, Field(max_length=40)] = None
+
+
+@router.get("/backfill")
+async def backfill_status(
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The health probe of the backfill (S2b): the count check per source and the read switch."""
+    from app.services.decision_backfill import read_switch
+
+    conn = await db.connection()
+    return await conn.run_sync(lambda sync_conn: read_switch(sync_conn))
 
 
 @router.post("/{decision_id}/answer")

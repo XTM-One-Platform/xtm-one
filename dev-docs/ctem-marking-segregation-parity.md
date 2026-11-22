@@ -19,7 +19,7 @@ from the code around it, not exercised). XTM One's own audit is
 |---|---|---|---|---|
 | Tenant / org isolation | One platform per deployment; no tenant. Verified | Tenant v2 statement inspector (ADR-002), `TxCtx`. Verified (ADR-009 s.4, `ScopeDimension`) | Tenant policies on every table (`module/src/security/policies/tenant-policies.ts`). Verified | Not multi-tenant; never crosses a module tenant: one JWT per user, the module resolves the tenant (audit s.5). Inferred on the module side |
 | OpenCTI organization segregation | `granted_refs` (organizations), `authorized_members` (restricted access, bypasses org sharing), applied when `platform_organization` is set and the user is outside it: `buildDataRestrictions` (`database/engine-query-builder.ts` l.253-275), `checkUserFilterStoreElements` (`utils/access.ts` l.889-913). The STIX export carries both in the OpenCTI extension (`stix-2-1-converter.ts` l.196, l.202). Verified | No such concept (no OpenCTI organizations). Inferred | **Gap G3**: not mirrored; a mirrored object restricted to an organization is read by every tenant member (no `granted_refs` read anywhere, code search). Verified | Inherits OpenCTI's rule on live reads (per-user JWT). Inferred |
-| Marking definitions: source and id | `Marking-Definition` entities, STIX `standard_id`; `definition_type` + `x_opencti_order`. Verified (`user-domain.ts` l.519-540) | `marking_definitions` per tenant, local `marking_definition_id`, type, definition, color, order; **no STIX id column** (`V6_20260914120000000__Add_marking_definitions`). Verified | None of its own; stores OpenCTI `standard_id`s in `threat_analyses.marking_refs` (migration 0005). Verified | None of its own. Verified (audit) |
+| Marking definitions: source and id | `Marking-Definition` entities, STIX `standard_id`; `definition_type` + `x_opencti_order`. Verified (`user-domain.ts` l.519-540) | `marking_definitions` per tenant, local `marking_definition_id`, type, definition, color, order, and since OpenAEV-Platform/openaev#9631 (squash `5fd974c4`, 22 Nov 2026) `marking_definition_stix_id`: OpenCTI's `standard_id`, derived the OpenCTI way (static TLP 2.0 ids, else UUIDv5 on type and definition), backfilled, unique per tenant, kept on an OpenCTI-format import (`MarkingDefinitionStixIds`, `V6_20261121210000000__Add_marking_definition_stix_id`). Verified | None of its own; stores OpenCTI `standard_id`s in `threat_analyses.marking_refs` (migration 0005). Verified | None of its own. Verified (audit) |
 | Ordinal scale | Per `definition_type`: holding a marking grants every lower `x_opencti_order` of that type (`computeAvailableMarkings`). Verified | Per type, highest granted order expanded downwards in Java; a type with no grant contributes nothing (`MarkingScopeResolver.resolve` l.64-80). Verified | Delegated: OpenCTI's `me.allowed_marking` is already expanded (`reader-markings.ts`). Verified | Delegated to each module. Inferred |
 | Clearance source | Groups (`allowed_marking` from the user's groups). Verified (`getUserAndGlobalMarkings` l.560-587) | Groups, not roles (`groups_markings` join `users_groups`, `MarkingClearanceCacheManager` l.61-67). Verified | The reader's OpenCTI groups, asked of OpenCTI as the reader (`READER_MARKINGS_QUERY`). Verified. **Gap G2**: no OpenCRQ groups carry a clearance | The user's identity in each module. Verified (audit s.1) |
 | Multi-marking rule | AND: every marking of the object held (`isMarkingAllowed` l.881-887). Verified | AND: `row <@ clearance` (`is_marking_set_allowed`, `V6_20260921090000000`). Verified | AND: `marking_refs <@ reader` (`marking-policies.ts`, `readableThreat`). Verified | Inherited. Inferred |
@@ -38,20 +38,21 @@ A marking is identified by its STIX `standard_id` everywhere: OpenCTI's id is
 the one OpenCRQ already stores, and the one an OpenAEV marking must carry to
 be the same marking.
 
-- **Gap G1**: OpenAEV marking definitions have a local id and no STIX id
-  (`V6_20260914120000000`). Proposal on OpenAEV-Platform/openaev#9361 (the
-  OpenCTI-format import and export, format "to be defined"): add a nullable
-  `marking_definition_stix_id`, filled by the import from OpenCTI's
-  `standard_id` and generated for a native marking the way OpenCTI derives it
-  (type and definition), and export it. Additive, no change to
-  `marking_ids` semantics: zero breaking change. The OpenAEV team decides.
+- **Gap G1, closed** by OpenAEV-Platform/openaev#9631 (closes openaev #9628,
+  squash `5fd974c4`, 22 Nov 2026): a nullable `marking_definition_stix_id`,
+  unique per tenant, backfilled by migration `V6_20261121210000000`, set on
+  create and on the default seed, followed on a rename when derived, exposed
+  in `MarkingDefinitionOutput`, exported and imported in OpenCTI format
+  (`GET` and `POST .../marking_definitions/stix`, the #9361 scope) so a
+  marking imported from OpenCTI keeps its `standard_id`. Additive, no change
+  to `marking_ids` semantics: zero breaking change.
 
 ## Gaps and plan
 
 | # | Gap | Repository | Slice |
 |---|---|---|---|
 | D1 | Unknown or empty OpenCTI clearance hides unmarked mirrored rows | opencrq | In #33 before it leaves draft |
-| G1 | OpenAEV markings carry no STIX id | openaev | Proposal on #9361, OpenAEV team |
+| G1 | OpenAEV markings carry no STIX id | openaev | Closed: openaev #9631 (squash `5fd974c4`) |
 | G2 | OpenCRQ has no native markings, no group clearance, no assign check | opencrq | Native markings: definitions per tenant synced from OpenCTI (`standard_id`), ordinal per type, clearance on groups, `marking_refs` on every marked entity, one central predicate, same governance as ADR-009 |
 | G3 | OpenCTI organization segregation not mirrored in OpenCRQ | opencrq | Mirror `granted_refs` and `authorized_members` from the stream, filter by the reader's organizations from `me` as the reader, fail closed; a rule that cannot be mirrored hides the object |
 | G4 | OpenAEV connector data unmarked in OpenCRQ | opencrq | Carry the asset's OpenAEV markings (needs G1 for a shared id) |
