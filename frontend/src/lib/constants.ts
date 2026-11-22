@@ -376,6 +376,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
+  rydoo: "Rydoo",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
