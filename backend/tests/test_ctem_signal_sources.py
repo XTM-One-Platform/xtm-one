@@ -10,25 +10,25 @@ from app.services import ctem_signal_sources as sources
 from app.services import ctem_signals
 
 
-def test_every_path_has_a_description_and_a_sources_row():
+def test_every_path_has_a_description_and_a_sources_row() -> None:
     assert set(sources.PATH_DESCRIPTIONS) == set(TRIGGER_PATHS)
     assert set(sources.PATH_SOURCES) == set(TRIGGER_PATHS)
     assert all(s.kind in sources.SOURCE_KINDS for row in sources.PATH_SOURCES.values() for s in row)
 
 
-def test_every_listener_row_is_named_as_a_listener_source_of_its_path():
+def test_every_listener_row_is_named_as_a_listener_source_of_its_path() -> None:
     for row in listeners.LISTENERS:
         named = {(s.provider, s.kind) for s in sources.PATH_SOURCES[row.trigger_path]}
         assert (row.provider, "listener") in named, (row.provider, row.trigger_path)
 
 
-def test_status_never_reads_connected_without_a_bound_source():
+def test_status_never_reads_connected_without_a_bound_source() -> None:
     assert sources.path_status([]) == "agents_api"
     assert sources.path_status([{"bound": False}, {"bound": False}]) == "not_connected"
     assert sources.path_status([{"bound": False}, {"bound": True}]) == "connected"
 
 
-def test_the_catalog_carries_sources_status_and_activity():
+def test_the_catalog_carries_sources_status_and_activity() -> None:
     rows = {
         r["id"]: r
         for r in ctem_signals.path_catalog(
@@ -49,6 +49,6 @@ def test_the_catalog_carries_sources_status_and_activity():
     assert rows["new_exposure"]["last_signal_at"] is None
 
 
-def test_the_catalog_without_activity_keeps_its_former_shape_plus_sources():
+def test_the_catalog_without_activity_keeps_its_former_shape_plus_sources() -> None:
     row = ctem_signals.path_catalog()[0]
     assert {"id", "label", "default_lens", "listener", "description", "sources", "status"} == set(row)
