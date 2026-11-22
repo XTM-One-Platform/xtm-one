@@ -12,7 +12,7 @@ organization; anyone else reads the signals recorded for them. The rules are
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -83,15 +83,24 @@ async def list_ctem_signal_paths(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """The 12 trigger paths, their default lens, whether a listener feeds them, and the signals the caller sees per path."""
+    """The 12 trigger paths, their default lens, whether a listener feeds them, and the signals the caller sees per path.
+
+    Each path also names its sources and whether each is bound for the caller,
+    its status, and its signals of the last 30 days (#1189, the signal sources dialog).
+    """
     _require_xtm_one()
+    from app.services.ctem_signal_sources import bound_sources
+
     primary = await get_primary(db)
-    counts = (
-        await signals.counts_by_path(db, organization_id=primary.id, recorded_by=_reader(user))
-        if primary is not None
-        else None
-    )
-    return {"paths": signals.path_catalog(counts if counts is not None else {})}
+    counts: dict[str, dict[str, int]] = {}
+    activity: dict[str, dict[str, Any]] = {}
+    if primary is not None:
+        reader = _reader(user)
+        counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
+        since = datetime.now(UTC) - timedelta(days=30)
+        activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
+    bound = await bound_sources(db, user.id)
+    return {"paths": signals.path_catalog(counts, bound=bound, activity=activity)}
 
 
 @router.get("")
