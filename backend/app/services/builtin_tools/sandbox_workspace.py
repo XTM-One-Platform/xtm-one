@@ -2990,6 +2990,7 @@ def build_sandbox_workspace_tools(
                 read_base=read_baseline,
                 globs=command.affected_globs,
                 lines=command.affected == "lines",
+                whole_repository=command.affected_whole_repository,
             )
             described = files.describe(mode=command.affected, baseline=checkouts.baseline_origin(record))
             if command.narrow_args:

@@ -219,6 +219,8 @@ class ResolvedCommand:
     #: The check declares ``affected_narrows_args`` and the call gave args without ``--whole``: those args, the
     #: tail of :attr:`argv`, narrowed to the change before the run (a bare modified path to ``PATH:A-B``).
     narrow_args: tuple[str, ...] = ()
+    #: The check declares ``affected_whole_repository``: the changed files outside its directory are passed too.
+    affected_whole_repository: bool = False
     #: The install check of the same directory and image, run first when the container has no installed
     #: dependencies there (:func:`_needs_install`); ``None`` for an install, an argv or an ``install_first = false`` check.
     install: ResolvedCommand | None = None
@@ -930,6 +932,7 @@ async def _resolve(
         affected_scan_patterns=spec.affected_scan_patterns,
         affected_by_default=spec.affected_by_default and not extra_args(args or []),
         narrow_args=narrow,
+        affected_whole_repository=spec.affected_whole_repository,
         install=install,
     )
     install_spec = spec if is_install_name(check) else (found.specs.get(install.check) if install else None)
