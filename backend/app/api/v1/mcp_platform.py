@@ -283,6 +283,7 @@ OPENCRQ_MCP_TOOLS: frozenset[str] = frozenset(
         "update_opencrq_risk_tolerance",
         "get_opencrq_scenario_exposure",
         "get_opencrq_cve_exploitation",
+        "get_opencrq_attack_path_reach",
         "list_opencrq_attack_outcomes",
         "get_opencrq_attack_outcome",
         # CRQ
@@ -435,6 +436,7 @@ OPENCRQ_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "get_opencrq_risk_scenario",
         "get_opencrq_scenario_exposure",
         "get_opencrq_cve_exploitation",
+        "get_opencrq_attack_path_reach",
         "list_opencrq_attack_outcomes",
         "get_opencrq_attack_outcome",
         "get_opencrq_financial_summary",

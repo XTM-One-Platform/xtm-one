@@ -259,6 +259,18 @@
       "closed": true
     }
   ],
+  "get_opencrq_attack_path_reach": [
+    {
+      "procedures": [
+        "supportingAssets.getAttackPathReach"
+      ],
+      "fields": [
+        "supportingAssetId"
+      ],
+      "conditional": [],
+      "closed": true
+    }
+  ],
   "get_opencrq_budget_review": [
     {
       "procedures": [

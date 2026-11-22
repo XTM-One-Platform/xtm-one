@@ -2,7 +2,7 @@
   "pinnedFrom": {
     "repository": "OpenCRQ-Platform/opencrq",
     "path": "back/trpc-procedures.json",
-    "commit": "fe02bb4c7a0f827d465f9ae74b9e844e0709e9ed"
+    "commit": "043206a5dc1635137c67953ee9fa7e5501dc6b97"
   },
   "formatVersion": 1,
   "procedures": [
@@ -935,6 +935,34 @@
       "type": "query"
     },
     {
+      "path": "markingDefinitions.addMarkingToGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.createMarkingDefinition",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.deleteMarkingDefinition",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.getGroupMarkings",
+      "type": "query"
+    },
+    {
+      "path": "markingDefinitions.listMarkingDefinitions",
+      "type": "query"
+    },
+    {
+      "path": "markingDefinitions.removeMarkingFromGroup",
+      "type": "mutation"
+    },
+    {
+      "path": "markingDefinitions.updateMarkingDefinition",
+      "type": "mutation"
+    },
+    {
       "path": "members.addMembers",
       "type": "mutation"
     },
@@ -1235,6 +1263,10 @@
       "type": "query"
     },
     {
+      "path": "riskScenarios.getEvidenceHealth",
+      "type": "query"
+    },
+    {
       "path": "riskScenarios.getFindingsSummaryForRiskScenario",
       "type": "query"
     },
@@ -1432,6 +1464,10 @@
     },
     {
       "path": "supportingAssets.getAssetCountsBySource",
+      "type": "query"
+    },
+    {
+      "path": "supportingAssets.getAttackPathReach",
       "type": "query"
     },
     {
