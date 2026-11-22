@@ -20699,5 +20699,12 @@
   "A leaked secret issue": "A leaked secret issue",
   "An account or an email address of your domains is written by a leak source": "An account or an email address of your domains is written by a leak source",
   "A report or incident names one of your tracked organizations": "A report or incident names one of your tracked organizations",
-  "The evidence health pass finds a supporting asset with no evidence": "The evidence health pass finds a supporting asset with no evidence"
+  "The evidence health pass finds a supporting asset with no evidence": "The evidence health pass finds a supporting asset with no evidence",
+  "Empty: OpenCRQ is not connected.": "Empty: OpenCRQ is not connected.",
+  "Connect OpenCRQ": "Connect OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "No automation works this case: the CTEM loop fleet is not set up.",
+  "Waiting for {agent}, working this case since {since}.": "Waiting for {agent}, working this case since {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "Waiting for a fleet step, working this case since {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
+  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets"
 }
