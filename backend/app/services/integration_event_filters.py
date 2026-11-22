@@ -960,12 +960,6 @@ def event_filter_reason(
         return _teams_reason(event, payload, filter_config)
     if event in DOCUSIGN_EVENTS:
         return _docusign_reason(event, payload, filter_config)
-    if payload.get("provider") == "dealhub":
-        from app.services.dealhub_events import EVENTS as DEALHUB_EVENTS
-        from app.services.dealhub_events import filter_reason as dealhub_filter_reason
-
-        if event in DEALHUB_EVENTS:
-            return dealhub_filter_reason(payload, filter_config)
     if event in JIRA_EVENTS and payload.get("provider") == "jira":
         from app.services.jira_events import filter_reason as jira_filter_reason
 
@@ -974,6 +968,12 @@ def event_filter_reason(
         return jira_filter_reason(
             payload, filter_config, self_account_id=str(signals.get("jira_self_account_id") or "")
         )
+    if payload.get("provider") == "netsuite":
+        from app.services.netsuite_events import EVENTS as NETSUITE_EVENTS
+        from app.services.netsuite_events import filter_reason as netsuite_filter_reason
+
+        if event in NETSUITE_EVENTS:
+            return netsuite_filter_reason(payload, filter_config)
     if event == "calendar_event_changed":
         kinds = {k.casefold() for k in _strings(filter_config.get("change_kinds"))}
         if kinds and str(payload.get("change_kind") or "").casefold() not in kinds:

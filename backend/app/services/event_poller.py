@@ -61,7 +61,7 @@ from app.integrations.providers.microsoft._message_type import message_type
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import dealhub_events, jira_events, opencrq_job_events
+from app.services import jira_events, netsuite_events, opencrq_job_events
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
@@ -135,8 +135,8 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
-    # DealHub quote status changes (dealhub_events): the fallback of its webhooks.
-    **dict.fromkeys(sorted(dealhub_events.EVENTS), dealhub_events.POLL_INTERVAL_SECONDS),
+    # NetSuite change events (netsuite_events): SuiteQL every 5 min, within the account's concurrency limit.
+    **dict.fromkeys(sorted(netsuite_events.EVENTS), netsuite_events.POLL_INTERVAL_SECONDS),
 }
 
 _MAX_DISCOVERED_CHANNELS = 20
@@ -867,8 +867,8 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
-    if provider == dealhub_events.PROVIDER and dealhub_events.polled(event_type):
-        return await _poll_dealhub_quotes(access_token, event_type, wf, redis)
+    if provider == netsuite_events.PROVIDER and event_type in netsuite_events.EVENTS:
+        return await _poll_netsuite_changes(access_token, event_type, wf, redis)
 
     # Unsupported provider/event — return empty
     logger.debug("No poller for %s/%s", provider, event_type)
@@ -890,24 +890,17 @@ async def _poll_credential(
     the environment and the account ride with the OAuth token, and the JWT
     Grant mode stores no access token at all, only the RSA key it mints one with.
     """
-    if provider in (opencrq_job_events.PROVIDER, jira_events.PROVIDER) and db is not None:
+    if provider in (opencrq_job_events.PROVIDER, jira_events.PROVIDER, netsuite_events.PROVIDER) and db is not None:
         # The compound the tools run on: OpenCRQ's ``base_url||token`` (an API
         # key, or a token minted for the acting user on a platform-managed
-        # integration), Jira's ``cloud_id||token`` refreshed when about to expire.
+        # integration), Jira's ``cloud_id||token`` refreshed when about to expire,
+        # NetSuite's account, mode and secret (``netsuite.compound_credential``).
         from app.services.integration_tools import _get_token
 
         token = await _get_token(
             db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
         )
         return token if token and "||" in token else None
-    if provider == dealhub_events.PROVIDER and db is not None:
-        # ``host||token`` when the instance host is set, the bare token otherwise.
-        from app.services.integration_tools import _get_token
-
-        token = await _get_token(
-            db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
-        )
-        return token or None
     if provider != "docusign":
         return decrypt_value(holder.access_token_enc) if holder.access_token_enc else None
     from app.services.vault import reveal_json_field
@@ -969,22 +962,88 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ]
 
 
-async def _poll_dealhub_quotes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
-    """Poll the DealHub quotes whose status changed since the last check (``dealhub_events``).
+async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict]:
+    """Poll the NetSuite records changed since the last check (``netsuite_events``).
 
-    The cursor is the status map of the quotes read last time; the first poll
-    records it and runs nothing. A read that fails leaves the cursor alone.
+    Transactions: one SuiteQL read of the event's record types modified at or
+    after the cursor (a NetSuite timestamp, never converted), oldest first; the
+    record at the cursor comes back and the seen set skips it. Periods: the
+    posting periods' flags diffed against the last snapshot. The first poll
+    stores the cursor (the records at it marked seen) or the snapshot and runs
+    nothing.
     """
+    from app.integrations.providers.netsuite import parse_token, read_suiteql
+
+    account_id = parse_token(credential).get("account_id") or ""
     cursor_key = f"event_cursor:{wf.id}"
-    known = dealhub_events.load_statuses(await redis.get(cursor_key))
-    quotes, err = await dealhub_events.list_quotes(credential)
-    if err:
-        logger.warning("DealHub quote poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+    stored = await redis.get(cursor_key)
+    if event_type == netsuite_events.ACCOUNTING_PERIOD_CHANGED:
+        rows, _more, err = await read_suiteql(
+            credential, netsuite_events.PERIODS_QUERY, 2000, "read accounting periods"
+        )
+        if err:
+            logger.warning("NetSuite period poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        previous = netsuite_events.load_snapshot(stored)
+        snapshot = netsuite_events.period_snapshot(rows)
+        if snapshot:
+            await redis.set(cursor_key, netsuite_events.dump_snapshot(snapshot), ex=_CURSOR_TTL_SECONDS)
+        if previous is None:
+            return []
+        return netsuite_events.period_events(rows, previous, account_id=account_id)
+    since = stored.decode() if isinstance(stored, bytes) else (str(stored) if stored else "")
+    if not netsuite_events.is_timestamp(since):
+        # First poll (or an unreadable cursor): start from the newest change, run nothing.
+        rows, _more, err = await read_suiteql(
+            credential, netsuite_events.seed_query(event_type), 1, "read the newest change"
+        )
+        if err:
+            logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        seed = str((rows[0] if rows else {}).get("cursor") or "")
+        if not netsuite_events.is_timestamp(seed):
+            await redis.set(cursor_key, netsuite_events.EPOCH, ex=_CURSOR_TTL_SECONDS)
+            return []
+        # The next poll reads at or after the cursor, so the records modified at
+        # the seed instant come back: they are marked seen now, never run.
+        rows, _more, err = await read_suiteql(
+            credential,
+            netsuite_events.changes_query(event_type, None, seed),
+            netsuite_events.PAGE + 1,
+            "read the records at the newest change",
+        )
+        if err:
+            logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+            return []
+        for row in rows:
+            if str(row.get("modified_at") or "") == seed:
+                event = netsuite_events.transaction_event(row, event_type, account_id=account_id)
+                if event["message_id"]:
+                    await claim_seen(redis, wf.id, event["message_id"])
+        await redis.set(cursor_key, seed, ex=_CURSOR_TTL_SECONDS)
         return []
-    delivered = await dealhub_events.webhook_statuses(redis, wf.id)
-    events, statuses = dealhub_events.poll_events(quotes, event_type, known, delivered=delivered)
-    await redis.set(cursor_key, dealhub_events.dump_statuses(statuses), ex=_CURSOR_TTL_SECONDS)
-    return events
+    filter_config = trigger_filter(getattr(wf, "trigger_config", None))
+    rows, more, err = await read_suiteql(
+        credential,
+        netsuite_events.changes_query(event_type, filter_config, since),
+        netsuite_events.PAGE + 1,
+        "read changed records",
+    )
+    if err:
+        logger.warning("NetSuite change poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+
+    def modified(row: dict) -> str:
+        # Same fixed-width format throughout: the text orders as the time does.
+        return str(row.get("modified_at") or "")
+
+    rows.sort(key=lambda r: (modified(r), str(r.get("id", ""))))
+    page = _oldest_page(rows, modified, netsuite_events.PAGE)
+    _log_page_cut(wf, "NetSuite", page)
+    await _note_backlog(redis, wf, "NetSuite", page.more or more)
+    if page.cursor is not None and netsuite_events.is_timestamp(modified(page.cursor)):
+        await redis.set(cursor_key, modified(page.cursor), ex=_CURSOR_TTL_SECONDS)
+    return [netsuite_events.transaction_event(row, event_type, account_id=account_id) for row in page.items]
 
 
 #: The connected Jira account per integration (``GET /myself``), read once a day.
