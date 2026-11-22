@@ -470,6 +470,7 @@ def hydrate(
         + [{"restricted": True} for _ in range(restricted)],
         "history": [_event(e, view) for e in events],
         "exploitation": exploitation_for(case, view),
+        "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
         "threat_package": threat_package_for(events, view),
     }
@@ -500,6 +501,47 @@ def exploitation_for(case: CtemCase, view: ViewerView) -> list[dict[str, Any]]:
     return out
 
 
+def attack_path_for(case: CtemCase, view: ViewerView) -> dict[str, Any] | None:
+    """The case's attack-path reach as this viewer may read it (#1289); ``None`` before the first read.
+
+    The shape (hops nearest first with proven or inferred, depths, criticality,
+    exposure, counts) is served to every viewer of the case; the OpenCRQ asset
+    names and the simulation (name, page, date) only to a viewer whose own
+    OpenCRQ read is available, else each name is ``Restricted``. The raw
+    simulation id is never served: it is kept for the trace (#1296, B2).
+    """
+    stored = getattr(case, "attack_path", None) or {}
+    if not isinstance(stored, dict) or not isinstance(stored.get("origin"), dict):
+        return None
+
+    def name(value: object) -> str:
+        return str(value or "") if view.opencrq else RESTRICTED
+
+    origin = stored["origin"]
+    return {
+        "origin": {"asset": name(origin.get("asset")), "exposure": origin.get("exposure") or "unknown"},
+        "hops": [
+            {
+                "from": name(h.get("from")),
+                "to": name(h.get("to")),
+                "nature": "proven" if h.get("nature") == "proven" else "inferred",
+                "simulation_name": h.get("simulation_name") if view.opencrq else None,
+                "simulation_url": h.get("simulation_url") if view.opencrq else None,
+                "seen_at": h.get("seen_at"),
+            }
+            for h in stored.get("hops") or []
+            if isinstance(h, dict)
+        ],
+        "reached": [
+            {"asset": name(a.get("asset")), "depth": a.get("depth"), "criticality": a.get("criticality")}
+            for a in stored.get("reached") or []
+            if isinstance(a, dict)
+        ],
+        "primary": [name(p) for p in stored.get("primary") or []],
+        "at": stored.get("at"),
+    }
+
+
 _PRIORITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
@@ -510,18 +552,13 @@ def list_for_viewer(
     state: str | None = None,
     owner_user_id: str | None = None,
     priority: str | None = None,
-    asset: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """One page of the cases this viewer sees and their counts by state.
 
     A case with no issue visible to the viewer is in neither: a count is data.
-    *asset* keeps the cases one of whose issues the viewer sees names that asset
-    (case-insensitive), the counts included: the cases on one asset.
     """
-    if asset and asset.strip():
-        cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
     rows = [s for s in (summary(c, members, view) for c, members in cases) if s is not None]
     counts: dict[str, int] = {}
     for row in rows:
@@ -535,16 +572,6 @@ def list_for_viewer(
     rows.sort(key=lambda r: (_PRIORITY_RANK.get(r["priority"], 9), -r["open_issue_count"], r["id"]))
     start = max(0, offset)
     return rows[start : start + max(1, limit)], counts
-
-
-def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool:
-    """Whether an issue of the case this viewer sees names *asset* (case-insensitive, spaces folded)."""
-    wanted = " ".join(asset.split()).casefold()
-    for row in visible_members(rows, view):
-        issue = view.issues.get(_member_id(row))
-        if issue is not None and any(" ".join(a.split()).casefold() == wanted for a in issue.assets):
-            return True
-    return False
 
 
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
