@@ -42,8 +42,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * the whole card one target (#10547), a text drag and the interactive children
  * excepted.
  *
- * Opening the list starts no run: Set up opens the setup dialog, which
- * confirms before anything is enabled.
+ * Opening the list starts no run: Set up opens the one fleet setup
+ * (`FleetSetupDialog`, #1151), which confirms before anything is enabled.
  */
 import { useState, type MouseEvent } from "react";
 import { Link, useNavigate, type NavigateFunction } from "react-router-dom";
@@ -71,7 +71,7 @@ import { cn, isEntityShared, timeAgo, timeUntil } from "@/lib/utils";
 import { autonomyStatusLabel, effectiveAutonomyLevel } from "./fleet-autonomy";
 import { fleetControlState } from "./fleet-control";
 import { fleetRefusalMessage } from "./fleet-refusals";
-import { FleetEnableDialog } from "./FleetEnableDialog";
+import { FleetSetupDialog } from "./FleetSetupDialog";
 import { FleetOptInBadge } from "./FleetOptInBadge";
 
 /** The logos one line holds at the narrowest card (1024 px, two columns) before "+N". */
@@ -159,7 +159,7 @@ function FleetCardAction({ fleet, fleetName }: { fleet: Fleet; fleetName: string
           {t_i18n("Set up")}
         </Button>
       )}
-      <FleetEnableDialog fleetId={fleet.id} fleetName={fleetName} open={enableOpen} onOpenChange={setEnableOpen} />
+      <FleetSetupDialog fleetId={fleet.id} fleetName={fleetName} fleetSlug={fleet.slug} open={enableOpen} onOpenChange={setEnableOpen} />
     </>
   );
 }

@@ -343,6 +343,19 @@ the recommendation marked, the deadline (in UTC when the viewer's zone is
 unknown), the links, and "From <source> by <agent>". Agents never write card
 JSON: they pass a decision.
 
+**Object buttons (#1177).** Every surface (Teams bot card, Teams and email
+link card, the decided card, Google Chat, Slack) renders the ask's `links` as
+open-url buttons placed before "Open in XTM One", from one list,
+`decision_ask.card_links` (http(s) only; four on a link card, three where a
+surface's action budget is tighter). A label the agent wrote is kept ("Open PR
+#20153"); a label the platform derived from the URL is worded from the catalog
+in the reader's language (`card_link_*`: "Open PR #N", "Open issue #N", "Open
+ITS-42", "Open the ticket", "Open the page", "Open the document"). A work item
+whose ask names no source gets the pull requests and issues it tracks
+(`blocked_on_refs`, `payload.pull_requests`) when its decision opens
+(`decision_ask.with_reference_links`). The decided card keeps these buttons and
+loses only the answer buttons.
+
 ### I.2 Every path that sends a decision uses it
 
 - The notify path of D (the bell copy sent to Teams, Slack or email).

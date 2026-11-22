@@ -224,6 +224,14 @@ def build_tools(token: str, executor: CallableToolExecutor, **kwargs: Any) -> li
             )
         else:
             tools += module.register(headers, executor, mark_self_action)
+    # A branch another live run leases is not moved by this run (gap
+    # branch-lease-bypassed-by-concurrent-push): ``integration_tools`` passes
+    # the lease check of the calling run (``None`` outside a run).
+    check_branch_lease = kwargs.get("check_branch_lease")
+    if check_branch_lease is not None:
+        from .branch_lease import apply_branch_lease
+
+        tools = apply_branch_lease(tools, executor, check_branch_lease)
     # A repository Scope(s) is a hard boundary: ``integration_tools``
     # passes the scoped ``owner/name`` set when the agent or the assignment
     # selected one (``None`` = no scope).

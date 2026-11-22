@@ -48,6 +48,7 @@ const MODE_READERS: Record<string, [ModeClass, string]> = {
   "App.tsx": ["domain content", "CTEM lifecycle, exposure briefing and Intents routes, CTEM home dashboard"],
   "components/companion/CompanionToday.tsx": ["domain content", "CTEM home dashboard vs general dashboard"],
   "components/fleets/CtemLoopSetupEntry.tsx": ["domain content", "'Set up the CTEM loop' entry of the command center and the CTEM loop fleet page, XTM One mode only (#1087)"],
+  "components/fleets/FleetSetupDialog.tsx": ["domain content", "the CTEM loop fleet's Set up opens its versioned guided setup in XTM One mode only, the generic fleet wizard otherwise (#1151)"],
   "components/layout/AboutDialog.tsx": ["branding", "product name and edition in the About dialog"],
   "components/layout/OrganizationSetupPrompt.tsx": ["domain content", "first-login organization (CTEM) profile setup, XTM One mode only"],
   "components/layout/Sidebar.tsx": ["plumbing", "passes the mode to nav-model.ts, whose entries are gated here"],

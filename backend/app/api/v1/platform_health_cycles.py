@@ -82,6 +82,27 @@ class ModuleInvestigationResponse(BaseModel):
     items: list[ModuleInvestigationStart]
 
 
+class ModuleCheckReport(BaseModel):
+    """The latest check report of one registration of the module (#101 S15c, section 13.6)."""
+
+    report_id: uuid.UUID
+    registration_id: uuid.UUID
+    cycle_id: uuid.UUID
+    started_at: datetime | None
+    finished_at: datetime
+    passed: int
+    warned: int
+    failed: int
+    not_run: int
+    #: ``[{"id", "verdict", "category", "evidence", "recommendation", "reason", "finding_id"}]``.
+    checks: list[dict[str, Any]]
+
+
+class ModuleCheckReportsResponse(BaseModel):
+    module: str
+    items: list[ModuleCheckReport]
+
+
 class CycleResponse(BaseModel):
     id: uuid.UUID
     specialist: str
@@ -311,6 +332,50 @@ async def investigate_module(
             )
     await db.commit()
     return ModuleInvestigationResponse(module=module, items=items)
+
+
+@router.get("/modules/{module}/checks", response_model=ModuleCheckReportsResponse)
+async def list_module_check_reports(
+    module: str,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ModuleCheckReportsResponse:
+    """The latest check report per registration of *module* (section 13.6, administrators).
+
+    Stored rows only, no model: readable with AI off. A registration whose checker never
+    stored a report is absent; a module of another mode answers 404.
+    """
+    from app.api.v1.platform_health_findings import ANALYST_MODULES, present_modules
+    from app.models.health_module_analyst import HealthModuleCheckReport
+
+    if module not in ANALYST_MODULES or module not in present_modules():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown health module")
+    rows = (
+        await db.execute(
+            select(HealthModuleCheckReport)
+            .where(HealthModuleCheckReport.module == module)
+            .order_by(HealthModuleCheckReport.registration_id, HealthModuleCheckReport.finished_at.desc())
+            .distinct(HealthModuleCheckReport.registration_id)
+        )
+    ).scalars()
+    return ModuleCheckReportsResponse(
+        module=module,
+        items=[
+            ModuleCheckReport(
+                report_id=row.id,
+                registration_id=row.registration_id,
+                cycle_id=row.cycle_id,
+                started_at=row.started_at,
+                finished_at=row.finished_at,
+                passed=row.passed,
+                warned=row.warned,
+                failed=row.failed,
+                not_run=row.not_run,
+                checks=list(row.checks or []),
+            )
+            for row in rows
+        ],
+    )
 
 
 @router.get("/cycles", response_model=list[CycleResponse])

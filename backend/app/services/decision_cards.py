@@ -240,11 +240,12 @@ def _ask_body(ask: dict[str, Any], kind: str, language: str, *, show_effects: bo
 
 
 def _link_actions(view: DecisionView, ask: dict[str, Any], language: str) -> list[dict[str, Any]]:
+    from app.services.decision_ask import card_links
+
     actions: list[dict[str, Any]] = []
-    for link in (ask.get("links") or [])[:3]:
-        url = str(link.get("url") or "")
-        if url.startswith(("https://", "http://")):
-            actions.append({"type": "Action.OpenUrl", "title": _clip(link.get("label") or url, 60), "url": url})
+    # Teams shows six card actions: Send, three links, Open in XTM One (#1177 keeps three here).
+    for link in card_links(ask, language, limit=3):
+        actions.append({"type": "Action.OpenUrl", "title": _clip(link["label"], 60), "url": link["url"]})
     if view.page_path:
         actions.append(
             {"type": "Action.OpenUrl", "title": notice("card_open", language), "url": f"{_page_base()}{view.page_path}"}

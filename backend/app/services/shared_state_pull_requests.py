@@ -384,6 +384,70 @@ async def live_pull_request_lease(payload: object, *, user_id: Any) -> dict | No
     return None
 
 
+def entry_names_branch(key: str, value: object, *, repo: str, branch: str) -> bool:
+    """Whether the entry *key* / *value* tracks *branch* of *repo*, pull request number or not. Pure.
+
+    The repository the value names (``repository`` / ``repo``, or the pull
+    request object's ``repo``), else the repository a scoped key names; the
+    branch a ``branch`` / ``head_branch`` field or the key's last ``:``
+    segment names. With no repository named it is left alone: a branch name is
+    not unique across repositories.
+    """
+    if not branch or not isinstance(value, dict):
+        return False
+    named = pull_request_named(value)
+    named_repo = _repository_named(key, value, named[1] if named else None)
+    if not named_repo or named_repo.lower() != (repo or "").lower():
+        return False
+    return branch in _branches(key, value)
+
+
+async def live_branch_lease(repo: str, branch: str, *, user_id: Any, run_id: Any) -> dict | None:
+    """The lease ANOTHER live run holds on *branch* of *repo*, before a write moves that branch.
+
+    ``{"key", "run_id"}`` of the first active entry held with ``hold="take"``
+    by a run other than *run_id* whose value names the branch
+    (:func:`entry_names_branch`) while that run is alive; ``None`` otherwise.
+    The write tools read it so a run with no item binding (an event run)
+    stands down instead of pushing under the holder (the dispatch check,
+    :func:`live_pull_request_lease`, only keeps an ITEM undispatched). Never
+    raises: a failed read answers ``None`` and the write goes ahead as before.
+    """
+    repo = (repo or "").strip()
+    branch = (branch or "").strip()
+    if not repo or not branch:
+        return None
+    caller = str(run_id).strip().lower() if run_id else ""
+    try:
+        held = [
+            (key, holder)
+            for key, value, holder in await _held_rows(user_id)
+            if holder is not None
+            and str(holder).lower() != caller
+            and entry_names_branch(key, value, repo=repo, branch=branch)
+        ]
+        if not held:
+            return None
+        alive = await _alive([holder for _, holder in held])
+    except Exception as exc:
+        logger.warning("Branch leases of %s:%s unreadable: %s", repo, branch, format_exception_message(exc))
+        return None
+    for key, holder in held:
+        if holder in alive:
+            return {"key": key, "run_id": str(holder)}
+    return None
+
+
+def branch_lease_refusal(repo: str, branch: str, lease: dict) -> str:
+    """What a write tool answers instead of moving a branch another live run leases. Pure."""
+    return (
+        f"Nothing written: branch '{branch}' of {repo} is leased by run {lease['run_id']} "
+        f"(shared state '{lease['key']}', held with hold='take'), which is still running and pushes "
+        "there. This is not an error: stand down, or write again once that run has ended or released "
+        "the lease."
+    )
+
+
 async def resolve_states_of_closed_pull_request(event: PullRequestEvent) -> int:
     """Resolve the active entries tracking the pull request a TRUSTED closing names.
 

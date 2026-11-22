@@ -38,7 +38,7 @@ import { useFormatter } from "@/i18n";
 
 import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
-import { FleetEnableDialog } from "./FleetEnableDialog";
+import { FleetSetupWizard } from "./FleetSetupWizard";
 import {
   ECOSYSTEM_CAPABILITIES,
   ECOSYSTEM_LABELS,
@@ -114,11 +114,15 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
       },
     });
 
-  // The Enable fleet dialog, shared by step 6 and the end screen (UX r2 B1).
+  // The fleet setup's enable steps (#1151), shared by step 6 and the end screen (UX r2 B1): the same plan and
+  // enable call as before, walking only Run as and automations and Review since this flow already walked the slots
+  // and gates, under this flow's title (UX r1 B1 of #1157).
   const enableDialog = fleetId && fleet.data && (
-    <FleetEnableDialog
+    <FleetSetupWizard
       fleetId={fleetId}
       fleetName={fleet.data.name}
+      startAt="automations"
+      title={t_i18n("Set up the CTEM loop")}
       open={enableOpen}
       onOpenChange={(next) => {
         setEnableOpen(next);
