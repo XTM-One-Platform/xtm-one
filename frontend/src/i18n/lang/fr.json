@@ -20198,7 +20198,7 @@
   "Runs it now and stops asking you for this tool, scheduled runs included, until you revoke it in your profile.": "L’exécute maintenant et ne vous demande plus rien pour cet outil, exécutions planifiées comprises, jusqu’à révocation dans votre profil.",
   "“Approve always” saves a preference for you. That tool will then run without asking, including on scheduled runs nobody is watching, until you revoke it in your profile.": "« Toujours approuver » enregistre une préférence pour vous. Cet outil s’exécutera ensuite sans demander, y compris lors des exécutions planifiées que personne ne surveille, jusqu’à révocation dans votre profil.",
   "Does not run it. The agent is told, with your reason, and can adapt.": "Ne l’exécute pas. L’agent en est informé, avec votre raison, et peut s’adapter.",
-  "Run “{tool}”?": "Exécuter « {tool} » ?",
-  "{count, plural, one {Run # action: {tools}?} other {Run these # actions: {tools}?}}": "{count, plural, one {Exécuter # action : {tools} ?} other {Exécuter ces # actions : {tools} ?}}",
+  "Approve this action?": "Approuver cette action ?",
+  "{count, plural, one {Approve # action?} other {Approve these # actions?}}": "{count, plural, one {Approuver # action ?} other {Approuver ces # actions ?}}",
   "This action cannot be undone. Your reply is checked against the code before anything runs.": "Cette action est irréversible. Votre réponse est vérifiée par rapport au code avant toute exécution."
 }

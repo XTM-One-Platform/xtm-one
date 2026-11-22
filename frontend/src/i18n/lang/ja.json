@@ -20198,7 +20198,7 @@
   "Runs it now and stops asking you for this tool, scheduled runs included, until you revoke it in your profile.": "今すぐ実行し、プロフィールで取り消すまで、スケジュール実行を含めてこのツールについて確認しなくなります。",
   "“Approve always” saves a preference for you. That tool will then run without asking, including on scheduled runs nobody is watching, until you revoke it in your profile.": "「常に承認」はあなたの設定として保存されます。プロフィールで取り消すまで、誰も見ていないスケジュール実行を含め、このツールは確認なしで実行されます。",
   "Does not run it. The agent is told, with your reason, and can adapt.": "実行しません。エージェントには理由とともに伝えられ、対応を変えられます。",
-  "Run “{tool}”?": "「{tool}」を実行しますか?",
-  "{count, plural, one {Run # action: {tools}?} other {Run these # actions: {tools}?}}": "{count, plural, other {これら # 件の操作を実行しますか: {tools}?}}",
+  "Approve this action?": "この操作を承認しますか?",
+  "{count, plural, one {Approve # action?} other {Approve these # actions?}}": "{count, plural, other {これら # 件の操作を承認しますか?}}",
   "This action cannot be undone. Your reply is checked against the code before anything runs.": "この操作は元に戻せません。実行前に、あなたの返信がコードと照合されます。"
 }
