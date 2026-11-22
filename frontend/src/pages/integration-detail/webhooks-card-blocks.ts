@@ -46,7 +46,7 @@ export function webhooksCardBlocks(
   const hasEvents = !!catalogEntry && catalogEntry.available_events.length > 0;
   // The integration webhook URL only matters for events that can arrive by
   // webhook: the Event Triggers card already says polling for the others.
-  const hasWebhookEvents = hasWebhookDeliveredEvents(catalogEntry);
+  const webhookEvents = hasWebhookDeliveredEvents(catalogEntry);
   const isAdminProvisioned = usesAdminOAuthApp(integration, catalogEntry);
   const isMicrosoft = provider === "microsoft";
   const isSlack = provider === "slack";
@@ -59,7 +59,7 @@ export function webhooksCardBlocks(
     microsoft: isMicrosoft,
     slack: isSlack,
     adminEvents: hasEvents && isAdminProvisioned && !hasOwnEventsBlock,
-    webhookUrl: hasWebhookEvents && !isAdminProvisioned && !hasOwnEventsBlock,
+    webhookUrl: webhookEvents && !isAdminProvisioned && !hasOwnEventsBlock,
     callback: hasWebhookPath && !hasEvents && !isMicrosoft,
     webhookManager: !!catalogEntry?.supports_webhook_management && integration.status === "connected" && !!canManage,
   };

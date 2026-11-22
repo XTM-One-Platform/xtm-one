@@ -155,7 +155,10 @@ def flow_transition(old_state: Any, new_state: Any) -> Transition:
         same = old_open and (old.get("step_id"), old.get("node")) == (new.get("step_id"), new.get("node"))
         return None if same else ("open",)
     if new_human and new.get("released") and old_open:
-        return ("answer", {"text": new.get("response")}, new.get("responded_by"))
+        answer = {"text": new.get("response")}
+        if new.get("option"):
+            answer["option"] = new.get("option")
+        return ("answer", answer, new.get("responded_by"))
     if old_open:
         return ("cancel", "flow run moved on")
     return None
@@ -265,10 +268,14 @@ def run_opening(run: Any) -> Opening:
 def flow_opening(run: Any, state: Any) -> Opening:
     """The decision a flow run's Ask-user park opens; *state* is the run's state."""
     waiting = (state if isinstance(state, dict) else {}).get("waiting") or {}
-    ask = {"question": str(waiting.get("question") or "A person's answer is needed")}
+    # A node with options parks its ask (#842, S6): the decision carries it whole.
+    stored = waiting.get("ask")
+    ask = dict(stored) if isinstance(stored, dict) and stored.get("question") else {}
+    if not ask:
+        ask = {"question": str(waiting.get("question") or "A person's answer is needed")}
     # A company flow asks the company (section 6: an explicit recipient, not a router exception).
     recipient = owner_recipient(run.user_id, company_managed=bool(run.is_company_managed), company="company")
-    return "flow_ask", ask, recipient, None
+    return "flow_ask", ask, recipient, deadline_of(ask)
 
 
 def work_item_opening(item: Any) -> Opening:
