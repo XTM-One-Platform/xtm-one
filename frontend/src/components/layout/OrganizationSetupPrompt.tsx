@@ -11,6 +11,8 @@
  * never comes back for that version, for anyone. The close cross, Escape and
  * an overlay click record nothing: they only close it for this page, and a
  * reload or a new sign-in proposes it again until an answer is recorded.
+ * Reset onboarding proposes it anew: the dialog then opens again in the same
+ * page session, whatever was answered or closed before.
  *
  * "Set up now" opens the guided CTEM loop setup (`CtemLoopSetupDialog`): six
  * steps, each saved on its own, nothing switched on before the last one.
@@ -22,7 +24,12 @@ import { CtemLoopSetupDialog } from "@/components/fleets/CtemLoopSetupDialog";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useAnswerOrganizationSetupPrompt, useOrganizationSetupPrompt, type OrganizationSetupAnswer } from "@/hooks/api/useOrganizationContextApi";
+import {
+  useAnswerOrganizationSetupPrompt,
+  useOrganizationSetupPrompt,
+  useOrganizationSetupPromptResets,
+  type OrganizationSetupAnswer,
+} from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
@@ -51,11 +58,20 @@ export function OrganizationSetupPrompt() {
   const prompt = useOrganizationSetupPrompt(Boolean(isAdmin && isXtmOne && !user?.impersonating));
   const answer = useAnswerOrganizationSetupPrompt();
   const [guided, setGuided] = useState(false);
-  const [closed, setClosed] = useState(false);
+  const resets = useOrganizationSetupPromptResets();
+  // The Reset onboarding count at which the dialog was answered or closed.
+  const [answeredAtReset, setAnsweredAtReset] = useState<number | null>(null);
+  const [closedAtReset, setClosedAtReset] = useState<number | null>(null);
 
-  const open = Boolean(prompt.data?.propose) && !answer.isSuccess && !closed;
+  // An answer, or the close cross / Escape, closes the dialog until the next
+  // Reset onboarding (Settings > Platform) in this page session; a refetch of the
+  // setup-prompt query with the same proposal never reopens it.
+  const answered = answeredAtReset === resets;
+  const closed = closedAtReset === resets;
+  const open = Boolean(prompt.data?.propose) && !answered && !closed;
   const reply = (outcome: OrganizationSetupAnswer) =>
     answer.mutate(outcome, {
+      onSuccess: () => setAnsweredAtReset(resets),
       onSettled: () => {
         if (outcome === "started") setGuided(true);
       },
@@ -64,7 +80,7 @@ export function OrganizationSetupPrompt() {
   if (guided) return <CtemLoopSetupDialog open onOpenChange={(next) => !next && setGuided(false)} />;
   if (!open) return null;
   return (
-    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosed(true)}>
+    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosedAtReset(resets)}>
       <DialogContent size="md" data-testid="organization-setup-prompt">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
