@@ -26,7 +26,9 @@ One exception, bounded (#936): ``exploitation`` keeps the OpenCRQ reading the
 triage step wrote (techniques, exposure class, reading, and the OpenCRQ asset
 name and scenario id). The view serves the asset name and scenario id only to
 a viewer who reads OpenCRQ; anyone else gets the techniques and a
-"Restricted" asset.
+"Restricted" asset. ``attack_path`` (#1289) is bounded the same way: the
+attack-path reach of the affected asset, its asset names shown only to a
+viewer who reads OpenCRQ.
 """
 
 import uuid
@@ -139,6 +141,10 @@ class CtemCase(Base):
     #: triage step from OpenCRQ: ``[{risk_scenario_id, asset, exposure, techniques, reading, at}]``,
     #: one entry per supporting asset, replaced whole by each write.
     exploitation: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    #: What a finding on the affected asset reaches along the OpenAEV attack paths (CTEM-23, #1289),
+    #: written by the triage step from OpenCRQ: ``{origin, hops, reached, primary, at}``, replaced
+    #: whole by each write; ``{}`` until the first read.
+    attack_path: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -172,6 +178,7 @@ class CtemCaseEvent(Base):
     #: | retargeted (a folded upgrade target moved, CTEM-11)
     #: | signal | validation | ticket | sla_breached (#857)
     #: | exploitation (the OpenCRQ reading written by triage, #936)
+    #: | attack_path (the OpenCRQ attack-path reach written by triage, #1289)
     #: | gate (a loop gate passed automatically, waited or answered, CTEM-34 #916)
     #: | treatment_plan (the OpenCRQ plan of the decision: to the id, reason the name, evidence the link, #1068)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)

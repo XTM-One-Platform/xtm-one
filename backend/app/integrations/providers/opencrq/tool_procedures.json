@@ -94,6 +94,10 @@
     "attackOutcomes.getMitreTechniquesForOutcome",
     "tenants.getTenants"
   ],
+  "get_opencrq_attack_path_reach": [
+    "supportingAssets.getAttackPathReach",
+    "tenants.getTenants"
+  ],
   "get_opencrq_budget_review": [
     "budgetReviews.getBudgetReview",
     "budgetReviews.getBudgetReviewFigures",

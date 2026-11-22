@@ -4767,6 +4767,43 @@ def test_the_module_health_lab_turns_platform_health_on_through_the_real_setting
     assert lab["env"] == {**services["lab-live"]["env"], "LAB_PLATFORM_HEALTH": "on", "LAB_WORKER": "1"}
 
 
+def _seed_health_findings_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("lab_seed_health_findings", LAB.parent / "seed_health_findings.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_health_findings_seed_covers_every_severity_module_and_status():
+    """#1303: the seeded findings carry every severity, the XTM One module and the three analyst modules (agentic)."""
+    from app.api.v1.platform_health_findings import ANALYST_MODULES, is_agentic
+    from app.models.health_check import CATEGORIES, MODULES, SEVERITIES
+
+    module = _seed_health_findings_module()
+    rows = module.results()
+    assert all(r["failing"] for r in rows) and not any(r["failing"] for r in module.results(failing=False))
+    assert {r["severity"] for r in rows} == set(SEVERITIES)
+    assert {r["module"] for r in rows} <= set(MODULES) and {r["category"] for r in rows} <= set(CATEGORIES)
+    assert {r["module"] for r in rows if is_agentic(r["check_id"])} == set(ANALYST_MODULES)
+    assert all(r["check_id"].startswith(f"{r['module']}.") for r in rows)
+    checks = [r["check_id"] for r in rows]
+    assert len(set(checks)) == len(checks) and {module.DISMISSED, module.RESOLVED} <= set(checks)
+    assert module.DISMISSED != module.RESOLVED
+
+    tree = ast.parse(LAB.read_text(encoding="utf-8"))
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    helper = ast.unparse(functions["seed_health_findings"])
+    for part in ("'seed_health_findings.py'", "sys.executable", "env=seed_script_env()", "'/health/overview'",
+                 "'/health/findings?limit=200'", "stderr_summary(process.stderr)", "'xtm_one'"):
+        assert part in helper, part
+    seed = ast.unparse(functions["seed_entities"])
+    assert "seed_health_findings(token, base)" in seed and "skipped['health findings']" in seed
+    assert seed.index("seed_platform_health(token, base)") < seed.index("seed_health_findings(token, base)")
+    assert seed.index("seed_health_findings(token, base)") < seed.index("seeded.json")
+
+
 def test_the_lab_peer_clears_its_default_agent_so_profile_renders_the_general_assistant_tools():
     """#10210: as lab-peer, /profile shows "Reset to defaults"; the clear is read back on /auth/me."""
     calls: list = []
