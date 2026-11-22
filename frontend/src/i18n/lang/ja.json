@@ -4152,6 +4152,8 @@
   "No work item on this page can be deleted.": "このページのワークアイテムはどれも削除できません。",
   "Not selectable": "選択できません",
   "Not set": "未設定",
+  "{count, plural, one {# member not set} other {# members not set}}": "{count, plural, other {# 件のメンバーが未設定}}",
+  "No integration": "インテグレーションなし",
   "Not set (UTC used for AI context)": "未設定（AIコンテキストにはUTCを使用）",
   "Not storing": "保存しない",
   "Not suitable for chat": "チャットには不向き",
