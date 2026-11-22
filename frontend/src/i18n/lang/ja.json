@@ -20738,5 +20738,16 @@
   "No check round yet": "チェックはまだ実行されていません",
   "Show the checks": "チェックを表示",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}",
+  "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.": "エクスポージャー管理ループを開始するエクスポージャーの変化、その発生元、および各変化に対するループの判断。",
+  "About signals": "シグナルについて",
+  "Where this signal is in the exposure management loop, and why.": "このシグナルがエクスポージャー管理ループのどこにあるか、およびその理由。",
+  "Search signal, path or source": "シグナル、パス、ソースを検索",
+  "No signal seen yet: your sources are connected and nothing reached the loop.": "まだシグナルはありません: ソースは接続されていますが、ループに到達したものはありません。",
+  "No signal yet: no source is connected.": "まだシグナルはありません: 接続されているソースがありません。",
+  "No signal matches these filters": "これらのフィルターに一致するシグナルはありません",
+  "{connected} of {total}": "{connected} / {total}",
+  "Open signal sources": "シグナルソースを開く",
+  "Trigger path": "トリガーパス",
+  "State and why": "状態と理由"
 }
