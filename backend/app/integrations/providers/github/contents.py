@@ -50,13 +50,23 @@ _SOURCE = "integration:github"
 _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 # The contents API refuses a file body over ~100 MB; base64 inflates it by 4/3.
 _MAX_COMMIT_BYTES = 50 * 1024 * 1024
-# A repository archive is read in memory: bounded (a narrowed one by its compressed size).
+# A whole repository archive is read in memory: bounded. A narrowed one is bounded by the workspace quota instead
+# (_narrowed_archive_bound): its files are written to the workspace, so they fit the quota or are refused anyway.
 _MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 # An archive narrowed to paths is streamed to a temporary file, never held whole: this bounds the disk it takes.
 _MAX_STREAMED_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
-# The files a narrowed archive keeps, uncompressed: the checkout's own quota bounds what it writes, so this
-# only stops a runaway selection; the in-memory bound is the compressed archive (_MAX_ARCHIVE_BYTES).
+# The files a narrowed archive keeps, uncompressed, at most: the workspace quota is the bound when it is lower.
 _MAX_NARROWED_SELECTED_BYTES = 2 * 1024 * 1024 * 1024
+
+
+def _narrowed_archive_bound() -> int:
+    """The bytes a narrowed archive may keep, uncompressed and compressed: the sandbox workspace quota (capped by
+    ``_MAX_NARROWED_SELECTED_BYTES``). A selection of files that are already compressed (images, seed data) is about
+    as large compressed as on disk, so a fixed in-memory bound on the compressed archive refused a selection the
+    workspace holds (materialize-archive-size-cap); ``extract_tree`` refuses past the quota left in any case."""
+    from app.services.sandbox_workspace.manifest import Limits
+
+    return min(_MAX_NARROWED_SELECTED_BYTES, max(_MAX_ARCHIVE_BYTES, Limits.from_settings().quota_bytes))
 
 
 #: Characters of a file get_github_file returns per call by default, and at most.
@@ -1675,13 +1685,14 @@ def register(
             if size <= _MAX_ARCHIVE_BYTES:
                 # Within the limit: the whole archive, as without paths.
                 return spool.read(), [], 0
+            bound = _narrowed_archive_bound()
             try:
                 narrowed = await asyncio.to_thread(
                     narrow_archive,
                     spool,
                     paths,
-                    max_bytes=_MAX_NARROWED_SELECTED_BYTES,
-                    max_output_bytes=_MAX_ARCHIVE_BYTES,
+                    max_bytes=bound,
+                    max_output_bytes=bound,
                 )
             except ArchiveTooLargeError as exc:
                 return f"Error: the archive of {repo} at {ref} was not narrowed: {exc}."
