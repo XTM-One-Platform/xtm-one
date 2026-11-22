@@ -20535,13 +20535,6 @@
   "Search capabilities, members, integrations...": "Buscar funcionalidades, miembros, integraciones...",
   "No capability slot": "Ningún espacio de funcionalidad",
   "No slot matches the search and filters": "Ningún espacio coincide con la búsqueda y los filtros",
-  "Typed": "Escrito",
-  "API": "API",
-  "Exclude from this sync": "Excluir de esta sincronización",
-  "From {platform}, kept in sync: only the local fields can be edited here.": "De {platform}, sincronizado: aquí solo se pueden editar los campos locales.",
-  "From {platform}: only the local fields can be edited here.": "De {platform}: aquí solo se pueden editar los campos locales.",
-  "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {¿Quitar # fila sincronizada?} other {¿Quitar # filas sincronizadas?}}",
-  "They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.": "Vienen de {platform}: la próxima ejecución de su sincronización, {when}, las devuelve salvo que las excluya.",
-  "They come from {platform}: the next import brings them back unless you exclude them.": "Vienen de {platform}: la próxima importación las devuelve salvo que las excluya.",
-  "The sync never imports them again. You can take them out of its exclusions later.": "La sincronización no las vuelve a importar. Puede quitarlas de sus exclusiones más tarde."
+  "Freshness": "Actualidad",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsoleto: OpenAEV no lo ha visto más allá del umbral del tenant"
 }
