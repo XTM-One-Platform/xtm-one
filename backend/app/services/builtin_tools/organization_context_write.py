@@ -645,7 +645,7 @@ def build_organization_context_write_tools(
                     "batch_type": {"type": "string"},
                     "remove_gone": {
                         "type": "boolean",
-                        "description": "Remove the source's rows it no longer has (default true).",
+                        "description": "Drop rows gone from the source (default true).",
                     },
                     "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
                     "hour": {"type": "integer"},
