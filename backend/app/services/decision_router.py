@@ -46,7 +46,9 @@ from app.models.decision_hooks import answer_surface
 
 #: The surfaces an answer may name; anything else is recorded as ``router``.
 SURFACES: frozenset[str] = frozenset(
-    {"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "whatsapp_card", "mail"}
+    {"router", "web", "inbox", "bell", "push", "mail"}
+    # The in-place cards of the bots (S9, S10, S11, S12).
+    | {"teams_card", "slack_card", "whatsapp_card", "google_chat_card"}
     # The channels an answer link (S9b, ``decision_answer_links``) is sent on.
     | {"teams_chat", "teams_channel", "google_chat", "email"}
 )

@@ -651,6 +651,22 @@ retest of the slice. Not in S9b: the run HITL, tool approval and flow Ask-user
 sources send no link card yet (their notify paths are S9's), and Google Chat as
 a user is S11.
 
+S11, as built (slice 1, backend): `services/google_chat_decision_cards.py`
+renders the decision as one `cardsV2` message (header with the source and the
+agent, question, context, options with their effects and the recommendation,
+deadline, one button per option with the recommendation filled, a text input
+with its Send button except on a tool approval, "Waiting for <name>", the
+links). A click is a `CARD_CLICKED` event on `/api/channels/googlechat/webhook`:
+the bearer JWT is verified as for every Chat event, and a click is refused
+(401) when no Cloud project number is configured, so an unverified deployment
+answers nothing. The clicker is resolved by email, else by the linked Chat
+identity, and the answer goes through `answer_decision` with surface
+`google_chat_card`; the answer replaces the card (`UPDATE_MESSAGE`), a refusal
+is a private message to the clicker alone (`privateMessageViewer`) and the card
+stays (I.5). As a user, `link_message` carries the S9b answer links (surface
+`google_chat`). Slice 2 wires the sends (run notify and work item notify into
+a DM or a space) and the `lab-google-chat-cards` service for the UX round.
+
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
 (prompt), `agent_builder` tool texts, `hitl_whitelist` / `tools/approval.py` /
 `tool_approval_service` (mapping only), `hitl_consent` (unchanged check, new
