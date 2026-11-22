@@ -948,8 +948,12 @@ describe("OrganizationSection", () => {
     const panel = await screen.findByTestId("settings.organization.sources");
     const rows = await within(panel).findAllByTestId("settings.organization.sources.row");
     expect(rows.map((row) => row.textContent)).toEqual([expect.stringContaining("OpenCRQ"), expect.stringContaining("Typed")]);
+    // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
     const chip = within(rows[0]).getByTestId("settings.organization.sources.chip");
-    expect(chip.getAttribute("href")).toBe("/settings/organization/profile/business?card=crown_jewels&ocj_f_source=OpenCRQ");
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.getAttribute("aria-label")).toBe("Crown jewels from OpenCRQ: 1 row");
+    fireEvent.click(chip);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-current")).toBe("page"));
   });
 
   it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {

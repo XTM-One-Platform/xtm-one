@@ -8,8 +8,8 @@
  * stepper (pick a platform, pick sections, preview, keep in sync). With no source yet, the panel
  * teaches that flow.
  */
-import { Link } from "react-router-dom";
-import { Icon } from "@filigran/design-system";
+import { useNavigate } from "react-router-dom";
+import { Chip, Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { ProviderLogo } from "@/components/ui/provider-logo";
@@ -31,6 +31,7 @@ interface Props {
 
 export function OrganizationSourcesPanel({ profile, connected, onAddSync, disabled }: Props) {
   const { t_i18n } = useFormatter();
+  const navigate = useNavigate();
   const { data } = useOrganizationSyncs();
   const syncs = Array.isArray(data) ? data : [];
   const sources = summarizeSources(profile, connected);
@@ -60,39 +61,45 @@ export function OrganizationSourcesPanel({ profile, connected, onAddSync, disabl
           {addSync}
         </div>
       ) : (
-        <ul className="space-y-2" aria-label={t_i18n("Sources")}>
+        // One grid for every row (UX r1 B2 on #1232): name with a 16 px logo slot, sync status,
+        // then the chips, so each column starts at the same x on every row.
+        <ul className="grid grid-cols-[max-content_max-content_minmax(0,1fr)] items-center gap-x-4 gap-y-2" aria-label={t_i18n("Sources")}>
           {sources.map((source) => {
             const name = label(source);
             const sourceSyncs = source.kind === "platform" ? syncsOf(source.key) : [];
             return (
-              <li key={source.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-testid="settings.organization.sources.row">
-                <span className="flex min-w-[9rem] items-center gap-2 font-medium">
-                  {source.kind === "platform" && <ProviderLogo provider={source.key} decorative className="h-4 w-4 shrink-0" />}
+              <li key={source.key} className="col-span-3 grid min-h-6 grid-cols-subgrid items-center" data-testid="settings.organization.sources.row">
+                <span className="flex items-center gap-2 font-medium">
+                  {source.kind === "platform" ? (
+                    <ProviderLogo provider={source.key} decorative className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <span className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
                   {name}
                 </span>
-                {source.kind === "platform" && (
-                  <span className="content-compact text-default-secondary">
-                    {sourceSyncs.length > 0
+                <span className="content-compact text-default-secondary">
+                  {source.kind === "platform"
+                    ? sourceSyncs.length > 0
                       ? t_i18n("{count, plural, one {# sync} other {# syncs}}", { count: sourceSyncs.length })
-                      : t_i18n("No sync yet")}
-                  </span>
-                )}
-                <span className="flex flex-wrap gap-1.5">
+                      : t_i18n("No sync yet")
+                    : null}
+                </span>
+                <span className="flex min-w-0 flex-wrap gap-1.5">
                   {source.sections.length === 0 ? (
                     <span className="content-compact text-default-secondary">{t_i18n("Feeds no section yet")}</span>
                   ) : (
-                    source.sections.map(({ section, count }) => (
-                      <Link
-                        key={section}
-                        to={sourceSectionHref(section, name)}
-                        className="inline-flex h-7 items-center gap-1 rounded-sm border border-elevation-subtle px-2 content-compact hover:bg-elevation-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                        data-testid="settings.organization.sources.chip"
-                        aria-label={t_i18n("{section} from {source}: {count, plural, one {# row} other {# rows}}", { section: t_i18n(SOURCED_SECTION_LABELS[section]), source: name, count })}
-                      >
-                        {t_i18n(SOURCED_SECTION_LABELS[section])}
-                        <span className="text-default-secondary">{count}</span>
-                      </Link>
-                    ))
+                    source.sections.map(({ section, count }) => {
+                      const sectionLabel = t_i18n(SOURCED_SECTION_LABELS[section]);
+                      return (
+                        <Chip
+                          key={section}
+                          label={`${sectionLabel} ${count}`}
+                          onClick={() => navigate(sourceSectionHref(section, name))}
+                          data-testid="settings.organization.sources.chip"
+                          aria-label={t_i18n("{section} from {source}: {count, plural, one {# row} other {# rows}}", { section: sectionLabel, source: name, count })}
+                        />
+                      );
+                    })
                   )}
                 </span>
               </li>
