@@ -59,6 +59,13 @@ the findings it used to report: it is a gap, recorded as one.
 - The signals carry asset ids and names, the state, dates and source origins,
   never finding content. They are recorded by `system`: only an administrator
   reads them (`ctem-signals.md`, visibility).
+- Markings fail closed (CTEM marking parity, G5): the owner's credential reads
+  OpenCRQ rows its clearance allows, and an administrator reading the signal may
+  not hold that clearance. OpenCRQ's evidence health states the markings of the
+  scenario and of each asset (`markingRefs`, OpenCRQ #60); a gap is recorded only
+  for an asset whose `markingRefs` is `[]` in a scenario whose `markingRefs` is
+  `[]`. A marked row, or an answer that does not state its markings (an older
+  OpenCRQ), names nothing; an emptied connector sync names no asset and is kept.
 - The pass settings are profile fields: only the profile edit right changes them.
 
 ## 4. Failures
