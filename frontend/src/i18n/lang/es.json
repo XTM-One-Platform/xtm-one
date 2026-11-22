@@ -20505,5 +20505,21 @@
   "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "Envíe una señal de prueba para ver avanzar el bucle: se registra por la entrada real y se abre en su traza del bucle.",
   "The test signal could not be recorded.": "No se pudo registrar la señal de prueba.",
   "Open the command center": "Abrir el centro de mando",
-  "Send a test signal": "Enviar una señal de prueba"
+  "Send a test signal": "Enviar una señal de prueba",
+  "Observed": "Observado",
+  "Previous pass saw {ports}": "El pase anterior vio {ports}",
+  "Answers on {port}, a new port": "Responde en {port}, un puerto nuevo",
+  "Declared not internet-facing in the profile": "Declarado no expuesto a Internet en el perfil",
+  "Answers from the Internet on {ports}": "Responde desde Internet en {ports}",
+  "The name is listed": "El nombre está registrado",
+  "No DNS record backs it": "Ningún registro DNS lo respalda",
+  "Names of {domain} point inside the owned address ranges": "Los nombres de {domain} apuntan dentro de los rangos de direcciones propios",
+  "Points to {ip}, outside them": "Apunta a {ip}, fuera de ellos",
+  "Last seen on {date}": "Visto por última vez el {date}",
+  "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, one {Sin ver desde hace al menos # día} other {Sin ver desde hace al menos # días}}",
+  "Not declared and not seen by an earlier pass": "No declarado y no visto en un pase anterior",
+  "Answers on {ports}": "Responde en {ports}",
+  "Ports that answer": "Puertos que responden",
+  "DNS target": "Destino DNS",
+  "Certificate names": "Nombres del certificado"
 }
