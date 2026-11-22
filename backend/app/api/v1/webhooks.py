@@ -204,7 +204,7 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -4725,6 +4725,14 @@ async def receive_assignment_webhook(
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
             )
+            if provider == "opencti":
+                # The analyst's mark on a drafted Grouping answers the CTEM review
+                # gate waiting on its coverage request (CTEM-16, #1089).
+                await ctem_analyst_mark.note_event(
+                    provider,
+                    payload,
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if provider == "openaev":
                 # An OpenAEV result a CTEM case waits on moves it (CTEM-15, #918).
                 await ctem_openaev_events.note_event(
