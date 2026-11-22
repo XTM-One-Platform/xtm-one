@@ -84,6 +84,8 @@ BUILTIN_GROUP_ALIASES: dict[str, tuple[str, tuple[str, ...]]] = {
             # Programs ride with work items (services/work_item_programs.py).
             "list_programs",
             "get_program_status",
+            # An agent DMs a waiting item's decision card (#1156).
+            "send_decision_card",
         ),
     ),
     "shared_state": (

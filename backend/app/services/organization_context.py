@@ -170,7 +170,42 @@ def normalize_regions(value: list[str]) -> list[str]:
     return regions
 
 
+#: The sources of rows a person wrote (typed, a CSV upload, the REST API): never a platform's rows.
+HAND_SOURCES: frozenset[str] = frozenset({"manual", "csv", "api"})
+#: The platforms a sync reads; their rows are read-only in the form (#1134).
+PLATFORM_SOURCES: frozenset[str] = frozenset({"opencti", "openaev", "opencrq"})
+#: The prefix of the source of rows an agent wrote: ``agent:<agent id>``.
+AGENT_SOURCE_PREFIX = "agent:"
+
+
+def is_platform_source(source: str) -> bool:
+    """Whether a row of *source* belongs to a platform (a sync owns it) rather than to a person or an agent."""
+    source = (source or "").strip().lower()
+    return bool(source) and source not in HAND_SOURCES and not source.startswith(AGENT_SOURCE_PREFIX)
+
+
+def _legacy_platform_id(data: Any, legacy_key: str, platform: str) -> Any:
+    """A row saved before #1134 with only *legacy_key* reads as a row of *platform* keyed on that id."""
+    if not isinstance(data, dict):
+        return data
+    legacy = str(data.get(legacy_key) or "").strip()
+    if not legacy or str(data.get("external_id") or "").strip():
+        return data
+    data = dict(data)
+    data["external_id"] = legacy
+    if str(data.get("source") or "manual").strip().lower() in (*HAND_SOURCES, ""):
+        data["source"] = platform
+    return data
+
+
 class CrownJewel(BaseModel):
+    """A crown jewel; ``source`` / ``external_id`` / ``sync_id`` say where it came from (#1134).
+
+    ``opencrq_asset_id`` is the id before #1134, kept readable for one release:
+    a row carrying it alone reads as an OpenCRQ row, and an OpenCRQ row keeps
+    it equal to ``external_id``.
+    """
+
     model_config = _Strict
 
     name: str = Field(min_length=1, max_length=200)
@@ -180,11 +215,27 @@ class CrownJewel(BaseModel):
     opencrq_asset_id: str = Field(default="", max_length=100)
     #: The ``assets_exposure`` rows (assets or asset groups, by name) this crown jewel runs on (#11543).
     asset_names: list[str] = Field(default_factory=list, max_length=200)
+    source: str = Field(default="manual", max_length=80)
+    external_id: str = Field(default="", max_length=200)
+    #: The sync that last wrote the row (empty: typed, a one-off import or an agent).
+    sync_id: str = Field(default="", max_length=64)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_opencrq(cls, data: Any) -> Any:
+        return _legacy_platform_id(data, "opencrq_asset_id", "opencrq")
 
     @field_validator("asset_names")
     @classmethod
     def _asset_names(cls, value: list[str]) -> list[str]:
         return [name for name in dict.fromkeys(str(v).strip()[:200] for v in value) if name]
+
+    @model_validator(mode="after")
+    def _opencrq_id_follows(self) -> CrownJewel:
+        self.source = self.source.strip().lower() or "manual"
+        if self.source == "opencrq" and self.external_id:
+            self.opencrq_asset_id = self.external_id[:100]
+        return self
 
 
 class TechStackEntry(BaseModel):
@@ -195,9 +246,15 @@ class TechStackEntry(BaseModel):
     cpe: str = Field(default="", max_length=300)
     #: The version the organization runs, optional (CTEM-11): cases then name the version to reach.
     version: str = Field(default="", max_length=100)
+    #: Where the row came from (#1134): ``manual``, ``csv``, ``api``, ``agent:<id>`` or a platform.
+    source: str = Field(default="manual", max_length=80)
+    external_id: str = Field(default="", max_length=200)
+    sync_id: str = Field(default="", max_length=64)
 
 
 class AiSystem(BaseModel):
+    """An AI system; ``openaev_asset_id`` is the id before #1134, read as an OpenAEV row (see :class:`CrownJewel`)."""
+
     model_config = _Strict
 
     name: str = Field(min_length=1, max_length=200)
@@ -205,6 +262,21 @@ class AiSystem(BaseModel):
     owner: str = Field(default="", max_length=200)
     exposure: Literal["internal", "partner", "public"] = "internal"
     openaev_asset_id: str = Field(default="", max_length=100)
+    source: str = Field(default="manual", max_length=80)
+    external_id: str = Field(default="", max_length=200)
+    sync_id: str = Field(default="", max_length=64)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_openaev(cls, data: Any) -> Any:
+        return _legacy_platform_id(data, "openaev_asset_id", "openaev")
+
+    @model_validator(mode="after")
+    def _openaev_id_follows(self) -> AiSystem:
+        self.source = self.source.strip().lower() or "manual"
+        if self.source == "openaev" and self.external_id:
+            self.openaev_asset_id = self.external_id[:100]
+        return self
 
 
 def _names(value: list[str], *, limit: int = 200) -> list[str]:
@@ -281,8 +353,10 @@ class AssetEntry(BaseModel):
     #: The ``tech_stack`` products running on it, by product name.
     tech_stack: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
-    source: str = Field(default="manual", max_length=50)
+    source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
+    #: The sync that last wrote the row (#1134; empty: typed, a one-off import or an agent).
+    sync_id: str = Field(default="", max_length=64)
 
     @model_validator(mode="before")
     @classmethod
@@ -320,8 +394,10 @@ class AssetGroupEntry(BaseModel):
     owner: str = Field(default="", max_length=200)
     tech_stack: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
-    source: str = Field(default="manual", max_length=50)
+    source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
+    #: The sync that last wrote the row (#1134).
+    sync_id: str = Field(default="", max_length=64)
 
     @field_validator("tech_stack", "tags")
     @classmethod
@@ -907,11 +983,21 @@ async def scoped_tracked_blocks(db: AsyncSession, scope: dict | None) -> list[st
     ]
 
 
+def _drop_typed_provenance(row: dict[str, Any]) -> None:
+    """Leave out the provenance fields of *row* that hold their typed-row defaults (#1134)."""
+    if row.get("source") == "manual":
+        row.pop("source", None)
+    for key in ("external_id", "sync_id"):
+        if not row.get(key):
+            row.pop(key, None)
+
+
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
     An empty tech stack version (CTEM-11) is left out the same way, and so are
-    ticketing sync settings left at their defaults (#917).
+    ticketing sync settings left at their defaults (#917) and the provenance of
+    a typed row (#1134: ``source`` manual, no ``external_id``, no ``sync_id``).
 
     The always-on block and every reader that dumped the whole profile keep
     their exact text for a profile that never filled the new parts.
@@ -923,6 +1009,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for entry in dumped.get("tech_stack") or []:
         if not entry.get("version"):
             entry.pop("version", None)
+    for key in ("crown_jewels", "tech_stack", "ai_systems"):
+        for row in dumped.get(key) or []:
+            _drop_typed_provenance(row)
     ticketing = dumped.get("ticketing")
     if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
         ticketing.pop("sync", None)
