@@ -2,7 +2,7 @@
 
 /**
  * CTEM > Inventory > Sources (#1178 slice 3): how the inventory is fed and merged.
- * The Sources tab is the shared Syncs card scoped to "inventory" alone (the business profile's
+ * The Sources tab is the shared Sources and syncs table (#1276) scoped to "inventory" alone (the business profile's
  * syncs stay in Settings), so its table is the one scroller of the screen (UX round 2 on #1254,
  * B7). Asset matching opens in a view of its own from the page header: the identifiers that merge
  * the records of several sources into one asset, most reliable first, and per field the order of
@@ -33,13 +33,13 @@ import {
   savedOf,
 } from "@/lib/asset-identity";
 import { PLATFORM_NAMES, fromForm, toForm } from "@/lib/organization-profile";
-import { OrganizationSyncsCard } from "@/pages/settings/OrganizationSyncsCard";
+import { OrganizationSourcesSyncs } from "@/pages/settings/OrganizationSourcesSyncs";
 
 /** The Sources tab: the inventory's syncs, nothing below them. */
 export function InventorySourcesCard() {
   return (
     <div data-testid="ctem-inventory.sources">
-      <OrganizationSyncsCard scope="inventory" />
+      <OrganizationSourcesSyncs scope="inventory" />
     </div>
   );
 }
