@@ -275,6 +275,7 @@ ee:
   - frontend/src/components/fleets/**
   - frontend/src/components/investigation/**
   - frontend/src/components/memory/**
+  - frontend/src/components/decisions/**
   - frontend/src/components/presentation/**
   - frontend/src/components/report/**
   - frontend/src/components/roi/**
