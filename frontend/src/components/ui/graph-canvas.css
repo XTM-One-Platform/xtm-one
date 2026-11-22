@@ -1,0 +1,99 @@
+/*
+Copyright (c) 2025-2026 Filigran SAS
+
+This file is part of the XTM One Enterprise Edition ("EE") and is
+licensed under the XTM One Enterprise Edition License (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://github.com/XTM-One-Platform/xtm-one/blob/main/LICENSE
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*/
+
+/*
+ * The surface of a read-only React Flow graph (Tasks > Work Items Graph view,
+ * #1062): the same canvas as the fleet and Agentic Flow graphs and the flow
+ * builder, in both themes.
+ *
+ * `colorMode="dark"` turns on React Flow's own dark palette, whose
+ * `.react-flow.dark` paints the container `--xy-background-color-default:
+ * #141414`, a flat grey that is not the app's elevation surface (the brown
+ * canvas of #1062). Its background variable is pointed at the platform token,
+ * and the grid, controls and minimap are painted from tokens too. Scoped to
+ * `.graph-canvas`, so nothing leaks into the rest of the app.
+ */
+
+.graph-canvas {
+  --flow-grid: hsl(220 16% 30%);
+}
+
+[data-mode="light"] .graph-canvas {
+  --flow-grid: hsl(220 16% 85%);
+}
+
+.graph-canvas .react-flow {
+  --xy-background-color: var(--bg-elevation-default);
+}
+
+.graph-canvas .react-flow__background {
+  background-color: transparent;
+}
+
+.graph-canvas .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border-elevation-subtle);
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.graph-canvas .react-flow__controls-button {
+  background: var(--bg-elevation-default);
+  border-bottom: 1px solid var(--border-elevation-subtle);
+  color: var(--text-default-secondary);
+}
+
+.graph-canvas .react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--text-default-primary) 6%, var(--bg-elevation-default));
+  color: var(--text-default-primary);
+}
+
+.graph-canvas .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* React Flow's minimap paints its own near-white panel and a light viewport
+   mask in its stylesheet: repainted from tokens, as in flow-builder.css. */
+.graph-canvas .react-flow__minimap {
+  background: var(--bg-elevation-default);
+  border: 1px solid var(--border-elevation-subtle);
+  border-radius: 0.5rem;
+}
+
+.graph-canvas .react-flow__minimap-svg {
+  background: var(--bg-elevation-default);
+}
+
+.graph-canvas .react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--bg-elevation-default) 60%, transparent);
+  stroke: var(--border-elevation-subtle);
+  stroke-width: 1;
+}
+
+.graph-canvas .react-flow__minimap-node {
+  stroke: none;
+}
+
+/* An in-flight edge (its prerequisite is being worked on) marches toward what
+   it releases, the fleet graph's live edges. */
+.graph-canvas .react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 6 4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-canvas .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
+}
