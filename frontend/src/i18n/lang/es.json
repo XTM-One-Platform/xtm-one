@@ -20713,5 +20713,10 @@
   "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{section} desde {source}: {count, plural, one {# fila} other {# filas}}",
   "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "Quién alimenta el perfil: las filas de cada plataforma las mantiene su sincronización y aquí son de solo lectura; las filas escritas, CSV, API y de agente siguen siendo suyas.",
   "The OpenCRQ sync failed": "La sincronización con OpenCRQ falló",
-  "Sync with OpenCRQ now": "Sincronizar con OpenCRQ ahora"
+  "Sync with OpenCRQ now": "Sincronizar con OpenCRQ ahora",
+  "Agentic checks": "Comprobaciones agénticas",
+  "No check round yet": "Aún no hay ninguna ronda de comprobaciones",
+  "Show the checks": "Ver las comprobaciones",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}"
 }
