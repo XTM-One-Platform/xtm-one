@@ -38,13 +38,16 @@ def test_no_tool_of_the_group_reaches_a_module():
     assert listed.isdisjoint(d.name for d in tools.build_health_module_tools("")[0])
 
 
-def test_the_module_analyst_carries_the_group():
+def test_each_module_checker_carries_the_group() -> None:
     from app.services.health.fleet_seed import FLEET_AGENTS
+    from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
 
-    analyst = next(a for a in FLEET_AGENTS if a.role == "module_analyst")
-    assert "health_modules" in analyst.builtin_tool_ids
-    assert analyst.disable_chat
-    assert [a.slug for a in FLEET_AGENTS if "health_modules" in a.builtin_tool_ids] == [analyst.slug]
+    checkers = [a for a in FLEET_AGENTS if a.role in CHECKER_ROLE_BY_PROVIDER.values()]
+    assert sorted(a.role for a in checkers) == sorted(CHECKER_ROLE_BY_PROVIDER.values())
+    for checker in checkers:
+        assert "health_modules" in checker.builtin_tool_ids
+        assert checker.disable_chat
+    assert [a.slug for a in FLEET_AGENTS if "health_modules" in a.builtin_tool_ids] == [a.slug for a in checkers]
 
 
 def test_the_group_is_wired_in_xtm_one_mode_only(monkeypatch):
@@ -57,7 +60,7 @@ def test_the_group_is_wired_in_xtm_one_mode_only(monkeypatch):
 
 
 @pytest.mark.parametrize("role", [None, "quality_analyst", "orchestrator"])
-async def test_only_the_module_analyst_records_a_recommendation(role):
+async def test_only_a_module_checker_records_a_recommendation(role: str | None) -> None:
     answer = await tools._record_finding_recommendation(
         None, _reader(role=role, admin=True), finding_id="f", text="t", confidence="high"
     )
@@ -70,6 +73,19 @@ async def test_a_recommendation_outside_a_cycle_is_refused():
     with pytest.raises(RefusalError) as refused:
         await tools._record_finding_recommendation(
             None, _reader(role="module_analyst"), finding_id="f", text="t", confidence="high"
+        )
+    assert refused.value.message == tools._NOT_IN_CYCLE
+
+
+@pytest.mark.parametrize("role", ["opencti_checker", "openaev_checker", "opencrq_checker", "module_analyst"])
+async def test_every_checker_role_reaches_the_cycle_check(role: str) -> None:
+    with pytest.raises(RefusalError) as refused:
+        await tools._record_finding_recommendation(
+            None,  # type: ignore[arg-type]
+            _reader(role=role),
+            finding_id="f",
+            text="t",
+            confidence="high",
         )
     assert refused.value.message == tools._NOT_IN_CYCLE
 
@@ -134,5 +150,6 @@ def test_findings_are_ordered_by_severity_weight_not_by_the_string() -> None:
 
 def test_readers_allowed_to_list():
     assert tools._may_read(_reader(role="module_analyst"))
+    assert tools._may_read(_reader(role="openaev_checker"))
     assert tools._may_read(_reader(admin=True))
     assert not tools._may_read(_reader(role="flow_lab"))

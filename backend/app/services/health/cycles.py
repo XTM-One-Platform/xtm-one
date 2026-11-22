@@ -454,19 +454,21 @@ async def _settle_cycle(db: AsyncSession, cycle_id: uuid.UUID, root_id: uuid.UUI
     from app.services.health.budget import REFUSAL_MESSAGES, budget_refusal, close_cycle, remaining
 
     tree = await _run_tree(db, root_id)
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
     specialist = await db.scalar(select(HealthCycle.specialist).where(HealthCycle.id == cycle_id))
+    own_ledger = specialist in MODULE_CHECKER_ROLES
     booked = await _book_runs(
         db,
         cycle_id,
         [run for run in tree if run.status in TERMINAL_RUN_STATUSES],
         now=now,
-        own_ledger=specialist == "module_analyst",
+        own_ledger=own_ledger,
     )
     await db.commit()
     active = [run.id for run in tree if run.status not in TERMINAL_RUN_STATUSES]
-    own_ledger = specialist == "module_analyst"
     if active:
-        # The Module Analyst stops at its own ceiling, call by call, never at the fleet caps.
+        # A module checker stops at its own ceiling, call by call, never at the fleet caps.
         cap = None if own_ledger else (await remaining(db, cycle_id)).refusal
         if cap in _CAPS:
             logger.info("Platform Health cycle %s: %s, its runs are stopped", cycle_id, cap)
