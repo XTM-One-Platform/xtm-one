@@ -582,6 +582,8 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
+  accounting: "Accounting",
+  finance: "Finance",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */

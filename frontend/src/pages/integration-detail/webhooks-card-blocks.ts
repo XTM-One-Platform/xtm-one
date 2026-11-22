@@ -21,6 +21,24 @@ interface WebhooksCardBlocks {
 }
 
 /**
+ * Whether any event of the provider can arrive by webhook (mechanism webhook
+ * or hybrid). A provider whose events are all polled has no outbound webhook
+ * to point at the integration URL, so neither the create form nor the
+ * Configuration tab shows that URL for it.
+ */
+export function hasWebhookEvents(catalogEntry: Pick<ProviderCatalogItem, "available_events"> | undefined): boolean {
+  return !!catalogEntry?.available_events.some((e) => e.mechanism !== "polling");
+}
+
+/**
+ * Whether every event of the provider is polled: the create form then says so
+ * instead of showing a webhook URL nobody configures.
+ */
+export function hasOnlyPolledEvents(catalogEntry: Pick<ProviderCatalogItem, "available_events"> | undefined): boolean {
+  return !!catalogEntry && catalogEntry.available_events.length > 0 && !hasWebhookEvents(catalogEntry);
+}
+
+/**
  * The blocks the Webhooks card renders for an integration. The card renders
  * nothing when none is shown, and the Configuration tab then gives the Event
  * Triggers card the full row instead of half of it with an empty column.
@@ -38,7 +56,7 @@ export function webhooksCardBlocks(
   // The integration webhook URL only matters for events that can arrive by
   // webhook: a provider whose events are all polled (OpenCRQ) has no outbound
   // webhook to point at it, and the Event Triggers card already says polling.
-  const hasWebhookEvents = !!catalogEntry?.available_events.some((e) => e.mechanism !== "polling");
+  const webhookEvents = hasWebhookEvents(catalogEntry);
   const isAdminProvisioned = usesAdminOAuthApp(integration, catalogEntry);
   const isMicrosoft = provider === "microsoft";
   const isSlack = provider === "slack";
@@ -51,7 +69,7 @@ export function webhooksCardBlocks(
     microsoft: isMicrosoft,
     slack: isSlack,
     adminEvents: hasEvents && isAdminProvisioned && !hasOwnEventsBlock,
-    webhookUrl: hasWebhookEvents && !isAdminProvisioned && !hasOwnEventsBlock,
+    webhookUrl: webhookEvents && !isAdminProvisioned && !hasOwnEventsBlock,
     callback: hasWebhookPath && !hasEvents && !isMicrosoft,
     webhookManager: !!catalogEntry?.supports_webhook_management && integration.status === "connected" && !!canManage,
   };

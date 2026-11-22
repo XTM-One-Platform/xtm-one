@@ -36,6 +36,7 @@ import { SecretField } from "@/components/ui/secret-field";
 import { COPY_FEEDBACK_DELAY } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import { createsOnAdminOAuthApp } from "@/pages/integration-detail/admin-oauth-app";
+import { hasOnlyPolledEvents, hasWebhookEvents } from "@/pages/integration-detail/webhooks-card-blocks";
 import type { ProviderCatalogItem, CreateIntegrationRequest } from "@/types";
 
 /**
@@ -291,6 +292,10 @@ export default function NewIntegration() {
     const isSlack = selected.provider === "slack";
     const slackEventsUrl = `${baseUrl}/api/v1/integrations/notifications/slack`;
     const onAdminOAuthApp = createsOnAdminOAuthApp(selected, selectedAuthType || form.auth_type, form.client_id);
+    // The webhook URL only matters for events that can arrive by webhook; a
+    // provider whose events are all polled gets the polling line instead.
+    const showsWebhookUrl = hasWebhookEvents(selected) && !isMicrosoft && !isSlack && !onAdminOAuthApp;
+    const showsPollingLine = hasOnlyPolledEvents(selected) && !isMicrosoft && !isSlack;
     return (
       <div className="space-y-6">
         {consentElement}
@@ -681,7 +686,7 @@ export default function NewIntegration() {
             )}
 
             {/* Webhook URL — only shown when user provides own creds (not admin-provisioned) */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && !onAdminOAuthApp && (
+            {showsWebhookUrl && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-default-secondary" />
@@ -710,8 +715,18 @@ export default function NewIntegration() {
               </div>
             )}
 
+            {/* Every event polled: no webhook to configure, say so */}
+            {showsPollingLine && (
+              <div className="flex items-center gap-2 rounded-sm bg-elevation-hover px-3 py-2">
+                <Webhook className="h-3.5 w-3.5 text-default-secondary shrink-0" />
+                <p className="content-compact text-default-secondary">
+                  {t_i18n("{provider} events are picked up by polling every 5 minutes. No webhook needs to be configured in {provider}.", { provider: selected.name })}
+                </p>
+              </div>
+            )}
+
             {/* Admin-provisioned: webhooks managed centrally, just inform the user */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && onAdminOAuthApp && (
+            {hasWebhookEvents(selected) && !isMicrosoft && !isSlack && onAdminOAuthApp && (
               <div className="flex items-center gap-2 rounded-sm bg-elevation-hover px-3 py-2">
                 <Webhook className="h-3.5 w-3.5 text-default-secondary shrink-0" />
                 <p className="content-compact text-default-secondary">
