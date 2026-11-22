@@ -20697,9 +20697,11 @@
   "Not computed yet": "Aún no calculado",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} no respondió a las {time}, casos sin cambios.} other {{products} no respondieron a las {time}, casos sin cambios.}}",
   "Open the {product} integration": "Abrir la integración de {product}",
-  "Agentic checks": "Comprobaciones agénticas",
-  "No check round yet": "Aún no hay ninguna ronda de comprobaciones",
-  "Show the checks": "Ver las comprobaciones",
-  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}"
+  "Empty: OpenCRQ is not connected.": "Vacío: OpenCRQ no está conectado.",
+  "Connect OpenCRQ": "Conectar OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "Ninguna automatización trabaja este caso: la flota del bucle CTEM no está configurada.",
+  "Waiting for {agent}, working this case since {since}.": "Esperando a {agent}, que trabaja este caso desde {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "Esperando un paso de la flota, que trabaja este caso desde {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Abierto a partir de vulnerabilidades de OpenCTI cotejadas con su inventario",
+  "Opened from OpenAEV findings on your assets": "Abierto a partir de hallazgos de OpenAEV en sus activos"
 }
