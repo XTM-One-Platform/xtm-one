@@ -1903,7 +1903,7 @@ risk) declare one gate per loop stage, from
 | Key | Stage | Impact | Tools paused |
 |---|---|---|---|
 | `ctem.validation.non_readonly` | Validate: an OpenAEV test that is not read-only | high | the OpenAEV launches |
-| `ctem.analyst_review` | Review of the threat package | low | none |
+| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
 | `ctem.production_change` | A change applied on production through an integration | high | none |
@@ -1916,6 +1916,14 @@ waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
 the Mobilize action, so one Mobilize decision covers every ticket of its case.
+The review step (CTEM-16): the vulnerability and threat orchestrators draft the
+threat package as an OpenCTI Grouping (the vulnerability or threat, software,
+attack patterns, a note on the exploitation conditions) and request its
+security coverage, which OpenAEV builds its scenario from; the coverage
+follows the run's OpenCTI draft. Out of the box the request runs and the case
+records "analyst review skipped by policy"; pinned `wait`, the request pauses
+as a decision until a person answers. Resuming on an analyst's mark set in
+OpenCTI itself is not built yet.
 The personas name no approval of their own: they apply the catalog the run
 prompt states (`tests/test_ctem_gate_catalog_916.py` pins it). A gate that
 waits is a decision of the unified system (`dev-docs/human-gates.md`), never a

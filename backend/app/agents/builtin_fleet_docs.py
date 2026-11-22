@@ -463,6 +463,11 @@ _OPENAEV_LAUNCH_TOOLS = [
     {"name": "manage_openaev_simulation", "when": {"action": ["status"], "status": ["RUNNING"]}},
     {"name": "manage_openaev_atomic_testing", "when": {"action": ["launch", "relaunch"]}},
 ]
+#: The coverage request of the review step (CTEM-16, #1089): OpenAEV builds and
+#: schedules its scenario from it, so it is what an analyst review would hold.
+_COVERAGE_REQUEST_TOOLS = [
+    {"name": "manage_opencti_security_coverage", "when": {"action": ["create"]}},
+]
 _TICKET_TOOLS = [
     {"name": "create_jira_issue"},
     {"name": "create_servicenow_incident"},
@@ -523,7 +528,13 @@ def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: st
             "high",
             _OPENAEV_LAUNCH_TOOLS if launch_tools else None,
         ),
-        gate("ctem.analyst_review", "Review: an analyst checks the threat package", "opencti", "low"),
+        gate(
+            "ctem.analyst_review",
+            "Review: an analyst checks the threat package before its security coverage is requested",
+            "opencti",
+            "low",
+            _COVERAGE_REQUEST_TOOLS,
+        ),
         gate(
             "ctem.remediation.decision",
             "Decide: choose the remediation option and record it as an OpenCRQ treatment plan",
