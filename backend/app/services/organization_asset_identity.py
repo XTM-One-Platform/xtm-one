@@ -109,15 +109,28 @@ def _mac(value: str) -> str:
     return ":".join(digits[i : i + 2] for i in range(0, 12, 2))
 
 
+def _is_ip_shaped(name: str) -> bool:
+    """An address, or a dotted value whose last label is all digits (RFC 3696: never a top-level label)."""
+    try:
+        ipaddress.ip_address(name.strip("[]"))
+    except ValueError:
+        return "." in name and name.rsplit(".", 1)[-1].isdigit()
+    return True
+
+
 def _fqdn(value: str) -> str:
     name = value.strip().lower().rstrip(".")
-    return name if "." in name and all(_HOST_LABEL.match(part) for part in name.split(".")) else ""
+    if "." not in name or _is_ip_shaped(name):
+        return ""
+    return name if all(_HOST_LABEL.match(part) for part in name.split(".")) else ""
 
 
 def _hostname(value: str) -> str:
     name = value.strip().lower().rstrip(".")
     if "\\" in name:  # DOMAIN\HOST
         name = name.rsplit("\\", 1)[1]
+    if _is_ip_shaped(name):  # an address is the weak ip key, never a hostname
+        return ""
     name = name.split(".", 1)[0]
     return name if _HOST_LABEL.match(name) and name not in ("localhost", "unknown") else ""
 

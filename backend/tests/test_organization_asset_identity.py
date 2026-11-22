@@ -84,6 +84,26 @@ def test_same_source_with_two_ids_is_two_things() -> None:
     assert len(ident.match_records([a, b])) == 2
 
 
+@pytest.mark.parametrize(
+    "value", ["10.0.0.5", "192.168.1.20", "10.0.0.5.", "CORP\\10.0.0.5", "fe80::1", "2001:db8::7", "10.0.0"]
+)
+def test_ip_shaped_values_are_never_a_hostname_or_fqdn(value: str) -> None:
+    assert ident._hostname(value) == ""
+    assert ident._fqdn(value) == ""
+
+
+def test_ip_shaped_hostnames_never_merge_unrelated_assets() -> None:
+    a = _rec("intune", "d-1", hostname="10.0.0.5")
+    b = _rec("openaev", "a-1", hostname="10.9.9.9")
+    assert len(ident.match_records([a, b])) == 2
+
+
+def test_hostnames_with_digit_labels_still_normalise() -> None:
+    assert ident._hostname("ws-7.corp.example.com") == "ws-7"
+    assert ident._hostname("1password-host.corp") == "1password-host"
+    assert ident._fqdn("host1.10x.example") == "host1.10x.example"
+
+
 def test_ip_alone_never_merges_and_is_answered_as_a_possible_match() -> None:
     a = _rec("intune", "d-1", ip="10.0.0.5", hostname="alpha")
     b = _rec("openaev", "a-1", ip="10.0.0.5", hostname="beta")
