@@ -2272,3 +2272,30 @@ The desks' agents keep `platform_targets` `["xtm_one", "dev"]` and their
 time of the change), so the embedded OpenCTI, OpenAEV and OpenCRQ chats are
 unaffected. The posture lead keeps answering people in chat
 (`chat_members` of the loop entry).
+
+### 14.4 First-connection setup of the loop (CTEM-33, #1087)
+
+The first-connection proposal of #9173 is versioned
+(`organization_setup_prompt.SETUP_VERSION`, `ctem-loop-1`): shown to an
+administrator of an XTM One platform at install and once after an upgrade that
+carries a new version, never in Copilot mode. Its six steps (organization,
+modules, ecosystem, gates, preview, enable) each save on their own through
+`PUT /api/v1/organization-context/setup-prompt/steps`.
+
+`GET /api/v1/fleets/setup/ctem-loop` (administrators, read only) answers each
+step's state and the step to resume on (`app/services/fleet_setup_status.py`):
+`done` or `skipped` as recorded for the current version, else `ready` when the
+platform already holds it (a saved profile with crown jewels and a tech stack;
+one CTEM module registered; one filled ecosystem slot of the loop fleet; the
+loop fleet seeded, for gates and preview; every automation on, for enable),
+else `todo`. The Modules step names what the loop loses without each module.
+Nothing is enabled before the enable step, which calls `POST /fleets/{id}/enable`.
+
+Frontend: "Set up now" of `OrganizationSetupPrompt` opens
+`components/fleets/CtemLoopSetupDialog.tsx` in place (no navigation). It opens on
+`resume_on`, records each step with Continue (`done`) or Skip (`skipped`), and
+reuses the existing pieces rather than new forms: the Organization step links to
+Settings > Organization in setup mode, Ecosystem embeds
+`FleetCapabilitySlotsCard`, Gates embeds `FleetAutonomyStrip`, and Enable opens
+`FleetEnableDialog` (dry-run plan, run estimate, Confirm). The step order, copy
+and fact readers are pure functions in `components/fleets/ctem-loop-setup.ts`.
