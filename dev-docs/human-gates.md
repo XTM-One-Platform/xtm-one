@@ -147,16 +147,6 @@ companion inbox reads the same list. The list is one indexed read of the
 `decisions` table (G2: recipient, status, deadline), no model call on the read
 path.
 
-**Implementation (S5, read).** `GET /api/v1/decisions/waiting` (`app/services/decision_inbox.py`,
-`waiting_for`): the open rows whose `recipient` is the caller (`user:<id>`), one
-of their groups (`group:<id>`), `company`, or `admins` for an administrator,
-soonest `deadline` first (none last), then oldest `created_at`. Each row carries
-the public id, kind, question, the whole ask for the card, `origin` (the
-assignment, flow or work item title), `agent`, `asked_at`, `deadline` and the
-`decision_links` page. The list is served only while the read switch is on
-(section 8 step 3; its verdict reused one minute per process); otherwise the
-answer is `{enabled: false, reason, items: []}` and the per-engine views stay.
-
 ## 5. D. One bell kind
 
 A new kind `decision` replaces `hitl`, `flow_hitl` and `work_item_waiting` in
@@ -370,6 +360,21 @@ The bot's card tools (`send_teams_bot_channel_card`, `send_teams_bot_chat_card`,
 `work_item:<id>`) in place of `card`: `decision_card_delivery.decision_card_for_tool`
 renders the same card, so an agent posts a decision without writing card JSON.
 
+As built (S10, Slack): `services/slack_decision_cards.py` draws the same
+`DecisionView` as Block Kit (header, source, question, context, one button per
+option with the recommendation `primary`, "Answer with text" opening a modal,
+the links, "Waiting for <name>"); a tool approval shows its tool names only
+(a Slack message is read by every member) and has no text answer. Clicks and
+the modal come to `POST /api/channels/slack/interactions` (`channels/slack.py`),
+signing-secret checked and failing closed as `/slack/events`; the clicker is
+resolved by Slack email then the linked Slack identity, and the answer goes
+through `decision_router.answer_decision` with surface `slack_card`. An answer
+replaces the message with the decided card (`chat.update`); a refusal (not the
+recipient, already answered, asked again, not linked) is an ephemeral to the
+clicker and the card is unchanged. The D notify path (`notify.py`
+`_notify_slack`) sends a paused run's open decision as this card. Setup: the
+Slack app's Interactivity Request URL is `{base_url}/api/channels/slack/interactions`.
+
 ### I.3 Answering in place
 
 A button calls the answer router of E as the person who clicked: identity by
@@ -543,6 +548,43 @@ verification is done.
 | S10 | Slack: Block Kit renderer, interactivity endpoint with signing-secret check, modal for free text | yes | e2e per I.6 |
 | S11 | Google Chat: cardsV2 renderer with app auth, `CARD_CLICKED` handler with token verification; user-auth sends carry the answer links of S9b | yes | e2e per I.6, path (d), app and user auth, in a DM and a space |
 | S12 | WhatsApp (1:1): reply buttons or list, button reply webhook mapped to the open decision; Discord and Telegram if their APIs allow | yes | e2e per I.6 (1:1 only for WhatsApp) |
+
+S12 as built (`services/decision_whatsapp.py`): 1 to 3 options are reply
+buttons, 4 to 10 a list, anything else (more options, a free-text question,
+a tool approval with more calls than a card shows, an answered decision) is
+text with the link to the decision. Buttons whose 20-character clipped titles
+read the same are sent as a list, and list rows that still collide as text.
+A closed decision states its outcome (who chose what and when, in UTC, or
+expired, or no longer needed) instead of the options. An open tool approval
+lists its calls as the Teams card of S9 does: `card_tools_awaiting`, then one
+line per tool name, plus the redacted arguments when the viewer decides (the
+send tool builds the message with no reader: names only); past
+`MAX_TOOLS_SHOWN` calls, `card_too_many_tools` with the count. Over the
+1,024-character body, arguments go first; a message that still cannot name
+every call is sent as text, so buttons never decide a call they did not
+name. Each reply id is
+`xtm.d:<decisions row id>:<option key>`; the webhook answers a 1:1
+`button_reply` or `list_reply` through the router as the sender's linked
+WhatsApp identity (surface `whatsapp_card`), never routes it to an agent, and
+answers in the chat with the decided state or the refusal (WhatsApp cannot
+edit a sent interactive message). Agents send it with
+`send_whatsapp_bot_message(to, decision=...)`. Checked for the other two:
+Telegram's Bot API allows it (an `inline_keyboard` whose `callback_data`, 64
+bytes, holds the row id and key; `callback_query` on the existing webhook;
+`editMessageReplyMarkup` for the decided state); Discord allows it only
+through message components answered on an Interactions endpoint (Ed25519
+signature, a 3-second deadline), which the gateway adapter does not expose
+today. Both are left out of this slice.
+
+Render for review: WhatsApp offers no surface a review can open, so every lab
+answers `GET /api/v1/lab/whatsapp-decision` (on the preview, `/api` is
+proxied) with each state drawn from the real `render_whatsapp_decision` /
+`decision_text` payload and the `answer_reply` texts, laid out as a WhatsApp
+chat (body formatting, footer, reply buttons, the list button and its opened
+sheet; the Cloud API payload under each). Query: `lang` (en, es, fr, ja),
+`theme` (light, dark), `width` (phone 390 px, desktop 760 px), `state` (one
+id); `/api/v1/lab/whatsapp-decision/index` links them all
+(`.xtm-one/lab/whatsapp_decision_preview.py`).
 
 S2 as built: `app/models/decision.py` (the tables), `app/models/decision_hooks.py`
 (one `before_flush` hook writes the dual write from the engines' own columns, so
