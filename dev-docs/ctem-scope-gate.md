@@ -120,11 +120,25 @@ Stored as `decision` on the signal (version 1), with the state:
   "outcome": "case | watchlist | to_validate | discarded",
   "state": "confirmed | watchlist | to_validate | discarded",
   "reason": "one line",
-  "reason_code": "in_scope | below_scope_threshold | criticality_unknown | no_risk_scenario | risk_scenario_unreadable | crown_jewel_below_policy | internet_exposure_required | score_below_policy | accepted_risk | excluded_by_policy | subject_unresolved | contradicted_by_signals | contradicted_by_evidence",
+  "reason_code": "in_scope | below_scope_threshold | criticality_unknown | no_risk_scenario | risk_scenario_unreadable | crown_jewel_below_policy | internet_exposure_required | score_below_policy | accepted_risk | excluded_by_policy | subject_unresolved | contradicted_by_signals | contradicted_by_evidence | no_dependency | account_disabled",
   "reason_params": {"criticality", "threshold", "confidence", "minimum", "score", "value", "owner", "until", "kind", "count"},
   "decided_at": "ISO-8601"
 }
 ```
+
+Third parties and identities (CTEM-29): a `third_party` subject resolves to the
+profile asset row that names the tracked organization and, through a crown
+jewel's `asset_names`, to that crown jewel; a crown jewel named in
+`evidence.crown_jewels` and OpenCRQ supporting assets in
+`evidence.opencrq_asset_ids` count too. Unresolved, it goes to the watchlist
+(`no_dependency`), never to "to validate". An `identity` subject
+(`name@domain`) resolves when its domain, or a parent of it, is one of the
+profile's `owned_domains`; its scope criticality is the policy's
+`identity_criticality` (default high). Evidence saying the account is disabled
+(`account_disabled` true or `account_enabled` false) discards it "not exposed"
+(`account_disabled`). A `credential_leak` signal never stores a secret: every
+secret-named evidence field (`password`, `token`, `secret`, `credential`...) is
+kept as its SHA-256 fingerprint, whatever the intake.
 
 `reason` is the English line agents and logs read. The UI never draws it: it
 translates `reason_code` with `reason_params` (one code per outcome branch of

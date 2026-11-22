@@ -2948,6 +2948,37 @@ CTEM_F2_OPENAEV_ASSIGNMENT: dict[str, Any] = {
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_OPENAEV_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_OPENAEV_ASSIGNMENT)
 
+# ── The analyst's mark in OpenCTI (CTEM-16, #1089) ──
+# Provisions the OpenCTI trigger on Grouping updates whose delivery lets the
+# webhook route resume a run waiting on the gate ``ctem.analyst_review``: the
+# analyst's label on the drafted Grouping approves its coverage request
+# (services/ctem_analyst_mark.py), with no model call. Listen-only, as above.
+CTEM_F2_ANALYST_MARK_ASSIGNMENT: dict[str, Any] = {
+    **_CTEM_F2_COMMON,
+    "name": "Analyst review mark",
+    "description": (
+        "Listens to OpenCTI: when the review gate waits, the analyst's label on the drafted Grouping "
+        "approves its coverage request and resumes the run. No run of its own."
+    ),
+    "trigger_type": "integration_event",
+    "trigger_config": {
+        "provider": "opencti",
+        "provision": {
+            "fleet": _CTEM_F2_FLEET,
+            "purpose": "Analyst review mark",
+            "entity_types": ["Grouping"],
+            "event_types": ["update"],
+        },
+        "filter": CTEM_LISTEN_ONLY_FILTER,
+    },
+    "prompt": (
+        "This assignment only listens: its filter drops every OpenCTI delivery and the analyst's mark "
+        "resumes the waiting run. If a delivery reached you, answer that nothing is to do."
+    ),
+}
+CTEM_F2_ASSIGNMENTS.append(CTEM_F2_ANALYST_MARK_ASSIGNMENT)
+BUILTIN_ASSIGNMENTS.append(CTEM_F2_ANALYST_MARK_ASSIGNMENT)
+
 # ── CTEM fleet F1 assignments (dev-docs/ctem-fleets.md s.4.1, issue #9114) ──
 _F1_ORCHESTRATOR = "ctem-threat-response-orchestrator"
 _F1_RUN = {

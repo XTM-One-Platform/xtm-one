@@ -28,8 +28,8 @@ lenses disagree. Before this change none of that had a place to land.
 | 7 | `surface_drift` | outside | tool and API |
 | 8 | `mitigation_regression` | inside | OpenAEV scenario score degraded (CTEM-15) |
 | 9 | `control_decay` | inside | tool and API |
-| 10 | `credential_leak` | world | Aikido `leaked_secret` issue (the secret is never stored) |
-| 11 | `third_party_event` | world | tool and API |
+| 10 | `credential_leak` | world | Aikido `leaked_secret` issue; an OpenCTI `user-account` or `email-addr` observable with a domain, the identity as subject (the secret is never stored: a fingerprint) |
+| 11 | `third_party_event` | world | an OpenCTI report or incident naming a tracked organization by identity, one signal per organization (the tracked-organizations trigger of the third-party fleet) |
 | 12 | `blind_spot` | inside | tool and API |
 
 A caller may name another lens than the default (a `has` relationship is the
