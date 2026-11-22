@@ -58,11 +58,10 @@ from app.integrations.providers import docusign
 from app.integrations.providers.google import GMAIL_API
 from app.integrations.providers.microsoft import GRAPH_API
 from app.integrations.providers.microsoft._message_type import message_type
-from app.integrations.providers.quotapath import events as quotapath_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import jira_events, netsuite_events, opencrq_job_events, pennylane_events
+from app.services import dealhub_events, jira_events, netsuite_events, opencrq_job_events, pennylane_events
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
@@ -136,10 +135,10 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
-    # QuotaPath payouts (providers/quotapath/events.py): no webhook in its API.
-    **dict.fromkeys(sorted(quotapath_events.EVENTS), quotapath_events.POLL_INTERVAL_SECONDS),
     # Pennylane changelogs (pennylane_events): no webhook to a company token.
     **dict.fromkeys(sorted(pennylane_events.EVENTS), pennylane_events.POLL_INTERVAL_SECONDS),
+    # DealHub quote status changes (dealhub_events): the fallback of its webhooks.
+    **dict.fromkeys(sorted(dealhub_events.EVENTS), dealhub_events.POLL_INTERVAL_SECONDS),
     # NetSuite change events (netsuite_events): SuiteQL every 5 min, within the account's concurrency limit.
     **dict.fromkeys(sorted(netsuite_events.EVENTS), netsuite_events.POLL_INTERVAL_SECONDS),
 }
@@ -874,11 +873,11 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
-    if provider == quotapath_events.PROVIDER and event_type in quotapath_events.EVENTS:
-        return await _poll_quotapath_payouts(access_token, event_type, wf, redis)
-
     if provider == pennylane_events.PROVIDER and event_type in pennylane_events.EVENTS:
         return await _poll_pennylane_changes(access_token, event_type, wf, redis)
+
+    if provider == dealhub_events.PROVIDER and dealhub_events.polled(event_type):
+        return await _poll_dealhub_quotes(access_token, event_type, wf, redis)
 
     if provider == netsuite_events.PROVIDER and event_type in netsuite_events.EVENTS:
         return await _poll_netsuite_changes(access_token, event_type, wf, redis)
@@ -921,6 +920,14 @@ async def _poll_credential(
         if provider == pennylane_events.PROVIDER:
             return token or None
         return token if token and "||" in token else None
+    if provider == dealhub_events.PROVIDER and db is not None:
+        # ``host||token`` when the instance host is set, the bare token otherwise.
+        from app.services.integration_tools import _get_token
+
+        token = await _get_token(
+            db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
+        )
+        return token or None
     if provider != "docusign":
         return decrypt_value(holder.access_token_enc) if holder.access_token_enc else None
     from app.services.vault import reveal_json_field
@@ -982,39 +989,6 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ]
 
 
-async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
-    """Poll the QuotaPath payouts of *event_type* since the last check (``quotapath.events``).
-
-    The cursor is a Unix time in seconds: the updated-since lists read from it
-    (inclusive, the seen set skipping a payout already run); the unresolved
-    list has no time filter and the seen set alone tells a new payout. The
-    first poll starts from now.
-    """
-    cursor_key = f"event_cursor:{wf.id}"
-    since = await redis.get(cursor_key)
-    now = int(datetime.now(UTC).timestamp())
-    if not since:
-        await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
-        if event_type == "payout_unresolved":
-            # Mark what is owed today seen, so enabling the trigger replays nothing.
-            rows, err = await quotapath_events.list_payouts(api_key, event_type, None)
-            for row in rows if not err else []:
-                msg_id = quotapath_events.payout_event(row, event_type)["message_id"]
-                if msg_id:
-                    await claim_seen(redis, wf.id, msg_id)
-        return []
-    try:
-        since_ts = int(since.decode() if isinstance(since, bytes) else since)
-    except ValueError:
-        since_ts = now
-    rows, err = await quotapath_events.list_payouts(api_key, event_type, since_ts)
-    if err:
-        logger.warning("QuotaPath payout poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
-        return []
-    await redis.set(cursor_key, str(now), ex=_CURSOR_TTL_SECONDS)
-    return [quotapath_events.payout_event(row, event_type) for row in rows]
-
-
 async def _poll_pennylane_changes(
     credential: str, event_type: str, wf: Assignment, redis: Redis
 ) -> list[dict[str, Any]]:
@@ -1046,6 +1020,24 @@ async def _poll_pennylane_changes(
     return await pennylane_events.change_events(
         credential, event_type, pennylane_events.selected(page.items, event_type)
     )
+
+
+async def _poll_dealhub_quotes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
+    """Poll the DealHub quotes whose status changed since the last check (``dealhub_events``).
+
+    The cursor is the status map of the quotes read last time; the first poll
+    records it and runs nothing. A read that fails leaves the cursor alone.
+    """
+    cursor_key = f"event_cursor:{wf.id}"
+    known = dealhub_events.load_statuses(await redis.get(cursor_key))
+    quotes, err = await dealhub_events.list_quotes(credential)
+    if err:
+        logger.warning("DealHub quote poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        return []
+    delivered = await dealhub_events.webhook_statuses(redis, wf.id)
+    events, statuses = dealhub_events.poll_events(quotes, event_type, known, delivered=delivered)
+    await redis.set(cursor_key, dealhub_events.dump_statuses(statuses), ex=_CURSOR_TTL_SECONDS)
+    return events
 
 
 async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict]:

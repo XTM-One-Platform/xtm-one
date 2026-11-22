@@ -70,6 +70,7 @@ from app.integrations.providers.cybersixgill import (
 )
 from app.integrations.providers.cyware import build_tools as cyware_tools
 from app.integrations.providers.databricks import build_tools as databricks_tools
+from app.integrations.providers.dealhub import build_tools as dealhub_tools
 from app.integrations.providers.defender import build_tools as defender_tools
 from app.integrations.providers.discord_bot import build_tools as discord_bot_tools
 from app.integrations.providers.docusign import build_tools as docusign_tools
@@ -146,7 +147,6 @@ from app.integrations.providers.proofpoint import build_tools as proofpoint_tool
 from app.integrations.providers.purview import build_tools as purview_tools
 from app.integrations.providers.qradar import build_tools as qradar_tools
 from app.integrations.providers.qualys import build_tools as qualys_tools
-from app.integrations.providers.quotapath import build_tools as quotapath_tools
 from app.integrations.providers.ransomware_live import (
     build_tools as ransomware_live_tools,
 )
@@ -1003,12 +1003,12 @@ PROVIDER_TOOLS = {
     "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "dealhub": dealhub_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "netsuite": netsuite_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
-    "quotapath": quotapath_tools,
     "hibob": hibob_tools,
     "linkedin": linkedin_tools,
     "x": x_tools,
@@ -1122,6 +1122,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "ashby",
         "bluesky",
         "concord",
+        "dealhub",
         "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
@@ -1152,7 +1153,6 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "openaev",
         "opencti",
         "perk",
-        "quotapath",
         "servicenow",
         "slack",
         "tanium",
@@ -4373,6 +4373,8 @@ async def _get_token(
     extra_field_providers: dict[str, str] = {
         "credly": "organization_id",
         "concord": "organization_id",
+        # DealHub: the instance host (api.dealhub.io when unset) as ``host||token``.
+        "dealhub": "instance_host",
         "google_search": "search_engine_id",
         "hibob": "service_user_id",
         # HackerOne uses HTTP Basic auth: the API token *identifier* (username)
