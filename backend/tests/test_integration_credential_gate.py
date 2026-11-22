@@ -268,6 +268,11 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # (integration.user_id); the token only reads the outside view of the owned
         # domains and address ranges (reader_for).
         "services/ctem_attack_surface.py",
+        # CTEM evidence health pass (#1161): the one OpenCRQ integration an administrator
+        # declared in the profile (evidence_health.integration), for its owner
+        # (integration.user_id); the token only reads the evidence health of the
+        # tenant's risk scenarios (reader_for).
+        "services/ctem_evidence_health.py",
         "services/openaev_trigger_provisioning.py",
         "services/opencti_trigger_provisioning.py",
         "services/organization_context_opencrq.py",
