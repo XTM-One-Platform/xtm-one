@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type { AttackSurfacePass, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -52,6 +52,10 @@ export interface OrganizationProfile {
   posture_target?: number | null;
   /** The CTEM prioritization rules (#11543); the Governance & Risk page reads its accepted risks. */
   prioritization_policy?: PrioritizationPolicy;
+  /** The owned domains, address ranges and outside lens pass (CTEM-29, CTEM-26), edited on the Exposure tab. */
+  owned_domains?: string[];
+  address_ranges?: string[];
+  attack_surface?: AttackSurfacePass;
 }
 
 export interface OrganizationContextResponse {
@@ -93,6 +97,15 @@ export function useOrganizationContext() {
 export function useNoOrganizationProfile(): boolean {
   const context = useOrganizationContext();
   return context.data !== undefined && context.data.version == null;
+}
+
+/** The integration providers the outside lens pass reads (CTEM-26): the Settings picker offers only these. */
+export function useAttackSurfaceProviders() {
+  return useQuery<{ providers: string[] }>({
+    queryKey: [...KEY, "attack-surface-providers"],
+    queryFn: () => api.get("/organization-context/attack-surface/providers"),
+    staleTime: 5 * 60_000,
+  });
 }
 
 /** Whether every agent's prompt starts with the organization summary (#11533):

@@ -88,6 +88,7 @@ beforeEach(() => {
     if (path === "/organization-context/pirs") return { pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null };
     if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
+    if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
     throw new Error(`unexpected GET ${path}`);
   });
 });
@@ -1033,6 +1034,21 @@ describe("OrganizationSection", () => {
     // The focused element is the card itself, so the focus ring keeps the card's radius.
     expect(document.activeElement?.getAttribute("data-testid")).toBe("settings.organizations");
     expect(document.activeElement?.getAttribute("data-anchor")).toBe("card");
+  });
+
+  it("lands ?card=outside_lens on the outside lens card root (UX r1 B1 on #1159)", async () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/settings/organization?card=outside_lens"]}>
+        <OrganizationSection />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId("settings.organization.panel-exposure")).toBeTruthy();
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-outside_lens$/));
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("settings.organization.outside-lens");
+    expect(document.activeElement?.getAttribute("data-anchor")).toBe("card");
+    // It folds like its siblings (UX r1 B2 on #1159).
+    const card = screen.getByTestId("settings.organization.outside-lens");
+    expect(within(card).getAllByRole("button").some((button) => button.hasAttribute("aria-expanded"))).toBe(true);
   });
 
   it("marks the Draft button aria-busy while the draft is pending (#9102 A2)", async () => {
