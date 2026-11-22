@@ -344,7 +344,9 @@ def checks_assignment_names(role: str | None) -> tuple[str, ...]:
     return ()
 
 
-_FLEET_DESCRIPTION: Final = "The platform's improvement fleet: memory, quality, flows, experiments and module health checks."
+_FLEET_DESCRIPTION: Final = (
+    "The platform's improvement fleet: memory, quality, flows, experiments and module health checks."
+)
 
 
 async def _skill_ids_by_slug(db: AsyncSession, slugs: set[str]) -> dict[str, str]:

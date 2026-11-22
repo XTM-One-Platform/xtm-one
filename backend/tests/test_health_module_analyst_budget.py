@@ -22,11 +22,11 @@ from app.services.health.fleet_seed import ASSIGNMENT_BY_KEY
 from app.services.health.settings import HealthModuleAnalystSettings, HealthSettings
 
 AGENT_ID = uuid.uuid4()
-SEEDED_NAME = ASSIGNMENT_BY_KEY["module_analyst"].name
+SEEDED_NAME = ASSIGNMENT_BY_KEY["opencti_checks"].name
 
 
 def _agent(**kw):
-    values = {"id": AGENT_ID, "health_role": "module_analyst", "is_builtin": True, "is_company_managed": True}
+    values = {"id": AGENT_ID, "health_role": "opencti_checker", "is_builtin": True, "is_company_managed": True}
     values.update(kw)
     return SimpleNamespace(**values)
 
@@ -38,7 +38,30 @@ def _assignment(**kw):
 
 
 def test_the_seeded_module_analyst_run_is_exempt():
-    assert mab.is_module_analyst_run(_agent(), _assignment()) is True
+    assert mab.is_module_checker_run(_agent(), _assignment()) is True
+
+
+@pytest.mark.parametrize(
+    ("role", "key"),
+    [
+        ("opencti_checker", "opencti_checks"),
+        ("openaev_checker", "openaev_checks"),
+        ("opencrq_checker", "opencrq_checks"),
+    ],
+)
+def test_each_checker_is_exempt_on_its_own_checks_assignment(role, key):
+    assert mab.is_module_checker_run(_agent(health_role=role), _assignment(name=ASSIGNMENT_BY_KEY[key].name))
+
+
+def test_a_checker_on_another_checkers_assignment_is_not_exempt():
+    other = ASSIGNMENT_BY_KEY["openaev_checks"].name
+    assert mab.is_module_checker_run(_agent(health_role="opencti_checker"), _assignment(name=other)) is False
+
+
+def test_the_s14_role_and_assignment_name_stay_exempt_until_the_seed_renames_them():
+    """Section 13.1: the row keeps ``module_analyst`` until the next boot rewrites it."""
+    s14 = _assignment(name="Platform Health module investigation")
+    assert mab.is_module_checker_run(_agent(health_role="module_analyst"), s14) is True
 
 
 @pytest.mark.parametrize(
@@ -51,30 +74,30 @@ def test_the_seeded_module_analyst_run_is_exempt():
     ],
 )
 def test_any_other_agent_keeps_counting_in_the_tiers(agent_kw):
-    assert mab.is_module_analyst_run(_agent(**agent_kw), _assignment()) is False
+    assert mab.is_module_checker_run(_agent(**agent_kw), _assignment()) is False
 
 
 def test_an_assignment_an_admin_added_to_the_analyst_is_not_exempt():
-    assert mab.is_module_analyst_run(_agent(), _assignment(name="My own assignment")) is False
+    assert mab.is_module_checker_run(_agent(), _assignment(name="My own assignment")) is False
 
 
 def test_an_assignment_of_another_agent_is_not_exempt():
-    assert mab.is_module_analyst_run(_agent(), _assignment(agent_id=uuid.uuid4())) is False
+    assert mab.is_module_checker_run(_agent(), _assignment(agent_id=uuid.uuid4())) is False
 
 
 def test_missing_rows_are_not_exempt():
-    assert mab.is_module_analyst_run(None, _assignment()) is False
-    assert mab.is_module_analyst_run(_agent(), None) is False
+    assert mab.is_module_checker_run(None, _assignment()) is False
+    assert mab.is_module_checker_run(_agent(), None) is False
 
 
 def test_a_trigger_context_cannot_turn_the_exemption_on():
     """The predicate takes no run: nothing a trigger or a payload carries is read."""
-    assert list(inspect.signature(mab.is_module_analyst_run).parameters) == ["agent", "assignment"]
+    assert list(inspect.signature(mab.is_module_checker_run).parameters) == ["agent", "assignment"]
 
 
 def test_the_engine_reads_the_exemption_before_charging_the_quota():
     src = inspect.getsource(assignment_engine_mod.execute_assignment_run)
-    exempt_at = src.index("is_module_analyst_run(agent, assignment)")
+    exempt_at = src.index("is_module_checker_run(agent, assignment)")
     increment_at = src.index("await increment_agentic_usage(")
     assert exempt_at < increment_at
     assert "not _module_analyst_exempt and not _run_is_quota_exempt(agent, run)" in src
