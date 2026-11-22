@@ -498,12 +498,16 @@ then the existing AI assessment and facts grid unchanged.
   promise work nobody will do. An empty section says the reason read from
   live state (`ctem/case-loop-reason.ts`), first match wins: "Empty: OpenCRQ
   is not connected." with a Connect link (exploitation reading and treatment
-  plan only, when no OpenCRQ registration exists); "No automation works this
-  case: the CTEM loop fleet is not set up." with a link to the fleet (the
-  seeded `ctem-loop` fleet or a fork of it, none of its automations on, or
-  no such fleet visible); "Waiting for <agent>, working this case since
-  <time>" while a fleet run on the case is active; otherwise the section's
-  own sentence. Without agentic AI or on a read error nothing is claimed
+  plan only, when no OpenCRQ registration exists); "Waiting for <agent>,
+  working this case since <time>" while a fleet run on the case is active,
+  whatever the fleet's switches say (a run that stays pending keeps this
+  line with its start time, which shows how long it has waited); "No
+  automation works this case: the CTEM loop fleet is not set up." with a
+  link to the fleet when no run is active and the seeded `ctem-loop` fleet
+  or a fork of it has none of its automations on, or no such fleet is
+  visible; otherwise the section's own sentence. Links are the design
+  system `Link` over the router link (underlined in every state). Without
+  agentic AI or on a read error nothing is claimed
   and the own sentence stays. "Opened by" on a case no signal opened names
   the source readers from the sources of its visible issues ("Opened from
   OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV

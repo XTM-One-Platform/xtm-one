@@ -8,7 +8,8 @@
  * a section rendered without it keeps its own sentence.
  */
 import { createContext, useContext, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
+import { Link } from "@filigran/design-system";
 import { useFormatter } from "@/i18n";
 import { sectionReason, type CaseLoopWorker } from "./case-loop-reason";
 
@@ -23,9 +24,6 @@ const CaseLoopContext = createContext<CaseLoopState>({ worker: { kind: "unknown"
 export function CaseLoopProvider({ value, children }: { value: CaseLoopState; children: ReactNode }) {
   return <CaseLoopContext.Provider value={value}>{children}</CaseLoopContext.Provider>;
 }
-
-const LINK_CLASS =
-  "whitespace-nowrap text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus";
 
 export function CaseSectionReason({
   own,
@@ -46,8 +44,8 @@ export function CaseSectionReason({
     return (
       <p className="text-default-secondary" data-testid={testId} data-reason={reason}>
         {t_i18n("Empty: OpenCRQ is not connected.")}{" "}
-        <Link to="/integrations" className={LINK_CLASS}>
-          {t_i18n("Connect OpenCRQ")}
+        <Link asChild>
+          <RouterLink to="/integrations">{t_i18n("Connect OpenCRQ")}</RouterLink>
         </Link>
       </p>
     );
@@ -56,8 +54,8 @@ export function CaseSectionReason({
     return (
       <p className="text-default-secondary" data-testid={testId} data-reason={reason}>
         {t_i18n("No automation works this case: the CTEM loop fleet is not set up.")}{" "}
-        <Link to={worker.fleetId ? `/fleets/${worker.fleetId}` : "/fleets"} className={LINK_CLASS}>
-          {t_i18n("Open the fleet")}
+        <Link asChild>
+          <RouterLink to={worker.fleetId ? `/fleets/${worker.fleetId}` : "/fleets"}>{t_i18n("Open the fleet")}</RouterLink>
         </Link>
       </p>
     );

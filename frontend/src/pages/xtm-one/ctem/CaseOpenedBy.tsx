@@ -9,7 +9,8 @@
  * opened by no signal (one the recompute built from source issues) names the
  * source readers that opened it, from the sources of its issues (#1206).
  */
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
+import { Link } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCtemCaseSignals } from "@/hooks/api/useCtemSignalsApi";
@@ -60,11 +61,8 @@ export function CaseOpenedBy({ caseId, sources = [] }: { caseId: string; sources
                   <span className="min-w-0 truncate text-default-secondary" title={s.subject.label || s.subject.ref}>
                     {s.subject.label || s.subject.ref}
                   </span>
-                  <Link
-                    to={`?loop=${encodeURIComponent(loopParam("signal", s.id))}`}
-                    className="ml-auto whitespace-nowrap text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                  >
-                    {t_i18n("See the loop trace")}
+                  <Link asChild className="ml-auto whitespace-nowrap">
+                    <RouterLink to={`?loop=${encodeURIComponent(loopParam("signal", s.id))}`}>{t_i18n("See the loop trace")}</RouterLink>
                   </Link>
                 </span>
                 <span className="text-default-secondary">
