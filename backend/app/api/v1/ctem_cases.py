@@ -37,6 +37,7 @@ from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
 from app.services import ctem_loop_measures as measures
 from app.services import ctem_signals as signal_store
+from app.services import ctem_ticketing as ticketing
 from app.services.ctem_verticals import normalize_vertical
 from app.services.organizations import get_primary
 
@@ -151,6 +152,7 @@ async def list_ctem_cases(
             "counts": {s: 0 for s in CASE_STATES},
             "cases": [],
             "details_unavailable": [],
+            "ticketing": {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH},
         }
     cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
     view = await view_of.viewer_view(db, str(user.id), vertical)
@@ -168,6 +170,9 @@ async def list_ctem_cases(
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
         "details_unavailable": view.missing,
+        # Whether a ticketing target is declared (CTEM-19-UI, #1032): the case
+        # screens say "No ticketing connected" with the settings link.
+        "ticketing": await ticketing.ticketing_target(db),
     }
 
 
@@ -371,7 +376,7 @@ async def get_ctem_case(
     shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    return shown[1]
+    return {**shown[1], "ticketing": await ticketing.ticketing_target(db)}
 
 
 @router.patch("/{case_id}")
