@@ -321,6 +321,94 @@ class HealthSettings(BaseModel):
         return list(dict.fromkeys(ids))
 
 
+# ── The spend lock (#1202) ────────────────────────────────────────────────
+
+#: The variable that unlocks the spend ceilings (``Settings.platform_health_spend_limits_unlocked``).
+SPEND_LIMITS_ENV_VAR = "PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED"
+#: Why a spend ceiling is read-only, as the API reports it (``locked_reason``).
+SPEND_LIMITS_LOCKED_REASON = "environment"
+
+#: Every spend ceiling of Platform Health, by block: what bounds a spend that runs
+#: outside the agentic quota (dev-docs/platform-health.md sections 6, 7 and 12.5).
+#: The switches (``analysis.enabled``, ``module_analyst.enabled``) are not here:
+#: turning them off only lowers the spend.
+SPEND_FIELDS: dict[str, tuple[str, ...]] = {
+    "budget": ("cycle_tokens", "cycle_cost_usd", "month_tokens", "month_cost_usd"),
+    "analysis": ("day_tokens", "day_cost_usd", "month_tokens", "month_cost_usd"),
+    "module_analyst": ("cycle_tokens", "day_tokens", "day_cost_usd", "month_tokens", "month_cost_usd"),
+}
+
+
+class SpendLimitsLockedError(Exception):
+    """A write changed a spend ceiling while they are locked."""
+
+    def __init__(self, fields: list[str]) -> None:
+        self.fields = fields
+        super().__init__(
+            "Platform Health spends outside the agentic quota, so its spend ceilings are locked at their "
+            f"defaults. Set {SPEND_LIMITS_ENV_VAR}=true to change them. Refused: {', '.join(fields)}."
+        )
+
+
+def spend_limits_unlocked() -> bool:
+    """Whether the stored spend ceilings apply (the variable is true), read on every call."""
+    from app.core.config import settings
+
+    return bool(getattr(settings, "platform_health_spend_limits_unlocked", False))
+
+
+def _spend_defaults() -> HealthSettings:
+    return HealthSettings()
+
+
+def _with_spend_values(target: HealthSettings, source: HealthSettings) -> HealthSettings:
+    """*target* with every spend ceiling taken from *source*, every other field kept."""
+    update = {
+        block: getattr(target, block).model_copy(update={key: getattr(getattr(source, block), key) for key in keys})
+        for block, keys in SPEND_FIELDS.items()
+    }
+    return target.model_copy(update=update)
+
+
+def apply_spend_lock(stored: HealthSettings) -> HealthSettings:
+    """The settings in force: the stored ones, their spend ceilings at the defaults while locked."""
+    if spend_limits_unlocked():
+        return stored
+    return _with_spend_values(stored, _spend_defaults())
+
+
+def changed_spend_fields(new: HealthSettings, current: HealthSettings) -> list[str]:
+    """The ``block.key`` of each spend ceiling *new* sets to another value than *current*."""
+    return [
+        f"{block}.{key}"
+        for block, keys in SPEND_FIELDS.items()
+        for key in keys
+        if getattr(getattr(new, block), key) != getattr(getattr(current, block), key)
+    ]
+
+
+def describe_spend_limits(stored: HealthSettings) -> list[dict[str, object]]:
+    """Each spend ceiling with its value in force, default, stored value and source, for the API."""
+    unlocked = spend_limits_unlocked()
+    defaults = _spend_defaults()
+    described = []
+    for block, keys in SPEND_FIELDS.items():
+        for key in keys:
+            default = getattr(getattr(defaults, block), key)
+            value = getattr(getattr(stored, block), key)
+            described.append(
+                {
+                    "block": block,
+                    "key": key,
+                    "value": value if unlocked else default,
+                    "default": default,
+                    "stored": value,
+                    "source": "database" if unlocked and value != default else "default",
+                }
+            )
+    return described
+
+
 def _read(stored: object) -> HealthSettings:
     if not isinstance(stored, dict):
         return HealthSettings()
@@ -340,7 +428,17 @@ def _read(stored: object) -> HealthSettings:
 
 
 async def load_health_settings(db: AsyncSession) -> HealthSettings:
-    """The stored settings, their defaults when none (read on every call: no cache)."""
+    """The settings in force, their defaults when none (read on every call: no cache).
+
+    While the spend ceilings are locked (#1202, the default) they read as their
+    built-in defaults whatever the row holds: every reader of a ceiling (the
+    budget, the analysis, the Module Analyst, the digest) goes through here.
+    """
+    return apply_spend_lock(await load_stored_health_settings(db))
+
+
+async def load_stored_health_settings(db: AsyncSession) -> HealthSettings:
+    """What the row holds, spend ceilings included whether they apply or not."""
     from app.models.platform_settings import PlatformSettings
 
     stored = (
@@ -356,28 +454,40 @@ async def load_health_settings(db: AsyncSession) -> HealthSettings:
 async def save_health_settings(
     db: AsyncSession, new: HealthSettings, *, actor: User, request: Request | None = None
 ) -> tuple[HealthSettings, HealthSettings]:
-    """Store *new*; ``(before, after)``. Audited, flushed, not committed.
+    """Store *new*; ``(before, after)``, the settings in force. Audited, flushed, not committed.
 
     The caller applies the revocation a narrowed scope implies, in the same
     transaction. The name is a display text only: the built-in fleet's rows
     keep the platform's name (``read_only``, #101).
+
+    While the spend ceilings are locked (#1202), a *new* that changes one of
+    them from the value in force raises :class:`SpendLimitsLockedError` and
+    writes nothing; one that sends them back unchanged saves its other fields
+    and the row keeps its stored ceilings, so unlocking finds them again.
     """
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.services.audit import log_audit
 
     row = await get_platform_settings(db)
-    before = _read(row.health_settings)
-    row.health_settings = new.model_dump(mode="json")
+    stored = _read(row.health_settings)
+    before = apply_spend_lock(stored)
+    to_store = new
+    if not spend_limits_unlocked():
+        refused = changed_spend_fields(new, before)
+        if refused:
+            raise SpendLimitsLockedError(refused)
+        to_store = _with_spend_values(new, stored)
+    row.health_settings = to_store.model_dump(mode="json")
     await log_audit(
         db,
         user=actor,
         action="configure",
         entity_type="health_settings",
         summary="Updated the Platform Health settings",
-        details={"before": before.model_dump(mode="json"), "after": new.model_dump(mode="json")},
+        details={"before": stored.model_dump(mode="json"), "after": to_store.model_dump(mode="json")},
         request=request,
     )
-    return before, new
+    return before, apply_spend_lock(to_store)
 
 
 def scope_narrowed(before: HealthSettings, after: HealthSettings) -> bool:

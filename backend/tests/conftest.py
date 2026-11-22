@@ -496,6 +496,21 @@ def _reset_preview_lane_read():
 
 
 @pytest.fixture(autouse=True)
+def _health_spend_limits_unlocked(monkeypatch):
+    """Apply the Platform Health spend ceilings a test stores (#1202).
+
+    Production locks them at their defaults unless
+    ``PLATFORM_HEALTH_SPEND_LIMITS_UNLOCKED`` is true; the budget, analysis and
+    Module Analyst tests store small ceilings to reach them, so the suite runs
+    unlocked. ``test_health_spend_lock.py`` locks them itself.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "platform_health_spend_limits_unlocked", True)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_security_options_snapshot(monkeypatch):
     """Forget the stored security options, and lock none of them.
 
