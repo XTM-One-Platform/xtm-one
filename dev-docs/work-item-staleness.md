@@ -125,6 +125,17 @@ adds the scope clause (`fleet_work_item_clause` through the tool) as before.
 The tool caps `query` at `LIST_QUERY_MAX_CHARS` and, with `compact`, renders
 one line per item instead of the preview block.
 
+## The graph read
+
+`GET /work-items/graph` (`app.services.work_item_graph`) answers the Graph
+view of Operations > Work Items in three reads: `list_work_items` with the
+list's filters and visibility (first `MAX_GRAPH_ITEMS`), then
+`list_visible_work_items_by_ids` for the blockers the filter left out (same
+`_visible_clause`; a blocker the caller cannot see is dropped with its edge),
+then `describe_work_items` for the owner names. `build_graph` is pure: item,
+ref (`blocked_on_refs`, one node per reference) and person nodes; edges
+`blocked_on`, `ref`, `person` from the waiter, `program` from the root.
+
 ## `due_at`, `not_before` and the inbox pick-up
 
 Two fields, two meanings (#8753):

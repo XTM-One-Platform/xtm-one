@@ -82,8 +82,26 @@ export interface Fleet {
   automations?: FleetAutomations | null;
   /** The newest run of a home member the reader may see; `null` = never run. */
   last_run_at?: string | null;
+  /** The Platform Health fleet only (#974): what starts it and what it covers, from its Settings. */
+  health_starts?: FleetHealthStarts | null;
   created_at: string;
   updated_at: string;
+}
+
+/** What starts the Platform Health fleet (`FleetHealthStartsResponse`, #974): Settings schedules and signals. */
+interface FleetHealthStarts {
+  /** A signal pass is on: an investigation starts on an event. */
+  events: boolean;
+  /** The schedules switched on in Settings > Platform Health. */
+  schedules: number;
+  /** The soonest next start of those schedules; `null` when none is on. */
+  next_run_at: string | null;
+  /** The modules it covers, XTM One modes only; empty in Copilot mode. */
+  modules: string[];
+  /** Where an administrator switches and schedules it. */
+  settings_route: string;
+  /** Platform Health is on in Settings; off, nothing starts and `next_run_at` is `null` (UX r1 B2 on #980). */
+  active?: boolean;
 }
 
 /** Where a forked fleet came from, as recorded at fork time (`fleets.forked_from`). */
@@ -457,6 +475,51 @@ export function useFleetFlow(fleetId: string | null | undefined, shown = true) {
   return useQuery<FleetFlow>({
     queryKey: [...KEY, "flow", fleetId],
     queryFn: () => api.get(`/fleets/${fleetId}/flow`),
+    enabled: !!fleetId && shown,
+    ...FLEET_QUERY_POLICY,
+    throwOnError: false,
+  });
+}
+
+/** An integration as a capability slot shows it (`FleetSlotIntegration`, #914 slice 2). */
+interface FleetSlotIntegration {
+  integration_id: string;
+  provider: string;
+  /** Empty when the reader cannot see the bound integration. */
+  name: string;
+}
+
+/** One capability a member's role can use, and how it is filled (`FleetCapabilitySlot`). */
+export interface FleetCapabilitySlot {
+  capability: string;
+  label: string;
+  state: "filled" | "empty" | "unavailable";
+  bound: FleetSlotIntegration[];
+  candidates: FleetSlotIntegration[];
+}
+
+/** The capability slots of one home member (`FleetMemberSlots`). */
+export interface FleetMemberSlots {
+  member_id: string;
+  agent_id: string;
+  name: string;
+  role_label: string;
+  /** Whether the reader may bind or unbind on this member's agent. */
+  can_edit: boolean;
+  slots: FleetCapabilitySlot[];
+}
+
+/** `GET /fleets/{id}/capability-slots`. */
+export interface FleetCapabilitySlots {
+  fleet_id: string;
+  members: FleetMemberSlots[];
+}
+
+/** Each home member's capability slots: configuration only, never a run or quota (#914). */
+export function useFleetCapabilitySlots(fleetId: string | null | undefined, shown = true) {
+  return useQuery<FleetCapabilitySlots>({
+    queryKey: [...KEY, "capability-slots", fleetId],
+    queryFn: () => api.get(`/fleets/${fleetId}/capability-slots`),
     enabled: !!fleetId && shown,
     ...FLEET_QUERY_POLICY,
     throwOnError: false,
@@ -1522,6 +1585,44 @@ export function useUpdateFleetMember(fleetId: string) {
   const invalidate = useInvalidateFleet();
   return useMutation<FleetMember, Error, { memberId: string; patch: FleetMemberPatch }>({
     mutationFn: ({ memberId, patch }) => api.patch<FleetMember>(`/fleets/${fleetId}/members/${memberId}`, patch),
+    onSettled: invalidate,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** A slot write: the member, the capability and the integration. */
+export interface FleetSlotWrite {
+  memberId: string;
+  capability: string;
+  integrationId: string;
+}
+
+/**
+ * Bind a connected integration to a member's capability slot, in one click
+ * (`POST /fleets/{id}/members/{member}/slots/{capability}`); on a built-in it
+ * is the customer layer, kept by every seed run. The caller says the refusal.
+ */
+export function useBindFleetSlot(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  return useMutation<FleetMemberSlots, Error, FleetSlotWrite>({
+    mutationFn: ({ memberId, capability, integrationId }) =>
+      api.post<FleetMemberSlots>(
+        `/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}`,
+        { integration_id: integrationId },
+      ),
+    onSettled: invalidate,
+    meta: OWN_ERROR_TOAST,
+  });
+}
+
+/** Unbind an integration from a member's capability slot. The caller says the refusal. */
+export function useUnbindFleetSlot(fleetId: string) {
+  const invalidate = useInvalidateFleet();
+  return useMutation<FleetMemberSlots, Error, FleetSlotWrite>({
+    mutationFn: ({ memberId, capability, integrationId }) =>
+      api.delete<FleetMemberSlots>(
+        `/fleets/${fleetId}/members/${memberId}/slots/${encodeURIComponent(capability)}/${integrationId}`,
+      ),
     onSettled: invalidate,
     meta: OWN_ERROR_TOAST,
   });

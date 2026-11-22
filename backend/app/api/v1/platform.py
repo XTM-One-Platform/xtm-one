@@ -2280,6 +2280,8 @@ async def register_platform(
     # Read under the registration lock: the version the previous heartbeat
     # committed, compared after this one's commit (integration.version.changed).
     previous_platform_version = reg.platform_version if reg else None
+    # A version change or a heartbeat back after a gap reads as a restart (#958).
+    previous_heartbeat_at = reg.last_heartbeat_at if reg else None
     await _refuse_published_default_change(request, reg, body.platform_url)
     platform_title = _registered_platform_title(reg, body.platform_title)
     business_vertical = _registered_business_vertical(reg, body.business_vertical)
@@ -2458,9 +2460,17 @@ async def register_platform(
     reg.integration_id = company_integ.id
     reg.business_vertical = business_vertical
     manifest_wanted = await _record_procedure_manifest(db, reg, body)
-    from app.services.health.snapshots import record_snapshot
+    from app.services.health.snapshots import record_snapshot, registration_restarted
 
-    await record_snapshot(db, reg, body.health, published_default=registration_token_state() == "published_default")
+    await record_snapshot(
+        db,
+        reg,
+        body.health,
+        published_default=registration_token_state() == "published_default",
+        restarted=registration_restarted(
+            previous_platform_version, body.platform_version, previous_heartbeat_at, datetime.now(UTC)
+        ),
+    )
     sign_in_client_id = await _sync_sign_in_client(db, body, platform_title)
 
     await db.commit()

@@ -434,11 +434,41 @@ class RiskAppetite(BaseModel):
     approval_threshold: float | None = Field(default=None, ge=0)
 
 
+class TicketingSync(BaseModel):
+    """How CTEM cases sync with the ticketing target (#917, ``dev-docs/ctem-ticketing.md``).
+
+    Read by ``services/ctem_ticketing.py`` at every sync, so a change applies
+    to the next sync with no restart. Every field has the program default.
+    """
+
+    model_config = _Strict
+
+    #: When a case gets its ticket: when it passes Mobilize and is P1 or P2, P1 only, or by hand.
+    create_on: Literal["mobilize_p1_p2", "mobilize_p1", "manual"] = "mobilize_p1_p2"
+    #: The Jira issue type, or the ServiceNow table (``incident``, ``change_request`` or ``problem``,
+    #: ``ctem_ticketing.SERVICENOW_TABLES``; another table is refused at save).
+    record_type: str = Field(default="", max_length=80)
+    #: Labels (Jira) or the category (ServiceNow) every ticket carries.
+    labels: list[str] = Field(default_factory=list, max_length=20)
+    #: Case severity to the system's priority value (Jira priority name, ServiceNow urgency 1-3).
+    priority_map: dict[str, str] = Field(default_factory=dict)
+    #: The ticket's own status name to a case ticket status (open, in_progress, done, cancelled),
+    #: read before the system's default categories.
+    status_map: dict[str, str] = Field(default_factory=dict)
+    #: A ticket moved to done asks the case's re-test.
+    done_starts_retest: bool = True
+    #: A case reopened by a failed re-test reopens its ticket, or opens a linked one.
+    on_reopen: Literal["reopen", "linked"] = "reopen"
+    #: Put the case's due date (its SLA) on the ticket.
+    due_date_from_sla: bool = True
+
+
 class TicketingTarget(BaseModel):
     model_config = _Strict
 
     integration: str = Field(default="", max_length=100)
     project: str = Field(default="", max_length=200)
+    sync: TicketingSync = Field(default_factory=TicketingSync)
 
 
 class OrganizationProfile(BaseModel):
@@ -805,7 +835,8 @@ async def scoped_tracked_blocks(db: AsyncSession, scope: dict | None) -> list[st
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
-    An empty tech stack version (CTEM-11) is left out the same way.
+    An empty tech stack version (CTEM-11) is left out the same way, and so are
+    ticketing sync settings left at their defaults (#917).
 
     The always-on block and every reader that dumped the whole profile keep
     their exact text for a profile that never filled the new parts.
@@ -817,6 +848,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for entry in dumped.get("tech_stack") or []:
         if not entry.get("version"):
             entry.pop("version", None)
+    ticketing = dumped.get("ticketing")
+    if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
+        ticketing.pop("sync", None)
     return dumped
 
 

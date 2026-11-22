@@ -18,9 +18,14 @@ interface CompanyManagedBannerProps {
   isPackageOrigin?: boolean;
   /** One sentence naming what stays editable on a built-in entity (e.g. its ROI outcomes). */
   exception?: string;
+  /**
+   * A built-in whose customer layer stays editable (#914): the banner names what
+   * is locked and what stays yours instead of saying it cannot be modified.
+   */
+  hasCustomerLayer?: boolean;
 }
 
-export function CompanyManagedBanner({ entityLabel, isBuiltin, isPackageOrigin, exception }: CompanyManagedBannerProps) {
+export function CompanyManagedBanner({ entityLabel, isBuiltin, isPackageOrigin, exception, hasCustomerLayer }: CompanyManagedBannerProps) {
   const { t_i18n } = useFormatter();
   if (isPackageOrigin) {
     return (
@@ -37,7 +42,9 @@ export function CompanyManagedBanner({ entityLabel, isBuiltin, isPackageOrigin, 
       <div className="rounded-sm bg-accent/5 p-3 flex items-start gap-2.5">
         <ShieldCheck className="h-3.5 w-3.5 text-accent shrink-0 mt-0.5" />
         <p className="content-compact text-accent/90 leading-relaxed">
-          {t_i18n("This is a built-in {entity} pre-configured by the platform. It cannot be modified.", { entity: t_i18n(entityLabel) })}
+          {hasCustomerLayer
+            ? t_i18n("This is a built-in {entity} pre-configured by the platform. Its persona, handovers and gates are locked; its organization notes and integrations stay yours.", { entity: t_i18n(entityLabel) })
+            : t_i18n("This is a built-in {entity} pre-configured by the platform. It cannot be modified.", { entity: t_i18n(entityLabel) })}
           {exception && <> {exception}</>}
         </p>
       </div>

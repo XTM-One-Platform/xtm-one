@@ -1648,6 +1648,23 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM ticketing sync (#917): create the ticket of a mobilized case,
+        # pull the ticket status (ServiceNow's inbound), push the case state.
+        # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).
+        try:
+            from app.core.config import settings as app_settings
+            from app.services import ctem_case_loop, ctem_ticketing
+
+            if await ctem_ticketing.sync_due():
+                pending = ctem_case_loop.PendingEvents()
+                counts = await ctem_ticketing.sync_cases(db, events=pending, base_url=app_settings.frontend_url)
+                await db.commit()
+                await ctem_case_loop.publish_pending(pending)
+                if any(v for k, v in counts.items() if k != "not_connected"):
+                    logger.info("CTEM ticketing sync: %s", counts)
+        except Exception as e:
+            logger.error("CTEM ticketing sync error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # Assignments marked delete_assignment(after_run=true) whose runs
         # have all ended: deleted now, so a one-off retires itself.
         try:
@@ -1658,6 +1675,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Deleted %d assignment(s) retired after their last run", retired)
         except Exception as e:
             logger.error("Assignment retirement error: %s", format_exception_message(e), exc_info=True)
+        # A person's decision past its deadline expires and its run resumes
+        # with the default option or no answer (human-gates.md section 7, F3).
+        try:
+            from app.services.decision_waits import expire_overdue_decisions
+
+            expired = await expire_overdue_decisions()
+            if expired:
+                logger.info("Expired %d decision(s) past their deadline", expired)
+        except Exception as e:
+            logger.error("Decision expiry error: %s", format_exception_message(e), exc_info=True)
         # A claim that records no run (a chat turn, a claim made by an older
         # release) and that no live run of its agent holds: released after its
         # grace, so the inbox below dispatches it in the same tick.
