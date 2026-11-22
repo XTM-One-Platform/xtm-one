@@ -33,13 +33,13 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.services.organization_context import (
+    HAND_SOURCES,
     AiSystem,
     AssetEntry,
     AssetGroupEntry,
     OrganizationProfile,
     TechStackEntry,
 )
-from app.services.organization_context_import import HAND_SOURCES
 
 #: section -> (profile field, row model, most rows the field holds).
 ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {

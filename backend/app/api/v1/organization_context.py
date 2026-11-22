@@ -840,7 +840,10 @@ class OrganizationSyncRequest(BaseModel):
     source: Literal["openaev", "opencti", "opencrq", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
-    remove_gone: bool = False
+    #: A deletion upstream deletes the row here (default since #1134).
+    remove_gone: bool = True
+    #: The source ids this sync never imports (#1134); omitted: the stored list is kept.
+    excluded_external_ids: list[str] | None = None
     frequency: Literal["hourly", "daily", "weekly"] = "daily"
     hour: int = 6
     minute: int = 0
@@ -857,6 +860,7 @@ class OrganizationSyncResponse(BaseModel):
     filters: dict[str, Any]
     batch_type: str
     remove_gone: bool
+    excluded_external_ids: list[str] = []
     frequency: str
     hour: int
     minute: int
@@ -881,6 +885,7 @@ async def _sync_response(db: AsyncSession, row: Any) -> OrganizationSyncResponse
         filters=row.filters or {},
         batch_type=row.batch_type,
         remove_gone=row.remove_gone,
+        excluded_external_ids=list(row.excluded_external_ids or []),
         frequency=row.frequency,
         hour=row.hour,
         minute=row.minute,
