@@ -58,11 +58,10 @@ from app.integrations.providers import docusign
 from app.integrations.providers.google import GMAIL_API
 from app.integrations.providers.microsoft import GRAPH_API
 from app.integrations.providers.microsoft._message_type import message_type
-from app.integrations.providers.odoo import events as odoo_events
 from app.models.agent import Agent
 from app.models.assignment import Assignment, event_read_from_legacy_key
 from app.models.integration import Integration
-from app.services import jira_events, netsuite_events, opencrq_job_events
+from app.services import jira_events, netsuite_events, opencrq_job_events, pennylane_events
 from app.services.agent_posts import (
     is_agent_mail,
     is_agent_slack_post,
@@ -136,8 +135,8 @@ POLL_INTERVALS = {
     **dict.fromkeys(sorted(opencrq_job_events.EVENTS), opencrq_job_events.POLL_INTERVAL_SECONDS),
     # Jira issue events (jira_events): an assignment is acted on within the minute.
     **dict.fromkeys(sorted(jira_events.EVENTS), jira_events.POLL_INTERVAL_SECONDS),
-    # Odoo records (providers/odoo/events.py): no webhook in the external API.
-    **dict.fromkeys(sorted(odoo_events.EVENTS), odoo_events.POLL_INTERVAL_SECONDS),
+    # Pennylane changelogs (pennylane_events): no webhook to a company token.
+    **dict.fromkeys(sorted(pennylane_events.EVENTS), pennylane_events.POLL_INTERVAL_SECONDS),
     # NetSuite change events (netsuite_events): SuiteQL every 5 min, within the account's concurrency limit.
     **dict.fromkeys(sorted(netsuite_events.EVENTS), netsuite_events.POLL_INTERVAL_SECONDS),
 }
@@ -179,6 +178,8 @@ _CHANNEL_MESSAGE_PAGE = 20
 _GMAIL_PAGE = 10
 _DOCUSIGN_PAGE = 50
 _OPENCRQ_PAGE = 50
+# Changelog entries one Pennylane poll reads: each selected one costs a record read.
+_PENNYLANE_PAGE = 50
 # Pages one poll reads back to back while the provider has more; past
 # them, the next tick reads on.
 _MAX_PAGES_PER_POLL = 5
@@ -870,8 +871,8 @@ async def _poll_provider(
     if provider == jira_events.PROVIDER and event_type in jira_events.EVENTS:
         return await _poll_jira_issues(access_token, event_type, wf, redis, integration_id=integration_id)
 
-    if provider == odoo_events.PROVIDER and event_type in odoo_events.EVENTS:
-        return await _poll_odoo_records(access_token, event_type, wf, redis)
+    if provider == pennylane_events.PROVIDER and event_type in pennylane_events.EVENTS:
+        return await _poll_pennylane_changes(access_token, event_type, wf, redis)
 
     if provider == netsuite_events.PROVIDER and event_type in netsuite_events.EVENTS:
         return await _poll_netsuite_changes(access_token, event_type, wf, redis)
@@ -897,19 +898,22 @@ async def _poll_credential(
     Grant mode stores no access token at all, only the RSA key it mints one with.
     """
     if (
-        provider in (opencrq_job_events.PROVIDER, jira_events.PROVIDER, odoo_events.PROVIDER, netsuite_events.PROVIDER)
+        provider
+        in (opencrq_job_events.PROVIDER, jira_events.PROVIDER, pennylane_events.PROVIDER, netsuite_events.PROVIDER)
         and db is not None
     ):
         # The compound the tools run on: OpenCRQ's ``base_url||token`` (an API
         # key, or a token minted for the acting user on a platform-managed
         # integration), Jira's ``cloud_id||token`` refreshed when about to expire,
-        # Odoo's ``base_url||database||login||api_key[||company_ids]``,
+        # Pennylane's token, prefixed ``company_id||`` for a firm token,
         # NetSuite's account, mode and secret (``netsuite.compound_credential``).
         from app.services.integration_tools import _get_token
 
         token = await _get_token(
             db, str(integration.id), provider, user_id=str(user_id) if user_id else None, integ=integration
         )
+        if provider == pennylane_events.PROVIDER:
+            return token or None
         return token if token and "||" in token else None
     if provider != "docusign":
         return decrypt_value(holder.access_token_enc) if holder.access_token_enc else None
@@ -972,36 +976,37 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ]
 
 
-async def _poll_odoo_records(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
-    """Poll the Odoo records of *event_type* stamped since the last check (``odoo.events``).
+async def _poll_pennylane_changes(
+    credential: str, event_type: str, wf: Assignment, redis: Redis
+) -> list[dict[str, Any]]:
+    """Poll the Pennylane changelog entries processed since the last check (``pennylane_events``).
 
-    The domain reads at or after the cursor (inclusive): the records at the
-    cursor come back and the seen set skips them. The trigger filter narrows
-    the search (company and journal ids, states). The first poll starts from now.
+    ``start_date`` is inclusive: the entries at the cursor come back and the
+    seen set skips them. The cursor moves past every entry of the page, the ones
+    the event does not read included. The first poll starts from now.
     """
     cursor_key = f"event_cursor:{wf.id}"
     since = await redis.get(cursor_key)
     if not since:
-        await redis.set(cursor_key, odoo_events.now_cursor(), ex=_CURSOR_TTL_SECONDS)
-        return []
+        return await _seed_from_now(redis, cursor_key)
     since = since.decode() if isinstance(since, bytes) else str(since)
-    filter_config = trigger_filter(getattr(wf, "trigger_config", None))
-    records, cred, err = await odoo_events.list_changed_records(
-        credential, event_type, since, filter_config, limit=odoo_events.PAGE + 1
-    )
+    entries, more, err = await pennylane_events.list_changes(credential, event_type, since, limit=_PENNYLANE_PAGE)
     if err:
-        logger.warning("Odoo poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
+        logger.warning("Pennylane changelog poll failed for assignment %s: %s", wf.id, err.splitlines()[0][:300])
         return []
 
-    def stamped(record: dict[str, Any]) -> str:
-        return odoo_events.stamp_of(record, event_type)
+    def processed(entry: dict[str, Any]) -> datetime:
+        return pennylane_events.parse_instant(entry.get("processed_at"))
 
-    page = _oldest_page(records, stamped, odoo_events.PAGE)
-    _log_page_cut(wf, "Odoo", page)
-    await _note_backlog(redis, wf, "Odoo", page.more)
-    if page.cursor is not None:
-        await redis.set(cursor_key, stamped(page.cursor), ex=_CURSOR_TTL_SECONDS)
-    return [odoo_events.record_event(record, event_type, credential=cred) for record in page.items]
+    entries.sort(key=lambda e: (processed(e), str(e.get("id", ""))))
+    page = _oldest_page(entries, processed, _PENNYLANE_PAGE)
+    _log_page_cut(wf, "Pennylane", page)
+    await _note_backlog(redis, wf, "Pennylane", page.more or more)
+    if page.cursor is not None and page.cursor.get("processed_at"):
+        await redis.set(cursor_key, str(page.cursor["processed_at"]), ex=_CURSOR_TTL_SECONDS)
+    return await pennylane_events.change_events(
+        credential, event_type, pennylane_events.selected(page.items, event_type)
+    )
 
 
 async def _poll_netsuite_changes(credential: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict]:
