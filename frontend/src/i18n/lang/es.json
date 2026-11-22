@@ -20737,5 +20737,19 @@
   "No check round yet": "Aún no hay ninguna ronda de comprobaciones",
   "Show the checks": "Ver las comprobaciones",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}"
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}",
+  "Inbound": "Entrante",
+  "Outbound": "Saliente",
+  "Outbound is not offered: {reason}": "La dirección saliente no está disponible: {reason}",
+  "The XTM One list is the master: the {platform} rows this sync creates are updated and deleted to match it. Other {platform} rows are never touched.": "La lista de XTM One es la referencia: las filas de {platform} que crea esta sincronización se actualizan y eliminan para coincidir con ella. Las demás filas de {platform} nunca se modifican.",
+  "{platform} is the master: its rows are read-only here and follow {platform}.": "{platform} es la referencia: sus filas son de solo lectura aquí y siguen a {platform}.",
+  "Which side is the master of this list. Inbound: the platform's rows are copied here, read-only. Outbound: the XTM One list is written to the platform, for example crown jewels sent to OpenCRQ as supporting assets. A sync saved without a direction is Inbound.": "Qué lado es la referencia de esta lista. Entrante: las filas de la plataforma se copian aquí, de solo lectura. Saliente: la lista de XTM One se escribe en la plataforma, por ejemplo las joyas de la corona enviadas a OpenCRQ como activos de soporte. Una sincronización guardada sin dirección es entrante.",
+  "A new direction starts clean: the rows the previous direction created stay in {platform}, untouched, and are not taken over. The next run follows the new direction.": "Una nueva dirección empieza de cero: las filas que creó la dirección anterior se quedan en {platform}, sin cambios, y no se retoman. La próxima ejecución sigue la nueva dirección.",
+  "Planned: OpenAEV endpoint writes are not wired for syncs yet.": "Previsto: la escritura de endpoints de OpenAEV aún no está conectada a las sincronizaciones.",
+  "Planned: OpenAEV asset group writes are not wired for syncs yet.": "Previsto: la escritura de grupos de activos de OpenAEV aún no está conectada a las sincronizaciones.",
+  "Planned: OpenCTI PIR writes are not wired for syncs yet.": "Previsto: la escritura de PIR de OpenCTI aún no está conectada a las sincronizaciones.",
+  "OpenCTI Systems are owned by its connectors.": "Los sistemas de OpenCTI pertenecen a sus conectores.",
+  "OpenAEV has no AI system object to write.": "OpenAEV no tiene ningún objeto de sistema de IA que escribir.",
+  "OpenAEV software inventory is read from its agents.": "El inventario de software de OpenAEV se lee de sus agentes.",
+  "This pairing reads only.": "Esta combinación es de solo lectura."
 }
