@@ -628,6 +628,12 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Approuver",
         "ja": "承認",
     },
+    "card_approve_always": {
+        "en": "Approve always",
+        "es": "Aprobar siempre",
+        "fr": "Toujours approuver",
+        "ja": "常に承認",
+    },
     "card_reject": {
         "en": "Reject",
         "es": "Rechazar",
@@ -808,12 +814,6 @@ NOTICES: dict[str, dict[str, str]] = {
         "es": "Añada un comentario o responda con sus palabras (opcional)",
         "fr": "Ajoutez un commentaire ou répondez avec vos mots (facultatif)",
         "ja": "コメントや自由回答を入力（任意）",
-    },
-    "card_send_text": {
-        "en": "Send text answer",
-        "es": "Enviar respuesta escrita",
-        "fr": "Envoyer la réponse écrite",
-        "ja": "テキストで回答",
     },
     "card_waiting_for": {
         "en": "Waiting for {name}.",

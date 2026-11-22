@@ -283,7 +283,7 @@ def _status_label(status: str, language: str) -> str:
     return notice(f"card_status_{status}", language) if status in _STATUSES else _clip(status, 40)
 
 
-def _argument_lines(arguments: object) -> list[str]:
+def argument_lines(arguments: object) -> list[str]:
     if not isinstance(arguments, dict):
         return [_clip(json.dumps(arguments, default=str), _MAX_ARGUMENT_VALUE)] if arguments else []
     lines = []
@@ -321,7 +321,7 @@ def _decision_body(target: LinkTarget, proposals: list[dict], language: str) -> 
     calls = [str(p.get("tool_call_id") or "") for p in proposals]
     for index, proposal in enumerate(proposals):
         body.append(_text(_clip(proposal.get("tool_name") or "?", _MAX_NAME), weight="bolder", fontType="monospace"))
-        for line in _argument_lines(proposal.get("arguments")):
+        for line in argument_lines(proposal.get("arguments")):
             body.append(_text(line, isSubtle=True, fontType="monospace"))
         body.append(
             {

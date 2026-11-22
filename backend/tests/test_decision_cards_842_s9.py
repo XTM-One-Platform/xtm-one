@@ -89,20 +89,27 @@ def _platform_address(monkeypatch):
     monkeypatch.setattr(settings, "frontend_url", "https://xtm.example.com/one")
 
 
-def test_the_recipient_gets_one_button_per_option_the_recommendation_positive():
+def _choices(card: dict) -> list[dict]:
+    sets = [n for n in _walk(card) if n.get("type") == "Input.ChoiceSet"]
+    return sets[0]["choices"] if sets else []
+
+
+def test_the_recipient_picks_an_option_and_sends_it_with_one_button():
     card = cards.render_decision_card(_view(), "en")
 
     executes = _executes(card)
-    assert {a["verb"] for a in executes} == {cards.VERB_DECISION_ANSWER}
-    assert [a["title"] for a in executes] == ["Ship", "Wait", notice("card_send_text", "en")]
-    assert [a.get("style") for a in executes] == ["positive", None, None]
-    assert executes[0]["data"] == {"kind": "decision", "id": f"work_item:{SOURCE_ID}", "d": str(ROW_ID), "option": "A"}
-    assert executes[2]["data"] == {"kind": "decision", "id": f"work_item:{SOURCE_ID}", "d": str(ROW_ID)}
+    assert [a["title"] for a in executes] == [notice("card_send", "en")]
+    assert executes[0]["verb"] == cards.VERB_DECISION_ANSWER
+    assert executes[0]["data"] == {"kind": "decision", "id": f"work_item:{SOURCE_ID}", "d": str(ROW_ID)}
+    sets = [n for n in _walk(card) if n.get("type") == "Input.ChoiceSet"]
+    assert [(s["id"], s["style"]) for s in sets] == [("option", "expanded")]
+    recommended = f"({notice('card_recommended', 'en')})"
+    assert _choices(card) == [{"title": f"Ship {recommended}", "value": "A"}, {"title": "Wait", "value": "B"}]
     assert [n["id"] for n in _walk(card) if n.get("type") == "Input.Text"] == ["text"]
     texts = _texts(card)
     assert "Ship the fix tonight?" in texts
     assert "The change is backend only." in texts
-    assert any(notice("card_recommended", "en") in t for t in texts)
+    assert any(recommended in t for t in texts)
     assert any("{{DATE(2026-11-23T09:00:00Z, SHORT)}}" in t for t in texts)
     opens = [a["url"] for a in card["actions"] if a["type"] == "Action.OpenUrl"]
     assert opens == ["https://github.com/x/y/pull/1", f"https://xtm.example.com/one/tasks/work-items/{SOURCE_ID}"]
@@ -110,22 +117,90 @@ def test_the_recipient_gets_one_button_per_option_the_recommendation_positive():
     assert card["msteams"] == {"width": "Full"}
 
 
-def test_a_tool_approval_has_no_free_text_button_and_reject_is_destructive():
-    row = _row(
-        source_type="run",
-        kind="tool_approval",
-        ask={
-            "question": "send_email",
-            "options": [
-                {"key": "approve", "label": "Approve"},
-                {"key": "approve_always", "label": "Approve always"},
-                {"key": "reject", "label": "Reject"},
-            ],
-        },
-    )
-    executes = _executes(cards.render_decision_card(_view(row), "en"))
-    assert [a["data"]["option"] for a in executes] == ["approve", "approve_always", "reject"]
-    assert executes[-1]["style"] == "destructive"
+def test_recommended_is_never_coloured():
+    """Teams' good green is 2.07:1 on the light theme (UX round 1, B1)."""
+    card = cards.render_decision_card(_view(may_answer=False), "en")
+    assert not [n for n in _walk(card) if n.get("type") == "TextRun" and n.get("color") == "good"]
+
+
+_APPROVAL_ASK = {
+    "question": "A person's input is needed",
+    "options": [
+        {"key": "approve", "label": "Approve"},
+        {"key": "approve_always", "label": "Approve always"},
+        {"key": "reject", "label": "Reject"},
+    ],
+}
+_PROPOSALS = ({"tool_call_id": "c1", "tool_name": "send_email", "arguments": {"to": "a@b.c", "subject": "Hi"}},)
+
+
+@pytest.mark.parametrize("language", ["en", "es", "fr", "ja"])
+def test_a_tool_approval_reads_its_options_in_the_viewer_language(language):
+    """UX round 1, B3: the row stores English labels; the card never shows them in another language."""
+    row = _row(source_type="run", kind="tool_approval", ask=_APPROVAL_ASK)
+    card = cards.render_decision_card(_view(row, proposals=_PROPOSALS), language)
+    assert [c["value"] for c in _choices(card)] == ["approve", "approve_always", "reject"]
+    assert [c["title"] for c in _choices(card)] == [
+        notice("card_approve", language),
+        notice("card_approve_always", language),
+        notice("card_reject", language),
+    ]
+    texts = _texts(card)
+    # The choices name the options: no bold line repeats them (A2).
+    assert notice("card_approve_always", language) not in texts
+    placeholder = [n["placeholder"] for n in _walk(card) if n.get("type") == "Input.Text"]
+    assert placeholder == [notice("card_reason", language)]
+
+
+def test_a_tool_approval_shows_the_calls_it_decides():
+    """UX round 1, B4: the tool and its arguments for the decider, the tool alone for another viewer."""
+    row = _row(source_type="run", kind="tool_approval", ask=_APPROVAL_ASK)
+    texts = _texts(cards.render_decision_card(_view(row, proposals=_PROPOSALS), "en"))
+    assert notice("card_tools_awaiting", "en") in texts
+    assert "send_email" in texts
+    assert "to: a@b.c" in texts
+    other = _texts(cards.render_decision_card(_view(row, may_answer=False, proposals=_PROPOSALS), "en"))
+    assert "send_email" in other
+    assert "to: a@b.c" not in other
+
+
+def test_a_tool_approval_with_more_calls_than_shown_is_decided_in_xtm_one():
+    row = _row(source_type="run", kind="tool_approval", ask=_APPROVAL_ASK)
+    many = tuple({"tool_call_id": f"c{i}", "tool_name": f"t{i}"} for i in range(teams_link_cards.MAX_TOOLS_SHOWN + 1))
+    card = cards.render_decision_card(_view(row, proposals=many), "en")
+    assert _executes(card) == []
+    assert _choices(card) == []
+    assert notice("card_too_many_tools", "en", count=len(many)) in _texts(card)
+
+
+@pytest.mark.parametrize("may_answer", [True, False, None])
+@pytest.mark.parametrize("status", ["open", "answered", "expired", "cancelled"])
+@pytest.mark.parametrize("kind", ["work_item", "hitl", "flow_ask", "tool_approval"])
+def test_no_state_has_more_actions_than_teams_shows(kind, status, may_answer):
+    """UX round 1, B5: Teams drops card actions past six, silently; six options and three links stay at five."""
+    ask = {
+        "question": "Pick one",
+        "options": [{"key": k, "label": f"Option {k}", "effect": "does it"} for k in "ABCDEF"],
+        "recommendation": "A",
+        "links": [{"label": f"L{i}", "url": f"https://example.com/{i}"} for i in range(3)],
+    }
+    row = _row(kind=kind, status=status, ask=ask, answer={"option": "A"} if status == "answered" else None)
+    card = cards.render_decision_card(_view(row, may_answer=may_answer), "en", banner="x")
+    assert len(card["actions"]) <= 6
+    if status == "open" and may_answer:
+        assert len(_choices(card)) == 6
+
+
+def test_a_sent_answer_is_not_painted_as_an_error_and_a_refusal_is():
+    """UX round 1, B2: attention (red) only for a refusal or a failure."""
+    ok = cards.render_decision_card(_view(), "en", banner="sent", banner_ok=True)
+    refused = cards.render_decision_card(_view(), "en", banner="refused")
+
+    def colour(card, text):
+        return [n.get("color") for n in _walk(card) if n.get("type") == "TextRun" and n.get("text") == text]
+
+    assert colour(ok, "sent") == [None]
+    assert colour(refused, "refused") == ["attention"]
 
 
 def test_another_viewer_sees_the_question_and_who_it_waits_for_never_a_button():
@@ -219,6 +294,8 @@ async def test_a_click_answers_through_the_router_as_the_clicker(monkeypatch):
     answer.assert_awaited_once_with(db, f"work_item:{SOURCE_ID}", clicker, option="A", text="ok", surface="teams_card")
     assert db.commit.await_count == 1
     assert notice("card_answer_sent", "en") in _texts(card)
+    sent = [n for n in _walk(card) if n.get("type") == "TextRun" and n.get("text") == notice("card_answer_sent", "en")]
+    assert [n.get("color") for n in sent] == [None]
 
 
 @pytest.mark.parametrize(

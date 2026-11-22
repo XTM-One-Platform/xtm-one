@@ -308,7 +308,7 @@ channel, all fed by the `Decision` view model of section 3:
 
 | Channel | Format | Options | Answer in place |
 |---|---|---|---|
-| Teams | Adaptive Card 1.5, Universal Actions (`Action.Execute`, per-viewer `refresh`) from the bot; `Action.OpenUrl` answer links from an account (I.4) | one button per option, recommendation as the positive style, free text as `Input.Text` (bot) or the text link | yes, every path (I.4) |
+| Teams | Adaptive Card 1.5, Universal Actions (`Action.Execute`, per-viewer `refresh`) from the bot; `Action.OpenUrl` answer links from an account (I.4) | bot: the options as one expanded `Input.ChoiceSet` (recommendation marked in words, never by colour) and a single Send, so Teams' six-action limit never drops an option; a tool approval lists its calls (tool name, redacted arguments for the decider) and its option labels come from the catalog; free text as `Input.Text`; account: the text link | yes, every path (I.4) |
 | Slack | Block Kit (header, section, context, actions) | one button per option, recommendation `primary`, free text through a modal | yes (interactivity endpoint) |
 | Google Chat | cardsV2 | one button per option, free text as a text input widget | yes (`CARD_CLICKED`) |
 | WhatsApp | interactive message | up to 3 options as reply buttons, else a list; 1:1 only | yes (button reply webhook) |

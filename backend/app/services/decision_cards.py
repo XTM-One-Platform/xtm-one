@@ -17,8 +17,9 @@ One renderer, :func:`render_decision_card`, turns a ``decisions`` row (any
 source: run HITL, tool approval, flow Ask-user, work item) into an Adaptive
 Card for the person who views it:
 
-* the recipient sees the question, the context, one button per option (the
-  recommendation as the positive style), an optional text field, the
+* the recipient sees the question, the context, the options as one expanded
+  choice (the recommendation marked) and a single Send, so Teams' six-action
+  limit never drops an option, an optional text field, the
   deadline and the links, and answers with verb ``xtm.decision.answer``;
 * any other viewer sees the same content and "Waiting for <name>" in place of
   the buttons (I.5);
@@ -69,6 +70,14 @@ _MAX_LABEL = 120
 _MAX_EFFECT = 300
 _MAX_NAME = 200
 _MAX_TEXT = 4000
+
+#: The catalog label of each tool approval option (human-gates.md section 2), so a
+#: French or Japanese card never shows the English labels the row stores.
+_APPROVAL_LABEL_NOTICE = {
+    "approve": "card_approve",
+    "approve_always": "card_approve_always",
+    "reject": "card_reject",
+}
 
 _SOURCE_NOTICE = {
     "hitl": "card_source_run",
@@ -132,6 +141,8 @@ class DecisionView:
     answered_by_name: str | None = None
     agent_name: str | None = None
     page_path: str | None = None
+    #: The tool calls a tool approval decides, already redacted for this viewer.
+    proposals: tuple[dict[str, Any], ...] = ()
 
 
 def _data(view: DecisionView, **extra: str) -> dict[str, Any]:
@@ -140,12 +151,20 @@ def _data(view: DecisionView, **extra: str) -> dict[str, Any]:
     return {"kind": DATA_KIND, "id": row.public_id, "d": str(row.id), **extra}
 
 
-def _option_label(ask: dict[str, Any], key: str | None) -> str | None:
+def _label(option: dict[str, Any], kind: str, language: str, limit: int = _MAX_LABEL) -> str:
+    """An option's label as the viewer reads it: a tool approval's from the catalog."""
+    key = str(option.get("key") or "")
+    if kind == "tool_approval" and key in _APPROVAL_LABEL_NOTICE:
+        return notice(_APPROVAL_LABEL_NOTICE[key], language)
+    return _clip(option.get("label") or key, limit)
+
+
+def _option_label(ask: dict[str, Any], key: str | None, kind: str, language: str) -> str | None:
     if not key:
         return None
     for option in ask.get("options") or []:
         if str(option.get("key", "")).casefold() == str(key).casefold():
-            return _clip(option.get("label") or option.get("key"), _MAX_LABEL)
+            return _label(option, kind, language)
     return _clip(key, _MAX_LABEL)
 
 
@@ -159,17 +178,50 @@ def _header(view: DecisionView, language: str) -> list[dict[str, Any]]:
     return body
 
 
-def _ask_body(ask: dict[str, Any], language: str, *, show_effects: bool) -> list[dict[str, Any]]:
+def _recommended(language: str) -> str:
+    # No colour: Teams' "good" green is 2.07:1 on the light theme; the Send button carries the emphasis.
+    return f"({notice('card_recommended', language)})"
+
+
+def _proposals_body(view: DecisionView, language: str) -> list[dict[str, Any]]:
+    """The tool calls a tool approval decides, as the run card shows them (B4 of UX round 1)."""
+    from app.services.teams_link_cards import MAX_TOOLS_SHOWN, argument_lines
+
+    if not view.proposals:
+        return []
+    if len(view.proposals) > MAX_TOOLS_SHOWN:
+        return [_text(notice("card_too_many_tools", language, count=len(view.proposals)))]
+    body: list[dict[str, Any]] = [_text(notice("card_tools_awaiting", language), weight="bolder")]
+    for proposal in view.proposals:
+        body.append(_text(_clip(proposal.get("tool_name") or "?", _MAX_NAME), weight="bolder", fontType="monospace"))
+        if view.may_answer:
+            for line in argument_lines(proposal.get("arguments")):
+                body.append(_text(line, isSubtle=True, fontType="monospace"))
+    return body
+
+
+def _decides_unshown_calls(view: DecisionView) -> bool:
+    """A tool approval with more calls than a card lists is decided in XTM One, never here."""
+    from app.services.teams_link_cards import MAX_TOOLS_SHOWN
+
+    return view.decision.kind == "tool_approval" and len(view.proposals) > MAX_TOOLS_SHOWN
+
+
+def _ask_body(ask: dict[str, Any], kind: str, language: str, *, show_effects: bool) -> list[dict[str, Any]]:
     body: list[dict[str, Any]] = [_text(_clip(ask.get("question"), _MAX_QUESTION), weight="bolder", size="medium")]
     context = str(ask.get("context") or "").strip()
     for line in context.splitlines()[:20]:
         body.append(_text(_clip(line, _MAX_CONTEXT), isSubtle=True))
     recommendation = str(ask.get("recommendation") or "")
     for option in ask.get("options") or []:
-        label = _clip(option.get("label") or option.get("key"), _MAX_LABEL)
-        inlines = [{"type": "TextRun", "text": label, "weight": "bolder"}]
+        if kind == "tool_approval" and not option.get("effect"):
+            # The choices already name an approval's options; a bare list would repeat them.
+            continue
+        inlines: list[dict[str, Any]] = [
+            {"type": "TextRun", "text": _label(option, kind, language), "weight": "bolder"}
+        ]
         if recommendation and str(option.get("key")) == recommendation:
-            inlines.append({"type": "TextRun", "text": f"  {notice('card_recommended', language)}", "color": "good"})
+            inlines.append({"type": "TextRun", "text": f" {_recommended(language)}", "isSubtle": True})
         if show_effects and option.get("effect"):
             inlines.append({"type": "TextRun", "text": f": {_clip(option['effect'], _MAX_EFFECT)}"})
         body.append({"type": "RichTextBlock", "inlines": inlines})
@@ -203,40 +255,45 @@ def _link_actions(view: DecisionView, ask: dict[str, Any], language: str) -> lis
 def _answer_actions(
     view: DecisionView, ask: dict[str, Any], language: str
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """The text field and one ``Action.Execute`` per option, the recommendation positive."""
-    body = [
+    """The options as one expanded choice, the text field and a single Send (B5 of UX round 1).
+
+    Teams shows at most six card actions and drops the rest silently, so the
+    options are inputs in the body, never buttons: the card keeps one Send plus
+    at most three links and Open in XTM One, whatever the ask holds. Teams
+    merges the inputs (``option``, ``text``) into the Send action's data.
+    """
+    kind = view.decision.kind
+    recommendation = str(ask.get("recommendation") or "")
+    choices = []
+    for option in ask.get("options") or []:
+        key = str(option.get("key") or "")
+        if not key:
+            continue
+        title = _label(option, kind, language, 60)
+        if recommendation and key == recommendation:
+            title = f"{title} {_recommended(language)}"
+        choices.append({"title": title, "value": key})
+    body: list[dict[str, Any]] = []
+    if choices:
+        body.append({"type": "Input.ChoiceSet", "id": "option", "style": "expanded", "choices": choices})
+    body.append(
         {
             "type": "Input.Text",
             "id": "text",
-            "isMultiline": True,
-            "placeholder": notice("card_answer_text", language),
+            "isMultiline": kind != "tool_approval",
+            "placeholder": notice("card_reason" if kind == "tool_approval" else "card_answer_text", language),
             "maxLength": _MAX_TEXT,
         }
-    ]
-    recommendation = str(ask.get("recommendation") or "")
-    actions: list[dict[str, Any]] = []
-    for option in ask.get("options") or []:
-        key = str(option.get("key") or "")
-        action = {
+    )
+    actions = [
+        {
             "type": "Action.Execute",
             "verb": VERB_DECISION_ANSWER,
-            "title": _clip(option.get("label") or key, 60),
-            "data": _data(view, option=key),
+            "title": notice("card_send", language),
+            "style": "positive",
+            "data": _data(view),
         }
-        if key == recommendation:
-            action["style"] = "positive"
-        elif key == "reject":
-            action["style"] = "destructive"
-        actions.append(action)
-    if view.decision.kind != "tool_approval":
-        actions.append(
-            {
-                "type": "Action.Execute",
-                "verb": VERB_DECISION_ANSWER,
-                "title": notice("card_send_text", language),
-                "data": _data(view),
-            }
-        )
+    ]
     return body, actions
 
 
@@ -245,17 +302,29 @@ def _refresh(view: DecisionView) -> dict[str, Any]:
     return {"action": {"type": "Action.Execute", "verb": VERB_REFRESH, "data": _data(view)}}
 
 
-def render_decision_card(view: DecisionView, language: str, *, banner: str | None = None) -> dict[str, Any]:
-    """The Adaptive Card of *view*'s decision, as its viewer may see and answer it."""
+def render_decision_card(
+    view: DecisionView, language: str, *, banner: str | None = None, banner_ok: bool = False
+) -> dict[str, Any]:
+    """The Adaptive Card of *view*'s decision, as its viewer may see and answer it.
+
+    *banner_ok* marks the banner as a success (answer sent), drawn in the default
+    colour; any other banner is a refusal or a failure, drawn in attention.
+    """
     row = view.decision
     ask = row.ask if isinstance(row.ask, dict) else {}
     body = _header(view, language)
     if banner:
-        body.append(_text(banner, color="attention", weight="bolder"))
+        # A success in the default colour; red (attention) only for a refusal or a failure (B2 of UX round 1).
+        style: dict[str, Any] = {"weight": "bolder"} if banner_ok else {"weight": "bolder", "color": "attention"}
+        body.append(_text(banner, **style))
     actions: list[dict[str, Any]] = []
     if row.status == "open":
-        body.extend(_ask_body(ask, language, show_effects=True))
-        if view.may_answer:
+        body.extend(_ask_body(ask, row.kind, language, show_effects=True))
+        body.extend(_proposals_body(view, language))
+        if view.may_answer and _decides_unshown_calls(view):
+            # card_too_many_tools says to decide in XTM One: a card never decides calls it did not show.
+            actions = []
+        elif view.may_answer:
             answer_body, actions = _answer_actions(view, ask, language)
             body.extend(answer_body)
         elif view.may_answer is False:
@@ -263,7 +332,7 @@ def render_decision_card(view: DecisionView, language: str, *, banner: str | Non
         else:
             body.append(_text(notice("card_not_linked_decision", language), isSubtle=True))
     else:
-        body.extend(_ask_body(ask, language, show_effects=False))
+        body.extend(_ask_body(ask, row.kind, language, show_effects=False))
         body.extend(_decided_body(view, ask, language))
     card: dict[str, Any] = ensure_full_width_card(
         {
@@ -286,7 +355,7 @@ def _decided_body(view: DecisionView, ask: dict[str, Any], language: str) -> lis
     answer = row.answer if isinstance(row.answer, dict) else {}
     who = _clip(view.answered_by_name or notice("card_someone", language), _MAX_NAME)
     label = answer.get("label")
-    chosen = _clip(label, _MAX_LABEL) if label else _option_label(ask, answer.get("option"))
+    chosen = _clip(label, _MAX_LABEL) if label else _option_label(ask, answer.get("option"), row.kind, language)
     body = [
         _runs(notice("card_decided_option", language), name=who, option=chosen)
         if chosen
@@ -390,6 +459,30 @@ async def _source_meta(db: AsyncSession, decision: Decision) -> tuple[str | None
     return name, decision_link("work_item", decision.source_id)
 
 
+async def _proposals(db: AsyncSession, decision: Decision, *, decider: bool) -> tuple[dict[str, Any], ...]:
+    """The pending tool calls of an open tool approval, redacted as the run card redacts them.
+
+    The decider reads the arguments with known secrets masked; any other viewer
+    gets the proposals without the decider-only fields.
+    """
+    if decision.kind != "tool_approval" or decision.status != "open" or decision.source_type != "run":
+        return ()
+    from app.core.redaction import redact_known_secrets_for_display
+    from app.models.assignment import AssignmentRun
+    from app.tools.approval import redact_proposals
+
+    pending = await db.scalar(select(AssignmentRun.pending_approvals).where(AssignmentRun.id == decision.source_id))
+    proposals = [p for p in (pending or []) if isinstance(p, dict)]
+    if not proposals:
+        return ()
+    shown = (
+        redact_known_secrets_for_display({"proposals": proposals})["proposals"]
+        if decider
+        else redact_proposals(proposals)
+    )
+    return tuple(p for p in (shown or []) if isinstance(p, dict))
+
+
 async def load_view(db: AsyncSession, decision: Decision, user: Any, language: str) -> DecisionView:
     """The decision as *user* sees it (``None``: a Teams user the platform does not know)."""
     from app.models.user import User
@@ -398,9 +491,11 @@ async def load_view(db: AsyncSession, decision: Decision, user: Any, language: s
     if decision.answered_by is not None:
         answered_by = await db.scalar(select(User.full_name).where(User.id == decision.answered_by))
     agent_name, page_path = await _source_meta(db, decision)
+    answers = None if user is None else await may_answer(db, decision, user)
     return DecisionView(
         decision=decision,
-        may_answer=None if user is None else await may_answer(db, decision, user),
+        may_answer=answers,
+        proposals=await _proposals(db, decision, decider=bool(answers)),
         recipient_name=await recipient_name(db, decision.recipient, language),
         answered_by_name=answered_by,
         agent_name=agent_name,
@@ -476,5 +571,5 @@ async def act(db: AsyncSession, verb: str, data: dict[str, Any], user: Any, lang
     if row is None:
         raise ValueError("card data names no decision")
     return render_decision_card(
-        await load_view(db, row, user, language), language, banner=notice("card_answer_sent", language)
+        await load_view(db, row, user, language), language, banner=notice("card_answer_sent", language), banner_ok=True
     )
