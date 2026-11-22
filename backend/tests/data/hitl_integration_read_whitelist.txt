@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 2265 tools across 121 providers; 61 held back by hand.
+# 2214 tools across 120 providers; 60 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1393,9 +1393,13 @@ opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_licence
+opencti:get_opencti_managers
+opencti:get_opencti_platform_queues
 opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
 opencti:get_opencti_top_related
+opencti:list_opencti_background_tasks
 opencti:list_opencti_capabilities
 opencti:list_opencti_connector_states
 opencti:list_opencti_drafts
@@ -1406,6 +1410,7 @@ opencti:list_opencti_markings
 opencti:list_opencti_observables
 opencti:list_opencti_playbook_states
 opencti:list_opencti_relationships
+opencti:list_opencti_stream_consumers
 opencti:list_opencti_subtypes
 opencti:query_opencti_activity
 opencti:query_opencti_catalog
@@ -1691,62 +1696,6 @@ recorded_future:search_rf_threat_actors
 rss:fetch_rss_feeds
 rss:list_rss_feeds
 rss:search_rss_entries
-rydoo:count_rydoo_custom_field_list_items
-rydoo:count_rydoo_groups
-rydoo:count_rydoo_linked_accounts
-rydoo:count_rydoo_list_item_users
-rydoo:count_rydoo_payment_methods
-rydoo:count_rydoo_projects
-rydoo:count_rydoo_reimbursements
-rydoo:count_rydoo_transactions
-rydoo:count_rydoo_trips
-rydoo:count_rydoo_user_linked_accounts
-rydoo:get_rydoo_approver_branches
-rydoo:get_rydoo_approver_custom_field_values
-rydoo:get_rydoo_approver_groups
-rydoo:get_rydoo_approver_projects
-rydoo:get_rydoo_approver_users
-rydoo:get_rydoo_branch
-rydoo:get_rydoo_branch_exchange_rates
-rydoo:get_rydoo_category
-rydoo:get_rydoo_conflict_approver_branches
-rydoo:get_rydoo_conflict_approver_custom_field_values
-rydoo:get_rydoo_conflict_approver_groups
-rydoo:get_rydoo_conflict_approver_projects
-rydoo:get_rydoo_custom_field
-rydoo:get_rydoo_custom_field_list_item
-rydoo:get_rydoo_e_invoice_status
-rydoo:get_rydoo_expense
-rydoo:get_rydoo_group
-rydoo:get_rydoo_project
-rydoo:get_rydoo_project_approvers
-rydoo:get_rydoo_project_controllers
-rydoo:get_rydoo_reimbursement_job
-rydoo:get_rydoo_trip
-rydoo:get_rydoo_user
-rydoo:get_rydoo_user_approvers
-rydoo:get_rydoo_user_controllers
-rydoo:get_rydoo_user_groups
-rydoo:get_rydoo_user_role_permissions
-rydoo:get_rydoo_user_roles
-rydoo:list_rydoo_branches
-rydoo:list_rydoo_categories
-rydoo:list_rydoo_custom_field_list_items
-rydoo:list_rydoo_custom_field_role_combinations
-rydoo:list_rydoo_custom_fields
-rydoo:list_rydoo_exported_expenses
-rydoo:list_rydoo_external_organizations
-rydoo:list_rydoo_groups
-rydoo:list_rydoo_linked_account_roles
-rydoo:list_rydoo_linked_accounts
-rydoo:list_rydoo_list_item_users
-rydoo:list_rydoo_payment_methods
-rydoo:list_rydoo_projects
-rydoo:list_rydoo_reimbursements
-rydoo:list_rydoo_transactions
-rydoo:list_rydoo_trips
-rydoo:list_rydoo_user_linked_accounts
-rydoo:search_rydoo_users
 securityscorecard:get_securityscorecard_company
 securityscorecard:get_securityscorecard_factor_history
 securityscorecard:get_securityscorecard_industry_score
