@@ -20531,7 +20531,7 @@
   "Also the scope of leaked credentials (CTEM scope gate). Type a domain and press Enter.": "漏えい認証情報の対象範囲にもなります (CTEM スコープゲート)。ドメインを入力して Enter を押します。",
   "example.com": "example.com",
   "An IP address or a CIDR block, such as 198.51.100.0/24 or 2001:db8::/32. Press Enter after each.": "IP アドレスまたは CIDR ブロック (例: 198.51.100.0/24、2001:db8::/32)。入力ごとに Enter を押します。",
-  "address range {value} is not an IP address or CIDR block": "アドレス範囲 {value} は IP アドレスでも CIDR ブロックでもありません",
+  "Address range {value} is not an IP address or CIDR block.": "アドレス範囲 {value} は IP アドレスでも CIDR ブロックでもありません。",
   "198.51.100.0/24": "198.51.100.0/24",
   "Watch the owned domains and ranges from the Internet with an attack surface provider.": "アタックサーフェスプロバイダーで所有ドメインと範囲をインターネット側から監視します。",
   "Connected integrations the pass reads, their findings merged per host.": "パスが読み取る接続済みインテグレーション。結果はホストごとに統合されます。",
