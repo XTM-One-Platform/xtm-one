@@ -224,6 +224,11 @@ class DocStep(_Part):
     title: str = Field(min_length=1, max_length=120)
     detail: str = Field(default="", max_length=STEP_DETAIL_MAX)
     gate: bool = False
+    #: The key of the approval gate this step stands for (#1074). When the fleet's
+    #: catalog holds it, the About response derives ``gate`` from whether that gate
+    #: waits at the fleet's live level and pins, so the step badge and the Approval
+    #: tab never disagree; ``gate`` stays the fallback of a step without one.
+    gate_key: str = Field(default="", max_length=120)
 
 
 class DocGateTool(_Part):

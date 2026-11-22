@@ -1963,6 +1963,18 @@ change in the audit log), so no member's run prompt changes. A custom fleet that
 declared gates alone until a person applies a level. A built-in fleet acts on
 its seeded catalog alone.
 
+**Step badges follow the catalog (#1074).** A step of the structured
+documentation may name the gate it stands for (`DocStep.gate_key`, a catalog
+key such as `ctem.mobilize`). `GET /fleets/{id}/documentation` derives that
+step's `gate` (the About page's "A person approves first" badge) from the
+same effective catalog it returns as `autonomy_catalog`
+(`fleet_autonomy.with_live_step_gates`), level and pins applied, so the About
+page and the Approval tab never disagree at any level or pin. A step without a
+key, or naming a gate the catalog does not hold, keeps its stored flag. The
+built-in steps name their keys and their stored flags equal the seeded level
+(Low: `ctem.mobilize` alone waits), checked for every built-in fleet by
+`test_builtin_fleet_docs.py`.
+
 **Set by instructions (#10168, B2-I).** A fleet whose approvals live in its
 personas, guardrails and skills (no platform gate) has a second position on
 the same scale, `Fleet.instructions_position`, between-step values allowed
