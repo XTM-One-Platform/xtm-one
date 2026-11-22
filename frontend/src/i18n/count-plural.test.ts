@@ -84,6 +84,8 @@ const BARE: Record<string, string> = {
  * ("sur la dernière exécution" with no run).
  */
 const NEVER_ZERO: Record<string, string> = {
+  "{count, plural, one {Every hour} other {Every # hours}}":
+    "The outside lens cadence_hours is 1 to 720 (AttackSurfacePass, OrganizationOutsideLensCard).",
   "{count, plural, one {Last # day} other {Last # days}}":
     "The CTEM context bar and widget settings pass CONTEXT_PERIODS (7, 30, 90) only (dashboard-context.ts).",
   "{count, plural, one {Its runs refuse this integration's tools until its owner gets access back or the binding is removed.} other {Its runs refuse the tools of these # integrations until its owner gets access back or the bindings are removed.}}":
