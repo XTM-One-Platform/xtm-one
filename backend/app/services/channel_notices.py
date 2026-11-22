@@ -893,6 +893,19 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "L'action n'a pas abouti. Ouvrez la décision dans XTM One.",
         "ja": "実行できませんでした。XTM One で判断を開いてください。",
     },
+    # --- The WhatsApp decision message (#842, S12) ----------------------
+    "card_choose": {
+        "en": "Choose",
+        "es": "Elegir",
+        "fr": "Choisir",
+        "ja": "選択",
+    },
+    "card_decide_in_xtm": {
+        "en": "Answer in XTM One.",
+        "es": "Responda en XTM One.",
+        "fr": "Répondez dans XTM One.",
+        "ja": "XTM One で回答してください。",
+    },
 }
 
 #: The answer of a run the budget stopped with nothing to show: the agent loop

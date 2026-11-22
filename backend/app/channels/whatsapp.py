@@ -32,6 +32,7 @@ import json
 import logging
 import mimetypes
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -511,6 +512,14 @@ async def whatsapp_webhook(request: Request):
             contacts = value.get("contacts", [])
 
             for msg in messages:
+                # A decision button or list reply (#842, S12): answered by its
+                # payload id, never by its text, and never routed to an agent.
+                if (decision_reply := _decision_reply_id(msg)) is not None:
+                    spawn_channel_task(
+                        _answer_decision_reply(msg.get("from", ""), decision_reply),
+                        name="whatsapp-decision-reply",
+                    )
+                    continue
                 # A text message, or a media message whose text is its
                 # caption (a bare media gets the file-only placeholder).
                 media: list[_WhatsAppMedia] = []
@@ -572,6 +581,39 @@ async def whatsapp_webhook(request: Request):
                 )
 
     return {"ok": True}
+
+
+def _decision_reply_id(msg: dict[str, Any]) -> str | None:
+    """The reply id of a 1:1 decision button or list reply, or ``None`` for any other message."""
+    from app.services.decision_whatsapp import parse_reply_id
+
+    if msg.get("type") != "interactive" or msg.get("group_id"):
+        return None
+    interactive = msg.get("interactive") or {}
+    if not isinstance(interactive, dict):
+        return None
+    reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+    raw = reply.get("id") if isinstance(reply, dict) else None
+    return str(raw) if parse_reply_id(raw) is not None else None
+
+
+async def _answer_decision_reply(from_number: str, raw_reply_id: str) -> None:
+    """Answer the decision a reply names as the sender's linked account, then say the outcome in the chat."""
+    from app.core.database import async_session
+    from app.services.decision_whatsapp import answer_reply
+
+    language = notice_language()
+    try:
+        async with async_session() as db:
+            text = await answer_reply(db, from_number, raw_reply_id, language)
+    except Exception as exc:
+        logger.error("WhatsApp decision reply: EXCEPTION, %s", format_exception_message(exc), exc_info=True)
+        text = notice("card_decision_failed", language)
+    creds = await _get_whatsapp_creds()
+    if not creds or not creds[0] or not creds[1]:
+        logger.warning("WhatsApp decision reply: answered, but no whatsapp_bot channel bot to confirm it")
+        return
+    await WhatsAppChannel(creds[1], creds[0]).send_message(OutboundMessage(text=text, channel_user_id=from_number))
 
 
 async def _process_whatsapp_message(
