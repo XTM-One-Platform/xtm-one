@@ -52,8 +52,9 @@ import {
 import { REFETCH_INTERVAL_STANDARD } from "@/lib/constants";
 import {
   useWorkItems, useWorkItemCount, useStaleWorkItemCount, useDeleteWorkItem,
-  useBulkDeleteWorkItems, useRequeueWorkItem, useWorkItemOwners, useWorkItemStatusCounts, type WorkItemOrder,
+  useBulkDeleteWorkItems, useRequeueWorkItem, useWorkItemGraph, useWorkItemOwners, useWorkItemStatusCounts, type WorkItemOrder,
 } from "@/hooks/api/useWorkItemApi";
+import { WorkItemGraphView } from "@/components/work-items/WorkItemGraphView";
 import { WorkItemStatusFilter, statusParamOf, statusesFromParam } from "./WorkItemStatusFilter";
 import { useFormatter } from "@/i18n";
 import { ScheduleActions } from "@/components/work-items/ScheduleActions";
@@ -104,6 +105,9 @@ const EMPTY_DESCRIPTIONS = {
 } as const;
 
 const ANY_AGENT = "__any__";
+
+/** The views Work Items offers: rows, cards and the dependency graph (#968). */
+const WORK_ITEM_VIEW_MODES = ["list", "grid", "graph"] as const;
 
 // The administrators' switch on a fleet's Work Items tab: "Fleet"
 // (the default, `?fleet=`, the population of the agents' `list_work_items`
@@ -369,6 +373,9 @@ export default function WorkItemsTab({
     },
     !landing,
   );
+  // The Graph view's one read (#968): the list's filters, no page, no sort.
+  const graphView = viewMode === "graph";
+  const { data: graph, isLoading: graphLoading } = useWorkItemGraph(filters, graphView && !landing);
   const { data: countData } = useWorkItemCount(filters, false, !landing);
   const totalMatchingCount = countData?.count ?? 0;
   // The blocked items under the other filters: how many wait on
@@ -1308,9 +1315,9 @@ export default function WorkItemsTab({
         rowActions={(item) => <OverflowMenu items={menuItems(item)} label={t_i18n("Work item actions")} />}
         rowActionsWidth={48}
         layout="fixed"
-        view={{ value: viewMode, onChange: setViewMode }}
+        view={{ value: viewMode, onChange: setViewMode, modes: WORK_ITEM_VIEW_MODES }}
         // One scrollbar in grid view too: the cards scroll inside, the page does not (UX r1 on #11917, B3).
-        fitGrid
+        fitGrid={!graphView}
         renderGrid={
           viewMode === "grid"
             ? (gridRows) => (
@@ -1320,7 +1327,15 @@ export default function WorkItemsTab({
                   {gridRows.map(renderItem)}
                 </div>
               )
-            : undefined
+            : graphView
+              ? () => (
+                  <WorkItemGraphView
+                    graph={graph}
+                    isLoading={graphLoading}
+                    onOpenItem={(id) => openDetails({ id } as WorkItem)}
+                  />
+                )
+              : undefined
         }
         // The grid view's first read: a window's worth of rows on the Operations row
         // contract (OpsRowSkeleton), so the cards land without a layout shift.

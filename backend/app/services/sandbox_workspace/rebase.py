@@ -389,6 +389,45 @@ def plan(
     return steps
 
 
+def stale_branch_sides(
+    recorded: Mapping[str, RecordedFile],
+    ours: Mapping[str, str],
+    branch_tree: Mapping[str, bytes],
+    *,
+    in_scope: Callable[[str], bool],
+) -> tuple[dict[str, bytes], list[str]]:
+    """The workspace files that are older than the branch commit the record names (#1029).
+
+    A ``from_checkout`` commit moves the record to the branch commit but keeps
+    the hash of every file it did not write, so the workspace still holds them
+    as first checked out. When the branch gained commits the checkout never
+    held (main merged into it on the server, a split commit set), those bytes
+    are not the branch's: taken as the workspace side of a rebase, a file the
+    branch never changed read as "changed in the workspace" and was kept over
+    the ref, and a file both sides changed lost what the branch had gained.
+
+    *recorded* maps each path to the hash the record holds, *ours* the
+    workspace hashes, *branch_tree* the tree at the record's commit (read at
+    the paths *in_scope* says it can hold). Returns ``(path -> the branch's
+    bytes, paths the branch removed)`` for every file the workspace did not
+    edit since the record (its hash is still the recorded one) whose branch
+    version differs. An edited file is left alone: its edit is the workspace side.
+    """
+    refreshed: dict[str, bytes] = {}
+    gone: list[str] = []
+    for path, entry in recorded.items():
+        if ours.get(path) != entry.sha256:
+            continue
+        data = branch_tree.get(path)
+        if data is None:
+            if in_scope(path):
+                gone.append(path)
+            continue
+        if _sha(data) != entry.sha256:
+            refreshed[path] = data
+    return refreshed, sorted(gone)
+
+
 @dataclass(frozen=True)
 class FileMerge:
     """The bytes to write for a MERGE step, and whether they hold conflict markers or kept the workspace side."""
@@ -607,6 +646,8 @@ class RebaseSummary:
     pulled: list[str] = field(default_factory=list)
     #: (path, format): merged files parsed after the merge (JSON, YAML, TOML), no parse error, no duplicate key.
     validated: list[tuple[str, str]] = field(default_factory=list)
+    #: Files the workspace held older than the record's branch commit, brought to it before the merge (#1029).
+    refreshed: list[str] = field(default_factory=list)
 
     def describe(self, *, shown_as: str, before: str, after: str) -> str:
         head = f"{shown_as}/: rebased from {before} onto {after}."
@@ -616,6 +657,12 @@ class RebaseSummary:
                 f"Brought in from the branch, outside the checkout's sub_paths ({len(self.pulled)}): "
                 f"{_listed(sorted(self.pulled))}. They are merged with the ref like every file of the checkout and "
                 "recorded, so status, diff and from_checkout carry them and add_paths never overwrites them."
+            )
+        if self.refreshed:
+            lines.append(
+                f"Read from the branch commit first, the workspace held them as first checked out "
+                f"({len(self.refreshed)}): {_listed(sorted(self.refreshed))}. The branch's version is the side "
+                "merged with the ref, never the older text."
             )
         if not (self.updated or self.removed or self.added or self.merged or self.kept or self.conflicts):
             lines.append("Nothing changed on either side: the record moved, no file was written.")

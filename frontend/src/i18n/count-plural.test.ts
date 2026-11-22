@@ -96,6 +96,8 @@ const NEVER_ZERO: Record<string, string> = {
     "waitingPullRequestCount returns pull_requests.length || 1, so an item waiting for CI waits on at least one pull request.",
   "{count, plural, one {It stays blocked until the CI of its pull request completes and the platform hands it over.} other {It stays blocked until the CI of its # pull requests completes and the platform hands it over.}}":
     "waitingPullRequestCount returns pull_requests.length || 1, so an item waiting for CI waits on at least one pull request.",
+  "Only the first {count, plural, one {# item is} other {# items are}} drawn: narrow the filters to see the rest.":
+    "WorkItemGraphView passes the constant GRAPH_NODE_CAP (500) and shows it only when the graph is truncated.",
   "Delete {count, plural, one {the only run} other {all # runs}} from this batch?":
     "EvaluationDetail builds each batch from its runs, so a batch holds at least one.",
   "from the last {count, plural, one {run} other {{shown} runs}}":
