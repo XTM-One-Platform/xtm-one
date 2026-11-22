@@ -901,6 +901,7 @@ A scheduled assignment whose configuration points at a resource its integration 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `CHANNEL_AGENT_MENTIONS_ENABLED` | No | `false` | On Slack, Teams, WhatsApp, Telegram, Discord and Google Chat, let an identified user's `@agent-key` (an agent's slug, else its hyphenated name) make that agent answer after the routed one, in the same reply - only an agent whose own channel settings let it answer that message (enabled, set to **Receive** and **Publish** on that channel, past the bot's receive whitelist, private-conversation and only-mention rules). Each agent that answers counts as one agentic action. `false`: a channel message is answered by its routed agent alone, whatever it mentions. The web chat's mentions are not affected by this setting. |
+| `DECISIONS_READ_ENABLED` | No | `false` | Human gates: let the inbox, the bell and the decision cards read the unified decisions store. It takes effect only once every open question (a paused run, a pending tool approval, a flow waiting on a person, a work item waiting for an answer) has its decision: `GET /api/v1/decisions/backfill` (administrators) shows the count per source and whether the switch is on. `false`: they read each engine's own state, which stays current either way. |
 
 ## Built-in web search
 
