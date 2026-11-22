@@ -5567,6 +5567,7 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "L'URL du webhook sera générée automatiquement après la création à partir de l'ID de l'assignation.",
   "The whole request body is passed to the agent as the trigger payload.": "L'intégralité du corps de la requête est transmise à l'agent comme charge utile du déclencheur.",
   "Theme": "Thème",
+  "Pastel colours": "Couleurs pastel",
   "Theme Color": "Couleur du thème",
   "Theme configuration": "Configuration du thème",
   "There are no objects on the platform yet.": "Il n'y a pas encore d'objets sur la plateforme.",
@@ -20841,5 +20842,6 @@
   "No check round since the last digest": "Aucune série de contrôles depuis le dernier résumé",
   "Failed most": "Les plus souvent en échec",
   "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# série} other {# séries}} sur {registrations, plural, one {# enregistrement} other {# enregistrements}}",
-  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# en échec} other {# en échec}}, {warned, plural, one {# avertissement} other {# avertissements}}"
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# en échec} other {# en échec}}, {warned, plural, one {# avertissement} other {# avertissements}}",
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tons adoucis pour les couleurs de sévérité, de statut et de marquage. Désactivé : couleurs standard, identiques dans tous les produits."
 }
