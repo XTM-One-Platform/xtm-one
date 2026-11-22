@@ -1093,6 +1093,11 @@ class Settings(BaseSettings):
     # safe for assignments whose HITL pause does not leave shared state
     # half-written.
     assignment_queue_hold_on_awaiting_human: bool = True
+    # Hours after which a run paused for a person stops holding its assignment
+    # (human-gates.md section 7, F3): later triggers run, the run stays
+    # resumable. Applies to scheduled, event and delivery runs; a chat-started
+    # run always holds. 0 turns the release off.
+    human_gate_queue_release_hours: float = 4.0
     # Max distinct assignments that promote queued deliveries per drain. The
     # drain runs on every reconciler cycle, and the enqueue and the end of every
     # assignment run wake it, so the rest follow within a cycle.
