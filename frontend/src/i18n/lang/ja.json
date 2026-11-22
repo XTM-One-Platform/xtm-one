@@ -20515,11 +20515,15 @@
   "The test signal could not be recorded.": "テストシグナルを記録できませんでした。",
   "Open the command center": "コマンドセンターを開く",
   "Send a test signal": "テストシグナルを送信",
-  "Context: {value}": "コンテキスト: {value}",
-  "Scope: {value}": "範囲: {value}",
-  "Collaboration instruction set": "連携の指示あり",
-  "No collaboration instruction": "連携の指示なし",
-  "Search capabilities, members, integrations...": "機能、メンバー、連携を検索...",
-  "No capability slot": "機能スロットはありません",
-  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません"
+  "Analyst review": "アナリストのレビュー",
+  "Analyst review skipped by policy": "ポリシーによりアナリストのレビューを省略しました",
+  "The fleet requests the coverage without a person": "フリートは人を介さずにカバレッジを要求します",
+  "the analyst's mark in OpenCTI": "OpenCTI のアナリストのマーク",
+  "Unnamed Grouping": "名前のないグルーピング",
+  "The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.": "レビューはアナリストを待っています。決定はその人の「あなたの対応待ち」リストにあります。または OpenCTI でグルーピングにレビューのラベルを付けます。",
+  "A Grouping exists in OpenCTI: restricted to OpenCTI readers": "OpenCTI にグルーピングがあります。OpenCTI の閲覧者に限定されています",
+  "Drafted the threat package": "脅威パッケージを作成しました",
+  "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "脅威パッケージはまだありません。ケースのトリアージ後、フリートが OpenCTI に作成します。",
+  "Threat package drafted, coverage not requested yet": "脅威パッケージを作成しました。カバレッジはまだ要求していません",
+  "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました"
 }
