@@ -52,6 +52,7 @@ import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
+import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { caseLoopWorker, loopFleetOf, opencrqConnected } from "./ctem/case-loop-reason";
@@ -60,7 +61,7 @@ import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
-import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
+import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -568,11 +569,9 @@ export default function CtemCaseDetail() {
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
 
-      {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
-        <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {/* The running version comes from the asset inventory, never typed by hand in the tech stack (#1176). */}
-          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version.")}
-        </p>
+      {/* The running versions come from the asset inventory, never typed by hand in the tech stack (#1252). */}
+      {kase.remediation_kind === "upgrade" && (
+        <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
       )}
 
       {kase.details_unavailable.length > 0 && (
@@ -741,7 +740,7 @@ export default function CtemCaseDetail() {
       </Card>
 
       {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
-      <LegacySignalLinks />
+      <LoopTraceDialog />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">
