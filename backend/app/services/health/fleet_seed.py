@@ -283,7 +283,9 @@ FLEET_ASSIGNMENTS: Final[tuple[FleetAssignmentSpec, ...]] = (
             "consolidations, findings, experiments, proposals filed, applied and rolled back, budget spent, "
             "and everything skipped with its reason. Add a Modules part for the module investigation cycles: "
             "cycles run, recommendations attached, agentic findings opened and resolved, and the module checkers' "
-            "spend against their own ceiling. Use the cycles' own figures and statuses; a cycle that "
+            "spend against their own ceiling; per module, give the check rounds of the week and the checks that "
+            "failed most exactly as the trigger's `modules` states them (say the part is unavailable when the "
+            "trigger carries `modules_unavailable`). Use the cycles' own figures and statuses; a cycle that "
             "is not completed is never reported as completed. Write in the language the trigger names (`language`)."
         ),
         show_in_digest=True,

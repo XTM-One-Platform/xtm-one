@@ -41,7 +41,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Final, Literal, get_args
+from typing import Any, Final, Literal, get_args
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -339,7 +339,7 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
         if previous is not None and previous.status == "open":
             result = CycleStart(refusal="cycle_open", open_cycle_id=previous.id)
         else:
-            payload = {"since": mark.fired_at.isoformat()} if key == "digest" else None
+            payload = await _digest_payload(db, mark.fired_at, now) if key == "digest" else None
             result = await start_cycle(db, key=_SCHEDULE_ASSIGNMENT[key], trigger="schedule", payload=payload)
         mark = await db.get(HealthScheduleMark, key)
         mark.fired_at = now
@@ -351,6 +351,25 @@ async def run_due_schedules(db: AsyncSession, *, now: datetime | None = None) ->
         else:
             logger.info("Platform Health schedule %r due, not started: %s", key, result.refusal)
     return started
+
+
+async def _digest_payload(db: AsyncSession, since: datetime, until: datetime) -> dict[str, Any]:
+    """The weekly digest's trigger payload: its window and the Modules part read from the stored reports (13.8).
+
+    ``modules`` is computed here, never by the model: per module, the check rounds of the
+    window and the checks failed most. A read that fails leaves ``modules`` out and the
+    digest says the part is unavailable.
+    """
+    from app.services.health.check_reports import weekly_module_summary
+
+    payload: dict[str, Any] = {"since": since.isoformat()}
+    try:
+        async with db.begin_nested():
+            payload["modules"] = await weekly_module_summary(db, since=since, until=until)
+    except Exception:
+        logger.exception("Platform Health weekly digest: the module check reports could not be read")
+        payload["modules_unavailable"] = True
+    return payload
 
 
 async def _run_tree(db: AsyncSession, root_id: uuid.UUID) -> list:

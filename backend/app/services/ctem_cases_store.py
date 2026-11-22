@@ -19,17 +19,77 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_cases as rules
+
+if TYPE_CHECKING:
+    from app.services.ctem_case_loop import PendingEvents
 
 #: Most cases one list page returns.
 MAX_PAGE = 200
+
+#: The scope gate severity a reader case takes from its priority (dev-docs/ctem-cases.md section 4.3).
+PRIORITY_SEVERITY: dict[str, str] = {"critical": "P1", "high": "P2", "medium": "P3", "low": "P3"}
+#: The case event that records a case was announced to the loop (``ctem_case.opened`` raised).
+ANNOUNCED = "announced"
+
+
+def announce(
+    db: AsyncSession, case: CtemCase, events: PendingEvents | None, at: datetime, *, reason: str | None = None
+) -> None:
+    """Queue ``ctem_case.opened`` for *case* and record it with an ``announced`` event, so it is raised once.
+
+    Nothing is written without *events*: the scheduled backfill
+    (``ctem_case_loop.announce_unannounced``) announces the case later.
+    """
+    if events is None:
+        return
+    from app.services import ctem_case_loop as loop
+
+    db.add(_event(case.id, rules.SYSTEM_ACTOR, ANNOUNCED, to_value=loop.CASE_OPENED, reason=reason, at=at))
+    events.verticals.add(case.vertical)
+    events.frame(case, "created", at)
+    events.add(loop.CASE_OPENED, loop.case_data(case), loop.case_event_id(loop.CASE_OPENED, case, "open"))
+
+
+def _state_event(case: CtemCase, events: PendingEvents | None, at: datetime) -> None:
+    """Queue ``ctem_case.resolved`` or ``ctem_case.reopened`` for a state the recompute just wrote."""
+    if events is None:
+        return
+    from app.services import ctem_case_loop as loop
+
+    name = loop.CASE_RESOLVED if case.state == "resolved" else loop.CASE_REOPENED
+    events.verticals.add(case.vertical)
+    events.frame(case, "state", at)
+    events.add(name, loop.case_data(case), loop.case_event_id(name, case, at.isoformat()))
+
+
+def _rank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bool:
+    """Give an open reader case the severity and SLA of its priority; a more urgent read escalates, never relaxes.
+
+    *members* are the open issues of the case this read sees. True when the
+    severity changed.
+    """
+    from app.services import ctem_case_loop as loop
+
+    if not members or case.state not in OPEN_STATES:
+        return False
+    severity = PRIORITY_SEVERITY[rules.default_priority(members)]
+    current = case.severity
+    if current in loop.DEFAULT_SLA_HOURS and loop.severity_rank(current) <= loop.severity_rank(severity):
+        return False
+    case.severity = severity
+    due = now + timedelta(hours=loop.DEFAULT_SLA_HOURS[severity])
+    sla = rules.as_utc(case.sla_due_at)
+    if sla is None or sla > due:
+        case.sla_due_at = due
+    return True
 
 
 def _event(case_id: uuid.UUID, actor: str, kind: str, **kw: Any) -> CtemCaseEvent:
@@ -75,6 +135,7 @@ async def apply_recompute(
     issues: Iterable[rules.SourceIssue],
     closed: Iterable[str] = (),
     actor: str = rules.SYSTEM_ACTOR,
+    events: PendingEvents | None = None,
     now: datetime | None = None,
 ) -> dict[str, int]:
     """Merge one user's view into the shared cases of one vertical.
@@ -82,6 +143,12 @@ async def apply_recompute(
     *issues* are the open issues that user sees, *closed* the member ids their
     read confirmed closed. Answers the counts written: created, updated,
     resolved, reopened, no_known_fix (counts of this user's own view only).
+
+    *events* collects the case events (``ctem_case.opened`` on a new case,
+    ``reopened`` and ``resolved`` on a state the read moved) for the caller to
+    publish after its commit (``ctem_case_loop.publish_pending``); a recompute
+    that changes nothing collects none. An open case takes the severity and SLA
+    of the priority of the issues this read sees (:func:`_rank`).
     """
     now = now or datetime.now(UTC)
     issues = list(issues)
@@ -104,6 +171,7 @@ async def apply_recompute(
         for c in cases
     ]
     counts = {"created": 0, "updated": 0, "resolved": 0, "reopened": 0}
+    seen = {i.member_id: i for i in issues if not i.not_affected}
     for plan in rules.plan_recompute(snapshots, issues, closed):
         if plan.case_id is None:
             remediation = plan.remediation
@@ -128,6 +196,8 @@ async def apply_recompute(
                 source, external_id = _split_member(member_id)
                 db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
             db.add(_event(case.id, actor, "created", to_value=remediation.key, at=now))
+            _rank(case, [seen[m] for m in plan.add if m in seen], now)
+            announce(db, case, events, now, reason="source read")
             counts["created"] += 1
             continue
         case = by_id[plan.case_id]
@@ -169,6 +239,15 @@ async def apply_recompute(
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
             case.state = plan.new_state
             case.state_since = now
+            _state_event(case, events, now)
+        # A signal case keeps the severity of its decision record (ctem_case_loop.open_from_signal).
+        if not any(r.source == "signal" for r in members[case.id]):
+            still_open = [
+                seen[m]
+                for m, row in rows.items()
+                if m in seen and (row.open or m in plan.reopen) and m not in plan.resolve
+            ]
+            _rank(case, [*still_open, *(seen[m] for m in plan.add if m in seen)], now)
     grouping = rules.group_issues(issues)
     counts["no_known_fix"] = len(grouping.no_known_fix)
     counts["not_affected"] = len(grouping.not_affected)
@@ -304,9 +383,13 @@ async def create_manual_case(
     visible: set[str],
     actor: str,
     reason: str | None = None,
+    events: PendingEvents | None = None,
     now: datetime | None = None,
 ) -> CtemCase:
     """Split open issues out of their cases into a new manual case (``dev-docs/ctem-cases.md`` section 5).
+
+    *events* collects ``ctem_case.opened`` for the new case, published by the
+    caller after its commit; without it the scheduled backfill announces it.
 
     ``member_ids`` are ``source:external_id`` of open issues of a case that
     the actor sees (*visible*, from the actor's own source read): an issue the
@@ -348,6 +431,7 @@ async def create_manual_case(
         db.add(CtemCaseIssue(case_id=case.id, source=row.source, external_id=row.external_id, open=True))
         await db.delete(row)
     db.add(_event(case.id, actor, "created", to_value="manual", reason=reason, at=now))
+    announce(db, case, events, now, reason="manual split")
     for source_id, ids in left.items():
         source = cases[source_id]
         source.pinned_issues = [p for p in (source.pinned_issues or []) if p not in wanted]

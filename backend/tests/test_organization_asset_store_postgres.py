@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
 from app.models.organization import Organization
-from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware, OrganizationAssetSource
+from app.models.organization_asset import (
+    OrganizationAsset,
+    OrganizationAssetDecision,
+    OrganizationAssetSoftware,
+    OrganizationAssetSource,
+)
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_store as store
 from tests.scratch_database import scratch_database, with_referenced_tables
@@ -32,6 +37,7 @@ async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         OrganizationAsset,
         OrganizationAssetSource,
         OrganizationAssetSoftware,
+        OrganizationAssetDecision,
         OrganizationContextVersion,
     ]
     tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
@@ -173,6 +179,70 @@ async def test_pagination_and_search_are_by_name_and_organizations_never_cross()
     assert [a["name"] for a in found.items] == ["web-02"]
     assert [a["name"] for a in theirs.items] == ["web-99"]
     assert foreign is None
+
+
+async def test_a_split_keeps_two_records_apart_across_rebuilds_and_its_removal_merges_them_again() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        await _save(session, org, 1, [LAPTOP_INTUNE, LAPTOP_OPENAEV])
+        await store.ensure_built(session)
+        records = [{"source": "intune", "external_id": "d-1"}, {"source": "openaev", "external_id": "a-9"}]
+        row = await store.record_decision(session, org, kind="split", records=records, reason="two laptops")
+        await session.commit()
+        split = (await store.list_assets(session, org)).total
+        await _save(session, org, 2, [LAPTOP_INTUNE, {**LAPTOP_OPENAEV, "criticality": "low"}])
+        await store.ensure_built(session)
+        after_rebuild = (await store.list_assets(session, org)).total
+        with pytest.raises(store.DecisionError, match="already recorded"):
+            await store.record_decision(session, org, kind="split", records=list(reversed(records)))
+        listed = await store.list_decisions(session, org)
+        assert await store.remove_decision(session, org, row.id) is not None
+        await session.commit()
+        merged = (await store.list_assets(session, org)).total
+    assert (split, after_rebuild, merged) == (2, 2, 1)
+    assert [d["kind"] for d in listed] == ["split"] and listed[0]["reason"] == "two laptops"
+
+
+async def test_a_merge_joins_records_no_key_links_and_an_unknown_record_is_refused() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        await _save(session, org, 1, [LAPTOP_INTUNE, SERVER])
+        await store.ensure_built(session)
+        with pytest.raises(store.DecisionError, match="unknown record"):
+            await store.record_decision(
+                session,
+                org,
+                kind="merge",
+                records=[{"source": "intune", "external_id": "d-1"}, {"source": "x", "external_id": "nope"}],
+            )
+        await store.record_decision(
+            session,
+            org,
+            kind="merge",
+            records=[{"source": "intune", "external_id": "d-1"}, {"source": "openaev", "external_id": "a-10"}],
+        )
+        await session.commit()
+        page = await store.list_assets(session, org)
+        detail = await store.get_asset(session, org, uuid.UUID(page.items[0]["id"]))
+    assert page.total == 1
+    assert detail is not None and "administrator" in detail["explanation"]
+
+
+async def test_saving_a_profile_version_refreshes_the_store_in_the_same_transaction() -> None:
+    from app.services import organization_context as org_context
+
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        profile = org_context.parse_profile(
+            {"assets_exposure": [{k: v for k, v in LAPTOP_INTUNE.items() if k not in ("serial", "software")}]}
+        )
+        saved = await org_context.save_version(session, profile, source="api", author_user_id=None, organization_id=org)
+        built = (
+            await session.execute(
+                select(func.max(OrganizationAsset.profile_version)).where(OrganizationAsset.organization_id == org)
+            )
+        ).scalar()
+    assert built == saved.version
 
 
 async def test_no_profile_builds_nothing() -> None:

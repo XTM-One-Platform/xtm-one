@@ -260,13 +260,16 @@ def test_assets_merge_counts_new_updated_unchanged_skipped_and_keeps_hand_rows()
     rows = [
         imp.openaev_asset(_aev_asset("a1", "web-01", asset_internet_facing=True)),  # updated
         imp.openaev_asset(_aev_asset("a2", "db-01")),  # unchanged (owner kept)
-        imp.openaev_asset(_aev_asset("a3", "CRM")),  # skipped: a hand-typed row has the name
+        # New: a hand-typed row has the name, so this is a second record of it (#1178, S3),
+        # added beside it for the asset store to merge; the hand-typed row is untouched.
+        imp.openaev_asset(_aev_asset("a3", "CRM")),
         imp.openaev_asset(_aev_asset("a4", "mail-01")),  # new
     ]
     plan = imp.plan_import(profile, "assets", "openaev", imp.ReadResult(rows=rows, total=4))
-    assert (plan.new, plan.updated, plan.unchanged, plan.skipped) == (["mail-01"], ["web-01"], ["db-01"], ["CRM"])
+    assert (plan.new, plan.updated, plan.unchanged, plan.skipped) == (["CRM", "mail-01"], ["web-01"], ["db-01"], [])
     saved = {a.name: a for a in plan.profile.assets_exposure}
     assert saved["crm"].owner == "Sales" and saved["crm"].source == "manual"
+    assert saved["CRM"].source == "openaev" and saved["CRM"].external_id == "a3"
     assert saved["web-01"].internet_facing == "yes"
     assert saved["db-01"].owner == "DBA"
     assert plan.source_total == 4
@@ -278,9 +281,18 @@ def test_a_rerun_from_another_source_never_touches_the_first_source_rows():
     profile = _profile(assets_exposure=[oc.AssetEntry(name="sap", source="openaev", external_id="a1")])
     row = imp.opencti_system({"id": "a1", "name": "SAP"}, "application")
     plan = imp.plan_import(profile, "assets", "opencti", imp.ReadResult(rows=[row], total=1))
-    # Same external id, other source: not its row, and the name is taken -> skipped.
-    assert plan.skipped == ["SAP"] and not plan.updated
-    assert plan.profile.assets_exposure[0].source == "openaev"
+    # Same external id, other source: not its row; a second record of the same thing, added
+    # beside it (the asset store merges them, #1178 S3), the first source's row untouched.
+    assert plan.new == ["SAP"] and not plan.skipped and not plan.updated
+    assert plan.profile is not None
+    assert [(a.source, a.name) for a in plan.profile.assets_exposure] == [("openaev", "sap"), ("opencti", "SAP")]
+
+
+def test_an_asset_group_of_another_source_with_the_same_name_is_still_skipped() -> None:
+    profile = _profile(asset_groups=[oc.AssetGroupEntry(name="web", source="manual")])
+    row = oc.AssetGroupEntry(name="WEB", source="openaev", external_id="g1")
+    plan = imp.plan_import(profile, "asset_groups", "openaev", imp.ReadResult(rows=[row], total=1))
+    assert plan.skipped == ["WEB"] and not plan.new
 
 
 def test_the_same_import_twice_is_unchanged_the_second_time():

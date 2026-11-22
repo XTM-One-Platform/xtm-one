@@ -99,6 +99,9 @@ import { addRow, addRows, attentionCount, changeCounts, committedValues, type Ed
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
+import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
+import { ProviderLogo } from "@/components/ui/provider-logo";
+import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
@@ -155,6 +158,16 @@ const TAB_FIELDS: Record<ProfileTab, string[]> = Object.fromEntries(
   PROFILE_TABS.map((tab) => [tab, Object.keys(FIELD_LABELS).filter((path) => tabOfField(path) === tab)]),
 ) as Record<ProfileTab, string[]>;
 
+/**
+ * The fixed columns of the crown jewels table, read and edit (UX r2 B1 and B2 on #1174). Below a
+ * 72rem card (1080) Assets and Source step aside, so Business service and Owner keep about 150 px
+ * each, their headers whole and their inputs usable on a synced row. Business service and Owner
+ * share what is left; OpenCRQ holds its header and the sort mark.
+ */
+export const JEWEL_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
+/** The card width below which Assets and Source of the crown jewels table go to the Columns pill. */
+const JEWEL_STEP_ASIDE = "6xl" as const;
+
 /** The values of the crown jewels' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
 /**
@@ -169,6 +182,7 @@ export function OrganizationSection() {
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
+  const synced = useSyncedRemoval();
   const { data, isLoading } = useOrganizationContext();
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
@@ -441,14 +455,18 @@ export function OrganizationSection() {
   const stopListEdit = () => {
     focusCardEdit(listCard);
     setListEdits({});
+    synced.reset();
   };
   // A list card's Save writes the saved profile with that list alone changed (whole-profile PUT).
   const saveList = (key: ListKey) => {
     if (!data || !listEdits[key]) return;
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
+    const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
     save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
       onSuccess: () => {
+        // The synced rows removed with "Exclude from this sync" go on their sync's exclusions (#1134).
+        synced.commit(kept);
         stopListEdit();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
       },
@@ -753,6 +771,54 @@ export function OrganizationSection() {
   // "Not set" takes the table's compact text so every row keeps one height (UX r2 B1 on #10804).
   const readCell = (value: string) =>
     value.trim() ? <TruncatedText text={value} /> : <span className="content-compact text-default-secondary">{t_i18n("Not set")}</span>;
+  /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
+  const sourceLabel = (value: Provenance) => {
+    const kind = sourceKind(value.source);
+    return kind === "platform" ? (PLATFORM_NAMES[sourcePlatform(value.source)] ?? value.source ?? "") : t_i18n(SOURCE_KIND_LABELS[kind]);
+  };
+  const sourceCell = (value: Provenance) => {
+    const platform = sourcePlatform(value.source);
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        {platform && <ProviderLogo provider={platform} decorative className="h-4 w-4 shrink-0" />}
+        <TruncatedText text={sourceLabel(value)} />
+      </span>
+    );
+  };
+  // Source steps aside below a 72rem card (UX r1 B1 and B2 on #1174): at 1080 the fixed 128 px cut
+  // Business service and Owner to nothing. The lock tip and the Source filter still name it there.
+  const SOURCE_WIDTH = JEWEL_WIDTHS.source;
+  const sourceColumn = <R extends { value: Provenance }>(): DataTableColumn<R> => ({
+    key: "source",
+    header: "Source",
+    hideable: true,
+    hideBelow: JEWEL_STEP_ASIDE,
+    width: SOURCE_WIDTH,
+    cell: ({ value }) => sourceCell(value),
+    interactive: true,
+    sortValue: ({ value }) => sourceLabel(value).toLowerCase(),
+    firstSort: "asc",
+    csv: ({ value }) => value.source ?? "manual",
+  });
+  const sourceFilter = <R extends { value: Provenance }>(): DataTableFilter<R> => ({
+    key: "source",
+    label: "Source",
+    values: ({ value }) => [sourceLabel(value)],
+  });
+  const sourceEdit = <V extends Provenance>(): ListEditColumn<V> => ({
+    key: "source",
+    header: "Source",
+    hideable: true,
+    hideBelow: JEWEL_STEP_ASIDE,
+    width: SOURCE_WIDTH,
+    read: (v) => sourceCell(v),
+    sortValue: (v) => sourceLabel(v).toLowerCase(),
+    firstSort: "asc",
+  });
+  const lockedFor = (key: keyof typeof LOCAL_FIELDS) => ({
+    tip: (value: Provenance) => synced.lockTip(value),
+    column: (value: Provenance, column: string) => !columnEditable(value.source, column, LOCAL_FIELDS[key]),
+  });
   // Read mode lays the columns out fixed (names 240, enums 120, OpenCRQ 96, the rest share what
   // is left) so a long name is cut with its tooltip inside the card, never scrolled (UX r2 B2 on #10804).
   const readWidth = (px: number) => px;
@@ -773,7 +839,7 @@ export function OrganizationSection() {
     {
       key: "name",
       header: "Crown jewel",
-      width: readWidth(240),
+      width: readWidth(JEWEL_WIDTHS.name),
       cell: ({ value }) => readCell(value.name),
       interactive: true,
       sortValue: sortable<JewelRow>(({ value }) => value.name.toLowerCase()),
@@ -805,7 +871,7 @@ export function OrganizationSection() {
       header: "Criticality",
       hideable: true,
       headerClassName: "w-44",
-      width: readWidth(120),
+      width: readWidth(JEWEL_WIDTHS.criticality),
       cell: ({ value }) => readCell(value.criticality ? optionLabel(CRITICALITY_LABELS, value.criticality) : ""),
       interactive: true,
       sortValue: sortable<JewelRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
@@ -817,6 +883,8 @@ export function OrganizationSection() {
       key: "assets",
       header: "Assets",
       hideable: true,
+      // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
+      hideBelow: JEWEL_STEP_ASIDE,
       cell: ({ value }) => readCell((value.asset_names ?? []).join(", ")),
       interactive: true,
       csv: ({ value }) => (value.asset_names ?? []).join("; "),
@@ -825,8 +893,9 @@ export function OrganizationSection() {
       key: "opencrq",
       header: "OpenCRQ",
       hideable: true,
-      headerClassName: "w-24",
-      width: readWidth(96),
+      // 112 px: the header and its sort mark read whole (96 cut it, UX r2 B2 on #1174).
+      headerClassName: "w-28",
+      width: readWidth(JEWEL_WIDTHS.opencrq),
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
@@ -839,11 +908,13 @@ export function OrganizationSection() {
       sortValue: sortable<JewelRow>(({ value }) => !!value.opencrq_asset_id),
       csv: ({ value }) => value.opencrq_asset_id,
     },
+    sourceColumn<JewelRow>(),
   ];
   const jewelFilters: DataTableFilter<JewelRow>[] = [
     // Ordinal scale: low to critical, never alphabetical (#12289).
     optionFilter<JewelRow>("criticality", "Criticality", CRITICALITY_LABELS, ({ value }) => value.criticality, true),
     optionFilter<JewelRow>("opencrq", "OpenCRQ", OPENCRQ_LINK_LABELS, ({ value }) => (value.opencrq_asset_id ? "linked" : "not_linked")),
+    sourceFilter<JewelRow>(),
   ];
   const techColumns: DataTableColumn<TechRow>[] = [
     {
@@ -889,9 +960,11 @@ export function OrganizationSection() {
       firstSort: "asc",
       csv: ({ value }) => value.version ?? "",
     },
+    sourceColumn<TechRow>(),
   ];
   const techFilters: DataTableFilter<TechRow>[] = [
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
+    sourceFilter<TechRow>(),
   ];
   const aiColumns: DataTableColumn<AiRow>[] = [
     {
@@ -936,11 +1009,13 @@ export function OrganizationSection() {
       firstSort: "asc",
       csv: ({ value }) => value.owner,
     },
+    sourceColumn<AiRow>(),
   ];
   const aiFilters: DataTableFilter<AiRow>[] = [
     optionFilter<AiRow>("kind", "Kind", AI_KIND_LABELS, ({ value }) => value.kind),
     // Ordinal scale: internal, partner, public (#12289).
     optionFilter<AiRow>("exposure", "Exposure", EXPOSURE_LABELS, ({ value }) => value.exposure, true),
+    sourceFilter<AiRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
   type Jewel = ProfileForm["crown_jewels"][number];
@@ -966,7 +1041,7 @@ export function OrganizationSection() {
   // The values a free-text field already holds in its list, offered as it is typed (slice 2): 150 rows stay consistent.
   const suggestId = (key: ListKey, field: string) => `${fieldId}-${key}-${field}-suggestions`;
   const jewelEdit: ListEditColumn<Jewel>[] = [
-    { key: "name", header: "Crown jewel", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Crown jewel", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "name", header: "Crown jewel", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Crown jewel", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("crown_jewels", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
@@ -975,7 +1050,9 @@ export function OrganizationSection() {
       header: "Assets",
       hideable: true,
       // 200 px so "Link assets" and the chevron fit; Business service and Owner share the rest (UX r2 B1 on #12261).
-      width: readWidth(200),
+      // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
+      hideBelow: JEWEL_STEP_ASIDE,
+      width: readWidth(JEWEL_WIDTHS.assets),
       read: (v) => readCell((v.asset_names ?? []).join(", ")),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
@@ -997,6 +1074,7 @@ export function OrganizationSection() {
         );
       },
     },
+    sourceEdit<Jewel>(),
   ];
   // Edit mode: the CPE input takes what is left, so the fixed columns give it 100 px more at 1080,
   // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
@@ -1005,12 +1083,14 @@ export function OrganizationSection() {
     { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set, bad) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), bad, "Vendor", suggestId("tech_stack", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.vendor] },
     { key: "cpe", header: "CPE (optional)", hideable: true, read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
+    sourceEdit<Tech>(),
   ];
   const aiEdit: ListEditColumn<AiSystem>[] = [
     { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "kind", header: "Kind", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.kind ? optionLabel(AI_KIND_LABELS, v.kind) : ""), edit: (v, set) => pick(AI_KIND_LABELS, v.kind, "Kind", (kind) => set({ kind })), sortValue: (v) => optionLabel(AI_KIND_LABELS, v.kind) },
     { key: "exposure", header: "Exposure", hideable: true, headerClassName: "w-40", width: readWidth(120), read: (v) => readCell(v.exposure ? optionLabel(EXPOSURE_LABELS, v.exposure) : ""), edit: (v, set) => pick(EXPOSURE_LABELS, v.exposure, "Exposure", (exposure) => set({ exposure })), sortValue: (v) => Object.keys(EXPOSURE_LABELS).indexOf(v.exposure) },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("ai_systems", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+    sourceEdit<AiSystem>(),
   ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
@@ -1097,6 +1177,8 @@ export function OrganizationSection() {
         <OrganizationListEditor
           {...props}
           bulkFields={LIST_BULK[key] as unknown as BulkField<ProfileForm[K][number]>[]}
+          locked={lockedFor(key)}
+          confirmRemove={synced.confirmRemove}
           rows={rows}
           onRows={(next) => setListRows(key, next)}
           issues={rowIssues(rows, (value) => rules.check(value), rules.identity)}
@@ -2072,6 +2154,7 @@ export function OrganizationSection() {
       )}
       {assetsImportOpen && <OrganizationAssetsImportDialog open={assetsImportOpen} onOpenChange={setAssetsImportOpen} />}
       {pasteFor && listOpen(pasteFor) && pasteDialog(pasteFor)}
+      {synced.element}
       {fillAgentOpen && <OrganizationFillAgentDialog open={fillAgentOpen} onOpenChange={setFillAgentOpen} />}
       {platformImportOpen && (
         <OrganizationImportDialog

@@ -566,5 +566,9 @@ def register(
             },
             source=_SOURCE,
             priority=1,
+            # A repeat cannot double the merge: it drops alignment commits a stopped call left, answers a merge
+            # already landed, and writes the resolution chunks a stopped call left unwritten
+            # (finish_stopped_resolution). A resumed turn must run it, not refuse it as an in-flight write.
+            replay_safe=True,
         ),
     ]

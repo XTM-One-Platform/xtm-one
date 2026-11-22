@@ -89,6 +89,8 @@ _TITLES: dict[str, str] = {
 SWEEP_BATCH = 500
 #: The member source of a signal attached to a case.
 SIGNAL_SOURCE = "signal"
+#: Most never-announced cases one sweep announces.
+ANNOUNCE_BATCH = 200
 #: Width of ``CtemCase.title`` and ``CtemCaseEvent.to_value`` (the opening event carries the key).
 COLUMN_MAX = 300
 _KEY_SPACES = re.compile(r"\s+")
@@ -190,6 +192,11 @@ def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None
 _SEVERITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 
 
+def severity_rank(severity: str | None) -> int:
+    """0 for P1 (most urgent) to 2 for P3; 9 for no severity."""
+    return _SEVERITY_RANK.get(severity or "", 9)
+
+
 def case_data(case: CtemCase) -> dict[str, Any]:
     """The payload of a case event: the case id and its routing, nothing else (#933).
 
@@ -212,6 +219,10 @@ def case_data(case: CtemCase) -> dict[str, Any]:
 def _event_id(name: str, case: CtemCase, marker: str) -> str:
     digest = hashlib.sha256(f"{name}\n{case.id}\n{marker}".encode()).hexdigest()[:32]
     return f"ctem-case-{digest}"
+
+
+#: The stable event id of a case event, shared with the case store (``ctem_cases_store``).
+case_event_id = _event_id
 
 
 def _event(case_id: uuid.UUID, actor: str, kind: str, at: datetime, **kw: Any) -> CtemCaseEvent:
@@ -825,7 +836,7 @@ async def sweep(
 ) -> dict[str, int]:
     """The scheduled pass: open the cases of waiting confirmed signals, escalate SLA breaches. The caller commits."""
     now = now or datetime.now(UTC)
-    counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0}
+    counts = {"opened": 0, "joined": 0, "skipped": 0, "sla_breached": 0, "announced": 0}
     waiting = (
         (
             await db.execute(
@@ -882,7 +893,47 @@ async def sweep(
         if events is not None:
             events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
             events.frame(case, "sla_breached", now)
+    counts["announced"] = await announce_unannounced(db, events=events, now=now)
     return counts
+
+
+async def announce_unannounced(db: AsyncSession, *, events: PendingEvents | None, now: datetime | None = None) -> int:
+    """Raise ``ctem_case.opened`` once for every open case never announced; answers how many. The caller commits.
+
+    The backfill of the cases a source read or a manual split wrote before
+    they raised their own event (dev-docs/ctem-cases.md section 4.3): a case
+    is announced when it holds an ``announced`` event, or a ``created`` event
+    from a signal (``open_from_signal`` raised it). Idempotent: the written
+    ``announced`` event keeps the case out of every later pass.
+    """
+    if events is None:
+        return 0
+    from sqlalchemy import exists, or_
+
+    from app.services import ctem_cases_store as store
+
+    done = exists().where(
+        CtemCaseEvent.case_id == CtemCase.id,
+        or_(
+            CtemCaseEvent.kind == store.ANNOUNCED,
+            (CtemCaseEvent.kind == "created") & CtemCaseEvent.reason.like("signal %"),
+        ),
+    )
+    rows = (
+        (
+            await db.execute(
+                select(CtemCase)
+                .where(CtemCase.state.in_(OPEN_STATES), ~done)
+                .order_by(CtemCase.created_at.asc())
+                .limit(ANNOUNCE_BATCH)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for case in rows:
+        store.announce(db, case, events, now or datetime.now(UTC), reason="backfill")
+    return len(rows)
 
 
 #: The cadence of the scheduled sweep when ``CTEM_CASE_SWEEP_SECONDS`` is not set.
