@@ -24,7 +24,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Send } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -138,7 +138,7 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
               onClick={sendTestSignal}
               data-testid="ctem-loop-setup-test-signal"
             >
-              <Send className="h-4 w-4" aria-hidden />
+              <Icon name="send" size={16} aria-hidden />
               {t_i18n("Send a test signal")}
             </Button>
           </DialogFooter>

@@ -20,7 +20,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * else). It opens the same `CtemLoopSetupDialog` on the step to resume on.
  */
 import { useState } from "react";
-import { Workflow } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,7 +46,7 @@ export function CtemLoopSetupEntry({ size = "sm" }: { size?: "sm" | "default" })
   return (
     <>
       <Button type="button" variant="outline" size={size} className="gap-1.5" onClick={() => setOpen(true)} data-testid="ctem-loop-setup-entry">
-        <Workflow className="h-4 w-4" aria-hidden />
+        <Icon name="network" size={16} aria-hidden />
         {t_i18n("Set up the CTEM loop")}
       </Button>
       {open && <CtemLoopSetupDialog open onOpenChange={setOpen} />}
