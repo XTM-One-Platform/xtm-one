@@ -4132,6 +4132,32 @@ async def _test_integration(
             "docusign", docusign_token, {}, integration.name, db=db, integration=integration
         )
 
+    # NetSuite: the compound credential (account, mode, identifiers and the
+    # secret of the API Key field) is assembled from the row the gate above
+    # cleared and handed to the provider's validate_connection.
+    if integration.provider == "netsuite":
+        from app.integrations.providers.netsuite import compound_credential as netsuite_credential
+
+        netsuite_extra: dict = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                netsuite_extra = decrypt_json(integration.extra_config_enc) or {}
+        netsuite_token = netsuite_credential(
+            ((await reveal_field(integration, "api_key_enc")) or "").strip(), netsuite_extra
+        )
+        if not netsuite_token:
+            return {
+                "status": "error",
+                "message": (
+                    "Missing credentials: set the account ID and, for OAuth 2.0 machine-to-machine, the client "
+                    "ID, the certificate ID and the certificate's private key; for Token-Based Authentication, "
+                    "the consumer key and secret, the token ID and the token secret."
+                ),
+            }
+        return await test_provider_connectivity(
+            "netsuite", netsuite_token, {}, integration.name, db=db, integration=integration
+        )
+
     # Microsoft Purview in app-only (API-key) mode stores the service principal
     # credentials in the client_id/client_secret columns (tenant + optional
     # account_name in extra_config) — there is no single bearer token to resolve
