@@ -384,6 +384,56 @@ def normalize_run_ask(
     return run_ask
 
 
+def flow_ask(
+    question: str, options: object = None, recommendation: object = None, deadline: object = None
+) -> dict[str, Any] | None:
+    """The ask of a flow Ask-user node (#842, S6), ``None`` for a free-text node.
+
+    A node with no options, recommendation or deadline parks as it always did
+    (no ask stored, no guard). Options may come as the list or its JSON text;
+    the model and the guard are the work item's, so a bad option list fails
+    the node with the reason instead of parking an unanswerable card.
+    """
+    if isinstance(options, str):
+        text = options.strip()
+        try:
+            options = json.loads(text) if text else None
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"ask.options is not valid JSON ({exc})") from exc
+    given = {
+        name: value
+        for name, value in (("options", options), ("recommendation", recommendation), ("deadline", deadline))
+        if value not in (None, "", [])
+    }
+    if not given:
+        return None
+    ask = normalize_ask({"question": question, **given})
+    if ask is None:
+        return None
+    # The question kept as the node rendered it: the guard read it, it does not reword.
+    ask["question"] = str(question).strip()[:MAX_RUN_CONTEXT_CHARS]
+    return ask
+
+
+def flow_option(ask: dict[str, Any] | None, response: str) -> str:
+    """The option key an answer to a flow park chose, ``""`` for free text.
+
+    The answer is the key or the label of an option (any case), or the key
+    followed by ``: <note>`` as the router writes an option with a note.
+    """
+    options = (ask or {}).get("options")
+    text = (response or "").strip()
+    head = text.split(":", 1)[0].strip().casefold()
+    for option in options if isinstance(options, list) else []:
+        if not isinstance(option, dict):
+            continue
+        key = str(option.get("key") or "").strip()
+        label = str(option.get("label") or key).strip()
+        if key and (text.casefold() in (key.casefold(), label.casefold()) or head == key.casefold()):
+            return key
+    return ""
+
+
 def run_question_text(ask: dict[str, Any]) -> str:
     """The one string legacy readers of ``human_input_question`` show.
 
