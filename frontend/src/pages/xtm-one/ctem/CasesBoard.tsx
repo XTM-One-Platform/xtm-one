@@ -27,6 +27,7 @@ import { exactCount, formatCount } from "@/lib/number-format";
 import { cn } from "@/lib/utils";
 import { BOARD_COLUMN_SURFACE, BOARD_GRID, DAY, OVERDUE_TEXT, ageBands, daysSince, topCases } from "./cases-board";
 import { CaseLoopLine, CaseUrgencyChip } from "./case-loop";
+import { CaseTicketChip } from "./case-ticket";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip, useCasesEmptyLabel } from "./cases-shared";
 
 const PERIODS = ["7", "30", "90"] as const;
@@ -93,6 +94,7 @@ function TopCase({ c, owner, now }: { c: CtemCaseSummary; owner: string | null; 
           </span>
         </span>
         <CaseLoopLine c={c} now={now} />
+        <CaseTicketChip tickets={c.tickets} compact />
       </Link>
     </li>
   );

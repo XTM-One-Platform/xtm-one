@@ -37,7 +37,7 @@ from typing import Any, ClassVar, Protocol, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import OPEN_STATES, CtemCase
+from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent
 from app.services import ctem_case_loop as case_loop
 
 logger = logging.getLogger(__name__)
@@ -825,17 +825,26 @@ async def sync_case(
             return SyncOutcome(notes=[note])
         outcome = await ensure_ticket(db, case, adapter, sync, integration=integration, base_url=base_url, now=now)
         outcome.action = "created"
+        _frame_if_moved(events, case, outcome, now)
         return outcome
     wanted = target_status(case)
     if (wanted and ticket.get("status") != wanted) or needs_reopen(case, ticket):
         outcome = await push_case_state(db, case, adapter, sync, base_url=base_url, now=now)
         outcome.action = "pushed"
+        _frame_if_moved(events, case, outcome, now)
         return outcome
     outcome = await pull_ticket_status(db, case, adapter, sync, now=now)
     outcome.action = "pulled"
     if outcome.retest_requested:
-        _raise_retest(events, case, now)
+        _raise_retest(events, case, now, db=db)
+    _frame_if_moved(events, case, outcome, now)
     return outcome
+
+
+def _frame_if_moved(events: case_loop.PendingEvents | None, case: CtemCase, outcome: SyncOutcome, now: datetime) -> None:
+    """Raise the live ``ctem_case_update`` frame when a sync step changed the case's ticket (CTEM-19-UI, #1032)."""
+    if events is not None and (outcome.created or outcome.updated or outcome.error or outcome.retest_requested):
+        events.frame(case, "ticket", now)
 
 
 async def sync_one(
@@ -884,11 +893,27 @@ async def sync_one(
     }
 
 
-def _raise_retest(events: case_loop.PendingEvents | None, case: CtemCase, now: datetime) -> None:
-    """Queue ``ctem_case.retest_requested`` once per ticket change (dedupe key: case and ticket time)."""
+def _raise_retest(
+    events: case_loop.PendingEvents | None, case: CtemCase, now: datetime, *, db: AsyncSession | None = None
+) -> None:
+    """Queue ``ctem_case.retest_requested`` once per ticket change (dedupe key: case and ticket time).
+
+    With *db*, the case history also records it (``retest_requested``, CTEM-19-UI #1032), so the
+    case page says the re-test started because the ticket reached done.
+    """
+    ticket = managed_ticket(case) or {}
+    if db is not None:
+        db.add(
+            CtemCaseEvent(
+                case_id=case.id,
+                actor="system",
+                kind="retest_requested",
+                at=now,
+                evidence=f"{ticket.get('integration')}:{ticket.get('key')}",
+            )
+        )
     if events is None:
         return
-    ticket = managed_ticket(case) or {}
     events.add(
         CASE_RETEST_REQUESTED,
         {**case_loop.case_data(case), "ticket_integration": ticket.get("integration"), "ticket_key": ticket.get("key")},
@@ -970,7 +995,8 @@ async def apply_inbound_status(
         source = cast(TicketingAdapter, _InboundSource(provider))
         outcome = await pull_ticket_status(db, case, source, sync, remote=remote, now=now)
         if outcome.retest_requested:
-            _raise_retest(events, case, now)
+            _raise_retest(events, case, now, db=db)
+        _frame_if_moved(events, case, outcome, now)
         return outcome
     return None
 
@@ -1012,6 +1038,24 @@ async def apply_jira_delivery(integration_id: str, payload: Any) -> SyncOutcome 
     except Exception:
         logger.warning("CTEM ticket status from a Jira delivery left to the sync pull", exc_info=True)
         return None
+
+
+async def ticketing_target(db: AsyncSession) -> dict[str, Any]:
+    """Whether a ticketing target is declared, for the case screens (CTEM-19-UI, #1032).
+
+    Reads the profile only (no credential, no remote call): ``connected`` false
+    carries the reason and the settings link the screens show, never an error.
+    """
+    from app.services import organization_context as oc
+
+    row = await oc.current_version(db)
+    integration = ""
+    if row is not None:
+        target = getattr(oc.parse_profile(row.profile), "ticketing", None)
+        integration = (getattr(target, "integration", "") or "").strip()
+    if not integration:
+        return {"connected": False, "reason": NOT_CONNECTED, "settings": SETTINGS_PATH}
+    return {"connected": True, "settings": SETTINGS_PATH}
 
 
 #: The providers the sync knows, by integration provider key. A new ticketing

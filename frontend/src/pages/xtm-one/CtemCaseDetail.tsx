@@ -44,6 +44,7 @@ import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
+import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
@@ -112,7 +113,26 @@ const EVENT_LABEL: Record<string, string> = {
   exploitation: "Recorded how it would be exploited",
   // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
   source_event: "OpenAEV result received",
+  // The case ticket (CTEM-19, #917; shown by CTEM-19-UI, #1032): created, or its status moved.
+  ticket: "Ticket status",
+  // The ticket reached done and the sync asked for the re-test (CTEM-19-UI, #1032).
+  retest_requested: "Re-test started: the ticket is done",
 };
+
+/** The status word of a `ticket` history row, translated where drawn (#1032). */
+const TICKET_EVENT_STATUS: Record<string, string> = {
+  open: "Open",
+  in_progress: "In progress",
+  done: "Done",
+  cancelled: "Cancelled",
+};
+
+/** The ticket a history row names (`integration:key`), its key alone: never the integration id. */
+function ticketKeyOf(evidence: string | null): string | null {
+  if (!evidence) return null;
+  const at = evidence.indexOf(":");
+  return at >= 0 ? evidence.slice(at + 1) || null : evidence;
+}
 
 /** The OpenAEV event of a `source_event` history row, translated where drawn (#956). */
 const SOURCE_EVENT_LABEL: Record<string, string> = {
@@ -454,6 +474,7 @@ export default function CtemCaseDetail() {
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
             <CaseLoopLine c={kase} now={now} />
+            <CaseTicketChip tickets={kase.tickets} ticketing={kase.ticketing} showNotConnected />
           </>
         }
         title={kase.title}
@@ -608,7 +629,20 @@ export default function CtemCaseDetail() {
                 <span className="font-medium">
                   {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
                 </span>
-                <span>{t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}</span>
+                <span>
+                  {e.kind === "ticket" && !e.from ? t_i18n("Ticket created") : t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}
+                </span>
+                {(e.kind === "ticket" || e.kind === "retest_requested") && ticketKeyOf(e.evidence) && (
+                  <span className="font-medium" data-testid="ctem-case-ticket-event">{ticketKeyOf(e.evidence)}</span>
+                )}
+                {e.kind === "ticket" && e.from && e.to && (
+                  <span>
+                    {t_i18n("{from} to {to}", {
+                      from: t_i18n(TICKET_EVENT_STATUS[e.from] ?? e.from),
+                      to: t_i18n(TICKET_EVENT_STATUS[e.to] ?? e.to),
+                    })}
+                  </span>
+                )}
                 {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
                 {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
                 {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
@@ -617,7 +651,9 @@ export default function CtemCaseDetail() {
                   <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
                 )}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && <span className="text-default-secondary">{e.evidence}</span>}
+                {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && (
+                  <span className="text-default-secondary">{e.evidence}</span>
+                )}
                 {e.at && (
                   <span className="ml-auto whitespace-nowrap text-default-secondary">
                     {intl.formatDate(e.at, { dateStyle: "medium", timeStyle: "short" })}
