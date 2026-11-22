@@ -534,6 +534,23 @@ verification is done.
 | S11 | Google Chat: cardsV2 renderer with app auth, `CARD_CLICKED` handler with token verification; user-auth sends carry the answer links of S9b | yes | e2e per I.6, path (d), app and user auth, in a DM and a space |
 | S12 | WhatsApp (1:1): reply buttons or list, button reply webhook mapped to the open decision; Discord and Telegram if their APIs allow | yes | e2e per I.6 (1:1 only for WhatsApp) |
 
+S12 as built (`services/decision_whatsapp.py`): 1 to 3 options are reply
+buttons, 4 to 10 a list, anything else (more options, a free-text question,
+a tool approval with more calls than a card shows, an answered decision) is
+text with the link to the decision. Each reply id is
+`xtm.d:<decisions row id>:<option key>`; the webhook answers a 1:1
+`button_reply` or `list_reply` through the router as the sender's linked
+WhatsApp identity (surface `whatsapp_card`), never routes it to an agent, and
+answers in the chat with the decided state or the refusal (WhatsApp cannot
+edit a sent interactive message). Agents send it with
+`send_whatsapp_bot_message(to, decision=...)`. Checked for the other two:
+Telegram's Bot API allows it (an `inline_keyboard` whose `callback_data`, 64
+bytes, holds the row id and key; `callback_query` on the existing webhook;
+`editMessageReplyMarkup` for the decided state); Discord allows it only
+through message components answered on an Interactions endpoint (Ed25519
+signature, a 3-second deadline), which the gateway adapter does not expose
+today. Both are left out of this slice.
+
 S2 as built: `app/models/decision.py` (the tables), `app/models/decision_hooks.py`
 (one `before_flush` hook writes the dual write from the engines' own columns, so
 no engine write path calls it: a run entering `awaiting_human`, a flow
