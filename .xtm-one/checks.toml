@@ -2029,15 +2029,17 @@ affected_always = [
 # pre-push guard: frontend-unit affected=true picks them only when it runs, so
 # a push without it went red on Frontend gates one round later (#1080,
 # src/no-class-name-assertions.test.ts). sh -c because the step's src/*.test.ts
-# is a shell glob; test_ci_suites_in_merge_queue pins the two commands equal.
+# is a shell glob and the source-scan list a command substitution
+# (scripts/source-scan-tests.mjs); test_ci_suites_in_merge_queue pins the two
+# commands equal.
 [check.frontend-gates]
-description = "the frontend whole-tree gates as CI's 'Frontend gates' job (after frontend-install): tests_unit/, src/*.test.ts, src/i18n/, the settings form kit; a pre-push guard"
-argv = ["sh", "-c", "exec yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts"]
+description = "the frontend whole-tree gates as CI's 'Frontend gates' job (after frontend-install): tests_unit/, src/*.test.ts, src/i18n/, the settings form kit, then every source-scan guard; a pre-push guard"
+argv = ["sh", "-c", "yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts && yarn vitest run $(node scripts/source-scan-tests.mjs)"]
 cwd = "frontend"
 timeout = 900
 image = "nodejs-dev"
 report = "lines"
-needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib"]
+needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib", "backend/app/services/health"]
 pre_push = ["*.ts", "*.tsx", "*.css", "*.json"]
 
 # The same vitest run in update mode, for a deliberate change to what a test
