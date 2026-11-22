@@ -275,7 +275,6 @@ ee:
   - frontend/src/components/fleets/**
   - frontend/src/components/investigation/**
   - frontend/src/components/memory/**
-  - frontend/src/components/decisions/**
   - frontend/src/components/presentation/**
   - frontend/src/components/report/**
   - frontend/src/components/roi/**
@@ -581,6 +580,7 @@ ee:
   - backend/app/models/decision_hooks.py
   - backend/app/services/decision_links.py
   - backend/app/services/decision_router.py
+  - backend/app/services/decision_waits.py
   - backend/app/services/agentic_executions.py
   - backend/app/services/integration_tools.py
   - backend/app/services/mcp_oauth_tokens.py
@@ -708,6 +708,7 @@ ce:
   - backend/app/data
   - backend/app/enterprise
   - backend/app/integrations/providers/aikido  # a connector
+  - backend/app/integrations/providers/airwallex  # a connector
   - backend/app/integrations/providers/ashby  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
   - backend/app/integrations/providers/drata  # a connector
