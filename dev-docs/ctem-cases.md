@@ -544,6 +544,34 @@ then the existing AI assessment and facts grid unchanged.
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
 
+### 7.2bis Attention score and its points (#1176)
+
+The list's default sort, its "Act on this first" band and the case page's
+"Why this case needs attention now" read one explained score
+(`frontend/src/pages/xtm-one/ctem/case-attention.ts`): the points of each
+reason are added, and each reason is named in the why line. A reason whose
+points are set to 0 adds nothing and is not named (the age when its points per
+day or its cap is 0). Resolved cases and accepted risks score 0.
+
+The points are the organization's, profile field `case_attention`
+(`CaseAttentionWeights` in `services/organization_context.py`, an exposure
+field: never in the agent block or the legacy dump), set by an administrator
+with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
+`PUT /organization-context`). Defaults, each from 0 to 100:
+
+| Reason | Field | Default |
+|---|---|---|
+| Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
+| At least one KEV issue | `kev` | 15 |
+| At least one crown jewel touched | `crown_jewel` | 15 |
+| SLA breached or due date passed | `overdue` | 20 |
+| Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
+| No owner | `no_owner` | 5 |
+| Per day open, capped at `age_max` (default 10) | `age_per_day` | 1 |
+
+A profile saved before the field reads the defaults; every profile save of
+the Settings form carries it whole.
+
 ### 7.3 Case page `/ctem/cases/:id`
 
 - Header: the CTEM header band (`CtemPageHeader`) with the shared
@@ -580,45 +608,22 @@ then the existing AI assessment and facts grid unchanged.
   and "Restricted", every other cell empty (no id, source, score, asset or
   link); the Source filter offers "Restricted". A case the viewer sees
   nothing of is the not-found page, never an empty case.
-- Who works the case (#1266, replaces the per-section sentence of #1206
-  slice D): one card at the top of the case body (`ctem/CaseWorkCard.tsx`),
-  read from live state (`ctem/case-workers.ts`), never assumed. The reader
-  lists every assignment that can start on THIS case, whatever fleet or agent
-  owns it (the built-in CTEM loop fleet is one way, never the default): its
-  platform event trigger names `ctem_case.opened` or `ctem_case.reopened` (an
-  automation on `ctem_case.resolved` or the SLA event alone continues a case,
-  never starts it), and its `trigger_config.filter` takes the case event
-  payload, evaluated with the backend's filter grammar
-  (`integration_event_filters.payload_filter_reason`) on the fields the page
-  knows (`case_id`, `object_id`, `object_type`, `trigger_path`). The two
-  seeded case automations route by `trigger_path` (`in` and `not_in` the
-  threat paths), so a case lists exactly one of them. A key the page cannot
-  read (`vertical`, the state at the next event) or an operator it does not
-  evaluate (`matches`) never drops an automation: the page refutes only what
-  it proves (UX round 1 on #1275, B1). The reader also reads the runs the
-  case events started on this case
-  (`GET /fleets/case-runs/{id}`). First match wins: a run active on the case
-  shows "Worked by <agent> (<fleet>)", queued or running since, and "Open
-  the run"; the newest run failed shows the same line in the error colour
-  with the run; an enabled automation shows "Worked by" and "Waits for the
-  next case event"; automations that are all off are named with their agent
-  and fleet and a "Switch on" button; nothing at all is one elevated empty
-  state (icon, title, explanation, centred) with three choices on equal
-  footing: Use the built-in CTEM loop (the guided setup for an administrator
-  of XTM One, else the fleet page), Use your own fleet or agent (pick an
-  agent; its page opens the assignment panel preset on `ctem_case.opened`
-  and `ctem_case.reopened`, `?add-assignment=ctem-case`), Work it yourself
-  (Start). The card is not shown on a resolved or accepted-risk case. Without
-  agentic AI or on a read error nothing is claimed and the card is hidden.
-  Calls to action are design system buttons; no inline link in the secondary
-  colour.
-- Loop sections, not started (#1266): How it would be exploited, Analyst
-  review, Validation, Remediation decision and Treatment plan each say what
-  they will hold and the product they are written from (OpenCRQ for the
-  exploitation reading and the treatment plan, OpenCTI for the analyst
-  review, OpenAEV for validation) with its logo and connection state, and a
-  "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
+- Loop sections (#1206, slice D): Opened by, How it would be exploited,
+  Analyst review, Validation, Remediation decision and Treatment plan never
+  promise work nobody will do. An empty section says the reason read from
+  live state (`ctem/case-loop-reason.ts`), first match wins: "Empty: OpenCRQ
+  is not connected." with a Connect link (exploitation reading and treatment
+  plan only, when no OpenCRQ registration exists); "Waiting for <agent>,
+  working this case since <time>" while a fleet run on the case is active,
+  whatever the fleet's switches say (a run that stays pending keeps this
+  line with its start time, which shows how long it has waited); "No
+  automation works this case: the CTEM loop fleet is not set up." with a
+  link to the fleet when no run is active and the seeded `ctem-loop` fleet
+  or a fork of it has none of its automations on, or no such fleet is
+  visible; otherwise the section's own sentence. Links are the design
+  system `Link` over the router link (underlined in every state). Without
+  agentic AI or on a read error nothing is claimed
+  and the own sentence stays. "Opened by" on a case no signal opened names
   the source readers from the sources of its visible issues ("Opened from
   OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
   findings on your assets").
