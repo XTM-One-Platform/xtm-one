@@ -276,8 +276,15 @@ async def answer_flow_park(db: AsyncSession, user: User, run_id: str, response: 
             status_code=409, detail="The run is not waiting for a human answer."
         )
     await _refuse_if_run_flow_paused(db, run)
+    from app.services.decision_ask import flow_option
+
+    # An Ask-user node with options (#842, S6): the chosen key is {{ask.option}}.
+    ask = waiting.get("ask") if isinstance(waiting.get("ask"), dict) else None
+    option = flow_option(ask, response)
     waiting["released"] = True
     waiting["response"] = response
+    if option:
+        waiting["option"] = option
     waiting["responded_by"] = user.email or str(user.id)
     state["waiting"] = waiting
     run.state = state
@@ -986,6 +993,12 @@ async def get_flow_run(
         awaiting_input_question=(
             (run.state or {}).get("waiting", {}).get("question")
             if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
+            else None
+        ),
+        awaiting_input_ask=(
+            (run.state or {}).get("waiting", {}).get("ask")
+            if ((run.state or {}).get("waiting") or {}).get("kind") == "human"
+            and not ((run.state or {}).get("waiting") or {}).get("released")
             else None
         ),
         steps=[

@@ -476,3 +476,6 @@ class FlowRunDetailResponse(FlowRunSummaryResponse):
     # question — what the respond box displays.
     awaiting_input_node_id: str | None = None
     awaiting_input_question: str | None = None
+    # The structured ask of an Ask-user node with options (#842, S6): question,
+    # options, recommendation, deadline. None for a free-text node.
+    awaiting_input_ask: dict[str, Any] | None = None
