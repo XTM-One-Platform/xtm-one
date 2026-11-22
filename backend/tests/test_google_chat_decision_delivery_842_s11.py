@@ -209,6 +209,107 @@ async def test_no_app_and_no_integration_is_recorded_as_a_permanent_refusal(monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("where", ["space", "send"])
+async def test_a_transient_chat_failure_is_retried_not_recorded_as_permanent(monkeypatch, where):
+    # Review on #1120: a Chat 5xx, a timeout, no OAuth token or a failed DM lookup is retried within the bounded attempts.
+    failure = AsyncMock(side_effect=cards.ChatUnavailableError("Google Chat answered HTTP 503"))
+    if where == "space":
+        monkeypatch.setattr(cards, "app_space_for", failure)
+    else:
+        monkeypatch.setattr(cards, "app_space_for", AsyncMock(return_value="spaces/ROOM"))
+        monkeypatch.setattr(cards, "send_to_space", failure)
+    db = _Db()
+    assert not await cards.deliver_work_item_card(db, _decision(), _item({"channel": "google_chat", "user": "a@b.c"}))
+    (event,) = db.added
+    assert "permanent" not in event.detail and "HTTP 503" in event.detail["error"]
+    assert await cards._attempts(_Db([event.detail]), uuid.uuid4()) == (False, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_transient_chat_failure_still_falls_back_to_the_user_links(monkeypatch):
+    monkeypatch.setattr(cards, "app_space_for", AsyncMock(side_effect=cards.ChatUnavailableError("timeout")))
+    monkeypatch.setattr(cards, "link_message", lambda decision, recipient, language=None: "links")
+    calls: list = []
+    db = _Db()
+    item = _item({"channel": "google_chat", "space": "spaces/ROOM", "integration": "Google"})
+    assert await cards.deliver_work_item_card(db, _decision(), item, caller=_caller([(True, "sent")], calls))
+    (event,) = db.added
+    assert event.detail["sent"] is True and len(calls) == 1
+
+
+class _Resp:
+    def __init__(self, status: int, body=None):
+        self.status_code = status
+        self._body = body
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no JSON")
+        return self._body
+
+
+def _client(answer):
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, *args, **kwargs):
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        get = post
+
+    return _Client
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("answer", "transient"),
+    [
+        (_Resp(503), True),
+        (_Resp(429), True),
+        (_Resp(408), True),
+        (cards.httpx.ConnectTimeout("timeout"), True),
+        (_Resp(403, {"error": {"status": "PERMISSION_DENIED"}}), False),
+        (_Resp(404, {"error": {}}), False),
+    ],
+)
+async def test_only_a_transient_chat_answer_raises_to_a_strict_caller(monkeypatch, answer, transient):
+    monkeypatch.setattr(cards.httpx, "AsyncClient", _client(answer))
+    assert await cards.post_message("t", "spaces/A", {}) is None
+    assert await cards.direct_message_space("t", "users/1") is None
+    for call in (
+        lambda: cards.post_message("t", "spaces/A", {}, strict=True),
+        lambda: cards.direct_message_space("t", "users/1", strict=True),
+    ):
+        if transient:
+            with pytest.raises(cards.ChatUnavailableError):
+                await call()
+        else:
+            assert await call() is None
+
+
+@pytest.mark.asyncio
+async def test_a_configured_bot_without_a_token_is_transient_only_when_strict(monkeypatch):
+    from app.channels import google_chat
+
+    monkeypatch.setattr(google_chat, "_get_googlechat_creds", AsyncMock(return_value={"credentials_json": "{}"}))
+    monkeypatch.setattr(google_chat.GoogleChatChannel, "_get_access_token", AsyncMock(return_value=""))
+    assert await cards.app_token() == ""
+    with pytest.raises(cards.ChatUnavailableError):
+        await cards.app_token(strict=True)
+    monkeypatch.setattr(google_chat, "_get_googlechat_creds", AsyncMock(return_value=None))
+    assert await cards.app_token(strict=True) == ""
+
+
+@pytest.mark.asyncio
 async def test_a_sent_or_refused_decision_is_not_sent_again(monkeypatch):
     send = AsyncMock(return_value=True)
     monkeypatch.setattr(cards, "send_to_space", send)

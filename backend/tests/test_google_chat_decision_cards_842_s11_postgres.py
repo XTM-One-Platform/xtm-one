@@ -85,14 +85,16 @@ class _Chat:
         self.patched: list[tuple[str, dict[str, Any]]] = []
         self.lookups: list[str] = []
 
-        async def app_token() -> str:
+        async def app_token(*, strict: bool = False) -> str:
             return "app-token" if app else ""
 
-        async def direct_message_space(token: str, user_name: str) -> str | None:
+        async def direct_message_space(token: str, user_name: str, *, strict: bool = False) -> str | None:
             self.lookups.append(user_name)
             return DM_SPACE if user_name == CHAT_USER else None
 
-        async def post_message(token: str, space: str, message: dict[str, Any]) -> dict[str, Any]:
+        async def post_message(
+            token: str, space: str, message: dict[str, Any], *, strict: bool = False
+        ) -> dict[str, Any]:
             self.posted.append((space, message))
             return {"name": f"{space}/messages/m{len(self.posted)}"}
 

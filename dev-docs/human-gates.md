@@ -678,6 +678,9 @@ decision as the app's card (app auth) where the app is in the space or has a
 DM with the person, else as a user through that Google integration with the
 S9b answer links (`send_google_chat_message`, the item's agent's toolset,
 scope and approval gate, as for every notify send), at most three attempts,
+a transient Chat failure (network, timeout, HTTP 408, 429 or 5xx, no OAuth
+token, a failed DM lookup) counted as one of them and only configuration (no
+bot, no space for the target, Chat refusing the app) ending the delivery,
 each recorded as a `notified` event (`via` `google_chat_card` with the message
 name, or `google_chat_links`). An answer given anywhere else (web, link, Teams)
 edits every card the app posted (`spaces.messages.patch`, decided state), as

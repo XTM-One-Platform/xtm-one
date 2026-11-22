@@ -440,8 +440,33 @@ def click_response(message: dict[str, Any] | None, private: str | None, clicker:
 # --- Sending ------------------------------------------------------------------
 
 
-async def post_message(token: str, space: str, message: dict[str, Any]) -> dict[str, Any] | None:
-    """``spaces.messages.create`` of a card message as the Chat app; Chat's answer, else ``None``."""
+class ChatUnavailableError(Exception):
+    """A Chat call that failed for a reason a retry can fix: the network, a timeout, HTTP 408, 429 or 5xx, no OAuth token.
+
+    Raised only to a ``strict`` caller (the bounded work item delivery), which
+    records the attempt as an error to retry instead of a permanent refusal.
+    """
+
+
+def _transient_status(status: int) -> bool:
+    """Whether Chat's HTTP *status* is one a retry can fix."""
+    return status in (408, 429) or status >= 500
+
+
+def _json(resp: httpx.Response) -> Any:
+    try:
+        return resp.json()
+    except ValueError:
+        return None
+
+
+async def post_message(
+    token: str, space: str, message: dict[str, Any], *, strict: bool = False
+) -> dict[str, Any] | None:
+    """``spaces.messages.create`` of a card message as the Chat app; Chat's answer, else ``None``.
+
+    *strict*: a transient failure raises :class:`ChatUnavailableError` instead of ``None``.
+    """
     parent = space if space.startswith("spaces/") else f"spaces/{space}"
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -450,12 +475,16 @@ async def post_message(token: str, space: str, message: dict[str, Any]) -> dict[
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=message,
             )
-            data = resp.json()
-    except (httpx.HTTPError, ValueError) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("Google Chat decision card not sent: %s", format_exception_message(exc))
+        if strict:
+            raise ChatUnavailableError(f"Google Chat could not be reached: {format_exception_message(exc)}") from exc
         return None
+    data = _json(resp)
     if resp.status_code != 200 or not isinstance(data, dict) or not data.get("name"):
         logger.warning("Google Chat decision card refused: HTTP %s", resp.status_code)
+        if strict and _transient_status(resp.status_code):
+            raise ChatUnavailableError(f"Google Chat answered HTTP {resp.status_code}")
         return None
     return data
 
@@ -465,17 +494,20 @@ VIA_CARD = "google_chat_card"
 VIA_LINKS = "google_chat_links"
 
 
-async def send_decision_card(db: AsyncSession, decision: Decision, token: str, space: str, *, language: str) -> bool:
+async def send_decision_card(
+    db: AsyncSession, decision: Decision, token: str, space: str, *, language: str, strict: bool = False
+) -> bool:
     """Post *decision*'s card into *space* as the Chat app; ``True`` when Chat took it.
 
     Records a ``notified`` event naming the message, so an answer given
     elsewhere (the web page, a link) updates the card (:func:`update_sent_cards`).
+    *strict*: a transient failure raises :class:`ChatUnavailableError`.
     """
     from app.models.decision import DecisionEvent
 
     # No viewer: the card the whole space reads (proposals redacted), answered per click.
     view = await load_view(db, decision, None, language)
-    sent = await post_message(token, space, render_google_chat_decision(view, language))
+    sent = await post_message(token, space, render_google_chat_decision(view, language), strict=strict)
     if sent is None:
         return False
     db.add(
@@ -581,18 +613,27 @@ def chat_user_name(user: Any) -> str | None:
     return None
 
 
-async def app_token() -> str:
-    """An access token of the ``googlechat_bot`` channel bot (app auth), ``""`` when none is configured."""
+async def app_token(*, strict: bool = False) -> str:
+    """An access token of the ``googlechat_bot`` channel bot (app auth), ``""`` when none is configured.
+
+    *strict*: a configured bot whose token could not be obtained raises :class:`ChatUnavailableError`.
+    """
     from app.channels.google_chat import GoogleChatChannel, _get_googlechat_creds
 
     creds = await _get_googlechat_creds()
     if not creds:
         return ""
-    return await GoogleChatChannel(creds["credentials_json"])._get_access_token()
+    token = await GoogleChatChannel(creds["credentials_json"])._get_access_token()
+    if not token and strict:
+        raise ChatUnavailableError("no OAuth token could be obtained for the Chat app")
+    return token
 
 
-async def direct_message_space(token: str, user_name: str) -> str | None:
-    """The app's DM space with *user_name* (``spaces.findDirectMessage``), else ``None``."""
+async def direct_message_space(token: str, user_name: str, *, strict: bool = False) -> str | None:
+    """The app's DM space with *user_name* (``spaces.findDirectMessage``), else ``None``.
+
+    *strict*: a transient failure of the lookup raises :class:`ChatUnavailableError`.
+    """
     if not _USER_NAME.match(user_name or ""):
         return None
     try:
@@ -602,28 +643,35 @@ async def direct_message_space(token: str, user_name: str) -> str | None:
                 headers={"Authorization": f"Bearer {token}"},
                 params={"name": user_name},
             )
-            data = resp.json()
-    except (httpx.HTTPError, ValueError) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("Google Chat direct message lookup failed: %s", format_exception_message(exc))
+        if strict:
+            raise ChatUnavailableError(f"Google Chat could not be reached: {format_exception_message(exc)}") from exc
         return None
+    data = _json(resp)
     if resp.status_code != 200 or not isinstance(data, dict):
+        if strict and _transient_status(resp.status_code):
+            raise ChatUnavailableError(f"Google Chat answered HTTP {resp.status_code} to the direct message lookup")
         return None
     return space_name(str(data.get("name") or ""))
 
 
-async def send_to_space(db: AsyncSession, decision: Decision, space: str, *, language: str) -> bool:
+async def send_to_space(
+    db: AsyncSession, decision: Decision, space: str, *, language: str, strict: bool = False
+) -> bool:
     """Post *decision*'s card into *space* as the Chat app (path (d), app auth); ``False`` when it could not.
 
     ``False`` covers no channel bot, a space name that is not one, and a
     refusal by Chat (the app is not in the space): the caller then falls back.
+    *strict*: a transient failure raises :class:`ChatUnavailableError` instead.
     """
     target = space_name(space)
     if target is None:
         return False
-    token = await app_token()
+    token = await app_token(strict=strict)
     if not token:
         return False
-    return await send_decision_card(db, decision, token, target, language=language)
+    return await send_decision_card(db, decision, token, target, language=language, strict=strict)
 
 
 async def send_to_person(db: AsyncSession, decision: Decision, user: Any, *, language: str) -> bool:
@@ -640,8 +688,11 @@ async def send_to_person(db: AsyncSession, decision: Decision, user: Any, *, lan
     return await send_decision_card(db, decision, token, space, language=language)
 
 
-async def app_space_for(db: AsyncSession, spec: dict[str, Any] | Any) -> str | None:
-    """The space the Chat app posts in for a ``google_chat`` notify ask: its ``space``, else the person's DM."""
+async def app_space_for(db: AsyncSession, spec: dict[str, Any] | Any, *, strict: bool = False) -> str | None:
+    """The space the Chat app posts in for a ``google_chat`` notify ask: its ``space``, else the person's DM.
+
+    *strict*: a transient failure of the token or the DM lookup raises :class:`ChatUnavailableError`.
+    """
     if spec.get("space"):
         return space_name(str(spec["space"]))
     email = str(spec.get("user") or "")
@@ -653,8 +704,8 @@ async def app_space_for(db: AsyncSession, spec: dict[str, Any] | Any) -> str | N
     name = chat_user_name(person) if person is not None else None
     if name is None:
         return None
-    token = await app_token()
-    return await direct_message_space(token, name) if token else None
+    token = await app_token(strict=strict)
+    return await direct_message_space(token, name, strict=strict) if token else None
 
 
 #: Sends tried for one work item decision before the tick stops trying.
@@ -701,15 +752,24 @@ async def deliver_work_item_card(db: AsyncSession, decision: Decision, item: Any
         return False
     spec = notify.notify_spec(item.payload) or {}
     language = notice_language()
-    space = await app_space_for(db, spec)
-    if space is not None and await send_to_space(db, decision, space, language=language):
-        return True
+    # A transient Chat failure (network, timeout, 408, 429, 5xx, no token) is retried within the
+    # bounded attempts; only configuration (no bot, no space for the target, Chat refusing the app) is final.
+    unavailable: str | None = None
+    try:
+        space = await app_space_for(db, spec, strict=True)
+        if space is not None and await send_to_space(db, decision, space, language=language, strict=True):
+            return True
+    except ChatUnavailableError as exc:
+        unavailable = str(exc)[:500]
     recipient = recipient_user_id(decision.recipient)
     agent_id = item.created_by_agent_id or item.owner_agent_id
     error: str | None = None
     permanent = False
     if not spec.get("integration") or not spec.get("space") or recipient is None or agent_id is None:
-        error, permanent = "the Chat app could not post and no Google integration and space are set", True
+        if unavailable is not None:
+            error = f"the Chat app could not post, retried: {unavailable}"
+        else:
+            error, permanent = "the Chat app could not post and no Google integration and space are set", True
     else:
         sender = SimpleNamespace(
             id=decision.id, user_id=item.user_id, created_by_agent_id=agent_id, owner_agent_id=None
