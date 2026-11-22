@@ -532,6 +532,34 @@ then the existing AI assessment and facts grid unchanged.
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
 
+### 7.2bis Attention score and its points (#1176)
+
+The list's default sort, its "Act on this first" band and the case page's
+"Why this case needs attention now" read one explained score
+(`frontend/src/pages/xtm-one/ctem/case-attention.ts`): the points of each
+reason are added, and each reason is named in the why line. A reason whose
+points are set to 0 adds nothing and is not named (the age when its points per
+day or its cap is 0). Resolved cases and accepted risks score 0.
+
+The points are the organization's, profile field `case_attention`
+(`CaseAttentionWeights` in `services/organization_context.py`, an exposure
+field: never in the agent block or the legacy dump), set by an administrator
+with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
+`PUT /organization-context`). Defaults, each from 0 to 100:
+
+| Reason | Field | Default |
+|---|---|---|
+| Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
+| At least one KEV issue | `kev` | 15 |
+| At least one crown jewel touched | `crown_jewel` | 15 |
+| SLA breached or due date passed | `overdue` | 20 |
+| Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
+| No owner | `no_owner` | 5 |
+| Per day open, capped at `age_max` (default 10) | `age_per_day` | 1 |
+
+A profile saved before the field reads the defaults; every profile save of
+the Settings form carries it whole.
+
 ### 7.3 Case page `/ctem/cases/:id`
 
 - Header: `EntityPageHeader` with back link "Back to Cases", the fix as
