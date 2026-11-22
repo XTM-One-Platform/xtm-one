@@ -20514,5 +20514,7 @@
   "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "Envoyez un signal de test pour voir la boucle avancer : il est enregistré par la vraie entrée et s’ouvre sur sa trace de boucle.",
   "The test signal could not be recorded.": "Le signal de test n’a pas pu être enregistré.",
   "Open the command center": "Ouvrir le centre de commande",
-  "Send a test signal": "Envoyer un signal de test"
+  "Send a test signal": "Envoyer un signal de test",
+  "Freshness": "Fraîcheur",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsolète : non vu par OpenAEV au-delà du seuil du tenant"
 }
