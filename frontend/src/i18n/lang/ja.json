@@ -20640,5 +20640,6 @@
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。}}",
   "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}",
   "Not computed yet": "未計算",
-  "{products} did not answer at {time}, cases unchanged.": "{products} は {time} に応答しませんでした。ケースは変更されていません。"
+  "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, other {{products} は {time} に応答しませんでした。ケースは変更されていません。}}",
+  "Open the {product} integration": "{product} の連携を開く"
 }
