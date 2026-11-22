@@ -20312,7 +20312,6 @@
   "Answer by": "回答期限",
   "Could not load what is waiting for you.": "あなたを待っている項目を読み込めませんでした。",
   "The agent has your answer and goes on.": "エージェントはあなたの回答を受け取り、続行します。",
-  "Decisions waiting for you": "あなたを待っている判断",
   "Run this {kind} on {name}?": "{name} でこの{kind}を実行しますか？",
   "The agent waits {time} for your decision.": "エージェントはあなたの判断を {time} 待ちます。",
   "Runs this command once. The machine asks again next time.": "このコマンドを1回実行します。次回もマシンが確認します。",
