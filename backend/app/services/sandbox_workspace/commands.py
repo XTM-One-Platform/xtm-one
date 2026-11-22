@@ -2521,11 +2521,13 @@ async def _start(sandbox: Any, command: ResolvedCommand, run_id: str, entries: d
     from opensandbox.models.execd import RunCommandOpts
     from opensandbox.models.filesystem import WriteEntry
 
-    from app.services.sandbox_workspace.registry_mirror import command_env
+    from app.services.sandbox_workspace.registry_mirror import command_env, write_maven_settings
     from app.services.sandbox_workspace.remote import REMOTE_WORKSPACE, TOOL_PATH, snapshot_json
 
     rdir = remote_run_dir(run_id)
     await sandbox.files.create_directories([WriteEntry(path=rdir, mode=700)])
+    # The Maven settings MAVEN_ARGS names, written beside each command (a pooled container may be fresh).
+    await write_maven_settings(sandbox)
     if command.report_path and "/" in command.report_path:
         # The report's directory, so a check that does not create it still writes the file.
         parent = command.report_path.rsplit("/", 1)[0]
