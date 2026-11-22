@@ -141,13 +141,23 @@ export function useOrganizationReaders(enabled = true) {
   });
 }
 
-/** The first-login organization setup proposal (#9173, S3): proposed once per instance. */
+/** The steps of the guided CTEM loop setup, in order (`organization_setup_prompt.STEPS`, #1087). */
+export type SetupStepKey = "organization" | "modules" | "ecosystem" | "gates" | "preview" | "enable";
+
+/**
+ * The first-connection setup proposal (#9173 S3, versioned by #1087): proposed
+ * at install and once after an upgrade that carries a new setup version.
+ */
 export interface OrganizationSetupPrompt {
   /** True when the caller must be shown the proposal now. */
   propose: boolean;
-  /** The instance's recorded answer, null while unanswered. */
+  /** The instance's recorded answer to the current version, null while unanswered. */
   outcome: OrganizationSetupAnswer | null;
   answered_at: string | null;
+  /** The setup version this build carries (`ctem-loop-1`). */
+  version?: string;
+  /** Step -> `done` or `skipped`, recorded for the current version. */
+  steps?: Partial<Record<SetupStepKey, "done" | "skipped">>;
 }
 
 export type OrganizationSetupAnswer = "started" | "later" | "dismissed";
@@ -167,6 +177,22 @@ export function useAnswerOrganizationSetupPrompt() {
   return useMutation<OrganizationSetupPrompt, Error, OrganizationSetupAnswer>({
     mutationFn: (outcome) => api.post("/organization-context/setup-prompt", { outcome }),
     onSuccess: (state) => qc.setQueryData([...KEY, "setup-prompt"], state),
+  });
+}
+
+/**
+ * Record one step of the guided setup as done or skipped (`PUT
+ * /organization-context/setup-prompt/steps`, administrators, #1087): each step
+ * saves on its own, so leaving midway loses nothing. A progress record only.
+ */
+export function useRecordSetupStep() {
+  const qc = useQueryClient();
+  return useMutation<OrganizationSetupPrompt, Error, { step: SetupStepKey; state: "done" | "skipped" }>({
+    mutationFn: (body) => api.put("/organization-context/setup-prompt/steps", body),
+    onSuccess: (state) => {
+      qc.setQueryData([...KEY, "setup-prompt"], state);
+      qc.invalidateQueries({ queryKey: ["fleets", "setup", "ctem-loop"] });
+    },
   });
 }
 

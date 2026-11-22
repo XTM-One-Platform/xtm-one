@@ -163,8 +163,15 @@ export function FleetAutonomyStrip({
   level: storedLevel,
   canManage,
   isAdmin,
+  compact = false,
 }: {
   fleetId: string;
+  /**
+   * The level choice alone (UX r1 B3 on #1092, the CTEM loop setup): the levels and the counts at the current
+   * level, with the same confirmation before approval is reduced; no gate lists, no matrix, no instructions
+   * position and no table of what waits now (the fleet page keeps them).
+   */
+  compact?: boolean;
   /** `fleet.autonomy_level`. */
   level: string | null | undefined;
   /** The reader manages the fleet (a built-in one: an administrator), and it is not archived. */
@@ -355,7 +362,7 @@ export function FleetAutonomyStrip({
             </span>
           )
         )}
-        {doc && !hasCatalog && canManage && (
+        {doc && !hasCatalog && canManage && !compact && (
           <Button
             variant="outline"
             size="sm"
@@ -368,7 +375,7 @@ export function FleetAutonomyStrip({
         )}
         </div>
         )}
-        {gates && (
+        {gates && !compact && (
           <FleetInstructionsPositionControl
             // Remounted when the saved position or flag changes, so the switch reads the stored value.
             key={`${gates.instructions_position ?? "unset"}:${gates.instructions_position_announced ? "told" : "silent"}`}
@@ -407,7 +414,7 @@ export function FleetAutonomyStrip({
         </section>
       )}
 
-      {hasCatalog && (
+      {hasCatalog && !compact && (
         <div className="space-y-1">
           <GateNames label="Waits:" gates={waits} testId="fleet-autonomy-waits" />
           <GateNames label="Runs alone:" gates={runsAlone} testId="fleet-autonomy-runs-alone" />
@@ -440,7 +447,7 @@ export function FleetAutonomyStrip({
       {reviewOpen && !hasCatalog && <FleetGateReview fleetId={fleetId} />}
 
       {/* Slice D of #10000 (#10202): what waits for a person now, decided in place. */}
-      <FleetPendingApprovals fleetId={fleetId} />
+      {!compact && <FleetPendingApprovals fleetId={fleetId} />}
 
       <ConfirmDialog
         open={reduceTo !== null}

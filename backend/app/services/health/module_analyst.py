@@ -73,6 +73,9 @@ MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
         "get_opencti_platform_queues",
         "list_opencti_stream_consumers",
         "get_opencti_licence",
+        # S15b-2b: data health and error rate, platform-wide (same file).
+        "get_opencti_data_health",
+        "get_opencti_error_rate",
         "get_opencti_entity_stats",
         "query_opencti_activity",
         "list_opencti_drafts",
@@ -84,6 +87,9 @@ MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
         "search_openaev_findings",
         "search_openaev_assets",
         "search_openaev_asset_groups",
+        # S15b-2c: module health reads of ``providers/openaev/health_reads.py``.
+        "get_openaev_platform_health",
+        "list_openaev_expectations_due",
     ),
     "opencrq": (
         "get_opencrq_platform_version",

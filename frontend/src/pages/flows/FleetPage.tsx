@@ -80,6 +80,7 @@ import { EntityHeaderMoreActions, EntityHeaderWideOnly, EntityPageHeader } from 
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { FleetHeaderActions, FleetHeaderStatus } from "@/components/fleets/FleetHeaderControl";
 import { FleetAutonomyStrip } from "@/components/fleets/FleetAutonomyStrip";
+import { CTEM_LOOP_FLEET_SLUG, CtemLoopSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
 import { useMediaQuery } from "@/hooks/useCompactToolbar";
 import { useRailHold } from "@/hooks/useNavPrefs";
 import { canControlFleet } from "@/components/fleets/fleet-control";
@@ -585,6 +586,8 @@ export default function FleetPage() {
               </EntityHeaderWideOnly>
             )}
             <EntityHeaderMoreActions items={moreActions} always={aiOpen} />
+            {/* The guided setup on the CTEM loop fleet itself (#1087); the entry hides for non-admins. */}
+            {fleet.slug === CTEM_LOOP_FLEET_SLUG && <CtemLoopSetupEntry size="default" />}
             <FleetHeaderActions
               fleetId={fleet.id}
               fleetName={fleet.name}

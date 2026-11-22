@@ -66,7 +66,6 @@ import { cn, formatCompactNumber, timeAgo } from "@/lib/utils";
 
 import {
   aboutStatus,
-  automationCount,
   checklistGroups,
   clampChips,
   INTEGRATION_CARD_PROVIDERS_MAX,
@@ -75,6 +74,7 @@ import {
   moduleLabel,
   quotaEstimate,
   quotaRange,
+  shownAutomationCount,
   setupPrerequisites,
   successRate,
   triggerKinds,
@@ -203,11 +203,9 @@ export function FleetAboutShowcase({
   const [metShown, setMetShown] = useState(false);
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const s = doc.structured ?? {};
-  // The read-only Platform Health fleet counts Platform Health itself (#974): its assignments start from Settings.
-  const automations =
-    readOnly && health?.automations
-      ? { on: health.automations.enabled, total: health.automations.total }
-      : automationCount(health, assignments);
+  // One count source with the header pill and the CTEM loop setup (UX r1 B2 on #1092): the health's automations
+  // (Platform Health counts itself there, #974); the members' assignments only while the health has no count.
+  const automations = shownAutomationCount(health, assignments);
   // One status source with the header pill (UX r1 B2): the health's automations, as `FleetHeaderStatus` reads them.
   const status = fleetOptIn(health?.automations) ?? aboutStatus(health, automations);
   const last = lastRunAt(health);
