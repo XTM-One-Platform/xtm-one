@@ -1366,6 +1366,15 @@ def test_asset_subcategories_cover_every_category_once():
     assert ASSET_SUBCATEGORIES["generic_asset"] == ()
 
 
+def test_the_opencrq_taxonomy_is_the_profile_taxonomy():
+    # xtm-one #1233: one taxonomy, source_code included, so a profile asset pushes as is.
+    from app.services.organization_context import ASSET_TAXONOMY
+
+    assert list(ASSET_TAXONOMY) == ASSET_CATEGORIES
+    assert dict(ASSET_TAXONOMY) == ASSET_SUBCATEGORIES
+    assert "code_repository" in ASSET_SUBCATEGORIES["source_code"]
+
+
 async def test_evidence_dismissal_sends_type_code_and_reason():
     with _recorded_trpc(opencrq_assets) as calls:
         await _run(

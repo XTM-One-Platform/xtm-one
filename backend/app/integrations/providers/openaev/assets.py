@@ -49,6 +49,11 @@ _ENDPOINT_INPUT_FIELDS = (
 )
 
 
+#: Categories newer than some OpenAEV releases (xtm-one #1233): a refused update
+#: is sent again as GENERIC_ASSET with no subcategory.
+_NEWER_CATEGORIES = frozenset({"SOURCE_CODE"})
+
+
 def _endpoint_input(current: dict[str, Any]) -> dict[str, Any]:
     """The update body that keeps *current* (an endpoint read) as it is."""
     body = {k: current[k] for k in _ENDPOINT_INPUT_FIELDS if k in current}
@@ -138,9 +143,27 @@ def register(
                 base_url, headers, "put", f"/api/endpoints/{asset_id}",
                 "update endpoint", json=body,
             )
+            fallback = ""
+            if err and body.get("asset_category") in _NEWER_CATEGORIES:
+                # An OpenAEV that predates the category refuses it: keep the asset
+                # unclassified there (XTM One keeps the exact category).
+                fallback = str(body["asset_category"])
+                body["asset_category"] = "GENERIC_ASSET"
+                body.pop("asset_subcategory", None)
+                _, err = await _api(
+                    base_url,
+                    headers,
+                    "put",
+                    f"/api/endpoints/{asset_id}",
+                    "update endpoint",
+                    json=body,
+                )
             if err:
                 return err
-            return f"Updated endpoint {asset_id}: {', '.join(sorted(changes))}."
+            done = f"Updated endpoint {asset_id}: {', '.join(sorted(changes))}."
+            if fallback:
+                done += f" This OpenAEV does not know {fallback}: the category was set to GENERIC_ASSET there."
+            return done
 
         if action == "delete":
             _, err = await _api(

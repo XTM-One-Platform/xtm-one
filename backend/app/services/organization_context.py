@@ -113,6 +113,10 @@ ASSET_TAXONOMY: dict[str, tuple[str, ...]] = {
         "ai_gateway",
         "vulnerability_scanner",
     ),
+    #: What the organization builds and ships (#1233): a third-party dependency is not an asset, it is
+    #: the software (SBOM) of the repository; container images, registries and IaC templates stay where
+    #: they are. An OpenAEV or OpenCTI without the value receives ``generic_asset`` (asset-model.md).
+    "source_code": ("code_repository", "ci_cd_pipeline", "package_registry", "software_package", "code_other"),
     "generic_asset": (),
 }
 ASSET_CATEGORIES: tuple[str, ...] = tuple(ASSET_TAXONOMY)
@@ -342,6 +346,7 @@ class AssetEntry(BaseModel):
         "saas_application",
         "ai_target",
         "security_platform",
+        "source_code",
         "generic_asset",
     ] = "generic_asset"
     #: A subcategory of ``category`` (empty: none chosen).

@@ -771,6 +771,35 @@ async def test_asset_update_keeps_the_fields_it_does_not_change(monkeypatch):
     assert "asset_type" not in sent and "asset_id" not in sent
 
 
+async def test_asset_update_to_source_code_falls_back_on_an_older_openaev(monkeypatch):
+    # xtm-one #1233: an OpenAEV that predates SOURCE_CODE refuses it; the tool
+    # sends GENERIC_ASSET without a subcategory and says so.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    puts: list[dict] = []
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        if method == "get":
+            return _FakeResp({"asset_id": "e1", "asset_name": "repo", "asset_category": "GENERIC_ASSET"}), None
+        puts.append(dict(json))
+        if json.get("asset_category") == "SOURCE_CODE":
+            return None, "OpenAEV error 400: asset_category"
+        return _FakeResp({}), None
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "update", "asset_id": "e1", "category": "source_code", "subcategory": "code_repository"},
+    )
+    assert not result.is_error, result.content
+    assert [p["asset_category"] for p in puts] == ["SOURCE_CODE", "GENERIC_ASSET"]
+    assert puts[0]["asset_subcategory"] == "CODE_REPOSITORY"
+    assert "asset_subcategory" not in puts[1]
+    assert "GENERIC_ASSET there" in result.content
+
+
 async def test_asset_update_of_a_missing_endpoint_writes_nothing(monkeypatch):
     from app.integrations.providers.openaev import assets
 
