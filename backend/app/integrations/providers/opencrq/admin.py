@@ -540,7 +540,7 @@ def register(
         )
         if err:
             return err
-        return f"Updated organization {organization_id}."
+        return f"Updated organization {organization_id}. Read its stored fields back with get_opencrq_organization."
 
     async def delete_opencrq_organizations(
         organization_ids: list[str] | None = None, tenant_id: str = ""

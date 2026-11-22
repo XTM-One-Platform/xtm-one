@@ -213,6 +213,19 @@ second object for the same question), and fixes the only real harm of F1 (a
 routinely pausing scheduled assignment holding its queue). N defaults to 4
 hours for scheduled and event runs and is off for chat-started runs.
 
+**Implementation (S7).** `app/services/decision_waits.py`. `holds_assignment`
+replaces the bare status filter of the overlap guard (`has_active_run`,
+`count_active_runs`, `find_active_run`) and of the delivery queue's slot
+counts: an `awaiting_human` run whose open `decisions` row is older than
+`HUMAN_GATE_QUEUE_RELEASE_HOURS` (default 4, 0 turns it off) no longer holds
+its assignment, unless its `trigger_context.type` is chat-started
+(`chat_handover`). The wait is read from the decision row, so no column is
+added. `expire_overdue_decisions` runs on the autonomous tick: an open run
+decision past its `deadline` becomes `expired` (an `expired` event, surface
+`deadline`), and the run resumes with the ask's recommendation as its answer,
+else "No answer before the deadline"; a tool approval resumes with every call
+rejected.
+
 ## 8. G. Storage (decided: G2)
 
 - **G1, a projection over the existing storages**: decisions stay where they
