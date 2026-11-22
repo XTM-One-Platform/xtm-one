@@ -44,6 +44,12 @@ logger = logging.getLogger(__name__)
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
 SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs")
+#: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
+#: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
+SECTION_SCOPES: dict[str, tuple[str, ...]] = {
+    "profile": ("crown_jewels", "pirs"),
+    "inventory": ("assets", "asset_groups", "tech_stack", "ai_systems"),
+}
 #: How long a run may hold its lock before another run may take it.
 LOCK_SECONDS = 900
 #: Read errors that mean the owner cannot read the platform any more: the sync pauses.
@@ -140,12 +146,17 @@ def define(
     sync.next_run_at = next_run(sync, datetime.now(UTC)) if enabled else None
 
 
-async def all_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
-    """Every sync, the global ``all`` schedule first, then in the order they were saved."""
+def in_scope(section: str, scope: str) -> bool:
+    """Whether a sync of *section* shows in *scope* (empty: every scope)."""
+    return not scope or section == ALL_SECTIONS or section in SECTION_SCOPES.get(scope, ())
+
+
+async def all_syncs(db: AsyncSession, scope: str = "") -> list[OrganizationContextSync]:
+    """Every sync of *scope*, the global ``all`` schedule first, then in the order they were saved."""
     rows = (
         (await db.execute(select(OrganizationContextSync).order_by(OrganizationContextSync.created_at))).scalars().all()
     )
-    return sorted(rows, key=lambda r: r.section != ALL_SECTIONS)
+    return sorted((r for r in rows if in_scope(r.section, scope)), key=lambda r: r.section != ALL_SECTIONS)
 
 
 async def global_sync_exists(db: AsyncSession) -> bool:
