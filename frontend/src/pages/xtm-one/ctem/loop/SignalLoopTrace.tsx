@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The loop trace (dev-docs/ctem-loop-visibility.md section 4): the only new
- * surface of the CTEM loop program. A centred dialog, opened by the `?loop=`
- * search parameter of the current page (`signal:<id>` or `case:<id>`), so a
- * trace can be shared and reopened after a reload; closing it removes the
- * parameter and focus returns to the row that opened it.
+ * The loop trace (dev-docs/ctem-loop-visibility.md section 4): where one
+ * signal is in the exposure management loop, and why. A section of the Signals
+ * page (#1263, `/ctem/signals?signal=<id>`), never a dialog, so a trace can be
+ * shared and reopened after a reload.
  *
  * It draws the ten stages the object went through, the current one lit, the
  * stage where the loop stopped with its reason, and the stages not reached
@@ -13,28 +12,18 @@
  * cannot read answers "This item is not available to you". The activity
  * stream refreshes the signal query, so a stage lights without a reload.
  */
-import { useRef, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Chip, Icon } from "@filigran/design-system";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useCtemSignalPaths, useProposeSignalScope,
-  type CtemDecisionRecord, type CtemSignal, type CtemSignalState,
-} from "@/hooks/api/useCtemSignalsApi";
+import { type ReactNode } from "react";
+import { Icon } from "@filigran/design-system";
+import { useCtemSignal, useProposeSignalScope, type CtemDecisionRecord, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { Button } from "@/components/ui/button";
-import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
-import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { DecisionReason, decisionSentence, levelLabel } from "./DecisionReason";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
-import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
-import { SignalSourcesDialog, SignalSourcesLink } from "./SignalSourcesDialog";
-
-export const LOOP_PARAM = "loop";
+import { signalLoop, type LoopStageView } from "./loop-stages";
 
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 
@@ -662,7 +651,8 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
   );
 }
 
-function SignalTraceBody({ id }: { id: string }) {
+/** The loop trace of one signal, read by id: a section of the Signals page (#1263). */
+export function SignalTraceBody({ id }: { id: string }) {
   const { t_i18n } = useFormatter();
   const { data, error, isLoading } = useCtemSignal(id);
   if (isLoading) return <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>;
@@ -671,188 +661,3 @@ function SignalTraceBody({ id }: { id: string }) {
   return <SignalTrace signal={data} />;
 }
 
-/**
- * The label of the trigger path a signal list is narrowed to, read from the
- * path catalogue (`GET /ctem-signals/paths`): null while it loads, "Unknown"
- * for an id the catalogue does not hold, never the raw id.
- */
-function useSignalPathLabel(path: string | null): string | null {
-  const { t_i18n } = useFormatter();
-  const { data, isLoading } = useCtemSignalPaths();
-  if (!path) return null;
-  const found = data?.paths.find((p) => p.id === path);
-  if (found) return t_i18n(found.label);
-  return isLoading ? null : t_i18n("Unknown");
-}
-
-/**
- * The signals in one state (or every state), newest sighting first, each
- * opening its own trace (CTEM-01-UI). The trigger path leads every row: a path
- * with no CVE and no actor reads exactly like a vulnerability.
- */
-function SignalListBody({ state, path, onState, onClearPath, onOpen }: {
-  state: CtemSignalState | null;
-  /** One trigger path the list is narrowed to (#1189), or null for every path. */
-  path: string | null;
-  onState: (state: CtemSignalState | null) => void;
-  onClearPath: () => void;
-  onOpen: (id: string) => void;
-}) {
-  const { t_i18n, intl } = useFormatter();
-  const { count: formatCount, exactCount } = useNumberFormat();
-  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useCtemSignalList(state, 50, true, path);
-  const first = data?.pages[0];
-  const counts = first?.counts ?? {};
-  const total = first?.total ?? 0;
-  const all = CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
-  const filters: { key: CtemSignalState | null; label: string; count: number }[] = [
-    { key: null, label: t_i18n("All"), count: all },
-    ...CTEM_SIGNAL_STATES.map((s) => ({ key: s, label: t_i18n(SIGNAL_STATE_LABEL[s]), count: counts[s] ?? 0 })),
-  ];
-  const signals = data?.pages.flatMap((page) => page.signals) ?? [];
-  const pathLabel = useSignalPathLabel(path);
-  const allRef = useRef<HTMLButtonElement>(null);
-  // The chip's delete button leaves with the chip: focus lands on "All", never on the dialog (UX round 3 A1).
-  const clearPath = () => {
-    onClearPath();
-    requestAnimationFrame(() => allRef.current?.focus());
-  };
-  return (
-    <div className="flex min-w-0 flex-col gap-3" data-testid="ctem-signal-list">
-      {/* The filters and the "n of N" count stay in view: the list below is the
-          only scroller (#877 UX round 1 B2). */}
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-      {/* The path's label comes from the path catalogue, never from the rows: an
-          empty filtered state has no row, and the id is never shown (UX round 3 B1 on #1194). */}
-      {path && pathLabel && (
-        <Chip
-          label={pathLabel}
-          onDelete={clearPath}
-          deleteLabel={t_i18n("Remove filter {name}", { name: pathLabel })}
-          className="shrink-0"
-          data-testid="ctem-signal-path-filter"
-          data-path={path}
-        />
-      )}
-      <div role="group" aria-label={t_i18n("Filter by state")} className="flex flex-wrap gap-1.5">
-        {filters.map((f) => (
-          <button
-            key={f.key ?? "all"}
-            ref={f.key === null ? allRef : undefined}
-            type="button"
-            aria-pressed={f.key === state}
-            onClick={() => onState(f.key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 content-caption",
-              BUTTON_ROLE_FOCUS_RING,
-              f.key === state ? "bg-elevation-hover font-medium" : "text-default-secondary hover:bg-elevation-hover",
-            )}
-          >
-            {f.label}
-            <span className="tabular-nums" title={exactCount(f.count)}>
-              {formatCount(f.count)}
-            </span>
-          </button>
-        ))}
-      </div>
-      {total > 0 && (
-        <span className="ml-auto shrink-0 content-caption text-default-secondary tabular-nums" data-testid="ctem-signal-shown">
-          {t_i18n("Showing {shown} of {total}", { shown: formatCount(signals.length), total: formatCount(total) })}
-        </span>
-      )}
-      </div>
-      {isLoading ? (
-        <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
-      ) : signals.length === 0 ? (
-        <div className="flex flex-col items-start gap-2" data-testid="ctem-signal-empty">
-          <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
-          <SignalSourcesLink />
-        </div>
-      ) : (
-        <ul className="flex max-h-[min(55vh,32rem)] flex-col overflow-y-auto" data-testid="ctem-signal-rows">
-          {signals.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(s.id)}
-                data-testid="ctem-signal-row"
-                data-path={s.trigger_path}
-                className={cn("flex w-full min-w-0 flex-col gap-1 rounded-sm px-2 py-1.5 text-left hover:bg-elevation-hover", BUTTON_ROLE_FOCUS_RING)}
-              >
-                <span className="flex min-w-0 items-baseline gap-2 content-compact">
-                  <span className="shrink-0 font-medium">{t_i18n(s.trigger_path_label || s.trigger_path)}</span>
-                  <span className="min-w-0 truncate text-default-secondary">{s.subject.label || s.subject.ref}</span>
-                  <span className="ml-auto shrink-0 content-caption text-default-secondary">
-                    {s.last_seen_at ? formatShortDateTimeIntl(intl, s.last_seen_at) : ""}
-                  </span>
-                </span>
-                <DecisionReason state={s.state} decision={s.decision} />
-              </button>
-            </li>
-          ))}
-          {hasNextPage && (
-            <li>
-              <button
-                type="button"
-                onClick={() => void fetchNextPage()}
-                disabled={isFetchingNextPage}
-                data-testid="ctem-signal-load-more"
-                className={cn("w-full rounded-sm px-2 py-1.5 text-left content-compact text-accent hover:bg-elevation-hover disabled:text-default-secondary", BUTTON_ROLE_FOCUS_RING)}
-              >
-                {isFetchingNextPage ? t_i18n("Loading...") : t_i18n("Load more")}
-              </button>
-            </li>
-          )}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/**
- * Mount once on a page that holds loop rows: it opens itself when the URL
- * carries `?loop=`. A `case:` trace arrives with CTEM-03 (cases from
- * signals); until then it says so instead of drawing stages it cannot know.
- */
-export function LoopTraceDialog() {
-  const { t_i18n } = useFormatter();
-  const [params, setParams] = useSearchParams();
-  const target = parseLoopParam(params.get(LOOP_PARAM));
-  const close = () => {
-    const next = new URLSearchParams(params);
-    next.delete(LOOP_PARAM);
-    setParams(next, { replace: true });
-  };
-  const go = (value: string, replace = false) => {
-    const next = new URLSearchParams(params);
-    next.set(LOOP_PARAM, value);
-    setParams(next, { replace });
-  };
-  return (
-    <>
-    <Dialog open={target !== null} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-w-4xl" data-testid="ctem-loop-trace">
-        <DialogHeader>
-          <DialogTitle>{t_i18n("Loop trace")}</DialogTitle>
-          <DialogDescription>{t_i18n("Where this item is in the exposure management loop, and why.")}</DialogDescription>
-        </DialogHeader>
-        {target?.kind === "signals" ? (
-          <SignalListBody
-            state={target.state}
-            path={target.path}
-            onState={(state) => go(signalsParam(state, target.path), true)}
-            onClearPath={() => go(signalsParam(target.state), true)}
-            onOpen={(id) => go(loopParam("signal", id))}
-          />
-        ) : target?.kind === "signal" ? (
-          <SignalTraceBody id={target.id} />
-        ) : target ? (
-          <p className="content-compact text-default-secondary">{t_i18n("The loop trace of a case arrives with cases opened from signals.")}</p>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-    {/* The signal sources dialog (#1189) travels with the loop trace: every page that opens one reaches the other. */}
-    <SignalSourcesDialog />
-    </>
-  );
-}

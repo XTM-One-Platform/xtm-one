@@ -61,7 +61,7 @@ import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
-import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
+import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -740,7 +740,7 @@ export default function CtemCaseDetail() {
       </Card>
 
       {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
-      <LoopTraceDialog />
+      <LegacySignalLinks />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">

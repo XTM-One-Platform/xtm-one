@@ -18,8 +18,8 @@ import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
 import { READER_OPENED_LABEL, readerOpenedLines } from "./case-loop-reason";
 import { decisionSentence } from "./loop/DecisionReason";
-import { signalProviderName } from "./loop/LoopTraceDialog";
-import { loopParam } from "./loop/loop-stages";
+import { signalProviderName } from "./loop/SignalLoopTrace";
+import { signalsHref } from "./loop/signals-route";
 
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 
@@ -62,7 +62,7 @@ export function CaseOpenedBy({ caseId, sources = [] }: { caseId: string; sources
                     {s.subject.label || s.subject.ref}
                   </span>
                   <Link asChild className="ml-auto whitespace-nowrap">
-                    <RouterLink to={`?loop=${encodeURIComponent(loopParam("signal", s.id))}`}>{t_i18n("See the loop trace")}</RouterLink>
+                    <RouterLink to={signalsHref({ signal: s.id })}>{t_i18n("See the loop trace")}</RouterLink>
                   </Link>
                 </span>
                 <span className="text-default-secondary">

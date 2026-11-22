@@ -22,7 +22,7 @@ import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { HeroCard } from "../stage-heroes";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { SignalSourcesButton } from "./SignalSourcesDialog";
+import { SignalSourcesButton } from "./SignalSourcesPanel";
 import { connectHref, connectTarget, connectedCount, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
