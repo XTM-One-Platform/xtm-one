@@ -4105,6 +4105,24 @@ def test_the_ctem_fleet_optin_seed_plans_one_fleet_per_state_and_leaves_the_othe
     }
     with pytest.raises(RuntimeError):
         module.plan({"a": [("1", False)], "b": [("2", False), ("3", False)], "c": [("4", False)]})
+    # #1048: the four built-in CTEM fleets read on, partial, paused and stale; failing is carried by
+    # the partial fleet, so every required state still renders (lab.py forks one for not set up).
+    four = module.plan(
+        {
+            "ctem-ai-security": [("a1", False), ("a2", False)],
+            "ctem-loop": [("l1", False), ("l2", True)],
+            "ctem-third-party-risk": [("t1", False)],
+            "ctem-vuln-prioritization": [("v1", True), ("v2", False)],
+        }
+    )
+    assert four == {
+        "ctem-ai-security": "partial",
+        "ctem-loop": "paused",
+        "ctem-third-party-risk": "stale",
+        "ctem-vuln-prioritization": "on",
+    }
+    assert module.extras(four) == {"ctem-ai-security": ["failing"]}
+    assert module.extras(states) == {} and module.extras(six) == {}
 
     # A KEV automation can serve the tracked organizations; one reading the primary profile cannot.
     kev = {"provider": "opencti", "provision": {"fleet": "F", "purpose": "P", "entity_types": ["Vulnerability"]}}

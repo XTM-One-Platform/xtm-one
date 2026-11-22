@@ -17,7 +17,7 @@ _CONTEXT = {
     "automations": [
         {
             "name": "Weekly threat sweep",
-            "member": "Threat Response Orchestrator",
+            "member": "Loop Orchestrator",
             "trigger": "On a schedule",
             "schedule": "Every Monday at 07:00 (UTC)",
             "event": "",
@@ -35,7 +35,7 @@ _CONTEXT = {
     ],
     "tools": [
         {
-            "member": "Threat Response Orchestrator",
+            "member": "Loop Orchestrator",
             "integrations": ["opencti"],
             "mcp_servers": [],
             "tool_groups": ["shared_state"],

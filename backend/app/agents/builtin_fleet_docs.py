@@ -1097,8 +1097,10 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
     "steps": [
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
         {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
-        {"title": "Validate", "detail": "An OpenAEV check, read-only by default.", "gate": True},
-        {"title": "Decide", "detail": "Expected loss and options from OpenCRQ.", "gate": True},
+        # Only Mobilize carries the approval badge: at the seeded level (Low) ctem.mobilize is the
+        # one gate that waits, so the About page agrees with the Approval tab (UX r1 B1, #1061).
+        {"title": "Validate", "detail": "An OpenAEV check, read-only by default."},
+        {"title": "Decide", "detail": "Expected loss and options from OpenCRQ."},
         {"title": "Mobilize", "detail": "Tickets, owners and the prepared change, after your approval.", "gate": True},
         {"title": "Re-test and close", "detail": "Closed only on a passing re-test; the lesson feeds the scope."},
     ],

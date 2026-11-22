@@ -2171,12 +2171,12 @@ CTEM_FLEET_AGENTS: list[dict] = [
     {
         "slug": "ctem-threat-response-orchestrator",
         "persona": "ctem-threat-response-orchestrator",
-        "name": "Threat Response Orchestrator",
+        "name": "Loop Orchestrator",
         "description": (
-            "Root of the Threat-informed exposure response fleet: turns a "
-            "published threat into a relevance verdict, a proposed OpenAEV "
-            "scenario, an expected loss and three approved actions, closed by a "
-            "re-test. Writes one threat response brief per threat."
+            "Root of the CTEM loop fleet: turns a change in exposure into a "
+            "relevance verdict, a proposed OpenAEV scenario, an expected loss and "
+            "three approved actions, closed by a re-test. Writes one threat "
+            "response brief per threat."
         ),
         "icon": "Crosshair",
         "output_format": "markdown",

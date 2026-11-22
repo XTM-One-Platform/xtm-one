@@ -5355,7 +5355,9 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
     if not any(row["state"] == "not_set_up" for row in states.values()):
         source = sorted(states.items())[0][1]["id"]
         states["lab-fork"] = {"id": _ctem_not_set_up_fork(token, source), "state": "not_set_up"}
-    missing = [s for s in CTEM_FLEET_OPTIN_REQUIRED if s not in {row["state"] for row in states.values()}]
+    # A health state carried by another fleet (``also``: four built-in CTEM fleets, #1048) counts too.
+    seen = {row["state"] for row in states.values()} | {s for row in states.values() for s in row.get("also") or []}
+    missing = [s for s in CTEM_FLEET_OPTIN_REQUIRED if s not in seen]
     if missing:
         raise RuntimeError(f"CTEM fleet opt-in states missing: {', '.join(missing)} ({str(states)[:300]})")
     on = next((row for row in states.values() if row["state"] == "on"), None)
@@ -5366,11 +5368,12 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
     if not (runs or 0) > 0:
         raise RuntimeError(f"the fleet seeded on reads no run estimate: {str(estimate)[:300]}")
     for row in states.values():
-        if row["state"] in ("stale", "failing"):
+        health_state = next((s for s in (row["state"], *(row.get("also") or [])) if s in ("stale", "failing")), None)
+        if health_state is not None:
             health = api("GET", f"/fleets/{row['id']}/health", token)
             status = health.get("status") if isinstance(health, dict) else None
-            if status != row["state"]:
-                raise RuntimeError(f"the fleet seeded {row['state']} reads health {status!r}")
+            if status != health_state:
+                raise RuntimeError(f"the fleet seeded {health_state} reads health {status!r}")
     ids = ",".join(f"{slug}={row['state']}" for slug, row in sorted(states.items()))
     return {"CTEM fleet opt-in states": {"id": ids, "url": f"{base}/"}}
 
