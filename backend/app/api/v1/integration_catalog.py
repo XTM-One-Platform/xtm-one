@@ -31,6 +31,7 @@ from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVE
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
 from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
 from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
+from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -5186,6 +5187,55 @@ PROVIDER_CATALOG = {
             "notes": "Authentication uses the X-API-KEY HTTP header. If the key is missing or invalid, the API returns 401 Unauthorized. You can generate multiple API keys from your Concord account.",
         },
     },
+    "dealhub": {
+        "name": "DealHub",
+        "description": (
+            "DealHub CPQ, every documented API: quotes with line items, totals, discounts, playbook "
+            "answers and approval steps, quote documents, DealRoom signers, opportunities; simulate, "
+            "generate, submit for approval, publish and sign quotes; users; price book; versions, "
+            "playbooks, product catalog and hierarchy. Every write asks a person before it runs"
+        ),
+        "logo": "/logos/dealhub.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["cpq"],
+        # A secret bearer token a CPQ administrator generates; the instance
+        # host (api.dealhub.io unless the account is on another instance)
+        # lives in extra config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "instance_host": "DealHub API host (api.dealhub.io when empty)",
+            "webhook_token": "Webhook token (real-time quote events; several tokens separated by commas while rotating)",
+        },
+        # Quote events: DealHub webhooks (Token authentication) in real time,
+        # polling of the quote statuses every 15 minutes as the fallback
+        # (services/dealhub_events.py).
+        "available_events": _dealhub_catalog_events(),
+        "setup_guide": {
+            "title": "DealHub API token",
+            "url": "https://developers.dealhub.io/docs/authentication-overview",
+            "steps": [
+                "In DealHub, as a CPQ administrator, generate an API token (Settings > Integrations > API).",
+                "Paste the token in the 'API key' field.",
+                "Leave 'DealHub API host' empty for api.dealhub.io, or set your instance's host (a name under dealhub.io).",
+                "Click 'Test Connection': it reads the account's active users.",
+                "Optional, real-time quote events: generate a long random token and paste it in 'Webhook token'; in DealHub, System Settings > API Settings > Webhooks, add a webhook whose URL is this integration's webhook URL ({base_url}/api/hooks/integrations/<integration id>), select the quote events and the Token authentication type with the same token. Without it, the events are polled every 15 minutes.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Quote, Headless and CRM APIs",
+                    "description": "Read quotes, approvals, documents and DealRoom signers; generate, submit, publish and sign quotes (each write asks a person)",
+                },
+                {
+                    "scope": "User, Pricing and Version APIs",
+                    "description": "Read users, prices, versions, playbooks and the product catalog; change them (each write asks a person)",
+                },
+            ],
+            "notes": "DealHub has no API to approve or reject an approval step: approvals are read on the quote and decided in DealHub. The Subskribe billing API has its own credential and is not part of this integration.",
+        },
+    },
     "docusign": {
         "name": "DocuSign",
         "description": "e-Signature — send PDF and Word files of a conversation for signature as envelopes, follow signers, download the signed document, templates (eSignature REST API v2.1)",
@@ -5756,80 +5806,6 @@ PROVIDER_CATALOG = {
                 },
             ],
             "notes": "For Metabase, the API key format is: enter your Metabase base URL in the extra config field, and the API key in the API Key field. The tools will use both to connect to your instance. For full functionality, ensure the API key has write permissions.",
-        },
-    },
-    "odoo": {
-        "name": "Odoo",
-        "description": "ERP & Accounting (multi-company) - Chart of accounts, Journals, Journal entries and items, Trial balance, General ledger, Aged receivable and payable, FEC-style exports (CSV / XLSX), Invoices, Bills and credit notes (with attachments), Payments and reconciliation, Bank statements, Taxes, Fiscal positions, Analytic accounts, Fixed assets, Currencies, Lock dates, Products, and any model through generic search_read (JSON-2 API, JSON-RPC fallback)",
-        "logo": "/logos/odoo.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["accounting", "finance"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
-        "extra_fields": {
-            "base_url": "Odoo URL (e.g. https://example.odoo.com)",
-            "database": "Database name",
-            "login": "Login (the user's email)",
-            "company_ids": "Default company ids, comma-separated (optional)",
-        },
-        # Polled from the records' create / write dates (providers/odoo/events.py,
-        # every 60 s): the external API has no outbound webhook.
-        "available_events": [
-            {
-                "event": event,
-                "label": label,
-                "description": description,
-                "mechanism": "polling",
-                "filter_keys": {
-                    "company": "Only records of these companies (ids or names)",
-                    "journal": "Only records of these journals (ids, codes or names)",
-                    "state": "Only records in these Odoo states (draft, posted, cancel; payments: in_process, paid...)",
-                },
-            }
-            for event, label, description in (
-                (
-                    "journal_entry_posted",
-                    "Journal entry posted",
-                    "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.",
-                ),
-                (
-                    "vendor_bill_created",
-                    "Vendor bill created",
-                    "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.",
-                ),
-                (
-                    "payment_registered",
-                    "Payment registered",
-                    "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.",
-                ),
-            )
-        ],
-        "setup_guide": {
-            "title": "Odoo API Key Setup",
-            "url": "https://www.odoo.com/documentation/latest/developer/reference/external_api.html",
-            "steps": [
-                "Sign in to Odoo as the user the agents act as (a dedicated user is best: its access rights and companies bound what the tools reach).",
-                "Open the user menu > My Profile (Preferences) > Account Security and create a New API Key named '{APP_NAME}'.",
-                "Paste the key in the API Key field below.",
-                "Fill in the Odoo URL, the database name (Settings > Activate developer mode shows it; on odoo.com it is usually the subdomain) and the login.",
-                "Optionally list default company ids; every tool also takes company_ids, and list_odoo_companies names them.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Accounting / Invoicing: Billing or Accountant",
-                    "description": "Chart of accounts, journals, entries and items, reports, invoices, bills, payments, bank statements, taxes, analytics, assets, lock dates",
-                },
-                {
-                    "scope": "Allowed companies",
-                    "description": "The companies the user may switch to are the companies the tools reach (allowed_company_ids)",
-                },
-                {
-                    "scope": "Contacts",
-                    "description": "Partners and partner bank accounts",
-                },
-            ],
-            "notes": "Odoo 19+ answers the JSON-2 API (bearer API key); older versions are reached through JSON-RPC with the same key. Read or write follows the Odoo operation: every write tool (create, update, post, cancel, reset, register a payment, reconcile, lock dates, generic create / write / unlink / method) asks a person on every call. Bank account numbers answer masked to their last 4 characters. Bind read-only to withhold every write tool. See https://www.odoo.com/documentation/latest/developer/reference/external_api.html.",
         },
     },
     "databricks": {
