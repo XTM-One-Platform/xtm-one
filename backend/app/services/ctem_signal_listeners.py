@@ -82,6 +82,9 @@ LISTENERS: tuple[Listener, ...] = (
     Listener("aikido", AIKIDO_ISSUE_EVENTS, (), "code_flaw", "inside", "code"),
     Listener("aikido", ("ci_gate_failed", "scan_image_finished"), ("scan",), "code_flaw", "inside", "code"),
     Listener("openaev", ("scenario_score_degraded",), ("scenario",), "mitigation_regression", "inside", "asset"),
+    # CTEM-13: a finished simulation whose attack path reached a high or very high criticality
+    # asset (path 4). OpenAEV names the simulation only, never the asset: the subject is the run.
+    Listener("openaev", ("critical_asset_reached",), ("simulation",), "proven_exploitable", "inside", "asset"),
     # CTEM-27: OpenAEV's freshness job turned an asset STALE (unseen past the tenant's
     # threshold); the provisioned trigger filters on asset_status, so only that transition arrives.
     Listener("openaev", ("asset_stale",), ("asset",), "stale_asset", "outside", "asset"),
