@@ -18,7 +18,7 @@ The ``health_modules`` group: ``list_module_findings`` (read) and
 XTM One only: the findings are the health engine's rows, the recommendation a
 ``health_finding_recommendations`` row. Nothing here reaches a module; the module
 reads are the registration integration's own read tools behind
-``services/health/module_analyst.MODULE_ANALYST_TOOLS`` (S14a-2b-2).
+``services/health/module_analyst.MODULE_CHECKER_TOOLS`` (S14a-2b-2).
 
 Access, read on the rows at every call:
 
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from app.services.health.access import Reader
 
 MODULES_GROUP_ID = "health_modules"
-#: The role whose run writes recommendations.
+#: The S14 role, kept as an alias of the module checkers' roles (section 13.1).
 ANALYST_ROLE = "module_analyst"
 #: The read functions of the group.
 MODULES_READ_TOOLS: frozenset[str] = frozenset({"list_module_findings"})
@@ -63,7 +63,9 @@ _NOT_IN_CYCLE = "Error: a recommendation is recorded only inside a Module Analys
 
 
 def _is_analyst(reader: Reader) -> bool:
-    return reader.is_health_principal and getattr(reader.principal, "role", None) == ANALYST_ROLE
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
+    return reader.is_health_principal and getattr(reader.principal, "role", None) in MODULE_CHECKER_ROLES
 
 
 def _may_read(reader: Reader) -> bool:
@@ -210,11 +212,14 @@ async def _record_finding_recommendation(
         RECOMMENDATION_MAX_CHARS,
         HealthFindingRecommendation,
     )
+    from app.services.health.access import WRITE_REFUSED
     from app.services.health.module_analyst import MODULE_PROVIDERS
 
-    refusal = reader.write_refusal(ANALYST_ROLE)
-    if refusal:
-        return refusal
+    # Reserved to a module checker's own principal (any of the three roles, section 13.1).
+    principal_role = str(getattr(reader.principal, "role", "") or "")
+    refusal = reader.write_refusal(principal_role if _is_analyst(reader) else ANALYST_ROLE)
+    if refusal or not _is_analyst(reader):
+        return refusal or WRITE_REFUSED
     if reader.cycle_id is None:
         raise RefusalError(_NOT_IN_CYCLE)
     body = (text or "").strip()
@@ -428,7 +433,7 @@ async def add_module_read_tools(
     The registration the cycle investigates is read from the cycle row, never from the
     payload, and its integration (the one the registration created) is built read-only:
     write tools are withheld by the read-only binding rule, then everything outside
-    ``MODULE_ANALYST_TOOLS`` is withheld too. Any other run gets nothing.
+    ``MODULE_CHECKER_TOOLS`` is withheld too. Any other run gets nothing.
     """
     if MODULES_GROUP_ID not in builtin_tool_ids or not module_tools_offered():
         return 0

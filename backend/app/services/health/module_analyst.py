@@ -18,15 +18,17 @@ integration its registration created, read-only, and attaches recommendations to
 that module's findings. This module holds what decides its reach, so the rule lives
 in code and never in a prompt sentence:
 
-* :data:`MODULE_ANALYST_TOOLS`, the explicit allow-list of read tools per provider
+* :data:`MODULE_CHECKER_TOOLS`, the explicit allow-list of read tools per provider
   (section 12.3, lock 2). A read tool added later to a module integration is not
   reachable until it is listed here; a name outside the list is refused.
 * :func:`allowed_module_tools` and :func:`refuse_module_tool`, applied where the
   member's tools are built and where they execute.
 * :func:`registration_in_scope`, the ``module`` target check of ``cycles.start_cycle``.
-* :func:`module_analyst_tick`, the triggers of section 12.2: a cycle per registration
-  when its open finding set changed (debounced by ``change_min_interval_minutes``),
-  else once a UTC day. The state of each registration is a ``HealthSignalState`` row
+* :func:`module_analyst_tick`, the triggers of section 12.2 and the orchestrator's
+  daily module round of section 13.2: a cycle per registration when its open finding
+  set changed (debounced by ``change_min_interval_minutes``), and the round, once a UTC
+  day, which hands every registration not covered that day to its module's checker,
+  findings or not. The state of each registration is a ``HealthSignalState`` row
   (kind :data:`STATE_KIND`, target type ``module``); the pass mark is
   ``health_schedule_marks`` key :data:`TRIGGER_MARK`.
 
@@ -53,38 +55,58 @@ logger = logging.getLogger(__name__)
 #: also the provider key of the integration the registration created.
 MODULE_PROVIDERS: Final[tuple[str, ...]] = ("opencti", "openaev", "opencrq")
 
-#: The read tools the analyst may call, per provider (section 12.3, lock 2). Every
-#: entry must classify as a read (``tool_classification.infer_tool_type``):
-#: ``tests/test_health_module_analyst.py`` fails on one that does not.
-MODULE_ANALYST_TOOLS: Final[dict[str, tuple[str, ...]]] = {
-    # Connectors, feeds and playbooks through the read-only state tools of
-    # ``providers/opencti/health_reads.py`` (S14a-2b-3): the ``manage_*`` tools
-    # reach the same objects but classify as writes.
+#: The read tools a module checker may call, per provider (section 12.3, lock 2;
+#: the list of section 13.5). Every entry must classify as a read
+#: (``tool_classification.infer_tool_type``): ``tests/test_health_module_analyst.py``
+#: fails on one that does not. Module-only (section 13.4 scope, Sam, 22 Nov 2026): no
+#: tool here reads a specific connector, feed, collector, injector, executor or
+#: third-party data source; those tools stay in their providers for other agents.
+MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
+    # Playbooks through the read-only state tool of ``providers/opencti/health_reads.py``
+    # (S14a-2b-3): ``manage_opencti_playbook`` reaches the same objects but is a write.
     "opencti": (
         "get_opencti_platform_version",
-        "list_opencti_connector_states",
-        "list_opencti_feed_states",
         "list_opencti_playbook_states",
+        # The module health reads of S15b-2 (same file), platform-wide.
+        "list_opencti_background_tasks",
+        "get_opencti_managers",
+        "get_opencti_platform_queues",
+        "list_opencti_stream_consumers",
+        "get_opencti_licence",
+        "get_opencti_entity_stats",
+        "query_opencti_activity",
+        "list_opencti_drafts",
     ),
-    "openaev": ("query_openaev_connectors",),
+    "openaev": (
+        "search_openaev_exercises",
+        "get_openaev_exercise",
+        "search_openaev_scenarios",
+        "search_openaev_findings",
+        "search_openaev_assets",
+        "search_openaev_asset_groups",
+    ),
     "opencrq": (
         "get_opencrq_platform_version",
-        "list_opencrq_connectors",
-        "list_opencrq_connector_syncs",
         "list_opencrq_jobs",
         "get_opencrq_job",
+        "list_opencrq_crq_run_history",
+        "get_opencrq_crq_run",
+        "get_opencrq_crq_settings",
+        "list_opencrq_risk_scenarios",
+        "get_opencrq_tef_input",
+        "get_opencrq_financial_profile",
     ),
 }
 
 #: The refusal a tool outside the allow-list answers, the read-only reason.
 REFUSAL_REASON: Final = (
-    "The Module Analyst reads modules only through its allow-listed read tools; this tool is not one of them."
+    "A module health checker reads modules only through its allow-listed read tools; this tool is not one of them."
 )
 
 
 def allowed_module_tools(provider: str) -> frozenset[str]:
     """The allow-listed read tools of *provider*; empty for a provider the analyst does not read."""
-    return frozenset(MODULE_ANALYST_TOOLS.get(provider, ()))
+    return frozenset(MODULE_CHECKER_TOOLS.get(provider, ()))
 
 
 def filter_module_tools(provider: str, tool_names: Iterable[str]) -> list[str]:
@@ -153,7 +175,9 @@ RETRY_REFUSALS: Final = frozenset(
     }
 )
 
-ModuleTrigger = Literal["change", "daily"]
+#: ``change``: the open finding set changed (12.2). ``round``: the orchestrator's daily
+#: module round (13.2), which replaced the S14 ``daily`` branch.
+ModuleTrigger = Literal["change", "round"]
 
 
 def empty_set_hash() -> str:
@@ -171,19 +195,26 @@ def due_trigger(
     now: datetime,
     change_min_interval: timedelta,
 ) -> ModuleTrigger | None:
-    """Which cycle a registration is due, ``None`` when none.
+    """``change`` when a registration's finding set calls for a cycle, ``None`` otherwise.
 
-    ``change``: its open finding set differs from the one the analyst last took, and
-    no cycle started on it within *change_min_interval* (the debounce: the next
-    allowed cycle reads the set as it is then). ``daily``: no cycle started on it
-    this UTC day, whatever started it (a change-triggered cycle covers the day).
+    Its open finding set differs from the one the checker last took, and no cycle
+    started on it within *change_min_interval* (the debounce: the next allowed cycle
+    reads the set as it is then). The daily look is the module round's
+    (:func:`round_due`), never this trigger's.
     """
     last_hash = (last_value or {}).get("hash") or empty_set_hash()
     if current_hash != last_hash and (fired_at is None or now - fired_at >= change_min_interval):
         return "change"
-    if fired_at is None or fired_at.astimezone(UTC).date() < now.astimezone(UTC).date():
-        return "daily"
     return None
+
+
+def round_due(fired_at: datetime | None, now: datetime) -> bool:
+    """Whether *fired_at*, a registration's last cycle, is before this UTC day (the round is due).
+
+    A registration any cycle covered this UTC day (a change, an on-demand request)
+    is not handed to the round again: the round is the check list, run once a day.
+    """
+    return fired_at is None or fired_at.astimezone(UTC).date() < now.astimezone(UTC).date()
 
 
 async def _module_registrations(db: AsyncSession, excluded: Iterable[uuid.UUID]) -> list[tuple[uuid.UUID, str]]:
@@ -227,14 +258,23 @@ async def _finding_set_hashes(db: AsyncSession) -> dict[str, str]:
     return {registration: finding_set_hash(findings) for registration, findings in grouped.items()}
 
 
-async def _start(db: AsyncSession, registration_id: uuid.UUID, trigger: ModuleTrigger, current_hash: str, now: datetime) -> bool:
-    """Start one cycle on *registration_id* and record what came of it; whether it started. Commits."""
+async def _start(
+    db: AsyncSession,
+    registration_id: uuid.UUID,
+    provider: str,
+    trigger: ModuleTrigger,
+    current_hash: str,
+    now: datetime,
+) -> bool:
+    """Start one cycle of *provider*'s checker on *registration_id* and record what came of it;
+    whether it started. Commits."""
     from app.models.health_cycle import HealthSignalState
     from app.services.health.cycles import start_cycle
+    from app.services.health.fleet_seed import CHECKS_KEY_BY_PROVIDER
 
     result = await start_cycle(
         db,
-        key="module_analyst",
+        key=CHECKS_KEY_BY_PROVIDER[provider],
         trigger="signal" if trigger == "change" else "schedule",
         target_type="module",
         target_id=registration_id,
@@ -269,9 +309,11 @@ async def _start(db: AsyncSession, registration_id: uuid.UUID, trigger: ModuleTr
 async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
     """One trigger pass: start the cycles the registrations are due; the number started. Commits.
 
-    Nothing in Copilot mode, with Platform Health off or with the Module Analyst
-    switched off (section 12.1); ``start_cycle`` refuses the rest (AI off, licence,
-    budget, a cycle already open on the registration).
+    Two sources, changes first: a registration whose finding set changed (12.2), then
+    the daily module round (13.2), which hands every registration no cycle covered this
+    UTC day to its module's checker, with zero open findings too. Nothing in Copilot
+    mode, with Platform Health off or with the module checks switched off (12.1);
+    ``start_cycle`` refuses the rest (AI off, licence, budget, a cycle already open).
     """
     from app.core.config import settings as app_settings
     from app.models.health_cycle import HealthScheduleMark, HealthSignalState
@@ -306,24 +348,27 @@ async def run_module_triggers(db: AsyncSession, *, now: datetime) -> int:
         ).scalars()
     }
     interval = timedelta(minutes=health.module_analyst.change_min_interval_minutes)
-    due: list[tuple[uuid.UUID, ModuleTrigger, str]] = []
-    for registration_id, _provider in registrations:
+    due: list[tuple[uuid.UUID, str, ModuleTrigger, str]] = []
+    for registration_id, provider in registrations:
         state = states.get(registration_id)
         current = hashes.get(str(registration_id), empty_set_hash())
+        fired_at = state.fired_at if state is not None else None
         trigger = due_trigger(
             current_hash=current,
             last_value=state.last_value if state is not None else None,
-            fired_at=state.fired_at if state is not None else None,
+            fired_at=fired_at,
             now=now,
             change_min_interval=interval,
         )
+        if trigger is None and round_due(fired_at, now):
+            trigger = "round"
         if trigger is not None:
-            due.append((registration_id, trigger, current))
-    # Changes first: a daily look waits for the next pass when the pass is full.
-    due.sort(key=lambda item: item[1] != "change")
+            due.append((registration_id, provider, trigger, current))
+    # Changes first: a round entry waits for the next pass when the pass is full.
+    due.sort(key=lambda item: item[2] != "change")
     started = 0
-    for registration_id, trigger, current in due[:MAX_STARTS_PER_PASS]:
-        started += int(await _start(db, registration_id, trigger, current, now))
+    for registration_id, provider, trigger, current in due[:MAX_STARTS_PER_PASS]:
+        started += int(await _start(db, registration_id, provider, trigger, current, now))
     return started
 
 

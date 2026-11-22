@@ -569,12 +569,20 @@ reads Platform Health as a plain user unless it owns or is shared an agent.
 | `GET /api/v1/health...` | Administrator | Group manager, agent owner, plain user |
 |---|---|---|
 | `/name`, `/me/opt-out`, `/pets` | 200 | 200 |
-| `/overview`, `/findings` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
+| `/overview`, `/findings`, `/findings?agentic=` | 200, every module of the mode | 200, `agents` and `fleets` of the agents they manage |
 | `/history` | 200 | 200, empty |
 | `/improvements`, `/cycles`, `/signals` without a target | 200 | 404 (one managed target only, `?agent_id=` or `?target_type=&target_id=`) |
 | `/settings`, `/budget`, `/schedules`, `/analysis`, `/me/companion`, `/me/activity` | 200 | 403 |
 
 `POST /analysis/{module}/run` is refused `ai_disabled` (403, `detail.code`) while AI is off.
+
+Module Analyst (S14e, section 12): a module card's `last_investigation` is filled for an
+administrator only, on OpenCTI, OpenAEV and OpenCRQ, so never in Copilot mode (no module
+card there); every other reader gets `null` on every card. `POST /modules/{module}/investigate`
+is an administrator's (403 for the three other roles in every mode); for an administrator it
+answers 404 in Copilot mode (the module is not present), 403 `ai_disabled` while AI is off,
+and in XTM One mode the analyst's own refusals of section 12.7 (409 `module_analyst_off`,
+`no_registration`) or 202.
 
 ### 8.2 Link guard (S13, pinned by `frontend/src/lib/health-link-guard.test.ts`)
 
@@ -588,6 +596,9 @@ improvements inbox, cycles list, profile opt-out) link only to the target's own 
 checks access itself. The guard lists every Health file with its audience: a new file fails
 until it is classified, a link to an `AdminRoute` from a surface open to everyone fails with
 its file and line, and a `/health?tab=` link fails (the page reads its tab from the path).
+The Module Analyst surfaces are classified there as administrators' (S14e):
+`ModuleAnalystParts.tsx` through the Overview, `HealthModuleAnalystBlock.tsx` through the
+Settings section.
 
 ## 9. Platform email (SMTP) integration
 
@@ -726,7 +737,7 @@ only). Two locks, both enforced where the tools are built, never by a prompt sen
 
 1. The binding is read-only (`services/integration_read_only.py`): every write tool is
    withheld from the model and refused by the executor.
-2. An explicit allow-list of read tools per provider (`MODULE_ANALYST_TOOLS`, one tuple
+2. An explicit allow-list of read tools per provider (`MODULE_CHECKER_TOOLS` since S15b-1, one tuple
    per provider in `services/health/module_analyst.py`), so a read tool added later to a
    module integration is not reachable until it is listed. A tool name outside the list
    is refused with the read-only reason.
@@ -887,7 +898,7 @@ decision written here).
   (S14a-2b-4), called by the assignment engine for every run carrying the group: the
   registration is read from the run's own cycle row (target type `module`, same agent),
   never from the payload; its integration is built with the read-only binding rule, then
-  every tool outside `MODULE_ANALYST_TOOLS` is withheld and refused by name. Any other
+  every tool outside `MODULE_CHECKER_TOOLS` is withheld and refused by name. Any other
   run, Copilot mode or an inactive registration gets no module tool.
 - The orchestrator does not delegate to the analyst; it starts only from its own
   triggers. **Superseded by section 13.2 (S15):** the orchestrator delegates the module
@@ -918,7 +929,7 @@ decision written here).
 | S14a | Member, role, assignment, target type `module`, triggers and debounce, tool allow-list and read tools, recommendation and agentic finding store (migration), tests (g) backend, (j), (k); shipped in two PRs: S14a-1 the role, the target type, `module_analyst.py` (allow-list, refusal, `registration_in_scope`) and `health_finding_recommendations` (`tests/test_health_module_analyst.py`), S14a-2a the member's seed (`health-module-analyst`, no handover, assignment "Platform Health module investigation" that nothing starts yet), S14a-2b its triggers, tools and the OpenCTI read tools | no |
 | S14b | Quota exemption and own ceiling ledger, settings model and defaults, the lab measurement and the default ceiling written in 12.6, tests (h), (i); shipped in two PRs: S14b-1 the server-only predicate `is_module_analyst_run` and the engine exemption (`exempt_module_analyst` on the run's quota trace metadata), `HealthModuleAnalystSettings` ceilings at the provisional defaults of 12.6, the `health_module_analyst_spend` ledger (`module_analyst_budget.py`, migration `h128healthmaspend01`), tests in `tests/test_health_module_analyst_budget*.py`; S14b-2 the reservation before every model call of the loop (`module_analyst_ceiling.py`: the run's provider wrapped by the engine when `is_module_analyst_run` holds; a refused call answers `budget_exhausted` with no tool call), the release from the fleet budget of `budget.py` (`open_cycle` gates the member's cycle on the switches and the licence only, `cycles._settle_cycle` marks its runs booked with nothing charged and never stops it at the fleet caps), tests in `tests/test_health_module_analyst_ceiling.py`; S14b-3 the lab measurement and the default ceiling of 12.6 | no |
 | S14c | Health page: recommendations on findings, agentic tag and filter, module card last investigation and "Investigate now"; shipped in two PRs: S14c-1 the API (`FindingResponse.agentic` and `analyst_recommendation`, the newest `health_finding_recommendations` row; `GET /findings?agentic=`; `ModuleCard.last_investigation` for an administrator; `POST /modules/{module}/investigate`, administrators, `require_agentic_ai`, one on-demand cycle per active registration, `module_analyst_off` and `no_registration` refusals; `tests/test_health_module_analyst_page_api_postgres.py`), S14c-2 the page | S14c-1 no, S14c-2 yes |
-| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n | S14d-1 no, S14d-2 yes |
+| S14d | Cycles entry, weekly digest part, Spend limits row, docs (`docs/docs/administration`, `docs/docs/usage`) and i18n; shipped in two PRs: S14d-1 the backend (`digest.py` sections `recommendations` and `agentic_findings` of a module cycle, its `budget` read from its run's traces against `module_analyst.cycle_tokens` with `ledger: module_analyst`; `GET /analysis` gains `module_analyst`, the Spend limits row's ceilings and day and month spend; the weekly digest prompt gains the Modules part; `tests/test_health_module_analyst_digest_postgres.py`), S14d-2 the UI, docs and i18n (`pages/settings/HealthModuleAnalystBlock.tsx`, the Module Analyst block of Spend limits, XTM One modes only, with its five ceilings in the section's draft and its day and month spend from `GET /analysis`; `CycleDigestView` shows a module cycle's recommendations by confidence, its agentic findings and its spend against its own ceiling; `module_analyst` in `HEALTH_SPECIALIST_LABELS`; `docs/docs/administration/health.md`) | S14d-1 no, S14d-2 yes |
 | S14e | Access matrix and link guard extended (S13 tests), UX Director journey review in the lab | yes |
 
 ## 13. Agentic module health checks (S15)
@@ -967,11 +978,17 @@ assignment of any of the three members, decided from the database at run start, 
 
 ### 13.2 The orchestrator delegates the module round
 
-- **Daily module round.** A new orchestrator assignment `module_round` (schedule key
-  `module_round` in `cycles.SCHEDULE_KEYS`, once per UTC day) lists the active module
-  registrations and hands each to its module's checker (handover `delegate`), one cycle per
-  registration. It replaces the `daily` branch of `module_analyst_tick` (12.8). It runs with
-  zero open findings: the round is the check list, not the findings.
+- **Daily module round** (S15a-2). Once per UTC day, the trigger pass of
+  `module_analyst_tick` hands every active module registration that no cycle covered that
+  day to its module's checker (`CHECKS_KEY_BY_PROVIDER`), one cycle per registration,
+  trigger `schedule`, run payload `module_trigger: "round"`. It replaced the S14 `daily`
+  branch (`due_trigger` answers `change` or nothing; `round_due` decides the round). It runs
+  with zero open findings: the round is the check list, not the findings. The round is
+  started by the platform, not by a model run of the orchestrator: no registration is
+  skipped by a model, the orchestrator spends nothing on it, and the round shares the pass
+  cap (`MAX_STARTS_PER_PASS`, changes first) and the ceiling of 13.7. The orchestrator's
+  `delegate` handovers to the checkers (below) carry the fleet's graph and an
+  administrator's request in chat.
 - **Finding-set change** (12.2) and **on demand** ("Run checks now" on the module card,
   administrators) start the module's checker directly, with the same debounce and ceiling.
 - The orchestrator's handovers gain the three checkers; the fleet graph, Members and Data
@@ -1064,7 +1081,7 @@ allow-list first.
 ### 13.5 Tools
 
 The two locks of 12.3 stay: the registration's integration under the read-only binding, and
-`MODULE_ANALYST_TOOLS` (renamed `MODULE_CHECKER_TOOLS`, one tuple per provider). Each tool
+`MODULE_CHECKER_TOOLS` (the S14 `MODULE_ANALYST_TOOLS`, renamed in S15b-1, one tuple per provider). Each tool
 added is a read tool the classifier reads as a read (test (k) of 12.9). No tool on the
 list reads a specific connector, feed, collector, injector, executor or third-party data
 source (13.4 scope).
@@ -1155,7 +1172,7 @@ source (13.4 scope).
 ### 13.9 Acceptance pinned by tests
 
 - (l) XTM One mode, Platform Health on, an OpenCTI, an OpenAEV and an OpenCRQ registered,
-  zero open findings: the daily `module_round` delegates one cycle per registration with no
+  zero open findings: the daily module round starts one cycle per registration with no
   admin action, each run calls its module's tools and records a report with every check of
   its playbook (backend test, stubbed model and integrations; lab retest at deploy).
 - (m) A stubbed module-native fault per module (OpenCTI: an enabled manager not running;
@@ -1176,8 +1193,11 @@ source (13.4 scope).
 | Slice | Content | UI |
 |---|---|---|
 | S15 spec | This section | no |
-| S15a | Members: rename in place and two new checkers, roles, `is_module_checker_run`, orchestrator `module_round` and handovers, playbook skills (seed data), tests (n) and the 12.9 extensions | no |
-| S15b | Tools: allow-list widened, new read-only health tools per provider, classifier and snapshot tests, `backend-snapshots` regenerated | no |
+| S15a-1 | Members: rename in place and two new checkers, roles (`module_analyst` kept as the alias of rows written before S15), `is_module_checker_run`, cycles started on the module's own checker, orchestrator handovers, playbook skills (seed data), the Cycles label of each checker, tests (n) and the 12.9 extensions | no |
+| S15a-2 | Orchestrator `module_round` schedule replacing the daily branch of the triggers pass (13.2) | no |
+| S15b-1 | Allow-list reshaped to the 13.5 lists (connector and feed tools removed, existing module reads added), renamed `MODULE_CHECKER_TOOLS`, scope test (o) | no |
+| S15b-2a | OpenCTI module health reads (`list_opencti_background_tasks`, `get_opencti_managers`, `get_opencti_platform_queues`, `list_opencti_stream_consumers`, `get_opencti_licence`), allow-listed, classifier and snapshot tests, `backend-snapshots` regenerated | no |
+| S15b-2b | OpenCTI `get_opencti_data_health` and `get_opencti_error_rate`; the OpenAEV and OpenCRQ health reads of 13.5, same tests | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
 | S15d | Lab measurement and default ceiling written in 13.7 | no |
 | S15e | Health page: module card counts, report view, "Run checks now", Cycles title, weekly digest part, docs and i18n | yes |

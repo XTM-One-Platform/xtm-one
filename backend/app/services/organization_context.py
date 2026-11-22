@@ -140,7 +140,14 @@ KNOWLEDGE_KINDS: tuple[str, ...] = ("sop", "runbook", "patch_policy", "reference
 #: The profile parts added by #11543 (``asset_groups`` by #11781). They are read by tool, never dumped into
 #: the always-on profile block, and they are not contract fields: an existing profile
 #: reads, renders and reports its missing fields exactly as before.
-EXPOSURE_FIELDS: tuple[str, ...] = ("assets_exposure", "asset_groups", "prioritization_policy", "enterprise_knowledge")
+EXPOSURE_FIELDS: tuple[str, ...] = (
+    "assets_exposure",
+    "asset_groups",
+    "prioritization_policy",
+    "enterprise_knowledge",
+    # CTEM-29: read by the scope gate, never dumped into the always-on block.
+    "owned_domains",
+)
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
 PAGE_ONLY_FIELDS: tuple[str, ...] = ("posture_target",)
@@ -399,6 +406,11 @@ class PrioritizationPolicy(BaseModel):
     #: set, a campaign, a malware...). Read live from OpenCTI at delivery, never the delivered score.
     pir_min_score_vulnerability: int = Field(default=70, ge=0, le=100)
     pir_min_score_threat: int = Field(default=75, ge=0, le=100)
+    #: CTEM review step (CTEM-16): the label an analyst sets on the drafted Grouping in OpenCTI to
+    #: approve its coverage request when the gate ``ctem.analyst_review`` waits (empty: analyst-reviewed).
+    analyst_review_label: str = Field(default="", max_length=100)
+    #: CTEM-29: the scope criticality of an identity of an owned domain (a leaked credential, path 10).
+    identity_criticality: Literal["low", "medium", "high", "critical"] = "high"
 
 
 #: The values the settings page proposes for a first policy (never applied unless saved).
@@ -501,6 +513,9 @@ class OrganizationProfile(BaseModel):
     prioritization_policy: PrioritizationPolicy = Field(default_factory=PrioritizationPolicy)
     #: Knowledge bases of the organization's procedures, read by tool only (#11543).
     enterprise_knowledge: list[KnowledgeLink] = Field(default_factory=list, max_length=50)
+    #: The DNS and email domains the organization owns (CTEM-29; the outside lens reads them too):
+    #: a leaked credential of an account on one of them is in scope.
+    owned_domains: list[str] = Field(default_factory=list, max_length=500)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.
@@ -540,6 +555,13 @@ class OrganizationProfile(BaseModel):
     @classmethod
     def _iso_regions(cls, value: list[str]) -> list[str]:
         return normalize_regions(value)
+
+    @field_validator("owned_domains")
+    @classmethod
+    def _domains(cls, value: list[str]) -> list[str]:
+        """Lower-cased, ``@`` and a trailing dot dropped, each once."""
+        cleaned = (str(v).strip().lower().lstrip("@").rstrip(".") for v in value)
+        return [d for d in dict.fromkeys(cleaned) if d and len(d) <= 253]
 
     @field_validator("currency")
     @classmethod

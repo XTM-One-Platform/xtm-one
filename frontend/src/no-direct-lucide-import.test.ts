@@ -61,7 +61,7 @@ const PENDING: Record<string, number> = {
   "src/components/runs": 1,
   "src/components/studio": 2,
   "src/components/traces": 10,
-  "src/components/ui": 84,
+  "src/components/ui": 83,
   "src/components/video-studio": 19,
   "src/components/work-items": 3,
   "src/components/workspaces": 8,
@@ -74,7 +74,7 @@ const PENDING: Record<string, number> = {
   "src/pages/ai-adoption": 3,
   "src/pages/analytics": 8,
   "src/pages/assignment-detail": 14,
-  "src/pages/chat": 16,
+  "src/pages/chat": 15,
   // As src/components/chat-panel: `undo-2`, `phone`, `arrow-right-left`,
   // `file-down`, `folder-kanban`, `globe` and `user-plus` are not in the registry.
   "src/pages/chat-panel": 3,

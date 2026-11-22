@@ -101,6 +101,8 @@ class CaseFix:
     key: str
     kind: str
     title: str
+    #: The version that fixes it, when the signal names one (an upgrade case keys and titles on it).
+    fixed_version: str | None = None
 
 
 @dataclass
@@ -148,6 +150,19 @@ def fix_of(signal: CtemSignal) -> CaseFix:
     path = signal.trigger_path
     subject = (signal.subject_label or signal.subject_ref or "").strip()
     kind = PATH_REMEDIATION.get(path, "manual")
+    evidence = getattr(signal, "evidence", None)
+    evidence = evidence if isinstance(evidence, dict) else {}
+    package = str(evidence.get("affected_package") or "").strip()
+    fixed = str(evidence.get("fixed_version") or "").strip()[:100]
+    if kind == "patch" and package and fixed:
+        # A source that names the package and the version that fixes it (an Aikido dependency
+        # issue, CTEM-25): the upgrade case keys and titles on that version.
+        return CaseFix(
+            key=_bounded_key(f"upgrade:-/{_norm(package)}@{_norm(fixed)}"),
+            kind="upgrade",
+            title=f"Upgrade {package} to {fixed}"[:COLUMN_MAX],
+            fixed_version=fixed,
+        )
     if signal.subject_kind == "software" and kind == "patch":
         return CaseFix(
             key=_bounded_key(f"upgrade:-/{_norm(signal.subject_ref)}@latest"),
@@ -258,6 +273,7 @@ async def open_from_signal(
             tickets=[],
             validations=[],
             validation_plan=signal.trigger_path in ("proven_exploitable", "mitigation_regression"),
+            fixed_version=fix.fixed_version,
         )
         db.add(case)
         await db.flush()
@@ -303,6 +319,10 @@ def _transition(
     return row
 
 
+#: The asset groups one validation reference names in its run order (CTEM-12-UI).
+RUN_ORDER_MAX = 20
+
+
 async def record_validation(
     db: AsyncSession,
     case: CtemCase,
@@ -313,6 +333,8 @@ async def record_validation(
     result: str,
     mitigation_only: bool = False,
     note: str | None = None,
+    safe_mode: bool | None = None,
+    run_order: list[str] | None = None,
     actor: str = rules.SYSTEM_ACTOR,
     events: PendingEvents | None = None,
     now: datetime | None = None,
@@ -322,7 +344,10 @@ async def record_validation(
     ``result``: ``passed`` (the exposure is gone), ``not_exposed`` (it never
     was), ``failed`` (still exposed) or ``pending``. ``mitigation_only``: the
     pass proves a mitigation, not the permanent fix, so the case goes to
-    ``mitigated_watching`` and the re-test stays on. The caller commits.
+    ``mitigated_watching`` and the re-test stays on. ``safe_mode`` (CTEM-12):
+    true when only read-only injects ran, false when a non-read-only one ran,
+    None when the module did not say. ``run_order``: the target asset groups in
+    the order they were tested (at most 20 names). The caller commits.
     """
     if result not in VALIDATION_RESULTS:
         raise rules.CaseRuleError(f"unknown validation result {result!r}")
@@ -339,6 +364,11 @@ async def record_validation(
         "mitigation_only": bool(mitigation_only),
         "note": (note or "").strip()[:500] or None,
     }
+    if safe_mode is not None:
+        entry["safe_mode"] = bool(safe_mode)
+    order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
+    if order:
+        entry["run_order"] = order
     case.validations = [*(case.validations or []), entry][-50:]
     case.validation_plan = True
     db.add(_event(case.id, actor, "validation", now, to_value=result, evidence=f"{entry['provider']}:{entry['ref']}"))
@@ -567,6 +597,154 @@ def record_gate(
         )
     )
     return case
+
+
+#: An OpenCRQ treatment plan page: ``https://host/<tenant>/treatment-plans/<uuid>`` (CTEM-18-UI, #1068).
+_PLAN_URL = re.compile(r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/treatment-plans/([0-9a-fA-F-]{36})$")
+
+
+def record_treatment_plan(
+    db: AsyncSession,
+    case: CtemCase,
+    plan: dict[str, Any],
+    previous: dict[str, Any] | None = None,
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Attach the OpenCRQ treatment plan a remediation decision created to the case (CTEM-18-UI, #1068).
+
+    *plan* is ``{id, name, url}`` as ``create_opencrq_treatment_plan`` answered it:
+    the id a UUID, the url the plan's OpenCRQ page for that id. One
+    ``treatment_plan`` event: ``to`` the plan id, ``reason`` the name,
+    ``evidence`` the url; the view serves the name and the url only to a viewer
+    who reads OpenCRQ. *previous* is the plan already attached (the newest
+    event): the same plan again writes nothing. Never moves the case state. The
+    caller commits.
+    """
+    if not isinstance(plan, dict):
+        raise rules.CaseRuleError("treatment_plan must be an object with id, name and url")
+    plan_id = str(plan.get("id") or "").strip().lower()
+    try:
+        uuid.UUID(plan_id)
+    except ValueError:
+        raise rules.CaseRuleError("treatment_plan.id must be the OpenCRQ plan UUID") from None
+    url = str(plan.get("url") or "").strip()
+    match = _PLAN_URL.match(url) if url else None
+    if url and (match is None or match.group(1).lower() != plan_id):
+        raise rules.CaseRuleError("treatment_plan.url must be the OpenCRQ page of that plan (its treatment-plans page)")
+    name = str(plan.get("name") or "").strip()[:300]
+    if (
+        previous
+        and previous.get("id") == plan_id
+        and previous.get("name") == (name or None)
+        and previous.get("url") == (url or None)
+    ):
+        return case
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "treatment_plan",
+            now or datetime.now(UTC),
+            from_value=(previous or {}).get("id"),
+            to_value=plan_id,
+            reason=name or None,
+            evidence=url or None,
+        )
+    )
+    return case
+
+
+#: The validation kind written when the source closed every member of a case (CTEM-25).
+RESCAN_KIND = "rescan"
+
+
+async def close_signal_members(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    provider: str,
+    external_id: str,
+    events: PendingEvents | None = None,
+    now: datetime | None = None,
+) -> int:
+    """The source closed its object: close the case members of the signals it recorded for it.
+
+    How many members were closed. A case whose last open member closes is
+    resolved on a passing provider re-scan reference (:func:`record_validation`,
+    kind :data:`RESCAN_KIND`), so the proof rule and the events stay those of
+    any validation. A case already closed, or with members still open, only
+    records the closed member. The caller commits.
+    """
+    if not (provider or "").strip() or not (external_id or "").strip():
+        return 0
+    now = now or datetime.now(UTC)
+    signals = (
+        (
+            await db.execute(
+                select(CtemSignal).where(
+                    CtemSignal.organization_id == organization_id,
+                    CtemSignal.source_provider == provider,
+                    CtemSignal.source_external_id == external_id,
+                    CtemSignal.case_id.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    closed = 0
+    for signal in signals:
+        case_id = signal.case_id
+        if case_id is None:
+            continue
+        member = (
+            await db.execute(
+                select(CtemCaseIssue).where(
+                    CtemCaseIssue.case_id == case_id,
+                    CtemCaseIssue.source == SIGNAL_SOURCE,
+                    CtemCaseIssue.external_id == str(signal.id),
+                    CtemCaseIssue.open.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if member is None:
+            continue
+        member.open = False
+        closed += 1
+        db.add(
+            _event(
+                case_id,
+                rules.SYSTEM_ACTOR,
+                "issue_closed",
+                now,
+                issue=f"{SIGNAL_SOURCE}:{signal.id}",
+                reason=f"closed at source: {provider} {external_id}"[:300],
+            )
+        )
+        await db.flush()
+        case = await db.get(CtemCase, case_id)
+        if case is None or case.state not in OPEN_STATES:
+            continue
+        still_open = (
+            await db.execute(
+                select(CtemCaseIssue.id).where(CtemCaseIssue.case_id == case.id, CtemCaseIssue.open.is_(True)).limit(1)
+            )
+        ).first()
+        if still_open is None:
+            await record_validation(
+                db,
+                case,
+                provider=provider,
+                kind=RESCAN_KIND,
+                ref=external_id,
+                result="passed",
+                note="closed at source",
+                events=events,
+                now=now,
+            )
+    return closed
 
 
 def breached(case: CtemCase, now: datetime) -> bool:

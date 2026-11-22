@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -246,6 +247,85 @@ async def test_a_clean_line_merge_lands_in_one_call():
     assert fake.sides["ours"]["src/frictions.py"] == _edit(_edit(BASE_FILE, 3, "branch 3\n"), 9, "main 9\n")
 
 
+def _catalog(keys: dict[str, str]) -> str:
+    return json.dumps(keys, indent=2) + "\n"
+
+
+CATALOG = "frontend/src/i18n/lang/en.json"
+CATALOG_BASE = {f"k{n}": f"v{n}" for n in range(12)}
+
+
+def test_merge_path_names_the_json_keys_the_branch_removed() -> None:
+    """#1095: a stale copy of a catalog removes main's keys without a conflict; the merge names them."""
+    ours = {k: v for k, v in CATALOG_BASE.items() if k not in ("k3", "k4")}
+    merge = merge_path(
+        CATALOG,
+        _catalog(CATALOG_BASE).encode(),
+        _catalog(ours).encode(),
+        _catalog({**CATALOG_BASE, "k9": "main"}).encode(),
+    )
+    assert merge.clean and merge.removed_keys == ("k3", "k4")
+    assert "k3" not in json.loads(merge.merged or "{}")
+
+
+def test_a_key_both_sides_removed_or_a_plain_file_names_nothing() -> None:
+    both_gone = {k: v for k, v in CATALOG_BASE.items() if k != "k3"}
+    merge = merge_path(
+        CATALOG,
+        _catalog(CATALOG_BASE).encode(),
+        _catalog(both_gone).encode(),
+        _catalog({**both_gone, "k9": "main"}).encode(),
+    )
+    assert merge.clean and merge.removed_keys == ()
+    plain = merge_path(
+        "notes.txt", BASE_FILE.encode(), _edit(BASE_FILE, 3, "").encode(), _edit(BASE_FILE, 9, "x\n").encode()
+    )
+    assert plain.removed_keys == ()
+
+
+@pytest.mark.asyncio
+async def test_a_landed_merge_names_the_catalog_keys_the_branch_removed() -> None:
+    ours = {k: v for k, v in CATALOG_BASE.items() if k != "k5"}
+    fake = FakeGitHub(
+        {CATALOG: _catalog(CATALOG_BASE)},
+        {CATALOG: _catalog(ours)},
+        {CATALOG: _catalog({**CATALOG_BASE, "k11": "main"})},
+    )
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _tool("merge_github_branch")(repo="acme/app", branch="feat/x")
+
+    assert result.startswith("Merged 'main' into 'feat/x'"), result
+    assert "Keys the branch removed that the merge base and the ref still hold (1 path(s))" in result
+    assert f"- {CATALOG}: k5" in result
+    assert result.rstrip().splitlines()[-1].startswith("Final head: ")
+
+
+def test_merge_path_ref_first_keeps_the_refs_key_order() -> None:
+    """#1116: main merged into a PR branch keeps main's appended keys first, the branch's own keys after."""
+    base, ours, theirs = (
+        _catalog(CATALOG_BASE),
+        _catalog({**CATALOG_BASE, "pr1": "p", "pr2": "p"}),
+        _catalog({**CATALOG_BASE, "main1": "m", "main2": "m"}),
+    )
+    default = merge_path(CATALOG, base.encode(), ours.encode(), theirs.encode())
+    assert list(json.loads(default.merged or "{}"))[-4:] == ["pr1", "pr2", "main1", "main2"]
+    merge = merge_path(CATALOG, base.encode(), ours.encode(), theirs.encode(), ref_first=True)
+    assert merge.clean and list(json.loads(merge.merged or "{}"))[-4:] == ["main1", "main2", "pr1", "pr2"]
+
+
+@pytest.mark.asyncio
+async def test_a_landed_merge_of_main_keeps_mains_catalog_order() -> None:
+    """#1116: the branch's diff against main after the merge holds the branch's keys only, appended last."""
+    ours = {**CATALOG_BASE, "pr1": "p"}
+    theirs = {**CATALOG_BASE, "main1": "m", "main2": "m"}
+    fake = FakeGitHub({CATALOG: _catalog(CATALOG_BASE)}, {CATALOG: _catalog(ours)}, {CATALOG: _catalog(theirs)})
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _tool("merge_github_branch")(repo="acme/app", branch="feat/x")
+
+    assert result.startswith("Merged 'main' into 'feat/x'"), result
+    assert fake.sides["ours"][CATALOG] == _catalog({**theirs, "pr1": "p"})
+
+
 @pytest.mark.asyncio
 async def test_an_executable_script_on_every_side_merges_line_by_line() -> None:
     # createCommitOnBranch keeps the 100755 mode of the path it overwrites: no hand resolution is needed.
@@ -360,6 +440,46 @@ async def test_keep_both_on_a_binary_is_refused_before_any_write():
     assert both.startswith("Error: keep 'both' cannot settle 'logo.png'") and fake.commits == []
 
 
+_MOVED = (
+    "Error: Merging 'main' into 'feat/x' of acme/app conflicts: 'main' now points at 333333333333, not at "
+    "222222222222 the resolutions were checked against. Nothing was written."
+)
+
+
+def test_a_ref_that_moved_with_nothing_left_on_the_branch_is_retryable() -> None:
+    from app.integrations.providers.github.merge_resolution import ref_moved_and_undone
+
+    back = (
+        "'feat/x' was moved back to 111111111111, its head before this call, so the alignment commits left its history."
+    )
+    undone = _MOVED.replace("Nothing was written.", back)
+    assert ref_moved_and_undone(_MOVED) and ref_moved_and_undone(undone)
+    assert not ref_moved_and_undone(_MOVED.replace("Nothing was written.", "The undo failed."))
+    assert not ref_moved_and_undone("Error: merging 'main' into 'feat/x' of acme/app conflicts, so nothing was merged.")
+
+
+@pytest.mark.asyncio
+async def test_update_branch_runs_the_line_merge_again_when_the_base_moved_meanwhile() -> None:
+    # xtm-one #405: main moved between the conflict check and the merge; one more pass lands it.
+    fake = _fixture(9, "main 9\n")
+    answers = AsyncMock(side_effect=[_MOVED, "Merged 'main' into 'feat/x' of acme/app with its conflicts resolved"])
+    with patch(_SAFE_REQUEST, new=fake), patch("app.integrations.providers.github.pulls.conflict_answer", new=answers):
+        result = await _tool("manage_github_pr")(repo="acme/app", number=7, action="update_branch")
+
+    assert answers.await_count == 2
+    assert result.startswith("GitHub refused to update the branch of PR #7 on a conflict; merged line by line"), result
+
+
+@pytest.mark.asyncio
+async def test_update_branch_retries_a_moved_base_once_only() -> None:
+    fake = _fixture(9, "main 9\n")
+    answers = AsyncMock(side_effect=[_MOVED, _MOVED, _MOVED])
+    with patch(_SAFE_REQUEST, new=fake), patch("app.integrations.providers.github.pulls.conflict_answer", new=answers):
+        result = await _tool("manage_github_pr")(repo="acme/app", number=7, action="update_branch")
+
+    assert answers.await_count == 2 and "now points at 333333333333" in result
+
+
 # ---------------------------------------------------------------------------
 # The read budget is per path, not one total (#9040)
 # ---------------------------------------------------------------------------
@@ -431,10 +551,12 @@ async def test_a_path_past_the_time_budget_is_a_conflict_and_the_paths_before_it
     monkeypatch.setattr(merge_hunks, "LINE_MERGE_SECONDS", 0.2)
     real = merge_hunks.merge_path
 
-    def slow_on_b(path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None) -> merge_hunks.PathMerge:
+    def slow_on_b(
+        path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None, *, ref_first: bool = False
+    ) -> merge_hunks.PathMerge:
         if path == "b.py":
             time.sleep(1.0)
-        return real(path, base, ours, theirs)
+        return real(path, base, ours, theirs, ref_first=ref_first)
 
     monkeypatch.setattr(merge_hunks, "merge_path", slow_on_b)
     paths = ["a.py", "b.py", "c.py"]

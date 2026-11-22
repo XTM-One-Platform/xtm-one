@@ -47,7 +47,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.health_analysis import HealthModuleAnalystSpend
 from app.services.health.settings import HealthModuleAnalystSettings
 
-#: The role the seed gives the Module Analyst (``identity.HealthRole``).
+#: The role the seed gave the S14 Module Analyst (``identity.HealthRole``), kept as an
+#: alias of the module checkers' roles on rows written before S15 (section 13.1).
 MODULE_ANALYST_ROLE: Final = "module_analyst"
 
 REFUSED_CEILING_NOT_SET: Final = "ceiling_not_set"
@@ -55,25 +56,28 @@ REFUSED_CEILING_REACHED: Final = "ceiling_reached"
 REFUSED_CYCLE_CEILING_REACHED: Final = "cycle_ceiling_reached"
 
 
-def is_module_analyst_run(agent: Any, assignment: Any) -> bool:
-    """Whether a run of *assignment* by *agent* is the Module Analyst's, exempt from the agentic quota.
+def is_module_checker_run(agent: Any, assignment: Any) -> bool:
+    """Whether a run of *assignment* by *agent* is a module checker's, exempt from the agentic quota.
 
     Read from the rows the engine loaded at run start; every condition is a column
-    only the Platform Health seed writes. *assignment* must be the seeded module
-    investigation assignment of that agent (by its seeded names, never one an
-    admin added to the agent).
+    only the Platform Health seed writes. *agent* holds one of the three checker
+    roles (section 13.1) and *assignment* is that agent's own seeded checks
+    assignment (by its seeded names, never one an admin added to the agent).
     """
+    from app.services.health.identity import MODULE_CHECKER_ROLES
+
     if agent is None or assignment is None:
         return False
-    if getattr(agent, "health_role", None) != MODULE_ANALYST_ROLE:
+    role = getattr(agent, "health_role", None)
+    if role not in MODULE_CHECKER_ROLES:
         return False
     if getattr(agent, "is_builtin", False) is not True or getattr(agent, "is_company_managed", False) is not True:
         return False
     if getattr(assignment, "agent_id", None) != getattr(agent, "id", None):
         return False
-    from app.services.health.fleet_seed import ASSIGNMENT_BY_KEY
+    from app.services.health.fleet_seed import checks_assignment_names
 
-    return getattr(assignment, "name", None) in ASSIGNMENT_BY_KEY["module_analyst"].names
+    return getattr(assignment, "name", None) in checks_assignment_names(role)
 
 
 def day_period(now: datetime) -> str:

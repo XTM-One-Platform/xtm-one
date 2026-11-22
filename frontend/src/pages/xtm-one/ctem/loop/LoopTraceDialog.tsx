@@ -26,7 +26,7 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
-import { CTEM_PRODUCT_INFO } from "@/lib/constants";
+import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
@@ -52,7 +52,7 @@ const STATUS_LABEL: Record<LoopStageView["status"], string> = {
 
 /**
  * The evidence keys that are the link to the source object, not a fact: `link`
- * (OpenCTI, Aikido) and `platform_url` (an OpenAEV delivery, CTEM-15-UI #956:
+ * (OpenCTI; an Aikido delivery carries no URL today) and `platform_url` (an OpenAEV delivery, CTEM-15-UI #956:
  * the scenario that regressed or the run that proved a path).
  */
 const SOURCE_LINK_KEYS = ["link", "platform_url"] as const;
@@ -110,6 +110,194 @@ export function signalRuleFacts(
   return facts;
 }
 
+/** The name of a signal's source: a CTEM product, else the integration's own name (Aikido Security), else its key. */
+export function signalProviderName(provider: string): string {
+  return CTEM_PRODUCT_INFO[provider]?.name ?? INTEGRATION_PROVIDER_NAMES[provider] ?? provider;
+}
+
+/** The Aikido finding types in words (CTEM-25-UI). @i18n-keys */
+const AIKIDO_FINDING_TYPE = {
+  open_source: "Dependency",
+  sast: "Code",
+  leaked_secret: "Leaked secret",
+  iac: "Infrastructure as code",
+  docker_container: "Container image",
+  cloud: "Cloud",
+  malware: "Malware",
+  eol: "End of life",
+  surface_monitoring: "Surface monitoring",
+} as const;
+
+/** The words of an Aikido finding type, undefined for a type the table does not name. */
+function aikidoFindingTypeLabel(type: string): string | undefined {
+  return (AIKIDO_FINDING_TYPE as Readonly<Record<string, string>>)[type];
+}
+
+/** The evidence keys an Aikido finding's rows say, left out of the raw evidence list. */
+const AIKIDO_ROW_KEYS = [
+  "type",
+  "code_repo_name",
+  "container_repo_name",
+  "affected_package",
+  "installed_version",
+  "fixed_version",
+  "sla_breached",
+  "assets",
+] as const;
+
+/** One named fact of an Aikido finding (CTEM-25-UI). */
+export type AikidoFact =
+  | { key: "type"; type: string }
+  | { key: "repository"; name: string }
+  | { key: "image"; name: string }
+  | { key: "package"; name: string; installed: string | null; fixed: string | null }
+  | { key: "fixed"; fixed: string }
+  | { key: "sla" };
+
+function text(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number") return String(value);
+  return null;
+}
+
+/**
+ * What an Aikido signal's evidence says, in named facts (CTEM-25-UI): the
+ * finding type, the repository or container image it sits on, the package
+ * with its installed and fixed versions, the SLA breach. Read from the keys
+ * the listener writes (backend ctem_signal_listeners._aikido_signal); a key
+ * the delivery did not carry gives no row, and a signal from another source
+ * gives none.
+ */
+export function aikidoFacts(provider: string, evidence: Record<string, unknown> | null | undefined): AikidoFact[] {
+  if (provider !== "aikido" || !evidence) return [];
+  const facts: AikidoFact[] = [];
+  const type = text(evidence.type);
+  if (type) facts.push({ key: "type", type });
+  const repository = text(evidence.code_repo_name);
+  if (repository) facts.push({ key: "repository", name: repository });
+  const image = text(evidence.container_repo_name);
+  if (image) facts.push({ key: "image", name: image });
+  const pkg = text(evidence.affected_package);
+  const fixed = text(evidence.fixed_version);
+  if (pkg) facts.push({ key: "package", name: pkg, installed: text(evidence.installed_version), fixed });
+  else if (fixed) facts.push({ key: "fixed", fixed });
+  if (evidence.sla_breached === true) facts.push({ key: "sla" });
+  return facts;
+}
+
+/** An Aikido fact as a row of the signal facts. */
+function aikidoFactRow(fact: AikidoFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  switch (fact.key) {
+    case "type": {
+      const words = aikidoFindingTypeLabel(fact.type);
+      return { label: t_i18n("Finding type"), value: words ? t_i18n(words) : fact.type };
+    }
+    case "repository":
+      return { label: t_i18n("Repository"), value: fact.name };
+    case "image":
+      return { label: t_i18n("Container image"), value: fact.name };
+    case "package": {
+      const installed = fact.installed ? `${fact.name} ${fact.installed}` : fact.name;
+      return {
+        label: t_i18n("Package"),
+        value: fact.fixed ? t_i18n("{installed}, fixed in {fixed}", { installed, fixed: fact.fixed }) : installed,
+      };
+    }
+    case "fixed":
+      return { label: t_i18n("Fixed version"), value: fact.fixed };
+    case "sla":
+      return { label: t_i18n("SLA"), value: t_i18n("Breached in the source") };
+  }
+}
+
+/** The OpenCTI observable types a leaked identity arrives as (CTEM-29-UI). @i18n-keys */
+const IDENTITY_OBSERVED_AS = { "user-account": "User account", "email-addr": "Email address" } as const;
+
+/** The OpenCTI objects that name a tracked organization (CTEM-29-UI). @i18n-keys */
+const THIRD_PARTY_NAMED_IN = { report: "Report: {name}", incident: "Incident: {name}" } as const;
+
+/** The relationship of a tracked organization, as Settings > Organizations words it. @i18n-keys */
+const THIRD_PARTY_RELATIONSHIP = { provider: "Provider", customer: "Customer", partner: "Partner", subsidiary: "Subsidiary" } as const;
+
+/** The evidence keys a leak or third-party signal's rows say, left out of the raw evidence list. */
+const SUBJECT_ROW_KEYS = ["stix_type", "account_disabled", "report", "relationship", "organization_criticality"] as const;
+
+/**
+ * The dependency keys of a third-party signal the scope gate reads (the crown
+ * jewels that depend on the organization, their OpenCRQ asset ids): Decision
+ * inputs already say them, so the raw evidence list leaves them out.
+ */
+const THIRD_PARTY_SCOPE_KEYS = ["crown_jewels", "opencrq_asset_ids"] as const;
+
+/** One named fact of a leaked identity or a third-party event (CTEM-29-UI). */
+export type SubjectFact =
+  | { key: "observed_as"; type: string }
+  | { key: "account"; disabled: boolean }
+  | { key: "fingerprint" }
+  | { key: "named_in"; type: string; name: string }
+  | { key: "relationship"; relationship: string }
+  | { key: "organization_criticality"; criticality: string };
+
+/**
+ * What a credential-leak or a third-party signal's evidence says (CTEM-29-UI),
+ * from the keys the listeners write (backend ctem_signal_listeners: the
+ * identity listener and note_tracked_organizations): how the identity was
+ * observed, whether the account is disabled, that a secret is kept only as its
+ * fingerprint (`*_fingerprint`, never the value); the report or incident that
+ * named the tracked organization, its relationship and criticality. Another
+ * subject kind gives none.
+ */
+export function subjectFacts(subjectKind: string, evidence: Record<string, unknown> | null | undefined): SubjectFact[] {
+  if (!evidence) return [];
+  const facts: SubjectFact[] = [];
+  if (subjectKind === "identity") {
+    const type = text(evidence.stix_type);
+    if (type) facts.push({ key: "observed_as", type });
+    if (typeof evidence.account_disabled === "boolean") facts.push({ key: "account", disabled: evidence.account_disabled });
+    if (Object.keys(evidence).some((k) => k.endsWith("_fingerprint"))) facts.push({ key: "fingerprint" });
+  } else if (subjectKind === "third_party") {
+    const type = text(evidence.stix_type);
+    const name = text(evidence.report);
+    if (type && name) facts.push({ key: "named_in", type, name });
+    const relationship = text(evidence.relationship);
+    if (relationship) facts.push({ key: "relationship", relationship });
+    const criticality = text(evidence.organization_criticality);
+    if (criticality) facts.push({ key: "organization_criticality", criticality });
+  }
+  return facts;
+}
+
+/** The evidence keys a set of subject facts already says. */
+function subjectShownKeys(subjectKind: string, evidence: Record<string, unknown> | null | undefined): string[] {
+  if (subjectKind !== "identity" && subjectKind !== "third_party") return [];
+  const scopeKeys = subjectKind === "third_party" ? THIRD_PARTY_SCOPE_KEYS : [];
+  return [...SUBJECT_ROW_KEYS, ...scopeKeys, ...Object.keys(evidence ?? {}).filter((k) => k.endsWith("_fingerprint"))];
+}
+
+/** A subject fact as a row of the signal facts. */
+function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  switch (fact.key) {
+    case "observed_as": {
+      const words = (IDENTITY_OBSERVED_AS as Readonly<Record<string, string>>)[fact.type];
+      return { label: t_i18n("Observed as"), value: words ? t_i18n(words) : fact.type };
+    }
+    case "account":
+      return { label: t_i18n("Account"), value: fact.disabled ? t_i18n("Disabled") : t_i18n("Enabled") };
+    case "fingerprint":
+      return { label: t_i18n("Secret"), value: t_i18n("Kept as a fingerprint only, never the value") };
+    case "named_in": {
+      const words = (THIRD_PARTY_NAMED_IN as Readonly<Record<string, string>>)[fact.type];
+      return { label: t_i18n("Named in"), value: words ? t_i18n(words, { name: fact.name }) : fact.name };
+    }
+    case "relationship": {
+      const words = (THIRD_PARTY_RELATIONSHIP as Readonly<Record<string, string>>)[fact.relationship];
+      return { label: t_i18n("Relationship"), value: words ? t_i18n(words) : fact.relationship };
+    }
+    case "organization_criticality":
+      return { label: t_i18n("Organization criticality"), value: String(levelLabel(fact.criticality, t_i18n)) };
+  }
+}
+
 /** A rule fact as a row of the signal facts: a label that never says "triggered" unless the rule matched. */
 function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
   if (fact.key === "pir") {
@@ -132,9 +320,15 @@ function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatte
 function SignalFacts({ signal }: { signal: CtemSignal }) {
   const { t_i18n, intl } = useFormatter();
   const link = safeExternalUrl(signalSourceLink(signal.evidence));
-  const provider = CTEM_PRODUCT_INFO[signal.source.provider]?.name ?? signal.source.provider;
+  const provider = signalProviderName(signal.source.provider);
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
-  const shownKeys: string[] = ruleFacts.map((fact) => fact.key);
+  const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
+  const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
+  const shownKeys: string[] = [
+    ...ruleFacts.map((fact) => fact.key),
+    ...(findingFacts.length > 0 ? AIKIDO_ROW_KEYS : []),
+    ...subjectShownKeys(signal.subject.kind, signal.evidence),
+  ];
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
     .filter(([key]) => !shownKeys.includes(key))
@@ -157,6 +351,8 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
       ),
     },
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
+    ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
+    ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
     { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },

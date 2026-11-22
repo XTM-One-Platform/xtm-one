@@ -34,7 +34,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { RowRemoveButton } from "@/components/ui/row-remove-button";
 import { RunCard } from "@/components/ui/run-card";
-import { RunHumanInput, runHitlState } from "@/components/ui/run-human-input";
+import { RunPauseDecision, runPauseState } from "@/components/decisions/RunPauseDecision";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { useToast } from "@/components/ui/toast";
 import { TruncatedText } from "@/components/ui/truncated-text";
@@ -377,8 +377,8 @@ export function RunActivityList({
         onRowClick={(run) => navigate(`/operations/executions/${run.id}`)}
         // A run waiting for a person unfolds its question under the row, with Answer, Approve and Dismiss.
         expandedRow={(run) =>
-          runHitlState(run).isHitlPending ? (
-            <RunHumanInput
+          runPauseState(run).isHitlPending ? (
+            <RunPauseDecision
               run={run}
               onRespond={onRespond}
               onDismiss={onDismiss}

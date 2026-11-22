@@ -934,6 +934,7 @@ BUILTIN_AGENTS: list[dict] = [
             "manage_opencti_profile",
             "manage_opencti_retention_rule",
             "manage_opencti_role",
+            "manage_opencti_security_coverage",
             "manage_opencti_status_template",
             "manage_opencti_trigger",
             "manage_opencti_user",
@@ -2158,33 +2159,46 @@ _CTEM_ROLE_AGENT_BASE: dict = {
     "builtin_tool_ids": [],
 }
 
+#: The leads of the roles the generic CTEM loop fleet folds in (CTEM-31, #1048):
+#: the former posture orchestrator and the three single-product desk orchestrators.
+CTEM_LOOP_ROLE_LEADS: tuple[str, ...] = (
+    "ctem-posture-orchestrator",
+    "opencti-pir-desk-orchestrator",
+    "openaev-detection-desk-orchestrator",
+    "opencrq-risk-desk-orchestrator",
+)
+
 CTEM_FLEET_AGENTS: list[dict] = [
     {
         "slug": "ctem-threat-response-orchestrator",
         "persona": "ctem-threat-response-orchestrator",
-        "name": "Threat Response Orchestrator",
+        "name": "Loop Orchestrator",
         "description": (
-            "Root of the Threat-informed exposure response fleet: turns a "
-            "published threat into a relevance verdict, a proposed OpenAEV "
-            "scenario, an expected loss and three approved actions, closed by a "
-            "re-test. Writes one threat response brief per threat."
+            "Root of the CTEM loop fleet: turns a change in exposure into a "
+            "relevance verdict, a proposed OpenAEV scenario, an expected loss and "
+            "three approved actions, closed by a re-test. Writes one threat "
+            "response brief per threat."
         ),
         "icon": "Crosshair",
         "output_format": "markdown",
         "disable_chat": True,
         "max_iterations": 150,
         "tags": ["builtin", "ctem", "fleet", "ctem-threat-response"],
+        # CTEM-31 (#1048): the root of the generic CTEM loop fleet also hands over
+        # to the leads of the roles it folds in (posture, the three module desks).
         "handover_agent_slugs": [
             "ctem-threat-relevance-analyst",
             "openaev-scenario-creator",
             "ctem-risk-quantifier",
             "ctem-remediation-coordinator",
+            *CTEM_LOOP_ROLE_LEADS,
         ],
         "handover_type_slugs": {
             "ctem-threat-relevance-analyst": "delegate",
             "openaev-scenario-creator": "delegate",
             "ctem-risk-quantifier": "delegate",
             "ctem-remediation-coordinator": "delegate",
+            **dict.fromkeys(CTEM_LOOP_ROLE_LEADS, "delegate"),
         },
         # The blackboard (ctem:f1:state) and the approval / re-test queue
         # (ctem:f1:<id> work items, needs_human for every environment write).
@@ -2933,6 +2947,37 @@ CTEM_F2_OPENAEV_ASSIGNMENT: dict[str, Any] = {
 }
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_OPENAEV_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_OPENAEV_ASSIGNMENT)
+
+# ── The analyst's mark in OpenCTI (CTEM-16, #1089) ──
+# Provisions the OpenCTI trigger on Grouping updates whose delivery lets the
+# webhook route resume a run waiting on the gate ``ctem.analyst_review``: the
+# analyst's label on the drafted Grouping approves its coverage request
+# (services/ctem_analyst_mark.py), with no model call. Listen-only, as above.
+CTEM_F2_ANALYST_MARK_ASSIGNMENT: dict[str, Any] = {
+    **_CTEM_F2_COMMON,
+    "name": "Analyst review mark",
+    "description": (
+        "Listens to OpenCTI: when the review gate waits, the analyst's label on the drafted Grouping "
+        "approves its coverage request and resumes the run. No run of its own."
+    ),
+    "trigger_type": "integration_event",
+    "trigger_config": {
+        "provider": "opencti",
+        "provision": {
+            "fleet": _CTEM_F2_FLEET,
+            "purpose": "Analyst review mark",
+            "entity_types": ["Grouping"],
+            "event_types": ["update"],
+        },
+        "filter": CTEM_LISTEN_ONLY_FILTER,
+    },
+    "prompt": (
+        "This assignment only listens: its filter drops every OpenCTI delivery and the analyst's mark "
+        "resumes the waiting run. If a delivery reached you, answer that nothing is to do."
+    ),
+}
+CTEM_F2_ASSIGNMENTS.append(CTEM_F2_ANALYST_MARK_ASSIGNMENT)
+BUILTIN_ASSIGNMENTS.append(CTEM_F2_ANALYST_MARK_ASSIGNMENT)
 
 # ── CTEM fleet F1 assignments (dev-docs/ctem-fleets.md s.4.1, issue #9114) ──
 _F1_ORCHESTRATOR = "ctem-threat-response-orchestrator"
@@ -3933,6 +3978,24 @@ BUILTIN_SKILLS: list[dict] = [
         "tags": ["builtin", "health", "flows"],
         "platform_targets": ["global"],
     },
+    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4): the check
+    # playbook of each module health checker. Seeded unbound; the fleet seed binds each
+    # to its checker. The checks grow by edits of these files within the 13.4 scope.
+    *(
+        {
+            "slug": f"health-{module}-checks",
+            "name": f"Platform Health {label} health checks",
+            "description": (
+                f"The {label} health checks Platform Health runs on a registered {label} platform, read-only: "
+                "each check, what it reads, its warn and fail thresholds, and the report it ends with."
+            ),
+            "compatibility": "health_modules",
+            "content": f"health-{module}-checks",
+            "tags": ["builtin", "health", "modules", module],
+            "platform_targets": ["xtm_one", "dev"],
+        }
+        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
+    ),
 ]
 
 #: Built-in skill slugs renamed in place: former slug -> current slug. The seed

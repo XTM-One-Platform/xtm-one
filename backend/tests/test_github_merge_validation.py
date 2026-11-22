@@ -103,6 +103,20 @@ def test_a_line_one_side_already_held_twice_is_not_a_duplicate() -> None:
     assert merge.clean
 
 
+def test_a_recurring_line_each_side_adds_in_its_own_block_is_not_a_duplicate() -> None:
+    # xtm-one #1054 against main: two provider blocks of integration_catalog.py each opened with
+    # '"available_events": [', a line the base already held in other blocks; the merge is clean.
+    block = (
+        '    {{\n        "name": "{0}",\n        "available_events": [\n            "{0}_event",\n        ],\n    }},\n'
+    )
+    base = "CATALOG = [\n" + block.format("github") + block.format("slack") + "]\n"
+    ours = base.replace(block.format("github"), block.format("github") + block.format("netsuite"))
+    theirs = base.replace(block.format("slack"), block.format("slack") + block.format("airwallex"))
+    merge = merge_path("backend/app/api/v1/integration_catalog.py", base.encode(), ours.encode(), theirs.encode())
+    assert merge.clean, merge.reason
+    assert merge.merged is not None and merge.merged.count('"available_events": [') == 4
+
+
 def test_a_json_catalog_the_line_merge_would_break_is_never_written_broken() -> None:
     base = '{\n  "a": "A",\n  "z": "Z"\n}\n'
     ours = '{\n  "a": "A",\n  "b": "B",\n  "z": "Z"\n}\n'

@@ -10,7 +10,7 @@ server, so marking read on the computer clears the phone's badge too.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,6 +49,8 @@ class NotificationItemResponse(BaseModel):
     run_id: str | None = None
     #: A decision still waiting: unread until answered, no read on open (#991).
     awaiting_answer: bool = False
+    #: What a ``decision`` entry waits on: ``run``, ``flow_run`` or ``work_item`` (#842, S4).
+    source: Literal["run", "flow_run", "work_item"] | None = None
     unread: bool
 
 

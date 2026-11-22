@@ -146,6 +146,11 @@ built-in, JSON output schema per unit of work (section 5 reads it).
 
 ## 4. The four seeded fleets
 
+Since CTEM-31 (#1048, section 14) the seeded set is the generic CTEM loop
+(F1 core, F4 and M1 to M3 folded in as roles), F2 vulnerability management,
+F3 AI security and F5 third-party risk. The per-fleet sections below keep
+describing each role.
+
 Common rules:
 
 - Built-in, company-managed, seeded by S1 from a spec file under
@@ -1898,7 +1903,7 @@ risk) declare one gate per loop stage, from
 | Key | Stage | Impact | Tools paused |
 |---|---|---|---|
 | `ctem.validation.non_readonly` | Validate: an OpenAEV test that is not read-only | high | the OpenAEV launches |
-| `ctem.analyst_review` | Review of the threat package | low | none |
+| `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
 | `ctem.production_change` | A change applied on production through an integration | high | none |
@@ -1911,6 +1916,19 @@ waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
 the Mobilize action, so one Mobilize decision covers every ticket of its case.
+The review step (CTEM-16): the vulnerability and threat orchestrators draft the
+threat package as an OpenCTI Grouping (the vulnerability or threat, software,
+attack patterns, a note on the exploitation conditions) and request its
+security coverage, which OpenAEV builds its scenario from; the coverage
+follows the run's OpenCTI draft. Out of the box the request runs and the case
+records "analyst review skipped by policy"; pinned `wait`, the request pauses
+as a decision until a person answers, or until the analyst sets the mark label
+on the Grouping in OpenCTI (`analyst-reviewed`, or the policy's
+`analyst_review_label`): the vulnerability fleet's listen-only assignment
+"Analyst review mark" provisions the Grouping update trigger, and the webhook
+route (`services/ctem_analyst_mark.py`) approves the coverage requests waiting
+on that Grouping and resumes their runs, the resolution naming the mark. A
+pause holding any other call is left to a person.
 The personas name no approval of their own: they apply the catalog the run
 prompt states (`tests/test_ctem_gate_catalog_916.py` pins it). A gate that
 waits is a decision of the unified system (`dev-docs/human-gates.md`), never a
@@ -1957,6 +1975,18 @@ fleets `p10153fltpin1` had moved (created before #10164 merged, no level
 change in the audit log), so no member's run prompt changes. A custom fleet that declares gates and has no pins stored keeps acting on its
 declared gates alone until a person applies a level. A built-in fleet acts on
 its seeded catalog alone.
+
+**Step badges follow the catalog (#1074).** A step of the structured
+documentation may name the gate it stands for (`DocStep.gate_key`, a catalog
+key such as `ctem.mobilize`). `GET /fleets/{id}/documentation` derives that
+step's `gate` (the About page's "A person approves first" badge) from the
+same effective catalog it returns as `autonomy_catalog`
+(`fleet_autonomy.with_live_step_gates`), level and pins applied, so the About
+page and the Approval tab never disagree at any level or pin. A step without a
+key, or naming a gate the catalog does not hold, keeps its stored flag. The
+built-in steps name their keys and their stored flags equal the seeded level
+(Low: `ctem.mobilize` alone waits), checked for every built-in fleet by
+`test_builtin_fleet_docs.py`.
 
 **Set by instructions (#10168, B2-I).** A fleet whose approvals live in its
 personas, guardrails and skills (no platform gate) has a second position on
@@ -2073,6 +2103,10 @@ button and the rail.
 
 ## 13. Single-product fleets (M1 OpenCTI #10542, M2 OpenAEV, M3 OpenCRQ)
 
+Since CTEM-31 (section 14) M1, M2 and M3 are roles of the generic CTEM loop
+fleet, no longer fleets of their own: their agents, automations, triggers and
+ROI below are unchanged; their gates map onto the loop's catalog.
+
 F1 to F5 each need two or three modules. A customer who buys one product
 only gets one seeded fleet that works end to end with that product alone,
 under the same rules: XTM One mode and dev only (`platform_targets`), every
@@ -2185,3 +2219,61 @@ tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items ke
 (`LABEL_ASSUMPTION`) until a sourced figure replaces them.
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.
+
+## 14. Four seeded fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
+
+Sam, 21 Nov 2026: at most four seeded fleets, one generic loop end to end and
+three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
+(`backend/app/agents/builtin_fleets.py`) holds exactly:
+
+| # | Slug | Name | What it carries |
+|---|---|---|---|
+| 1 | `ctem-loop` | CTEM loop | Every trigger path on a case: F1 core roles, the posture role (F4 orchestrator, the five stage analysts, the briefing), the Intelligence desk (M1), the Validation desk (M2), the Risk desk (M3) |
+| 2 | `ctem-vuln-prioritization` | Vulnerability management | Path 1, a vulnerability on software we run, to a verified fix (F2) |
+| 3 | `ctem-ai-security` | AI security | F3 |
+| 4 | `ctem-third-party-risk` | Third-party risk | Paths 10 and 11 (F5) |
+
+A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
+decision. An agent has one home fleet: the use-case fleets reach the loop's
+role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### 14.1 Upgrade of an instance seeded with the eight former fleets
+
+Three optional keys of a fleet entry, read by `app/agents/fleet_seed.py`:
+
+- `previous_slugs`: the built-in row stored under a former slug is adopted
+  and renamed (`ctem-threat-response` becomes `ctem-loop`), so its id,
+  workspace, autonomy level, pins, runs and the forks pointing at it carry over.
+- `absorbs`: the retired fleets folded in (`ctem-posture`, `opencti-pir-desk`,
+  `openaev-detection-desk`, `opencrq-risk-budget-desk`). Their rows are swept
+  by the stale sweep; their approval pins are read first and added to the loop
+  (a pin the loop already holds wins); their agents are re-homed as members
+  of the loop by the member sync. No agent is orphaned.
+- `leads`: the members whose enabled automation makes the fleet active
+  (`app/services/fleet_runs.builtin_fleet_active_clause`), besides its
+  orchestrator. The former orchestrators of the folded fleets are leads, so
+  an automation switched on before the upgrade keeps the loop active.
+
+Assignments live on the agents, so every automation keeps its enablement,
+run-as and schedule through the upgrade: nothing moves, nothing is disabled.
+A fork of a retired fleet is never touched; its `GET /fleets/{id}/source-changes`
+answer carries `successor` {fleet_id, slug, name}
+(`app/services/fleet_fork.retired_source_successor`), also when the source
+row was adopted under its new slug.
+
+### 14.2 Gates
+
+Out of the box one gate waits per case, `ctem.mobilize` (CTEM-34). The folded
+desks' tool gates map onto the loop's catalog: the M2 simulation launches are
+`ctem.validation.non_readonly` tools, the M3 register writes are
+`ctem.remediation.decision` tools (impact high, logged), and the M1 indicator
+revocation joins the action text of `ctem.mobilize`. All of it is configurable
+by the autonomy cursor and pins.
+
+### 14.3 Embedded module chats
+
+The desks' agents keep `platform_targets` `["xtm_one", "dev"]` and their
+`disable_chat`; no module vertical reads a fleet slug (checked on main at the
+time of the change), so the embedded OpenCTI, OpenAEV and OpenCRQ chats are
+unaffected. The posture lead keeps answering people in chat
+(`chat_members` of the loop entry).

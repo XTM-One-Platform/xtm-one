@@ -56,6 +56,8 @@ const REASON_SENTENCE = {
   criticality_unknown: "Criticality unknown, below the scope threshold {threshold}",
   below_scope_threshold: "Criticality {criticality} below the scope threshold {threshold}",
   in_scope: "In scope: criticality {criticality} at or above {threshold}, confidence {confidence}",
+  no_dependency: "No crown jewel depends on this organization",
+  account_disabled: "Not exposed: the account is disabled",
 } as const;
 const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 
@@ -77,6 +79,8 @@ const NEXT_STEP = {
   risk_scenario_unreadable: "Becomes a case once OpenCRQ can be read and a risk scenario holds it",
   criticality_unknown: "Becomes a case once an asset at or above {threshold} holds it",
   below_scope_threshold: "Becomes a case if criticality rises to {threshold}",
+  no_dependency: "Becomes a case once a crown jewel depends on this organization",
+  account_disabled: "Becomes a case if the account is enabled again",
 } as const;
 const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
 
@@ -189,13 +193,16 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
       })
     : "";
   // Asset matched or not (#874): a decided record says "None matched", never an empty row.
-  const matched = list(reconcile.assets) || (decision.reconcile ? t_i18n("None matched") : "");
+  // CTEM-29-UI: a leaked identity resolves through the owned domain it is on, not an asset.
+  const domains = list((scope?.sources ?? []).filter((s) => s.from === "owned_domain").map((s) => s.name));
+  const matched = list(reconcile.assets) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
   const rows: { label: string; value: string }[] = [
     { label: t_i18n("Lenses"), value: lenses },
     { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
     { label: t_i18n("Matched assets"), value: matched },
     { label: t_i18n("Crown jewels"), value: list(reconcile.crown_jewels_named) },
     { label: t_i18n("Tech stack"), value: list(reconcile.tech_stack) },
+    { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     { label: t_i18n("Scope threshold"), value: level(scope?.threshold) },
     { label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },

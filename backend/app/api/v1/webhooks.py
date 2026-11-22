@@ -53,6 +53,7 @@ Signature validation (both endpoints):
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
   - Airwallex: x-signature over x-timestamp + body (HMAC-SHA256, 5 min replay window)
+  - Spendesk: x-spendesk-webhook-signature header (HMAC-SHA256)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -196,6 +197,9 @@ from app.integrations.providers.airwallex.webhooks import TIMESTAMP_HEADER as AI
 from app.integrations.providers.airwallex.webhooks import is_delivery as is_airwallex_delivery
 from app.integrations.providers.airwallex.webhooks import trigger_event as airwallex_trigger_event
 from app.integrations.providers.airwallex.webhooks import verify_signature as verify_airwallex_signature
+from app.integrations.providers.spendesk.webhooks import SIGNATURE_HEADER as SPENDESK_SIGNATURE_HEADER
+from app.integrations.providers.spendesk.webhooks import event_key as spendesk_event_key
+from app.integrations.providers.spendesk.webhooks import verify_signature as verify_spendesk_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -204,7 +208,7 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -2184,6 +2188,13 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
 
+    # Spendesk: ``event.entity`` and ``event.eventType`` name the event
+    # (payables + created -> payables_created), signed per delivery.
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER):
+        spendesk_key = spendesk_event_key(payload)
+        if spendesk_key:
+            return spendesk_key
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2215,6 +2226,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         return aikido_trigger_event(payload["event_type"])
     if isinstance(payload, dict) and is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
+    if request.headers.get(SPENDESK_SIGNATURE_HEADER) and spendesk_event_key(payload):
+        return spendesk_event_key(payload)
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2553,6 +2566,7 @@ def _verify_signature(
     perk_sig = request.headers.get("Tk-Signature", "")
     aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
     airwallex_ts = request.headers.get(AIRWALLEX_TIMESTAMP_HEADER, "")
+    spendesk_sig = request.headers.get(SPENDESK_SIGNATURE_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2593,6 +2607,11 @@ def _verify_signature(
         ok, reason = verify_airwallex_signature(body, secret, request.headers.get("X-Signature", ""), airwallex_ts)
         if not ok:
             raise HTTPException(status_code=401, detail=f"Invalid Airwallex webhook signature: {reason}")
+    elif spendesk_sig:
+        # Spendesk signs the payload (hex HMAC-SHA256) with the webhook secret.
+        ok, reason = verify_spendesk_signature(body, secret, spendesk_sig)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Spendesk webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):
@@ -3873,6 +3892,32 @@ async def _handle_docusign_connect(
     return await docusign_connect.dispatch_connect_delivery(integration_id, extra, payload)
 
 
+async def _handle_dealhub_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A DealHub quote webhook delivery on the integration's webhook URL.
+
+    Refused (401) unless ``Authorization: Bearer <token>`` names one of the
+    integration's webhook tokens (DealHub's Token authentication type): no
+    token configured refuses every delivery. Then
+    ``dealhub_events.dispatch_delivery``.
+    """
+    from app.services import dealhub_events
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    tokens = dealhub_events.webhook_tokens(extra)
+    if not tokens:
+        logger.warning("DealHub webhook delivery refused (%s): no webhook token configured", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
+    if not dealhub_events.verify_bearer(request.headers.get("authorization"), tokens):
+        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
+    return await dealhub_events.dispatch_delivery(integration_id, payload)
+
+
 @router.post("/integrations/{integration_id}")
 async def receive_integration_webhook(integration_id: str, request: Request) -> dict:
     """Receive a webhook for an *integration* and fan out to all bound agents.
@@ -3931,6 +3976,11 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # DocuSign Connect: verified with the Connect HMAC keys, then
         # deduplicated per envelope event in the seen set the poll shares.
         return await _handle_docusign_connect(integration_id, integ_pre.extra_config_enc, body, payload_raw, request)
+    if integ_pre and integ_pre.provider == "dealhub":
+        # DealHub quote webhook: its Token authentication (a bearer token stored
+        # on the integration), then deduplicated per quote change in the seen set
+        # the poll shares.
+        return await _handle_dealhub_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
     if integ_pre and integ_pre.provider == "jira":
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
@@ -4694,6 +4744,14 @@ async def receive_assignment_webhook(
                 payload,
                 verified=_signed_with_webhook_secret(integration.extra_config_enc),
             )
+            if provider == "opencti":
+                # The analyst's mark on a drafted Grouping answers the CTEM review
+                # gate waiting on its coverage request (CTEM-16, #1089).
+                await ctem_analyst_mark.note_event(
+                    provider,
+                    payload,
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if provider == "openaev":
                 # An OpenAEV result a CTEM case waits on moves it (CTEM-15, #918).
                 await ctem_openaev_events.note_event(
@@ -4735,9 +4793,16 @@ async def receive_assignment_webhook(
             if provider == "opencti":
                 # A trigger serving tracked organizations (#9157 M4): the run
                 # learns which ones this event concerns.
-                from app.services.organization_events import annotate_payload
+                from app.services.organization_events import annotate_payload, named_in_payload
 
                 annotate_payload(payload, config)
+                # CTEM-29: a report or incident naming a tracked organization is a
+                # third-party event (path 11), recorded once per organization.
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload,
+                    named_in_payload(payload, config),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if wf.trigger_type == "integration_event":
                 if config.get("provider") != provider:
                     logger.warning(

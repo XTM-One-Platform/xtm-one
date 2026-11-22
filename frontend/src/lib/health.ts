@@ -72,7 +72,19 @@ export const HEALTH_SPECIALIST_LABELS = {
   quality_analyst: "Quality Analyst",
   flow_lab: "Flow Lab",
   experimenter: "Experimenter",
+  opencti_checker: "OpenCTI Health Checker",
+  openaev_checker: "OpenAEV Health Checker",
+  opencrq_checker: "OpenCRQ Health Checker",
+  module_analyst: "Module Analyst",
 } as const;
+
+/** Every role a module checker cycle is booked under, the S14 alias included (backend `identity.MODULE_CHECKER_ROLES`). */
+const MODULE_CHECKER_ROLES: ReadonlySet<string> = new Set(["opencti_checker", "openaev_checker", "opencrq_checker", "module_analyst"]);
+
+/** Whether a cycle's specialist is a module checker (#101 S15): its digest shows recommendations and agentic findings. */
+export function isModuleCheckerRole(specialist: string): boolean {
+  return MODULE_CHECKER_ROLES.has(specialist);
+}
 
 /** @i18n-keys */
 export const HEALTH_TRIGGER_LABELS = {
@@ -116,6 +128,11 @@ const REASON_LABELS = {
   remove: "removed",
   flag: "flagged",
   dry_run: "dry-run",
+  high: "high confidence",
+  medium: "medium confidence",
+  low: "low confidence",
+  opened: "opened",
+  resolved: "resolved",
 } as const;
 
 export function healthSkipLabel(what: string): string {

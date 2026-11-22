@@ -36,6 +36,7 @@ import { SecretField } from "@/components/ui/secret-field";
 import { COPY_FEEDBACK_DELAY } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import { createsOnAdminOAuthApp } from "@/pages/integration-detail/admin-oauth-app";
+import { hasWebhookDeliveredEvents } from "@/pages/integration-detail/webhooks-card-blocks";
 import type { ProviderCatalogItem, CreateIntegrationRequest } from "@/types";
 
 /**
@@ -291,6 +292,12 @@ export default function NewIntegration() {
     const isSlack = selected.provider === "slack";
     const slackEventsUrl = `${baseUrl}/api/v1/integrations/notifications/slack`;
     const onAdminOAuthApp = createsOnAdminOAuthApp(selected, selectedAuthType || form.auth_type, form.client_id);
+    // The webhook URL and the admin-managed webhook line only hold for events
+    // that can arrive by webhook; a provider whose events are all polled gets
+    // one polling line instead.
+    const hasOwnEventsLine = isMicrosoft || isSlack;
+    const webhookEvents = !hasOwnEventsLine && hasWebhookDeliveredEvents(selected);
+    const pollingOnlyEvents = !hasOwnEventsLine && selected.available_events.length > 0 && !webhookEvents;
     return (
       <div className="space-y-6">
         {consentElement}
@@ -680,8 +687,8 @@ export default function NewIntegration() {
             </div>
             )}
 
-            {/* Webhook URL — only shown when user provides own creds (not admin-provisioned) */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && !onAdminOAuthApp && (
+            {/* Webhook URL — only for a provider with a webhook or hybrid event, when the user provides own creds (not admin-provisioned); a polling-only provider has nothing to configure */}
+            {webhookEvents && !onAdminOAuthApp && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-default-secondary" />
@@ -711,11 +718,20 @@ export default function NewIntegration() {
             )}
 
             {/* Admin-provisioned: webhooks managed centrally, just inform the user */}
-            {selected.available_events.length > 0 && !isMicrosoft && !isSlack && onAdminOAuthApp && (
+            {webhookEvents && onAdminOAuthApp && (
               <div className="flex items-center gap-2 rounded-sm bg-elevation-hover px-3 py-2">
                 <Webhook className="h-3.5 w-3.5 text-default-secondary shrink-0" />
                 <p className="content-compact text-default-secondary">
                   {t_i18n("Webhooks for {provider} are managed by your administrator. Events will be delivered to your agents automatically.", { provider: selected.name })}
+                </p>
+              </div>
+            )}
+
+            {pollingOnlyEvents && (
+              <div className="flex items-center gap-2 rounded-sm bg-elevation-hover px-3 py-2">
+                <Webhook className="h-3.5 w-3.5 text-default-secondary shrink-0" />
+                <p className="content-compact text-default-secondary">
+                  {t_i18n("Events from {provider} are picked up by polling. No webhook needs to be configured in {provider}.", { provider: selected.name })}
                 </p>
               </div>
             )}
