@@ -232,7 +232,28 @@ Each run follows the import rules:
 - The rows a run writes carry the sync's id; a row whose id is on the exclusion list is left out and its stored copy removed. The last run counts the excluded rows.
 - Every run that changed the profile or failed, and every change to a sync, is written to the audit log.
 
-The syncs run on the platform's scheduler, with no model call, AI on or off. The API is `GET`, `POST /api/v1/organization-context/syncs`, `PUT` and `DELETE /syncs/{id}`, and `POST /syncs/{id}/run`.
+### Sync direction
+
+Each sync has one direction and one master, never a free two-way merge:
+
+- **Inbound** (the default, and every sync saved before directions existed): the platform is the master. Its rows are read-only in XTM One and follow the platform.
+- **Outbound**: the XTM One list (typed, CSV, API or maintained by an agent) is the master. The platform rows this sync created are created, updated and deleted to match it. A platform row the sync did not create is never touched, except the criticality of a crown jewel already linked to it, which follows the profile.
+
+An outbound run writes with the token of the administrator who saved the sync, like an inbound run, and every run is written to the audit log. A change of direction starts clean: the new direction does not take over the rows the previous one created.
+
+| Section | Platform | Directions |
+|---|---|---|
+| Crown jewels | OpenCRQ (supporting assets) | Inbound, Outbound |
+| Assets | OpenAEV | Inbound (outbound planned) |
+| Asset groups | OpenAEV | Inbound (outbound planned) |
+| PIRs | OpenCTI | Inbound (outbound planned) |
+| Assets | OpenCTI | Inbound: Systems are owned by OpenCTI connectors |
+| AI systems | OpenAEV | Inbound: OpenAEV has no AI system object to write |
+| Tech stack | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
+
+`GET /api/v1/organization-context/syncs/directions` lists, per section and platform, the directions a sync may take and why outbound is not offered.
+
+The syncs run on the platform's scheduler, with no model call, AI on or off. The API is `GET`, `POST /api/v1/organization-context/syncs`, `PUT` and `DELETE /syncs/{id}`, and `POST /syncs/{id}/run`; `direction` is `inbound` or `outbound`.
 
 ## Draft the profile with AI
 
