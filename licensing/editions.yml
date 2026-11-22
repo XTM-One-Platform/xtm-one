@@ -148,6 +148,7 @@ ee:
   - backend/app/api/v1/custom_tool_sources.py
   - backend/app/api/v1/custom_tools.py
   - backend/app/api/v1/datasets.py
+  - backend/app/api/v1/decisions.py
   - backend/app/api/v1/desktop_login.py
   - backend/app/api/v1/feedback_criteria.py
   - backend/app/api/v1/flow_*.py
@@ -575,6 +576,10 @@ ee:
   - backend/app/api/v1/llm_proxy.py
   - backend/app/integrations/providers/openaev/autonomous.py
   - backend/app/models/agent_copy.py
+  - backend/app/models/decision.py
+  - backend/app/models/decision_hooks.py
+  - backend/app/services/decision_links.py
+  - backend/app/services/decision_router.py
   - backend/app/services/agentic_executions.py
   - backend/app/services/integration_tools.py
   - backend/app/services/mcp_oauth_tokens.py
@@ -717,7 +722,6 @@ ce:
   - backend/app/integrations/providers/ovhcloud  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
-  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
