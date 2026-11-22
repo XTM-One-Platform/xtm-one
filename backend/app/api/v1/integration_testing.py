@@ -850,6 +850,16 @@ async def test_provider_connectivity(
 
         ok, message = await docusign_validate(token)
         return {"status": "ok" if ok else "error", "message": message}
+    elif provider == "netsuite":
+        # The credential is the provider's compound token (account, mode and
+        # the M2M or TBA material): its validate_connection mints the token
+        # (M2M) and runs one SuiteQL query over the subsidiaries.
+        from app.integrations.providers.netsuite import (
+            validate_connection as netsuite_validate,
+        )
+
+        ok, message = await netsuite_validate(token)
+        return {"status": "ok" if ok else "error", "message": message}
     elif provider == "ashby":
         # Ashby uses HTTP Basic auth (the key as username) and POST-only RPC
         # endpoints. apiKey.info names the key and its permissions; a key that
@@ -857,12 +867,6 @@ async def test_provider_connectivity(
         from app.integrations.providers.ashby import validate_connection as ashby_validate
 
         ok, message = await ashby_validate(token)
-        return {"status": "ok" if ok else "error", "message": message}
-    elif provider == "quotapath":
-        # A read of the users list through the provider's own client.
-        from app.integrations.providers.quotapath import validate_connection as quotapath_validate
-
-        ok, message = await quotapath_validate(token or "")
         return {"status": "ok" if ok else "error", "message": message}
     elif provider == "wordsmith":
         # GET /me through the provider's own client: the region host, the

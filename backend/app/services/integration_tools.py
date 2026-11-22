@@ -120,6 +120,7 @@ from app.integrations.providers.mistral import build_tools as mistral_tools
 from app.integrations.providers.mitre_atlas import build_tools as mitre_atlas_tools
 from app.integrations.providers.mitre_attack import build_tools as mitre_attack_tools
 from app.integrations.providers.n8n import build_tools as n8n_tools
+from app.integrations.providers.netsuite import build_tools as netsuite_tools
 from app.integrations.providers.newsapi import build_tools as newsapi_tools
 from app.integrations.providers.notion import build_tools as notion_tools
 from app.integrations.providers.onepassword import build_tools as onepassword_tools
@@ -143,7 +144,6 @@ from app.integrations.providers.proofpoint import build_tools as proofpoint_tool
 from app.integrations.providers.purview import build_tools as purview_tools
 from app.integrations.providers.qradar import build_tools as qradar_tools
 from app.integrations.providers.qualys import build_tools as qualys_tools
-from app.integrations.providers.quotapath import build_tools as quotapath_tools
 from app.integrations.providers.ransomware_live import (
     build_tools as ransomware_live_tools,
 )
@@ -1001,9 +1001,9 @@ PROVIDER_TOOLS = {
     "concord": concord_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
+    "netsuite": netsuite_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
-    "quotapath": quotapath_tools,
     "hibob": hibob_tools,
     "linkedin": linkedin_tools,
     "x": x_tools,
@@ -1138,12 +1138,12 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "linkedin",
         "metabase",
         "microsoft",
+        "netsuite",
         "notion",
         "onepassword",
         "openaev",
         "opencti",
         "perk",
-        "quotapath",
         "servicenow",
         "slack",
         "tanium",
@@ -2781,6 +2781,35 @@ async def _get_token(
         # Partial compound (not None) so the provider surfaces an actionable
         # error instead of the tools silently disappearing.
         return f"{region}||{project}||{customer}||{sa_json}"
+
+    # --- NetSuite ---
+    # The API Key field holds the secret (the certificate's private key for
+    # OAuth 2.0 machine-to-machine, the token secret for TBA); the account,
+    # the mode and the other identifiers live in extra_config. The provider
+    # mints or signs its own requests, so the OAuth refresh below does not
+    # apply. The secret is the last field (split greedily).
+    if provider == "netsuite":
+        extra = {}
+        if integ.extra_config_enc:
+            try:
+                extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (netsuite): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        from app.integrations.providers.netsuite import compound_credential as netsuite_credential
+
+        compound = netsuite_credential((await reveal_field(integ, "api_key_enc")) or "", extra)
+        if not compound:
+            logger.warning(
+                "Integration '%s' (netsuite) is missing the account ID, the secret or the identifiers "
+                "of its authentication mode.",
+                integ.name,
+            )
+            return None
+        return compound
 
     # --- DocuSign JWT Grant ("API Key" mode) ---
     # The RSA private key lives in api_key_enc; the integration key, the user
