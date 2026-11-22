@@ -3968,29 +3968,27 @@ async def _test_integration(
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
-    # DealHub: the API token is in api_key_enc, the instance host in
-    # extra_config. Validate by reading the account's active users.
-    if integration.provider == "dealhub":
-        from app.integrations.providers.dealhub import (
-            build_dealhub_token,
+    # Airwallex exchanges a client id and an API key for a 30-minute bearer:
+    # the key is in api_key_enc, the environment, client id and login_as in
+    # extra_config. Validate by reading the account.
+    if integration.provider == "airwallex":
+        from app.integrations.providers.airwallex import (
+            token_from_config as airwallex_token_from_config,
         )
-        from app.integrations.providers.dealhub import (
-            validate_connection as dealhub_validate,
+        from app.integrations.providers.airwallex import (
+            validate_connection as airwallex_validate,
         )
 
-        dealhub_extra: dict[str, object] = {}
+        airwallex_extra: dict[str, object] = {}
         if integration.extra_config_enc:
             with suppress(Exception):
                 decrypted = decrypt_json(integration.extra_config_enc)
-                dealhub_extra = decrypted if isinstance(decrypted, dict) else {}
-        dealhub_host = dealhub_extra.get("instance_host")
-        dealhub_secret = (await reveal_field(integration, "api_key_enc")) or ""
+                airwallex_extra = decrypted if isinstance(decrypted, dict) else {}
+        airwallex_secret = (await reveal_field(integration, "api_key_enc")) or ""
         try:
-            ok, message = await dealhub_validate(
-                build_dealhub_token(dealhub_host if isinstance(dealhub_host, str) else "", dealhub_secret)
-            )
+            ok, message = await airwallex_validate(airwallex_token_from_config(airwallex_secret, airwallex_extra))
         except Exception:
-            logger.debug("DealHub connectivity check failed", exc_info=True)
+            logger.debug("Airwallex connectivity check failed", exc_info=True)
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 

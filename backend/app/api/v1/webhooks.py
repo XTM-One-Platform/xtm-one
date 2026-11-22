@@ -52,6 +52,7 @@ Signature validation (both endpoints):
   - OpenCTI: token-based (X-OpenCTI-Token header)
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
+  - Airwallex: x-signature over x-timestamp + body (HMAC-SHA256, 5 min replay window)
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -191,6 +192,10 @@ from app.core.utils import (
 from app.integrations.providers.aikido.webhooks import SIGNATURE_HEADER as AIKIDO_SIGNATURE_HEADER
 from app.integrations.providers.aikido.webhooks import trigger_event as aikido_trigger_event
 from app.integrations.providers.aikido.webhooks import verify_signature as verify_aikido_signature
+from app.integrations.providers.airwallex.webhooks import TIMESTAMP_HEADER as AIRWALLEX_TIMESTAMP_HEADER
+from app.integrations.providers.airwallex.webhooks import is_delivery as is_airwallex_delivery
+from app.integrations.providers.airwallex.webhooks import trigger_event as airwallex_trigger_event
+from app.integrations.providers.airwallex.webhooks import verify_signature as verify_airwallex_signature
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -2174,6 +2179,11 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if request.headers.get(AIKIDO_SIGNATURE_HEADER) and isinstance(aikido_event, str):
         return aikido_trigger_event(aikido_event)
 
+    # Airwallex: an Event object (``name``, ``account_id``, ``data``) stamped
+    # with x-timestamp; the trigger key is airwallex_ and its flat name.
+    if is_airwallex_delivery(request.headers.get, payload):
+        return airwallex_trigger_event(payload["name"])
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2203,6 +2213,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         and isinstance(payload.get("event_type"), str)
     ):
         return aikido_trigger_event(payload["event_type"])
+    if isinstance(payload, dict) and is_airwallex_delivery(request.headers.get, payload):
+        return airwallex_trigger_event(payload["name"])
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
@@ -2540,6 +2552,7 @@ def _verify_signature(
     linkedin_sig = request.headers.get("X-LI-Signature", "")
     perk_sig = request.headers.get("Tk-Signature", "")
     aikido_sig = request.headers.get(AIKIDO_SIGNATURE_HEADER, "")
+    airwallex_ts = request.headers.get(AIRWALLEX_TIMESTAMP_HEADER, "")
     opencti_token = request.headers.get("X-OpenCTI-Token", "")
     openaev_token = request.headers.get(_OPENAEV_HEADER, "")
 
@@ -2574,6 +2587,12 @@ def _verify_signature(
         ok, reason = verify_aikido_signature(body, secret, aikido_sig)
         if not ok:
             raise HTTPException(status_code=401, detail=f"Invalid Aikido webhook signature: {reason}")
+    elif airwallex_ts and request.headers.get("X-Signature", ""):
+        # Airwallex signs x-timestamp + the raw body (hex HMAC-SHA256) in
+        # x-signature; checked before the generic X-Signature (body only).
+        ok, reason = verify_airwallex_signature(body, secret, request.headers.get("X-Signature", ""), airwallex_ts)
+        if not ok:
+            raise HTTPException(status_code=401, detail=f"Invalid Airwallex webhook signature: {reason}")
     elif opencti_token:
         # OpenCTI sends a static bearer token in X-OpenCTI-Token.
         if not timing_safe_header_eq(opencti_token, secret):
@@ -3854,32 +3873,6 @@ async def _handle_docusign_connect(
     return await docusign_connect.dispatch_connect_delivery(integration_id, extra, payload)
 
 
-async def _handle_dealhub_webhook(
-    integration_id: str,
-    extra_config_enc: str | None,
-    payload: object,
-    request: Request,
-) -> dict[str, object]:
-    """A DealHub quote webhook delivery on the integration's webhook URL.
-
-    Refused (401) unless ``Authorization: Bearer <token>`` names one of the
-    integration's webhook tokens (DealHub's Token authentication type): no
-    token configured refuses every delivery. Then
-    ``dealhub_events.dispatch_delivery``.
-    """
-    from app.services import dealhub_events
-
-    context = f"integration={integration_id}"
-    extra = _read_webhook_config(extra_config_enc, context=context)
-    tokens = dealhub_events.webhook_tokens(extra)
-    if not tokens:
-        logger.warning("DealHub webhook delivery refused (%s): no webhook token configured", context)
-        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
-    if not dealhub_events.verify_bearer(request.headers.get("authorization"), tokens):
-        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
-    return await dealhub_events.dispatch_delivery(integration_id, payload)
-
-
 @router.post("/integrations/{integration_id}")
 async def receive_integration_webhook(integration_id: str, request: Request) -> dict:
     """Receive a webhook for an *integration* and fan out to all bound agents.
@@ -3938,11 +3931,6 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # DocuSign Connect: verified with the Connect HMAC keys, then
         # deduplicated per envelope event in the seen set the poll shares.
         return await _handle_docusign_connect(integration_id, integ_pre.extra_config_enc, body, payload_raw, request)
-    if integ_pre and integ_pre.provider == "dealhub":
-        # DealHub quote webhook: its Token authentication (a bearer token stored
-        # on the integration), then deduplicated per quote change in the seen set
-        # the poll shares.
-        return await _handle_dealhub_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
     if integ_pre and integ_pre.provider == "jira":
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
