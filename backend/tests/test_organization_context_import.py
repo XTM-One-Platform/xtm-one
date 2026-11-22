@@ -318,9 +318,18 @@ def test_pirs_merge_adds_and_names():
 
 def test_tech_stack_merge_never_duplicates_a_product():
     profile = _profile(tech_stack=[oc.TechStackEntry(product="Splunk")])
-    rows = [oc.TechStackEntry(product="splunk"), oc.TechStackEntry(product="CrowdStrike")]
+    rows = [
+        oc.TechStackEntry(product="splunk", source="openaev", external_id="splunk"),
+        oc.TechStackEntry(product="CrowdStrike", source="openaev", external_id="crowdstrike"),
+    ]
     plan = imp.plan_import(profile, "tech_stack", "openaev", imp.ReadResult(rows=rows, total=2))
-    assert (plan.new, plan.unchanged) == (["CrowdStrike"], ["splunk"])
+    # The typed "Splunk" is a person's row: the import never takes it over (#1134).
+    assert (plan.new, plan.skipped) == (["CrowdStrike"], ["splunk"])
+    assert plan.profile is not None
+    assert [(t.product, t.source) for t in plan.profile.tech_stack] == [
+        ("Splunk", "manual"),
+        ("CrowdStrike", "openaev"),
+    ]
 
 
 def test_provenance_names_the_source_and_filters():

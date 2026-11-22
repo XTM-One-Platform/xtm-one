@@ -27,8 +27,19 @@ test("a node's own element takes the keyboard only, never a second click handler
 });
 
 test("the canvas fits the graph again after a resize (UX r1 A1 on #979)", () => {
-  // And again after the drawing changes: a layout, a grouping, a collapse (#1062).
-  assert.match(VIEW, /<FitOnResize layoutKey=\{layoutKey\} \/>/);
+  // And again after the reader changes the drawing: a layout, a grouping, a collapse (#1062).
+  assert.match(VIEW, /<GraphCamera fitKey=\{fitKey\} positions=\{laid\?\.positions\} \/>/);
+  assert.match(VIEW, /\}, \[width, height, fitKey, fitView\]\);/);
+});
+
+test("a live refresh never refits the canvas nor resets the camera (#1158)", () => {
+  // The fit key is the reader's choices alone, never a count a refresh changes.
+  assert.match(VIEW, /const fitKey = graphFitKey\(\{ layout: layoutChoice, groupBy, collapsedKeys, focusMode, selected, showDone \}\);/);
+  assert.equal(/nodes\.length \?\? 0\}`/.test(VIEW), false, "no node count in the fit key");
+  // A refresh keeps the zoom and anchors the pan on the node at the centre.
+  assert.match(VIEW, /anchoredViewport\(last\.positions, positions, getViewport\(\)/);
+  // One fitView call in the file: the camera's, keyed on the fit key.
+  assert.equal((VIEW.match(/fitView\(FIT_VIEW_OPTIONS\)/g) ?? []).length, 1);
 });
 
 test("the controls sit in the fleet graph's toolbar above the canvas, the counters in its status line (#1062)", () => {

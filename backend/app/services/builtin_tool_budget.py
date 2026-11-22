@@ -120,7 +120,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: Raised to 472,300 for the health_modules group (#101 S14a-2b: list_module_findings and
 #: record_finding_recommendation, +1,300, carried by Platform Health's Module Analyst alone,
 #: total 472,200 on 21 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 472_300
+#: Raised to 472,950 for send_decision_card in the coordination group (#1156: +621,
+#: total 472,914 on 22 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 472_950
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -151,8 +153,9 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # group_by on get_shared_state and list_work_items (#12105, 15 Nov 2026); 37,800 with
     # workset_resolve counted (#12218: 37,779 on 16 Nov 2026); 37,900 with
     # list_shared_state's key_prefix (about 37,870 on 18 Nov 2026); 38,500 with the
-    # readable decision card ask (#776: 38,479 on 20 Nov 2026).
-    "coordination": 38_500,
+    # readable decision card ask (#776: 38,479 on 20 Nov 2026); 39,150 with
+    # send_decision_card (#1156: 39,107 on 22 Nov 2026).
+    "coordination": 39_150,
     "video_studio": 89_500,
 }
 
