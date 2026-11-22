@@ -4801,7 +4801,14 @@ async def answer_work_item(
         item.needs_human = None
         item.ask = None
         item.last_activity_at = now
-        await db.commit()
+        from app.models.decision_hooks import answer_actor
+
+        # The decisions row (#842, S2) records who answered by id, not by name.
+        token = answer_actor.set(uid)
+        try:
+            await db.commit()
+        finally:
+            answer_actor.reset(token)
     await publish_transition(wid, previous_status=previous_status, note=note)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
