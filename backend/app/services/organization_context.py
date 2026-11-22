@@ -150,6 +150,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     # CTEM-26: read by the attack surface pass, never dumped into the always-on block.
     "address_ranges",
     "attack_surface",
+    # CTEM-28: read by the evidence health pass, never dumped into the always-on block.
+    "evidence_health",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -498,6 +500,26 @@ class AttackSurfacePass(BaseModel):
     stale_after_days: int = Field(default=14, ge=1, le=365)
 
 
+class EvidenceHealthPass(BaseModel):
+    """The opt-in evidence health pass of CTEM-28 (``dev-docs/ctem-evidence-health.md``).
+
+    Off by default. When on, a scheduled pass reads from ``integration`` (an
+    OpenCRQ integration) the evidence health of the supporting assets of every
+    risk scenario and records evidence decay (path 9) and blind spots (path 12)
+    as signals. A gap never reads as safe.
+    """
+
+    model_config = _Strict
+
+    enabled: bool = False
+    #: The id of the OpenCRQ integration the pass reads with its owner's credential.
+    integration: str = Field(default="", max_length=100)
+    #: The re-test delay: evidence older than this many days has expired (path 9).
+    max_age_days: int = Field(default=30, ge=1, le=3650)
+    #: Hours between two passes (daily by default).
+    cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
+
+
 def normalize_address_ranges(value: list[str]) -> list[str]:
     """CIDR blocks in their network form, each once (a bare address is its /32 or /128)."""
     import ipaddress
@@ -561,6 +583,8 @@ class OrganizationProfile(BaseModel):
     address_ranges: list[str] = Field(default_factory=list, max_length=500)
     #: The opt-in attack surface pass of the outside lens (CTEM-26).
     attack_surface: AttackSurfacePass = Field(default_factory=AttackSurfacePass)
+    #: The opt-in evidence health pass: evidence decay and blind spots (CTEM-28).
+    evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.
