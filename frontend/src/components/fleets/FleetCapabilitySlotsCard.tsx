@@ -187,15 +187,20 @@ export function FleetCapabilitySlotsCard({
     const builtinLabel = type.builtin ? t_text(type.builtin.label) : "";
     if (MULTI_CHANNEL_CAPABILITIES.has(type.capability)) {
       const current = integrationIds(bound);
+      // The always-on built-in is shown in the Integration column and is not a
+      // chip here: a chip would offer a remove control that cannot remove it.
+      // The picker holds the external channels that add to it.
       return (
         <MultiSelect
           aria-label={label}
           options={[
-            ...(builtin ? [{ value: builtin, label: builtinLabel }] : []),
+            ...bound
+              .filter((integration) => !type.candidates.some((c) => c.integration_id === integration.integration_id))
+              .map((integration) => ({ value: integration.integration_id, label: integrationName(integration) })),
             ...type.candidates.map((candidate) => ({ value: candidate.integration_id, label: integrationName(candidate) })),
           ]}
           sort={false}
-          selected={builtin ? [builtin, ...current] : current}
+          selected={current}
           onToggle={(value) => onPick(toggledIds(current, value))}
           disabled={busy}
           placeholder={t_i18n("Choose an integration")}
@@ -203,7 +208,7 @@ export function FleetCapabilitySlotsCard({
           emptyOptionsLabel={t_i18n("No integration connected")}
           noMatchLabel={t_i18n("No match")}
           maxVisibleChips="fit"
-          className="w-[200px]"
+          className="w-[240px]"
         />
       );
     }
@@ -227,7 +232,7 @@ export function FleetCapabilitySlotsCard({
         disabled={busy}
         placeholder={t_i18n("Choose an integration")}
         onValueChange={(value) => onPick(idsForPick(value))}
-        className="w-[200px]"
+        className="w-[240px]"
       />
     );
   };
@@ -307,7 +312,7 @@ export function FleetCapabilitySlotsCard({
       );
     // A button of the picker's 36 px height, never a link in a row cell (#12070, UX r1 B1 of #1133).
     return (
-      <Button type="button" variant="outline" className="w-[200px]" onClick={connectOne}>
+      <Button type="button" variant="outline" className="w-[240px]" onClick={connectOne}>
         {t_i18n("Connect one")}
       </Button>
     );
@@ -409,7 +414,7 @@ export function FleetCapabilitySlotsCard({
               onRowClick={toggleType}
               expandedRow={membersPanel}
               rowActions={typeAction}
-              rowActionsWidth={224}
+              rowActionsWidth={264}
               // Fixed columns: at 1080 the flexible ones truncate instead of pushing the picker out of the card.
               layout="fixed"
               defaultSort={{ key: "status", direction: "asc" }}
