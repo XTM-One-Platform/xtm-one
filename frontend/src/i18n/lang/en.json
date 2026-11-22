@@ -20854,5 +20854,19 @@
   "Proven by an OpenAEV simulation, {date}": "Proven by an OpenAEV simulation, {date}",
   "Primary assets reached": "Primary assets reached",
   "None: no business asset sits behind the assets reached.": "None: no business asset sits behind the assets reached.",
-  "Recorded the attack path": "Recorded the attack path"
+  "Recorded the attack path": "Recorded the attack path",
+  "No grouping": "No grouping",
+  "Fix family": "Fix family",
+  "Upgrade": "Upgrade",
+  "Patch": "Patch",
+  "Course of action": "Course of action",
+  "Close exposure": "Close exposure",
+  "Decommission": "Decommission",
+  "Rotate credential": "Rotate credential",
+  "Restore control": "Restore control",
+  "Supplier action": "Supplier action",
+  "Restore coverage": "Restore coverage",
+  "Unknown user": "Unknown user",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# row} other {# rows}}",
+  "Group by: {group}": "Group by: {group}"
 }
