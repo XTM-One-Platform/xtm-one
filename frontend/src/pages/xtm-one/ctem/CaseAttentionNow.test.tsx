@@ -72,6 +72,20 @@ describe("CaseAttentionNow (#1176)", () => {
     expect(screen.getByTestId("ctem-case-age").textContent).not.toContain("1 days");
   });
 
+  it("titles the band with the shared h3 section header (UX r1 B1)", () => {
+    render(kase({}));
+    const heading = screen.getByRole("heading", { level: 3, name: "Why this case needs attention now" });
+    expect(heading.className).toContain("font-semibold");
+  });
+
+  it("labels the date Opened, like the why line, and says Today on the day it opened (UX r1 B2)", () => {
+    render(kase({ created_at: "2026-11-22T08:00:00Z" }));
+    expect(screen.getByTestId("ctem-case-created").textContent).toContain("Opened");
+    expect(screen.getByTestId("ctem-case-created").textContent).not.toContain("Created");
+    expect(screen.getByTestId("ctem-case-age").textContent).toBe("AgeToday");
+    expect(screen.getByTestId("ctem-case-attention-why").textContent).toContain("Opened today");
+  });
+
   it("shows the dates alone on a resolved case: nothing to act on", () => {
     render(kase({ state: "resolved" }));
     expect(screen.queryByTestId("ctem-case-attention-why")).toBeNull();

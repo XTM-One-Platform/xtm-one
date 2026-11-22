@@ -16,6 +16,7 @@ import { useFormatter } from "@/i18n";
 import { CasesBulkActions } from "./CasesBulkActions";
 import { NEXT_ACTION_DIALOG, useAttentionWhy } from "./CasesAttentionBand";
 import { caseAttention, caseOpenedAt } from "./case-attention";
+import { CtemWidgetHeader } from "./CtemWidgetHeader";
 
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -42,26 +43,32 @@ export function CaseAttentionNow({ c, now, onChanged }: { c: CtemCaseSummary; no
     <Card data-testid="ctem-case-attention-now">
       <CardContent className="flex flex-col gap-3 p-4">
         {open && why && (
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">{t_i18n("Why this case needs attention now")}</div>
-              <div className="content-compact text-default-secondary" data-testid="ctem-case-attention-why">
-                <TruncatedText text={why} />
-              </div>
+          <div className="flex min-w-0 flex-col gap-1">
+            {/* The shared section title of the CTEM pages, h3 in the case page outline (UX r1 B1). */}
+            <CtemWidgetHeader
+              level={3}
+              title={t_i18n("Why this case needs attention now")}
+              testId="ctem-case-attention-title"
+              actions={
+                dialog ? (
+                  <div data-testid="ctem-case-attention-next">
+                    <CasesBulkActions cases={[c]} only={dialog} onDone={onChanged} />
+                  </div>
+                ) : undefined
+              }
+            />
+            <div className="content-compact text-default-secondary" data-testid="ctem-case-attention-why">
+              <TruncatedText text={why} />
             </div>
-            {dialog && (
-              <div className="shrink-0" data-testid="ctem-case-attention-next">
-                <CasesBulkActions cases={[c]} only={dialog} onDone={onChanged} />
-              </div>
-            )}
           </div>
         )}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Fact label={t_i18n("Created")} testId="ctem-case-created">
+          {/* One word for this date, the why line's "Opened" (UX r1 B2). */}
+          <Fact label={t_i18n("Opened")} testId="ctem-case-created">
             <DateTimeCell value={opened} />
           </Fact>
           <Fact label={t_i18n("Age")} testId="ctem-case-age">
-            {days === null ? "-" : t_i18n("{days, plural, one {# day} other {# days}}", { days })}
+            {days === null ? "-" : t_i18n("{days, plural, =0 {Today} one {# day} other {# days}}", { days })}
           </Fact>
           <Fact label={t_i18n("Last change")} testId="ctem-case-last-change">
             <DateTimeCell value={c.updated_at ?? c.state_since} />
