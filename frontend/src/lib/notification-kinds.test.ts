@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { canMarkAllRead, hasUnreadApproval, isWaitingDecision, notificationSubtitle, readsOnOpen } from "./notification-kinds";
+import {
+  canMarkAllRead,
+  decisionSource,
+  hasUnreadApproval,
+  isDecisionKind,
+  isWaitingDecision,
+  notificationSubtitle,
+  readsOnOpen,
+} from "./notification-kinds";
 
-const t = (text: string) => `fr:${text}`;
+const t = (text: string, values?: Record<string, string | number>) =>
+  `fr:${Object.entries(values ?? {}).reduce((out, [key, value]) => out.replace(`{${key}}`, String(value)), text)}`;
 
 describe("notification kinds", () => {
   it("pins a decision while it waits for its answer (#991)", () => {
@@ -29,8 +38,24 @@ describe("notification kinds", () => {
     expect(hasUnreadApproval([])).toBe(false);
   });
 
-  it("translates a waiting work item's subtitle and keeps an agent's name", () => {
-    expect(notificationSubtitle({ kind: "work_item_waiting", subtitle: "Work item" }, t)).toBe("fr:Work item");
-    expect(notificationSubtitle({ kind: "hitl", subtitle: "Remediation planner" }, t)).toBe("Remediation planner");
+  it("reads one decision kind and its three aliases (#842, S4)", () => {
+    expect(isDecisionKind("decision")).toBe(true);
+    expect(isDecisionKind("hitl")).toBe(true);
+    expect(isDecisionKind("flow_hitl")).toBe(true);
+    expect(isDecisionKind("work_item_waiting")).toBe(true);
+    expect(isDecisionKind("run")).toBe(false);
+    expect(decisionSource({ kind: "decision", source: "flow_run" })).toBe("flow_run");
+    expect(decisionSource({ kind: "hitl" })).toBe("run");
+    expect(decisionSource({ kind: "flow_hitl" })).toBe("flow_run");
+    expect(decisionSource({ kind: "work_item_waiting" })).toBe("work_item");
+    expect(decisionSource({ kind: "reminder" })).toBeNull();
+  });
+
+  it("says the source and who asks under a decision, a name elsewhere", () => {
+    expect(notificationSubtitle({ kind: "decision", source: "run", subtitle: "Remediation planner" }, t)).toBe("fr:fr:Run · Remediation planner");
+    expect(notificationSubtitle({ kind: "decision", source: "work_item", subtitle: null }, t)).toBe("fr:Work item");
+    expect(notificationSubtitle({ kind: "work_item_waiting", subtitle: "Waiting for your decision" }, t)).toBe("fr:Work item");
+    expect(notificationSubtitle({ kind: "hitl", subtitle: "Remediation planner" }, t)).toBe("fr:fr:Run · Remediation planner");
+    expect(notificationSubtitle({ kind: "reminder", subtitle: "Reminder" }, t)).toBe("Reminder");
   });
 });

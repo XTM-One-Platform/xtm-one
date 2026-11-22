@@ -12618,8 +12618,13 @@ export interface PlatformFormsResponse {
 // Notifications and linked phones
 // ---------------------------------------------------------------------------
 
-/** A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`). */
+/**
+ * A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`).
+ * `decision` is every human gate (#842, S4); `hitl`, `flow_hitl` and
+ * `work_item_waiting` stay readable for one release as its aliases.
+ */
 export type NotificationKind =
+  | "decision"
   | "hitl"
   | "flow_hitl"
   | "run"
@@ -12649,12 +12654,17 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a `hitl` item waits on, or the flow run a `flow_hitl` item asks from. */
+  /** The run a run decision waits on, or the flow run a flow decision asks from. */
   run_id: string | null;
+  /** What a `decision` entry waits on (`DECISION_SOURCES`). */
+  source?: NotificationDecisionSource | null;
   /** A decision still waiting: unread until answered, never read by opening it (#991). */
   awaiting_answer?: boolean;
   unread: boolean;
 }
+
+/** The source of a `decision` notification. */
+export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
