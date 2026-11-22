@@ -1281,6 +1281,8 @@ openaev:full_text_search_openaev
 openaev:get_openaev_asset
 openaev:get_openaev_asset_group
 openaev:get_openaev_attack_pattern
+openaev:get_openaev_data_health
+openaev:get_openaev_error_rate
 openaev:get_openaev_exercise
 openaev:get_openaev_injector_contract
 openaev:get_openaev_payload

@@ -72,6 +72,9 @@ class ViewerView:
     #: True when this viewer's own OpenCRQ read is available (#936): only then
     #: are the OpenCRQ asset names and scenario ids of a case's exploitation shown.
     opencrq: bool = False
+    #: True when this viewer's own OpenCTI read is available (CTEM-16-UI, #1115): only
+    #: then are the name, ids and link of a case's threat package shown.
+    opencti: bool = False
 
     def sees(self, member_id: str) -> bool:
         return member_id in self.issues or member_id in self.unavailable or member_id in self.signals
@@ -86,6 +89,7 @@ class ViewerView:
                 "complete": self.complete,
                 "no_access": self.no_access,
                 "opencrq": self.opencrq,
+                "opencti": self.opencti,
             }
         )
 
@@ -101,6 +105,7 @@ class ViewerView:
             complete=bool(data.get("complete", True)),
             no_access=bool(data.get("no_access", False)),
             opencrq=bool(data.get("opencrq", False)),
+            opencti=bool(data.get("opencti", False)),
         )
 
 
@@ -359,7 +364,8 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     if issue is not None and not view.sees(issue):
         issue = RESTRICTED
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
-    hidden = row.kind == "treatment_plan" and not view.opencrq
+    # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
+    hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
     return {
         "at": row.at.isoformat() if row.at else None,
         "actor": row.actor,
@@ -401,6 +407,37 @@ def treatment_plan_for(events: list[CtemCaseEvent], view: ViewerView) -> dict[st
     return {**plan, "restricted": False}
 
 
+def threat_package_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
+    """The threat package attached to the case: its newest ``threat_package`` event (#1115), whatever the order."""
+    packages = [row for row in events if row.kind == "threat_package" and row.at is not None]
+    newest = max(packages, key=lambda row: row.at) if packages else None
+    if newest is None or not newest.to_value:
+        return None
+    return {
+        "grouping_id": newest.to_value,
+        "name": newest.reason,
+        "url": newest.evidence,
+        "coverage_id": newest.from_value,
+        "at": newest.at.isoformat() if newest.at else None,
+    }
+
+
+def threat_package_for(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any] | None:
+    """The case's threat package as this viewer may read it (CTEM-16-UI, #1115).
+
+    Whether a package was drafted, whether its coverage was requested, and
+    when, go to every viewer of the case; the Grouping's name, ids and OpenCTI
+    link only to a viewer whose own OpenCTI read is available, else
+    ``restricted``.
+    """
+    package = threat_package_of(events)
+    if package is None:
+        return None
+    if not view.opencti:
+        return {"restricted": True, "coverage_requested": bool(package["coverage_id"]), "at": package["at"]}
+    return {**package, "coverage_requested": bool(package["coverage_id"]), "restricted": False}
+
+
 def _rank(row: CtemCaseIssue, view: ViewerView) -> tuple:
     issue = view.issues.get(_member_id(row))
     if issue is None:
@@ -429,6 +466,7 @@ def hydrate(
         "history": [_event(e, view) for e in events],
         "exploitation": exploitation_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
+        "threat_package": threat_package_for(events, view),
     }
 
 
