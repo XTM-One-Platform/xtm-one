@@ -8,7 +8,8 @@
 #   python -m scripts.dump_platform_read_whitelist
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
-# No count in this header: it made every two tool PRs conflict on one line.
+#
+# 2214 tools across 120 providers; 60 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -1392,9 +1393,13 @@ opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_licence
+opencti:get_opencti_managers
+opencti:get_opencti_platform_queues
 opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
 opencti:get_opencti_top_related
+opencti:list_opencti_background_tasks
 opencti:list_opencti_capabilities
 opencti:list_opencti_connector_states
 opencti:list_opencti_drafts
@@ -1405,6 +1410,7 @@ opencti:list_opencti_markings
 opencti:list_opencti_observables
 opencti:list_opencti_playbook_states
 opencti:list_opencti_relationships
+opencti:list_opencti_stream_consumers
 opencti:list_opencti_subtypes
 opencti:query_opencti_activity
 opencti:query_opencti_catalog
