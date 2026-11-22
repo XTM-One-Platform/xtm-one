@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { api } from "@/lib/api";
-import { renderWithProviders } from "@/testing/providers";
+import { renderWithProviders, testQueryClient } from "@/testing/providers";
 
 /**
  * The first-connection setup proposal (#9173 S3, versioned by #1087): the
@@ -39,12 +39,13 @@ function Where() {
   return <span data-testid="where">{`${location.pathname}${location.search}`}</span>;
 }
 
-function renderPrompt() {
+function renderPrompt(client = testQueryClient()) {
   return renderWithProviders(
     <MemoryRouter initialEntries={["/"]}>
       <OrganizationSetupPrompt />
       <Where />
     </MemoryRouter>,
+    client,
   );
 }
 
@@ -99,6 +100,19 @@ describe("OrganizationSetupPrompt", () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith("/organization-context/setup-prompt", { outcome });
     expect(screen.getByTestId("where").textContent).toBe("/");
+  });
+
+  it("opens again in the same session after Reset onboarding proposes it anew (#1219 B1)", async () => {
+    const client = testQueryClient();
+    renderPrompt(client);
+    fireEvent.click(await screen.findByRole("button", { name: "Later" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // What useResetOrganizationSetupPrompt writes on success: a fresh proposal.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    act(() => {
+      client.setQueryData(["organization-context", "setup-prompt"], { propose: true, outcome: null, answered_at: null });
+    });
+    expect(await screen.findByRole("dialog", { name: "Set up the CTEM loop" })).toBeTruthy();
   });
 
   it("orders the buttons with the secondary choices before the primary one", async () => {

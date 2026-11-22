@@ -49,10 +49,16 @@ export function OrganizationSetupPrompt() {
   const prompt = useOrganizationSetupPrompt(Boolean(isAdmin && isXtmOne && !user?.impersonating));
   const answer = useAnswerOrganizationSetupPrompt();
   const [guided, setGuided] = useState(false);
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
 
-  const open = Boolean(prompt.data?.propose) && !answer.isSuccess;
+  // An answer closes the dialog only until a newer proposal arrives: after Reset
+  // onboarding (Settings > Platform) the query holds a fresh `propose: true` and
+  // the dialog opens again in the same page session, without a reload.
+  const answered = answeredAt !== null && answeredAt >= prompt.dataUpdatedAt;
+  const open = Boolean(prompt.data?.propose) && !answered;
   const reply = (outcome: OrganizationSetupAnswer) =>
     answer.mutate(outcome, {
+      onSuccess: () => setAnsweredAt(Date.now()),
       onSettled: () => {
         if (outcome === "started") setGuided(true);
       },
