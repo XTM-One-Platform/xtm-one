@@ -59,6 +59,8 @@ def test_every_package_client_points_at_the_mirror_and_goes_online(mirror: SetMi
     assert env["COREPACK_NPM_REGISTRY"] == "https://mirror.example.com/npm"
     assert env["PIP_INDEX_URL"] == "https://mirror.example.com/pypi/simple/"
     assert env["UV_DEFAULT_INDEX"] == "https://mirror.example.com/pypi/simple/"
+    # Poetry ignores PIP_INDEX_URL: the toolchain-python plugin reads this one (#1250).
+    assert env["POETRY_PYPI_MIRROR_URL"] == "https://mirror.example.com/pypi/simple/"
     # The offline switches the dev images bake are turned off.
     assert env["YARN_ENABLE_NETWORK"] == "true"
     assert env["PIP_NO_INDEX"] == "0"
