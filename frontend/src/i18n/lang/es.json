@@ -5567,7 +5567,6 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "La URL del webhook se generará automáticamente tras la creación usando el ID de la asignación.",
   "The whole request body is passed to the agent as the trigger payload.": "Todo el cuerpo de la solicitud se pasa al agente como carga útil del disparador.",
   "Theme": "Tema",
-  "Pastel colours": "Colores pastel",
   "Theme Color": "Color del tema",
   "Theme configuration": "Configuración del tema",
   "There are no objects on the platform yet.": "Todavía no hay objetos en la plataforma.",
@@ -20856,5 +20855,18 @@
   "Primary assets reached": "Activos primarios alcanzados",
   "None: no business asset sits behind the assets reached.": "Ninguno: ningún activo de negocio está detrás de los activos alcanzados.",
   "Recorded the attack path": "Ruta de ataque registrada",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tonos suaves para los colores de gravedad, estado y marcado. Desactivado: colores estándar, iguales en todos los productos."
+  "No grouping": "Sin agrupación",
+  "Fix family": "Familia de corrección",
+  "Upgrade": "Actualización",
+  "Patch": "Parche",
+  "Course of action": "Plan de acción",
+  "Close exposure": "Cerrar la exposición",
+  "Decommission": "Retirada del servicio",
+  "Rotate credential": "Renovar la credencial",
+  "Restore control": "Restablecer el control",
+  "Supplier action": "Acción del proveedor",
+  "Restore coverage": "Restablecer la cobertura",
+  "Unknown user": "Usuario desconocido",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# fila} other {# filas}}",
+  "Group by: {group}": "Agrupar por: {group}"
 }
