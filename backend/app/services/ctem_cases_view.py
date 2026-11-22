@@ -470,6 +470,7 @@ def hydrate(
         + [{"restricted": True} for _ in range(restricted)],
         "history": [_event(e, view) for e in events],
         "exploitation": exploitation_for(case, view),
+        "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
         "threat_package": threat_package_for(events, view),
     }
@@ -498,6 +499,44 @@ def exploitation_for(case: CtemCase, view: ViewerView) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def attack_path_for(case: CtemCase, view: ViewerView) -> dict[str, Any] | None:
+    """The case's attack-path reach as this viewer may read it (#1289); ``None`` before the first read.
+
+    The shape (hops nearest first with proven or inferred, depths, criticality,
+    exposure, counts) is served to every viewer of the case; the OpenCRQ asset
+    names and simulation ids only to a viewer whose own OpenCRQ read is
+    available, else each name is ``Restricted``.
+    """
+    stored = getattr(case, "attack_path", None) or {}
+    if not isinstance(stored, dict) or not isinstance(stored.get("origin"), dict):
+        return None
+
+    def name(value: object) -> str:
+        return str(value or "") if view.opencrq else RESTRICTED
+
+    origin = stored["origin"]
+    return {
+        "origin": {"asset": name(origin.get("asset")), "exposure": origin.get("exposure") or "unknown"},
+        "hops": [
+            {
+                "from": name(h.get("from")),
+                "to": name(h.get("to")),
+                "nature": "proven" if h.get("nature") == "proven" else "inferred",
+                "simulation": h.get("simulation") if view.opencrq else None,
+            }
+            for h in stored.get("hops") or []
+            if isinstance(h, dict)
+        ],
+        "reached": [
+            {"asset": name(a.get("asset")), "depth": a.get("depth"), "criticality": a.get("criticality")}
+            for a in stored.get("reached") or []
+            if isinstance(a, dict)
+        ],
+        "primary": [name(p) for p in stored.get("primary") or []],
+        "at": stored.get("at"),
+    }
 
 
 _PRIORITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}

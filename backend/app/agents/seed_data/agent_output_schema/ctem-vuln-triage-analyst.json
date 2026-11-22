@@ -42,6 +42,16 @@
               "required": ["asset", "techniques", "reading"]
             }
           },
+          "attack_path": {
+            "type": ["object", "null"],
+            "description": "From get_opencrq_attack_path_reach on the matched asset with the highest impact; null when OpenCRQ is not bound",
+            "properties": {
+              "origin": {"type": "object", "properties": {"asset": {"type": "string"}, "exposure": {"type": "string"}}},
+              "hops": {"type": "array", "description": "Nearest first", "items": {"type": "object", "properties": {"from": {"type": "string"}, "to": {"type": "string"}, "nature": {"type": "string", "enum": ["proven", "inferred"]}, "simulation": {"type": ["string", "null"]}}}},
+              "reached": {"type": "array", "items": {"type": "object", "properties": {"asset": {"type": "string"}, "depth": {"type": "integer"}, "criticality": {"type": ["string", "null"]}}}},
+              "primary": {"type": "array", "items": {"type": "string"}}
+            }
+          },
           "reason": {"type": "string", "description": "One sentence: why matched, or why closed not applicable"},
           "context_fields_used": {"type": "array", "items": {"type": "string"}},
           "context_fields_missing": {"type": "array", "items": {"type": "string"}}

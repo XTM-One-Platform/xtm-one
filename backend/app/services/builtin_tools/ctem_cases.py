@@ -221,6 +221,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         evidence: str = "",
         note: str = "",
         exploitation: list[dict[str, Any]] | None = None,
+        attack_path: dict[str, Any] | None = None,
         gate: dict[str, Any] | None = None,
         treatment_plan: dict[str, Any] | None = None,
         threat_package: dict[str, Any] | None = None,
@@ -270,6 +271,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 if exploitation is not None:
                     case_loop.record_exploitation(db, case, exploitation, actor=agent_id)
+                if attack_path is not None:
+                    if not isinstance(attack_path, dict):
+                        raise rules.CaseRuleError("attack_path must be an object with its origin")
+                    case_loop.record_attack_path(db, case, attack_path, actor=agent_id)
                 if gate is not None:
                     if not isinstance(gate, dict):
                         raise rules.CaseRuleError("gate must be an object with key and outcome")
@@ -639,7 +644,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step, a loop gate passed or waited, or the risk treatment plan of "
+                "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
                 "the decision, or the threat package of the review step. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
@@ -669,6 +674,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             },
                             "required": ["asset", "techniques"],
                         },
+                    },
+                    "attack_path": {
+                        "type": "object",
+                        "description": (
+                            "From get_opencrq_attack_path_reach: origin {asset, exposure}, hops nearest first "
+                            "[{from, to, nature: proven|inferred, simulation}], reached [{asset, depth, "
+                            "criticality}], primary (asset names). Replaces the stored one."
+                        ),
+                        "properties": {
+                            "origin": {"type": "object"},
+                            "hops": {"type": "array", "items": {"type": "object"}},
+                            "reached": {"type": "array", "items": {"type": "object"}},
+                            "primary": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["origin"],
                     },
                     "gate": {
                         "type": "object",

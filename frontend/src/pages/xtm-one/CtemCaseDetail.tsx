@@ -46,6 +46,7 @@ import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
+import { CaseAttackPath } from "./ctem/CaseAttackPath";
 import { CaseExploitation } from "./ctem/CaseExploitation";
 import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
 import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
@@ -122,6 +123,8 @@ const EVENT_LABEL: Record<string, string> = {
   sla_breached: "Escalated: SLA breached",
   // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
   exploitation: "Recorded how it would be exploited",
+  // The attack-path reach of the affected asset, read from OpenCRQ by triage (CTEM-23-UI, #1289).
+  attack_path: "Recorded the attack path",
   // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
   source_event: "OpenAEV result received",
   // The case ticket (CTEM-19, #917; shown by CTEM-19-UI, #1032): created, or its status moved.
@@ -584,6 +587,8 @@ export default function CtemCaseDetail() {
         <CaseOpenedBy caseId={kase.id} sources={kase.issues.flatMap((i) => (i.restricted ? [] : [i.source]))} />
 
         <CaseExploitation entries={kase.exploitation} />
+
+        <CaseAttackPath reading={kase.attack_path} />
 
         <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} personName={personName} />
 

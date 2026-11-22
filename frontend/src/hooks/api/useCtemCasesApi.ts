@@ -170,6 +170,21 @@ export interface CtemCaseExploitation {
 }
 
 /**
+ * What a finding on the affected asset reaches along the OpenAEV attack paths
+ * (CTEM-23-UI, #1289), read from OpenCRQ by the triage step. Every asset name is
+ * "Restricted" and `simulation` null for a viewer who does not read OpenCRQ.
+ */
+export interface CtemCaseAttackPath {
+  origin: { asset: string; exposure: "internet_facing" | "internal" | "unknown" };
+  /** Nearest first: each hop proven by an OpenAEV execution, or inferred. */
+  hops: { from: string; to: string; nature: "proven" | "inferred"; simulation: string | null }[];
+  reached: { asset: string; depth: number | null; criticality: string | null }[];
+  /** The primary (business) assets behind the reached ones: the blast radius. */
+  primary: string[];
+  at: string | null;
+}
+
+/**
  * The OpenCRQ treatment plan the remediation decision created for a case
  * (CTEM-18-UI, #1068). `restricted` true for a viewer who does not read
  * OpenCRQ: then only `at` is served.
@@ -233,6 +248,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   history: CtemCaseEvent[];
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
+  /** Null before triage read it; absent on an API older than #1289. */
+  attack_path?: CtemCaseAttackPath | null;
   /** Null when no plan is attached; absent on an API older than #1068. */
   treatment_plan?: CtemCaseTreatmentPlan | null;
   /** Null when no package is attached; absent on an API older than #1115. */

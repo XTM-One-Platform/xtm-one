@@ -564,6 +564,110 @@ def record_exploitation(
     return case
 
 
+#: Hops and reached assets one attack-path write keeps (the tool lists 40 a read).
+ATTACK_PATH_MAX = 40
+#: Primary assets behind one attack-path write keeps.
+ATTACK_PATH_PRIMARY_MAX = 20
+#: How a hop is known: shown by an OpenAEV execution, or inferred (CTEM-23).
+HOP_NATURES: tuple[str, ...] = ("proven", "inferred")
+
+
+def _asset_name(value: object) -> str:
+    return str(value or "").strip()[:200]
+
+
+def record_attack_path(
+    db: AsyncSession,
+    case: CtemCase,
+    reading: dict[str, Any],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write what a finding on the affected asset reaches (CTEM-23, #1289).
+
+    *reading* is the triage step's ``attack_path`` object (from
+    ``get_opencrq_attack_path_reach``): ``origin`` {asset, exposure}, ``hops``
+    [{from, to, nature, simulation}] nearest first, ``reached`` [{asset, depth,
+    criticality}] and ``primary`` (the primary asset names behind). Replaced
+    whole (the newest read is the truth); a hop with no end is dropped, a
+    nature other than proven is inferred. An origin with no hop is a reading
+    too: no attack path leaves the asset. One ``attack_path`` event when it
+    changed, its evidence the counts alone (the history is served to every
+    viewer, the asset names are not). Never moves the case state. The caller
+    commits.
+    """
+    now = now or datetime.now(UTC)
+    raw: dict[str, Any] = reading if isinstance(reading, dict) else {}
+
+    def _list(key: str) -> list[Any]:
+        value = raw.get(key)
+        return value if isinstance(value, list) else []
+
+    origin_value = raw.get("origin")
+    origin_raw: dict[str, Any] = origin_value if isinstance(origin_value, dict) else {}
+    origin = _asset_name(origin_raw.get("asset"))
+    if not origin:
+        raise rules.CaseRuleError("an attack-path reading needs its origin asset")
+    hops: list[dict[str, Any]] = []
+    for hop in _list("hops"):
+        if not isinstance(hop, dict):
+            continue
+        source, target = _asset_name(hop.get("from")), _asset_name(hop.get("to"))
+        if not source or not target:
+            continue
+        nature = str(hop.get("nature") or "").strip().lower()
+        hops.append(
+            {
+                "from": source,
+                "to": target,
+                "nature": nature if nature in HOP_NATURES else "inferred",
+                "simulation": str(hop.get("simulation") or "").strip()[:100] or None,
+            }
+        )
+    reached: list[dict[str, Any]] = []
+    for asset in _list("reached"):
+        if not isinstance(asset, dict) or not _asset_name(asset.get("asset")):
+            continue
+        depth = asset.get("depth")
+        reached.append(
+            {
+                "asset": _asset_name(asset.get("asset")),
+                "depth": depth if isinstance(depth, int) and not isinstance(depth, bool) and depth > 0 else None,
+                "criticality": str(asset.get("criticality") or "").strip().lower()[:20] or None,
+            }
+        )
+    primary: list[str] = []
+    for name in _list("primary"):
+        label = _asset_name(name)
+        if label and label not in primary:
+            primary.append(label)
+    hops, reached, primary = hops[:ATTACK_PATH_MAX], reached[:ATTACK_PATH_MAX], primary[:ATTACK_PATH_PRIMARY_MAX]
+    kept: dict[str, Any] = {
+        "origin": {"asset": origin, "exposure": _exposure(origin_raw.get("exposure"))},
+        "hops": hops,
+        "reached": reached,
+        "primary": primary,
+    }
+    previous = {k: v for k, v in (case.attack_path or {}).items() if k != "at"}
+    if previous == kept:
+        return case
+    case.attack_path = {**kept, "at": now.isoformat()}
+    proven = sum(1 for h in hops if h["nature"] == "proven")
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "attack_path",
+            now,
+            from_value=str(len(previous.get("hops") or [])) if previous else None,
+            to_value=str(len(hops)),
+            evidence=f"{len(hops)} hop(s), {proven} proven, {len(reached)} reached, {len(primary)} primary",
+        )
+    )
+    return case
+
+
 #: What happened at a gate of the fleet's approval catalog (CTEM-34, #916).
 GATE_OUTCOMES: tuple[str, ...] = ("passed_automatically", "waited", "answered")
 

@@ -20767,5 +20767,15 @@
   "CSV import": "CSV import",
   "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.",
   "Asset count": "Asset count",
-  "Versions not listed": "Versions not listed"
+  "Versions not listed": "Versions not listed",
+  "Attack path and blast radius": "Attack path and blast radius",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.",
+  "No attack path leaves this asset in the latest simulations.": "No attack path leaves this asset in the latest simulations.",
+  "Hops, nearest first": "Hops, nearest first",
+  "Proven": "Proven",
+  "Inferred": "Inferred",
+  "Simulation {id}": "Simulation {id}",
+  "Primary assets reached": "Primary assets reached",
+  "None: no business asset sits behind the assets reached.": "None: no business asset sits behind the assets reached.",
+  "Recorded the attack path": "Recorded the attack path"
 }

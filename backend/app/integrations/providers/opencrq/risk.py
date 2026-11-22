@@ -184,7 +184,8 @@ def _fmt_attack_path_reach(answer: dict[str, Any]) -> tuple[str, str]:
     ``toAssetId`` (the side nearer the origin) to ``fromAssetId`` (the asset it reaches), proven by
     an OpenAEV execution or inferred, with the simulation that showed it.
     """
-    origin = answer.get("origin") if isinstance(answer.get("origin"), dict) else {}
+    origin_value = answer.get("origin")
+    origin: dict[str, Any] = origin_value if isinstance(origin_value, dict) else {}
     reached = [a for a in (answer.get("reachedAssets") or []) if isinstance(a, dict)]
     hops = [h for h in (answer.get("hops") or []) if isinstance(h, dict)]
     primary = [p for p in (answer.get("primaryAssets") or []) if isinstance(p, dict)]
@@ -203,7 +204,9 @@ def _fmt_attack_path_reach(answer: dict[str, Any]) -> tuple[str, str]:
             target = names.get(str(h.get("fromAssetId")), _one_line(h.get("fromAssetId"), 60))
             nature = "proven" if h.get("nature") == "proven" else "inferred"
             evidence = f", simulation {_one_line(h.get('evidenceRef'), 60)}" if h.get("evidenceRef") else ""
-            lines.append(f"    - {source} -> {target} ({nature}{evidence}, last reported {_one_line(h.get('lastReportedAt'), 30)})")
+            lines.append(
+                f"    - {source} -> {target} ({nature}{evidence}, last reported {_one_line(h.get('lastReportedAt'), 30)})"
+            )
         if len(hops) > _ATTACK_PATH_PAGE_SIZE:
             lines.append(f"    ... and {len(hops) - _ATTACK_PATH_PAGE_SIZE} more.")
     else:
