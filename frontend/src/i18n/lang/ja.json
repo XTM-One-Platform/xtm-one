@@ -20773,5 +20773,10 @@
   "CI/CD pipeline": "CI/CD パイプライン",
   "Package registry": "パッケージレジストリ",
   "Software package": "ソフトウェアパッケージ",
-  "Other code asset": "その他のコード資産"
+  "Other code asset": "その他のコード資産",
+  "Module checks": "モジュールのチェック",
+  "No check round since the last digest": "前回のダイジェスト以降、チェックラウンドはありません",
+  "Failed most": "失敗の多いチェック",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{registrations, plural, other {# 件の登録}}で{rounds, plural, other {# 回のラウンド}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, other {# 件失敗}}、{warned, plural, other {# 件の警告}}"
 }
