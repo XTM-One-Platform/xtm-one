@@ -5644,7 +5644,7 @@
 <li><strong>Who sees them.</strong> Anyone who can read the repository; in a private repository the files stay private.</li>
 </ul>
 <h3 id="github-a-comment-never-posted-twice">GitHub: a comment never posted twice</h3>
-<p>An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes <code>dedupe_first_line: true</code> to <code>add_github_comment</code>. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line as the new comment, nothing is committed or posted and the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.</p>
+<p>An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes <code>dedupe_first_line: true</code> to <code>add_github_comment</code>. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line and holds the same text as the new comment, nothing is committed or posted. A comment that shares only the first line (a verdict header reused for a new round or a new head) does not stop the post. When the post is skipped, the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.</p>
 <h3 id="github-a-comment-corrected-in-place">GitHub: a comment corrected in place</h3>
 <p><code>update_github_comment</code> changes a comment the account can edit, named by its id or by its link (<code>...#issuecomment-N</code>). <code>edits</code> are find/replace edits on the comment as GitHub stores it: every find must exist and be unique (or set <code>replace_all</code>), nothing is written unless every edit applies, and the answer is the diff, not the comment. <code>body</code> replaces the whole comment instead. <code>expect_updated_at</code> (the <code>updated_at</code> the agent read) refuses the write when someone changed the comment since. A wrong figure in a posted verdict is then fixed in the same comment, never by a second one.</p>
 <h3 id="github-labels-set-when-the-pull-request-opens">GitHub: labels set when the pull request opens</h3>
@@ -5915,7 +5915,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 03:45:11 UTC"><span class="timeago" datetime="2026-11-22T03:45:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 03:45:11 UTC">2026-11-22</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 03:52:07 UTC"><span class="timeago" datetime="2026-11-22T03:52:07+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 03:52:07 UTC">2026-11-22</span>
   </span>
 
     
