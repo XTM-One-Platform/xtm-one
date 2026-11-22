@@ -5567,7 +5567,6 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "Webhook URLは作成後にアサインメントIDを使って自動生成されます。",
   "The whole request body is passed to the agent as the trigger payload.": "リクエストボディ全体がトリガーのペイロードとしてエージェントに渡されます。",
   "Theme": "テーマ",
-  "Pastel colours": "パステルカラー",
   "Theme Color": "テーマカラー",
   "Theme configuration": "テーマ設定",
   "There are no objects on the platform yet.": "プラットフォームにはまだオブジェクトがありません。",
@@ -20843,5 +20842,17 @@
   "Failed most": "失敗の多いチェック",
   "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{registrations, plural, other {# 件の登録}}で{rounds, plural, other {# 回のラウンド}}",
   "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, other {# 件失敗}}、{warned, plural, other {# 件の警告}}",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "重大度、ステータス、マーキングの色を柔らかい色調にします。オフ: すべての製品で共通の標準色。"
+  "Attack path and blast radius": "攻撃経路と影響範囲",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "攻撃経路はまだありません: OpenAEV のシミュレーションが対象資産をマッピングすると、トリアージが OpenCRQ から読み取ります。",
+  "No attack path leaves this asset in the latest simulations.": "最新のシミュレーションでは、この資産から出る攻撃経路はありません。",
+  "Hops, nearest first": "ホップ (近い順)",
+  "Attack starts from": "攻撃の起点",
+  "Proven": "実証済み",
+  "Inferred": "推定",
+  "Proven by {name}, {date}": "{name} で実証済み（{date}）",
+  "Proven by {name}": "{name} で実証済み",
+  "Proven by an OpenAEV simulation, {date}": "OpenAEV シミュレーションで実証済み（{date}）",
+  "Primary assets reached": "到達した主要資産",
+  "None: no business asset sits behind the assets reached.": "なし: 到達した資産の背後に業務資産はありません。",
+  "Recorded the attack path": "攻撃経路を記録しました"
 }

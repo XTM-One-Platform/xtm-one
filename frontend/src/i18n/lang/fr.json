@@ -5567,7 +5567,6 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "L'URL du webhook sera générée automatiquement après la création à partir de l'ID de l'assignation.",
   "The whole request body is passed to the agent as the trigger payload.": "L'intégralité du corps de la requête est transmise à l'agent comme charge utile du déclencheur.",
   "Theme": "Thème",
-  "Pastel colours": "Couleurs pastel",
   "Theme Color": "Couleur du thème",
   "Theme configuration": "Configuration du thème",
   "There are no objects on the platform yet.": "Il n'y a pas encore d'objets sur la plateforme.",
@@ -20843,5 +20842,17 @@
   "Failed most": "Les plus souvent en échec",
   "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# série} other {# séries}} sur {registrations, plural, one {# enregistrement} other {# enregistrements}}",
   "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# en échec} other {# en échec}}, {warned, plural, one {# avertissement} other {# avertissements}}",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tons adoucis pour les couleurs de sévérité, de statut et de marquage. Désactivé : couleurs standard, identiques dans tous les produits."
+  "Attack path and blast radius": "Chemin d'attaque et rayon d'impact",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "Pas encore de chemin d'attaque : le triage le lit dans OpenCRQ dès qu'une simulation OpenAEV a cartographié l'actif touché.",
+  "No attack path leaves this asset in the latest simulations.": "Aucun chemin d'attaque ne part de cet actif dans les dernières simulations.",
+  "Hops, nearest first": "Étapes, la plus proche en premier",
+  "Attack starts from": "L'attaque part de",
+  "Proven": "Prouvé",
+  "Inferred": "Déduit",
+  "Proven by {name}, {date}": "Prouvé par {name}, {date}",
+  "Proven by {name}": "Prouvé par {name}",
+  "Proven by an OpenAEV simulation, {date}": "Prouvé par une simulation OpenAEV, {date}",
+  "Primary assets reached": "Actifs primaires atteints",
+  "None: no business asset sits behind the assets reached.": "Aucun : aucun actif métier ne se trouve derrière les actifs atteints.",
+  "Recorded the attack path": "Chemin d'attaque enregistré"
 }
