@@ -51,6 +51,28 @@ export interface ProfileLike {
   address_ranges?: string[];
   /** The opt-in attack surface pass of the outside lens (CTEM-26); kept whole through the form. */
   attack_surface?: AttackSurfacePass;
+  /** The points of the Cases attention score (#1176), set from CTEM > Cases; kept whole through the form. */
+  case_attention?: CaseAttentionProfile;
+  /** Parts edited outside this form (CTEM-28, #1216, #1178); kept whole through the form so a save never resets them. */
+  evidence_health?: Record<string, unknown>;
+  cases_recompute?: Record<string, unknown>;
+  asset_identity?: Record<string, unknown>;
+}
+
+/** The Cases attention points as the profile stores them (backend `CaseAttentionWeights`). */
+export interface CaseAttentionProfile {
+  priority_critical: number;
+  priority_high: number;
+  priority_medium: number;
+  priority_low: number;
+  kev: number;
+  crown_jewel: number;
+  overdue: number;
+  due_soon: number;
+  due_soon_days: number;
+  no_owner: number;
+  age_per_day: number;
+  age_max: number;
 }
 
 /** The outside lens settings (CTEM-26, `dev-docs/ctem-attack-surface.md` s.1), the backend's defaults below. */
@@ -517,6 +539,10 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.owned_domains ? { owned_domains: [...profile.owned_domains] } : {}),
     ...(profile.address_ranges ? { address_ranges: [...profile.address_ranges] } : {}),
     ...(profile.attack_surface ? { attack_surface: { ...profile.attack_surface } } : {}),
+    ...(profile.case_attention ? { case_attention: { ...profile.case_attention } } : {}),
+    ...(profile.evidence_health ? { evidence_health: profile.evidence_health } : {}),
+    ...(profile.cases_recompute ? { cases_recompute: profile.cases_recompute } : {}),
+    ...(profile.asset_identity ? { asset_identity: profile.asset_identity } : {}),
   };
 }
 
@@ -605,6 +631,10 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         ...(form.owned_domains ? { owned_domains: form.owned_domains } : {}),
         ...(form.address_ranges ? { address_ranges: form.address_ranges } : {}),
         ...(form.attack_surface ? { attack_surface: form.attack_surface } : {}),
+        ...(form.case_attention ? { case_attention: form.case_attention } : {}),
+        ...(form.evidence_health ? { evidence_health: form.evidence_health } : {}),
+        ...(form.cases_recompute ? { cases_recompute: form.cases_recompute } : {}),
+        ...(form.asset_identity ? { asset_identity: form.asset_identity } : {}),
       },
     };
   } catch (err) {

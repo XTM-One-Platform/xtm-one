@@ -17,6 +17,7 @@ import { CasesBulkActions } from "./CasesBulkActions";
 import { NEXT_ACTION_DIALOG, useAttentionWhy } from "./CasesAttentionBand";
 import { caseAttention, caseOpenedAt } from "./case-attention";
 import { CtemWidgetHeader } from "./CtemWidgetHeader";
+import { useCaseAttentionWeights } from "./useCaseAttentionWeights";
 
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -32,7 +33,7 @@ function Fact({ label, children, testId }: { label: string; children: ReactNode;
 export function CaseAttentionNow({ c, now, onChanged }: { c: CtemCaseSummary; now: number; onChanged: () => void }) {
   const { t_i18n } = useFormatter();
   const whyOf = useAttentionWhy();
-  const attention = caseAttention(c, now);
+  const attention = caseAttention(c, now, useCaseAttentionWeights());
   const open = c.state === "needs_attention" || c.state === "in_progress";
   const opened = caseOpenedAt(c);
   const days = opened ? Math.max(0, Math.floor((now - Date.parse(opened)) / DAY_MS)) : null;
