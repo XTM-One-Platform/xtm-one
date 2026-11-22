@@ -84,17 +84,22 @@ def test_states_filled_empty_unavailable() -> None:
     assert states["ticketing"].state == slots.SLOT_FILLED
     assert [b.integration_id for b in states["ticketing"].bound] == ["t1"]
     assert states["ticketing"].candidates == []
-    assert states["notification"].state == slots.SLOT_EMPTY
+    # In XTM One only is the default notification: the slot is filled, the chat stays offered.
+    assert states["notification"].state == slots.SLOT_FILLED
+    assert states["notification"].builtin is not None
     assert [c.integration_id for c in states["notification"].candidates] == ["c1"]
 
-    nothing = slots.slot_states("Mobilization", {}, [], _CATALOG)
-    assert {s.state for s in nothing} == {slots.SLOT_UNAVAILABLE}
+    # Notification carries the built-in in-app option: never "None connected".
+    nothing = {s.capability: s for s in slots.slot_states("Mobilization", {}, [], _CATALOG)}
+    assert nothing["ticketing"].state == slots.SLOT_UNAVAILABLE
+    assert nothing["notification"].state == slots.SLOT_FILLED
+    assert nothing["notification"].bound == []
 
 
 def test_a_company_managed_agent_is_offered_company_managed_integrations_only() -> None:
     connected = [_ref("c1", "chat", company=False)]
     states = slots.slot_states("Mobilization", {}, connected, _CATALOG, company_managed_only=True)
-    assert {s.state for s in states} == {slots.SLOT_UNAVAILABLE}
+    assert all(s.candidates == [] for s in states)
     with pytest.raises(SlotBindingRefusedError) as exc:
         slots.bindings_with("Mobilization", "notification", {}, connected[0], _CATALOG, company_managed_only=True)
     assert exc.value.status_code == 400
@@ -127,6 +132,97 @@ def test_unbinding_removes_only_that_integration() -> None:
     with pytest.raises(SlotBindingRefusedError) as missing:
         slots.bindings_without("Mobilization", "ticketing", gone, "t2", _CATALOG)
     assert missing.value.status_code == 404
+
+
+def test_notification_offers_email_and_the_platform_email() -> None:
+    providers = slots.providers_for("notification", PROVIDER_CATALOG)
+    assert {"platform_email", "microsoft", "google", "ses", "slack"} <= providers
+
+
+def test_asset_inventory_never_offers_the_filigran_modules() -> None:
+    """OpenAEV, OpenCRQ and OpenCTI feed the XTM One inventory; they are not alternatives to it."""
+    providers = slots.providers_for("asset_inventory", PROVIDER_CATALOG)
+    assert not {"openaev", "opencrq", "opencti"} & providers
+    builtin = slots.builtin_for("asset_inventory")
+    assert builtin is not None and builtin.key == "xtm_one_inventory"
+
+
+def test_a_builtin_option_is_never_stored_as_a_binding() -> None:
+    states = slots.slot_states("Triage", {}, [], _CATALOG)
+    inventory = next(s for s in states if s.capability == "asset_inventory")
+    assert inventory.state == slots.SLOT_FILLED and inventory.bound == []
+    assert slots.bindings_set("Mobilization", "notification", {"intel": ["i1"]}, [], _CATALOG) == {"intel": ["i1"]}
+
+
+def test_bindings_set_binds_exactly_and_keeps_other_providers() -> None:
+    bindings = {"chat": ["c1", "c2"], "intel": ["i1"]}
+    out = slots.bindings_set(
+        "Mobilization", "notification", bindings, [_ref("c2", "chat"), _ref("c3", "chat")], _CATALOG
+    )
+    assert out == {"chat": ["c2", "c3"], "intel": ["i1"]}
+    with pytest.raises(SlotBindingRefusedError):
+        slots.bindings_set("Mobilization", "notification", bindings, [_ref("t1", "ticketer")], _CATALOG)
+
+
+def test_notification_binds_several_channels() -> None:
+    out = slots.bindings_set(
+        "Mobilization",
+        "notification",
+        {},
+        [_ref("c1", "chat"), _ref("m1", "mail")],
+        {**_CATALOG, "mail": {"integration_types": ["email"]}},
+    )
+    assert out == {"chat": ["c1"], "mail": ["m1"]}
+
+
+def _member(mid: str, *, can_edit: bool = True) -> slots.TypeMember:
+    return slots.TypeMember(
+        member_id=mid,
+        agent_id=f"a{mid}",
+        name=mid,
+        role_label="Mobilization",
+        can_edit=can_edit,
+        bound=[],
+        custom=False,
+    )
+
+
+def test_type_view_groups_members_and_flags_custom() -> None:
+    connected = [_ref("t1", "ticketer"), _ref("t2", "ticketer")]
+    pairs = [
+        (_member("m1"), slots.slot_states("Mobilization", {"ticketer": ["t1"]}, connected, _CATALOG)),
+        (_member("m2"), slots.slot_states("Mobilization", {"ticketer": ["t1"]}, connected, _CATALOG)),
+        (_member("m3"), slots.slot_states("Mobilization", {"ticketer": ["t2"]}, connected, _CATALOG)),
+        (_member("m4"), slots.slot_states("Mobilization", {}, connected, _CATALOG)),
+    ]
+    types = {t.capability: t for t in slots.type_states(pairs)}
+    ticketing = types["ticketing"]
+    assert [r.integration_id for r in ticketing.choice] == ["t1"]
+    assert ticketing.state == slots.TYPE_PARTIAL
+    assert {m.member_id: m.custom for m in ticketing.members} == {"m1": False, "m2": False, "m3": True, "m4": False}
+    assert types["notification"].state == slots.TYPE_CONNECTED
+
+
+def test_type_write_keeps_custom_members_unless_confirmed() -> None:
+    connected = [_ref("t1", "ticketer"), _ref("t2", "ticketer")]
+    pairs = [
+        (_member("m1"), slots.slot_states("Mobilization", {"ticketer": ["t1"]}, connected, _CATALOG)),
+        (_member("m2"), slots.slot_states("Mobilization", {"ticketer": ["t2"]}, connected, _CATALOG)),
+        (_member("m3", can_edit=False), slots.slot_states("Mobilization", {}, connected, _CATALOG)),
+        (_member("m4"), slots.slot_states("Mobilization", {}, connected, _CATALOG)),
+    ]
+    ticketing = next(t for t in slots.type_states(pairs) if t.capability == "ticketing")
+    assert slots.members_to_write(ticketing, override_custom=False) == ["m1", "m4"]
+    assert slots.members_to_write(ticketing, override_custom=True) == ["m1", "m2", "m4"]
+
+
+def test_type_states_none_connected_and_not_bound() -> None:
+    none = slots.type_states([(_member("m1"), slots.slot_states("Validation", {}, [], _CATALOG))])
+    assert {t.state for t in none} == {slots.TYPE_NONE_CONNECTED}
+    offered = slots.type_states(
+        [(_member("m1"), slots.slot_states("Validation", {}, [_ref("e1", "edr_vendor")], _CATALOG))]
+    )
+    assert next(t for t in offered if t.capability == "edr_xdr").state == slots.TYPE_NOT_BOUND
 
 
 def test_a_scalar_binding_value_is_read_as_one_id() -> None:
