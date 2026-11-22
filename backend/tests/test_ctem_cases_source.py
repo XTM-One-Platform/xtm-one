@@ -291,7 +291,7 @@ async def test_recompute_route_builds_the_callers_own_cases_and_is_throttled(mon
     async def slot(user_id, vertical):
         return next(slots)
 
-    monkeypatch.setattr(api_module.source, "recompute_for_user", recompute)
+    monkeypatch.setattr(source, "recompute_for_user", recompute)
     monkeypatch.setattr(api_module, "recompute_slot", slot)
     member = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     async with _client(monkeypatch, member) as client:
