@@ -105,6 +105,32 @@ def _as_uuid(value: object) -> uuid.UUID | None:
         return None
 
 
+def builtin_fleet_active_clause() -> Any:
+    """SQL: the built-in :class:`Fleet` of the outer query has an enabled automation on a lead.
+
+    A lead is its orchestrator, or a home member whose slug a seeded fleet
+    declares in ``leads`` (CTEM-31): the generic CTEM loop stays active when an
+    automation of a fleet it folded in (posture, a module desk) is switched on.
+    """
+    from app.agents.builtin_fleets import BUILTIN_FLEET_LEAD_SLUGS
+    from app.models.agent import Agent
+    from app.models.assignment import Assignment
+
+    lead_members = (
+        select(FleetMember.agent_id)
+        .join(Agent, Agent.id == FleetMember.agent_id)
+        .where(
+            FleetMember.fleet_id == Fleet.id,
+            FleetMember.role == FLEET_ROLE_MEMBER,
+            Agent.slug.in_(sorted(BUILTIN_FLEET_LEAD_SLUGS)),
+        )
+    )
+    return exists().where(
+        Assignment.enabled.is_(True),
+        or_(Assignment.agent_id == Fleet.orchestrator_agent_id, Assignment.agent_id.in_(lead_members)),
+    )
+
+
 async def home_fleet_defaults_of(
     db: AsyncSession, agent_ids: Iterable[object]
 ) -> dict[uuid.UUID, FleetRunDefaults]:
@@ -113,14 +139,10 @@ async def home_fleet_defaults_of(
     A built-in fleet with no enabled assignment on its orchestrator is no
     home fleet (opt-in, see the module docstring).
     """
-    from app.models.assignment import Assignment
-
     ids = list({u for u in (_as_uuid(a) for a in agent_ids) if u is not None})
     if not ids:
         return {}
-    builtin_active = exists().where(
-        Assignment.agent_id == Fleet.orchestrator_agent_id, Assignment.enabled.is_(True)
-    )
+    builtin_active = builtin_fleet_active_clause()
     rows = (
         await db.execute(
             select(
@@ -158,9 +180,7 @@ def home_fleet_id_subquery(agent_id: Any) -> Any:
     The rule of :func:`home_fleet_defaults_of` in SQL, for a writer that stamps
     the fleet in the same statement (``roi_chat_records.record_deliverable``, #12077).
     """
-    from app.models.assignment import Assignment
-
-    builtin_active = exists().where(Assignment.agent_id == Fleet.orchestrator_agent_id, Assignment.enabled.is_(True))
+    builtin_active = builtin_fleet_active_clause()
     return (
         select(FleetMember.fleet_id)
         .join(Fleet, Fleet.id == FleetMember.fleet_id)
