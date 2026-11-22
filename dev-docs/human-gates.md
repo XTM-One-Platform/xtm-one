@@ -147,16 +147,6 @@ companion inbox reads the same list. The list is one indexed read of the
 `decisions` table (G2: recipient, status, deadline), no model call on the read
 path.
 
-**Implementation (S5, read).** `GET /api/v1/decisions/waiting` (`app/services/decision_inbox.py`,
-`waiting_for`): the open rows whose `recipient` is the caller (`user:<id>`), one
-of their groups (`group:<id>`), `company`, or `admins` for an administrator,
-soonest `deadline` first (none last), then oldest `created_at`. Each row carries
-the public id, kind, question, the whole ask for the card, `origin` (the
-assignment, flow or work item title), `agent`, `asked_at`, `deadline` and the
-`decision_links` page. The list is served only while the read switch is on
-(section 8 step 3; its verdict reused one minute per process); otherwise the
-answer is `{enabled: false, reason, items: []}` and the per-engine views stay.
-
 ## 5. D. One bell kind
 
 A new kind `decision` replaces `hitl`, `flow_hitl` and `work_item_waiting` in
@@ -346,7 +336,7 @@ JSON: they pass a decision.
 ### I.2 Every path that sends a decision uses it
 
 - The notify path of D (the bell copy sent to Teams, Slack or email).
-- `work_item_notify` (`teams_dm`, `teams_channel` and the other targets).
+- `work_item_notify` (`teams_dm`, `teams_channel`, `email` and the other targets).
 - An agent posting a decision itself: the channel send tools take a
   `decision` argument (the ask contract) instead of hand-made card JSON, and a
   decision posted this way is the same decision the inbox lists (one id, one
@@ -622,6 +612,44 @@ rows the backfill wrote and keeps answered ones as audit. Still owed after
 S2b: the missed scheduled one-off decision (its own slice: the scheduled
 item's writes are refused by `_refuse_scheduled`, so it needs its own answer
 function) and a Playwright e2e of the router (S3, with the card).
+
+S9b as built: `app/services/decision_answer_links.py` mints and reads the
+token (HMAC-SHA256 under a key derived from `SECRET_KEY`, the previous keys of
+`DECISION_LINK_PREVIOUS_SECRETS` still read after a rotation; decision row,
+option or `text`, one recipient, surface, expiry = deadline else 7 days) and
+builds the link card (`Action.OpenUrl` only, accepted by `parse_card`), the
+plain-text form and the decided card. `GET /api/v1/decisions/links/{token}`
+reads a link without answering; `POST .../links/{token}/answer` answers
+through `decision_router.answer_decision` with the link's surface
+(`teams_chat`, `teams_channel`, `google_chat`, `email`). A non-recipient gets
+403 and a `refused` event; a bad signature 404; an expired link 410; a decision
+no longer open shows its decided state and answers nothing (the engine's own
+row lock decides a race: the loser gets 409 internally and the decided view).
+The page is `frontend/src/pages/DecisionLink.tsx` (`/decide/:token`, outside
+the shell, sign-in return); an open decision is drawn by the shared
+`DecisionCard` (context as Markdown, deadline, options, recommended pill), the
+free text open on the `text` link, where an option picked on the card is sent
+as `option` (an option link refuses any other option with 400). `app/services/decision_graph_cards.py` sends: the
+scheduler tick (`deliver_work_item_cards`, next to the notification delivery)
+posts the card of every open work item decision whose `payload.notify` names a
+Microsoft integration and a `chat_id`, a `team_id` + `channel_id` or, with
+channel `email`, an address, as the item's agent through its own Graph tools
+(`work_item_notify.agent_graph_caller`: bindings, scope, deny list and approval
+gate apply), once (`notified` event naming the message), at most 3 tries,
+stopped at once by a permanent refusal; only a single-user recipient gets links
+(a group or `company` has no single reader). Paths (b) and (c) are the same
+code: the integration the agent posts with is a user, a service account or an
+agent account. Once answered, `update_sent_cards` edits every sent message to
+the decided card as its sender (`update_microsoft_chat_message` /
+`update_microsoft_channel_message`, scheduled in the background by the
+router); a refused edit is logged and counted, and the links of the old card
+open the decided page (the I.4 fallback). The PostgreSQL e2e
+(`tests/test_decision_answer_links_842_s9b_postgres.py`) runs I.6 for (b) and
+(c) on a 1:1 chat, a group chat and a channel plus email, with Graph as the
+only stub; the edit as its sender against a live tenant is the production
+retest of the slice. Not in S9b: the run HITL, tool approval and flow Ask-user
+sources send no link card yet (their notify paths are S9's), and Google Chat as
+a user is S11.
 
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
 (prompt), `agent_builder` tool texts, `hitl_whitelist` / `tools/approval.py` /
