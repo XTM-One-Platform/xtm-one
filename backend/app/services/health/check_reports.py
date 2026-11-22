@@ -223,3 +223,52 @@ async def apply_verdicts(
         finding_ids.append(key)
     await db.flush()
     return finding_ids, tally
+
+
+#: The most failing checks listed per module in the weekly digest's Modules part.
+WEEKLY_MOST_FAILED: Final = 5
+
+
+async def weekly_module_summary(db: AsyncSession, *, since: datetime, until: datetime) -> dict[str, dict[str, Any]]:
+    """The weekly digest's Modules part (13.8): per module, the rounds of the window and the checks failed most.
+
+    Read from the stored reports only (finished in ``[since, until)``), so the digest's
+    figures are the reports' own and never a model's count. ``rounds`` is the number of
+    reports, ``registrations`` the registrations they cover; ``most_failed`` ranks the
+    checks by the rounds that failed them (warn counted apart), ties by check id.
+    """
+    from sqlalchemy import select
+
+    from app.models.health_module_analyst import HealthModuleCheckReport
+
+    rows = (
+        await db.execute(
+            select(HealthModuleCheckReport).where(
+                HealthModuleCheckReport.finished_at >= since, HealthModuleCheckReport.finished_at < until
+            )
+        )
+    ).scalars()
+    summary: dict[str, dict[str, Any]] = {}
+    failing: dict[str, dict[str, list[int]]] = {}
+    registrations: dict[str, set[str]] = {}
+    for row in rows:
+        part = summary.setdefault(
+            row.module, {"rounds": 0, "registrations": 0, "passed": 0, "warned": 0, "failed": 0, "not_run": 0}
+        )
+        part["rounds"] += 1
+        for key in ("passed", "warned", "failed", "not_run"):
+            part[key] += int(getattr(row, key) or 0)
+        registrations.setdefault(row.module, set()).add(str(row.registration_id))
+        by_check = failing.setdefault(row.module, {})
+        for entry in row.checks or []:
+            if not isinstance(entry, dict) or entry.get("verdict") not in SEVERITY_BY_VERDICT:
+                continue
+            tally = by_check.setdefault(str(entry.get("id")), [0, 0])
+            tally[0 if entry["verdict"] == "fail" else 1] += 1
+    for module, part in summary.items():
+        part["registrations"] = len(registrations.get(module, ()))
+        ranked = sorted(failing.get(module, {}).items(), key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))
+        part["most_failed"] = [
+            {"id": check, "failed": fail, "warned": warn} for check, (fail, warn) in ranked[:WEEKLY_MOST_FAILED]
+        ]
+    return dict(sorted(summary.items()))
