@@ -107,8 +107,9 @@ function measure(el: HTMLElement, main: HTMLElement): FitMeasure {
  * The max height to give `el`: a number (fits the window), null (long-form page: no
  * bound) or undefined (not measured yet, or not in the app's page, a dialog for
  * example: the caller keeps its own cap). Re-measured when the window, the page's
- * content or the area changes size; a 1 px change is ignored, so the bound it sets
- * never feeds back into a resize loop. `root` is the table's whole block (toolbar, area,
+ * content or the area changes size; a 1 px growth is ignored, so the bound it sets
+ * never feeds back into a resize loop, but a 1 px shrink is applied, so the bound never
+ * exceeds the room and the page never scrolls (#1300). `root` is the table's whole block (toolbar, area,
  * pager), the one that must be the page's last block to fit; it defaults to `el`.
  */
 export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | null): number | null | undefined {
@@ -126,7 +127,8 @@ export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | nu
         // A widget, not the page's list: no bound, the table hugs its rows (#11470).
         const widget = !isLastBlock(root ?? el, main);
         const next = several || widget ? null : fitRoom(measureNatural(el, main));
-        setRoom((prev) => (typeof prev === "number" && next !== null && Math.abs(prev - next) <= 1 ? prev : next));
+        // Keep the bound on a 1 px growth only: a bound 1 px over the room would scroll the page.
+        setRoom((prev) => (typeof prev === "number" && next !== null && prev <= next && next - prev <= 1 ? prev : next));
       });
     };
     update();
