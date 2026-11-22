@@ -28,13 +28,15 @@
  * OpenAEV: a section's `label` is shown only as the heading row of a
  * collapsible section.
  */
-import {
-  Activity, BarChart3, BookOpen, Bot, Boxes, Braces, Briefcase, Cable, Clapperboard, ClipboardList, Compass,
-  Database, FileText, FlaskConical, FolderOpen, Gauge, GraduationCap, KeyRound, LayoutDashboard, LayoutGrid,
-  LayoutTemplate, Link2, ListChecks, MessageSquare, Network, Presentation, Puzzle, Route, Scan, ScrollText,
-  Server, Settings, Shield, Sparkles, Sprout, Target, Telescope, User, Users, Wand2, Workflow,
-  Wrench, Zap, type LucideIcon,
-} from "lucide-react";
+import type { IconName } from "@filigran/design-system";
+
+/**
+ * A nav glyph is a design system icon NAME, drawn by its `Icon` at 16 px,
+ * never a component: one vocabulary and one size across OpenCTI, OpenAEV,
+ * OpenCRQ, XTM One and XTM Hub, the same glyph for the same concept (Home is
+ * `house` in all five).
+ */
+type NavIcon = IconName;
 
 /** Platform/feature flags a nav entry can depend on, resolved once per render. */
 export interface NavFlags {
@@ -74,7 +76,7 @@ type NavLockReason = "ai_disabled" | "unlicensed";
 export interface NavLeaf {
   kind: "leaf";
   to: string;
-  icon: LucideIcon;
+  icon: NavIcon;
   label: string;
   /** Hidden when this returns false. Omitted = always visible. */
   visible?: (flags: NavFlags) => boolean;
@@ -127,7 +129,7 @@ export interface NavLeaf {
 interface NavFamilyMember {
   to: string;
   label: string;
-  icon: LucideIcon;
+  icon: NavIcon;
   visible?: (flags: NavFlags) => boolean;
   /** In an `adminOnly` section: a group manager reads this member too. */
   groupManagers?: boolean;
@@ -138,7 +140,7 @@ export interface NavGroup {
   /** Stable id — also the persistence key for the expanded/collapsed state. */
   id: string;
   label: string;
-  icon: LucideIcon;
+  icon: NavIcon;
   /**
    * Hub page. When set, the group label is a real destination (clicking it
    * opens the hub *and* expands the group) and the chevron is the only
@@ -178,14 +180,14 @@ export interface NavSection {
   collapsible?: boolean;
   /** Required when `collapsible` — the rail has no room for the label, so the
    *  section is represented by this icon and a hover flyout. */
-  icon?: LucideIcon;
+  icon?: NavIcon;
   adminOnly?: boolean;
   entries: NavEntry[];
 }
 
 const leaf = (
   to: string,
-  icon: LucideIcon,
+  icon: NavIcon,
   label: string,
   visible?: (flags: NavFlags) => boolean,
 ): NavLeaf => ({ kind: "leaf", to, icon, label, visible });
@@ -193,7 +195,7 @@ const leaf = (
 /** An AI area: listed and reachable with AI off, but marked unavailable. */
 const aiLeaf = (
   to: string,
-  icon: LucideIcon,
+  icon: NavIcon,
   label: string,
   visible?: (flags: NavFlags) => boolean,
 ): NavLeaf => ({ kind: "leaf", to, icon, label, visible, requiresAi: true });
@@ -205,8 +207,8 @@ export const NAV_SECTIONS: NavSection[] = [
       /* The command center pages (C2 of the program) light the home row: they
          are the home, reached from it. Named "Home" (#9301 Q3), so the studio
          keeps "Dashboards" with no name collision. */
-      { ...leaf("/", LayoutDashboard, "Home"), alsoActive: ["/dashboard", "/briefing", "/ctem"] },
-      aiLeaf("/chat", MessageSquare, "Chat", (f) => f.chat),
+      { ...leaf("/", "house", "Home"), alsoActive: ["/dashboard", "/briefing", "/ctem"] },
+      aiLeaf("/chat", "message-square", "Chat", (f) => f.chat),
       /* The agents and what they form and follow (#9301): the label opens a
          hub of cards, like Agent Studio and Tools & Integrations (N2c), and
          the list is a child row of its own. The group row carries no lock
@@ -218,28 +220,28 @@ export const NAV_SECTIONS: NavSection[] = [
         kind: "group",
         id: "agents",
         label: "Orchestration",
-        icon: Workflow,
+        icon: "workflow",
         to: "/agents-hub",
         description: "Your agents, the fleets they form and the flows they follow.",
         keywords: ["Agents"],
         children: [
-          aiLeaf("/agents", Bot, "Agents"),
+          aiLeaf("/agents", "bot", "Agents"),
           /* Its own page since N2c (it was a tab of Agentic Flow, so two rows
              opened one page). Licence-locked only: with AI off the fleets stay
              readable, as `FleetsTab.tsx` says. */
-          { ...leaf("/fleets", Boxes, "Fleets"), requiresLicense: true },
+          { ...leaf("/fleets", "boxes", "Fleets"), requiresLicense: true },
           /* NOT gated on `FLOW_BUILDER`. The page's agent-to-agent map (and its
              schedule view) predates the visual builder and is independent of it
              (agents, assignments and delegations — no flow endpoint between them).
              Only the `Flows` library tab is hidden, by `Flows.tsx` itself. */
-          leaf("/flows", Route, "Agentic Flow"),
+          leaf("/flows", "route", "Agentic Flow"),
           /* Agent routing, next to the agents it routes to; administrators only,
              as it was in Admin, and XTM One mode only (#445). */
-          { ...aiLeaf("/intents", Zap, "Intents", (f) => f.intents), adminOnly: true },
+          { ...aiLeaf("/intents", "zap", "Intents", (f) => f.intents), adminOnly: true },
         ],
         /* The existing full-page creation wizard: a button on the Agents list
            and the Agent Studio hub, and a palette destination here. */
-        paletteOnly: [aiLeaf("/agents/new", Wand2, "Create an agent")],
+        paletteOnly: [aiLeaf("/agents/new", "sparkle", "Create an agent")],
       },
       /* What the agents above PRODUCE — the counterpart of the two groups of
          the next block (made of / acts through). One group rather than three
@@ -254,7 +256,7 @@ export const NAV_SECTIONS: NavSection[] = [
         kind: "group",
         id: "work",
         label: "Work",
-        icon: Briefcase,
+        icon: "briefcase-business",
         to: "/work",
         description: "What your agents produce: runs, decks, and files.",
         children: [
@@ -264,12 +266,12 @@ export const NAV_SECTIONS: NavSection[] = [
              Community Edition upgrade path is drawn in the tab. Every user,
              both modes, open with AI off. */
           /* "Tasks page": the id "Tasks" is the A2A edge's verb ("Confie", "Asigna"). */
-          leaf("/tasks", ListChecks, "Tasks page"),
-          leaf("/operations", ClipboardList, "Operations"),
-          aiLeaf("/presentations", Presentation, "Presentations"),
-          aiLeaf("/videos", Clapperboard, "Videos", (f) => f.videoStudio),
-          leaf("/dashboards", LayoutGrid, "Dashboards", (f) => f.dashboardStudio),
-          leaf("/files", FolderOpen, "Files"),
+          leaf("/tasks", "list-checks", "Tasks page"),
+          leaf("/operations", "clipboard-list", "Operations"),
+          aiLeaf("/presentations", "presentation", "Presentations"),
+          aiLeaf("/videos", "clapperboard", "Videos", (f) => f.videoStudio),
+          leaf("/dashboards", "layout-dashboard", "Dashboards", (f) => f.dashboardStudio),
+          leaf("/files", "folder-open", "Files"),
         ],
       },
     ],
@@ -281,23 +283,26 @@ export const NAV_SECTIONS: NavSection[] = [
         kind: "group",
         id: "agent-studio",
         label: "Agent Studio",
-        icon: Sparkles,
+        icon: "sparkles",
         to: "/agent-studio",
         description: "Everything that defines what your agents know, say, and can do.",
         requiresAi: true,
         children: [
-          aiLeaf("/knowledge", BookOpen, "Knowledge"),
-          aiLeaf("/prompts", FileText, "Prompts"),
-          aiLeaf("/templates", LayoutTemplate, "Templates"),
-          aiLeaf("/skills", GraduationCap, "Skills"),
-          aiLeaf("/investigation-packs", Telescope, "Investigation packs", (f) => f.deepInvestigation),
+          aiLeaf("/knowledge", "book-text", "Knowledge"),
+          aiLeaf("/prompts", "file-text", "Prompts"),
+          aiLeaf("/templates", "layout-panel-left", "Templates"),
+          aiLeaf("/skills", "graduation-cap", "Skills"),
+          aiLeaf("/investigation-packs", "text-search", "Investigation packs", (f) => f.deepInvestigation),
         ],
       },
       {
         kind: "group",
         id: "tools-and-integrations",
         label: "Tools & Integrations",
-        icon: Puzzle,
+        /* The wrench, not the puzzle: Integrations is a row of this group and
+           the puzzle is the suite's Integrations glyph (OpenCTI, OpenAEV,
+           OpenCRQ), and a group never repeats a row's icon (N2d). */
+        icon: "wrench",
         to: "/tools-and-integrations",
         description: "Capabilities and connections your agents act through.",
         children: [
@@ -306,16 +311,17 @@ export const NAV_SECTIONS: NavSection[] = [
              the page also carries the MCP endpoints this platform *exposes*.
              That second half once argued for a top-level entry; it is still
              a capability surface, so it lives here, ahead of the rest. */
-          aiLeaf("/mcp-servers", Server, "MCP Servers"),
+          aiLeaf("/mcp-servers", "server", "MCP Servers"),
           /* Custom tools are sandboxed scripts, not AI: authoring them
              must work with AI off, because a deterministic flow
              (``action.script``) runs them. Only deleting is refused. */
-          leaf("/tools", Wrench, "Tools"),
+          /* A terminal: a custom tool is a script the sandbox runs. */
+          leaf("/tools", "square-terminal", "Tools"),
           /* The one entry for every integration. An integration's own pages
              (an imported spec, Nova's rules, OpenRouter's console) are tabs
              of its detail page, never leaves here: the nav is fixed
              structure and never grows with user data. */
-          leaf("/integrations", Link2, "Integrations"),
+          leaf("/integrations", "puzzle", "Integrations"),
           /* Saved sign-ins to web applications the agents' browser opens:
              a connection like an integration, kept usable with AI
              off (signing in again, answering an MFA prompt). */
@@ -326,11 +332,11 @@ export const NAV_SECTIONS: NavSection[] = [
              routed through: infrastructure, never AI-locked. A reader with the
              two flags off sees the plain row Browser profiles. */
           {
-            ...leaf("/connections", Cable, "Connections"),
+            ...leaf("/connections", "link-2", "Connections"),
             family: [
-              { to: "/connections", icon: KeyRound, label: "Browser profiles" },
-              { to: "/connections/variables", icon: Braces, label: "Variables", visible: (f) => f.customVariables },
-              { to: "/connections/relays", icon: Network, label: "Relays", visible: (f) => f.relays },
+              { to: "/connections", icon: "key-round", label: "Browser profiles" },
+              { to: "/connections/variables", icon: "braces", label: "Variables", visible: (f) => f.customVariables },
+              { to: "/connections/relays", icon: "router", label: "Relays", visible: (f) => f.relays },
             ],
           },
         ],
@@ -343,7 +349,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "admin",
     label: "Administration",
     collapsible: true,
-    icon: Shield,
+    icon: "shield",
     adminOnly: true,
     entries: [
       /* One family row (#9301 N3, UX r2 B1): the Analytics tabs are flattened
@@ -355,36 +361,36 @@ export const NAV_SECTIONS: NavSection[] = [
          the row is that one page, named after it (r3 A1). Traces, Sessions and
          Outcomes stay administrators'. */
       {
-        ...leaf("/observability", Gauge, "Observability"),
+        ...leaf("/observability", "activity", "Observability"),
         groupManagers: true,
         family: [
-          { to: "/observability", icon: BarChart3, label: "Model usage", groupManagers: true },
-          { to: "/observability/outcomes", icon: Target, label: "Outcomes" },
-          { to: "/observability/traces", icon: Scan, label: "Traces" },
-          { to: "/observability/sessions", icon: Activity, label: "Sessions" },
+          { to: "/observability", icon: "chart-bar", label: "Model usage", groupManagers: true },
+          { to: "/observability/outcomes", icon: "locate-fixed", label: "Outcomes" },
+          { to: "/observability/traces", icon: "list-tree", label: "Traces" },
+          { to: "/observability/sessions", icon: "messages-square", label: "Sessions" },
         ],
       },
-      /* Sprout, not TrendingUp: that one is the Value tab's, and no two rows share an icon. */
-      aiLeaf("/ai-adoption", Sprout, "AI Adoption", (f) => f.aiAdoption),
-      aiLeaf("/evaluations", FlaskConical, "Evaluations", (f) => f.evaluation),
+      /* The column chart, not the bar chart of Model usage: no two glyphs of Administration repeat. */
+      aiLeaf("/ai-adoption", "chart-column", "AI Adoption", (f) => f.aiAdoption),
+      aiLeaf("/evaluations", "flask-conical", "Evaluations", (f) => f.evaluation),
       /* Platform Health (#101 S1): a translated label, never the administrator's name. */
-      aiLeaf("/health", Compass, "Platform Health", (f) => f.health),
+      aiLeaf("/health", "compass", "Platform Health", (f) => f.health),
       /* One family row (#9301 N3b): one subject, two pages, routes and route
          guards unchanged (Users behind AdminRoute, Groups not; r2 A5). The
          Users list is the bare entry, a user and the groups under their tab
          (#797 S2). */
       {
-        ...leaf("/users-and-groups", Users, "Users and groups"),
+        ...leaf("/users-and-groups", "users", "Users and groups"),
         family: [
-          { to: "/users-and-groups", icon: User, label: "Users" },
-          { to: "/users-and-groups/groups", icon: Users, label: "Groups" },
+          { to: "/users-and-groups", icon: "user", label: "Users" },
+          { to: "/users-and-groups/groups", icon: "users", label: "Groups" },
         ],
       },
       /* Database, not Boxes: the cube is the Fleets row's (N2d). */
-      leaf("/objects", Database, "Objects"),
+      leaf("/objects", "database", "Objects"),
       /* Row and h1 read the same (#9301 A1). */
-      leaf("/logs", ScrollText, "Audit logs"),
-      leaf("/settings", Settings, "Settings"),
+      leaf("/logs", "history", "Audit logs"),
+      leaf("/settings", "settings", "Settings"),
     ],
   },
 ];
@@ -524,7 +530,7 @@ export function isGroupActive(group: NavGroup, activePath: string | null): boole
 interface NavDestination {
   to: string;
   label: string;
-  icon: LucideIcon;
+  icon: NavIcon;
   /** Section or group label, shown as the palette's secondary line. */
   parent?: string;
   /** A group's `keywords`: matched by the palette, never shown. */
