@@ -887,11 +887,43 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Cette décision a déjà reçu une réponse.",
         "ja": "この判断にはすでに回答済みです。",
     },
+    # --- The Slack decision card (#842, S10) ---------------------------
+    "card_answer_with_text": {
+        "en": "Answer with text",
+        "es": "Responder con texto",
+        "fr": "Répondre par écrit",
+        "ja": "テキストで回答",
+    },
+    "card_modal_title": {
+        "en": "Your answer",
+        "es": "Su respuesta",
+        "fr": "Votre réponse",
+        "ja": "回答",
+    },
+    "card_cancel": {
+        "en": "Cancel",
+        "es": "Cancelar",
+        "fr": "Annuler",
+        "ja": "キャンセル",
+    },
     "card_decision_failed": {
         "en": "This couldn't be done. Open the decision in XTM One.",
         "es": "No se pudo realizar. Abra la decisión en XTM One.",
         "fr": "L'action n'a pas abouti. Ouvrez la décision dans XTM One.",
         "ja": "実行できませんでした。XTM One で判断を開いてください。",
+    },
+    # --- The WhatsApp decision message (#842, S12) ----------------------
+    "card_choose": {
+        "en": "Choose",
+        "es": "Elegir",
+        "fr": "Choisir",
+        "ja": "選択",
+    },
+    "card_decide_in_xtm": {
+        "en": "Answer in XTM One.",
+        "es": "Responda en XTM One.",
+        "fr": "Répondez dans XTM One.",
+        "ja": "XTM One で回答してください。",
     },
 }
 

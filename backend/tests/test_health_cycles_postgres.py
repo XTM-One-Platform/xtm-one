@@ -117,7 +117,7 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
     async with _scratch("cc_seed") as sessions, sessions() as db:
         db.add(_user("admin"))
         await db.commit()
-        assert await fleet_seed.seed_health_fleet(db) == 6
+        assert await fleet_seed.seed_health_fleet(db) == 8
         assert await fleet_seed.seed_health_fleet(db) == 0
         agents, assignments, fleets, members, workspaces = await _fleet_counts(db)
 
@@ -125,7 +125,9 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
         ("experimenter", True, True),
         ("flow_lab", True, True),
         ("memory_steward", True, True),
-        ("module_analyst", True, True),
+        ("openaev_checker", True, True),
+        ("opencrq_checker", True, True),
+        ("opencti_checker", True, True),
         ("orchestrator", True, True),
         ("quality_analyst", True, True),
     ]
@@ -134,7 +136,7 @@ async def test_the_fleet_is_seeded_once_built_in(concierge_on):
     assert [(f.is_company_managed, f.is_builtin, f.slug, f.orchestrator_agent_id) for f in fleets] == [
         (True, True, "platform-health", next(a.id for a in agents if a.health_role == "orchestrator"))
     ]
-    assert members == 6
+    assert members == 8
     assert [w.is_company_managed for w in workspaces] == [True]
 
 
@@ -207,8 +209,8 @@ async def test_the_built_in_seeds_never_sweep_the_health_rows(concierge_on):
         await builtin_fleet_seed.seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[])
         agents, _, fleets, _, _ = await _fleet_counts(db)
 
-    # The orchestrator and its five members, the Module Analyst (#101 S14) included.
-    assert len(agents) == 6
+    # The orchestrator and its seven members, the three module checkers (#101 S15) included.
+    assert len(agents) == 8
     assert [f.slug for f in fleets if f.is_builtin and f.slug == "platform-health"] == ["platform-health"]
 
 

@@ -47,6 +47,9 @@ import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } 
 import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
+import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
+import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
+import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -118,6 +121,8 @@ const EVENT_LABEL: Record<string, string> = {
   ticket: "Ticket status",
   // The ticket reached done and the sync asked for the re-test (CTEM-19-UI, #1032).
   retest_requested: "Re-test started: the ticket is done",
+  // A loop gate of the fleet's catalog (CTEM-34, #975; shown by CTEM-17-UI).
+  gate: "Gate",
   // The OpenCRQ treatment plan of the remediation decision (CTEM-18-UI, #1068).
   treatment_plan: "Attached the treatment plan",
 };
@@ -237,7 +242,11 @@ export default function CtemCaseDetail() {
   const actorIds = useMemo(() => {
     const ids = new Set<string>();
     if (kase?.owner_user_id) ids.add(kase.owner_user_id);
-    for (const e of kase?.history ?? []) if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
+    for (const e of kase?.history ?? []) {
+      if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
+      // A gate answered by a person names them by id in its reason.
+      if (e.kind === "gate" && e.to === "answered" && isUserId(e.reason)) ids.add(e.reason);
+    }
     return [...ids];
   }, [kase]);
   const { data: people } = useUserDirectoryByIds(actorIds);
@@ -544,6 +553,10 @@ export default function CtemCaseDetail() {
 
       <CaseExploitation entries={kase.exploitation} />
 
+      <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
+
+      <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
+
       <CaseTreatmentPlan plan={kase.treatment_plan} />
 
       <Card>
@@ -655,9 +668,29 @@ export default function CtemCaseDetail() {
                 {e.to && e.kind === "source_event" && (
                   <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
                 )}
-                {e.reason && <span className="text-default-secondary">{e.reason}</span>}
+                {e.kind === "gate" && e.from && (
+                  <span data-testid="ctem-case-gate">{t_i18n(GATE_LABEL[e.from] ?? e.from)}</span>
+                )}
+                {e.kind === "gate" && isGateOutcome(e.to) && (
+                  <span className="font-medium">{t_i18n(GATE_OUTCOME_LABEL[e.to])}</span>
+                )}
+                {e.kind === "gate" && e.to === "answered" && (
+                  <span className="text-default-secondary">
+                    {t_i18n("by {name}", { name: (e.reason && personName(e.reason)) || t_i18n("a person") })}
+                  </span>
+                )}
+                {e.kind === "gate" &&
+                  (() => {
+                    const why = gateReason(e.reason, e.to);
+                    return why ? (
+                      <span className="text-default-secondary">{t_i18n(GATE_REASON_LABEL[why.kind], { runbook: why.runbook ?? "" })}</span>
+                    ) : null;
+                  })()}
+                {e.reason && e.kind !== "gate" && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && (
-                  <span className="text-default-secondary">{e.evidence}</span>
+                  <span className="text-default-secondary">
+                    {e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}
+                  </span>
                 )}
                 {e.at && (
                   <span className="ml-auto whitespace-nowrap text-default-secondary">

@@ -3873,6 +3873,32 @@ async def _handle_docusign_connect(
     return await docusign_connect.dispatch_connect_delivery(integration_id, extra, payload)
 
 
+async def _handle_dealhub_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A DealHub quote webhook delivery on the integration's webhook URL.
+
+    Refused (401) unless ``Authorization: Bearer <token>`` names one of the
+    integration's webhook tokens (DealHub's Token authentication type): no
+    token configured refuses every delivery. Then
+    ``dealhub_events.dispatch_delivery``.
+    """
+    from app.services import dealhub_events
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    tokens = dealhub_events.webhook_tokens(extra)
+    if not tokens:
+        logger.warning("DealHub webhook delivery refused (%s): no webhook token configured", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
+    if not dealhub_events.verify_bearer(request.headers.get("authorization"), tokens):
+        raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
+    return await dealhub_events.dispatch_delivery(integration_id, payload)
+
+
 @router.post("/integrations/{integration_id}")
 async def receive_integration_webhook(integration_id: str, request: Request) -> dict:
     """Receive a webhook for an *integration* and fan out to all bound agents.
@@ -3931,6 +3957,11 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # DocuSign Connect: verified with the Connect HMAC keys, then
         # deduplicated per envelope event in the seen set the poll shares.
         return await _handle_docusign_connect(integration_id, integ_pre.extra_config_enc, body, payload_raw, request)
+    if integ_pre and integ_pre.provider == "dealhub":
+        # DealHub quote webhook: its Token authentication (a bearer token stored
+        # on the integration), then deduplicated per quote change in the seen set
+        # the poll shares.
+        return await _handle_dealhub_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
     if integ_pre and integ_pre.provider == "jira":
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
@@ -4735,9 +4766,16 @@ async def receive_assignment_webhook(
             if provider == "opencti":
                 # A trigger serving tracked organizations (#9157 M4): the run
                 # learns which ones this event concerns.
-                from app.services.organization_events import annotate_payload
+                from app.services.organization_events import annotate_payload, named_in_payload
 
                 annotate_payload(payload, config)
+                # CTEM-29: a report or incident naming a tracked organization is a
+                # third-party event (path 11), recorded once per organization.
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload,
+                    named_in_payload(payload, config),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
             if wf.trigger_type == "integration_event":
                 if config.get("provider") != provider:
                     logger.warning(

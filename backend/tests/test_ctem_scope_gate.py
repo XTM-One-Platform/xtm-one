@@ -83,6 +83,45 @@ def test_below_the_threshold_goes_to_the_watchlist_with_the_threshold_named():
     assert lowered.outcome == "case" and lowered.severity == "P3"
 
 
+def _aikido_profile() -> oc.OrganizationProfile:
+    return oc.parse_profile(
+        {
+            "crown_jewels": [
+                {"name": "Product source code", "criticality": "critical", "asset_names": ["filigran/portal"]}
+            ],
+            "assets_exposure": [{"name": "filigran/portal", "source": "aikido", "external_id": "991"}],
+        }
+    )
+
+
+def test_an_aikido_issue_on_a_repository_mapped_to_a_crown_jewel_opens_a_case():
+    """CTEM-25: a repository is an asset row (source aikido, external_id), linked to its crown jewel by name."""
+    facts = gate.SignalFacts(
+        trigger_path="code_flaw",
+        lens="inside",
+        subject_kind="code",
+        subject_ref="lodash",
+        source_provider="aikido",
+        source_external_id="7",
+        evidence={"assets": ["991"], "affected_package": "lodash", "severity": "critical"},
+    )
+    decision = gate.decide(_aikido_profile(), facts, today=TODAY)
+    assert decision.outcome == "case"
+    assert ("crown_jewel", "Product source code") in {
+        (s["from"], s["name"]) for s in decision.record["scope"]["sources"]
+    }
+    unmapped = gate.SignalFacts(
+        trigger_path="code_flaw",
+        lens="inside",
+        subject_kind="code",
+        subject_ref="lodash",
+        source_provider="aikido",
+        source_external_id="8",
+        evidence={"assets": ["filigran/sandbox"], "affected_package": "lodash"},
+    )
+    assert gate.decide(_aikido_profile(), unmapped, today=TODAY).outcome == "to_validate"
+
+
 def test_an_unresolved_subject_is_to_validate():
     decision = gate.decide(_profile(), _facts(ref="unknown.example.net"), today=TODAY)
     assert decision.outcome == "to_validate"
@@ -205,6 +244,25 @@ def test_every_outcome_carries_a_reason_code_the_frontend_translates():
             _profile(internet_exposure_required=True), _facts(lens="inside", ref="db-1"), today=TODAY
         ),
         "risk_scenario_unreadable": gate.decide(_profile(require_risk_scenario=True), _facts(), today=TODAY),
+        # CTEM-29: a third party nothing depends on, a leaked credential of a disabled account.
+        "no_dependency": gate.decide(
+            _profile(),
+            gate.SignalFacts(
+                trigger_path="third_party_event", lens="world", subject_kind="third_party", subject_ref="Unrelated Ltd"
+            ),
+            today=TODAY,
+        ),
+        "account_disabled": gate.decide(
+            _profile(),
+            gate.SignalFacts(
+                trigger_path="credential_leak",
+                lens="world",
+                subject_kind="identity",
+                subject_ref="jdoe@corp.example",
+                evidence={"account_disabled": True},
+            ),
+            today=TODAY,
+        ),
     }
     for code, decision in cases.items():
         assert decision.record["reason_code"] == code, decision.reason
