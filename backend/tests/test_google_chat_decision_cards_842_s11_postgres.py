@@ -23,6 +23,7 @@ at ``_decision_click``, the handler the verified webhook calls.
 
 from __future__ import annotations
 
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -308,7 +309,9 @@ async def test_without_the_app_the_user_posts_the_answer_links_and_they_answer_o
     assert arguments["space_name"] == space
     lines = arguments["message"].splitlines()
     assert lines[0] == "Ship the release today?"
-    links = {line.split(": ", 1)[0]: line.split(": ", 1)[1] for line in lines if ": https://" in line}
+    # Each answer link is a Google Chat labelled link, "<url|label>" (UX round 1, B3): no raw URL is shown.
+    links = {label: url for url, label in re.findall(r"<(https://[^|>]+)\|([^>]+)>", arguments["message"])}
+    assert "Ship" in links and "Hold" in links, arguments["message"]
     ship, hold = _token(links["Ship"]), _token(links["Hold"])
 
     async with sessions() as session:
