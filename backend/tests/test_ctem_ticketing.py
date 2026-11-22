@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import CtemCase
 from app.services import ctem_ticketing as tk
@@ -40,7 +42,7 @@ class FakeAdapter:
 
     def _check(self) -> None:
         if self.fail:
-            raise tk.TicketingError(self.fail, fix="reconnect")
+            raise tk.TicketingError(self.fail, fix="reconnect", fix_code="reconnect_jira")
 
     async def find(self, correlation: str):
         self._check()
@@ -292,10 +294,12 @@ async def test_cut_integration_gives_out_of_date_with_its_since_then_error_with_
     assert sync["state"] == "out_of_date"
     assert sync["since"] == NOW.isoformat()
     assert sync["fix"] == "reconnect"
+    assert sync["fix_code"] == "reconnect_jira"
     case.state = "resolved"
     await tk.push_case_state(db, case, adapter, SYNC, now=later)
     assert case.tickets[0]["sync"]["state"] == "error"
     assert "401" in case.tickets[0]["sync"]["error"]
+    assert case.tickets[0]["sync"]["fix_code"] == "reconnect_jira"
     adapter.fail = None
     await tk.pull_ticket_status(db, case, adapter, SYNC, now=later)
     assert case.tickets[0]["sync"]["state"] == "in_sync"
@@ -485,6 +489,40 @@ async def test_a_jira_status_event_moves_its_case_at_once_and_asks_the_retest_on
     )
     assert not again.updated and [n for n, _d, _i in events.items] == [tk.CASE_RETEST_REQUESTED]
     assert tk.managed_ticket(case)["sync"]["state"] == "in_sync"
+    # CTEM-19-UI (#1032): each move raised the live frame, the unchanged replay none,
+    # and the case history says the re-test started because the ticket is done.
+    assert [f["event_kind"] for f in events.frames] == ["ticket", "ticket"]
+    assert all(f["case_id"] == str(case.id) for f in events.frames)
+    retests = [r for r in db.added if getattr(r, "kind", None) == "retest_requested"]
+    assert len(retests) == 1
+    assert getattr(retests[0], "evidence", None) == "jira-1:ITS-1" and getattr(retests[0], "actor", None) == "system"
+
+
+@pytest.mark.asyncio
+async def test_the_case_screens_read_whether_ticketing_is_declared(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CTEM-19-UI (#1032): the profile alone answers, no credential and no remote call."""
+    from app.services import organization_context as oc
+
+    profile: dict[str, Any] = {"ticketing": {"integration": "", "project": ""}}
+    row = type("V", (), {"organization_id": uuid.uuid4(), "profile": profile})()
+    db = cast(AsyncSession, FakeSession())
+
+    async def _current(db: object, organization_id: object = None) -> object:
+        return row
+
+    async def _none(db: object, organization_id: object = None) -> None:
+        return None
+
+    monkeypatch.setattr(oc, "current_version", _none)
+    assert await tk.ticketing_target(db) == {
+        "connected": False,
+        "reason": tk.NOT_CONNECTED,
+        "settings": tk.SETTINGS_PATH,
+    }
+    monkeypatch.setattr(oc, "current_version", _current)
+    assert (await tk.ticketing_target(db))["connected"] is False
+    profile["ticketing"] = {"integration": "jira-1", "project": "ITS"}
+    assert await tk.ticketing_target(db) == {"connected": True, "settings": tk.SETTINGS_PATH}
 
 
 @pytest.mark.asyncio
@@ -536,3 +574,18 @@ def test_sync_settings_default_and_parse_from_a_saved_profile():
     assert target.sync.done_starts_retest is True
     with pytest.raises(ValueError):
         TicketingTarget.model_validate({"integration": "abc", "project": "ITS", "sync": {"create_on": "always"}})
+
+
+def test_every_fix_has_a_stable_code_the_ui_words() -> None:
+    # The UI words the fix from its code (case-ticket.tsx FIX_LABELS), never from the English sentence.
+    assert tk.TicketingError("x").fix_code == "check_integration"
+    assert tk.TicketingError("x", fix="y", fix_code="map_jira_status").fix_code == "map_jira_status"
+    assert tk.TicketingError("x", fix_code="unknown").fix_code == "check_integration"
+    assert set(tk.FIX_CODES) == {
+        "check_integration",
+        "reconnect_jira",
+        "map_jira_status",
+        "choose_servicenow_table",
+        "check_servicenow_credentials",
+        "relink_case",
+    }

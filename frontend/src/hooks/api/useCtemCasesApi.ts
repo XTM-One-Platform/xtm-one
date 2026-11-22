@@ -48,6 +48,37 @@ export interface CtemCaseSummary {
   sla_breached_at?: string | null;
   validations?: CtemCaseValidation[];
   resolution_kind?: string | null;
+  /** Ticket references (#891); the one with `sync` is the ticket the sync manages (#917). */
+  tickets?: CtemCaseTicket[];
+}
+
+/** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
+export type CtemTicketSyncState = "linked" | "in_sync" | "out_of_date" | "error";
+
+/** A ticket reference on a case (`case.tickets`, backend ctem_case_loop.record_ticket). */
+export interface CtemCaseTicket {
+  integration: string;
+  key: string;
+  url: string | null;
+  status: "open" | "in_progress" | "done" | "cancelled";
+  at: string;
+  sync?: {
+    state: CtemTicketSyncState;
+    since?: string;
+    provider?: string;
+    external_status?: string;
+    error?: string;
+    fix?: string;
+    /** The stable code of the fix (backend ctem_ticketing.FIX_CODES): the UI words it in the reader's language. */
+    fix_code?: string;
+  };
+}
+
+/** Whether a ticketing target is declared (CTEM-19-UI, #1032); absent on an older API. */
+export interface CtemTicketingTarget {
+  connected: boolean;
+  reason?: string;
+  settings: string;
 }
 
 export type CtemCaseSeverity = "P1" | "P2" | "P3";
@@ -129,12 +160,28 @@ export interface CtemCaseExploitation {
   at: string | null;
 }
 
+/**
+ * The OpenCRQ treatment plan the remediation decision created for a case
+ * (CTEM-18-UI, #1068). `restricted` true for a viewer who does not read
+ * OpenCRQ: then only `at` is served.
+ */
+export interface CtemCaseTreatmentPlan {
+  restricted: boolean;
+  id?: string;
+  name?: string | null;
+  url?: string | null;
+  at: string | null;
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
+  /** Null when no plan is attached; absent on an API older than #1068. */
+  treatment_plan?: CtemCaseTreatmentPlan | null;
+  ticketing?: CtemTicketingTarget;
 }
 
 export interface CtemCaseList {
@@ -142,6 +189,7 @@ export interface CtemCaseList {
   counts: Record<CtemCaseState, number>;
   cases: CtemCaseSummary[];
   details_unavailable: string[];
+  ticketing?: CtemTicketingTarget;
 }
 
 export interface CtemCaseUpdate {

@@ -49,6 +49,7 @@ import type { HealthAnalysisSettings, HealthAnalysisSpend, HealthBudgetCaps, Hea
 
 import { BlockTitle, type BlockProps } from "./health-block";
 import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
+import { ModuleAnalystBlock, moduleAnalystValid } from "./HealthModuleAnalystBlock";
 import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
 import { HealthPetLibrary } from "./HealthPetLibrary";
 import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
@@ -481,7 +482,8 @@ type GroupKey = Exclude<keyof typeof GROUP_TITLES, "pets">;
  */
 const GROUPS: readonly { key: GroupKey; blocks: readonly Block[] }[] = [
   { key: "status", blocks: [EnableBlock, ScopeBlock] },
-  { key: "spend", blocks: [BudgetBlock, AnalysisBlock] },
+  // #101 S14d-2: the Module Analyst row, its own ceilings next to the analysis (XTM One modes only).
+  { key: "spend", blocks: [BudgetBlock, AnalysisBlock, ModuleAnalystBlock] },
   // Level 8 (#8261) schedule, signals, durations and dry-run; #101 S10c module thresholds.
   { key: "checks", blocks: [ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
   // #101 S12b: the alert emails, off by default.
@@ -506,6 +508,7 @@ export function HealthSection() {
     CAP_KEYS.every((key) => capValid(key, draft.budget[key])) &&
     CEILING_KEYS.every((key) => ceilingValid(key, draft.analysis[key])) &&
     moduleThresholdsValid(draft) &&
+    moduleAnalystValid(draft) &&
     alertEmailsValid(draft);
 
   const submit = () => {

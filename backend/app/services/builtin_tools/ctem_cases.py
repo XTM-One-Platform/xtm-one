@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +43,7 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "update_ctem_case",
     "record_ctem_case_validation",
     "record_ctem_case_ticket",
+    "decide_ctem_case_remediation",
     "sync_ctem_case_ticket",
 )
 _SOURCE = "builtin:ctem_cases"
@@ -214,6 +215,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         note: str = "",
         exploitation: list[dict[str, Any]] | None = None,
         gate: dict[str, Any] | None = None,
+        treatment_plan: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -271,6 +273,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         by=str(gate.get("by") or ""),
                         option=str(gate.get("option") or ""),
                         actor=agent_id,
+                    )
+                if treatment_plan is not None:
+                    history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    case_loop.record_treatment_plan(
+                        db, case, treatment_plan, view_of.treatment_plan_of(history), actor=agent_id
                     )
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
@@ -356,6 +363,168 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case ticket failed", exc_info=True)
             return "Error: the ticket reference could not be recorded right now. Say so; nothing was changed."
 
+    async def _remediation(
+        case_id: str = "",
+        options: list[dict[str, Any]] | None = None,
+        recommendation: str = "",
+        answered_by: str = "",
+        answered_option: str = "",
+    ) -> str:
+        from app.core.database import async_session
+        from app.services import ctem_case_loop as case_loop
+        from app.services import ctem_cases as rules
+        from app.services import ctem_remediation_decision as decision_rules
+
+        wanted = _uuid(case_id)
+        if wanted is None:
+            return "case_id must be the id list_ctem_cases answers."
+        try:
+            parsed = decision_rules.parse_options(options)
+            decision_rules.recommended(parsed, recommendation)
+        except decision_rules.DecisionInputError as exc:
+            return f"Refused: {exc}. Nothing was changed."
+        try:
+            async with async_session() as db:
+                org_id, vertical = await _context(db)
+                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                if shown is None:
+                    return f"No case {case_id}."
+                case = shown[0]
+                figures = await _opencrq_readable(db)
+                if answered_option:
+                    chosen = decision_rules.recommended(parsed, answered_option)
+                    case_loop.record_gate(
+                        db,
+                        case,
+                        key=decision_rules.GATE_KEY,
+                        outcome="answered",
+                        by=(answered_by or "a person")[:300],
+                        option=chosen.key,
+                        actor=agent_id,
+                    )
+                    answered = decision_rules.Decision(
+                        False, f"answered by {answered_by or 'a person'}", chosen=chosen.key, figures_shown=figures
+                    )
+                    db.add(
+                        case_loop._event(
+                            case.id,
+                            agent_id,
+                            "note",
+                            datetime.now(UTC),
+                            reason=decision_rules.outcome_note(answered, parsed),
+                        )
+                    )
+                    await db.commit()
+                    return _dump({"decided": True, "option": chosen.key, "by": answered_by or "a person"})
+                waits, by = await _gate_state(db)
+                decision = decision_rules.decide(
+                    parsed,
+                    recommendation,
+                    gate_waits=waits,
+                    gate_by=by,
+                    approval_threshold=await _approval_threshold(db, org_id),
+                    figures_visible=figures,
+                )
+                item_id = ""
+                if decision.waits:
+                    item_id = await _park(case, parsed, recommendation, decision)
+                case_loop.record_gate(
+                    db,
+                    case,
+                    key=decision_rules.GATE_KEY,
+                    outcome="waited" if decision.waits else "passed_automatically",
+                    by=decision.case_reason[:300],
+                    option=decision.chosen,
+                    actor=agent_id,
+                )
+                db.add(
+                    case_loop._event(
+                        case.id,
+                        agent_id,
+                        "note",
+                        datetime.now(UTC),
+                        reason=decision_rules.outcome_note(decision, parsed),
+                    )
+                )
+                await db.commit()
+                return _dump(
+                    {
+                        "decided": not decision.waits,
+                        "option": decision.chosen or None,
+                        "reason": decision.reason,
+                        "decision_item_id": item_id or None,
+                        "figures_shown": decision.figures_shown,
+                    }
+                )
+        except (rules.CaseRuleError, decision_rules.DecisionInputError) as exc:
+            return f"Refused: {exc}. Nothing was changed."
+        except Exception:
+            logger.warning("CTEM remediation decision failed", exc_info=True)
+            return "Error: the remediation decision could not be recorded right now. Say so; nothing was changed."
+
+    async def _opencrq_readable(db: AsyncSession) -> bool:
+        """Whether the acting user may read OpenCRQ figures (the option figures are left out otherwise)."""
+        from app.services.organization_context_opencrq import _opencrq_connection
+
+        try:
+            return not isinstance(await _opencrq_connection(db, str(scope)), str)
+        except Exception:
+            logger.warning("Risk figures access check failed", exc_info=True)
+            return False
+
+    async def _gate_state(db: AsyncSession) -> tuple[bool, str]:
+        """Whether ``ctem.remediation.decision`` waits for the agent's home fleet, and what decides it.
+
+        No home fleet, or a fleet that does not declare the gate: it waits (fail closed).
+        """
+        from app.services import ctem_remediation_decision as decision_rules
+        from app.services.fleet_autonomy import fleet_autonomy_for_run, gate_waits
+        from app.services.fleet_runs import home_fleet_defaults_of
+
+        homes = await home_fleet_defaults_of(db, [agent_id])
+        home = next(iter(homes.values()), None)
+        found = await fleet_autonomy_for_run(db, home.fleet_id) if home else None
+        if not found:
+            return True, "no fleet catalog read"
+        level, gates = found
+        gate = next((g for g in gates if g.get("key") == decision_rules.GATE_KEY), None)
+        if gate is None:
+            return True, "gate not declared by the fleet"
+        pin = gate.get("pin")
+        return gate_waits(level, gate), f"pin {pin}" if pin else f"level {level}"
+
+    async def _approval_threshold(db: AsyncSession, org_id: uuid.UUID | None) -> float | None:
+        from app.services import organization_context as org_context
+
+        row = await org_context.current_version(db, org_id)
+        return org_context.parse_profile(row.profile if row else {}).risk_appetite.approval_threshold
+
+    async def _park(case: Any, parsed: list[Any], recommendation: str, decision: Any) -> str:
+        """One work item for a person with the unified decision ask; the existing one when it is still open."""
+        from app.services import ctem_remediation_decision as decision_rules
+        from app.services.company_managed_writes import agent_writer
+        from app.services.work_item import create_work_item
+
+        ask = decision_rules.decision_ask(
+            case.title, parsed, recommendation, figures=decision.figures_shown, reason=decision.reason
+        )
+        item = await create_work_item(
+            user_id=str(scope),
+            title=f"Remediation decision: {case.title}"[:200],
+            description=f"CTEM case {case.id}. Gate {decision_rules.GATE_KEY}. {decision.reason}.",
+            owner_agent_id=agent_id,
+            created_by_agent_id=agent_id,
+            priority="high",
+            correlation_key=f"ctem:remediation:{case.id}",
+            payload={"ctem_case_id": str(case.id), "gate": decision_rules.GATE_KEY},
+            needs_human=True,
+            ask=ask,
+            dedupe=True,
+            dedupe_by="key",
+            writer=agent_writer(is_company_managed=False, agent_id=agent_id),
+        )
+        return str(item.get("id") or "")
+
     async def _sync_ticket(case_id: str, create: bool = False) -> str:
         """#917 slice 4: the Mobilization role works the ticket through the sync layer only."""
         from app.core.config import settings as app_settings
@@ -396,6 +565,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
     executor.register("update_ctem_case", _update)
     executor.register("record_ctem_case_validation", _validation)
     executor.register("record_ctem_case_ticket", _ticket)
+    executor.register("decide_ctem_case_remediation", _remediation)
     executor.register("sync_ctem_case_ticket", _sync_ticket)
     state_enum = {"type": "string", "enum": list(_STATES)}
     definitions = [
@@ -452,7 +622,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step, or a loop gate passed or waited. in_progress needs an owner; "
+                "reading of the triage step, a loop gate passed or waited, or the risk treatment plan of "
+                "the decision. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -495,6 +666,19 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "option": {"type": "string"},
                         },
                         "required": ["key", "outcome"],
+                    },
+                    "treatment_plan": {
+                        "type": "object",
+                        "description": (
+                            "The risk treatment plan the remediation decision created for this case, as the "
+                            "plan tool answered it: its id, name and Link url."
+                        ),
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                        },
+                        "required": ["id"],
                     },
                 },
                 "required": ["case_id"],
@@ -542,6 +726,44 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "status": {"type": "string", "enum": ["open", "in_progress", "done", "cancelled"]},
                 },
                 "required": ["case_id", "integration", "key"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="decide_ctem_case_remediation",
+            description=(
+                "Remediation decision of a CTEM case (gate ctem.remediation.decision): options with figures "
+                "and your recommendation. Decided by policy unless the gate waits or the approval threshold "
+                "needs a person (one decision item opens). answered_option records a person's answer."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "case_id": {"type": "string"},
+                    "options": {
+                        "type": "array",
+                        "description": "1 to 6 options; figures from the connected risk quantification, in the organization's currency.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": {"type": "string"},
+                                "label": {"type": "string"},
+                                "cost": {"type": "number"},
+                                "expected_loss_before": {"type": "number"},
+                                "expected_loss_after": {"type": "number"},
+                                "residual_risk": {"type": "string"},
+                                "time_to_apply": {"type": "string"},
+                                "runbook": {"type": "string"},
+                                "preapproved": {"type": "boolean"},
+                            },
+                            "required": ["key", "label"],
+                        },
+                    },
+                    "recommendation": {"type": "string", "description": "The key of the recommended option."},
+                    "answered_by": {"type": "string"},
+                    "answered_option": {"type": "string", "description": "The option key a person chose."},
+                },
+                "required": ["case_id", "options", "recommendation"],
             },
             source=_SOURCE,
         ),

@@ -3968,6 +3968,30 @@ async def _test_integration(
             ok, message = False, f"{integration.name} connection failed"
         return {"status": "ok" if ok else "error", "message": message}
 
+    # Airwallex exchanges a client id and an API key for a 30-minute bearer:
+    # the key is in api_key_enc, the environment, client id and login_as in
+    # extra_config. Validate by reading the account.
+    if integration.provider == "airwallex":
+        from app.integrations.providers.airwallex import (
+            token_from_config as airwallex_token_from_config,
+        )
+        from app.integrations.providers.airwallex import (
+            validate_connection as airwallex_validate,
+        )
+
+        airwallex_extra: dict[str, object] = {}
+        if integration.extra_config_enc:
+            with suppress(Exception):
+                decrypted = decrypt_json(integration.extra_config_enc)
+                airwallex_extra = decrypted if isinstance(decrypted, dict) else {}
+        airwallex_secret = (await reveal_field(integration, "api_key_enc")) or ""
+        try:
+            ok, message = await airwallex_validate(airwallex_token_from_config(airwallex_secret, airwallex_extra))
+        except Exception:
+            logger.debug("Airwallex connectivity check failed", exc_info=True)
+            ok, message = False, f"{integration.name} connection failed"
+        return {"status": "ok" if ok else "error", "message": message}
+
     # OVHcloud signs each request (application key mode) or mints an OAuth2
     # bearer (service account mode): the secret is in api_key_enc, the rest of
     # the credential in extra_config. Validate with the provider's own read of

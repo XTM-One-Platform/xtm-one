@@ -21,20 +21,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * of Operations, where it unfolds under the row so the row keeps its height
  * (components/ui/operations-list.tsx, the Operations list contract).
  */
-import { useState } from "react";
-import { Check, CheckCircle2, Info, Mic, MicOff, Send, User, X } from "lucide-react";
+import { CheckCircle2, Info, User, X } from "lucide-react";
+import { RunDecisionCard } from "@/components/decisions/RunDecisionCard";
 import { Badge } from "@/components/ui/badge";
 import { CompanyManagedBadge } from "@/components/ui/company-managed-badge";
-import { ActionProposalList } from "@/components/ui/action-proposal";
-import { Input } from "@/components/ui/input";
-import { Tip } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
-import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useFormatter } from "@/i18n";
 import { HITL_CONTINUATION_MESSAGE } from "@/lib/constants";
-import { approvalCodesIn, approvalReply } from "@/lib/hitl-approval";
 import { cn, formatDateTime } from "@/lib/utils";
-import { WARNING_ON_HOVER_TEXT } from "@/lib/warning-text";
 import type { ActionProposal, ApprovalDecision, HumanInputHistoryEntry } from "@/types";
 
 /** The fields of a run the human-in-the-loop part reads. */
@@ -112,126 +106,29 @@ export function RunHumanInput({
 }) {
   const { t_i18n } = useFormatter();
   const { isAdmin } = useAuth();
-  const [hitlResponse, setHitlResponse] = useState("");
-  const speech = useSpeechToText({
-    onTranscript: (text) => setHitlResponse((prev) => (prev ? prev + " " : "") + text.trim()),
-  });
   const { isHitlPending, pendingApprovals, isApprovalPending, isFreeTextPending, latestHitl } = runHitlState(run);
-  const approvalCodes = isHitlPending ? approvalCodesIn(run.human_input_question) : [];
   // Company-managed runs: all users see the HITL question, only admins can respond/dismiss.
   const canInteractHitl = !run.is_company_managed || isAdmin;
 
-  const handleSubmitResponse = (e: React.MouseEvent | React.FormEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (hitlResponse.trim() && onRespond) {
-      onRespond(run.id, hitlResponse.trim());
-      setHitlResponse("");
-    }
-  };
-
   return (
     <>
-      {/* Per-tool approval: structured proposals. Takes precedence over
-          the free-text block below: a gated pause has no question to answer,
-          it has actions to decide. */}
-      {isApprovalPending && (
-        <div className="mt-2 rounded-sm bg-feedback-warning-primary/5 p-3" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2 mb-2">
-            {run.is_company_managed && <CompanyManagedBadge size="sm" />}
-          </div>
-          {canInteractHitl && onApprove ? (
-            <ActionProposalList
-              proposals={pendingApprovals}
-              submitFailed={approveFailed}
-              onSubmit={(decisions) => onApprove(run.id, decisions)}
-            />
-          ) : (
-            <p className={cn("content-compact", WARNING_ON_HOVER_TEXT)}>
-              {t_i18n("Waiting for approval from someone with access to this run.")}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* HITL: question + response input */}
-      {isFreeTextPending && run.human_input_question && (
-        <div className="mt-2 rounded-sm bg-feedback-warning-primary/5 p-3 space-y-2" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2">
-            <p className={cn("content-compact font-medium", WARNING_ON_HOVER_TEXT)}>{t_i18n("Agent needs your input:")}</p>
-            {run.is_company_managed && <CompanyManagedBadge size="sm" />}
-          </div>
-          <p className="content-compact text-default-secondary whitespace-pre-wrap">{run.human_input_question}</p>
-          {canInteractHitl && (onRespond || onDismiss) && (
-            <form onSubmit={handleSubmitResponse} className="flex gap-2 mt-2">
-              <div className="flex-1">
-                <Input aria-label={t_i18n("Type your response...")}
-                  type="text"
-                  className="w-full"
-                  placeholder={t_i18n("Type your response...")}
-                  value={hitlResponse}
-                  onChange={(e) => setHitlResponse(e.target.value)}
-                  endIcon={speech.isSupported ? {
-                    type: "iconButton",
-                    icon: speech.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />,
-                    label: speech.isListening ? t_i18n("Stop dictation") : t_i18n("Dictate response"),
-                    onClick: (e) => { e.stopPropagation(); speech.toggle(); },
-                  } : undefined}
-                />
-              </div>
-              {onRespond && approvalCodes.length > 0 && (
-                <Tip content={t_i18n("Replies {reply} and resumes the run", { reply: approvalReply(approvalCodes) })}>
-                  <button
-                    type="button"
-                    className="h-9 px-3 rounded-sm content-compact font-medium flex items-center gap-1.5 transition-colors bg-feedback-success-primary/15 text-feedback-success-primary hover:bg-feedback-success-primary/25"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      speech.stop();
-                      onRespond(run.id, approvalReply(approvalCodes));
-                      setHitlResponse("");
-                    }}
-                  >
-                    <Check className="h-3 w-3" />
-                    {approvalCodes.length === 1
-                      ? t_i18n("Approve {code}", { code: approvalCodes[0] })
-                      : t_i18n("Approve all ({count})", { count: approvalCodes.length })}
-                  </button>
-                </Tip>
-              )}
-              {onRespond && (
-                <button
-                  type="submit"
-                  disabled={!hitlResponse.trim()}
-                  className={cn(
-                    "h-9 px-3 rounded-sm content-compact font-medium flex items-center gap-1.5 transition-colors",
-                    hitlResponse.trim()
-                      ? "bg-feedback-warning-primary/20 text-feedback-warning-tertiary hover:bg-feedback-warning-primary/30"
-                      : "bg-elevation-hover text-default-secondary cursor-not-allowed",
-                  )}
-                  onClick={() => speech.stop()}
-                >
-                  <Send className="h-3 w-3" />
-                  {t_i18n("Reply")}
-                </button>
-              )}
-              {onDismiss && (
-                <Tip content={t_i18n("Discard this run")}>
-                  <button
-                    type="button"
-                    className="h-9 px-3 rounded-sm content-compact font-medium flex items-center gap-1.5 transition-colors bg-elevation-hover text-default-secondary hover:bg-feedback-error-primary/10 hover:text-feedback-error-primary"
-                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); speech.stop(); onDismiss(run.id); }}
-                  >
-                    <X className="h-3 w-3" />
-                    {t_i18n("Discard")}
-                  </button>
-                </Tip>
-              )}
-            </form>
-          )}
-          {!canInteractHitl && (
-            <p className="content-caption text-default-secondary mt-1">{t_i18n("Only admins can respond to company-managed agent requests.")}</p>
-          )}
+      {/* The pause on the one decision card (#842, S3): a tool approval when
+          proposals are pending (they take precedence: a gated pause has
+          actions to decide, not a question), else the run's question. */}
+      {(isApprovalPending || (isFreeTextPending && run.human_input_question)) && (
+        <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+          {run.is_company_managed && <CompanyManagedBadge size="sm" />}
+          <RunDecisionCard
+            // A failed approval remounts the card so its controls answer again.
+            key={`${run.id}-${approveFailed ? "failed" : "ok"}`}
+            runId={run.id}
+            question={run.human_input_question}
+            proposals={isApprovalPending ? pendingApprovals : []}
+            canAnswer={canInteractHitl}
+            onApprove={onApprove}
+            onRespond={onRespond}
+            onDismiss={onDismiss}
+          />
         </div>
       )}
 
