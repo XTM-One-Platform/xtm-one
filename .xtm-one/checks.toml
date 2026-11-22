@@ -1831,8 +1831,9 @@ fallback = { image = "toolchain-node", when = "YN0080", reason = "the checkout's
 # build; frontend/AGENTS.md) and frontend-bump-build again, then
 # frontend-bump-classes (reads the build's dist) and frontend-bump-unit
 # (vitest, args: test files) and frontend-bump-knip (CI's dead-code step).
-# frontend-bump-types and frontend-bump-knip declare stands_for: their whole
-# run counts as the pre-push run of frontend-types and frontend-knip.
+# frontend-bump-types, frontend-bump-knip and frontend-bump-classes declare
+# stands_for: their whole run counts as the pre-push run of frontend-types,
+# frontend-knip and frontend-design-system-classes.
 [check.frontend-lock-update]
 description = "regenerate frontend/yarn.lock after a dependency bump in package.json (toolchain-node, registry allow-list; links nothing)"
 argv = ["yarn", "install", "--mode=update-lockfile"]
@@ -1896,6 +1897,9 @@ cwd = "frontend"
 timeout = 300
 image = "toolchain-node"
 report = "lines"
+# Its whole run counts as frontend-design-system-classes' pre-push run: nodejs-dev cannot link a bumped lock,
+# and this reads the build's own CSS (CI's form of the gate), so it proves at least what --compile does (#1106).
+stands_for = ["frontend-design-system-classes"]
 
 [check.frontend-bump-unit]
 description = "frontend unit tests (vitest) after a dependency bump, on toolchain-node (frontend-lock-update, then this); args: a test file"
