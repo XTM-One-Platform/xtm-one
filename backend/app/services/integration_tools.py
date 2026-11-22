@@ -125,6 +125,7 @@ from app.integrations.providers.n8n import build_tools as n8n_tools
 from app.integrations.providers.netsuite import build_tools as netsuite_tools
 from app.integrations.providers.newsapi import build_tools as newsapi_tools
 from app.integrations.providers.notion import build_tools as notion_tools
+from app.integrations.providers.odoo import build_tools as odoo_tools
 from app.integrations.providers.onepassword import build_tools as onepassword_tools
 from app.integrations.providers.openaev import build_tools as openaev_tools
 from app.integrations.providers.openai import build_tools as openai_tools
@@ -147,7 +148,6 @@ from app.integrations.providers.proofpoint import build_tools as proofpoint_tool
 from app.integrations.providers.purview import build_tools as purview_tools
 from app.integrations.providers.qradar import build_tools as qradar_tools
 from app.integrations.providers.qualys import build_tools as qualys_tools
-from app.integrations.providers.quotapath import build_tools as quotapath_tools
 from app.integrations.providers.ransomware_live import (
     build_tools as ransomware_live_tools,
 )
@@ -983,6 +983,7 @@ PROVIDER_TOOLS = {
     "onepassword": onepassword_tools,
     "planhat": planhat_tools,
     "metabase": metabase_tools,
+    "odoo": odoo_tools,
     "databricks": databricks_tools,
     "supabase": supabase_tools,
     "perk": perk_tools,
@@ -1010,7 +1011,6 @@ PROVIDER_TOOLS = {
     "netsuite": netsuite_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
-    "quotapath": quotapath_tools,
     "hibob": hibob_tools,
     "linkedin": linkedin_tools,
     "x": x_tools,
@@ -1151,11 +1151,11 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "microsoft",
         "netsuite",
         "notion",
+        "odoo",
         "onepassword",
         "openaev",
         "opencti",
         "perk",
-        "quotapath",
         "servicenow",
         "slack",
         "tanium",
@@ -2793,6 +2793,31 @@ async def _get_token(
         # Partial compound (not None) so the provider surfaces an actionable
         # error instead of the tools silently disappearing.
         return f"{region}||{project}||{customer}||{sa_json}"
+
+    # --- Odoo: base_url||database||login||api_key[||company_ids] ---
+    # The URL, database, login and default companies live in extra_config,
+    # the API key in api_key_enc. A missing part still builds the tools: the
+    # provider names it at call time.
+    if provider == "odoo":
+        extra = {}
+        if integ.extra_config_enc:
+            try:
+                extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (odoo): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        from app.integrations.providers.odoo import OdooCredential
+
+        return OdooCredential.build(
+            str(extra.get("base_url") or ""),
+            str(extra.get("database") or ""),
+            str(extra.get("login") or ""),
+            (await reveal_field(integ, "api_key_enc")) or "",
+            str(extra.get("company_ids") or ""),
+        )
 
     # --- NetSuite ---
     # The API Key field holds the secret (the certificate's private key for
