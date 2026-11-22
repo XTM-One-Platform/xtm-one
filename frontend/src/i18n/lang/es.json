@@ -20891,5 +20891,8 @@
   "Keep these two records apart?": "¿Mantener separados estos dos registros?",
   "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "Pasan a ser dos activos, digan lo que digan sus identificadores. La separación queda auditada y se mantiene entre sincronizaciones.",
   "No product declared by hand. The Tech stack list also counts the software of your assets.": "Ningún producto declarado a mano. La lista Tech stack también cuenta el software de sus activos.",
-  "The products you declare by hand. The Tech stack list adds the software of your assets.": "Los productos que declara a mano. La lista Tech stack añade el software de sus activos."
+  "The products you declare by hand. The Tech stack list adds the software of your assets.": "Los productos que declara a mano. La lista Tech stack añade el software de sus activos.",
+  "Installed software": "Software instalado",
+  "No AI system declared for the AI security fleet yet.": "Todavía no hay ningún sistema de IA declarado para la flota de seguridad de IA.",
+  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# activo objetivo de IA está en el inventario} other {# activos objetivo de IA están en el inventario}}"
 }

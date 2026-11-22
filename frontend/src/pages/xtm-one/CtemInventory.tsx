@@ -32,8 +32,8 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
-import { InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetLabel, sourceLabel } from "./ctem/inventory";
+import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 
 type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
 
@@ -54,6 +54,9 @@ const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
 
 /** The query parameter of the administrator's edit view: the list and its edit cards never share the screen. */
 const EDIT_PARAM = "edit";
+
+/** The query parameter of the Asset matching view of the Sources tab: nothing renders under the syncs table (UX round 2, B7). */
+const MATCHING_PARAM = "matching";
 
 /** The most records one merge names (organization_asset_store.MAX_MERGE_RECORDS). */
 const MAX_MERGE_RECORDS = 50;
@@ -84,7 +87,7 @@ function AssetsTab() {
     label,
     options: (facets.data?.[key] ?? []).map((value) => ({
       value,
-      label: key === "source" ? sourceLabel(value) : t_i18n(assetLabel(value)),
+      label: key === "source" ? sourceLabel(value) : assetFieldLabel(t_i18n, key, value),
     })),
   }));
 
@@ -116,21 +119,21 @@ function AssetsTab() {
     {
       key: "category",
       header: "Category",
-      cell: (a) => assetLabel(assetCategory(a)),
+      cell: (a) => <TruncatedText text={assetCategoryLabel(t_i18n, a)} className="max-w-[16rem]" />,
       csv: (a) => assetCategory(a),
       hideable: true,
     },
     {
       key: "criticality",
       header: "Criticality",
-      cell: (a) => assetLabel(a.criticality),
+      cell: (a) => assetFieldLabel(t_i18n, "criticality", a.criticality),
       csv: (a) => a.criticality,
       hideable: true,
     },
     {
       key: "exposure",
       header: "Internet facing",
-      cell: (a) => assetLabel(a.internet_facing),
+      cell: (a) => assetFieldLabel(t_i18n, "internet_facing", a.internet_facing),
       csv: (a) => a.internet_facing,
       hideable: true,
       hideBelow: "4xl",
@@ -245,7 +248,7 @@ function TechStackTab() {
     {
       key: "kind",
       header: "Kind",
-      cell: (i) => assetLabel(i.kind),
+      cell: (i) => assetFieldLabel(t_i18n, "kind", i.kind),
       csv: (i) => i.kind,
       hideable: true,
     },
@@ -326,16 +329,20 @@ export default function CtemInventory() {
   // One list per screen, nothing below it (UX round 1, B2 and B3): an administrator edits in a view of its own,
   // opened from the header, and every reader, administrators included, sees the same list.
   const editing = isAdmin && Boolean(editCards) && searchParams.get(EDIT_PARAM) === "1";
-  const setEditing = (on: boolean) =>
+  // Asset matching is read by everyone, edited by administrators inside its own card.
+  const matching = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
+  const toggleParam = (param: string, on: boolean) =>
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (on) next.set(EDIT_PARAM, "1");
-        else next.delete(EDIT_PARAM);
+        if (on) next.set(param, "1");
+        else next.delete(param);
         return next;
       },
       { replace: true },
     );
+  const setEditing = (on: boolean) => toggleParam(EDIT_PARAM, on);
+  const setMatching = (on: boolean) => toggleParam(MATCHING_PARAM, on);
   return (
     <div className="space-y-4">
       <CtemPageHeader
@@ -343,13 +350,23 @@ export default function CtemInventory() {
         hint={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         hintLabel={t_i18n("About the inventory")}
         actions={
-          isAdmin && editCards ? (
-            editing ? (
-              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
+          tab === "sources" ? (
+            matching ? (
+              <Button variant="secondary" className="gap-1.5" onClick={() => setMatching(false)} data-testid="ctem-inventory-matching-done">
                 <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
               </Button>
             ) : (
-              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setEditing(true)} data-testid="ctem-inventory-edit">
+              <Button variant="secondary" className="gap-1.5" onClick={() => setMatching(true)} data-testid="ctem-inventory-matching">
+                <Icon name="settings" size={16} aria-hidden /> {t_i18n("Asset matching")}
+              </Button>
+            )
+          ) : isAdmin && editCards ? (
+            editing ? (
+              <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
+                <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
+              </Button>
+            ) : (
+              <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(true)} data-testid="ctem-inventory-edit">
                 <Icon name="pencil" size={16} aria-hidden /> {t_i18n("Edit")}
               </Button>
             )
@@ -370,7 +387,7 @@ export default function CtemInventory() {
       {editing && editCards ? (
         <OrganizationSection key={tab} embed={{ cards: editCards }} />
       ) : tab === "sources" ? (
-        <InventorySourcesCard />
+        matching ? <AssetMatchingCard /> : <InventorySourcesCard />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab />
       ) : tab === "tech-stack" ? (

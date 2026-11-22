@@ -29,7 +29,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetLabel, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 
 const SOFTWARE_PAGE = 100;
 
@@ -203,7 +203,10 @@ export default function CtemAssetDetail() {
         stats={HEADER_FIELDS.map((field) => ({
           id: field,
           label: t_i18n(HEADER_LABELS[field]),
-          value: assetLabel(String(data?.fields?.[field]?.value ?? "")) || "-",
+          value:
+            (field === "category" && data
+              ? assetCategoryLabel(t_i18n, data)
+              : assetFieldLabel(t_i18n, field, String(data?.fields?.[field]?.value ?? ""))) || "-",
           title: origin(field),
         }))}
       />

@@ -4,6 +4,10 @@
  * Shared words of CTEM > Inventory (#1178). The page title and the menu label are one constant (Sam, 22 Nov 2026:
  * "Inventory"), so a rename is one line.
  */
+import { ASSET_CRITICALITY_LABELS, taxonomyValueLabel, typeLabel } from "@/lib/asset-taxonomy";
+import { ENVIRONMENT_LABELS } from "@/lib/organization-import-filters";
+
+type Translate = (text: string) => string;
 
 /** The page title and the CTEM menu row (English, translated where drawn). */
 export const INVENTORY_LABEL = "Inventory";
@@ -35,9 +39,33 @@ export function assetCategory(asset: { category?: string | null; subcategory?: s
   return asset.subcategory || asset.category || "";
 }
 
-/** A stored enum value (`web_application`, `very_high`) as a phrase; empty for a missing value. */
-export function assetLabel(value: string | null | undefined): string {
+/** Whether an asset is reachable from the internet, in the column's words. @i18n-keys */
+const INTERNET_FACING_LABELS = { yes: "Yes", no: "No", unknown: "Unknown" } as const;
+
+/** How the tech stack holds a product (`installed`, `saas`, `cloud_service`). @i18n-keys */
+const TECH_KIND_LABELS = { installed: "Installed software", saas: "SaaS application", cloud_service: "Cloud service" } as const;
+
+const FIELD_LABELS: Record<string, Record<string, string>> = {
+  criticality: ASSET_CRITICALITY_LABELS,
+  internet_facing: INTERNET_FACING_LABELS,
+  environment: ENVIRONMENT_LABELS,
+  kind: TECH_KIND_LABELS,
+};
+
+/**
+ * The translated words of one stored value of an inventory field (`host`, `very_high`, `yes`, `production`), the
+ * same labels the profile's edit cards use (UX round 2 on #1254, B6). A value outside the known set is shown as
+ * stored, never re-cased into a phrase no catalog holds.
+ */
+export function assetFieldLabel(t: Translate, field: string, value: string | null | undefined): string {
   if (!value) return "";
-  const words = value.replace(/_/g, " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  if (field === "category" || field === "subcategory") return taxonomyValueLabel(t, value);
+  const label = FIELD_LABELS[field]?.[value.toLowerCase()];
+  return label ? t(label) : value;
+}
+
+/** An asset's category in words: "Category > Subcategory", or the category alone. */
+export function assetCategoryLabel(t: Translate, asset: { category?: string | null; subcategory?: string | null }): string {
+  if (!asset.category) return asset.subcategory ? taxonomyValueLabel(t, asset.subcategory) : "";
+  return typeLabel(t, asset.category.toLowerCase(), (asset.subcategory ?? "").toLowerCase());
 }

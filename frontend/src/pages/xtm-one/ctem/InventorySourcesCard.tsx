@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * CTEM > Inventory > Sources (#1178 slice 3): how the inventory is fed and merged, in one card.
- * The scheduled syncs of the inventory sections (assets, asset groups, tech stack, AI systems) are
- * the shared Syncs card scoped to "inventory"; the business profile's syncs stay in Settings. Below
- * them: the identifiers that merge the records of several sources into one asset, most reliable
- * first, and per field the order of the sources it is taken from. Read for everyone; Edit and Save
- * for administrators, like `PUT /organization-context`; the IP address never merges by itself.
+ * CTEM > Inventory > Sources (#1178 slice 3): how the inventory is fed and merged.
+ * The Sources tab is the shared Syncs card scoped to "inventory" alone (the business profile's
+ * syncs stay in Settings), so its table is the one scroller of the screen (UX round 2 on #1254,
+ * B7). Asset matching opens in a view of its own from the page header: the identifiers that merge
+ * the records of several sources into one asset, most reliable first, and per field the order of
+ * the sources it is taken from. Read for everyone; Edit and Save for administrators, like
+ * `PUT /organization-context`; the IP address never merges by itself.
  */
 import { useState } from "react";
 import { Icon, Spinner } from "@filigran/design-system";
@@ -34,6 +35,15 @@ import {
 import { PLATFORM_NAMES, fromForm, toForm } from "@/lib/organization-profile";
 import { OrganizationSyncsCard } from "@/pages/settings/OrganizationSyncsCard";
 
+/** The Sources tab: the inventory's syncs, nothing below them. */
+export function InventorySourcesCard() {
+  return (
+    <div data-testid="ctem-inventory.sources">
+      <OrganizationSyncsCard scope="inventory" />
+    </div>
+  );
+}
+
 function MoveButtons({ label, index, count, onMove }: { label: string; index: number; count: number; onMove: (delta: -1 | 1) => void }) {
   const { t_i18n } = useFormatter();
   return (
@@ -52,7 +62,8 @@ function MoveButtons({ label, index, count, onMove }: { label: string; index: nu
   );
 }
 
-export function InventorySourcesCard() {
+/** Asset matching, the view the Sources tab opens from the page header. */
+export function AssetMatchingCard() {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -93,8 +104,7 @@ export function InventorySourcesCard() {
   const changed = (saved ?? current).key_order.length > 0 || Object.keys((saved ?? current).precedence).length > 0;
 
   return (
-    <div className="space-y-4" data-testid="ctem-inventory.sources">
-      <OrganizationSyncsCard scope="inventory" />
+    <div data-testid="ctem-inventory.matching-view">
       <SettingsCard
         data-testid="ctem-inventory.matching"
         title={t_i18n("Asset matching")}
