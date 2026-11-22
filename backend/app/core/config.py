@@ -778,6 +778,13 @@ class Settings(BaseSettings):
     # routed agent alone.
     channel_agent_mentions_enabled: bool = False
 
+    # Human gates (#842, S2b, dev-docs/human-gates.md section 8): the inbox,
+    # the bell and the decision cards read the ``decisions`` table only when
+    # this is on AND the backfill count check finds every open gate covered
+    # (``decision_backfill.read_switch``). Off by default: the readers keep
+    # reading each engine's own columns, which the dual write keeps current.
+    decisions_read_enabled: bool = False
+
     # --- Worker (SAQ) ---
     worker_concurrency: int = 20  # Max concurrent background jobs
     worker_job_timeout: int = 600  # Max seconds per job (10 min default)
