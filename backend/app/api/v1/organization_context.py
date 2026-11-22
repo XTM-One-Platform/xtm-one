@@ -1007,13 +1007,14 @@ def _apply_sync_body(row: Any, body: OrganizationSyncRequest, admin: User) -> No
 
 @router.get("/syncs", response_model=list[OrganizationSyncResponse])
 async def list_organization_syncs(
+    scope: Literal["profile", "inventory", ""] = "",
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> list[OrganizationSyncResponse]:
-    """The scheduled syncs of the profile sections, global first (#11913)."""
+    """The scheduled syncs, global first (#11913); *scope* keeps one location's sections (#1134 S2)."""
     from app.services import organization_context_sync as osync
 
-    return [await _sync_response(db, row) for row in await osync.all_syncs(db)]
+    return [await _sync_response(db, row) for row in await osync.all_syncs(db, scope)]
 
 
 @router.post("/syncs", response_model=OrganizationSyncResponse, status_code=201)
