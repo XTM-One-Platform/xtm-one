@@ -1648,6 +1648,18 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM cases kept current (dev-docs/ctem-cases.md s.4.3): the source recompute
+        # on its own interval (profile cases_recompute.interval_minutes, default 15),
+        # as the CTEM loop fleet's run-as users, else the recent viewers of Cases.
+        try:
+            from app.services import ctem_cases_refresh
+
+            refresh_counts = await ctem_cases_refresh.scheduled_pass(db)
+            if refresh_counts and refresh_counts.get("applied"):
+                logger.info("CTEM cases scheduled recompute: %s", refresh_counts)
+        except Exception as e:
+            logger.error("CTEM cases scheduled recompute error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # CTEM attack surface pass (CTEM-26): the outside lens, opt-in in the profile,
         # its own cadence (attack_surface.cadence_hours, default daily). Rules only, no model call.
         try:
