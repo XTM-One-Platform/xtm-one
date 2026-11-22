@@ -6,6 +6,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { renderWithProviders } from "@/testing/providers";
 import { CasesAttentionBand } from "./CasesAttentionBand";
+import { DEFAULT_CASE_ATTENTION_WEIGHTS, type CaseAttentionWeights } from "./case-attention";
+
+const auth = vi.hoisted(() => ({ isAdmin: false }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => auth }));
+vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
+  useOrganizationContext: () => ({ data: undefined }),
+  useSaveOrganizationContext: () => ({ isPending: false, mutate: () => undefined }),
+}));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -21,10 +30,10 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
 
 const NOW = Date.parse("2026-11-22T12:00:00Z");
 
-const band = (cases: CtemCaseSummary[]) =>
+const band = (cases: CtemCaseSummary[], weights: CaseAttentionWeights = DEFAULT_CASE_ATTENTION_WEIGHTS) =>
   renderWithProviders(
     <MemoryRouter>
-      <CasesAttentionBand cases={cases} now={NOW} />
+      <CasesAttentionBand cases={cases} now={NOW} weights={weights} />
     </MemoryRouter>,
   );
 
@@ -67,5 +76,24 @@ describe("CasesAttentionBand (UX round 1 on #1182)", () => {
   it("opens Set due date for an owned case with no due date (B3)", () => {
     band([kase({ owner_user_id: "u-1" })]);
     expect(screen.getByTestId("ctem-cases-single-due").textContent).toBe("Set due date");
+  });
+});
+
+describe("CasesAttentionBand ranking points (#1176 slice 2b)", () => {
+  it("ranks with the organization's points", () => {
+    const cases = [kase({ id: "crit", title: "Critical one", kev_count: 0 }), kase({ id: "kev", title: "KEV one", priority: "low", kev_count: 5 })];
+    band(cases, { ...DEFAULT_CASE_ATTENTION_WEIGHTS, priority: { critical: 0, high: 0, medium: 0, low: 0 }, kev: 50 });
+    expect(screen.getAllByTestId("ctem-cases-attention-row")[0].textContent).toContain("KEV one");
+  });
+
+  it("offers Ranking points to an administrator only", () => {
+    auth.isAdmin = false;
+    const { unmount } = band([kase({})]);
+    expect(screen.queryByTestId("ctem-cases-attention-weights-open")).toBeNull();
+    unmount();
+    auth.isAdmin = true;
+    band([kase({})]);
+    expect(screen.getByTestId("ctem-cases-attention-weights-open").textContent).toContain("Ranking points");
+    auth.isAdmin = false;
   });
 });

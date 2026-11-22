@@ -160,6 +160,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "cases_recompute",
     # Asset identity and field precedence (#1178): read by the asset store, never dumped into the always-on block.
     "asset_identity",
+    # Cases attention weights (#1176): read by the Cases list and case page, never dumped into the always-on block.
+    "case_attention",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -622,6 +624,36 @@ class CasesRecompute(BaseModel):
     interval_minutes: int = Field(default=15, ge=5, le=24 * 60)
 
 
+class CaseAttentionWeights(BaseModel):
+    """How the CTEM Cases list ranks what needs attention first (#1176, ``dev-docs/ctem-cases.md`` s.7.2bis).
+
+    Points per reason of the explained attention score; the defaults are the
+    ranking the list ships with. Set by an administrator from the "Act on this
+    first" band of CTEM > Cases. Read by the Cases list and the case page only.
+    """
+
+    model_config = _Strict
+
+    priority_critical: int = Field(default=40, ge=0, le=100)
+    priority_high: int = Field(default=25, ge=0, le=100)
+    priority_medium: int = Field(default=10, ge=0, le=100)
+    priority_low: int = Field(default=0, ge=0, le=100)
+    #: Points when the case holds at least one KEV issue.
+    kev: int = Field(default=15, ge=0, le=100)
+    #: Points when the case touches at least one crown jewel.
+    crown_jewel: int = Field(default=15, ge=0, le=100)
+    #: Points when the SLA is breached or the due date has passed.
+    overdue: int = Field(default=20, ge=0, le=100)
+    #: Points when the due date is within ``due_soon_days``.
+    due_soon: int = Field(default=10, ge=0, le=100)
+    due_soon_days: int = Field(default=3, ge=1, le=90)
+    #: Points when nobody owns the case.
+    no_owner: int = Field(default=5, ge=0, le=100)
+    #: Points per day open, capped at ``age_max``.
+    age_per_day: int = Field(default=1, ge=0, le=100)
+    age_max: int = Field(default=10, ge=0, le=100)
+
+
 class AssetIdentity(BaseModel):
     """How the asset store matches one asset across sources and which source a field shows (#1178).
 
@@ -728,6 +760,8 @@ class OrganizationProfile(BaseModel):
     cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
     #: How one asset is matched across sources and which source each field shows (#1178).
     asset_identity: AssetIdentity = Field(default_factory=AssetIdentity)
+    #: The points of the Cases attention score (#1176): what needs attention first.
+    case_attention: CaseAttentionWeights = Field(default_factory=CaseAttentionWeights)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.
