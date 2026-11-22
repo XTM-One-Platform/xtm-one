@@ -136,7 +136,36 @@ def test_link_card_holds_only_open_url_and_passes_the_graph_card_check() -> None
     assert card["actions"][0].get("style") == "positive"
     parsed, err = parse_card(card)
     assert err is None and parsed is not None
-    assert any("(recommended)" in b["text"] for b in card["body"])
+    rows = [b for b in card["body"] if b["type"] == "Container"]
+    assert [r["style"] for r in rows] == ["good", "emphasis"]
+    assert rows[0]["items"][0]["text"] == "RECOMMENDED"
+
+
+def test_link_card_has_the_web_card_layout_in_the_recipient_language() -> None:
+    """#1156: kicker, question, context, one row per option with its effect, deadline, open action; fr."""
+    row = _decision(deadline=datetime(2026, 11, 30, 9, 0, tzinfo=UTC), source_type="work_item", source_id=DID)
+    card = links.link_card(row, ALICE, "teams_chat", "fr", "Décision sur une tâche de Assistant")
+    texts = [b.get("text") for b in card["body"] if b["type"] == "TextBlock"]
+    assert texts[:3] == ["Décision sur une tâche de Assistant", "Merge the pull request now?", "CI is green."]
+    assert texts[-1] == "Répondre avant: 2026-11-30 09:00 UTC"
+    rows = [b for b in card["body"] if b["type"] == "Container"]
+    assert [i["text"] for i in rows[0]["items"]] == ["RECOMMANDÉE", "**A.** Merge", "squash-merged now"]
+    assert [i["text"] for i in rows[1]["items"]] == ["**B.** Wait", "kept open"]
+    titles = [a["title"] for a in card["actions"]]
+    assert titles == ["Merge", "Wait", "Répondre par écrit", "Ouvrir dans XTM One"]
+    assert card["actions"][-1]["url"] == f"https://one.example.test/tasks/work-items/{DID}"
+    parsed, err = parse_card(card)
+    assert err is None and parsed is not None
+
+
+@pytest.mark.parametrize("language", ["en", "es", "ja"])
+def test_link_card_words_follow_the_language(language: str) -> None:
+    from app.services.channel_notices import notice
+
+    card = links.link_card(_decision(), ALICE, "teams_chat", language)
+    assert card["actions"][-1]["title"] == notice("card_answer_with_text", language)
+    rows = [b for b in card["body"] if b["type"] == "Container"]
+    assert rows[0]["items"][0]["text"] == notice("card_recommended", language).upper()
 
 
 def test_link_text_carries_one_link_per_option() -> None:

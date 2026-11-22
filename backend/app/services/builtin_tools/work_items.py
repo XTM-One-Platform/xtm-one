@@ -2134,6 +2134,23 @@ def build_work_item_tools(
     executor.register("complete_work_item", _complete_work_item)
     executor.register("delegate_to_assignment", _delegate_to_assignment)
 
+    async def _read_for_card(work_item_id: str) -> dict[str, Any] | None:
+        # The agent's own read access, as get_work_item: an item outside it is not found.
+        from app.services.work_item import get_work_item
+
+        full_id, ambiguous = await _full_item_id(work_item_id)
+        if ambiguous:
+            return None
+        item = await get_work_item(full_id, user_id=acting_user_id, reader=writer)
+        if item is None or await _outside_scope(item, allow_all=True):
+            return None
+        return item
+
+    from app.services.decision_graph_card_tool import TOOL_NAME as _CARD_TOOL
+    from app.services.decision_graph_card_tool import build_send_decision_card, decision_card_definition
+
+    executor.register(_CARD_TOOL, build_send_decision_card(agent_id, acting_user_id, _read_for_card))
+
     definitions = [
         ToolDefinition(
             name="create_work_item",
@@ -2505,6 +2522,7 @@ def build_work_item_tools(
             },
             source="builtin:coordination",
         ),
+        decision_card_definition(),
     ]
 
     return definitions, executor
