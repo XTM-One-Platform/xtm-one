@@ -32,6 +32,7 @@ import { cn, safeExternalUrl } from "@/lib/utils";
 import { DecisionReason, decisionSentence, levelLabel, SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { loopParam, parseLoopParam, signalLoop, signalsParam, type LoopStageView } from "./loop-stages";
+import { SignalSourcesDialog, SignalSourcesLink } from "./SignalSourcesDialog";
 
 export const LOOP_PARAM = "loop";
 
@@ -726,7 +727,10 @@ function SignalListBody({ state, onState, onOpen }: {
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : signals.length === 0 ? (
-        <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
+        <div className="flex flex-col items-start gap-2" data-testid="ctem-signal-empty">
+          <p className="content-compact text-default-secondary">{t_i18n("No signal in this state yet")}</p>
+          <SignalSourcesLink />
+        </div>
       ) : (
         <ul className="flex max-h-[min(55vh,32rem)] flex-col overflow-y-auto" data-testid="ctem-signal-rows">
           {signals.map((s) => (
@@ -788,6 +792,7 @@ export function LoopTraceDialog() {
     setParams(next, { replace });
   };
   return (
+    <>
     <Dialog open={target !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent className="max-w-4xl" data-testid="ctem-loop-trace">
         <DialogHeader>
@@ -807,5 +812,8 @@ export function LoopTraceDialog() {
         ) : null}
       </DialogContent>
     </Dialog>
+    {/* The signal sources dialog (#1189) travels with the loop trace: every page that opens one reaches the other. */}
+    <SignalSourcesDialog />
+    </>
   );
 }
