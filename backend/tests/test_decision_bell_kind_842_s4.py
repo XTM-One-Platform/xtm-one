@@ -98,6 +98,16 @@ def test_an_unknown_source_is_refused() -> None:
         )
 
 
+def test_the_feed_response_carries_the_source() -> None:
+    """The API model keeps ``source``, so the bell can read who asks (lab, round 1)."""
+    from app.api.v1.notifications import NotificationItemResponse
+
+    for entry in _three():
+        body = NotificationItemResponse.model_validate({**entry.as_dict(), "unread": True}).model_dump()
+        assert body["source"] == entry.source
+        assert body["kind"] == "decision"
+
+
 def test_every_decision_pushes_urgent() -> None:
     for entry in _three():
         assert push_payload(entry, minimal=False)["urgent"] is True
