@@ -227,3 +227,14 @@ def test_type_states_none_connected_and_not_bound() -> None:
 
 def test_a_scalar_binding_value_is_read_as_one_id() -> None:
     assert slots.bound_ids({"ticketer": "t1", "chat": None}) == {"ticketer": {"t1"}, "chat": set()}
+
+
+def test_the_mobilization_role_notifies_in_app_when_no_external_channel_is_bound() -> None:
+    """#1201 slice 3: the notify step reads the Notification slot; no channel is never a failure."""
+    from app.agents.seed import SEED_DATA_DIR
+
+    builtin = slots.builtin_for("notification")
+    assert builtin is not None and builtin.always_on
+    text = (SEED_DATA_DIR / "agent_persona" / "ctem-remediation-coordinator.md").read_text(encoding="utf-8")
+    assert "Notification capability" in text
+    assert "notified in XTM One only" in text and "never a failed run or an error" in text
