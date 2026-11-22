@@ -20819,5 +20819,19 @@
   "Points by the priority of the case.": "Points by the priority of the case.",
   "Points for what the case holds.": "Points for what the case holds.",
   "Points when the due date is near or has passed.": "Points when the due date is near or has passed.",
-  "Points for a case nobody owns and for each day it stays open.": "Points for a case nobody owns and for each day it stays open."
+  "Points for a case nobody owns and for each day it stays open.": "Points for a case nobody owns and for each day it stays open.",
+  "No grouping": "No grouping",
+  "Fix family": "Fix family",
+  "Upgrade": "Upgrade",
+  "Patch": "Patch",
+  "Course of action": "Course of action",
+  "Close exposure": "Close exposure",
+  "Decommission": "Decommission",
+  "Rotate credential": "Rotate credential",
+  "Restore control": "Restore control",
+  "Supplier action": "Supplier action",
+  "Restore coverage": "Restore coverage",
+  "Unknown user": "Unknown user",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# row} other {# rows}}",
+  "Group by: {group}": "Group by: {group}"
 }

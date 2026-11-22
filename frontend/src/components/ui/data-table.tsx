@@ -60,7 +60,7 @@ import {
   TABLE_STORAGE_PREFIX,
 } from "@/lib/data-table-state";
 import { sortFilterOptions } from "@/lib/select-options";
-import { matchesSearch, pageOf, sortRows, type SortDirection, type SortValue } from "@/lib/table-rows";
+import { groupRows, matchesSearch, pageOf, sortRows, type RowGrouping, type SortDirection, type SortValue } from "@/lib/table-rows";
 import { cn, saveBlobAs, toggleArrayItem } from "@/lib/utils";
 
 export type { DataTableState, SortDirection, SortValue };
@@ -147,6 +147,11 @@ export interface DataTableFilter<T> {
    * criticality, confidence, a time range), with a comment at the call site.
    */
   ordered?: boolean;
+}
+
+export interface DataTableGroupBy<T> extends RowGrouping<T> {
+  /** The group's header text, already translated. */
+  label: (value: string) => ReactNode;
 }
 
 export interface DataTableSelection {
@@ -400,6 +405,12 @@ export interface DataTableProps<T> {
   rowClassName?: (row: T) => string | undefined;
   /** Rows kept above the others whatever the sort (favourites). */
   pinFirst?: (row: T) => boolean;
+  /**
+   * Groups the rows (client mode): the rows of one group follow each other, in the
+   * group order (`rank`, else the value), the sort kept inside each group, and a
+   * header row names each group on the page with its row count (#1176).
+   */
+  groupBy?: DataTableGroupBy<T>;
   /** Last column: the row's own buttons (never opens the row). */
   rowActions?: (row: T) => ReactNode;
   /**
@@ -576,6 +587,7 @@ function DataTableView<T>({
   rowHref,
   rowClassName,
   pinFirst,
+  groupBy,
   rowActions,
   rowActionsWidth = 96,
   expandedRow,
@@ -718,10 +730,21 @@ function DataTableView<T>({
     const matched =
       searchFields && state.search.trim() ? byFilter.filter((row) => matchesSearch(searchFields(row), state.search)) : byFilter;
     const sorted = sortColumn?.sortValue && state.sort ? sortRows(matched, sortColumn.sortValue, state.sort.direction) : matched;
+    if (groupBy) return groupRows(sorted, groupBy);
     if (!pinFirst) return sorted;
     const pinned = sorted.filter(pinFirst);
     return pinned.length === 0 || pinned.length === sorted.length ? sorted : [...pinned, ...sorted.filter((row) => !pinFirst(row))];
-  }, [server, rows, filters, state.filters, state.search, state.sort, searchFields, sortColumn, pinFirst]);
+  }, [server, rows, filters, state.filters, state.search, state.sort, searchFields, sortColumn, pinFirst, groupBy]);
+  // The row count of each group over every page, for the group's header row.
+  const groupCounts = useMemo(() => {
+    if (!groupBy || server) return null;
+    const counts = new Map<string, number>();
+    for (const row of shown) {
+      const value = groupBy.value(row);
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+  }, [groupBy, server, shown]);
 
   const total = server ? server.total : shown.length;
   const current = server
@@ -781,6 +804,7 @@ function DataTableView<T>({
     update({ pageSize: size });
   };
 
+  const formatGroupCount = (count: number) => t_i18n("{count, plural, one {# row} other {# rows}}", { count });
   const pageKeys = current.rows.map(rowKey).filter((key) => !selection?.disabledReason?.(key));
   const selected = selection?.selected ?? [];
   const pageSelected = pageKeys.filter((key) => selected.includes(key)).length;
@@ -1133,7 +1157,28 @@ function DataTableView<T>({
                   </td>
                 </tr>
               )}
-              {skeletonRows ?? current.rows.map(renderRow)}
+              {skeletonRows ??
+                (groupBy && groupCounts
+                  ? current.rows.flatMap((row, index) => {
+                      const value = groupBy.value(row);
+                      const starts = index === 0 || groupBy.value(current.rows[index - 1]) !== value;
+                      if (!starts) return [renderRow(row)];
+                      return [
+                        <tr key={`group:${value}`} data-testid="data-table-group-row" className="border-t border-elevation-subtle-soft bg-elevation-hover">
+                          <td colSpan={spanned} className="p-0">
+                            {fullWidth(
+                              <span className="flex items-center gap-2">
+                                <span className="min-w-0 truncate font-medium text-default">{groupBy.label(value)}</span>
+                                <span className="shrink-0 tabular-nums text-default-secondary">{formatGroupCount(groupCounts.get(value) ?? 0)}</span>
+                              </span>,
+                              "px-3 py-1.5 content-compact",
+                            )}
+                          </td>
+                        </tr>,
+                        renderRow(row),
+                      ];
+                    })
+                  : current.rows.map(renderRow))}
               {!skeletonRows &&
                 current.page === current.lastPage &&
                 !narrowing &&
