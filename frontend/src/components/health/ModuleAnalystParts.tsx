@@ -15,12 +15,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The Module Analyst on the Health page (#101 S14c-2, dev-docs/platform-health.md section 12.7):
- * the last investigation of an OpenCTI, OpenAEV or OpenCRQ card and its "Investigate now" action
- * (administrators), and the "Module Analyst" block of a finding the analyst recommended on.
- * One AI block per card (#965): the investigation line renders the shared AI block header of the
- * analysis summary, and "Investigate now" sits in the card's AI actions menu whatever the block's body
- * shows (UX round 6 B1 and B2 on #953). Reading calls no model; "Investigate now" is an AI action,
- * disabled and explained while AI is off.
+ * the last investigation of an OpenCTI, OpenAEV or OpenCRQ card and its "Run checks now" action
+ * (administrators; #101 S15e-2, section 13.8: it replaced "Investigate now" and starts the module's
+ * checker round on every active registration), and the "Module Analyst" block of a finding the analyst
+ * recommended on. One AI block per card (#965): the investigation line renders the shared AI block
+ * header of the analysis summary, and "Run checks now" sits in the card's AI actions menu whatever the
+ * block's body shows (UX round 6 B1 and B2 on #953). Reading calls no model; "Run checks now" is an AI
+ * action, disabled and explained while AI is off.
  */
 import { Icon } from "@filigran/design-system";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
@@ -68,13 +69,13 @@ const CONFIDENCE_LABELS = {
   low: "Low confidence",
 } as const;
 
-/** Why "Investigate now" started nothing, for the codes of the module route. @i18n-keys */
+/** Why "Run checks now" started nothing, for the codes of the module route. @i18n-keys */
 const INVESTIGATE_REFUSAL_LABELS = {
   module_analyst_off: "The Module Analyst is off. An administrator can turn it on in Platform Health settings.",
-  no_registration: "No active registration of this module to investigate.",
+  no_registration: "No active registration of this module to check.",
 } as const;
 
-/** The glyph of Investigate now, so its label lines up with Analyse now in the menu (UX round 7 B1 on #953). */
+/** The glyph of Run checks now, so its label lines up with Analyse now in the menu (UX round 7 B1 on #953). */
 function InvestigateGlyph({ className }: { className?: string }) {
   return <Icon name="file-search" size={16} className={className} aria-hidden />;
 }
@@ -83,7 +84,7 @@ function labelOf<T extends Record<string, string>>(labels: T, key: string | null
   return key && Object.prototype.hasOwnProperty.call(labels, key) ? labels[key as keyof T] : fallback;
 }
 
-/** The i18n key of a refusal code of "Investigate now" (`{name}` placeholder for the shared cycle codes). */
+/** The i18n key of a refusal code of "Run checks now" (`{name}` placeholder for the shared cycle codes). */
 export function investigateRefusalKey(code: unknown): string {
   if (typeof code === "string" && Object.prototype.hasOwnProperty.call(INVESTIGATE_REFUSAL_LABELS, code)) {
     return INVESTIGATE_REFUSAL_LABELS[code as keyof typeof INVESTIGATE_REFUSAL_LABELS];
@@ -91,7 +92,7 @@ export function investigateRefusalKey(code: unknown): string {
   return healthRefusalCodeKey(code) ?? "{name} could not start this work.";
 }
 
-/** The "Investigate now" item of an analyst module card's AI actions menu, with its toasts. */
+/** The "Run checks now" item of an analyst module card's AI actions menu, with its toasts. */
 function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; busy: boolean } {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
@@ -105,8 +106,8 @@ function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; 
         const started = answer.items.filter((item) => !item.refusal).length;
         if (started) {
           toast({
-            title: t_i18n("Investigation started"),
-            description: t_i18n("{count, plural, one {# Module Analyst cycle started. Its recommendations show on the findings.} other {# Module Analyst cycles started. Their recommendations show on the findings.}}", { count: started }),
+            title: t_i18n("Checks started"),
+            description: t_i18n("{count, plural, one {# check round started. Its report shows under Agentic checks.} other {# check rounds started. Their reports show under Agentic checks.}}", { count: started }),
             variant: "success",
           });
           return;
@@ -123,7 +124,7 @@ function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; 
 
   const item: OverflowMenuItem = {
     id: `health-investigate-${module}`,
-    label: t_i18n("Investigate now"),
+    label: t_i18n("Run checks now"),
     icon: InvestigateGlyph,
     onSelect: run,
     disabled: aiOff || investigate.isPending,
@@ -132,12 +133,15 @@ function useInvestigateNowItem(module: HealthModule): { item: OverflowMenuItem; 
   return { item, busy: investigate.isPending };
 }
 
-/** The investigation body of a module card's AI block: the outcome, when and what started it. */
+/**
+ * The check round body of a module card's AI block: the outcome of the module checker's newest round,
+ * when and what started it (named after the Run checks now action, UX round 1 B1 on #1269).
+ */
 function InvestigationBody({ investigation }: { investigation: HealthLastInvestigation | null | undefined }) {
   const { t_i18n } = useFormatter();
   if (!investigation) {
-    // The badge line height (24 px), so a never-investigated card matches its row (UX round 2 B1 on #953).
-    return <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("Not investigated yet")}</p>;
+    // The badge line height (24 px), so a card with no round matches its row (UX round 2 B1 on #953).
+    return <p className="flex min-h-6 items-center content-compact text-default-secondary">{t_i18n("No check round yet")}</p>;
   }
   return (
     <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 content-compact text-default-secondary">
@@ -153,7 +157,7 @@ function InvestigationBody({ investigation }: { investigation: HealthLastInvesti
 /**
  * The one AI block of an OpenCTI, OpenAEV or OpenCRQ card (administrators): the analysis summary when
  * it is the newer, else the last investigation, under one shared header whose menu always holds
- * Analyse now and Investigate now (UX round 6 B1 and B2 on #953). In normal flow in the card footer:
+ * Analyse now and Run checks now (UX round 6 B1 and B2 on #953). In normal flow in the card footer:
  * a status wrapping to two lines grows the block below the divider, never moves the divider.
  */
 export function ModuleAnalystBlock({
@@ -177,8 +181,8 @@ export function ModuleAnalystBlock({
     return <ModuleAnalysisSummary module={module} hasOpenFindings={hasOpenFindings} overview={overview} extraItems={[investigate.item]} extraBusy={investigate.busy} />;
   }
   return (
-    <section className="space-y-1.5" aria-label={t_i18n("Last investigation")} data-testid={`health-investigation-${module}`}>
-      <AiBlockHeader module={module} caption={t_i18n("Last investigation")} items={[analyse.item, investigate.item]} busy={analyse.busy || investigate.busy} />
+    <section className="space-y-1.5" aria-label={t_i18n("Last check round")} data-testid={`health-investigation-${module}`}>
+      <AiBlockHeader module={module} caption={t_i18n("Last check round")} items={[analyse.item, investigate.item]} busy={analyse.busy || investigate.busy} />
       <InvestigationBody investigation={investigation} />
       {analyse.failed ? <AnalysisStartFailed /> : null}
     </section>
