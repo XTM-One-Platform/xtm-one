@@ -20051,6 +20051,8 @@
   "Step in progress": "Paso en curso",
   "Asset created": "Activo creado",
   "Asset updated": "Activo modificado",
+  "Asset turned stale": "Activo obsoleto",
+  "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Se activa cuando un activo no se ha visto en OpenAEV durante más tiempo que el umbral de obsolescencia del tenant (inactivo hasta que se defina el umbral).",
   "Finding deleted": "Hallazgo eliminado",
   "OpenAEV result received": "Resultado de OpenAEV recibido",
   "Finding updated": "Hallazgo modificado",

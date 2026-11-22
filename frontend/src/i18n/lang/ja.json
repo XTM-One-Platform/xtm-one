@@ -20051,6 +20051,8 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
+  "Asset turned stale": "アセットが古くなりました",
+  "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
   "OpenAEV result received": "OpenAEV の結果を受信",
   "Finding updated": "検出結果更新",

@@ -20051,6 +20051,8 @@
   "Step in progress": "Step in progress",
   "Asset created": "Asset created",
   "Asset updated": "Asset updated",
+  "Asset turned stale": "Asset turned stale",
+  "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).",
   "Finding deleted": "Finding deleted",
   "OpenAEV result received": "OpenAEV result received",
   "Finding updated": "Finding updated",
