@@ -20648,5 +20648,12 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Retirer # ligne synchronisée ?} other {Retirer # lignes synchronisées ?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : la prochaine exécution de sa synchronisation, {when}, la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : la prochaine exécution de leur synchronisation, {when}, les ramène sauf si vous les excluez.}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {Elle vient de {platform} : le prochain import la ramène sauf si vous l'excluez.} other {Elles viennent de {platform} : le prochain import les ramène sauf si vous les excluez.}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {La synchronisation ne l'importe plus. Vous pourrez la retirer de ses exclusions plus tard.} other {La synchronisation ne les importe plus. Vous pourrez les retirer de ses exclusions plus tard.}}",
+  "Empty: OpenCRQ is not connected.": "Vide : OpenCRQ n’est pas connecté.",
+  "Connect OpenCRQ": "Connecter OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "Aucune automatisation ne traite ce cas : la flotte de la boucle CTEM n’est pas configurée.",
+  "Waiting for {agent}, working this case since {since}.": "En attente de {agent}, qui traite ce cas depuis le {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "En attente d’une étape de la flotte, qui traite ce cas depuis le {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Ouvert à partir des vulnérabilités OpenCTI rapprochées de votre inventaire",
+  "Opened from OpenAEV findings on your assets": "Ouvert à partir des constats OpenAEV sur vos actifs"
 }

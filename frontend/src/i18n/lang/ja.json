@@ -20648,5 +20648,12 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, other {同期された # 行を削除しますか?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回の同期実行 ({when}) で再び追加されます。}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}",
+  "Empty: OpenCRQ is not connected.": "空です: OpenCRQ が接続されていません。",
+  "Connect OpenCRQ": "OpenCRQ を接続",
+  "No automation works this case: the CTEM loop fleet is not set up.": "このケースを処理する自動化はありません: CTEM ループのフリートが設定されていません。",
+  "Waiting for {agent}, working this case since {since}.": "{agent} を待っています ({since} からこのケースを処理中)。",
+  "Waiting for a fleet step, working this case since {since}.": "フリートのステップを待っています ({since} からこのケースを処理中)。",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "インベントリと照合された OpenCTI の脆弱性から作成",
+  "Opened from OpenAEV findings on your assets": "資産に対する OpenAEV の検出結果から作成"
 }
