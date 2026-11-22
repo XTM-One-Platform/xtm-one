@@ -20578,6 +20578,7 @@
   "No evidence since": "最終証跡",
   "Never measured": "測定なし",
   "Risk scenario": "リスクシナリオ",
+  "Evidence sources": "証拠ソース",
   "{origin}, last reported {date}": "{origin}、最終報告 {date}",
   "No source reports this asset": "この資産を報告するソースなし"
 }
