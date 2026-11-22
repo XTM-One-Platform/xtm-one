@@ -86,6 +86,18 @@ ALLOWED_IMAGE_TYPES: dict[str, str] = {
     "image/svg+xml": ".svg",
 }
 
+#: The icon types the download also takes (a vendor's ``favicon.ico`` is
+#: often its only public logo). A slide cannot carry ICO, so the bytes are
+#: converted to PNG (:func:`ico_to_png`) before anything is stored.
+ICON_IMAGE_TYPES: dict[str, str] = {
+    "image/x-icon": ".ico",
+    "image/vnd.microsoft.icon": ".ico",
+}
+_ICO_MAGIC = b"\x00\x00\x01\x00"
+#: Past this an icon is not decoded (an ICO frame is at most 256x256; a PNG
+#: frame may claim more).
+_MAX_ICON_PIXELS = 1024 * 1024
+
 #: HTTP timeout for the download (seconds).
 FETCH_TIMEOUT_SECONDS = 30
 
@@ -116,7 +128,7 @@ _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 #: The extensions a caller's ``name`` may carry that the DECODED type replaces
 #: when the two disagree (``logo.png`` for JPEG bytes is stored as ``logo.jpg``,
 #: never ``logo.png.jpg``).
-_IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")
+_IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico")
 
 
 def sniff_raster_type(data: bytes) -> str | None:
@@ -139,6 +151,31 @@ def sniff_raster_type(data: bytes) -> str | None:
     if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
         return "image/webp"
     return None
+
+
+def ico_to_png(data: bytes) -> bytes | None:
+    """The largest frame of an ICO file as PNG bytes, or ``None``.
+
+    CPU-bound (call it through ``run_parse``). Decoded as ICO only, under
+    :data:`_MAX_ICON_PIXELS`; any decoding failure is ``None``.
+    """
+    import io
+
+    from PIL import Image
+
+    if not data.startswith(_ICO_MAGIC):
+        return None
+    try:
+        with Image.open(io.BytesIO(data), formats=["ICO"]) as opened:
+            width, height = opened.size
+            if width < 1 or height < 1 or width * height > _MAX_ICON_PIXELS:
+                return None
+            opened.load()
+            out = io.BytesIO()
+            opened.convert("RGBA").save(out, format="PNG")
+            return out.getvalue()
+    except Exception:
+        return None
 
 
 class ImageAssetError(ValueError):
@@ -510,13 +547,26 @@ def build_fetch_image_asset_tool(
                 is_error=True,
             )
         try:
-            data, mime, final_url = await download_public_image(url)
+            data, mime, final_url = await download_public_image(
+                url, allowed_types={**ALLOWED_IMAGE_TYPES, **ICON_IMAGE_TYPES}
+            )
         except HostThrottledError as exc:
             return ToolResult(tool_call_id="", content=f"Error: {exc}", is_error=True, target_throttled=True)
         except ImageAssetError as exc:
             return ToolResult(tool_call_id="", content=f"Error: {exc}", is_error=True)
 
         summary = None
+        if data.startswith(_ICO_MAGIC):
+            from app.core.parse_offload import run_parse
+
+            converted = await run_parse(ico_to_png, data)
+            if converted is None:
+                return ToolResult(
+                    tool_call_id="",
+                    content=f"Error: the icon at {final_url} does not decode as an ICO file; nothing was stored.",
+                    is_error=True,
+                )
+            data, mime = converted, "image/png"
         if mime == "image/svg+xml":
             try:
                 data = sanitize_template_asset(data, mime, "asset.svg")
@@ -612,9 +662,9 @@ def build_fetch_image_asset_tool(
     definition = ToolDefinition(
         name="fetch_image_asset",
         description=(
-            "Download a public image (PNG, JPEG, WebP, GIF or SVG, up to 5 MB) from a "
-            "URL and store it as a file of this conversation in ONE call - a logo, a "
-            "portrait, a diagram you will place on a slide or bind to a template. "
+            "Download a public image (PNG, JPEG, WebP, GIF, SVG; ICO as PNG; up to 5 MB) "
+            "from a URL and store it as a file of this conversation in ONE call - a logo, "
+            "a portrait, a diagram for a slide or a template. "
             "Returns the file_id, the dimensions and the visual summary. Never drive "
             "the browser to an image URL and read it back through evaluate: that "
             "returns base64 you cannot use."
