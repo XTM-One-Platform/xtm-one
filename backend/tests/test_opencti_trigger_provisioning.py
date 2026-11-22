@@ -47,7 +47,20 @@ class FakeOpenCTI:
             # OpenCTI's search is fuzzy: answer every row, the caller matches exactly.
             return {root: {"edges": [{"node": n} for n in rows]}}, None
         if op == "XtmMe":
-            return {"me": {"id": "user-xtm"}}, None
+            return {"me": {"id": "user-xtm", "name": "XTM One integration"}}, None
+        if op == "XtmPirs":
+            return {"pirs": {"edges": [{"node": {"id": "pir-1", "name": "Ransomware on finance"}}]}}, None
+        if op == "XtmNodeReplace":
+            i = v["input"]
+            for node in self.playbooks[v["id"]]["nodes"]:
+                if node["id"] == v["nodeId"]:
+                    node.update(
+                        name=i["name"],
+                        component_id=i["component_id"],
+                        position=i["position"],
+                        configuration=i["configuration"],
+                    )
+            return {"playbookReplaceNode": v["nodeId"]}, None
         if op == "XtmPlaybook":
             p = self.playbooks.get(v["id"])
             if not p:
@@ -71,6 +84,8 @@ class FakeOpenCTI:
             self.playbooks[v["id"]]["nodes"].append(
                 {
                     "id": nid,
+                    "name": i["name"],
+                    "position": i["position"],
                     "component_id": i["component_id"],
                     "configuration": i["configuration"],
                     "parent": i.get("parentNodeId"),
@@ -523,14 +538,42 @@ def test_pir_playbook_mode_needs_the_profile_pirs_and_a_known_mode() -> None:
 
 
 def test_pir_playbook_nodes_listen_to_the_profile_pirs_and_notify_the_integration_user() -> None:
-    entry, notify = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm")
-    # Items as OpenCTI's PIR listener reads them (pir.value), never bare ids.
-    assert entry["inPirFilters"] == [{"value": "pir-1"}, {"value": "pir-2"}]
+    entry, notify = prov.pir_playbook_nodes(
+        _pir_spec(), "notifier-1", "user-xtm", "XTM One integration", {"pir-1": "Ransomware on finance"}
+    )
+    # Items as OpenCTI's PIR listener reads them (pir.value), never bare ids, with the
+    # label and type its form draws the chip from (a PIR OpenCTI did not name shows its id).
+    assert entry["inPirFilters"] == [
+        {"value": "pir-1", "label": "Ransomware on finance", "type": "Pir"},
+        {"value": "pir-2", "label": "pir-2", "type": "Pir"},
+    ]
     assert entry["create"] is True and entry["update"] is True
     assert entry["delete"] is False and entry["create_rel"] is False
     score = json.loads(entry["filters"])["filters"][0]
     assert score == {"key": ["pir_score"], "values": ["70"], "operator": "gte", "mode": "or"}
-    assert notify == {"notifiers": ["notifier-1"], "authorized_members": [{"value": "user-xtm"}]}
+    # The Targets chip of the notifier node: the user's name and the user icon (CTEM-05 follow-up).
+    assert notify == {
+        "notifiers": ["notifier-1"],
+        "authorized_members": [{"value": "user-xtm", "label": "XTM One integration", "type": "User"}],
+    }
+    # No name answered: the id, never an empty chip.
+    _, bare = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm")
+    assert bare["authorized_members"] == [{"value": "user-xtm", "label": "user-xtm", "type": "User"}]
+
+
+def test_chip_items_are_compared_by_value_only() -> None:
+    _, notify = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm", "XTM One integration")
+    resaved = {**notify, "authorized_members": [{"value": "user-xtm", "label": "Renamed", "type": "User"}]}
+    assert prov.same_node_configuration(prov.NOTIFIER_COMPONENT, notify, resaved)
+    assert prov.same_node_configuration(
+        prov.NOTIFIER_COMPONENT, notify, {**notify, "authorized_members": [{"value": "user-xtm"}]}
+    )
+    other = {**notify, "authorized_members": [{"value": "someone-else", "label": "XTM One integration"}]}
+    assert not prov.same_node_configuration(prov.NOTIFIER_COMPONENT, notify, other)
+    assert not prov.same_node_configuration(prov.NOTIFIER_COMPONENT, notify, {**notify, "notifiers": ["n-2"]})
+    assert not prov.same_node_configuration(
+        prov.NOTIFIER_COMPONENT, notify, {**notify, "authorized_members": ["user-xtm"]}
+    )
 
 
 def test_pir_webhook_template_keys_each_change_on_the_pir_information() -> None:
@@ -560,6 +603,41 @@ async def test_reconcile_pir_playbook_creates_a_running_playbook_then_is_idempot
     again = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
     assert again["playbook_id"] == state["playbook_id"]
     assert not [c for c in octi.calls if c.endswith(("Add", "Patch", "Delete", "Run"))]
+
+
+@pytest.mark.asyncio
+async def test_a_playbook_provisioned_without_chip_labels_is_relabelled_in_place() -> None:
+    octi = FakeOpenCTI()
+    state = await prov.reconcile(octi, _pir_spec(), None, url=URL, secret="s")
+    playbook = octi.playbooks[state["playbook_id"]]
+    entry_node, notify_node = playbook["nodes"]
+    node_ids = (entry_node["id"], notify_node["id"])
+    # The form CTEM-05 provisioned before the labels: value alone.
+    for node, key in ((entry_node, "inPirFilters"), (notify_node, "authorized_members")):
+        config = json.loads(node["configuration"])
+        config[key] = [{"value": item["value"]} for item in config[key]]
+        node["configuration"] = json.dumps(config)
+    octi.calls.clear()
+    again = await prov.reconcile(octi, _pir_spec(), state, url=URL, secret="s")
+    assert again["playbook_id"] == state["playbook_id"] and list(octi.playbooks) == [state["playbook_id"]]
+    assert again["fingerprint"] == state["fingerprint"]
+    assert octi.calls.count("XtmNodeReplace") == 2
+    assert not [c for c in octi.calls if c.endswith(("Add", "Delete", "Run"))]
+    entry_node, notify_node = playbook["nodes"]
+    # Patched in place: same nodes, same link.
+    assert (entry_node["id"], notify_node["id"]) == node_ids and notify_node["parent"] == entry_node["id"]
+    members = json.loads(notify_node["configuration"])["authorized_members"]
+    assert members == [{"value": "user-xtm", "label": "XTM One integration", "type": "User"}]
+    assert json.loads(entry_node["configuration"])["inPirFilters"][0]["label"] == "Ransomware on finance"
+
+    # A label rewritten by a save in OpenCTI is not a drift: nothing is written.
+    config = json.loads(notify_node["configuration"])
+    config["authorized_members"][0]["label"] = "Renamed in OpenCTI"
+    notify_node["configuration"] = json.dumps(config)
+    octi.calls.clear()
+    kept = await prov.reconcile(octi, _pir_spec(), again, url=URL, secret="s")
+    assert kept["playbook_id"] == state["playbook_id"]
+    assert not [c for c in octi.calls if c.endswith(("Add", "Replace", "Patch", "Delete", "Run"))]
 
 
 @pytest.mark.asyncio
