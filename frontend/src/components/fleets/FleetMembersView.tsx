@@ -77,7 +77,7 @@ import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { CONTEXT_INCLUSION_FIELD, CONTEXT_INCLUSION_SHORT_LABELS, CONTEXT_INCLUSIONS } from "./context-inclusion";
-import { fleetEditRights } from "./fleet-edition";
+import { BUILTIN_MEMBERS_REASON, BUILTIN_REASON, fleetEditRights } from "./fleet-edition";
 import { fleetRefusalMessage } from "./fleet-refusals";
 import {
   MEMBER_SETTING_LABELS,
@@ -108,6 +108,7 @@ import {
   type MembersTableState,
 } from "./members-view";
 import { ApplyPresetDialog } from "./ApplyPresetDialog";
+import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { MemberInstructionPanel } from "./MemberInstructionPanel";
 import { OrganizationScopeDialog } from "./OrganizationScopeDialog";
 
@@ -145,7 +146,8 @@ export function FleetMembersView({
   // The Members card's rights: reader, archived and built-in fleets read with the reason.
   const { members: rights } = fleetEditRights(fleet);
   const canEdit = rights.canEdit;
-  const reason = rights.reason;
+  // On a built-in fleet the capability slots above the table stay the customer's (UX r1 B1 on #994).
+  const reason = rights.reason === BUILTIN_REASON ? BUILTIN_MEMBERS_REASON : rights.reason;
 
   // Search, filters and sort live in the URL, so a link reopens the same view (Sam's standards 3).
   const [searchParams, setSearchParams] = useSearchParams();
@@ -414,6 +416,9 @@ export function FleetMembersView({
           {t_i18n(reason)}
         </p>
       )}
+
+      {/* Capability slots (#914): bindings are the customer layer, open on a built-in fleet too. */}
+      <FleetCapabilitySlotsCard fleet={fleet} />
 
       <FleetDefaultsBar
         fleet={fleet}

@@ -190,9 +190,10 @@ def _valid_recipient(value: str) -> str:
 class HealthAlertEmailSettings(BaseModel):
     """The alert emails (#101 S12, dev-docs section 7): off by default.
 
-    On, with recipients and SMTP configured: one email per new critical finding
-    (``immediate``) and one daily digest of the open findings at or above
-    ``min_severity`` (``digest``).
+    On, with recipients and SMTP configured: one email per critical finding open
+    continuously for ``alert_after_minutes`` (``immediate``, once per open episode,
+    #958) and one daily digest of the open findings at or above ``min_severity``
+    (``digest``).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -202,6 +203,9 @@ class HealthAlertEmailSettings(BaseModel):
     min_severity: Literal["critical", "warning", "info"] = "warning"
     immediate: bool = True
     digest: bool = True
+    #: How long a critical finding stays open before its immediate email goes out (#958):
+    #: a finding a restart opened resolves before and never mails.
+    alert_after_minutes: int = Field(default=15, ge=0, le=24 * 60)
 
     @field_validator("recipients")
     @classmethod

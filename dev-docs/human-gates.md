@@ -507,6 +507,18 @@ verification is done.
 | S11 | Google Chat: cardsV2 renderer with app auth, `CARD_CLICKED` handler with token verification; user-auth sends carry the answer links of S9b | yes | e2e per I.6, path (d), app and user auth, in a DM and a space |
 | S12 | WhatsApp (1:1): reply buttons or list, button reply webhook mapped to the open decision; Discord and Telegram if their APIs allow | yes | e2e per I.6 (1:1 only for WhatsApp) |
 
+S2 as built: `app/models/decision.py` (the tables), `app/models/decision_hooks.py`
+(one `before_flush` hook writes the dual write from the engines' own columns, so
+no engine write path calls it: a run entering `awaiting_human`, a flow
+`state.waiting` human park, a work item's `needs_human`), `app/services/decision_router.py`
+behind `POST /api/v1/decisions/{id}/answer` (the id is `run:<uuid>`,
+`flow_run:<uuid>`, `work_item:<uuid>` or a row id; the answer goes to
+`answer_paused_run`, `answer_flow_park` or `answer_work_item`, the functions the
+old endpoints call, so the recipient rule is theirs; a refusal is a `refused`
+event), and `app/services/decision_links.py` (I.7, every bell route). The
+missed scheduled one-off decision (reschedule or cancel) and the e2e through
+the router ride with S2b.
+
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
 (prompt), `agent_builder` tool texts, `hitl_whitelist` / `tools/approval.py` /
 `tool_approval_service` (mapping only), `hitl_consent` (unchanged check, new

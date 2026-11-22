@@ -252,6 +252,8 @@ export interface DataTableTags {
 export interface DataTableView {
   value: ViewMode;
   onChange: (mode: ViewMode) => void;
+  /** The views offered (default grid and list). */
+  modes?: readonly ViewMode[];
 }
 
 const STORAGE_PREFIX = TABLE_STORAGE_PREFIX;
@@ -1372,7 +1374,7 @@ function DataTableView<T>({
                 </Button>
               </Tip>
             )}
-            {view && <ViewToggle value={view.value} onChange={view.onChange} />}
+            {view && <ViewToggle value={view.value} onChange={view.onChange} modes={view.modes} />}
           </div>
         </div>
       )}

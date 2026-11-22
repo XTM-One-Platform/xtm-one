@@ -50,7 +50,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -209,8 +209,30 @@ def read_snapshot(raw: Any) -> dict[str, Any] | None:
     return kept
 
 
-async def record_snapshot(db: AsyncSession, registration: Any, raw: Any, *, published_default: bool) -> bool:
-    """Store the snapshot a registration carried; whether one was stored. Never raises."""
+#: A heartbeat this long after the previous one (the platforms send one every 5 minutes) reads as a
+#: restart of the platform (#958).
+RESTART_GAP = timedelta(minutes=8)
+
+
+def registration_restarted(
+    previous_version: str | None, version: str | None, previous_heartbeat_at: datetime | None, now: datetime
+) -> bool:
+    """Whether a registration reads as a restart: its version changed, or it comes back after a gap."""
+    if previous_version is None and previous_heartbeat_at is None:
+        return False  # a first registration is not a restart
+    if previous_version is not None and version is not None and previous_version != version:
+        return True
+    return previous_heartbeat_at is not None and now - previous_heartbeat_at > RESTART_GAP
+
+
+async def record_snapshot(
+    db: AsyncSession, registration: Any, raw: Any, *, published_default: bool, restarted: bool = False
+) -> bool:
+    """Store the snapshot a registration carried; whether one was stored. Never raises.
+
+    *restarted* (:func:`registration_restarted`) stamps ``restarted_at``: the module's
+    availability checks then open nothing for ``engine.RESTART_GRACE`` (#958).
+    """
     from app.models.platform_health_snapshot import PlatformHealthSnapshot
 
     if raw is None or published_default:
@@ -239,12 +261,15 @@ async def record_snapshot(db: AsyncSession, registration: Any, raw: Any, *, publ
                         schema_version=SCHEMA_VERSION,
                         snapshot=snapshot,
                         received_at=now,
+                        restarted_at=now if restarted else None,
                     )
                 )
             else:
                 stored.schema_version = SCHEMA_VERSION
                 stored.snapshot = snapshot
                 stored.received_at = now
+                if restarted:
+                    stored.restarted_at = now
             await db.flush()
         return True
     except Exception as exc:

@@ -22,6 +22,7 @@ import type { Visibility } from "@/lib/visibility";
 import type {
   ScheduledWorkItem,
   WorkItem,
+  WorkItemGraph,
   WorkItemOwnerCount,
   WorkItemStatus,
 } from "@/types";
@@ -86,6 +87,21 @@ function toQuery(filters: WorkItemFilters): string {
   if (filters.limit) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
   return params.toString();
+}
+
+/**
+ * `GET /work-items/graph`: the Graph view's nodes and edges for the list's
+ * filters, in one call (`services/work_item_graph.py`). Pagination and sort
+ * do not apply: the graph reads the first 500 matches (`truncated` says so).
+ */
+export function useWorkItemGraph(filters: WorkItemFilters = {}, enabled = true) {
+  const qs = toCountQuery(filters);
+  return useQuery<WorkItemGraph>({
+    queryKey: ["work-items", "graph", qs],
+    queryFn: () => api.get(`/work-items/graph${qs ? `?${qs}` : ""}`),
+    enabled,
+    refetchInterval: REFETCH_INTERVAL_STANDARD,
+  });
 }
 
 export function useWorkItems(filters: WorkItemFilters = {}, enabled = true) {
