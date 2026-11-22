@@ -566,6 +566,8 @@ ee:
   - frontend/src/lib/*ai-draft.ts
   - frontend/src/pages/CustomDashboard*.tsx
   - frontend/src/pages/DashboardPublic.tsx
+  - frontend/src/pages/DecisionLink*.tsx
+  - frontend/src/hooks/api/useDecisionLinkApi.ts
   - frontend/src/pages/DashboardStaticRender.tsx
   - frontend/src/pages/DashboardStudio.tsx
   - frontend/src/pages/WidgetPacks.tsx
@@ -723,13 +725,13 @@ ce:
   - backend/app/integrations/providers/jira  # a connector
   - backend/app/integrations/providers/microsoft  # a connector
   - backend/app/integrations/providers/notion  # a connector
+  - backend/app/integrations/providers/odoo  # a connector
   - backend/app/integrations/providers/opencrq  # a connector
   - backend/app/integrations/providers/opencti  # a connector
   - backend/app/integrations/providers/ovhcloud  # a connector
   - backend/app/integrations/providers/pennylane  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
-  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
