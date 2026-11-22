@@ -51,7 +51,7 @@ import { PLATFORM_NAMES } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 import { SOURCED_SECTION_LABELS, sourceSectionHref, type SourcedSection } from "@/lib/organization-sources";
 import { useScheduleLabel } from "@/lib/organization-sync-schedule";
-import { exactCount, formatCount } from "@/lib/number-format";
+import { formatCount } from "@/lib/number-format";
 import { formatTimeAgo } from "@/lib/relative-time";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { bodyOf, DIRECTION_LABELS, directionOf, stateOf, SYNC_SECTION_LABELS, SyncEditDialog, type SyncState } from "./OrganizationSyncEditDialog";
@@ -67,6 +67,45 @@ const SOURCE_KIND_NAMES = {
 
 /** The state of a row: a sync's own state, or "source" for a source with no sync. */
 type RowState = SyncState | "failed" | "source";
+
+/** What each kind of source with no sync waits for, in its own words (UX r1 B4). @i18n-keys */
+const SOURCE_SCHEDULE_LABELS = {
+  platform: "No sync scheduled",
+  agent: "Writes when the agent sends rows",
+  csv: "Writes at each CSV import",
+  api: "Writes at each API call",
+  manual: "Changes when a person edits the profile",
+} as const satisfies Record<OrganizationSource["kind"], string>;
+
+/** The rows a plan touches, per section, as ICU plurals (UX r1 B6). @i18n-keys */
+const SECTION_COUNT_LABELS = {
+  crown_jewels: "{count, plural, one {# crown jewel} other {# crown jewels}}",
+  tech_stack: "{count, plural, one {# tech stack entry} other {# tech stack entries}}",
+  ai_systems: "{count, plural, one {# AI system} other {# AI systems}}",
+  assets_exposure: "{count, plural, one {# asset} other {# assets}}",
+  asset_groups: "{count, plural, one {# asset group} other {# asset groups}}",
+} as const satisfies Record<SourcedSection, string>;
+
+/** The kind of a history entry in words, never the API's raw value (UX r1 B7). @i18n-keys */
+const HISTORY_KIND_LABELS = {
+  schedule: "Scheduled run",
+  run_now: "Run now",
+  run: "Run",
+  create: "Created",
+  update: "Edited",
+  delete: "Deleted",
+  configure: "Settings changed",
+  other: "Change",
+} as const;
+
+/** The kind of a history entry: how a run started, else what was saved. */
+function historyKindOf(entry: { action: string; trigger: string }): keyof typeof HISTORY_KIND_LABELS {
+  const trigger = entry.trigger.toLowerCase();
+  if (trigger.startsWith("schedule")) return "schedule";
+  if (trigger.startsWith("run now")) return "run_now";
+  if (entry.action === "trigger") return "run";
+  return entry.action in HISTORY_KIND_LABELS ? (entry.action as keyof typeof HISTORY_KIND_LABELS) : "other";
+}
 
 /** @i18n-keys */
 const ROW_STATE_LABELS = {
@@ -184,7 +223,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   };
 
   const nextRunLine = (sync: OrganizationSync): string => {
-    if (!sync.enabled) return t_i18n("Paused by an administrator");
+    if (!sync.enabled) return t_i18n("Disabled: enable it to run again");
     if (sync.paused_reason) return t_i18n("Paused: {reason}", { reason: sync.paused_reason });
     return sync.next_run_at ? exactTime(sync.next_run_at) : t_i18n("Not scheduled");
   };
@@ -217,8 +256,8 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         { id: "run", label: t_i18n("Run now"), icon: PlayIcon, onSelect: () => runNow(sync), disabled: disabled || run.isPending },
         { id: "edit", label: t_i18n("Edit"), icon: PencilIcon, onSelect: () => setEditing(sync), disabled },
         sync.enabled
-          ? { id: "pause", label: t_i18n("Pause"), icon: PauseIcon, onSelect: () => setEnabled(sync, false), disabled: disabled || update.isPending }
-          : { id: "resume", label: t_i18n("Resume"), icon: PlayIcon, onSelect: () => setEnabled(sync, true), disabled: disabled || update.isPending },
+          ? { id: "disable", label: t_i18n("Disable"), icon: PauseIcon, onSelect: () => setEnabled(sync, false), disabled: disabled || update.isPending }
+          : { id: "enable", label: t_i18n("Enable"), icon: PlayIcon, onSelect: () => setEnabled(sync, true), disabled: disabled || update.isPending },
         { id: "history", label: t_i18n("View history"), icon: HistoryIcon, onSelect: () => setHistory(sync) },
         { id: "delete", label: t_i18n("Delete {name}", { name }), icon: TrashIcon, onSelect: () => setDeleting(row), destructive: true, separatorBefore: true, disabled },
       ];
@@ -320,7 +359,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         row.sync ? (
           <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[13rem]" />
         ) : (
-          <span className="text-default-secondary">{t_i18n("Writes when it sends rows")}</span>
+          <span className="text-default-secondary">{t_i18n(SOURCE_SCHEDULE_LABELS[row.source.kind])}</span>
         ),
       sortValue: (row) => row.sync?.frequency ?? "",
       csv: (row) => (row.sync ? scheduleLabel(row.sync) : ""),
@@ -411,7 +450,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
     .map((sync) => sync.next_run_at as string)
     .sort();
   const summary = [
-    t_i18n("{count, plural, one {# source} other {# sources}}", { count: rows.filter((row) => row.sync?.section !== "all").length }),
+    // Distinct sources: a platform with several syncs counts once (UX r1 B3).
+    t_i18n("{count, plural, one {# source} other {# sources}}", {
+      count: new Set(rows.filter((row) => row.sync?.section !== "all").map((row) => (row.sync ? row.sync.source : row.source.key))).size,
+    }),
     t_i18n("{count, plural, one {# sync} other {# syncs}}", { count: sectionSyncs.length }),
     nextRuns.length > 0 ? t_i18n("next run {time}", { time: exactTime(nextRuns[0]) }) : t_i18n("no run scheduled"),
   ].join(", ");
@@ -513,12 +555,16 @@ const TrashIcon = () => <Icon name="trash-2" size={16} aria-hidden />;
 
 /** The rows a plan touches, per section, in one line: "1,186 assets, 2 asset groups". */
 function usePlanLine() {
-  const { t_i18n, locale } = useFormatter();
+  const { t_i18n } = useFormatter();
   // Exact counts: a purge is confirmed on the number of rows it removes (#1276).
   return (plan: RowsPlan | undefined): string =>
     Object.entries(plan?.counts ?? {})
       .filter(([, count]) => count > 0)
-      .map(([field, count]) => `${exactCount(locale, count)} ${isSourcedField(field) ? t_i18n(SOURCED_SECTION_LABELS[field]) : field}`)
+      .map(([field, count]) =>
+        isSourcedField(field)
+          ? t_i18n(SECTION_COUNT_LABELS[field], { count })
+          : t_i18n("{count, plural, one {# row} other {# rows}}", { count }),
+      )
       .join(", ");
 }
 
@@ -652,14 +698,16 @@ function SyncHistoryPanel({ sync, name, onClose }: { sync: OrganizationSync | nu
               <li key={`${entry.at}-${entry.action}`} className="rounded-md border border-elevation-subtle p-3" data-testid="organization-sources.history-entry">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{when(entry.at)}</span>
-                  {entry.error ? <Badge variant="destructive">{t_i18n("Failed")}</Badge> : <Badge variant="outline">{entry.trigger || entry.action}</Badge>}
+                  {entry.error ? <Badge variant="destructive">{t_i18n("Failed")}</Badge> : <Badge variant="outline">{t_i18n(HISTORY_KIND_LABELS[historyKindOf(entry)])}</Badge>}
                 </div>
-                <p className={entry.error ? "text-feedback-error-primary" : "text-default-secondary"}>
-                  {entry.error ??
-                    (entry.added !== null || entry.updated !== null || entry.removed !== null
-                      ? t_i18n("{added} added, {updated} updated, {removed} removed", { added: entry.added ?? 0, updated: entry.updated ?? 0, removed: entry.removed ?? 0 })
-                      : entry.summary)}
-                </p>
+                {/* Built from the entry's fields, never the backend's English summary (UX r1 B7). */}
+                {entry.error ? (
+                  <p className="text-feedback-error-primary">{entry.error}</p>
+                ) : entry.added !== null || entry.updated !== null || entry.removed !== null ? (
+                  <p className="text-default-secondary">
+                    {t_i18n("{added} added, {updated} updated, {removed} removed", { added: entry.added ?? 0, updated: entry.updated ?? 0, removed: entry.removed ?? 0 })}
+                  </p>
+                ) : null}
                 {entry.by && <p className="content-compact text-default-secondary">{t_i18n("By {who}", { who: entry.by })}</p>}
               </li>
             ))}

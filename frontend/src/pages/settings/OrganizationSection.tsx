@@ -1603,8 +1603,6 @@ export function OrganizationSection() {
         // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
-          {/* Sources and syncs first (#1276): who feeds which section, before what the tabs hold. */}
-          <OrganizationSourcesSyncs onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
@@ -2155,6 +2153,9 @@ export function OrganizationSection() {
             {exposureCards(["enterprise_knowledge"])}
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
+            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
+                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). */}
+            <OrganizationSourcesSyncs onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 

@@ -121,7 +121,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     fireEvent.pointerDown(within(row).getByRole("button", { name: "Actions on OpenCTI" }), { button: 0, ctrlKey: false });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete OpenCTI" }));
     const dialog = await screen.findByTestId("organization-sources.delete");
-    await waitFor(() => expect(dialog.textContent).toContain("It wrote 1,186 Assets."));
+    // An ICU plural per section (UX r1 B6 on #1294).
+    await waitFor(() => expect(dialog.textContent).toContain("It wrote 1,186 assets."));
     fireEvent.click(within(dialog).getByRole("radio", { name: /Purge the rows it wrote/ }));
     expect((await within(dialog).findByTestId("organization-sources.delete-kept")).textContent).toContain("web-01");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete and purge 1,186 rows" }));
@@ -173,14 +174,64 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(await screen.findByText("5 added, 0 updated, 1 removed")).toBeTruthy();
   });
 
-  it("pauses a sync from its menu", async () => {
+  it("disables a sync from its menu", async () => {
     serve([sync()], [source()]);
     put.mockResolvedValue(sync({ enabled: false }));
     render();
     const [row] = await rows();
     fireEvent.pointerDown(within(row).getByRole("button", { name: "Actions on OpenCTI" }), { button: 0, ctrlKey: false });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Pause" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
     await waitFor(() => expect(put).toHaveBeenCalledWith("/organization-context/syncs/s-1", expect.objectContaining({ enabled: false })));
+  });
+
+  it("names a disabled sync with one word: state, next run and menu (UX r1 B5 on #1294)", async () => {
+    serve([sync({ enabled: false })], [source()]);
+    render();
+    const [row] = await rows();
+    expect(row.textContent).toContain("Disabled");
+    expect(row.textContent).toContain("Disabled: enable it to run again");
+    expect(row.textContent).not.toContain("Paused");
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "Actions on OpenCTI" }), { button: 0, ctrlKey: false });
+    expect(await screen.findByRole("menuitem", { name: "Enable" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Resume" })).toBeNull();
+  });
+
+  it("counts a platform with several syncs as one source, and gives each kind with no sync its own schedule words (UX r1 B3, B4 on #1294)", async () => {
+    serve(
+      [sync({ id: "s-1", source: "openaev" }), sync({ id: "s-2", source: "openaev", section: "tech_stack" })],
+      [
+        source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-1", "s-2"] }),
+        source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 3 }, total: 3, sync_ids: [] }),
+        source({ key: "api", kind: "api", display_name: "api", rows: { assets_exposure: 2 }, total: 2, sync_ids: [] }),
+        source({ key: "manual", kind: "manual", display_name: "manual", rows: { crown_jewels: 1 }, total: 1, sync_ids: [] }),
+      ],
+    );
+    render();
+    const all = await rows();
+    expect(screen.getByTestId("organization-sources.summary").textContent).toContain("4 sources, 2 syncs");
+    const text = all.map((row) => row.textContent ?? "").join(" | ");
+    expect(text).toContain("Writes at each CSV import");
+    expect(text).toContain("Writes at each API call");
+    expect(text).toContain("Changes when a person edits the profile");
+  });
+
+  it("labels each history entry in words and never shows the backend's sentence (UX r1 B7 on #1294)", async () => {
+    serve([sync()], [source()]);
+    const base = get.getMockImplementation();
+    get.mockImplementation(async (path: string) =>
+      path.includes("/history")
+        ? [{ at: "2026-11-14T06:00:00Z", action: "create", by: "admin@example.com", summary: "sync created by admin", trigger: "", added: null, updated: null, removed: null, version: null, error: null }]
+        : base?.(path),
+    );
+    render();
+    const [row] = await rows();
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "Actions on OpenCTI" }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "View history" }));
+    const panel = await screen.findByTestId("organization-sources.history");
+    await waitFor(() => expect(within(panel).getAllByTestId("organization-sources.history-entry")).toHaveLength(1));
+    expect(panel.textContent).toContain("Created");
+    expect(panel.textContent).not.toContain("create ");
+    expect(panel.textContent).not.toContain("sync created by admin");
   });
 
   it("opens the history of a sync with its runs", async () => {

@@ -1,7 +1,25 @@
 import { act, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useFitToViewport } from "./useFitToViewport";
+import { pageBarsAbove, useFitToViewport } from "./useFitToViewport";
+
+describe("pageBarsAbove (#1294 UX r1 B1)", () => {
+  it("keeps only the sticky page bars placed before the table, never one that comes after it", () => {
+    const main = document.createElement("main");
+    const before = document.createElement("div");
+    const area = document.createElement("div");
+    const after = document.createElement("div");
+    main.append(before, area, after);
+    expect(pageBarsAbove(area, [before, after])).toEqual([before]);
+  });
+
+  it("ignores a bar that holds the table itself", () => {
+    const bar = document.createElement("div");
+    const area = document.createElement("div");
+    bar.append(area);
+    expect(pageBarsAbove(area, [bar])).toEqual([]);
+  });
+});
 
 /*
  * Guard for #11467: a records table in a dashboard grid row, beside a taller card, blinked

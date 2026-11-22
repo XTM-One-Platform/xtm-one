@@ -89,7 +89,7 @@ beforeEach(() => {
     if (path === "/organization-context/readers") return READERS;
     if (path === "/organization-context/import/sources") return { sections: [] };
     if (path === "/organization-context/attack-surface/providers") return { providers: ["shodan"] };
-    // The Sources and syncs table above the tabs (#1276).
+    // The Sources and syncs table of the Knowledge and sources tab (#1276).
     if (path.startsWith("/organization-context/syncs") || path.startsWith("/organization-context/sources")) return [];
     throw new Error(`unexpected GET ${path}`);
   });
@@ -939,7 +939,7 @@ describe("OrganizationSection", () => {
     expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
   });
 
-  it("shows the one Sources and syncs table above the tabs, each section chip linked to its tab filtered on that source (#1276)", async () => {
+  it("shows the one Sources and syncs table as the last block of the Knowledge and sources tab, each section chip linked to its tab filtered on that source (#1276)", async () => {
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) =>
       path.startsWith("/organization-context/sources")
@@ -949,8 +949,10 @@ describe("OrganizationSection", () => {
           ]
         : base?.(path),
     );
-    renderPage();
+    renderPage("knowledge");
     const panel = await screen.findByTestId("organization-sources");
+    // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
+    expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
     const rows = await within(panel).findAllByTestId("organization-sources.row");
     expect(rows).toHaveLength(2);
     expect(panel.textContent).toContain("Entered by hand");
