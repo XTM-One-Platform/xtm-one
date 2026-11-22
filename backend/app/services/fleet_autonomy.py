@@ -235,6 +235,25 @@ def gate_catalog(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> list[
     return out
 
 
+def with_live_step_gates(structured: Any, catalog: Iterable[Mapping[str, Any]] | None) -> Any:
+    """*structured* with each step's ``gate`` read from the gate it names (#1074).
+
+    A step whose ``gate_key`` is in *catalog* (:func:`gate_catalog`, the fleet's
+    live level and pins applied) shows its approval badge exactly when that gate
+    waits, so the About page and the Approval tab never disagree. A step without
+    a key, or naming a gate the catalog does not hold, keeps its stored flag.
+    The stored value is never mutated: a copy is returned when a step changes.
+    """
+    if not isinstance(structured, Mapping) or not isinstance(structured.get("steps"), list):
+        return structured
+    waits = {str(g.get("key")): bool(g.get("gated")) for g in catalog or () if isinstance(g, Mapping) and g.get("key")}
+    steps: list[Any] = []
+    for step in structured["steps"]:
+        key = step.get("gate_key") if isinstance(step, Mapping) else None
+        steps.append(dict(step, gate=waits[key]) if key in waits else step)
+    return {**structured, "steps": steps}
+
+
 # ── Run time (#9769, slice S1b) ─────────────────────────────────────────────
 
 

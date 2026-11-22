@@ -782,6 +782,14 @@ class FleetSourceChange(BaseModel):
     fields: list[str] = Field(default_factory=list)
 
 
+class FleetSourceSuccessor(BaseModel):
+    """The seeded fleet that took over a retired built-in fleet (CTEM-31)."""
+
+    fleet_id: str
+    slug: str
+    name: str
+
+
 class FleetSourceChangesResponse(BaseModel):
     """Whether, and how, the source of a fork changed since the fork (#9174)."""
 
@@ -792,6 +800,8 @@ class FleetSourceChangesResponse(BaseModel):
     #: False on a fork older than the kept structure: the diff is not known.
     diff_available: bool
     changes: list[FleetSourceChange]
+    #: The seeded fleet that took over a retired built-in source (CTEM-31), else ``null``.
+    successor: FleetSourceSuccessor | None = None
 
 
 class FleetPrerequisiteState(BaseModel):

@@ -18,7 +18,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * D1-D6): a section of the Approval tab listing every run of the fleet's home
  * members that waits for a person, the gated tool calls or the question, with
  * its age. A row unfolds the decision path under it (the shared
- * RunHumanInput: the approval prompt or the reply form), so a person decides
+ * RunPauseDecision: the approval prompt or the reply form), so a person decides
  * here without leaving the tab.
  *
  * Read only until a person decides: the list is the runs feed narrowed to the
@@ -32,7 +32,7 @@ import { CheckCircle2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { RunHumanInput } from "@/components/ui/run-human-input";
+import { RunPauseDecision } from "@/components/decisions/RunPauseDecision";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -253,7 +253,7 @@ export function FleetPendingApprovals({ fleetId }: { fleetId: string }) {
                     {t_i18n("Open run")}
                   </Link>
                 </Button>
-                <RunHumanInput
+                <RunPauseDecision
                   run={run}
                   showResolved={false}
                   approveFailed={submitApprovals.isError}
