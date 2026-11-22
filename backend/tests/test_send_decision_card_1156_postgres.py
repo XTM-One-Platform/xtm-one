@@ -234,15 +234,58 @@ async def test_a_test_item_reaches_only_the_own_chat(sessions: async_sessionmake
     assert message_id == "7" and seen[0][3]["chat_id"] == notify.SELF_CHAT_ID
 
 
-async def test_an_item_without_an_open_decision_sends_nothing(sessions: async_sessionmaker[AsyncSession]) -> None:
+async def test_an_open_item_parked_by_another_agent_without_its_row_gets_its_card(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """#1244: needs_human + a complete ask, status open, parked by another agent, its row gone: the card goes."""
+    async with sessions() as session:
+        alice, agent, item = await _setup(session)
+        parker = Agent(id=uuid.uuid4(), user_id=alice.id, name="Parking desk")
+        session.add(parker)
+        await session.flush()
+        row = await session.get(WorkItem, item.id)
+        assert row is not None
+        row.created_by_agent_id = parker.id
+        row.status = "open"
+        decision = (await session.execute(select(Decision).where(Decision.source_id == item.id))).scalar_one()
+        decision.status = "cancelled"
+        await session.commit()
+    seen: Seen = []
+    graph = _graph({"send_microsoft_chat_message": (True, "Chat message sent. Message ID: 31. Sent at: now.")}, seen)
+    async with sessions() as session:
+        message_id, already = await cards.send_agent_card(
+            session,
+            item,
+            agent_id=agent.id,
+            agent_name=agent.name,
+            user_id=alice.id,
+            integration=INTEGRATION,
+            target=CHAT,
+            caller=graph,
+        )
+    assert (message_id, already) == ("31", False) and len(seen) == 1
+    async with sessions() as session:
+        rows = (await session.execute(select(Decision).where(Decision.source_id == item.id))).scalars().all()
+    opened = [d for d in rows if d.status == "open"]
+    assert len(opened) == 1 and opened[0].ask["question"] == _ASK["question"]
+    assert opened[0].recipient == f"user:{alice.id}"
+
+
+async def test_an_item_no_longer_waiting_is_refused_with_the_missing_field(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
     async with sessions() as session:
         alice, agent, item = await _setup(session)
         decision = (await session.execute(select(Decision).where(Decision.source_id == item.id))).scalar_one()
         decision.status = "cancelled"
         await session.commit()
+        row = await session.get(WorkItem, item.id)
+        assert row is not None
+        row.ask = {"question": "Ship?", "options": [{"key": "A", "label": "Ship"}]}
+        await session.commit()
     seen: Seen = []
     async with sessions() as session:
-        with pytest.raises(notify.PermanentNotifyError, match="no open decision"):
+        with pytest.raises(notify.PermanentNotifyError, match=r"ask\.options"):
             await cards.send_agent_card(
                 session,
                 item,
@@ -254,3 +297,18 @@ async def test_an_item_without_an_open_decision_sends_nothing(sessions: async_se
                 caller=_graph({}, seen),
             )
     assert seen == []
+
+
+def test_missing_decision_field_names_the_field() -> None:
+    from types import SimpleNamespace
+
+    ok = SimpleNamespace(status="open", needs_human=True, ask=_ASK)
+    assert cards.missing_decision_field(ok) is None
+    assert cards.missing_decision_field(SimpleNamespace(status="blocked", needs_human=True, ask=_ASK)) is None
+    cases = [
+        (SimpleNamespace(status="done", needs_human=True, ask=_ASK), "status"),
+        (SimpleNamespace(status="open", needs_human=None, ask=_ASK), "needs_human"),
+        (SimpleNamespace(status="open", needs_human=True, ask={}), "ask.question"),
+    ]
+    for item, field in cases:
+        assert (cards.missing_decision_field(item) or "").startswith(field)

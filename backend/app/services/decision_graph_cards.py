@@ -193,6 +193,77 @@ async def sent_card_to(db: AsyncSession, decision_id: uuid.UUID, target: Mapping
     return None
 
 
+def missing_decision_field(item: Any) -> str | None:
+    """What keeps *item* from carrying a decision card, named for the caller; ``None`` when nothing. Pure."""
+    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES
+
+    if getattr(item, "status", None) in WORK_ITEM_TERMINAL_STATUSES:
+        return f"status: the work item is {item.status}, so it waits for nobody"
+    if not getattr(item, "needs_human", None):
+        return "needs_human: the work item is not parked for a person"
+    ask = getattr(item, "ask", None)
+    if not isinstance(ask, dict) or not str(ask.get("question") or "").strip():
+        return "ask.question: the work item's ask has no question"
+    options = ask.get("options")
+    if not isinstance(options, list) or len([o for o in options if isinstance(o, dict) and o.get("key")]) < 2:
+        return "ask.options: the work item's ask needs at least 2 options with a key"
+    return None
+
+
+async def open_work_item_decision(db: AsyncSession, item_id: uuid.UUID) -> Decision:
+    """The open decision of a waiting work item, opened from the item when its row is missing (#1244).
+
+    The ``before_flush`` hook opens the row on a ``needs_human`` transition
+    written through the ORM; an item parked another way (a bulk update, a
+    row cancelled by a later write while the item still waits) has none. Any
+    non-terminal item with ``needs_human`` and a complete ask gets its row
+    here, with the hook's own rule (``work_item_opening``), whoever parked it
+    and whatever its status. Raises :class:`PermanentNotifyError` naming the
+    missing field otherwise.
+    """
+    from datetime import UTC, datetime
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.decision_hooks import work_item_opening
+    from app.models.work_item import WorkItem
+    from app.services.decision_card_delivery import open_decision
+
+    row = await db.get(WorkItem, item_id)
+    if row is None:
+        raise notify.PermanentNotifyError("work_item: not found")
+    missing = missing_decision_field(row)
+    if missing is not None:
+        raise notify.PermanentNotifyError(f"no decision card can be sent: {missing}")
+    kind, ask, recipient, deadline = work_item_opening(row)
+    now = datetime.now(UTC)
+    decision = Decision(
+        id=uuid.uuid4(),
+        source_type="work_item",
+        source_id=row.id,
+        kind=kind,
+        ask=ask,
+        recipient=recipient,
+        status="open",
+        deadline=deadline,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(decision)
+    db.add(DecisionEvent(decision_id=decision.id, event="asked", detail={"kind": kind, "opened_by": "card"}))
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Opened meanwhile by another writer (the open-source unique index): use that one.
+        await db.rollback()
+        existing = await open_decision(db, "work_item", row.id)
+        if existing is None:
+            raise
+        return existing
+    logger.info("Opened the missing decision %s of work item %s for its card", decision.id, row.id)
+    return decision
+
+
 async def send_agent_card(
     db: AsyncSession,
     item: Any,
@@ -234,9 +305,7 @@ async def send_agent_card(
             )
     decision = await open_decision(db, "work_item", item.id)
     if decision is None:
-        raise notify.PermanentNotifyError(
-            "the work item has no open decision: park it with needs_human and an ask first"
-        )
+        decision = await open_work_item_decision(db, item.id)
     recipient = recipient_user_id(decision.recipient)
     if recipient is None:
         raise notify.PermanentNotifyError(
