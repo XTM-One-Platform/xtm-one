@@ -765,7 +765,9 @@ async def finish_stopped_resolution(
     blob id; a ``keep`` is settled per overlapping hunk from the merge base, so it is named as not checked.
     When the tip is such a stopped resolution commit, the paths still missing are written in signed commits
     and named; otherwise nothing is written and the paths that differ are named, so
-    a resolution left out is never answered as a plain no change. None: no resolution can be checked.
+    a resolution left out is never answered as a plain no change. When no resolution can be checked and the tip
+    is such a stopped commit, the answer is an error naming it and the unchecked paths. None: no resolution can
+    be checked and the tip is not a stopped resolution.
     """
     expected: dict[str, bytes | None] = {}
     unchecked: list[str] = []
@@ -786,10 +788,23 @@ async def finish_stopped_resolution(
             expected[path] = data
         else:
             unchecked.append(path)
-    if not expected:
-        return None
-    wrong = await _tip_mismatch(client, headers, repo, repo_url, branch, expected)
     lead = f"'{branch}' of {repo} already contains '{head}'"
+    if not expected:
+        # Nothing can be checked by blob id. A tip that is a resolution this tool left stopped still lacks its
+        # last chunks: "no change" would hide them, so the stopped commit and the unchecked paths are named.
+        link = await _commit_link(client, headers, repo, repo_url, branch)
+        stopped = _RESOLUTION_HEADLINE_RE.fullmatch(link[2]) if link is not None else None
+        if link is None or stopped is None or int(stopped["part"]) >= int(stopped["of"]):
+            return None
+        return (
+            f"Error: {lead}, and its tip '{link[2]}' ({link[0][:12]}) is a resolution a stopped call of this tool "
+            f"left at part {stopped['part']} of {stopped['of']}: the later parts were not written. These "
+            f"resolutions cannot be checked or finished from the tip (a keep resolution, settled per hunk, or "
+            f"unreadable): {_all_listed(unchecked)}. Nothing was written. Read those files on the branch against "
+            "the merge base and write the missing content with create_github_commit, or call again with a merged "
+            "'content' or 'workspace_path' for each."
+        )
+    wrong = await _tip_mismatch(client, headers, repo, repo_url, branch, expected)
     tail = (
         f"\nNot checked (a keep resolution, settled per hunk, or unreadable): {_listed(unchecked)}."
         if unchecked
