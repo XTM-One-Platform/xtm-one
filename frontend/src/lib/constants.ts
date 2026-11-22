@@ -583,6 +583,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
+  accounting: "Accounting",
   erp: "ERP",
   finance: "Finance",
 } as const;
