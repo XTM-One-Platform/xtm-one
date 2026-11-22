@@ -199,8 +199,9 @@ longer bound by the profile JSON (5,000 rows) and an asset can carry hundreds of
 
 The migration (`o1178assets01`) creates the tables and backfills nothing. `organization_asset_store.ensure_built`
 builds an organization's store from its current profile on the first read and rebuilds it when a newer profile
-version is saved (one advisory lock per organization, so two first reads build once). Until S3 the profile stays
-the source of the rows and the store is its canonical view; syncs and agent tools write through it in S3.
+version is saved (one advisory lock per organization, so two first reads build once). An asset whose canonical key
+is unchanged keeps its id across rebuilds, so an id read from the API stays valid after an unrelated save. Until
+S3 the profile stays the source of the rows and the store is its canonical view; syncs and agent tools write through it in S3.
 
 Read API (any signed-in user, primary organization, every list paginated, `limit` at most 200):
 

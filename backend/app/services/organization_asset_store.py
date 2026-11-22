@@ -121,11 +121,23 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"organization_assets:{org}"})
     rows = [row for row in (version.profile or {}).get("assets_exposure") or [] if isinstance(row, Mapping)]
     things = canonical_rows(rows)
+    # An asset whose canonical key is unchanged keeps its id across rebuilds, so an id
+    # read from the API before an unrelated profile save still answers afterwards.
+    known: dict[str, uuid.UUID] = {
+        key: asset_id
+        for key, asset_id in (
+            await db.execute(
+                select(OrganizationAsset.canonical_key, OrganizationAsset.id).where(
+                    OrganizationAsset.organization_id == org
+                )
+            )
+        ).all()
+    }
     # Children go with their asset (ON DELETE CASCADE).
     await db.execute(delete(OrganizationAsset).where(OrganizationAsset.organization_id == org))
     for thing in things:
         asset = OrganizationAsset(
-            id=uuid.uuid4(),
+            id=known.get(thing["canonical_key"]) or uuid.uuid4(),
             organization_id=org,
             canonical_key=thing["canonical_key"],
             name=thing["name"],

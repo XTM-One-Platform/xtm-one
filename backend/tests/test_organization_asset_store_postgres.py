@@ -138,6 +138,23 @@ async def test_a_newer_profile_rebuilds_the_store_and_an_unchanged_one_does_not(
     assert software == 2
 
 
+async def test_an_unchanged_asset_keeps_its_id_when_a_newer_profile_rebuilds_the_store() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        await _save(session, org, 1, [LAPTOP_INTUNE, SERVER])
+        await store.ensure_built(session)
+        await session.commit()
+        before = {a["name"]: a["id"] for a in (await store.list_assets(session, org)).items}
+        await _save(session, org, 2, [LAPTOP_INTUNE, {**SERVER, "criticality": "high"}])
+        await store.ensure_built(session)
+        await session.commit()
+        after = {a["name"]: a["id"] for a in (await store.list_assets(session, org)).items}
+        detail = await store.get_asset(session, org, uuid.UUID(before["web-02"]))
+    assert after == before
+    assert detail is not None
+    assert detail["name"] == "web-02"
+
+
 async def test_pagination_and_search_are_by_name_and_organizations_never_cross() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _org(session, "A", primary=True)
