@@ -47,6 +47,8 @@ import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } 
 import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
 import { CaseExploitation } from "./ctem/CaseExploitation";
+import { GATE_LABEL, GATE_OUTCOME_LABEL, isGateOutcome } from "./ctem/case-gates";
+import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -117,6 +119,8 @@ const EVENT_LABEL: Record<string, string> = {
   ticket: "Ticket status",
   // The ticket reached done and the sync asked for the re-test (CTEM-19-UI, #1032).
   retest_requested: "Re-test started: the ticket is done",
+  // A loop gate of the fleet's catalog (CTEM-34, #975; shown by CTEM-17-UI).
+  gate: "Gate",
 };
 
 /** The status word of a `ticket` history row, translated where drawn (#1032). */
@@ -541,6 +545,8 @@ export default function CtemCaseDetail() {
 
       <CaseExploitation entries={kase.exploitation} />
 
+      <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
+
       <Card>
         <CardHeader>
           <CardTitle>{t_i18n("Issues")}</CardTitle>
@@ -650,9 +656,17 @@ export default function CtemCaseDetail() {
                 {e.to && e.kind === "source_event" && (
                   <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
                 )}
+                {e.kind === "gate" && e.from && (
+                  <span data-testid="ctem-case-gate">{t_i18n(GATE_LABEL[e.from] ?? e.from)}</span>
+                )}
+                {e.kind === "gate" && isGateOutcome(e.to) && (
+                  <span className="font-medium">{t_i18n(GATE_OUTCOME_LABEL[e.to])}</span>
+                )}
                 {e.reason && <span className="text-default-secondary">{e.reason}</span>}
                 {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && (
-                  <span className="text-default-secondary">{e.evidence}</span>
+                  <span className="text-default-secondary">
+                    {e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}
+                  </span>
                 )}
                 {e.at && (
                   <span className="ml-auto whitespace-nowrap text-default-secondary">
