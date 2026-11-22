@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useId } from "react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -11,13 +12,28 @@ import {
   deriveControllingValue,
   domainList,
   extraFieldProblem,
+  fieldNameInSentence,
   isExtraFieldVisible,
   isSecretExtraKey,
+  splitExtraFieldLabel,
+  type ExtraFieldLabel,
   type ExtraFieldInputSpec,
   type ExtraFieldOption,
   type VisibleWhen,
 } from "@/lib/extra-fields";
 import { useFormatter } from "@/i18n";
+
+/** A field's label at body size, its info bubble (the catalog's explanation) and its "Optional" mark. */
+function ExtraFieldLabelRow({ htmlFor, label }: { htmlFor?: string; label: ExtraFieldLabel }) {
+  const { t_i18n } = useFormatter();
+  return (
+    <div className="flex items-center gap-1">
+      <Label htmlFor={htmlFor} className="text-default-primary">{label.name}</Label>
+      {label.detail && <InfoTip label={t_i18n("About {field}", { field: label.name })} content={label.detail} />}
+      {label.optional && <span className="content-compact text-default-secondary">{t_i18n("Optional")}</span>}
+    </div>
+  );
+}
 
 /**
  * The inputs for a provider's extra configuration fields: one renderer for
@@ -37,6 +53,12 @@ import { useFormatter } from "@/i18n";
  * within its bounds; either shows its inline error under the field, tied by
  * `aria-describedby` and `aria-invalid`, and the caller refuses the save
  * (`hasInvalidExtraField`). Its `help` is the help line.
+ *
+ * The catalog label is split ({@link splitExtraFieldLabel}): its name is the
+ * label, its explanation is the info bubble beside it, a field it says may stay
+ * empty is marked "Optional", and the placeholder is a sentence on the name,
+ * never the raw key. The caller's generic `helpFor` line (where a credential
+ * comes from) is for text inputs only: a select answers its own question.
  *
  * `mode="edit"` adds a switch for a schema-declared boolean,
  * and an EMPTY input where the API returned its mask for a stored secret: the
@@ -87,11 +109,13 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
         .filter(([key]) => isExtraFieldVisible(key, values, visibleWhen, options))
         .map(([key, desc]) => {
           const schemaType = schemaTypeByKey?.get(key);
+          const label = splitExtraFieldLabel(desc);
+          const name = label.name;
           if (editing && schemaType === "boolean") {
             return (
               <div key={key} className="flex items-center justify-between rounded-sm bg-elevation-hover px-3 py-2">
-                <Label htmlFor={`extra-field-${key}`} className="text-default-primary">{desc}</Label>
-                <Switch id={`extra-field-${key}`} aria-label={desc} checked={Boolean(values[key])} onCheckedChange={(checked) => set(key, checked)} />
+                <ExtraFieldLabelRow htmlFor={`extra-field-${key}`} label={label} />
+                <Switch id={`extra-field-${key}`} aria-label={name} checked={Boolean(values[key])} onCheckedChange={(checked) => set(key, checked)} />
               </div>
             );
           }
@@ -100,7 +124,7 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
           const storedIsMasked = editing && current === EXTRA_CONFIG_MASK;
           const spec = inputs?.[key];
           // The catalog's own words, like the field labels (served in English).
-          const help = spec?.help ?? helpFor?.(key);
+          const help = spec?.help ?? (choices ? undefined : helpFor?.(key));
           if (spec && (spec.kind === "domains" || spec.kind === "integer")) {
             const problem = extraFieldProblem(current, spec);
             const fieldId = `${idBase}-${key}`;
@@ -114,11 +138,11 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
                 : t_i18n("Enter a whole number from {min} to {max}.", { min: spec.minimum ?? 0, max: spec.maximum ?? 0 });
             return (
               <div key={key} className="space-y-1">
-                <Label htmlFor={fieldId} className="block text-default-primary">{desc}</Label>
+                <ExtraFieldLabelRow htmlFor={fieldId} label={label} />
                 {spec.kind === "domains" ? (
                   <TagInput
                     id={fieldId}
-                    aria-label={desc}
+                    aria-label={name}
                     aria-describedby={describedBy}
                     aria-invalid={Boolean(problem)}
                     invalidTags={problem && "badDomains" in problem ? problem.badDomains : undefined}
@@ -130,7 +154,7 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
                 ) : (
                   <Input
                     id={fieldId}
-                    aria-label={desc}
+                    aria-label={name}
                     aria-describedby={describedBy}
                     aria-invalid={Boolean(problem)}
                     type="number"
@@ -147,23 +171,29 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
               </div>
             );
           }
+          const secret = isSecretExtraKey(key, schemaType);
+          const sentenceName = fieldNameInSentence(name);
           return (
             <div key={key} className="space-y-1">
-              <Label className="block text-default-primary">{desc}</Label>
+              <ExtraFieldLabelRow label={label} />
               {choices ? (
                 <SearchableSelect
-                  aria-label={desc}
+                  aria-label={name}
                   searchable="auto"
                   sort={false}
                   options={choices}
                   value={deriveControllingValue(key, values, visibleWhen, choices)}
                   onValueChange={(v) => set(key, v)}
-                  placeholder={t_i18n("Select {field}...", { field: desc.toLowerCase() })}
+                  placeholder={t_i18n("Select {field}...", { field: sentenceName })}
                 />
               ) : (
-                <Input aria-label={desc}
-                  type={isSecretExtraKey(key, schemaType) && !showSecrets ? "password" : "text"}
-                  placeholder={storedIsMasked ? t_i18n("Stored: type to replace") : key}
+                <Input aria-label={name}
+                  type={secret && !showSecrets ? "password" : "text"}
+                  placeholder={storedIsMasked
+                    ? t_i18n("Stored: type to replace")
+                    : secret
+                      ? t_i18n("Paste {field}...", { field: sentenceName })
+                      : t_i18n("Enter {field}...", { field: sentenceName })}
                   value={typeof current === "string" && !storedIsMasked ? current : ""}
                   onChange={(e) => set(key, e.target.value)}
                 />

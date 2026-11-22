@@ -10,9 +10,34 @@ import {
   extraConfigPatch,
   extraFieldDefaults,
   extraFieldProblem,
+  fieldNameInSentence,
   hasInvalidExtraField,
   maskedStoredSecrets,
+  splitExtraFieldLabel,
 } from "./extra-fields.ts";
+
+test("a catalog label splits into its name, its explanation and whether it is optional", () => {
+  assert.deepEqual(
+    splitExtraFieldLabel("Webhook secret (optional \u2014 for signature verification of inbound events)"),
+    { name: "Webhook secret", detail: "For signature verification of inbound events", optional: true },
+  );
+  assert.deepEqual(
+    splitExtraFieldLabel("Webhook HMAC signing secret (X-Aikido-Webhook-Signature)"),
+    { name: "Webhook HMAC signing secret", detail: "X-Aikido-Webhook-Signature", optional: false },
+  );
+  assert.deepEqual(
+    splitExtraFieldLabel("Linked-device gateway: a long random secret you choose"),
+    { name: "Linked-device gateway", detail: "A long random secret you choose", optional: false },
+  );
+  assert.deepEqual(splitExtraFieldLabel("Base URL"), { name: "Base URL", detail: null, optional: false });
+  assert.deepEqual(splitExtraFieldLabel("Region (optional)"), { name: "Region", detail: null, optional: true });
+});
+
+test("a field name reads inside a sentence, acronyms kept", () => {
+  assert.equal(fieldNameInSentence("Webhook secret"), "webhook secret");
+  assert.equal(fieldNameInSentence("API key"), "API key");
+  assert.equal(fieldNameInSentence("URL"), "URL");
+});
 
 const LIMIT = { kind: "integer", minimum: 0, maximum: 1000, default: "50" };
 const DOMAINS = { kind: "domains" };

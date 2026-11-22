@@ -213,3 +213,47 @@ export function isSecretExtraKey(key: string, schemaType?: string | null): boole
   if (/_(id|urls?)$/.test(lowered)) return false;
   return /secret|key|token|password/.test(lowered);
 }
+
+/** A catalog label read as a form field: its name, its explanation and whether it may stay empty. */
+export type ExtraFieldLabel = { name: string; detail: string | null; optional: boolean };
+
+const OPTIONAL_LEAD = /^optional\b\s*(?:[\u2014\u2013,;:.-]\s*)?/i;
+
+function capitalised(text: string): string {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+}
+
+/**
+ * Split a catalog label into the field's name and its explanation, so the name
+ * is the label and the explanation is the info bubble. The catalog writes the
+ * explanation after the name, in a trailing parenthesis (`Webhook secret
+ * (optional - for signature verification)`) or after a colon (`Linked-device
+ * gateway: a long random secret you choose`); a leading `optional` marks a
+ * field that may stay empty. A label with neither is the name alone.
+ */
+export function splitExtraFieldLabel(label: string): ExtraFieldLabel {
+  const text = label.trim();
+  let name = text;
+  let detail: string | null = null;
+  const paren = text.indexOf(" (");
+  const colon = text.indexOf(": ");
+  if (paren > 0 && text.endsWith(")") && (colon < 0 || paren < colon)) {
+    name = text.slice(0, paren).trim();
+    detail = text.slice(paren + 2, -1).trim();
+  } else if (colon > 0 && colon <= 40) {
+    name = text.slice(0, colon).trim();
+    detail = text.slice(colon + 2).trim();
+  }
+  let optional = false;
+  if (detail !== null && OPTIONAL_LEAD.test(detail)) {
+    optional = true;
+    detail = detail.replace(OPTIONAL_LEAD, "").trim();
+  }
+  return { name, detail: detail ? capitalised(detail) : null, optional };
+}
+
+/** A field name inside a sentence ("Paste {field}..."): lower-case first letter, acronyms kept (`API key`, `URL`). */
+export function fieldNameInSentence(name: string): string {
+  if (name.length > 1 && name.charAt(1) === name.charAt(1).toUpperCase() && /[A-Z]/.test(name.charAt(1))) return name;
+  return name.charAt(0).toLowerCase() + name.slice(1);
+}
