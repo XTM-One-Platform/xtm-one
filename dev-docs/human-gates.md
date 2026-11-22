@@ -342,6 +342,10 @@ days, a channel thread recorded as its channel) and posts the card there.
 bot is in the target (the person's 1:1 with the bot, the chat or the channel),
 else the account's text as before; the D notify path (`notify.py`
 `_notify_teams`) sends a paused run's open decision as the card to its owner.
+The bot's card tools (`send_teams_bot_channel_card`, `send_teams_bot_chat_card`,
+`send_teams_bot_group_chat_card`) take `decision` (`run:<id>`, `flow_run:<id>`,
+`work_item:<id>`) in place of `card`: `decision_card_delivery.decision_card_for_tool`
+renders the same card, so an agent posts a decision without writing card JSON.
 
 ### I.3 Answering in place
 

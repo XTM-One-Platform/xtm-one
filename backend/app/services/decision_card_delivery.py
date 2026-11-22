@@ -144,6 +144,34 @@ def card_message(card: dict[str, Any], decision: Decision) -> Any:
     return OutboundMessage(text=preview, metadata={"adaptive_card": card})
 
 
+async def decision_card_for_tool(raw_id: str) -> tuple[dict[str, Any], str] | str:
+    """The card and toast preview of the decision *raw_id* names, for a channel send tool.
+
+    *raw_id* is a decision id as the router reads it (``run:<uuid>``,
+    ``flow_run:<uuid>``, ``work_item:<uuid>`` or a decisions row id), so an
+    agent posts a decision without writing card JSON (I.2). The answer is the
+    error text the tool returns when the id names no decision.
+    """
+    from fastapi import HTTPException
+
+    from app.core.database import async_session
+    from app.services.channel_notices import notice_language
+    from app.services.decision_cards import load_view, render_decision_card
+    from app.services.decision_router import resolve
+
+    language = notice_language()
+    try:
+        async with async_session() as db:
+            _ref, row = await resolve(db, raw_id)
+            if row is None:
+                return f"Error: no decision found for {raw_id!r}."
+            card = render_decision_card(await load_view(db, row, None, language), language)
+            preview = card_message(card, row).text
+    except HTTPException:
+        return f"Error: no decision found for {raw_id!r}; pass its source and id, e.g. run: then the run's UUID."
+    return card, preview
+
+
 async def send_decision_card(
     db: AsyncSession,
     decision: Decision,
