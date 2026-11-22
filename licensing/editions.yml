@@ -716,6 +716,7 @@ ce:
   - backend/app/integrations/providers/airwallex  # a connector
   - backend/app/integrations/providers/spendesk  # a connector
   - backend/app/integrations/providers/ashby  # a connector
+  - backend/app/integrations/providers/quotapath  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
   - backend/app/integrations/providers/dealhub  # a connector
   - backend/app/integrations/providers/drata  # a connector
