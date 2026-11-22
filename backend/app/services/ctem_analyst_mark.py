@@ -118,7 +118,9 @@ async def resume_marked(db: Any, grouping_ids: set[str], label: str, *, now: dat
     from sqlalchemy import select
 
     from app.models.assignment import AssignmentRun
+    from app.models.decision_hooks import answer_surface
     from app.services.assignment_engine import resume_assignment_run
+    from app.services.push_action_tokens import void_run_tokens
 
     now = now or datetime.now(UTC)
     rows = (
@@ -148,12 +150,21 @@ async def resume_marked(db: Any, grouping_ids: set[str], label: str, *, now: dat
         decisions = approvals_for(run.pending_approvals, approved)
         if decisions is None:
             continue
-        run.approval_decisions = decisions
-        run.human_input_history = [
-            *(run.human_input_history or []),
-            resolution_entry(run.human_input_question, label, approved, now),
-        ]
-        await resume_assignment_run(db, run)
+        # The decision hook stamps the decision row and its ``answered`` event
+        # with the surface of this contextvar, as the router does for its answers.
+        token = answer_surface.set(SURFACE)
+        try:
+            run.approval_decisions = decisions
+            run.human_input_history = [
+                *(run.human_input_history or []),
+                resolution_entry(run.human_input_question, label, approved, now),
+            ]
+            await resume_assignment_run(db, run)
+        finally:
+            answer_surface.reset(token)
+        # Decided: the Approve / Reject buttons already pushed to a phone stop
+        # working at once, as on every other answer path.
+        await void_run_tokens(run.id)
         resumed.append(str(run.id))
     return resumed
 

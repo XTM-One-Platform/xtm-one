@@ -5,6 +5,7 @@ Pinned without a network or a database:
 - only the pending coverage requests on the marked Grouping are approved;
 - a pause holding any other call is never answered by the mark;
 - the resolution entry names the mark as the answer;
+- the decision is stamped with the mark's surface and the run's phone buttons are voided;
 - an unverified delivery approves nothing;
 - the listen-only assignment provisions Grouping updates and never runs.
 """
@@ -94,6 +95,59 @@ def test_the_resolution_entry_names_the_mark():
     assert entry["surface"] == mark.SURFACE
     assert entry["responded_by"] == "OpenCTI analyst mark"
     assert "analyst-reviewed" in entry["response"] and entry["responded_at"] == now.isoformat()
+
+
+class _Result:
+    def __init__(self, rows: list) -> None:
+        self._rows = rows
+
+    def scalars(self) -> _Result:
+        return self
+
+    def all(self) -> list:
+        return self._rows
+
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
+
+class _Db:
+    def __init__(self, run) -> None:
+        self.run = run
+
+    async def execute(self, _statement) -> _Result:
+        return _Result([self.run])
+
+
+@pytest.mark.asyncio
+async def test_the_mark_answer_is_stamped_with_its_surface_and_voids_the_run_buttons(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.models.decision_hooks import answer_surface
+    from app.services import assignment_engine, push_action_tokens
+
+    run = SimpleNamespace(
+        id="run-1",
+        status="awaiting_human",
+        approval_decisions=None,
+        pending_approvals=[_coverage("a", GROUPING)],
+        human_input_history=[],
+        human_input_question="Approval required before running",
+    )
+    seen: dict[str, object] = {}
+
+    async def _resume(_db, resumed_run):
+        seen["surface"] = answer_surface.get()
+        seen["decisions"] = resumed_run.approval_decisions
+
+    async def _void(run_id):
+        seen["voided"] = run_id
+
+    monkeypatch.setattr(assignment_engine, "resume_assignment_run", _resume)
+    monkeypatch.setattr(push_action_tokens, "void_run_tokens", _void)
+    assert await mark.resume_marked(_Db(run), {GROUPING}, "analyst-reviewed") == ["run-1"]
+    assert seen["surface"] == mark.SURFACE and answer_surface.get() is None
+    assert seen["voided"] == "run-1" and list(seen["decisions"]) == ["a"]
 
 
 @pytest.mark.asyncio
