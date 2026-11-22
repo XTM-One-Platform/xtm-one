@@ -4,10 +4,11 @@
  * What needs attention first on the CTEM Cases list (#1176): one explained
  * score per open case, the default sort of the list and the ranking of the
  * "Act on this first" band. Every point of the score names its reason, so
- * the band says why a case is on top. Weights are defaults; a settings
- * override plugs in through {@link caseAttention}'s `weights` argument.
+ * the band says why a case is on top. The points are the organization's
+ * (profile `case_attention`, set by an administrator from the band), else the
+ * defaults below; {@link weightsFromProfile} maps one to the other.
  *
- * Defaults (dev-docs/ctem-cases.md section 7.5):
+ * Defaults (dev-docs/ctem-cases.md section 7.2bis):
  * - priority: critical 40, high 25, medium 10, low 0
  * - KEV issues: 15 when at least one
  * - crown jewels touched: 15 when at least one
@@ -17,6 +18,7 @@
  * A resolved case or an accepted risk scores 0: nothing to act on.
  */
 import type { CtemCasePriority, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import type { CaseAttentionProfile } from "@/lib/organization-profile";
 
 export interface CaseAttentionWeights {
   priority: Record<CtemCasePriority, number>;
@@ -30,7 +32,7 @@ export interface CaseAttentionWeights {
   ageMax: number;
 }
 
-const DEFAULT_CASE_ATTENTION_WEIGHTS: CaseAttentionWeights = {
+export const DEFAULT_CASE_ATTENTION_WEIGHTS: CaseAttentionWeights = {
   priority: { critical: 40, high: 25, medium: 10, low: 0 },
   kev: 15,
   crownJewel: 15,
@@ -41,6 +43,40 @@ const DEFAULT_CASE_ATTENTION_WEIGHTS: CaseAttentionWeights = {
   agePerDay: 1,
   ageMax: 10,
 };
+
+/** The profile's points as weights; absent (an older backend or never set): the defaults. */
+export function weightsFromProfile(saved: CaseAttentionProfile | null | undefined): CaseAttentionWeights {
+  if (!saved) return DEFAULT_CASE_ATTENTION_WEIGHTS;
+  return {
+    priority: { critical: saved.priority_critical, high: saved.priority_high, medium: saved.priority_medium, low: saved.priority_low },
+    kev: saved.kev,
+    crownJewel: saved.crown_jewel,
+    overdue: saved.overdue,
+    dueSoon: saved.due_soon,
+    dueSoonDays: saved.due_soon_days,
+    noOwner: saved.no_owner,
+    agePerDay: saved.age_per_day,
+    ageMax: saved.age_max,
+  };
+}
+
+/** The weights as the profile stores them. */
+export function weightsToProfile(w: CaseAttentionWeights): CaseAttentionProfile {
+  return {
+    priority_critical: w.priority.critical,
+    priority_high: w.priority.high,
+    priority_medium: w.priority.medium,
+    priority_low: w.priority.low,
+    kev: w.kev,
+    crown_jewel: w.crownJewel,
+    overdue: w.overdue,
+    due_soon: w.dueSoon,
+    due_soon_days: w.dueSoonDays,
+    no_owner: w.noOwner,
+    age_per_day: w.agePerDay,
+    age_max: w.ageMax,
+  };
+}
 
 /** One reason of the score, rendered by the caller (i18n stays in the view). */
 export type CaseAttentionReason =
@@ -82,32 +118,37 @@ export function caseAttention(c: AttentionInput, now: number, weights: CaseAtten
   const reasons: CaseAttentionReason[] = [];
   let score = weights.priority[c.priority] ?? 0;
   if (score > 0) reasons.push({ kind: "priority", priority: c.priority });
-  if (c.kev_count > 0) {
+  // A reason whose points are set to 0 is dropped from the score and from the why line (UX r2 B1 on #1260).
+  if (c.kev_count > 0 && weights.kev > 0) {
     score += weights.kev;
     reasons.push({ kind: "kev", count: c.kev_count, assets: c.asset_count });
   }
-  if (c.crown_jewel_count > 0) {
+  if (c.crown_jewel_count > 0 && weights.crownJewel > 0) {
     score += weights.crownJewel;
     reasons.push({ kind: "crown_jewel", count: c.crown_jewel_count });
   }
   const due = c.sla_due_at ?? c.due_at;
   const dueMs = due ? Date.parse(due) : Number.NaN;
-  if (c.sla_breached_at || (!Number.isNaN(dueMs) && dueMs < now)) {
-    score += weights.overdue;
-    reasons.push({ kind: "overdue" });
-  } else if (!Number.isNaN(dueMs) && dueMs - now <= weights.dueSoonDays * DAY_MS) {
+  const overdue = Boolean(c.sla_breached_at) || (!Number.isNaN(dueMs) && dueMs < now);
+  if (overdue) {
+    if (weights.overdue > 0) {
+      score += weights.overdue;
+      reasons.push({ kind: "overdue" });
+    }
+  } else if (weights.dueSoon > 0 && !Number.isNaN(dueMs) && dueMs - now <= weights.dueSoonDays * DAY_MS) {
     score += weights.dueSoon;
     reasons.push({ kind: "due_soon", days: Math.max(0, Math.ceil((dueMs - now) / DAY_MS)) });
   }
-  if (!c.owner_user_id) {
+  if (!c.owner_user_id && weights.noOwner > 0) {
     score += weights.noOwner;
     reasons.push({ kind: "no_owner" });
   }
   const opened = caseOpenedAt(c);
-  if (opened) {
+  // Age is named while it can add points (per day and cap above 0), so a case opened today still reads "Opened today".
+  if (opened && weights.agePerDay > 0 && weights.ageMax > 0) {
     const days = Math.max(0, Math.floor((now - Date.parse(opened)) / DAY_MS));
     const agePoints = Math.min(weights.ageMax, days * weights.agePerDay);
-    if (agePoints > 0) score += agePoints;
+    score += agePoints;
     reasons.push({ kind: "age", days });
   }
   const next: CaseNextAction = !c.owner_user_id ? "assign" : !due ? "set_due" : "open_case";

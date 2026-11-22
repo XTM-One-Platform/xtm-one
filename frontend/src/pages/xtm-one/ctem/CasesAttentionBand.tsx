@@ -10,15 +10,20 @@
  * and "Set due date" open the Cases bulk dialog for that one case, with the same
  * labels; "Open the case" links to it.
  */
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Icon } from "@filigran/design-system";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAuth } from "@/hooks/useAuth";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CasesBulkActions } from "./CasesBulkActions";
 import { CasePriorityChip } from "./cases-shared";
 import { CtemWidgetHeader } from "./CtemWidgetHeader";
-import { rankByAttention, type CaseAttention, type CaseAttentionReason, type CaseNextAction } from "./case-attention";
+import { CaseAttentionWeightsDialog } from "./CaseAttentionWeightsDialog";
+import { rankByAttention, type CaseAttention, type CaseAttentionReason, type CaseAttentionWeights, type CaseNextAction } from "./case-attention";
 
 /** How many cases the band shows. */
 const ATTENTION_BAND_SIZE = 3;
@@ -59,10 +64,12 @@ export function useAttentionWhy(): (attention: CaseAttention) => string {
   return (attention) => attention.reasons.map(reasonText).filter((s): s is string => Boolean(s)).join(", ");
 }
 
-export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; now: number }) {
+export function CasesAttentionBand({ cases, now, weights }: { cases: CtemCaseSummary[]; now: number; weights: CaseAttentionWeights }) {
   const { t_i18n } = useFormatter();
+  const { isAdmin } = useAuth();
+  const [editing, setEditing] = useState(false);
   const whyOf = useAttentionWhy();
-  const top = rankByAttention(cases, now).slice(0, ATTENTION_BAND_SIZE);
+  const top = rankByAttention(cases, now, weights).slice(0, ATTENTION_BAND_SIZE);
   if (top.length === 0) return null;
 
   return (
@@ -73,7 +80,16 @@ export function CasesAttentionBand({ cases, now }: { cases: CtemCaseSummary[]; n
           title={t_i18n("Act on this first")}
           hint={t_i18n("Open cases ranked by priority, KEV, crown jewels touched, due date, owner and age. The line under each case says why it ranks there.")}
           hintLabel={t_i18n("How cases are ranked")}
+          actions={
+            isAdmin ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)} data-testid="ctem-cases-attention-weights-open">
+                <Icon name="sliders-horizontal" size={16} />
+                <span>{t_i18n("Ranking points")}</span>
+              </Button>
+            ) : undefined
+          }
         />
+        {isAdmin && <CaseAttentionWeightsDialog open={editing} onClose={() => setEditing(false)} />}
         <ol className="flex flex-col divide-y divide-[var(--border-elevation-subtle-soft)]">
           {top.map(({ kase, attention }) => {
             const why = whyOf(attention);
