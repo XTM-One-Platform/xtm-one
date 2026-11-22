@@ -3,12 +3,16 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   EXTRA_CONFIG_MASK,
   domainList,
   extraConfigPatch,
+  EXTRA_FIELD_NAME_MAX,
   extraFieldDefaults,
+  extraFieldKeyName,
+  extraFieldLabels,
   extraFieldProblem,
   fieldNameInSentence,
   hasInvalidExtraField,
@@ -31,12 +35,87 @@ test("a catalog label splits into its name, its explanation and whether it is op
   );
   assert.deepEqual(splitExtraFieldLabel("Base URL"), { name: "Base URL", detail: null, optional: false });
   assert.deepEqual(splitExtraFieldLabel("Region (optional)"), { name: "Region", detail: null, optional: true });
+  assert.deepEqual(splitExtraFieldLabel("Azure AD Tenant ID (required)"), { name: "Azure AD Tenant ID", detail: null, optional: false });
 });
 
-test("a field name reads inside a sentence, acronyms kept", () => {
+test("a label that does not open with a name is named off its key and kept whole in the bubble", () => {
+  // A number, then an unbalanced split: the name comes from the key.
+  assert.deepEqual(
+    splitExtraFieldLabel("5432 (session pooler or direct, default) or 6543 (transaction pooler)", "db_port"),
+    { name: "DB port", detail: "5432 (session pooler or direct, default) or 6543 (transaction pooler)", optional: false },
+  );
+  // The trailing parenthesis is the last top-level one, never an inner one.
+  assert.deepEqual(
+    splitExtraFieldLabel("Your Entra tenant (directory) ID (required)", "tenant_id"),
+    { name: "Your Entra tenant (directory) ID", detail: null, optional: false },
+  );
+  // A leading "Optional" marks the field and leaves a sentence: named off its key.
+  assert.deepEqual(
+    splitExtraFieldLabel("Optional \u2014 restrict the integration to one project: its reference", "project_ref"),
+    { name: "Project ref", detail: "Restrict the integration to one project: its reference", optional: true },
+  );
+  // A sentence before the parenthesis is not a name.
+  assert.deepEqual(
+    splitExtraFieldLabel("Elasticsearch URL for hunting (ES|QL/EQL/_search), e.g. https://my.es.io (optional)", "es_url"),
+    { name: "ES URL", detail: "Elasticsearch URL for hunting (ES|QL/EQL/_search), e.g. https://my.es.io", optional: true },
+  );
+});
+
+test("a group shared by several fields is not their name", () => {
+  const labels = extraFieldLabels({
+    phone_number_id: "Meta Cloud API: phone number ID of the business number",
+    waba_id: "Meta Cloud API: WhatsApp Business Account ID (optional, for template management)",
+    base_url: "Linked-device gateway: API base URL",
+  });
+  assert.deepEqual(labels.phone_number_id, { name: "Phone number ID", detail: "Meta Cloud API: phone number ID of the business number", optional: false });
+  assert.equal(labels.waba_id.name, "WABA ID");
+  assert.equal(labels.waba_id.optional, true);
+  assert.deepEqual(labels.base_url, { name: "Linked-device gateway", detail: "API base URL", optional: false });
+});
+
+test("a key reads as a name, acronyms kept", () => {
+  assert.equal(extraFieldKeyName("client_id"), "Client ID");
+  assert.equal(extraFieldKeyName("db_ca_cert"), "DB CA cert");
+});
+
+test("a field name reads inside a sentence, acronyms and proper nouns kept", () => {
   assert.equal(fieldNameInSentence("Webhook secret"), "webhook secret");
   assert.equal(fieldNameInSentence("API key"), "API key");
   assert.equal(fieldNameInSentence("URL"), "URL");
+  assert.equal(fieldNameInSentence("Meta Cloud API"), "Meta Cloud API");
+  assert.equal(fieldNameInSentence("Your Entra tenant (directory) ID"), "your Entra tenant (directory) ID");
+});
+
+/** Every one-line `"key": "label"` entry of each `extra_fields` block of the provider catalog. */
+function catalogExtraFields(): Record<string, string>[] {
+  const source = readFileSync(new URL("../../../backend/app/api/v1/integration_catalog.py", import.meta.url), "utf8");
+  const blocks: Record<string, string>[] = [];
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/"extra_fields": \{\s*$/.test(lines[i])) continue;
+    const block: Record<string, string> = {};
+    for (i += 1; i < lines.length && !/^\s*\},?\s*$/.test(lines[i]); i += 1) {
+      const entry = /^\s*"([a-z0-9_]+)": "((?:[^"\\]|\\.)*)",?\s*$/.exec(lines[i]);
+      if (entry) block[entry[1]] = JSON.parse(`"${entry[2]}"`) as string;
+    }
+    if (Object.keys(block).length) blocks.push(block);
+  }
+  return blocks;
+}
+
+test("every provider field of the catalog gets its own short name", () => {
+  const blocks = catalogExtraFields();
+  assert.ok(blocks.length > 50, `only ${blocks.length} extra_fields blocks read from the catalog`);
+  const problems: string[] = [];
+  for (const fields of blocks) {
+    const labels = extraFieldLabels(fields);
+    const seen = new Set<string>();
+    for (const [key, { name }] of Object.entries(labels)) {
+      if (/^\d/.test(name) || name.length > EXTRA_FIELD_NAME_MAX || seen.has(name.toLowerCase())) problems.push(`${key}: ${name}`);
+      seen.add(name.toLowerCase());
+    }
+  }
+  assert.deepEqual(problems, []);
 });
 
 const LIMIT = { kind: "integer", minimum: 0, maximum: 1000, default: "50" };

@@ -11,11 +11,11 @@ import {
   EXTRA_CONFIG_MASK,
   deriveControllingValue,
   domainList,
+  extraFieldLabels,
   extraFieldProblem,
   fieldNameInSentence,
   isExtraFieldVisible,
   isSecretExtraKey,
-  splitExtraFieldLabel,
   type ExtraFieldLabel,
   type ExtraFieldInputSpec,
   type ExtraFieldOption,
@@ -54,10 +54,12 @@ function ExtraFieldLabelRow({ htmlFor, label }: { htmlFor?: string; label: Extra
  * `aria-describedby` and `aria-invalid`, and the caller refuses the save
  * (`hasInvalidExtraField`). Its `help` is the help line.
  *
- * The catalog label is split ({@link splitExtraFieldLabel}): its name is the
+ * The catalog label is split ({@link extraFieldLabels}): its name is the
  * label, its explanation is the info bubble beside it, a field it says may stay
  * empty is marked "Optional", and the placeholder is a sentence on the name,
- * never the raw key. The caller's generic `helpFor` line (where a credential
+ * never the raw key. A label that does not open with a name (a number, a
+ * sentence, a group shared by several fields) is named off its key and kept
+ * whole in the bubble, so every field of a provider has its own name. The caller's generic `helpFor` line (where a credential
  * comes from) is for text inputs only: a select answers its own question.
  *
  * `mode="edit"` adds a switch for a schema-declared boolean,
@@ -100,6 +102,7 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
   const editing = mode === "edit";
   const omitted = new Set(omitKeys ?? []);
   const set = (key: string, value: unknown) => onChange({ ...values, [key]: value } as T);
+  const labels = extraFieldLabels(fields);
 
   return (
     <>
@@ -107,9 +110,9 @@ export function ExtraFieldInputs<T extends Record<string, unknown>>({
         .filter(([key]) => !omitted.has(key))
         // Hidden by an unpicked answer; omitted when saving, which clears it.
         .filter(([key]) => isExtraFieldVisible(key, values, visibleWhen, options))
-        .map(([key, desc]) => {
+        .map(([key]) => {
           const schemaType = schemaTypeByKey?.get(key);
-          const label = splitExtraFieldLabel(desc);
+          const label = labels[key];
           const name = label.name;
           if (editing && schemaType === "boolean") {
             return (

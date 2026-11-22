@@ -218,29 +218,77 @@ export function isSecretExtraKey(key: string, schemaType?: string | null): boole
 export type ExtraFieldLabel = { name: string; detail: string | null; optional: boolean };
 
 const OPTIONAL_LEAD = /^optional\b\s*(?:[\u2014\u2013,;:.-]\s*)?/i;
+const REQUIRED_ONLY = /^required$/i;
+/** Longest text read as a field's name; a longer one is an explanation. */
+export const EXTRA_FIELD_NAME_MAX = 40;
+
+/** Key words written as acronyms when a name is read off the key (`client_id` -> `Client ID`). */
+const KEY_ACRONYMS: Readonly<Record<string, string>> = {
+  api: "API", ca: "CA", db: "DB", dns: "DNS", es: "ES", http: "HTTP", id: "ID", ids: "IDs", ip: "IP",
+  jwt: "JWT", oauth: "OAuth", pem: "PEM", sql: "SQL", sso: "SSO", ssl: "SSL", tls: "TLS", uri: "URI",
+  url: "URL", urls: "URLs", waba: "WABA",
+};
 
 function capitalised(text: string): string {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }
 
+/** A field's name read off its key: words of the key, acronyms kept (`phone_number_id` -> `Phone number ID`). */
+export function extraFieldKeyName(key: string): string {
+  const words = key.split(/[_\-\s]+/).filter(Boolean).map((word) => KEY_ACRONYMS[word.toLowerCase()] ?? word.toLowerCase());
+  return words.length ? capitalised(words.join(" ")) : key;
+}
+
+function balanced(text: string): boolean {
+  let depth = 0;
+  for (const char of text) {
+    if (char === "(") depth += 1;
+    else if (char === ")" && --depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+/** Index of the `(` that opens the label's last top-level parenthesis, when the label ends with it after a space. */
+function trailingParenthesis(text: string): number | null {
+  if (!text.endsWith(")")) return null;
+  let depth = 0;
+  for (let i = text.length - 1; i >= 0; i -= 1) {
+    if (text[i] === ")") depth += 1;
+    else if (text[i] === "(" && --depth === 0) return i > 0 && text[i - 1] === " " ? i : null;
+  }
+  return null;
+}
+
+/** Whether a text reads as a field's name: short, not a number, its parentheses balanced. */
+function isFieldName(name: string): boolean {
+  return name.length > 0 && name.length <= EXTRA_FIELD_NAME_MAX && !/^\d/.test(name) && balanced(name);
+}
+
 /**
  * Split a catalog label into the field's name and its explanation, so the name
  * is the label and the explanation is the info bubble. The catalog writes the
- * explanation after the name, in a trailing parenthesis (`Webhook secret
- * (optional - for signature verification)`) or after a colon (`Linked-device
- * gateway: a long random secret you choose`); a leading `optional` marks a
- * field that may stay empty. A label with neither is the name alone.
+ * explanation after the name, in a balanced trailing parenthesis (`Webhook
+ * secret (optional - for signature verification)`) or after a colon
+ * (`Region: where the tenant is hosted`); `optional` at the start of the label
+ * or of its explanation marks a field that may stay empty, `(required)` alone
+ * adds nothing. When what precedes the explanation is not a name (a number, a
+ * sentence, an unbalanced parenthesis, an `Optional - ...` label), the name is
+ * read off the field's `key` and the whole label is the explanation.
  */
-export function splitExtraFieldLabel(label: string): ExtraFieldLabel {
-  const text = label.trim();
+export function splitExtraFieldLabel(label: string, key?: string): ExtraFieldLabel {
+  let text = label.trim();
+  if (key && OPTIONAL_LEAD.test(text)) {
+    text = text.replace(OPTIONAL_LEAD, "").trim();
+    return { name: extraFieldKeyName(key), detail: text ? capitalised(text) : null, optional: true };
+  }
   let name = text;
   let detail: string | null = null;
-  const paren = text.indexOf(" (");
+  const paren = trailingParenthesis(text);
   const colon = text.indexOf(": ");
-  if (paren > 0 && text.endsWith(")") && (colon < 0 || paren < colon)) {
+  if (paren !== null && (colon < 0 || paren < colon)) {
     name = text.slice(0, paren).trim();
-    detail = text.slice(paren + 2, -1).trim();
-  } else if (colon > 0 && colon <= 40) {
+    detail = text.slice(paren + 1, -1).trim();
+  } else if (colon > 0) {
     name = text.slice(0, colon).trim();
     detail = text.slice(colon + 2).trim();
   }
@@ -249,11 +297,51 @@ export function splitExtraFieldLabel(label: string): ExtraFieldLabel {
     optional = true;
     detail = detail.replace(OPTIONAL_LEAD, "").trim();
   }
+  if (detail !== null && REQUIRED_ONLY.test(detail)) detail = "";
+  // An explanation after a colon may end with its own `(optional, ...)`.
+  if (!optional && detail) {
+    const inner = trailingParenthesis(detail);
+    if (inner !== null && OPTIONAL_LEAD.test(detail.slice(inner + 1))) optional = true;
+  }
+  if (!isFieldName(name)) {
+    if (!key) return { name: text, detail: null, optional };
+    // A bare marker leaves the text before it as the explanation; else the whole label is.
+    const explanation = detail === "" ? name : text;
+    return { name: extraFieldKeyName(key), detail: capitalised(explanation), optional };
+  }
   return { name, detail: detail ? capitalised(detail) : null, optional };
 }
 
-/** A field name inside a sentence ("Paste {field}..."): lower-case first letter, acronyms kept (`API key`, `URL`). */
+/**
+ * The labels of a provider's fields ({@link splitExtraFieldLabel}), each name
+ * unique: a name shared by several fields (`Meta Cloud API: ...` on four of
+ * them) is a group, not a name, so those fields are named off their key and
+ * keep their whole label as the explanation.
+ */
+export function extraFieldLabels(fields: Readonly<Record<string, string>>): Record<string, ExtraFieldLabel> {
+  const labels: Record<string, ExtraFieldLabel> = {};
+  const uses = new Map<string, number>();
+  for (const [key, label] of Object.entries(fields)) {
+    labels[key] = splitExtraFieldLabel(label, key);
+    const name = labels[key].name.toLowerCase();
+    uses.set(name, (uses.get(name) ?? 0) + 1);
+  }
+  for (const [key, label] of Object.entries(fields)) {
+    if ((uses.get(labels[key].name.toLowerCase()) ?? 0) > 1) {
+      labels[key] = { name: extraFieldKeyName(key), detail: capitalised(label.trim()), optional: labels[key].optional };
+    }
+  }
+  return labels;
+}
+
+/**
+ * A field name inside a sentence ("Paste {field}..."): lower-case first letter,
+ * kept when the name opens with an acronym (`API key`, `URL`) or is a proper
+ * noun (every word capitalised: `Meta Cloud API`, `Azure AD Tenant ID`).
+ */
 export function fieldNameInSentence(name: string): string {
-  if (name.length > 1 && name.charAt(1) === name.charAt(1).toUpperCase() && /[A-Z]/.test(name.charAt(1))) return name;
+  if (name.length > 1 && /[A-Z]/.test(name.charAt(1))) return name;
+  const words = name.split(/\s+/);
+  if (words.length > 1 && words.every((word) => /^[A-Z0-9]/.test(word))) return name;
   return name.charAt(0).toLowerCase() + name.slice(1);
 }
