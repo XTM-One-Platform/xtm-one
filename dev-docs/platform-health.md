@@ -1196,7 +1196,8 @@ source (13.4 scope).
 | S15a-1 | Members: rename in place and two new checkers, roles (`module_analyst` kept as the alias of rows written before S15), `is_module_checker_run`, cycles started on the module's own checker, orchestrator handovers, playbook skills (seed data), the Cycles label of each checker, tests (n) and the 12.9 extensions | no |
 | S15a-2 | Orchestrator `module_round` schedule replacing the daily branch of the triggers pass (13.2) | no |
 | S15b-1 | Allow-list reshaped to the 13.5 lists (connector and feed tools removed, existing module reads added), renamed `MODULE_CHECKER_TOOLS`, scope test (o) | no |
-| S15b-2 | New read-only health tools per provider (`health_reads.py`), classifier and snapshot tests, `backend-snapshots` regenerated | no |
+| S15b-2a | OpenCTI module health reads (`list_opencti_background_tasks`, `get_opencti_managers`, `get_opencti_platform_queues`, `list_opencti_stream_consumers`, `get_opencti_licence`), allow-listed, classifier and snapshot tests, `backend-snapshots` regenerated | no |
+| S15b-2b | OpenCTI `get_opencti_data_health` and `get_opencti_error_rate`; the OpenAEV and OpenCRQ health reads of 13.5, same tests | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
 | S15d | Lab measurement and default ceiling written in 13.7 | no |
 | S15e | Health page: module card counts, report view, "Run checks now", Cycles title, weekly digest part, docs and i18n | yes |
