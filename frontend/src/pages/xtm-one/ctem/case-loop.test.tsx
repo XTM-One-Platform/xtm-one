@@ -45,6 +45,7 @@ describe("caseLoopMarks", () => {
       closedOnRetest: false,
       closedAt: null,
       closedProvider: null,
+      closedAtSource: false,
     });
     const scan = [{ provider: "openaev", kind: "validation", ref: "s1", result: "passed" as const, at: "x" }];
     expect(caseLoopMarks({ state: "resolved", validations: scan, sla_breached_at: null }).closedOnRetest).toBe(false);
@@ -54,6 +55,12 @@ describe("caseLoopMarks", () => {
     const marks = caseLoopMarks({ state: "resolved", validations: passed, sla_breached_at: null });
     expect(marks).toMatchObject({ closedOnRetest: true, closedAt: "x", closedProvider: "OpenAEV" });
     expect(JSON.stringify(marks)).not.toContain("r1");
+  });
+  it("marks a resolved case whose source closed every member as closed at source, not as a re-test (CTEM-25-UI)", () => {
+    const rescan = [{ provider: "aikido", kind: "rescan", ref: "42", result: "passed" as const, at: "y" }];
+    const marks = caseLoopMarks({ state: "resolved", validations: rescan, sla_breached_at: null });
+    expect(marks).toMatchObject({ closedOnRetest: false, closedAtSource: true, closedAt: "y", closedProvider: "Aikido Security" });
+    expect(caseLoopMarks({ state: "in_progress", validations: rescan, sla_breached_at: null }).closedAtSource).toBe(false);
   });
 });
 
