@@ -223,6 +223,13 @@ def _merge():
     return next(call[0][1] for call in executor.register.call_args_list if call[0][0] == "merge_github_branch")
 
 
+def _manage() -> Any:
+    executor = MagicMock()
+    executor.register = MagicMock()
+    build_tools("fake-token", executor)
+    return next(call[0][1] for call in executor.register.call_args_list if call[0][0] == "manage_github_pr")
+
+
 def _sides():
     ours = {"src/a.py": "branch a\n", "docs/b.md": "branch b\n", "same.txt": "x\n"}
     theirs = {"src/a.py": "main a\n", "docs/b.md": "main b\n", "same.txt": "x\n"}
@@ -512,6 +519,46 @@ async def test_a_replay_after_a_stop_between_alignment_and_merge_resolves_every_
         {"name": "refs/heads/feat/x", "beforeOid": format(0xC0FFEE, "040x"), "afterOid": OURS, "force": True}
     ]
     assert fake.merged and fake.ours["src/a.py"] == "merged a\n" and fake.ours["docs/b.md"] == "branch b\n"
+
+
+@pytest.mark.asyncio
+async def test_update_branch_after_a_stopped_alignment_never_merges_over_it() -> None:
+    # xtm-one #1254: a call stopped after its 'Take main's version' commits left the i18n catalogs at main's
+    # version; GitHub's update-branch then merged cleanly over them and the PR's own keys were lost. The
+    # update now moves the branch off those commits first, so the conflict is seen and both sides kept.
+    ours, theirs = _sides()
+    fake = FakeGitHub(ours, theirs, both=["docs/b.md", "src/a.py"])
+    fake.stop_armed = True
+    stopped = _stop_after_alignment(fake)
+    updates: list[str] = []
+
+    async def github(client: Any, method: str, url: str, provider: str, action: str, **kwargs: Any) -> Any:
+        if method == "get" and url == f"{API}/pulls/7":
+            pr = {"head": {"ref": "feat/x", "repo": {"full_name": "acme/app"}}, "base": {"ref": "main"}}
+            return httpx.Response(200, json=pr), None
+        if method == "put" and url == f"{API}/pulls/7/update-branch":
+            updates.append(fake.tip)
+            if any(fake.ours.get(p) != fake.theirs.get(p) for p in fake.both):
+                return httpx.Response(422, json={"message": "merge conflict between base and head"}), "Error: 422"
+            fake.merged = True
+            return httpx.Response(202, json={"message": "Updating pull request branch."}), None
+        return await stopped(client, method, url, provider, action, **kwargs)
+
+    resolutions = [{"path": "src/a.py", "keep": "branch"}, {"path": "docs/b.md", "keep": "branch"}]
+    with patch(_SAFE_REQUEST, new=github):
+        with pytest.raises(_WorkerStop):
+            await _merge()(repo="acme/app", branch="feat/x", resolutions=resolutions)
+        assert fake.ours["src/a.py"] == "main a\n"
+        fake.stop_armed = False
+        result = await _manage()(repo="acme/app", number=7, action="update_branch")
+
+    assert updates == [OURS], updates
+    assert fake.ref_updates == [
+        {"name": "refs/heads/feat/x", "beforeOid": format(0xC0FFEE, "040x"), "afterOid": OURS, "force": True}
+    ]
+    assert not fake.merged and fake.ours == ours
+    assert result.startswith("Error: the branch of PR #7 in acme/app cannot take 'main'"), result
+    assert "moved back to " + OURS[:12] in result
 
 
 @pytest.mark.asyncio
