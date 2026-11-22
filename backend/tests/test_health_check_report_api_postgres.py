@@ -181,3 +181,37 @@ async def test_the_api_answers_the_latest_report_per_registration_to_an_administ
     assert [c["id"] for c in items[str(second)]["checks"]] == ["streams", "platform_errors"]
     assert unknown.status_code == 404
     assert refused.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_a_module_cycle_is_named_by_its_registration_title(xtm_one: None) -> None:
+    """The Cycles tab titles a checker's round with the module and the registration (13.8)."""
+    from app.models.platform_registration import PlatformRegistration
+
+    admin = make_user("admin", admin=True)
+    registered, gone = uuid.uuid4(), uuid.uuid4()
+    async with health_database() as sessions:
+        async with sessions() as db:
+            db.add(admin)
+            db.add(
+                PlatformRegistration(
+                    id=registered,
+                    platform_identifier="opencti",
+                    platform_url="https://cti.example.com",
+                    platform_title="OpenCTI Europe",
+                    platform_version="6.9.0",
+                )
+            )
+            await db.flush()
+            named = await _cycle(db, registered, NOW)
+            orphan = await _cycle(db, gone, NOW - timedelta(hours=1))
+            await db.commit()
+        async with _client(sessions, admin) as client:
+            listed = await client.get("/api/v1/health/cycles")
+            one = await client.get(f"/api/v1/health/cycles/{named.id}")
+
+    assert listed.status_code == 200
+    names = {item["id"]: item["target_name"] for item in listed.json()}
+    assert names[str(named.id)] == "OpenCTI Europe"
+    assert names[str(orphan.id)] is None
+    assert one.json()["target_name"] == "OpenCTI Europe"
