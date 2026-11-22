@@ -1323,13 +1323,22 @@ async def update_organization_sync(
 @router.delete("/syncs/{sync_id}", status_code=204)
 async def delete_organization_sync(
     sync_id: uuid.UUID,
+    rows: Literal["leave", "release", "purge"] = "leave",
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> None:
-    """Stop and remove a sync; the profile rows it wrote stay (#11913)."""
+    """Stop and remove a sync (#11913); *rows* says what becomes of the rows it wrote (#1276).
+
+    ``leave`` (the default, unchanged for every caller) keeps them as they are; ``release`` keeps
+    them and hands them to people (editable, provenance kept in the saved version); ``purge``
+    removes only the rows this sync wrote, never a row a person or another source wrote.
+    """
     from app.services.audit import log_audit
 
     row = await _sync_or_404(db, sync_id)
+    plan_summary: dict[str, Any] | None = None
+    if rows != "leave" and row.source:
+        plan_summary = await _save_rows_plan(db, admin, source=row.source, mode=rows, sync=row)
     await log_audit(
         db,
         user=admin,
@@ -1337,10 +1346,196 @@ async def delete_organization_sync(
         entity_type="organization_context_sync",
         entity_id=row.id,
         entity_name=f"{row.section} from {row.source or 'every source'}",
-        summary=f"Organization sync of {row.section} deleted",
+        summary=f"Organization sync of {row.section} deleted, its rows {_ROWS_VERB[rows]}"[:500],
+        details={"rows": rows, **(plan_summary or {})},
     )
     await db.delete(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Another version was saved at the same time. Delete it again."
+        ) from None
+
+
+#: How the audit summary names what became of a deleted sync's rows.
+_ROWS_VERB = {"leave": "kept", "release": "kept and handed to people", "purge": "purged"}
+
+
+async def _save_rows_plan(
+    db: AsyncSession, admin: User, *, source: str, mode: str, sync: Any = None
+) -> dict[str, Any] | None:
+    """Purge or release a source's rows (one sync's when *sync* is given) as a new version; the caller commits."""
+    from app.services import organization_context_sources as osources
+
+    current = await org_context.current_version(db)
+    base = org_context.parse_profile(current.profile if current else {})
+    try:
+        plan = osources.plan_rows(
+            base,
+            source=source,
+            mode=mode,
+            sync_id=str(sync.id) if sync is not None else "",
+            fields=osources.sync_fields(sync.section) if sync is not None else None,
+        )
+    except osources.SourceRefusedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if not plan.count or plan.profile is None:
+        return plan.as_dict()
+    label = f"sync {sync.section} from {osources.display_name(osources.source_key(source))}" if sync is not None else ""
+    sources = {
+        attr: {"source": plan.source, "basis": osources.plan_basis(plan, who=admin.email, sync_label=label)}
+        for attr in plan.touched
+    }
+    saved = await org_context.save_version(db, plan.profile, source="draft", author_user_id=admin.id, sources=sources)
+    return {**plan.as_dict(), "version": saved.version}
+
+
+class RowsPlanResponse(BaseModel):
+    source: str
+    mode: str
+    count: int
+    #: Profile field -> rows touched.
+    counts: dict[str, int]
+    #: Profile field -> the first names touched.
+    rows: dict[str, list[str]]
+    #: Profile field -> rows of other sources with the same name, kept as they are.
+    kept_elsewhere: dict[str, list[str]]
+    version: int | None = None
+
+
+@router.get("/syncs/{sync_id}/rows-preview", response_model=RowsPlanResponse)
+async def preview_organization_sync_rows(
+    sync_id: uuid.UUID,
+    mode: Literal["release", "purge"] = "purge",
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> RowsPlanResponse:
+    """What deleting a sync with *mode* would do to the rows it wrote; nothing saved (#1276)."""
+    from app.services import organization_context_sources as osources
+
+    row = await _sync_or_404(db, sync_id)
+    current = await org_context.current_version(db)
+    base = org_context.parse_profile(current.profile if current else {})
+    if not row.source:
+        return RowsPlanResponse(source="", mode=mode, count=0, counts={}, rows={}, kept_elsewhere={})
+    plan = osources.plan_rows(
+        base, source=row.source, mode=mode, sync_id=str(row.id), fields=osources.sync_fields(row.section)
+    )
+    return RowsPlanResponse(**plan.as_dict())
+
+
+class SyncHistoryEntry(BaseModel):
+    at: datetime
+    action: str
+    by: str | None = None
+    summary: str
+    trigger: str = ""
+    added: int | None = None
+    updated: int | None = None
+    removed: int | None = None
+    version: int | None = None
+    error: str | None = None
+
+
+@router.get("/syncs/{sync_id}/history", response_model=list[SyncHistoryEntry])
+async def organization_sync_history(
+    sync_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[SyncHistoryEntry]:
+    """The last runs of a sync that changed the profile or failed, and its saves, newest first (#1276)."""
+    from app.services import organization_context_sources as osources
+
+    await _sync_or_404(db, sync_id)
+    return [SyncHistoryEntry(**entry) for entry in await osources.sync_history(db, sync_id, limit=limit)]
+
+
+class OrganizationSourceResponse(BaseModel):
+    key: str
+    #: ``platform``, ``agent`` (an agent or a partner writing through the API), ``csv``, ``api`` or ``manual``.
+    kind: str
+    display_name: str
+    #: Profile field -> rows of this source.
+    rows: dict[str, int]
+    total: int
+    #: The agent that last wrote this source's rows, when a saved version names it.
+    written_by_agent: str = ""
+    sync_ids: list[str] = []
+
+
+@router.get("/sources", response_model=list[OrganizationSourceResponse])
+async def list_organization_sources(
+    scope: Literal["profile", "inventory", ""] = "",
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[OrganizationSourceResponse]:
+    """Every source of rows of the profile, with its kind, name, rows per field and syncs (#1276)."""
+    from app.services import organization_context_sources as osources
+    from app.services import organization_context_sync as osync
+
+    current = await org_context.current_version(db)
+    base = org_context.parse_profile(current.profile if current else {})
+    syncs = await osync.all_syncs(db, scope)
+    writers = await osources.writer_agents(db)
+    return [
+        OrganizationSourceResponse(**summary.as_dict())
+        for summary in osources.summarize(base, syncs, scope=scope, writers=writers)
+    ]
+
+
+@router.get("/sources/{source}/rows-preview", response_model=RowsPlanResponse)
+async def preview_organization_source_rows(
+    source: str,
+    mode: Literal["release", "purge"] = "purge",
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> RowsPlanResponse:
+    """What purging or releasing every row of *source* would do; nothing saved (#1276)."""
+    from app.services import organization_context_sources as osources
+
+    current = await org_context.current_version(db)
+    base = org_context.parse_profile(current.profile if current else {})
+    try:
+        plan = osources.plan_rows(base, source=source, mode=mode)
+    except osources.SourceRefusedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return RowsPlanResponse(**plan.as_dict())
+
+
+class SourceRowsRequest(BaseModel):
+    mode: Literal["release", "purge"] = "purge"
+
+
+@router.post("/sources/{source}/rows", response_model=RowsPlanResponse)
+async def apply_organization_source_rows(
+    source: str,
+    body: SourceRowsRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> RowsPlanResponse:
+    """Purge or release every row *source* wrote (an agent, a partner, a CSV import), as a new version (#1276)."""
+    from app.services.audit import log_audit
+
+    outcome = await _save_rows_plan(db, admin, source=source, mode=body.mode) or {}
+    if outcome.get("version") is not None:
+        await log_audit(
+            db,
+            user=admin,
+            action="delete" if body.mode == "purge" else "update",
+            entity_type="organization_context",
+            entity_name=source[:200],
+            summary=f"Organization rows of {source} {_ROWS_VERB[body.mode]}: {outcome.get('count', 0)}"[:500],
+            details=outcome,
+        )
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Another version was saved at the same time. Try again.") from None
+    return RowsPlanResponse(**outcome)
 
 
 @router.post("/syncs/{sync_id}/run", response_model=OrganizationSyncResponse)

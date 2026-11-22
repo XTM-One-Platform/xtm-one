@@ -230,7 +230,21 @@ Each run follows the import rules:
 - Two runs of one sync never overlap.
 - A run whose read was cut (more rows than one run reads) or failed removes nothing.
 - The rows a run writes carry the sync's id; a row whose id is on the exclusion list is left out and its stored copy removed. The last run counts the excluded rows.
-- Every run that changed the profile or failed, and every change to a sync, is written to the audit log.
+- Every run that changed the profile or failed, and every change to a sync, is written to the audit log. `GET /api/v1/organization-context/syncs/{id}/history` answers the last of these events for one sync (when, who, the trigger, the counts, the error).
+
+### Delete a sync and its rows
+
+Deleting a sync asks what becomes of the rows it wrote (`DELETE /api/v1/organization-context/syncs/{id}?rows=`):
+
+- **leave** (the default): the rows stay as they are.
+- **release**: the rows stay and become editable by hand. The saved version records where they came from ("formerly synced from" the platform).
+- **purge**: only the rows this sync wrote are removed. A row typed by hand, or written by another source, is kept, even when it has the same name.
+
+`GET /api/v1/organization-context/syncs/{id}/rows-preview?mode=purge` counts and names the rows first, and the rows of other sources with the same name that are kept. Release and purge save a new profile version and are written to the audit log.
+
+### Sources
+
+`GET /api/v1/organization-context/sources?scope=profile|inventory` lists every source of rows: its kind (a platform sync, an agent or partner writing through the API, a CSV import, the API, or entered by hand), its name (OpenAEV, Microsoft Intune, the agent's name), the agent that last wrote its rows when a saved version names it, its rows per section and its syncs. The rows of an agent, a partner or a CSV import can be purged or released the same way: `GET /api/v1/organization-context/sources/{source}/rows-preview?mode=` then `POST /api/v1/organization-context/sources/{source}/rows` with `{"mode": "purge"}` or `{"mode": "release"}`. Rows entered by hand are never purged.
 
 ### Sync direction
 
