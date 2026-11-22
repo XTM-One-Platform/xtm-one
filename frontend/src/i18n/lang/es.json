@@ -20773,5 +20773,10 @@
   "CI/CD pipeline": "Pipeline de CI/CD",
   "Package registry": "Registro de paquetes",
   "Software package": "Paquete de software",
-  "Other code asset": "Otro activo de código"
+  "Other code asset": "Otro activo de código",
+  "Module checks": "Comprobaciones de los módulos",
+  "No check round since the last digest": "Ninguna ronda de comprobaciones desde el último resumen",
+  "Failed most": "Las que más fallaron",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# ronda} other {# rondas}} en {registrations, plural, one {# registro} other {# registros}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# fallida} other {# fallidas}}, {warned, plural, one {# advertencia} other {# advertencias}}"
 }

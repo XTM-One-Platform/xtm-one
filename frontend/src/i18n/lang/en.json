@@ -20773,5 +20773,10 @@
   "CI/CD pipeline": "CI/CD pipeline",
   "Package registry": "Package registry",
   "Software package": "Software package",
-  "Other code asset": "Other code asset"
+  "Other code asset": "Other code asset",
+  "Module checks": "Module checks",
+  "No check round since the last digest": "No check round since the last digest",
+  "Failed most": "Failed most",
+  "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}",
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}"
 }
