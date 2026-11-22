@@ -20177,6 +20177,7 @@
   "Account suspended": "Account suspended",
   "Global account closed": "Global account closed",
   "Finance & Treasury": "Finance & Treasury",
+  "Expense Management": "Expense Management",
   "Triggers on this Airwallex webhook event. Add a webhook for it in Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL shown below.": "Triggers on this Airwallex webhook event. Add a webhook for it in Airwallex > Settings > Developer > Webhooks, pointing to the webhook URL shown below.",
   "What you can change on this built-in agent": "What you can change on this built-in agent",
   "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.": "Each release rewrites what the product locks and keeps what is yours. To change the locked part, duplicate the fleet.",

@@ -587,6 +587,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   guardrails: "Guardrails",
   erp: "ERP",
   finance: "Finance & Treasury",
+  expense_management: "Expense Management",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
