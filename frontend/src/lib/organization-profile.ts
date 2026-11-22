@@ -31,7 +31,8 @@ export interface ProfileLike {
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
-  ticketing: { integration: string; project: string };
+  /** The ticketing target; `sync` is how CTEM cases sync with it (#917), kept whole through the form. */
+  ticketing: { integration: string; project: string; sync?: TicketingSync };
   /** Assets with their exposure (#11543); kept whole through the form. */
   assets_exposure?: AssetRow[];
   /** Groups the assets join through their `group` (#11781); kept whole through the form. */
@@ -82,6 +83,81 @@ export interface PrioritizationPolicy {
   min_crown_jewel_criticality: string;
   exclusions: { kind: string; value: string; reason: string }[];
   accepted_risks: { subject: string; scope: string; owner: string; expires_on: string; reason: string }[];
+  /** CTEM-08: the live PIR score (0 to 100) a flagged vulnerability must reach before a fleet run starts. Backend default 70. */
+  pir_min_score_vulnerability?: number;
+  /** CTEM-08: the same for threat activity (intrusion set, campaign, malware...). Backend default 75. */
+  pir_min_score_threat?: number;
+}
+
+/** A case ticket status, as the backend stores it on `case.tickets` (ctem_case_loop.TICKET_STATUSES). */
+export type CaseTicketStatus = "open" | "in_progress" | "done" | "cancelled";
+
+/** How CTEM cases sync with the ticketing target (#917, backend TicketingSync, dev-docs/ctem-ticketing.md). */
+export interface TicketingSync {
+  create_on: "mobilize_p1_p2" | "mobilize_p1" | "manual";
+  record_type: string;
+  labels: string[];
+  priority_map: Record<string, string>;
+  status_map: Record<string, string>;
+  done_starts_retest: boolean;
+  on_reopen: "reopen" | "linked";
+  due_date_from_sla: boolean;
+}
+
+/** The program defaults (doc 34 section 5), the backend's TicketingSync defaults. */
+export const DEFAULT_TICKETING_SYNC: TicketingSync = {
+  create_on: "mobilize_p1_p2",
+  record_type: "",
+  labels: [],
+  priority_map: {},
+  status_map: {},
+  done_starts_retest: true,
+  on_reopen: "reopen",
+  due_date_from_sla: true,
+};
+
+/** The case severities a priority is mapped for. */
+export const CASE_SEVERITIES = ["P1", "P2", "P3"] as const;
+/** The case ticket statuses a system status can be mapped to. */
+export const CASE_TICKET_STATUSES = ["open", "in_progress", "done", "cancelled"] as const satisfies readonly CaseTicketStatus[];
+
+/**
+ * The ServiceNow tables the CTEM case sync writes to (backend ctem_ticketing.target_problem); any other
+ * table is refused with a 422 on save, so the form offers these alone.
+ */
+export const SERVICENOW_RECORD_TYPES = ["incident", "change_request", "problem"] as const;
+export type ServiceNowRecordType = (typeof SERVICENOW_RECORD_TYPES)[number];
+
+/** Whether a record type can be saved for this provider: free for Jira, one of the three tables for ServiceNow. */
+export function isSupportedRecordType(provider: string, recordType: string): boolean {
+  const value = recordType.trim();
+  return provider !== "servicenow" || value === "" || (SERVICENOW_RECORD_TYPES as readonly string[]).includes(value);
+}
+
+/** The defaults the backend applies when a field is empty, per provider (ctem_ticketing.DEFAULT_*). */
+export function ticketingDefaults(provider: string): { record_type: string; priority: Record<string, string> } {
+  if (provider === "servicenow") return { record_type: "incident", priority: { P1: "1", P2: "2", P3: "3" } };
+  return { record_type: "Task", priority: { P1: "Highest", P2: "High", P3: "Medium" } };
+}
+
+/** A stored sync (any field possibly missing on an older profile) with every field filled from the defaults. */
+export function ticketingSyncOf(sync: Partial<TicketingSync> | undefined): TicketingSync {
+  return {
+    ...DEFAULT_TICKETING_SYNC,
+    ...(sync ?? {}),
+    labels: [...(sync?.labels ?? [])],
+    priority_map: { ...(sync?.priority_map ?? {}) },
+    status_map: { ...(sync?.status_map ?? {}) },
+  };
+}
+
+/** The sync as saved: trimmed, blank priorities and status rows dropped, labels deduplicated. */
+function cleanTicketingSync(sync: TicketingSync): TicketingSync {
+  const priority_map: Record<string, string> = {};
+  for (const [severity, value] of Object.entries(sync.priority_map)) if (value.trim()) priority_map[severity] = value.trim();
+  const status_map: Record<string, string> = {};
+  for (const [name, status] of Object.entries(sync.status_map)) if (name.trim() && status) status_map[name.trim()] = status;
+  return { ...sync, record_type: sync.record_type.trim(), labels: splitList(sync.labels.join(",")), priority_map, status_map };
 }
 
 export interface KnowledgeLink {
@@ -245,7 +321,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
     loaded_hourly_rate: numberText(profile.loaded_hourly_rate),
     currency: profile.currency,
-    ticketing: { ...profile.ticketing },
+    ticketing: { ...profile.ticketing, ...(profile.ticketing.sync ? { sync: ticketingSyncOf(profile.ticketing.sync) } : {}) },
     // The #11543 parts have their own editors: the form carries them unchanged so a save never drops them.
     ...(profile.assets_exposure ? { assets_exposure: profile.assets_exposure } : {}),
     ...(profile.asset_groups ? { asset_groups: profile.asset_groups } : {}),
@@ -318,7 +394,12 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         },
         loaded_hourly_rate: parseAmount(form.loaded_hourly_rate, FIELD_LABELS.loaded_hourly_rate, "loaded_hourly_rate"),
         currency: form.currency.trim().toUpperCase(),
-        ticketing: { integration: form.ticketing.integration.trim(), project: form.ticketing.project.trim() },
+        ticketing: {
+          integration: form.ticketing.integration.trim(),
+          project: form.ticketing.project.trim(),
+          // The sync settings travel with the target: a save never resets them to the defaults (#917).
+          ...(form.ticketing.sync ? { sync: cleanTicketingSync(form.ticketing.sync) } : {}),
+        },
         // Rows left blank in the editors are dropped, as the crown jewels' are (#11543 S3).
         ...(form.assets_exposure ? { assets_exposure: form.assets_exposure.filter((asset) => asset.name.trim()) } : {}),
         ...(form.asset_groups ? { asset_groups: form.asset_groups.filter((group) => group.name.trim()) } : {}),
