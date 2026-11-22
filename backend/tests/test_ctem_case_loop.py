@@ -233,6 +233,71 @@ def test_a_software_subject_on_a_vulnerability_path_is_an_upgrade():
     assert fix.kind == "upgrade" and fix.key == "upgrade:-/nginx@latest"
 
 
+def test_a_dependency_flaw_with_a_fixed_version_is_an_upgrade_to_that_version():
+    """CTEM-25: an Aikido dependency issue names the package and its fix; a second issue on it joins the case."""
+    evidence = {"affected_package": "lodash", "fixed_version": "4.17.21"}
+    fix = loop.fix_of(_signal(trigger_path="code_flaw", subject_kind="code", subject_ref="lodash", evidence=evidence))
+    assert fix.kind == "upgrade" and fix.key == "upgrade:-/lodash@4.17.21"
+    assert fix.title == "Upgrade lodash to 4.17.21" and fix.fixed_version == "4.17.21"
+    other = loop.fix_of(_signal(trigger_path="code_flaw", subject_kind="code", subject_ref="x", evidence=evidence))
+    assert other.key == fix.key
+    plain = loop.fix_of(_signal(trigger_path="code_flaw", subject_kind="code", subject_ref="XSS in login"))
+    assert plain.kind == "patch" and plain.fixed_version is None
+    leak = loop.fix_of(
+        _signal(trigger_path="credential_leak", subject_kind="code", subject_ref=".env", evidence=evidence)
+    )
+    assert leak.kind == "rotate_credential"
+
+
+class CloseSession(FakeSession):
+    """The reads of ``close_signal_members`` in order: the signals, then per signal its member and what stays open."""
+
+    def __init__(self, signals: list, members: list, still_open: list, case: CtemCase):
+        super().__init__()
+        self.reads = [_Rows(signals)]
+        for member, left in zip(members, still_open, strict=True):
+            self.reads.append(member)
+            self.reads.append(left)
+        self.case = case
+
+    async def execute(self, _statement):
+        value = self.reads.pop(0)
+        if isinstance(value, _Rows):
+            return SimpleNamespace(scalars=lambda: value)
+        return SimpleNamespace(scalar_one_or_none=lambda: value, first=lambda: value)
+
+    async def get(self, _model, _id):
+        return self.case
+
+
+@pytest.mark.asyncio
+async def test_closed_at_source_closes_the_member_and_the_last_one_resolves_on_a_rescan():
+    case = _case(trigger_path="code_flaw", remediation_kind="upgrade")
+    signal = _signal(case_id=case.id, trigger_path="code_flaw", state="case_opened")
+    member = CtemCaseIssue(case_id=case.id, source="signal", external_id=str(signal.id), open=True)
+    db = CloseSession([signal], [member], [None], case)
+    events = loop.PendingEvents()
+    closed = await loop.close_signal_members(
+        db, organization_id=ORG, provider="aikido", external_id="42", events=events, now=NOW
+    )
+    assert closed == 1 and member.open is False
+    assert db.events("issue_closed")[0].issue == f"signal:{signal.id}"
+    assert case.state == "resolved" and case.resolution_kind == "fixed"
+    assert case.validations[-1]["kind"] == loop.RESCAN_KIND and case.validations[-1]["provider"] == "aikido"
+    assert [name for name, _, _ in events.items] == [loop.CASE_RESOLVED]
+
+
+@pytest.mark.asyncio
+async def test_closed_at_source_keeps_the_case_open_while_other_members_are():
+    case = _case(trigger_path="code_flaw")
+    signal = _signal(case_id=case.id, trigger_path="code_flaw", state="case_opened")
+    member = CtemCaseIssue(case_id=case.id, source="signal", external_id=str(signal.id), open=True)
+    db = CloseSession([signal], [member], [(uuid.uuid4(),)], case)
+    closed = await loop.close_signal_members(db, organization_id=ORG, provider="aikido", external_id="42", now=NOW)
+    assert closed == 1 and case.state == "needs_attention" and case.validations == []
+    assert await loop.close_signal_members(db, organization_id=ORG, provider="aikido", external_id="") == 0
+
+
 @pytest.mark.parametrize("path,kind", [("new_exposure", "asset"), ("new_vulnerability", "software")])
 def test_a_long_subject_keeps_the_key_and_title_within_their_columns(path, kind):
     long_ref = "https://cdn.example.com/" + "a" * 400
