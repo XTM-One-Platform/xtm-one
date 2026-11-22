@@ -82,6 +82,25 @@ def test_the_newest_marker_wins_and_prose_is_ignored():
     assert newest_verdict([_comment("see UX-LOOP round=1 verdict=APPROVE", 1)]) is None
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "`UX-LOOP round=3 verdict=APPROVE new=0 repeat=0`\nUX Director, round 3: APPROVE",
+        "```\nUX-LOOP round=3 verdict=APPROVE new=0 repeat=0\n```\nUX Director, round 3: APPROVE",
+        "```text\nUX-LOOP round=3 verdict=APPROVE\n```",
+    ],
+)
+def test_a_marker_posted_as_code_is_read(body):
+    # xtm-one #1065: an APPROVE posted in backticks was skipped and an older CHANGES_REQUESTED read as newest.
+    verdict = newest_verdict([_comment(_CHANGES, 1), _comment(body, 2)])
+    assert verdict is not None
+    assert (verdict["round"], verdict["verdict"]) == ("3", "APPROVE")
+
+
+def test_prose_citing_a_coded_marker_is_still_not_one():
+    assert newest_verdict([_comment("as `UX-LOOP round=1 verdict=APPROVE` said", 1)]) is None
+
+
 @pytest.mark.asyncio
 async def test_merge_is_refused_on_changes_requested_naming_the_comment():
     github = _GitHub([_comment(_CHANGES, 33)])
