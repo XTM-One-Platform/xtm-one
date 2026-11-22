@@ -198,6 +198,35 @@ export interface CtemCaseThreatPackage {
   at: string | null;
 }
 
+/** One version of an upgrade case's product on the assets (backend ctem_case_versions.running_versions, #1252). */
+export interface CtemCaseRunningVersion {
+  /** The version string, or "unknown" when a source reports the product without one. */
+  version: string;
+  asset_count: number;
+  /** The sources that report it: an integration (intune, defender), a product (openaev), sbom, csv, manual, api. */
+  sources: string[];
+  /** Against the fixed version, when one is known. */
+  status?: "below_fixed" | "fixed" | "not_comparable";
+}
+
+/** The versions an upgrade case's product runs on the organization's assets, read from the asset inventory (#1252). */
+export interface CtemCaseRunningVersions {
+  product_label: string | null;
+  fixed_version: string | null;
+  versions: CtemCaseRunningVersion[];
+  more_versions: number;
+  version_count: number;
+  /** Distinct assets running the product. */
+  asset_count: number;
+  sources: string[];
+  /** With a fixed version: each asset counted once, by its worst version. */
+  assets_below_fixed?: number;
+  assets_on_fixed?: number;
+  assets_not_comparable?: number;
+  /** With no fixed version: the sources the fixed version was looked for in. */
+  fixed_version_checked?: string[];
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
@@ -209,6 +238,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   /** Null when no package is attached; absent on an API older than #1115. */
   threat_package?: CtemCaseThreatPackage | null;
   ticketing?: CtemTicketingTarget;
+  /** Upgrade cases only: null when no asset runs the product; absent on an API older than #1252. */
+  running_versions?: CtemCaseRunningVersions | null;
 }
 
 /**
