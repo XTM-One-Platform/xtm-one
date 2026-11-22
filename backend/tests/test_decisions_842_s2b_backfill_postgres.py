@@ -133,7 +133,7 @@ async def _open_rows(session: AsyncSession) -> dict[uuid.UUID, Decision]:
     return {row.source_id: row for row in rows}
 
 
-async def test_each_source_is_backfilled_and_answered_or_finished_ones_are_skipped(sessions):
+async def test_each_source_is_backfilled_and_answered_or_finished_ones_are_skipped(sessions) -> None:
     make, engine = sessions
     async with make() as session:
         ids = await _seed_legacy_gates(session)
@@ -154,7 +154,7 @@ async def test_each_source_is_backfilled_and_answered_or_finished_ones_are_skipp
         assert {(e.event, e.surface, e.detail["source"]) for e in events} == {("asked", "backfill", "backfill")}
 
 
-async def test_a_second_run_is_idempotent_and_the_count_check_is_complete(sessions):
+async def test_a_second_run_is_idempotent_and_the_count_check_is_complete(sessions) -> None:
     make, engine = sessions
     async with make() as session:
         await _seed_legacy_gates(session)
@@ -176,7 +176,7 @@ async def test_a_second_run_is_idempotent_and_the_count_check_is_complete(sessio
         assert len((await session.execute(select(Decision))).scalars().all()) == 4
 
 
-async def test_read_switch_is_off_by_default_and_on_only_with_a_complete_count(sessions):
+async def test_read_switch_is_off_by_default_and_on_only_with_a_complete_count(sessions) -> None:
     make, engine = sessions
     async with make() as session:
         await _seed_legacy_gates(session)
@@ -191,7 +191,7 @@ async def test_read_switch_is_off_by_default_and_on_only_with_a_complete_count(s
         assert on["on"] is True and on["reason"] is None
 
 
-async def test_a_legacy_pause_answered_after_the_backfill_closes_its_decision(sessions):
+async def test_a_legacy_pause_answered_after_the_backfill_closes_its_decision(sessions) -> None:
     make, engine = sessions
     async with make() as session:
         ids = await _seed_legacy_gates(session)
@@ -220,7 +220,7 @@ async def test_a_legacy_pause_answered_after_the_backfill_closes_its_decision(se
         assert answered[ids["hitl"]].answer == {"text": "go"}
 
 
-async def test_rollback_switch_off_then_downgrade_loses_nothing(sessions):
+async def test_rollback_switch_off_then_downgrade_loses_nothing(sessions) -> None:
     make, engine = sessions
     async with make() as session:
         ids = await _seed_legacy_gates(session)

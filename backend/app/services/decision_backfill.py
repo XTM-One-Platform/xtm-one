@@ -172,7 +172,7 @@ def _batches(conn: Connection, source: Source, batch_size: int) -> Iterator[list
         query = sa.select(source.table).where(source.prefilter).order_by(source.table.c.id).limit(batch_size)
         if last_id is not None:
             query = query.where(source.table.c.id > last_id)
-        rows = conn.execute(query).fetchall()
+        rows = list(conn.execute(query).fetchall())
         if not rows:
             return
         yield rows
