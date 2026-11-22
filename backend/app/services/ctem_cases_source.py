@@ -697,6 +697,7 @@ async def recompute_for_user(
     missing the recompute writes nothing and answers why. A read that hit its
     cap resolves nothing.
     """
+    from app.services.ctem_case_loop import PendingEvents, publish_pending
     from app.services.ctem_cases_view import forget_view
 
     now = now or datetime.now(UTC)
@@ -707,16 +708,20 @@ async def recompute_for_user(
     if read.missing:
         answer["applied"] = False
         return answer
+    pending = PendingEvents()
     counts = await store.apply_recompute(
         db,
         organization_id=organization_id,
         vertical=vertical,
         issues=read.issues,
         closed=[i.member_id for i in read.closed] if read.complete else [],
+        events=pending,
         now=now,
     )
     await db.commit()
     await forget_view(str(user_id), vertical)
+    # After the commit: the loop's listeners start a run on the cases this read opened or moved.
+    await publish_pending(pending)
     answer.update(applied=True, issues=len(read.issues), **counts)
     # Members the declared version keeps out of every case (CTEM-11), listed with the reason.
     answer["not_affected_issues"] = [

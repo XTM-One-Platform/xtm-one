@@ -50,6 +50,9 @@ ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
 }
 #: Sections keyed on ``source`` + ``external_id`` (the others on the name).
 SOURCED_SECTIONS: frozenset[str] = frozenset({"assets", "asset_groups"})
+#: Sections where a row of another source with the same name is a second record of the same thing
+#: (the canonical asset store merges them, #1178 S3): added beside it, never refused.
+MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets"})
 #: Rows one call may carry.
 MAX_BATCH = 500
 #: Names listed per outcome in an answer.
@@ -187,6 +190,8 @@ def plan_upsert(profile: OrganizationProfile, section: str, source: str, rows: l
                 plan.updated.append(name)
             continue
         other = by_name.get(name.casefold())
+        if other is not None and section in MULTI_SOURCE_SECTIONS and getattr(other, "source", "") != source:
+            other = None  # another source's record of the same thing: kept beside it, the store merges them
         if other is not None:
             if not sourced:
                 plan.unchanged.append(name)

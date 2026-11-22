@@ -249,6 +249,7 @@ async def split_ctem_case(
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     organization_id = await _organization_id(db)
     view = await view_of.viewer_view(db, str(user.id), vertical)
+    pending = case_loop.PendingEvents()
     try:
         case = await store.create_manual_case(
             db,
@@ -259,10 +260,12 @@ async def split_ctem_case(
             visible=set(view.open_ids),
             actor=str(user.id),
             reason=(body.reason or "").strip() or None,
+            events=pending,
         )
     except rules.CaseRuleError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await db.commit()
+    await case_loop.publish_pending(pending)
     shown = await visible_case(db, case.id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")

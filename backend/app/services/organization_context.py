@@ -907,6 +907,11 @@ async def save_version(
     )
     db.add(row)
     await db.flush()
+    # Every writer (form, import, sync, agent row tools) goes through here: the canonical asset
+    # store follows the saved rows in the same transaction (#1178, S3), never on a later read.
+    from app.services.organization_asset_store import refresh_after_save
+
+    await refresh_after_save(db, organization_id)
     return row
 
 
