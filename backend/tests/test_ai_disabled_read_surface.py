@@ -454,6 +454,10 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "update_organization_sync",
     "delete_organization_sync",
     "run_organization_sync",
+    # The asset store's merge and split (#1178, S3): an administrator deciding which
+    # source records are one asset; a stored decision and a rebuild, no model involved.
+    "record_asset_decision",
+    "remove_asset_decision",
     # A change proposed from chat for that profile (#9484 S-a2): an
     # administrator accepting or rejecting a stored proposal. Accepted fields are
     # saved as the next version, accepted organizations created with monitoring

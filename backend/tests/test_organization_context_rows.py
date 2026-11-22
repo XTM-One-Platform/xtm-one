@@ -71,16 +71,17 @@ def test_upsert_adds_then_updates_its_own_rows_and_never_a_hand_row() -> None:
     base = _profile(assets_exposure=[hand])
     mapped = rows.map_rows(_DEVICES, "intune_device")
     plan = rows.plan_upsert(base, "assets", "Intune", mapped)
-    assert plan.added == ["iPhone-Bob"]
-    assert plan.refused and plan.refused[0][0] == "LAPTOP-ALICE" and "person wrote it" in plan.refused[0][1]
+    # The hand row named alike is never touched: Intune's device is a second record of it (#1178, S3),
+    # added beside it for the canonical asset store to merge.
+    assert plan.added == ["LAPTOP-ALICE", "iPhone-Bob"] and not plan.refused
     assert base.assets_exposure == [hand]  # the input profile is untouched
     assert _saved(plan).assets_exposure[0] == hand
-    synced = _saved(plan).assets_exposure[1]
+    alice, synced = _saved(plan).assets_exposure[1:]
+    assert alice.source == "intune" and alice.name == "LAPTOP-ALICE"
     assert synced.source == "intune" and synced.external_id == "d-2"
 
     # A person sets the owner and environment on the synced row; the next sync keeps them.
-    edited = _saved(plan).model_copy(deep=True)
-    edited.assets_exposure[1] = synced.model_copy(update={"owner": "IT", "environment": "production"})
+    edited = _profile(assets_exposure=[hand, synced.model_copy(update={"owner": "IT", "environment": "production"})])
     again = rows.plan_upsert(edited, "assets", "intune", rows.map_rows(_DEVICES[1:], "intune_device"))
     assert again.unchanged == ["iPhone-Bob"] and not again.changed
     moved = [{**_DEVICES[1], "complianceState": "compliant"}]

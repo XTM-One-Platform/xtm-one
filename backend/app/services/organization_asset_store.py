@@ -16,9 +16,14 @@ persists its answer in ``models/organization_asset.py`` and answers the reads:
 - :func:`list_assets`, :func:`get_asset` and :func:`assets_of_software` are the
   paginated reads of the API (``GET /api/v1/organization-context/assets``).
 
-Writes from syncs and agent tools through the store, and administrator merge
-and split, are the next slice (S3); until then the profile stays the source of
-the rows and the store is its canonical view.
+- :func:`record_decision` and :func:`remove_decision` keep an administrator's
+  merge (records that are one asset) or split (two records never one asset);
+  every rebuild applies them (``organization_asset_decisions``, S3).
+- :func:`refresh_after_save` rebuilds the store in the transaction that saved a
+  new profile version (a sync run, an agent's row upsert), so a read never pays
+  for a sync's rows.
+
+The profile stays the source of the rows; the store is its canonical view.
 """
 
 from __future__ import annotations
@@ -32,7 +37,12 @@ from typing import Any
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware, OrganizationAssetSource
+from app.models.organization_asset import (
+    OrganizationAsset,
+    OrganizationAssetDecision,
+    OrganizationAssetSoftware,
+    OrganizationAssetSource,
+)
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_identity as identity
 
@@ -63,6 +73,7 @@ def canonical_rows(
     rows: Sequence[Mapping[str, Any]],
     *,
     precedence: Mapping[str, Sequence[str]] | None = None,
+    decisions: identity.Decisions | None = None,
 ) -> list[dict[str, Any]]:
     """The canonical assets of profile *rows*: what :func:`rebuild_from_profile` writes (pure, testable).
 
@@ -72,7 +83,7 @@ def canonical_rows(
     """
     records = [identity.section_record("assets", row, index=i) for i, row in enumerate(rows)]
     out: list[dict[str, Any]] = []
-    for thing in identity.match_records(records):
+    for thing in identity.match_records(records, decisions=decisions):
         fields = identity.resolve_fields(thing.records, precedence=precedence)
         name = fields.get("name")
         out.append(
@@ -120,7 +131,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     # Two first reads racing would both rebuild: the second waits for the first's transaction.
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"organization_assets:{org}"})
     rows = [row for row in (version.profile or {}).get("assets_exposure") or [] if isinstance(row, Mapping)]
-    things = canonical_rows(rows)
+    things = canonical_rows(rows, decisions=await load_decisions(db, org))
     # An asset whose canonical key is unchanged keeps its id across rebuilds, so an id
     # read from the API before an unrelated profile save still answers afterwards.
     known: dict[str, uuid.UUID] = {
@@ -180,6 +191,186 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
             )
     await db.flush()
     return len(things)
+
+
+# ── Administrator decisions: merge and split (S3) ──────────────────────
+
+MERGE = "merge"
+SPLIT = "split"
+DECISION_KINDS: tuple[str, ...] = (MERGE, SPLIT)
+#: Most records one merge may name.
+MAX_MERGE_RECORDS = 50
+
+
+class DecisionError(ValueError):
+    """A merge or split the store refuses (the API answers 422 with its message)."""
+
+
+def _refs(records: Sequence[Mapping[str, Any]]) -> list[identity.RecordRef]:
+    refs: list[identity.RecordRef] = []
+    for rec in records:
+        source = str(rec.get("source") or "").strip().lower()
+        external_id = str(rec.get("external_id") or "").strip()
+        if not source or not external_id:
+            raise DecisionError("each record needs a source and an external_id")
+        ref = identity.RecordRef(source, external_id)
+        if ref not in refs:
+            refs.append(ref)
+    return refs
+
+
+def decisions_of(rows: Sequence[Any]) -> identity.Decisions:
+    """The stored *rows* as the engine's :class:`~identity.Decisions` (a malformed row is ignored)."""
+    merges: list[frozenset[identity.RecordRef]] = []
+    splits: set[frozenset[identity.RecordRef]] = set()
+    for row in rows:
+        try:
+            refs = _refs(getattr(row, "records", None) or [])
+        except DecisionError:
+            continue
+        kind = getattr(row, "kind", "")
+        if kind == MERGE and len(refs) >= 2:
+            merges.append(frozenset(refs))
+        elif kind == SPLIT and len(refs) == 2:
+            splits.add(frozenset(refs))
+    return identity.Decisions(merges=tuple(merges), splits=frozenset(splits))
+
+
+async def load_decisions(db: AsyncSession, organization_id: uuid.UUID) -> identity.Decisions:
+    rows = (
+        (
+            await db.execute(
+                select(OrganizationAssetDecision)
+                .where(OrganizationAssetDecision.organization_id == organization_id)
+                .order_by(OrganizationAssetDecision.created_at, OrganizationAssetDecision.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return decisions_of(rows)
+
+
+def check_decision(kind: str, records: Sequence[Mapping[str, Any]]) -> list[identity.RecordRef]:
+    """The records of a merge or split, checked (``DecisionError`` on a bad request)."""
+    if kind not in DECISION_KINDS:
+        raise DecisionError(f"kind must be one of {', '.join(DECISION_KINDS)}")
+    refs = _refs(records)
+    if kind == MERGE and not 2 <= len(refs) <= MAX_MERGE_RECORDS:
+        raise DecisionError(f"a merge names 2 to {MAX_MERGE_RECORDS} different records")
+    if kind == SPLIT and len(refs) != 2:
+        raise DecisionError("a split names exactly 2 different records")
+    return refs
+
+
+async def _known_refs(db: AsyncSession, organization_id: uuid.UUID) -> set[identity.RecordRef]:
+    rows = (
+        await db.execute(
+            select(OrganizationAssetSource.source, OrganizationAssetSource.external_id).where(
+                OrganizationAssetSource.organization_id == organization_id
+            )
+        )
+    ).all()
+    return {identity.RecordRef(source, external_id) for source, external_id in rows}
+
+
+async def record_decision(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    kind: str,
+    records: Sequence[Mapping[str, Any]],
+    reason: str = "",
+    author_user_id: uuid.UUID | None = None,
+) -> OrganizationAssetDecision:
+    """Keep a merge or split and rebuild the store with it (the caller commits and audits).
+
+    Every record must be one the store holds; a merge or split that the stored
+    decisions already say is refused as a no-op (``DecisionError``).
+    """
+    refs = check_decision(kind, records)
+    unknown = [r.label() for r in refs if r not in await _known_refs(db, organization_id)]
+    if unknown:
+        raise DecisionError("unknown record(s): " + ", ".join(unknown[:10]))
+    current = await load_decisions(db, organization_id)
+    wanted = frozenset(refs)
+    if (kind == MERGE and wanted in current.merges) or (kind == SPLIT and wanted in current.splits):
+        raise DecisionError(f"this {kind} is already recorded")
+    row = OrganizationAssetDecision(
+        organization_id=organization_id,
+        kind=kind,
+        records=[{"source": r.source, "external_id": r.external_id} for r in refs],
+        reason=_cut(reason, 500),
+        author_user_id=author_user_id,
+    )
+    db.add(row)
+    await db.flush()
+    await rebuild_from_profile(db, organization_id)
+    return row
+
+
+async def remove_decision(
+    db: AsyncSession, organization_id: uuid.UUID, decision_id: uuid.UUID
+) -> OrganizationAssetDecision | None:
+    """Drop a merge or split and rebuild the store without it (``None``: not found; the caller commits)."""
+    row = (
+        await db.execute(
+            select(OrganizationAssetDecision).where(
+                OrganizationAssetDecision.organization_id == organization_id,
+                OrganizationAssetDecision.id == decision_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    await db.delete(row)
+    await db.flush()
+    await rebuild_from_profile(db, organization_id)
+    return row
+
+
+async def list_decisions(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, Any]]:
+    rows = (
+        (
+            await db.execute(
+                select(OrganizationAssetDecision)
+                .where(OrganizationAssetDecision.organization_id == organization_id)
+                .order_by(OrganizationAssetDecision.created_at.desc(), OrganizationAssetDecision.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [decision_dict(row) for row in rows]
+
+
+def decision_dict(row: OrganizationAssetDecision) -> dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "kind": row.kind,
+        "records": list(row.records or []),
+        "reason": row.reason,
+        "author_user_id": str(row.author_user_id) if row.author_user_id else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+async def refresh_after_save(db: AsyncSession, organization_id: uuid.UUID | None = None) -> uuid.UUID | None:
+    """Rebuild the store after a new profile version was saved in this transaction.
+
+    Only an organization with assets (now or in its store) is rebuilt, as
+    :func:`ensure_built` decides. A store failure never fails the save: the
+    next read rebuilds it. Answers the organization id, ``None`` when nothing
+    ran or the refresh failed.
+    """
+    import logging
+
+    try:
+        async with db.begin_nested():
+            return await ensure_built(db, organization_id)
+    except Exception:  # the profile save stands; the store catches up on its next read
+        logging.getLogger(__name__).warning("Organization asset store refresh failed", exc_info=True)
+        return None
 
 
 def _jsonable(value: Any) -> Any:
