@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from types import SimpleNamespace
 
 import httpx
@@ -219,6 +220,7 @@ def test_descriptions_are_plain_and_cut_at_a_sentence_end() -> None:
         assert len(detail) <= _tools.DETAIL_LIMIT, op["name"]
         if len(_tools._plain(str(op.get("description") or ""))) > _tools.DETAIL_LIMIT:
             assert not detail or detail[-1] in ".!?", (op["name"], detail[-40:])
+            assert not re.search(r"(?:^|\s)\d+\.$", detail), (op["name"], detail[-40:])
     for tool in tools:
         text = tool.description
         assert "](" not in text, tool.name
@@ -232,6 +234,12 @@ def test_detail_drops_a_partial_sentence() -> None:
     assert _tools._detail(op) == "First sentence."
     op = {"description": "See [this guide](/reference/x) \u2014 then `call` it.", "summary": "Do it"}
     assert _tools._detail(op) == "See this guide, then call it."
+
+
+def test_detail_never_ends_on_a_bare_list_number() -> None:
+    """A list number's period ("3.") is not a sentence end: the cut falls on the step before it."""
+    op = {"description": "1. Create it. 2. Upload until it returns an id. 3. " + "word " * 80, "summary": "Do it"}
+    assert _tools._detail(op) == "1. Create it. 2. Upload until it returns an id."
 
 
 async def test_writes_carry_an_idempotency_key(spendesk_api):

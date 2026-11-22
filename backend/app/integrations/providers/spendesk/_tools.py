@@ -142,6 +142,8 @@ DETAIL_LIMIT = 300
 _MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _DASH = re.compile(r"\s*[\u2014\u2013]\s*")
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+# A bare list number ("3.") ends with a period but is not a sentence end.
+_LIST_NUMBER = re.compile(r"(?:^|\s)\d+\.$")
 
 
 def _plain(text: str) -> str:
@@ -157,7 +159,9 @@ def _detail(op: dict[str, Any]) -> str:
     detail = _plain(str(op.get("description") or ""))
     if len(detail) <= DETAIL_LIMIT:
         return detail
-    ends = [m.end() for m in _SENTENCE_END.finditer(detail, 0, DETAIL_LIMIT)]
+    ends = [
+        m.end() for m in _SENTENCE_END.finditer(detail, 0, DETAIL_LIMIT) if not _LIST_NUMBER.search(detail[: m.end()])
+    ]
     return detail[: ends[-1]] if ends else ""
 
 
