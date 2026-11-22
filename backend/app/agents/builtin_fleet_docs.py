@@ -156,7 +156,9 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
         "re-test, past its SLA, or an OpenAEV result it waits on arrived; the case is the record of the loop.\n"
         "- **OpenAEV results into cases**: listens to OpenAEV with no run of its own; a finished "
         "simulation or a changed finding moves the case it concerns, a degraded scenario score records "
-        "a regression signal."
+        "a regression signal.\n"
+        "- **Analyst review mark**: listens to OpenCTI with no run of its own; when the review gate "
+        "waits, the analyst's label on the drafted Grouping approves its coverage request and resumes the run."
     ),
     "flow": (
         "1. Asset match from the organization context: no matching asset closes the case, with the reason.\n"

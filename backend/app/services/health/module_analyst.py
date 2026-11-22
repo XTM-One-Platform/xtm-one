@@ -18,7 +18,7 @@ integration its registration created, read-only, and attaches recommendations to
 that module's findings. This module holds what decides its reach, so the rule lives
 in code and never in a prompt sentence:
 
-* :data:`MODULE_ANALYST_TOOLS`, the explicit allow-list of read tools per provider
+* :data:`MODULE_CHECKER_TOOLS`, the explicit allow-list of read tools per provider
   (section 12.3, lock 2). A read tool added later to a module integration is not
   reachable until it is listed here; a name outside the list is refused.
 * :func:`allowed_module_tools` and :func:`refuse_module_tool`, applied where the
@@ -55,38 +55,52 @@ logger = logging.getLogger(__name__)
 #: also the provider key of the integration the registration created.
 MODULE_PROVIDERS: Final[tuple[str, ...]] = ("opencti", "openaev", "opencrq")
 
-#: The read tools the analyst may call, per provider (section 12.3, lock 2). Every
-#: entry must classify as a read (``tool_classification.infer_tool_type``):
-#: ``tests/test_health_module_analyst.py`` fails on one that does not.
-MODULE_ANALYST_TOOLS: Final[dict[str, tuple[str, ...]]] = {
-    # Connectors, feeds and playbooks through the read-only state tools of
-    # ``providers/opencti/health_reads.py`` (S14a-2b-3): the ``manage_*`` tools
-    # reach the same objects but classify as writes.
+#: The read tools a module checker may call, per provider (section 12.3, lock 2;
+#: the list of section 13.5). Every entry must classify as a read
+#: (``tool_classification.infer_tool_type``): ``tests/test_health_module_analyst.py``
+#: fails on one that does not. Module-only (section 13.4 scope, Sam, 22 Nov 2026): no
+#: tool here reads a specific connector, feed, collector, injector, executor or
+#: third-party data source; those tools stay in their providers for other agents.
+MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
+    # Playbooks through the read-only state tool of ``providers/opencti/health_reads.py``
+    # (S14a-2b-3): ``manage_opencti_playbook`` reaches the same objects but is a write.
     "opencti": (
         "get_opencti_platform_version",
-        "list_opencti_connector_states",
-        "list_opencti_feed_states",
         "list_opencti_playbook_states",
+        "get_opencti_entity_stats",
+        "query_opencti_activity",
+        "list_opencti_drafts",
     ),
-    "openaev": ("query_openaev_connectors",),
+    "openaev": (
+        "search_openaev_exercises",
+        "get_openaev_exercise",
+        "search_openaev_scenarios",
+        "search_openaev_findings",
+        "search_openaev_assets",
+        "search_openaev_asset_groups",
+    ),
     "opencrq": (
         "get_opencrq_platform_version",
-        "list_opencrq_connectors",
-        "list_opencrq_connector_syncs",
         "list_opencrq_jobs",
         "get_opencrq_job",
+        "list_opencrq_crq_run_history",
+        "get_opencrq_crq_run",
+        "get_opencrq_crq_settings",
+        "list_opencrq_risk_scenarios",
+        "get_opencrq_tef_input",
+        "get_opencrq_financial_profile",
     ),
 }
 
 #: The refusal a tool outside the allow-list answers, the read-only reason.
 REFUSAL_REASON: Final = (
-    "The Module Analyst reads modules only through its allow-listed read tools; this tool is not one of them."
+    "A module health checker reads modules only through its allow-listed read tools; this tool is not one of them."
 )
 
 
 def allowed_module_tools(provider: str) -> frozenset[str]:
     """The allow-listed read tools of *provider*; empty for a provider the analyst does not read."""
-    return frozenset(MODULE_ANALYST_TOOLS.get(provider, ()))
+    return frozenset(MODULE_CHECKER_TOOLS.get(provider, ()))
 
 
 def filter_module_tools(provider: str, tool_names: Iterable[str]) -> list[str]:

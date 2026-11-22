@@ -1922,8 +1922,13 @@ attack patterns, a note on the exploitation conditions) and request its
 security coverage, which OpenAEV builds its scenario from; the coverage
 follows the run's OpenCTI draft. Out of the box the request runs and the case
 records "analyst review skipped by policy"; pinned `wait`, the request pauses
-as a decision until a person answers. Resuming on an analyst's mark set in
-OpenCTI itself is not built yet.
+as a decision until a person answers, or until the analyst sets the mark label
+on the Grouping in OpenCTI (`analyst-reviewed`, or the policy's
+`analyst_review_label`): the vulnerability fleet's listen-only assignment
+"Analyst review mark" provisions the Grouping update trigger, and the webhook
+route (`services/ctem_analyst_mark.py`) approves the coverage requests waiting
+on that Grouping and resumes their runs, the resolution naming the mark. A
+pause holding any other call is left to a person.
 The personas name no approval of their own: they apply the catalog the run
 prompt states (`tests/test_ctem_gate_catalog_916.py` pins it). A gate that
 waits is a decision of the unified system (`dev-docs/human-gates.md`), never a
