@@ -2125,6 +2125,10 @@ export interface Agent {
   enabled: boolean;
   is_builtin: boolean;
   is_company_managed: boolean;
+  /** A built-in's organization notes, appended after its persona (#914). */
+  customer_notes?: string | null;
+  /** The customer-layer fields a person set on a built-in, kept across seed runs (#914). */
+  customer_fields?: string[] | null;
   is_public_catalog?: boolean;
   /** The catalog download carries the code of personal custom tools. */
   catalog_include_personal_tools?: boolean;
@@ -6727,6 +6731,60 @@ export interface WorkItemBlockedRef {
   release_on: "merged" | "closed" | "merged_or_closed" | "deployed" | "succeeded";
   state?: "merged" | "closed" | "deployed" | "succeeded" | null;
   at?: string | null;
+}
+
+/** `services/work_item_graph.py`: a work item of the Graph view. */
+export interface WorkItemGraphItemNode {
+  id: string;
+  kind: "item";
+  title: string;
+  status: WorkItemStatus;
+  priority: string | null;
+  correlation_key: string | null;
+  owner_agent: { id: string | null; name: string | null; icon: string | null } | null;
+  needs_human: boolean;
+  ask: { question: string; options: { key: string; label: string }[]; recommendation?: string | null } | null;
+  is_program_root: boolean;
+  /** A blocker the filter left out, drawn so the chain does not end on nothing. */
+  outside_filter: boolean;
+}
+
+/** A pull request, issue, deployment or workflow run an item waits for. */
+export interface WorkItemGraphRefNode {
+  id: string;
+  kind: "ref";
+  ref_kind: WorkItemBlockedRef["kind"];
+  label: string;
+  repo: string | null;
+  number: number | null;
+  state: WorkItemBlockedRef["state"];
+  satisfied: boolean;
+  url: string | null;
+}
+
+/** The person a `needs_human` item waits for. */
+export interface WorkItemGraphPersonNode {
+  id: string;
+  kind: "person";
+  name: string | null;
+  is_you: boolean;
+}
+
+export type WorkItemGraphNode = WorkItemGraphItemNode | WorkItemGraphRefNode | WorkItemGraphPersonNode;
+
+/** `blocked_on`, `ref` and `person` go from the waiter to what it waits for; `program` from the root to a child. */
+export interface WorkItemGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: "blocked_on" | "ref" | "person" | "program";
+}
+
+/** `GET /work-items/graph`. */
+export interface WorkItemGraph {
+  nodes: WorkItemGraphNode[];
+  edges: WorkItemGraphEdge[];
+  truncated: boolean;
 }
 
 /** `work_item_context._Lookup.blocked_on`: an item another one waits for. */
@@ -16236,23 +16294,6 @@ export interface HealthSettings extends HealthTriggerSettings {
   openaev: HealthOpenAEVThresholds;
   /** The alert emails (#101 S12), off by default. */
   alert_emails: HealthAlertEmailSettings;
-  /** The Module Analyst's switch, debounce, exclusions and own ceilings (#101 S14). */
-  module_analyst: HealthModuleAnalystSettings;
-}
-
-/**
- * `HealthModuleAnalystSettings` of `services/health/settings.py` (#101 S14, dev-docs 12.5): its own
- * ceilings outside the agentic quota; `null` clears one, which refuses every model call. Costs are decimal strings.
- */
-export interface HealthModuleAnalystSettings {
-  enabled: boolean;
-  change_min_interval_minutes: number;
-  excluded_registration_ids: string[];
-  cycle_tokens: number | null;
-  day_tokens: number | null;
-  day_cost_usd: string | null;
-  month_tokens: number | null;
-  month_cost_usd: string | null;
 }
 
 /** `HealthAlertEmailSettings` of `services/health/settings.py`. */
@@ -16262,6 +16303,8 @@ export interface HealthAlertEmailSettings {
   min_severity: "critical" | "warning" | "info";
   immediate: boolean;
   digest: boolean;
+  /** Minutes a critical finding stays open before its immediate email (default 15, 0 to 1440). */
+  alert_after_minutes?: number;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */
@@ -16329,7 +16372,7 @@ export interface HealthBudget {
 
 // ── Platform Health cycles, signals and inbox (#8261) ─────────────────────
 
-export type HealthTargetType = "agent" | "flow" | "assignment" | "module";
+export type HealthTargetType = "agent" | "flow" | "assignment";
 type HealthCycleStatus = "open" | "completed" | "budget_reached" | "failed" | "cancelled";
 /** A digest's status: ``completed`` only for a completed run with nothing skipped. */
 type HealthDigestStatus = "completed" | "partial" | "failed" | "budget_reached" | "cancelled";
@@ -16358,13 +16401,8 @@ export interface HealthDigest {
   findings: Record<string, number> | null;
   experiments: Record<string, number> | null;
   proposals: { filed: number; applied: number; rolled_back: number; by_verdict: Record<string, number> } | null;
-  /** `ledger: "module_analyst"` when the spend counts against the Module Analyst's own ceiling (#101 S14d). */
-  budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null; ledger?: string };
+  budget: { spent_tokens: number; spent_cost_usd: string; cap_tokens: number | null; cap_cost_usd: string | null };
   dry_run_writes: number | null;
-  /** A Module Analyst cycle (#101 S14d): recommendations attached (`attached`, then by confidence). */
-  recommendations?: Record<string, number> | null;
-  /** A Module Analyst cycle: agentic findings of its registration `opened` and `resolved` in its window. */
-  agentic_findings?: Record<string, number> | null;
   skipped: HealthDigestSkip[];
   unavailable: string[];
   narrative: string | null;
@@ -16502,16 +16540,6 @@ export interface HealthAnalysisOverview {
   day: HealthAnalysisSpend;
   month: HealthAnalysisSpend;
   modules: HealthModuleAnalysis[];
-  /** The Module Analyst row of Spend limits (#101 S14d): its own ceilings and ledger. */
-  module_analyst: HealthModuleAnalystSpendRow;
-}
-
-interface HealthModuleAnalystSpendRow {
-  enabled: boolean;
-  ceilings_set: boolean;
-  ceilings: Omit<HealthModuleAnalystSettings, "enabled" | "change_min_interval_minutes" | "excluded_registration_ids">;
-  day: HealthAnalysisSpend;
-  month: HealthAnalysisSpend;
 }
 
 export interface HealthOverview {
