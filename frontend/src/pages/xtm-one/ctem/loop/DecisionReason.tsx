@@ -2,20 +2,18 @@
 
 /**
  * The why of a loop decision, the same component everywhere it shows
- * (dev-docs/ctem-loop-visibility.md section 3): the state in words as a DS
- * Chip, one sentence built from the decision record's `reason_code` and
+ * (dev-docs/ctem-loop-visibility.md section 3): the state in words as a hot
+ * tone ToneBadge (#1267), one sentence built from the decision record's `reason_code` and
  * `reason_params` (the English `reason` line is for agents, never drawn), and
  * the inputs the rule read, labelled. No decision yet reads "Waiting for
  * reconcile"; a decided record whose code this version does not know keeps
  * its chip and says so, never an empty cell.
  */
-import { Chip } from "@filigran/design-system";
-import { TruncatedText } from "@/components/ui/truncated-text";
+import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import type { CtemDecisionRecord, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
 
-type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
 type Translate = (id: string, values?: Record<string, string | number>) => string;
 
 /** English labels of the signal states, translated where drawn. */
@@ -28,13 +26,14 @@ export const SIGNAL_STATE_LABEL: Record<CtemSignalState, string> = {
   case_opened: "Case opened",
 };
 
-const SIGNAL_STATE_SEVERITY: Record<CtemSignalState, ChipSeverity> = {
-  new: "info",
-  confirmed: "info",
-  to_validate: "medium",
+/** A signal state in the hot tones of the case states (#1267). */
+const SIGNAL_STATE_TONE: Record<CtemSignalState, HotTone> = {
+  new: "blue",
+  confirmed: "blue",
+  to_validate: "yellow",
   discarded: "neutral",
-  watchlist: "medium",
-  case_opened: "high",
+  watchlist: "yellow",
+  case_opened: "orange",
 };
 
 /**
@@ -129,7 +128,7 @@ function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): str
 
 function SignalStateChip({ state }: { state: CtemSignalState }) {
   const { t_i18n } = useFormatter();
-  return <Chip label={t_i18n(SIGNAL_STATE_LABEL[state] ?? state)} severity={SIGNAL_STATE_SEVERITY[state] ?? "neutral"} className="shrink-0" />;
+  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(SIGNAL_STATE_LABEL[state] ?? state)}</ToneBadge>;
 }
 
 /**
@@ -243,8 +242,7 @@ export function DecisionReason({
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
         <SignalStateChip state={state} />
-        {/* Cut with an ellipsis and named whole by the tooltip in a narrow column (UX r1 B2 on #1272). */}
-        <TruncatedText text={decisionSentence(decision, t_i18n, formatDay)} className="content-compact text-default-secondary" />
+        <span className="content-compact text-default-secondary truncate">{decisionSentence(decision, t_i18n, formatDay)}</span>
       </div>
       {next && (
         <p className="content-compact text-default-primary" data-testid="ctem-decision-next-step">
