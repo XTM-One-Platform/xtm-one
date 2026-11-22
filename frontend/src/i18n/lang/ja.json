@@ -20704,9 +20704,14 @@
   "Waiting for a fleet step, working this case since {since}.": "フリートのステップを待っています ({since} からこのケースを処理中)。",
   "Opened from OpenCTI vulnerabilities matched to your inventory": "インベントリと照合された OpenCTI の脆弱性から作成",
   "Opened from OpenAEV findings on your assets": "資産に対する OpenAEV の検出結果から作成",
-  "Agentic checks": "エージェントによるチェック",
-  "No check round yet": "チェックはまだ実行されていません",
-  "Show the checks": "チェックを表示",
-  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
+  "Add a sync": "同期を追加",
+  "Start with your sources": "ソースから始める",
+  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "プラットフォームと埋めるセクションを選び、行をプレビューしてから同期を維持します。",
+  "No sync yet": "同期なし",
+  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, other {# 件の同期}}",
+  "Feeds no section yet": "まだどのセクションにも供給していません",
+  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{source} からの{section}: {count, plural, other {# 行}}",
+  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "プロファイルの供給元: 各プラットフォームの行はその同期が管理し、ここでは読み取り専用です。入力、CSV、API、エージェントの行はあなたが管理します。",
+  "The OpenCRQ sync failed": "OpenCRQ の同期に失敗しました",
+  "Sync with OpenCRQ now": "今すぐ OpenCRQ と同期"
 }
