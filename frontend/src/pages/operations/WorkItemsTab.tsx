@@ -293,9 +293,11 @@ export default function WorkItemsTab({
   const scheduledOnly = viewParam === "scheduled";
   const waitingForMe = viewParam === WAITING_FOR_ME_VIEW;
   // "Waiting for me" with the read switch on is the decision inbox alone: one records list per
-  // view (UX r1 B2 on #1081). Switch off, the per-engine work items list stays.
+  // view (UX r1 B2 on #1081). Only a server answer `enabled: false` (switch off) falls back to
+  // the per-engine work items list: while the read is pending or failed the inbox renders its
+  // own skeleton or error line with Retry (UX r2 B1 on #1081).
   const waitingDecisions = useWaitingDecisions(waitingForMe);
-  const inboxView = waitingForMe && waitingDecisions.data?.enabled === true;
+  const inboxView = waitingForMe && waitingDecisions.data?.enabled !== false;
   const sortKey = table.sort && (SORT_KEYS as readonly string[]).includes(table.sort.key) ? (table.sort.key as WorkItemOrder) : "created";
   const direction = table.sort?.direction ?? "desc";
 
