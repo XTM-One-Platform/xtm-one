@@ -29,6 +29,8 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
+from app.integrations.providers.rydoo.webhooks import EVENT_TYPES as RYDOO_EVENT_TYPES
+from app.integrations.providers.rydoo.webhooks import TRIGGER_EVENTS as RYDOO_TRIGGER_EVENTS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -56,6 +58,13 @@ _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "payload.code_repo_id": "The code repository the event names, when it carries one",
     "payload.code_repo_name": "The code repository name, when the event carries one",
     "payload.team_id": "The responsible team, when the event carries one",
+}
+#: The filter keys of every Rydoo expense webhook event (the delivery is flat).
+_RYDOO_FILTER_KEYS: dict[str, str] = {
+    "eventType": "The Rydoo event type (ExpenseSubmitted, ExpenseApproved, ExpenseRejected...)",
+    "expenseId": "The expense the event names",
+    "userId": "The employee who owns the expense",
+    "companyId": "The Rydoo company that sent the event",
 }
 #: The label of each Wordsmith event type in the trigger picker.
 _WORDSMITH_EVENT_LABELS: dict[str, str] = {
@@ -4740,6 +4749,62 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "issues:write and the other :write scopes",
                     "description": "Optional: triage, configuration and the destructive tools (each asks a person)",
+                },
+            ],
+        },
+    },
+    "rydoo": {
+        "name": "Rydoo",
+        "description": (
+            "Rydoo expense management, the whole public API: expenses ready for accounting by branch "
+            "(legal entity), user, group or trip, expense detail with VAT lines, receipts (download and "
+            "upload), reject, report and reimburse, reimbursements and jobs, card and bank transactions, "
+            "users, groups, roles and treasurer permissions, approval and control flows, projects, "
+            "categories, custom fields (cost centres, GL codes), trips, guests, linked accounts, branch "
+            "exchange rates, e-invoices and payment methods (bank details masked), plus expense webhook "
+            "triggers"
+        ),
+        "logo": "/logos/rydoo.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["finance", "expense_management"],
+        # Rydoo activates one webhook URL per company (through its CSM): the
+        # integration's URL, not one per assignment.
+        "available_events": [
+            {
+                "event": RYDOO_TRIGGER_EVENTS[event],
+                "label": label,
+                "description": (
+                    "Triggers on this Rydoo expense webhook event. Rydoo activates the webhook on request "
+                    "(your CSM or connect@rydoo.com) for the webhook URL shown below. Without it, schedule "
+                    "the list_rydoo_exported_expenses tool instead."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _RYDOO_FILTER_KEYS,
+            }
+            for event, label in RYDOO_EVENT_TYPES.items()
+        ],
+        # OAuth2 client credentials: the client secret is the stored secret.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "client_id": "API client ID",
+        },
+        "setup_guide": {
+            "title": "Rydoo API client",
+            "url": "https://developers.rydoo.com/reference/authentication",
+            "steps": [
+                "Ask Rydoo (your CSM or connect@rydoo.com) for API access: Rydoo issues a client ID and a client secret for the company.",
+                "Paste the client ID in the 'API client ID' field and the client secret in the 'API key' field.",
+                "Click 'Test Connection': it mints a token and lists the company's branches (legal entities).",
+                "Optional, for webhook triggers: give Rydoo the webhook URL shown below and ask them to activate the expense webhook.",
+                "Every write tool (reject, mark reported or reimbursed, create or update a user, group, project, list item or payment method) asks a person on each call; bind read-only to withhold them.",
+            ],
+            "permissions": [
+                {
+                    "scope": "api_xpd2",
+                    "description": "The Rydoo public API scope (company-wide: every branch)",
                 },
             ],
         },
@@ -9757,6 +9822,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "intel471": "__dummy__||__dummy__",
     # Aikido's token is region||client_id||client_secret.
     "aikido": "eu||__dummy__||__dummy__",
+    # Rydoo's token is client_id||client_secret.
+    "rydoo": "__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
