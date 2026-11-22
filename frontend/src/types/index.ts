@@ -6464,7 +6464,7 @@ export interface WorkItemAskOption {
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
-interface WorkItemAsk {
+export interface WorkItemAsk {
   question: string;
   /** 2 to 4 plain lines for the reader, separated by line breaks (#776). */
   context?: string | null;
@@ -13138,6 +13138,8 @@ export interface FlowRunDetail extends FlowRunSummary {
   /** Human-in-the-loop: the Ask-user node awaiting an answer + its question. */
   awaiting_input_node_id?: string | null;
   awaiting_input_question?: string | null;
+  /** The Ask-user node's structured ask when it lists options (#842, S6); null for free text. */
+  awaiting_input_ask?: WorkItemAsk | null;
   trigger_payload: Record<string, unknown> | null;
   trigger_context: Record<string, unknown> | null;
   steps: FlowRunStep[];
