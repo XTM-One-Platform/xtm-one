@@ -54,7 +54,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -99,6 +100,8 @@ _SENT: dict[str, str] = {
     _CHAT_TOOL: "Initial message sent.",
     _CHAT_MESSAGE_TOOL: "Chat message sent.",
     _CHANNEL_TOOL: "Message sent to channel.",
+    "update_microsoft_chat_message": "Chat message updated.",
+    "update_microsoft_channel_message": "Channel message updated.",
 }
 #: Graph's answer to a 1:1 chat whose recipient is the sending account itself.
 _SELF_RECIPIENT = "duplicate chat members"
@@ -469,23 +472,23 @@ def _failure(content: str) -> NotifyError:
     return PermanentNotifyError(message) if is_permanent_refusal(content) else NotifyError(message)
 
 
-async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
-    """Send *text* to the ask's target (a person, a chat or a channel), as the item's agent may.
+#: ``(tool, arguments) -> (sent, answer)``: one Microsoft tool call of an agent.
+GraphCall = Callable[[str, dict[str, Any]], Awaitable[tuple[bool, str]]]
 
-    The send is a tool call of the agent that created the item (its owner
-    when no agent created it), resolved exactly as a scheduled exact action
-    of that agent (``resolve_exact_toolset``): its bindings, read-only
-    integrations, allowed tools, enforced element scope and deny list, with
-    the named integration pinned, and the approval gate's answer, after the
-    live checks of :func:`_usable_agent`. An agent
-    that may not send a Teams chat through that integration cannot make the
-    platform send one for it. Runs on its own session, never on the one that
-    holds the item (a token refresh commits its session).
 
-    A ``user`` that is the sending account itself is refused by Graph
-    ("Duplicate chat members"); the text then goes to the account's own chat
-    (``48:notes``) through ``send_microsoft_chat_message``. A refusal
-    no retry fixes raises :class:`PermanentNotifyError`.
+@asynccontextmanager
+async def agent_graph_caller(item: Any, integration_ref: str) -> AsyncIterator[GraphCall]:
+    """Microsoft tool calls as the item's agent may make them, through the named integration.
+
+    The agent that created the item (its owner when no agent created it),
+    resolved exactly as a scheduled exact action of that agent
+    (``resolve_exact_toolset``): its bindings, read-only integrations,
+    allowed tools, enforced element scope and deny list, with the named
+    integration pinned, and the approval gate's answer, after the live checks
+    of :func:`_usable_agent`. An agent that may not send a Teams message
+    through that integration cannot make the platform send one for it. Runs
+    on its own session (a token refresh commits its session). *item* needs
+    ``id``, ``user_id``, ``created_by_agent_id`` and ``owner_agent_id``.
     """
     from app.core.database import async_session
     from app.services.scheduled_work_item_runner import (
@@ -499,7 +502,7 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
         raise NotifyError("no agent created or owns the item, so none may send its notification")
     async with async_session() as db:
         agent = await _usable_agent(db, item, agent_id)
-        integration_id = await _resolve_integration(db, item, str(spec["integration"]))
+        integration_id = await _resolve_integration(db, item, integration_ref)
         toolset = await resolve_exact_toolset(
             db, agent, str(item.user_id), pinned={"microsoft": integration_id}
         )
@@ -535,8 +538,21 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
             content = result.content if isinstance(result.content, str) else str(result.content or "")
             # A tool may report a failed message inside a successful answer;
             # only its own success sentence counts as sent.
-            return (not result.is_error and _SENT[tool] in content), content
+            return (not result.is_error and _SENT.get(tool, "\0") in content), content
 
+        yield _call
+
+
+async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
+    """Send *text* to the ask's target (a person, a chat or a channel), as the item's agent may.
+
+    The send is a tool call of :func:`agent_graph_caller`. A ``user`` that is
+    the sending account itself is refused by Graph ("Duplicate chat
+    members"); the text then goes to the account's own chat (``48:notes``)
+    through ``send_microsoft_chat_message``. A refusal no retry fixes raises
+    :class:`PermanentNotifyError`.
+    """
+    async with agent_graph_caller(item, str(spec["integration"])) as _call:
         tool, arguments = _tool_call(spec, text)
         sent, content = await _call(tool, arguments)
         if not sent and tool == _CHAT_TOOL and _SELF_RECIPIENT in content.lower():
