@@ -434,7 +434,7 @@ function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProps) {
   const support = sectionSync ? (Array.isArray(matrix) ? matrix : []).find((row) => row.section === sync.section && row.source === sync.source) : undefined;
   // Outbound is offered only when the platform can be written; a stored outbound stays pickable so it is never hidden.
   const outboundOffered = (Array.isArray(support?.directions) && support.directions.includes("outbound")) || (sync ? directionOf(sync) === "outbound" : false);
-  const platform = sync ? (PLATFORM_NAMES[sync.source] ?? sync.source) : "";
+  const platform = sync ? (IMPORT_SOURCE_NAMES[sync.source] ?? sync.source) : "";
   const directionChanged = sectionSync && direction !== directionOf(sync);
   const key = open ? (sync?.id ?? "new") : null;
   if (key !== loadedFor) {
