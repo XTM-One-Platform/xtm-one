@@ -568,9 +568,20 @@ then the existing AI assessment and facts grid unchanged.
 - Who works the case (#1266, replaces the per-section sentence of #1206
   slice D): one card at the top of the case body (`ctem/CaseWorkCard.tsx`),
   read from live state (`ctem/case-workers.ts`), never assumed. The reader
-  lists every assignment whose trigger is a platform event `ctem_case.*`,
-  whatever fleet or agent owns it (the built-in CTEM loop fleet is one way,
-  never the default), and the runs the case events started on this case
+  lists every assignment that can start on THIS case, whatever fleet or agent
+  owns it (the built-in CTEM loop fleet is one way, never the default): its
+  platform event trigger names `ctem_case.opened` or `ctem_case.reopened` (an
+  automation on `ctem_case.resolved` or the SLA event alone continues a case,
+  never starts it), and its `trigger_config.filter` takes the case event
+  payload, evaluated with the backend's filter grammar
+  (`integration_event_filters.payload_filter_reason`) on the fields the page
+  knows (`case_id`, `object_id`, `object_type`, `trigger_path`). The two
+  seeded case automations route by `trigger_path` (`in` and `not_in` the
+  threat paths), so a case lists exactly one of them. A key the page cannot
+  read (`vertical`, the state at the next event) or an operator it does not
+  evaluate (`matches`) never drops an automation: the page refutes only what
+  it proves (UX round 1 on #1275, B1). The reader also reads the runs the
+  case events started on this case
   (`GET /fleets/case-runs/{id}`). First match wins: a run active on the case
   shows "Worked by <agent> (<fleet>)", queued or running since, and "Open
   the run"; the newest run failed shows the same line in the error colour

@@ -57,7 +57,7 @@ function NothingWorksCase({ loopFleetId, onStart }: { loopFleetId: string | null
     <Card data-testid="ctem-case-work" data-state="none">
       <CardContent className="flex flex-col items-center gap-6 px-6 py-10 text-center">
         <div className="flex max-w-2xl flex-col items-center gap-2">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-elevation-default text-default-secondary">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/10 text-accent">
             <Icon name="workflow" size={24} />
           </span>
           <h2 className="title-sm">{t_i18n("No automation works this case yet")}</h2>
@@ -103,7 +103,7 @@ function CaseWorkChoices({ loopFleetId, onStart }: { loopFleetId: string | null;
       <Choice
         icon="bot"
         title={t_i18n("Use your own fleet or agent")}
-        body={t_i18n("Any automation that listens to the case events (case opened, reopened or resolved) works the case.")}
+        body={t_i18n("Any automation that starts on the case events (case opened or reopened) and whose filter takes this case works it.")}
         testId="ctem-case-work-choice-own"
       >
         <Button variant="outline" onClick={() => setPickAgent(true)}>
@@ -207,12 +207,12 @@ function AutomationsOff({ automations, loopFleetId, onStart }: { automations: Ca
     <Card data-testid="ctem-case-work" data-state="off">
       <CardContent className="flex flex-col items-center gap-6 px-6 py-10 text-center">
         <div className="flex max-w-2xl flex-col items-center gap-2">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-elevation-default text-default-secondary">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/10 text-accent">
             <Icon name="workflow" size={24} />
           </span>
-          <h2 className="title-sm">{t_i18n("The automations that work cases are switched off")}</h2>
+          <h2 className="title-sm">{t_i18n("The automations that can work this case are switched off")}</h2>
           <p className="content-base text-default-secondary">
-            {t_i18n("{count, plural, one {# automation listens to the case events but is off.} other {# automations listen to the case events but are off.}}", {
+            {t_i18n("{count, plural, one {# automation can work this case but is off.} other {# automations can work this case but are off.}}", {
               count: automations.length,
             })}
           </p>

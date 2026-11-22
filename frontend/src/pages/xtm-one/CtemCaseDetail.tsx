@@ -252,10 +252,14 @@ export default function CtemCaseDetail() {
     () =>
       caseWork({
         licensed: agenticLicensed,
-        automations: assignments.isError || assignments.data === undefined ? undefined : caseAutomations(assignments.data, agents.data),
+        // Only the automations that can start on THIS case: its events and its filter (UX round 1 on #1275, B1).
+        automations:
+          assignments.isError || assignments.data === undefined || !kase
+            ? undefined
+            : caseAutomations(assignments.data, agents.data, { id: kase.id, trigger_path: kase.trigger_path }),
         runs: caseRuns?.runs,
       }),
-    [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns],
+    [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns, kase],
   );
   const loopState = useMemo(() => ({ sources: caseSources(registrations) }), [registrations]);
   const update = useUpdateCtemCase(id);
