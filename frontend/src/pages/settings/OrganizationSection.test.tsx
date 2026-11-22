@@ -926,6 +926,36 @@ describe("OrganizationSection", () => {
     expect(screen.queryByText(/very_high/)).toBeNull();
   });
 
+  it("runs the OpenCRQ crown jewels sync from the card once one exists, instead of a second check (#1134 S2)", async () => {
+    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
+    const base = get.getMockImplementation();
+    get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
+    post.mockResolvedValue({ ...opencrqSync, last_result: { added: 0, updated: 1, removed: 0, version: 4, error: null } });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Sync with OpenCRQ now/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/organization-context/syncs/s-crq/run", {}));
+    expect(screen.queryByRole("button", { name: /Check against OpenCRQ/ })).toBeNull();
+  });
+
+  it("shows the sources above the tabs, each section chip linked to its tab filtered on that source (#1134 S2)", async () => {
+    const base = get.getMockImplementation();
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context"
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [...CONTEXT.profile.crown_jewels, { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "a-9", source: "opencrq", external_id: "a-9" }] } }
+        : base?.(path),
+    );
+    renderPage();
+    const panel = await screen.findByTestId("settings.organization.sources");
+    const rows = await within(panel).findAllByTestId("settings.organization.sources.row");
+    expect(rows.map((row) => row.textContent)).toEqual([expect.stringContaining("OpenCRQ"), expect.stringContaining("Typed")]);
+    // A design-system Chip (UX r1 B1 on #1232): a button that navigates to the tab filtered on the source.
+    const chip = within(rows[0]).getByTestId("settings.organization.sources.chip");
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.getAttribute("aria-label")).toBe("Crown jewels from OpenCRQ: 1 row");
+    fireEvent.click(chip);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-current")).toBe("page"));
+  });
+
   it("marks a crown jewel linked to OpenCRQ with a named icon", async () => {
     get.mockImplementation(async (path: string) =>
       path === "/organizations" || path === "/integrations"

@@ -684,7 +684,13 @@ so its end sends no text. This is how a fleet's `work_item.needs_human` listener
 DMs a decision. The send records the same `notified` event, so the message turns
 into the decided card whichever channel closes the decision. A second send to
 the same target answers the message already there. A test item reaches only
-`WORK_ITEM_NOTIFY_TEST_RECIPIENTS` or `48:notes`. The link card has the
+`WORK_ITEM_NOTIFY_TEST_RECIPIENTS` or `48:notes`. An item that waits for a
+person (not done or cancelled, `needs_human`, an ask with a question and two
+options) but has no open `decisions` row (parked by a bulk write, or its row
+cancelled by a later write) gets one opened from the item with the hook's rule
+(`work_item_opening`), whoever parked it and whatever its status (#1244); any
+other item is refused with the field that is missing (`status`, `needs_human`,
+`ask.question`, `ask.options`). The link card has the
 `DecisionCard` layout: a kicker (source and agent), the question, the context,
 one row per option with its effect (the recommended row highlighted), the
 deadline, the option buttons, "Answer with text" and "Open in XTM One". It is

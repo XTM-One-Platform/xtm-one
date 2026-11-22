@@ -198,6 +198,14 @@ records several sources hold on one thing into one canonical thing; the store of
   lookup with its confidence, else `unresolved`: never guessed.
 - Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
   vendor and product, crown jewels, AI systems, PIRs, tracked organizations) use the same matching.
+- Settings: the profile part `asset_identity` (`AssetIdentity`, an `EXPOSURE_FIELDS` part, never dumped into the
+  always-on block) holds the organization's `key_order` (strong keys, most reliable first; a key left out never
+  merges; empty: `DEFAULT_KEY_ORDER`) and `precedence` (field to sources or source classes in order, `*` any
+  other; a field left out keeps `DEFAULT_PRECEDENCE`). Saved with the profile (administrators,
+  `PUT /organization-context`); every rebuild of the store reads it (`organization_asset_store.identity_settings`;
+  a stored value that no longer parses keeps the defaults). `GET /organization-context/assets/identity` (any
+  signed-in user) answers the saved settings, the defaults and the effective order and precedence, for the
+  Sources panel.
 
 ### 9.1 The store (S2)
 
