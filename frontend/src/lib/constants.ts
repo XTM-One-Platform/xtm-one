@@ -320,7 +320,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   filigran_ai: "Filigran AI",
   planhat: "Planhat",
   metabase: "Metabase",
-  odoo: "Odoo",
   openaev: "OpenAEV",
   opencti: "OpenCTI",
   opencrq: "OpenCRQ",
@@ -377,6 +376,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
+  airwallex: "Airwallex",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -585,7 +585,7 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
   erp: "ERP",
-  finance: "Finance",
+  finance: "Finance & Treasury",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -777,7 +777,6 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   filigran_ai: "/logos/filigran.svg",
   planhat: "/logos/planhat.svg",
   metabase: "/logos/metabase.svg",
-  odoo: "/logos/odoo.svg",
   grafana: "/logos/grafana.svg",
   openaev: "/logos/openaev.svg",
   opencti: "/logos/opencti.svg",
