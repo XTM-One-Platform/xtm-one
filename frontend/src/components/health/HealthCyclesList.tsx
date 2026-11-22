@@ -13,11 +13,16 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
-/** The Platform Health cycles the viewer may read, newest first, each opening its digest (#8261). */
+/**
+ * The Platform Health cycles the viewer may read, newest first, each opening its digest (#8261).
+ * A row names its target after the specialist: a module checker's round reads "OpenCTI Health
+ * Checker" then the registration's title (#101 S15e, dev-docs 13.8).
+ */
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Compass } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/empty-state";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useHealthCycles, useHealthName } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
 import {
@@ -50,6 +55,11 @@ function CycleRow({ cycle }: { cycle: HealthCycle }) {
         <span className="shrink-0 content-compact font-medium text-default-primary">
           {cycle.specialist === "orchestrator" ? healthName : t_i18n(labelOf(HEALTH_SPECIALIST_LABELS, cycle.specialist))}
         </span>
+        {cycle.target_name && (
+          <span className="min-w-0" data-testid="health-cycle-target">
+            <TruncatedText text={cycle.target_name} className="content-compact text-default-primary" />
+          </span>
+        )}
         <span className="content-caption text-default-secondary">
           {t_i18n(labelOf(HEALTH_TRIGGER_LABELS, cycle.trigger))}
           {cycle.signal && ` · ${t_i18n(labelOf(HEALTH_SIGNAL_LABELS, cycle.signal.kind))}`}

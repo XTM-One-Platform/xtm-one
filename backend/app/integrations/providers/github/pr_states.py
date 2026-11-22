@@ -14,9 +14,12 @@ answer is one line per pull request.
 
 Right after a push to the base branch GitHub recomputes each open PR's
 mergeability lazily, and ``mergeable`` / ``mergeStateStatus`` read ``UNKNOWN``
-for a few seconds. The tool re-reads only those pull requests (batched, after
-``_UNKNOWN_BACKOFF`` pauses, never from a cache) and answers ``unknown`` only
-when GitHub is still computing after the last re-read, saying so.
+for a few seconds, longer when many PRs of the base are recomputed at once (a
+sweep of nine connectors PRs read ``unknown`` on three successive calls after a
+three-second window). The tool re-reads only those pull requests (batched,
+after ``_UNKNOWN_BACKOFF`` pauses, about 15 s in all, never from a cache) and
+answers ``unknown`` only when GitHub is still computing after the last re-read,
+saying so.
 
 The verdict follows ``get_github_ci_status``: any failing state is a failure,
 else anything not finished is pending, else success; skipped and neutral only
@@ -62,8 +65,10 @@ _THREADS = 100
 #: Characters of a title shown.
 _TITLE_CHARS = 80
 #: Pauses (seconds) before each re-read of the pull requests whose mergeability
-#: GitHub is still computing; one re-read per pause, about 3 s in all.
-_UNKNOWN_BACKOFF: tuple[float, ...] = (1.0, 2.0)
+#: GitHub is still computing; one re-read per pause, about 15 s in all. The
+#: loop stops at the first read where none is computing, so a settled answer
+#: costs no pause.
+_UNKNOWN_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)
 
 _PR_FIELDS = f"""
       number title state isDraft mergeable mergeStateStatus reviewDecision headRefOid baseRefName
@@ -397,7 +402,7 @@ def register(
                 "verdict on the head with passed / failed / pending / skipped counts (the latest run per check name, "
                 "as get_github_ci_status counts them), unresolved review threads "
                 "and the review decision. A merge state GitHub is still computing (right after a push to the "
-                "base) is re-read for about 3 s before it is answered unknown. "
+                "base) is re-read for up to about 15 s before it is answered unknown. "
                 "Use it to sweep many PRs instead of a GraphQL query or one "
                 "get_github_pr per PR; get_github_ci_status names the checks of one PR."
             ),
