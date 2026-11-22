@@ -1137,6 +1137,9 @@ class OrganizationSyncRequest(BaseModel):
     remove_gone: bool = True
     #: The source ids this sync never imports (#1134); omitted: the stored list is kept.
     excluded_external_ids: list[str] | None = None
+    #: inbound: the platform is the master; outbound: the XTM One list is (#1134 S3, GET /syncs/directions).
+    #: Omitted: the stored direction is kept (inbound for a new sync), so an edit never resets an outbound sync.
+    direction: Literal["inbound", "outbound"] | None = None
     frequency: Literal["hourly", "daily", "weekly"] = "daily"
     hour: int = 6
     minute: int = 0
@@ -1154,6 +1157,9 @@ class OrganizationSyncResponse(BaseModel):
     batch_type: str
     remove_gone: bool
     excluded_external_ids: list[str] = []
+    direction: str = "inbound"
+    #: Outbound: how many platform rows this sync created and keeps in step.
+    outbound_count: int = 0
     frequency: str
     hour: int
     minute: int
@@ -1179,6 +1185,8 @@ async def _sync_response(db: AsyncSession, row: Any) -> OrganizationSyncResponse
         batch_type=row.batch_type,
         remove_gone=row.remove_gone,
         excluded_external_ids=list(row.excluded_external_ids or []),
+        direction=getattr(row, "direction", None) or "inbound",
+        outbound_count=len(getattr(row, "outbound_ids", None) or {}),
         frequency=row.frequency,
         hour=row.hour,
         minute=row.minute,
@@ -1202,6 +1210,34 @@ def _apply_sync_body(row: Any, body: OrganizationSyncRequest, admin: User) -> No
         osync.define(row, owner_id=admin.id, **body.model_dump())
     except osync.SyncRefusedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+class SyncDirectionSupport(BaseModel):
+    section: str
+    source: str
+    directions: list[str]
+    #: Why outbound is not offered (empty when it is).
+    reason: str = ""
+
+
+@router.get("/syncs/directions", response_model=list[SyncDirectionSupport])
+async def list_organization_sync_directions(
+    admin: User = Depends(require_admin),
+) -> list[SyncDirectionSupport]:
+    """Per section and platform, the directions a sync may take and why outbound is not offered (#1134 S3)."""
+    from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
+
+    return [
+        SyncDirectionSupport(
+            section=section,
+            source=source,
+            directions=list(outbound.directions(section, source)[0]),
+            reason=outbound.directions(section, source)[1],
+        )
+        for section, sources in imp.SECTION_SOURCES.items()
+        for source in sources
+    ]
 
 
 @router.get("/syncs", response_model=list[OrganizationSyncResponse])

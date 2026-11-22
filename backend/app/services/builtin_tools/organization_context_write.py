@@ -310,6 +310,7 @@ def build_organization_context_write_tools(
             "filters": sync.filters or {},
             "remove_gone": sync.remove_gone,
             "excluded_external_ids": list(getattr(sync, "excluded_external_ids", None) or []),
+            "direction": getattr(sync, "direction", None) or "inbound",
             "schedule": {
                 "frequency": sync.frequency,
                 "hour": sync.hour,
@@ -350,6 +351,7 @@ def build_organization_context_write_tools(
         minute: int = 0,
         weekday: int = 0,
         timezone: str = "UTC",
+        direction: str = "inbound",
     ) -> str:
         import json
 
@@ -379,6 +381,7 @@ def build_organization_context_write_tools(
                     minute=int(minute),
                     weekday=int(weekday),
                     timezone=timezone or "UTC",
+                    direction=direction or "inbound",
                 )
                 db.add(sync)
                 await db.flush()
@@ -647,6 +650,7 @@ def build_organization_context_write_tools(
                         "type": "boolean",
                         "description": "Drop rows gone from the source (default true).",
                     },
+                    "direction": {"type": "string", "enum": ["inbound", "outbound"]},
                     "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
                     "hour": {"type": "integer"},
                     "minute": {"type": "integer"},
