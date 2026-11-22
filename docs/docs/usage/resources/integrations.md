@@ -492,7 +492,7 @@ GitHub offers no upload API for comments, so an agent attaches a file of the con
 
 ### GitHub: a comment never posted twice
 
-An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line as the new comment, nothing is committed or posted and the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
+An agent that posts a verbatim comment (a review verdict, a status line) from a run that may be retried passes `dedupe_first_line: true` to `add_github_comment`. The comments already on the issue or pull request are read on the server: when one opens with the same first non-empty line and holds the same text as the new comment, nothing is committed or posted. A comment that shares only the first line (a verdict header reused for a new round or a new head) does not stop the post. When the post is skipped, the answer names that comment (author, date, link). The earlier comment bodies never reach the agent. Without the option the tool posts as before.
 
 ### GitHub: a comment corrected in place
 
