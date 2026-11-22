@@ -1318,8 +1318,11 @@ export function OrganizationSection() {
       : t_i18n("Scenarios above {amount} per year are flagged for approval", { amount: money(value) });
   };
 
+  // "Already agree" only on the backend's in_sync (#1134 S2): an empty profile against a non-empty
+  // OpenCRQ is an import to propose, never agreement. An older backend without it: nothing listed.
   const planEmpty =
     plan &&
+    (plan.plan.in_sync ?? true) &&
     !plan.plan.linked.length &&
     !plan.plan.pushed_to_opencrq.length &&
     !plan.plan.pulled_from_opencrq.length &&
@@ -1957,7 +1960,7 @@ export function OrganizationSection() {
                       <li key={`p-${row.opencrq_asset_id}`}>{t_i18n("Set {name} to {criticality} in OpenCRQ", { name: row.name, criticality: criticalityLabel(row.criticality) })}</li>
                     ))}
                     {plan.plan.pulled_from_opencrq.map((row) => (
-                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name}, very high in OpenCRQ, as a critical crown jewel", { name: row.name })}</li>
+                      <li key={`u-${row.opencrq_asset_id}`}>{t_i18n("Add {name} from OpenCRQ as a crown jewel", { name: row.name })}</li>
                     ))}
                     {plan.plan.ambiguous.map((name) => (
                       <li key={`a-${name}`}>{t_i18n("{name} matches several OpenCRQ assets: link it by hand", { name })}</li>

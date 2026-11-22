@@ -57,6 +57,24 @@ beforeEach(() => {
 });
 
 describe("OrganizationSyncsCard (#11913)", () => {
+  it("reads only its location's syncs when given a scope (#1134 S2)", async () => {
+    get.mockResolvedValue([sync({ section: "crown_jewels", source: "opencrq" })]);
+    renderWithProviders(
+      <MemoryRouter>
+        <OrganizationSyncsCard scope="profile" />
+      </MemoryRouter>,
+    );
+    await rows();
+    expect(get).toHaveBeenCalledWith("/organization-context/syncs?scope=profile");
+  });
+
+  it("reads every sync without a scope", async () => {
+    get.mockResolvedValue([sync({})]);
+    render();
+    await rows();
+    expect(get).toHaveBeenCalledWith("/organization-context/syncs");
+  });
+
   it("lists each sync with its schedule, last run counts and status", async () => {
     get.mockResolvedValue([sync({}), sync({ id: "s-2", section: "crown_jewels", source: "opencrq", filters: {}, paused_reason: "OpenCRQ: no token for this administrator" })]);
     render();
