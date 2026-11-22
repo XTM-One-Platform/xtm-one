@@ -3,6 +3,7 @@
 import { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { getToken } from "@/lib/api";
+import { rememberReturnPath } from "@/lib/session-return";
 import { termsOfUsePending } from "@/lib/terms-of-use";
 import { useAuth } from "@/hooks/useAuth";
 import { useMe } from "@/hooks/api/useAuthApi";
@@ -129,6 +130,8 @@ const PresentationPublic = lazyWithRetry(() => import("@/pages/PresentationPubli
 /* The audience page of a live poll (/v/CODE): no session, one poll only (#10157). */
 const PollVote = lazyWithRetry(() => import("@/pages/PollVote"));
 const DashboardPublic = lazyWithRetry(() => import("@/pages/DashboardPublic"));
+/* The answer link of a decision (/decide/TOKEN, dev-docs/human-gates.md I.4): signed in as its recipient. */
+const DecisionLink = lazyWithRetry(() => import("@/pages/DecisionLink"));
 const VideoPublic = lazyWithRetry(() => import("@/pages/VideoPublic"));
 /* The library lists decks without rendering any, so it stays in the shell. */
 const Presentations = lazyWithRetry(() => import("@/pages/Presentations"));
@@ -184,9 +187,14 @@ const PublicMCPServerDetail = lazyWithRetry(() => import("@/pages/public/PublicM
 const PublicCustomTools = lazyWithRetry(() => import("@/pages/public/PublicCustomTools"));
 const PublicCustomToolDetail = lazyWithRetry(() => import("@/pages/public/PublicCustomToolDetail"));
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, returnHere = false }: { children: React.ReactNode; returnHere?: boolean }) {
   const token = getToken();
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) {
+    /* A page opened from outside the app (an answer link in Teams or an
+     * email) is where the sign-in lands again, SSO included. */
+    if (returnHere) rememberReturnPath();
+    return <Navigate to="/login" replace />;
+  }
   return (
     <>
       {/* Every signed-in page follows the session's lifetime and idle timeout. */}
@@ -622,6 +630,21 @@ export default function App() {
           <Suspense fallback={null}>
             <DashboardStaticRender />
           </Suspense>
+        }
+      />
+
+      {/* An answer link opened from Teams, Google Chat or an email: the page
+          alone, no app shell; the sign-in comes back here. */}
+      <Route
+        path="/decide/:token"
+        element={
+          <ProtectedRoute returnHere>
+            <ErrorBoundary fullPage>
+              <Suspense fallback={<PageSkeleton />}>
+                <DecisionLink />
+              </Suspense>
+            </ErrorBoundary>
+          </ProtectedRoute>
         }
       />
 
