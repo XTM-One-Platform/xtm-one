@@ -191,6 +191,7 @@ export function WaitingForYou() {
         columns={columns}
         rowKey={(row) => row.id}
         paginate={false}
+        layout="fixed"
         noFilters="one served list, ordered by the server: soonest deadline first, then oldest asked"
         isLoading={waiting.isLoading}
         isError={waiting.isError}
