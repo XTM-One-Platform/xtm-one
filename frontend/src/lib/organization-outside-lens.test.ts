@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { fromForm, invalidAddressRanges, normalizeAddressRange, normalizeDomain, toForm } from "./organization-profile";
-import { boundedInteger, cleanDomains, cleanRanges } from "@/pages/settings/OrganizationOutsideLensCard";
+import {
+  boundedInteger,
+  cleanDomains,
+  cleanRanges,
+  fromForm,
+  invalidAddressRanges,
+  normalizeAddressRange,
+  normalizeDomain,
+  toForm,
+} from "./organization-profile";
 
 /** The outside lens fields (CTEM-26 slice 2, #1140): normalised as the backend does, carried by every save. */
 describe("address ranges, as normalize_address_ranges stores them", () => {

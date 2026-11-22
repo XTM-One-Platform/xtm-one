@@ -26,7 +26,7 @@ import { Icon } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   SettingsCard,
   SettingsField,
@@ -34,6 +34,7 @@ import {
   SettingsSaveBar,
   SettingsSwitchField,
   settingsFieldHintId,
+  settingsFieldLabelId,
 } from "@/components/ui/settings-form";
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { TagInput } from "@/components/ui/tag-input";
@@ -45,11 +46,12 @@ import { useFormatter } from "@/i18n";
 import {
   ATTACK_SURFACE_BOUNDS,
   type AttackSurfacePass,
+  boundedInteger,
+  cleanDomains,
+  cleanRanges,
   DEFAULT_ATTACK_SURFACE,
   fromForm,
   invalidAddressRanges,
-  normalizeAddressRange,
-  normalizeDomain,
   toForm,
 } from "@/lib/organization-profile";
 
@@ -69,23 +71,6 @@ interface Draft {
   attack_surface: AttackSurfacePass;
   cadence: string;
   stale: string;
-}
-
-/** A whole number in the bounds, or null. */
-export function boundedInteger(text: string, bounds: { min: number; max: number }): number | null {
-  if (!/^\d+$/.test(text.trim())) return null;
-  const n = Number(text.trim());
-  return n >= bounds.min && n <= bounds.max ? n : null;
-}
-
-/** The domains as the backend stores them, each once. */
-export function cleanDomains(values: readonly string[]): string[] {
-  return [...new Set(values.map(normalizeDomain).filter((d): d is string => d !== null))];
-}
-
-/** The address ranges in their network form, each once; the refused ones are kept out (Save is blocked on them). */
-export function cleanRanges(values: readonly string[]): string[] {
-  return [...new Set(values.map(normalizeAddressRange).filter((r): r is string => r !== null))];
 }
 
 export function OrganizationOutsideLensCard() {
@@ -284,24 +269,18 @@ export function OrganizationOutsideLensCard() {
               }
               error={providerMissing ? t_i18n("Pick a provider to turn the outside lens on.") : undefined}
             >
-              <Select
+              <SearchableSelect
+                id={`${id}-provider`}
+                aria-labelledby={settingsFieldLabelId(`${id}-provider`)}
+                aria-describedby={settingsFieldHintId(`${id}-provider`)}
+                aria-invalid={providerMissing ? true : undefined}
+                pinned={[{ value: NO_PROVIDER, label: t_i18n("None") }]}
+                options={candidates.map((integration) => ({ value: integration.id, label: integration.name }))}
                 value={draft.attack_surface.integration || NO_PROVIDER}
                 onValueChange={(value) =>
                   setDraft({ ...draft, attack_surface: { ...draft.attack_surface, integration: value === NO_PROVIDER ? "" : value } })
                 }
-              >
-                <SelectTrigger id={`${id}-provider`} aria-describedby={settingsFieldHintId(`${id}-provider`)} aria-invalid={providerMissing ? true : undefined}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PROVIDER}>{t_i18n("None")}</SelectItem>
-                  {candidates.map((integration) => (
-                    <SelectItem key={integration.id} value={integration.id}>
-                      {integration.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </SettingsField>
             <SettingsField
               id={`${id}-cadence`}
@@ -312,6 +291,7 @@ export function OrganizationOutsideLensCard() {
               <Input
                 id={`${id}-cadence`}
                 inputMode="numeric"
+                aria-labelledby={settingsFieldLabelId(`${id}-cadence`)}
                 aria-describedby={settingsFieldHintId(`${id}-cadence`)}
                 aria-invalid={cadence === null ? true : undefined}
                 value={draft.cadence}
@@ -327,6 +307,7 @@ export function OrganizationOutsideLensCard() {
               <Input
                 id={`${id}-stale`}
                 inputMode="numeric"
+                aria-labelledby={settingsFieldLabelId(`${id}-stale`)}
                 aria-describedby={settingsFieldHintId(`${id}-stale`)}
                 aria-invalid={stale === null ? true : undefined}
                 value={draft.stale}

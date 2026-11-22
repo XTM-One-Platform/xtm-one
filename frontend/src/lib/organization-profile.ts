@@ -180,6 +180,23 @@ export function normalizeAddressRange(raw: string): string | null {
   return `${host}/${prefix}`;
 }
 
+/** A whole number in the bounds, or null. */
+export function boundedInteger(text: string, bounds: { min: number; max: number }): number | null {
+  if (!/^\d+$/.test(text.trim())) return null;
+  const n = Number(text.trim());
+  return n >= bounds.min && n <= bounds.max ? n : null;
+}
+
+/** The domains as the backend stores them, each once. */
+export function cleanDomains(values: readonly string[]): string[] {
+  return [...new Set(values.map(normalizeDomain).filter((d): d is string => d !== null))];
+}
+
+/** The address ranges in their network form, each once; the refused ones are kept out (Save is blocked on them). */
+export function cleanRanges(values: readonly string[]): string[] {
+  return [...new Set(values.map(normalizeAddressRange).filter((r): r is string => r !== null))];
+}
+
 /** The entries of *ranges* the backend would refuse, as typed. */
 export function invalidAddressRanges(ranges: readonly string[]): string[] {
   return ranges.filter((range) => range.trim() && normalizeAddressRange(range) === null);
