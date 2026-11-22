@@ -708,6 +708,7 @@ ce:
   - backend/app/data
   - backend/app/enterprise
   - backend/app/integrations/providers/aikido  # a connector
+  - backend/app/integrations/providers/airwallex  # a connector
   - backend/app/integrations/providers/ashby  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
   - backend/app/integrations/providers/drata  # a connector
