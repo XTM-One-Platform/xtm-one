@@ -29,6 +29,7 @@ import {
   remediationDecisionKey,
   remediationOptionLines,
 } from "./case-gates";
+import { CaseSectionReason } from "./CaseSectionReason";
 
 export function CaseRemediationDecision({
   caseId,
@@ -59,9 +60,10 @@ export function CaseRemediationDecision({
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {!gate ? (
-          <p className="text-default-secondary">
-            {t_i18n("Not decided yet: the fleet decides the remediation once the case is validated.")}
-          </p>
+          <CaseSectionReason
+            own={t_i18n("Not decided yet: the fleet decides the remediation once the case is validated.")}
+            testId="ctem-case-remediation-empty"
+          />
         ) : (
           <div className="flex flex-wrap items-baseline gap-x-2" data-testid="ctem-case-remediation-outcome">
             <span className="font-medium">

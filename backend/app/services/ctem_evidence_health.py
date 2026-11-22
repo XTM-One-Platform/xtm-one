@@ -92,17 +92,31 @@ def _iso(value: Any) -> str:
     return str(value or "")[:40]
 
 
+def _unmarked(row: dict[str, Any]) -> bool:
+    """True only when OpenCRQ states the row carries no marking (``markingRefs: []``)."""
+    refs = row.get("markingRefs")
+    return isinstance(refs, list) and not refs
+
+
 def gaps_of(scenario: dict[str, Any], health: dict[str, Any]) -> list[Gap]:
     """The gaps of one scenario's evidence health, in OpenCRQ order (a pure function).
 
     One gap per asset whose state is not ``current``, and one per connector sync
     that emptied. The dedupe key names the asset and its state with the date of
     its last evidence (else ``never``): an unchanged gap keeps its key.
+
+    Fail closed on markings: the owner's credential reads marked rows, and every
+    administrator reads the signals, so an asset or a scenario that carries an
+    OpenCRQ marking, or whose markings the answer does not state, raises no gap
+    naming it. The emptied-sync gaps name no asset and no scenario and are kept.
     """
     sid = str(scenario.get("id") or "")
     sname = str(scenario.get("name") or sid)[:200]
     out: list[Gap] = []
-    for asset in health.get("assets") or []:
+    assets = (health.get("assets") or []) if _unmarked(health) else []
+    for asset in assets:
+        if not _unmarked(asset):
+            continue
         state = str(asset.get("state") or "")
         event = STATE_EVENTS.get(state)
         asset_id = str(asset.get("supportingAssetId") or "")

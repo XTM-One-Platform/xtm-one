@@ -20,6 +20,7 @@ import { safeExternalUrl } from "@/lib/utils";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_OUTCOME_LABEL, latestGate } from "./case-gates";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
+import { CaseSectionReason } from "./CaseSectionReason";
 
 export function CaseAnalystReview({
   caseId,
@@ -85,7 +86,11 @@ export function CaseAnalystReview({
           </p>
         )}
         <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-threat-package">
-          <span className={stage === "not_started" ? "text-default-secondary" : undefined}>{t_i18n(REVIEW_STAGE_LABEL[stage])}</span>
+          {stage === "not_started" && !gate ? (
+            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} testId="ctem-case-analyst-review-empty" />
+          ) : (
+            <span className={stage === "not_started" ? "text-default-secondary" : undefined}>{t_i18n(REVIEW_STAGE_LABEL[stage])}</span>
+          )}
           {pkg && (
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
               {pkg.restricted ? (
