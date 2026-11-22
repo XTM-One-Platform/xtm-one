@@ -22,7 +22,7 @@ message carries resolves (section 9, I.7).
 
 | # | Gate | Where it is asked | Stored as | Answered by | UI | Bell kind |
 |---|---|---|---|---|---|---|
-| 1 | Run free-text HITL | `request_human_input(question, context)`, registered by `assignment_engine` when `resolve_hitl` (agent default, assignment override) is on | `AssignmentRun.human_input_question` = question and `"Context: ..."` joined in one string; status `awaiting_human` | `POST /assignments/runs/{id}/respond` (`answer_paused_run`), `response` text | `components/decisions/RunPauseDecision.tsx` (S8; replaced `components/ui/run-human-input.tsx`) (run card, Operations row, run detail, run activity list, fleet pending approvals) | `hitl` |
+| 1 | Run free-text HITL | `request_human_input(question, context)`, registered by `assignment_engine` when `resolve_hitl` (agent default, assignment override) is on | `AssignmentRun.human_input_question` = question and `"Context: ..."` joined in one string; status `awaiting_human` | `POST /assignments/runs/{id}/respond` (`answer_paused_run`), `response` text | `components/ui/run-human-input.tsx` (run card, Operations row, run detail, run activity list, fleet pending approvals) | `hitl` |
 | 2 | Per-tool approval | the gate of `hitl_whitelist.py` / `tools/approval.py` before a gated tool call | `pending_approvals`, `approval_decisions`; standing approvals in `ToolApprovalPreference` (schema fingerprint) | same endpoint, `decisions: [{decision: approve, approve_always, reject}]` | `ActionProposalCard`, `FleetPendingApprovals` | `hitl` (push Approve / Reject actions) |
 | 3 | Irreversible consent | a tool (today `merge_opencti_entities`) asks through gate 1 for `APPROVE <code>` | inside the free-text reply, `human_input_history` | parsed server-side by `hitl_consent.py` | none of its own | `hitl` |
 | 4 | Flow Ask-user node | `flow_runner._exec_ask_user` (title, question) | park `{kind: human, question, released, response, responded_by}` in `FlowRun.state.waiting` | `POST /flows/runs/{id}/respond`, `response` text | flow builder run panel | `flow_hitl` (activity row) |
@@ -321,7 +321,7 @@ channel, all fed by the `Decision` view model of section 3:
 
 | Channel | Format | Options | Answer in place |
 |---|---|---|---|
-| Teams | Adaptive Card 1.5, Universal Actions (`Action.Execute`, per-viewer `refresh`) from the bot; `Action.OpenUrl` answer links from an account (I.4) | one button per option, recommendation as the positive style, free text as `Input.Text` (bot) or the text link | yes, every path (I.4) |
+| Teams | Adaptive Card 1.5, Universal Actions (`Action.Execute`, per-viewer `refresh`) from the bot; `Action.OpenUrl` answer links from an account (I.4) | bot: the options as one expanded `Input.ChoiceSet` (recommendation marked in words, never by colour) and a single Send, so Teams' six-action limit never drops an option; a tool approval lists its calls (tool name, redacted arguments for the decider) and its option labels come from the catalog, its choice is required (`isRequired`, a catalog error message; a Send without a choice is answered with that message, never a generic failure), and its decided card says the outcome (one verdict, or each verdict with its count); free text as `Input.Text`; account: the text link | yes, every path (I.4) |
 | Slack | Block Kit (header, section, context, actions) | one button per option, recommendation `primary`, free text through a modal | yes (interactivity endpoint) |
 | Google Chat | cardsV2 | one button per option, free text as a text input widget | yes (`CARD_CLICKED`) |
 | WhatsApp | interactive message | up to 3 options as reply buttons, else a list; 1:1 only | yes (button reply webhook) |
@@ -345,6 +345,20 @@ JSON: they pass a decision.
   (run, flow run, work item, the inbox URL), the verbs become
   `xtm.decision.answer` (option or text) with `xtm.run.decide` and
   `xtm.run.answer` kept as aliases for cards already in conversations.
+
+As built (S9, Teams bot path (a)): `services/decision_cards.py` renders the
+card and answers `xtm.decision.answer` through `decision_router.answer_decision`
+(surface `teams_card`); `services/decision_card_delivery.py` records every
+conversation the bot hears from (`teams:bot_conversation:<id>` in Redis, 90
+days, a channel thread recorded as its channel) and posts the card there.
+`work_item_notify` sends the item's open decision as the bot's card when the
+bot is in the target (the person's 1:1 with the bot, the chat or the channel),
+else the account's text as before; the D notify path (`notify.py`
+`_notify_teams`) sends a paused run's open decision as the card to its owner.
+The bot's card tools (`send_teams_bot_channel_card`, `send_teams_bot_chat_card`,
+`send_teams_bot_group_chat_card`) take `decision` (`run:<id>`, `flow_run:<id>`,
+`work_item:<id>`) in place of `card`: `decision_card_delivery.decision_card_for_tool`
+renders the same card, so an agent posts a decision without writing card JSON.
 
 ### I.3 Answering in place
 
