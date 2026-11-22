@@ -1648,6 +1648,17 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case sweep error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM attack surface pass (CTEM-26): the outside lens, opt-in in the profile,
+        # its own cadence (attack_surface.cadence_hours, default daily). Rules only, no model call.
+        try:
+            from app.services import ctem_attack_surface
+
+            surface_counts = await ctem_attack_surface.scheduled_pass(db)
+            if surface_counts:
+                logger.info("CTEM attack surface pass: %s", surface_counts)
+        except Exception as e:
+            logger.error("CTEM attack surface pass error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # CTEM ticketing sync (#917): create the ticket of a mobilized case,
         # pull the ticket status (ServiceNow's inbound), push the case state.
         # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).
