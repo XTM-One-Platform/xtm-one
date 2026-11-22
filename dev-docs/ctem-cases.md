@@ -513,8 +513,9 @@ then the existing AI assessment and facts grid unchanged.
 The list's default sort, its "Act on this first" band and the case page's
 "Why this case needs attention now" read one explained score
 (`frontend/src/pages/xtm-one/ctem/case-attention.ts`): the points of each
-reason are added, and each reason is named in the why line. Resolved cases and
-accepted risks score 0.
+reason are added, and each reason is named in the why line. A reason whose
+points are set to 0 adds nothing and is not named (the age when its points per
+day or its cap is 0). Resolved cases and accepted risks score 0.
 
 The points are the organization's, profile field `case_attention`
 (`CaseAttentionWeights` in `services/organization_context.py`, an exposure

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
-import { caseAttention, rankByAttention } from "./case-attention";
+import { caseAttention, DEFAULT_CASE_ATTENTION_WEIGHTS, rankByAttention } from "./case-attention";
 
 const NOW = Date.parse("2026-11-22T12:00:00Z");
 const DAY = 24 * 3600 * 1000;
@@ -58,6 +58,39 @@ describe("case attention (#1176)", () => {
   it("caps the age points", () => {
     const old = caseAttention(kase({ created_at: new Date(NOW - 400 * DAY).toISOString() }), NOW);
     expect(old.score).toBe(10);
+  });
+
+  describe("a reason set to 0 points leaves the score and the why line (UX r2 B1 on #1260)", () => {
+    const W = DEFAULT_CASE_ATTENTION_WEIGHTS;
+    const kinds = (over: Partial<CtemCaseSummary>, weights: typeof W) => caseAttention(kase(over), NOW, weights).reasons.map((r) => r.kind);
+
+    it("priority", () => {
+      expect(kinds({ priority: "critical" }, { ...W, priority: { ...W.priority, critical: 0 } })).not.toContain("priority");
+    });
+    it("KEV", () => {
+      expect(kinds({ kev_count: 2 }, { ...W, kev: 0 })).not.toContain("kev");
+      expect(caseAttention(kase({ kev_count: 2 }), NOW, { ...W, kev: 0 }).score).toBe(0);
+    });
+    it("crown jewel", () => {
+      expect(kinds({ crown_jewel_count: 1 }, { ...W, crownJewel: 0 })).not.toContain("crown_jewel");
+    });
+    it("overdue, without falling back to due soon", () => {
+      const r = kinds({ due_at: new Date(NOW - DAY).toISOString() }, { ...W, overdue: 0 });
+      expect(r).not.toContain("overdue");
+      expect(r).not.toContain("due_soon");
+    });
+    it("due soon", () => {
+      expect(kinds({ due_at: new Date(NOW + DAY).toISOString() }, { ...W, dueSoon: 0 })).not.toContain("due_soon");
+    });
+    it("no owner", () => {
+      expect(kinds({ owner_user_id: null }, { ...W, noOwner: 0 })).not.toContain("no_owner");
+    });
+    it("age, per day or cap", () => {
+      const old = { created_at: new Date(NOW - 5 * DAY).toISOString() };
+      expect(kinds(old, { ...W, agePerDay: 0 })).not.toContain("age");
+      expect(kinds(old, { ...W, ageMax: 0 })).not.toContain("age");
+      expect(kinds(old, W)).toContain("age");
+    });
   });
 
   it("scores a resolved case or an accepted risk 0", () => {

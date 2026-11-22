@@ -118,32 +118,37 @@ export function caseAttention(c: AttentionInput, now: number, weights: CaseAtten
   const reasons: CaseAttentionReason[] = [];
   let score = weights.priority[c.priority] ?? 0;
   if (score > 0) reasons.push({ kind: "priority", priority: c.priority });
-  if (c.kev_count > 0) {
+  // A reason whose points are set to 0 is dropped from the score and from the why line (UX r2 B1 on #1260).
+  if (c.kev_count > 0 && weights.kev > 0) {
     score += weights.kev;
     reasons.push({ kind: "kev", count: c.kev_count, assets: c.asset_count });
   }
-  if (c.crown_jewel_count > 0) {
+  if (c.crown_jewel_count > 0 && weights.crownJewel > 0) {
     score += weights.crownJewel;
     reasons.push({ kind: "crown_jewel", count: c.crown_jewel_count });
   }
   const due = c.sla_due_at ?? c.due_at;
   const dueMs = due ? Date.parse(due) : Number.NaN;
-  if (c.sla_breached_at || (!Number.isNaN(dueMs) && dueMs < now)) {
-    score += weights.overdue;
-    reasons.push({ kind: "overdue" });
-  } else if (!Number.isNaN(dueMs) && dueMs - now <= weights.dueSoonDays * DAY_MS) {
+  const overdue = Boolean(c.sla_breached_at) || (!Number.isNaN(dueMs) && dueMs < now);
+  if (overdue) {
+    if (weights.overdue > 0) {
+      score += weights.overdue;
+      reasons.push({ kind: "overdue" });
+    }
+  } else if (weights.dueSoon > 0 && !Number.isNaN(dueMs) && dueMs - now <= weights.dueSoonDays * DAY_MS) {
     score += weights.dueSoon;
     reasons.push({ kind: "due_soon", days: Math.max(0, Math.ceil((dueMs - now) / DAY_MS)) });
   }
-  if (!c.owner_user_id) {
+  if (!c.owner_user_id && weights.noOwner > 0) {
     score += weights.noOwner;
     reasons.push({ kind: "no_owner" });
   }
   const opened = caseOpenedAt(c);
-  if (opened) {
+  // Age is named while it can add points (per day and cap above 0), so a case opened today still reads "Opened today".
+  if (opened && weights.agePerDay > 0 && weights.ageMax > 0) {
     const days = Math.max(0, Math.floor((now - Date.parse(opened)) / DAY_MS));
     const agePoints = Math.min(weights.ageMax, days * weights.agePerDay);
-    if (agePoints > 0) score += agePoints;
+    score += agePoints;
     reasons.push({ kind: "age", days });
   }
   const next: CaseNextAction = !c.owner_user_id ? "assign" : !due ? "set_due" : "open_case";
