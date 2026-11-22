@@ -401,8 +401,9 @@ async def _wait_ready(
 async def _launch(sandbox: Any, resolved: ResolvedService, spec: ServiceSpec) -> None:
     from opensandbox.models.execd import RunCommandOpts
 
-    from app.services.sandbox_workspace.registry_mirror import command_env
+    from app.services.sandbox_workspace.registry_mirror import command_env, write_maven_settings
 
+    await write_maven_settings(sandbox)
     where = _join(resolved.checkout, spec.cwd)
     cwd = f"{remote.REMOTE_WORKSPACE}/{where}" if where else remote.REMOTE_WORKSPACE
     # The registry mirror's variables on the process itself: a pooled container does not pass the create's env on.

@@ -7,8 +7,10 @@
  * carries a new setup version (`ctem-loop-1`), a centred dialog proposes the
  * setup. The server decides (GET /organization-context/setup-prompt):
  * administrators only, XTM One mode only, once per instance per version. Any
- * answer is recorded server side and the dialog never comes back for that
- * version, for anyone.
+ * answer (Dismiss, Later, Set up now) is recorded server side and the dialog
+ * never comes back for that version, for anyone. The close cross, Escape and
+ * an overlay click record nothing: they only close it for this page, and a
+ * reload or a new sign-in proposes it again until an answer is recorded.
  *
  * "Set up now" opens the guided CTEM loop setup (`CtemLoopSetupDialog`): six
  * steps, each saved on its own, nothing switched on before the last one.
@@ -49,8 +51,9 @@ export function OrganizationSetupPrompt() {
   const prompt = useOrganizationSetupPrompt(Boolean(isAdmin && isXtmOne && !user?.impersonating));
   const answer = useAnswerOrganizationSetupPrompt();
   const [guided, setGuided] = useState(false);
+  const [closed, setClosed] = useState(false);
 
-  const open = Boolean(prompt.data?.propose) && !answer.isSuccess;
+  const open = Boolean(prompt.data?.propose) && !answer.isSuccess && !closed;
   const reply = (outcome: OrganizationSetupAnswer) =>
     answer.mutate(outcome, {
       onSettled: () => {
@@ -61,7 +64,7 @@ export function OrganizationSetupPrompt() {
   if (guided) return <CtemLoopSetupDialog open onOpenChange={(next) => !next && setGuided(false)} />;
   if (!open) return null;
   return (
-    <Dialog open onOpenChange={(next) => !next && !answer.isPending && reply("later")}>
+    <Dialog open onOpenChange={(next) => !next && !answer.isPending && setClosed(true)}>
       <DialogContent size="md" data-testid="organization-setup-prompt">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
