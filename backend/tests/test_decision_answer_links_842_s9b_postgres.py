@@ -297,3 +297,32 @@ async def test_an_email_target_gets_the_links_as_text_and_answers_with_the_email
     async with sessions() as session:
         assert await cards.has_sent_cards(session, decision.id) is False
     assert datetime.now(UTC) - row.answered_at < timedelta(minutes=5)
+
+
+async def test_the_text_link_page_answers_an_option_and_an_option_link_answers_its_own_only(
+    sessions: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The text link's page shows the shared card: an option picked there answers; an option link refuses another."""
+    monkeypatch.setattr(decision_router, "schedule_card_refresh", lambda _id: None)
+    async with sessions() as session:
+        alice, _bob, agent = await _people(session)
+        item = await _waiting_item(session, alice, agent, _TARGETS["one_to_one_chat"])
+        decision = (await session.execute(select(Decision).where(Decision.source_id == item.id))).scalar_one()
+    expires = int(time.time()) + 3600
+    ship = answer_links.mint_token(decision.id, "A", alice.id, "teams_chat", expires)
+    text = answer_links.mint_token(decision.id, answer_links.TEXT_OPTION, alice.id, "teams_chat", expires)
+    async with sessions() as session:
+        person = await session.get(User, alice.id)
+        with pytest.raises(HTTPException) as other:
+            await decisions_api.answer_by_link(
+                ship, decisions_api.LinkAnswer(option="B"), user=person, db=session, _agentic_gate=None
+            )
+        assert other.value.status_code == 400
+        assert (await session.get(Decision, decision.id)).status == "open"
+    async with sessions() as session:
+        person = await session.get(User, alice.id)
+        answered = await decisions_api.answer_by_link(
+            text, decisions_api.LinkAnswer(option="B"), user=person, db=session, _agentic_gate=None
+        )
+        assert answered["answered_now"] is True
+        assert answered["decided"]["option"] == "B"

@@ -24,13 +24,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * which option, when) and answers nothing. A link sent to someone else, an
  * expired link and a link that is not valid each say so, with nothing to act
  * on. The link to the source sits under every state the reader may act from.
+ *
+ * An open decision is drawn by the shared `DecisionCard` (one component for
+ * every human gate, #842 S3): the question, the context as Markdown, the
+ * deadline, the options with the recommended one, and the free text open on
+ * the "Answer with text" link. Only the states proper to a link (recording,
+ * decided, refused) are drawn here.
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Icon, Spinner, Textarea } from "@filigran/design-system";
+import { Icon, Spinner } from "@filigran/design-system";
 
+import { DecisionCard, type DecisionView } from "@/components/decisions/DecisionCard";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
   TEXT_LINK_OPTION,
   linkErrorStatus,
@@ -42,6 +48,21 @@ import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 
 type Refusal = "elsewhere" | "invalid" | "expired" | "failed";
+type Translate = ReturnType<typeof useFormatter>["t_i18n"];
+
+/** An open link as the shared card reads it. */
+function linkDecisionView(view: DecisionLinkView, t_i18n: Translate): DecisionView {
+  const ask = view.ask ?? {};
+  return {
+    question: ask.question?.trim() || t_i18n("An agent waits for your decision."),
+    context: (ask.context ?? "").split("\n"),
+    options: ask.options ?? [],
+    recommendation: ask.recommendation ?? null,
+    deadline: view.deadline ?? ask.deadline ?? null,
+    links: ask.links ?? [],
+    freeText: view.option === TEXT_LINK_OPTION ? "open" : "none",
+  };
+}
 
 function refusalOf(error: unknown): Refusal {
   const status = linkErrorStatus(error);
@@ -51,18 +72,25 @@ function refusalOf(error: unknown): Refusal {
   return "failed";
 }
 
-/** The frame every state of the page shares: one centred card, the source link under it. */
-function Frame({ children, sourceLink }: { children: React.ReactNode; sourceLink?: string | null }) {
+/**
+ * The frame every state of the page shares: one centred card, the source link under it.
+ * `card`: the children are the shared decision card, which draws its own border.
+ */
+function Frame({ children, sourceLink, card = false }: { children: React.ReactNode; sourceLink?: string | null; card?: boolean }) {
   const { t_i18n } = useFormatter();
   return (
     <main className="flex min-h-dvh items-center justify-center bg-elevation-default px-4 py-8 text-default-primary">
       <div className="w-full max-w-lg space-y-3">
-        <section
-          className="space-y-3 rounded-sm border border-elevation-subtle bg-elevation-default p-4"
-          data-testid="decision-link"
-        >
-          {children}
-        </section>
+        {card ? (
+          <div data-testid="decision-link">{children}</div>
+        ) : (
+          <section
+            className="space-y-3 rounded-sm border border-elevation-subtle bg-elevation-default p-4"
+            data-testid="decision-link"
+          >
+            {children}
+          </section>
+        )}
         {sourceLink && (
           <div className="flex justify-center">
             <Button asChild variant="link" className="gap-1" data-testid="decision-link-source">
@@ -185,8 +213,6 @@ export default function DecisionLink() {
   const { t_i18n } = useFormatter();
   const link = useDecisionLink(token);
   const answer = useAnswerDecisionLink(token);
-  const [text, setText] = useState("");
-  const textId = useId();
   // One answer per page load: React's double effect in development and a
   // refetch never send the option twice (the server is single use anyway).
   const sent = useRef(false);
@@ -248,47 +274,27 @@ export default function DecisionLink() {
     );
   }
 
-  if (isOptionLink) {
-    return (
-      <Frame sourceLink={view.source_link}>
-        <Question view={view} />
-        <div className="flex items-center gap-2" data-testid="decision-link-state" data-state="recording">
-          <Spinner size="sm" label={t_i18n("Recording your answer: {option}", { option: view.option_label || view.option })} />
-          <span className="content-compact text-default-secondary">
-            {t_i18n("Recording your answer: {option}", { option: view.option_label || view.option })}
-          </span>
-        </div>
-      </Frame>
-    );
-  }
-
-  const send = () => {
-    const words = text.trim();
-    if (!words) return;
-    answer.mutate({ text: words });
-  };
+  const recording = isOptionLink || answer.isPending;
+  const option = isOptionLink ? view.option_label || view.option : null;
 
   return (
-    <Frame sourceLink={view.source_link}>
-      <Question view={view} />
-      {view.ask?.context?.trim() && (
-        <p className="content-compact whitespace-pre-line break-words text-default-secondary" data-testid="decision-link-context">
-          {view.ask.context.trim()}
-        </p>
-      )}
-      <div className="space-y-1.5" data-testid="decision-link-text">
-        <Label htmlFor={textId} className="text-default-secondary">
-          {t_i18n("Your answer")}
-        </Label>
-        <Textarea id={textId} aria-label={t_i18n("Your answer")} value={text} rows={4} onChange={(e) => setText(e.target.value)} />
-        <div className="flex justify-end">
-          <Button className="gap-1" disabled={!text.trim() || answer.isPending} aria-busy={answer.isPending} onClick={send}>
-            {answer.isPending && <Spinner size="sm" tone="inherit" />}
-            {!answer.isPending && <Icon name="send" size={16} aria-hidden />}
-            {t_i18n("Send answer")}
-          </Button>
-        </div>
-      </div>
+    <Frame sourceLink={view.source_link} card>
+      <DecisionCard
+        view={linkDecisionView(view, t_i18n)}
+        canAnswer
+        pending={recording}
+        onAnswer={({ option: picked, text }) => answer.mutate({ option: picked, text })}
+        testId="decision-link-card"
+      >
+        {recording && (
+          <div className="flex items-center gap-2" data-testid="decision-link-state" data-state="recording">
+            <Spinner size="sm" label={option ? t_i18n("Recording your answer: {option}", { option }) : t_i18n("Recording your answer")} />
+            <span className="content-compact text-default-secondary">
+              {option ? t_i18n("Recording your answer: {option}", { option }) : t_i18n("Recording your answer")}
+            </span>
+          </div>
+        )}
+      </DecisionCard>
     </Frame>
   );
 }

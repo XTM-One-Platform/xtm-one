@@ -42,7 +42,14 @@ export interface DecisionLinkView {
   status: string;
   option: string;
   option_label: string | null;
-  ask: { question?: string | null; context?: string | null; options?: WorkItemAskOption[] | null };
+  ask: {
+    question?: string | null;
+    context?: string | null;
+    options?: WorkItemAskOption[] | null;
+    recommendation?: string | null;
+    deadline?: string | null;
+    links?: { label: string; url: string }[] | null;
+  };
   deadline: string | null;
   source_link: string | null;
   decided: DecisionLinkDecided | null;
@@ -71,9 +78,12 @@ export function useDecisionLink(token: string) {
   });
 }
 
-/** Answer with the link's option (and the text of a text link). The page says the outcome itself. */
+/**
+ * Answer with the link's option, or on the text link's page with an option picked on the card
+ * or a free text. The page says the outcome itself.
+ */
 export function useAnswerDecisionLink(token: string) {
-  return useMutation<DecisionLinkView, Error, { text?: string }>({
+  return useMutation<DecisionLinkView, Error, { option?: string; text?: string }>({
     mutationFn: (body) => api.post(`/decisions/links/${encodeURIComponent(token)}/answer`, body),
     meta: { suppressGlobalErrorToast: true },
   });

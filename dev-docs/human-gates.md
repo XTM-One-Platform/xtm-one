@@ -560,7 +560,10 @@ through `decision_router.answer_decision` with the link's surface
 no longer open shows its decided state and answers nothing (the engine's own
 row lock decides a race: the loser gets 409 internally and the decided view).
 The page is `frontend/src/pages/DecisionLink.tsx` (`/decide/:token`, outside
-the shell, sign-in return). `app/services/decision_graph_cards.py` sends: the
+the shell, sign-in return); an open decision is drawn by the shared
+`DecisionCard` (context as Markdown, deadline, options, recommended pill), the
+free text open on the `text` link, where an option picked on the card is sent
+as `option` (an option link refuses any other option with 400). `app/services/decision_graph_cards.py` sends: the
 scheduler tick (`deliver_work_item_cards`, next to the notification delivery)
 posts the card of every open work item decision whose `payload.notify` names a
 Microsoft integration and a `chat_id`, a `team_id` + `channel_id` or, with

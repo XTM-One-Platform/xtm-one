@@ -59,6 +59,9 @@ class DecisionAnswer(BaseModel):
 class LinkAnswer(BaseModel):
     #: The free answer of a ``text`` link; with an option link, what goes with it.
     text: Annotated[str | None, Field(max_length=8000)] = None
+    #: An option picked on the ``text`` link's page (the shared decision card shows them all);
+    #: an option link answers its signed option only.
+    option: Annotated[str | None, Field(max_length=200)] = None
 
 
 @router.get("/backfill")
@@ -171,7 +174,12 @@ async def answer_by_link(
     link, row = await _open_link(db, token, user)
     decision_id = row.id
     if row.status == "open":
-        option = None if link.option == answer_links.TEXT_OPTION else link.option
+        if link.option == answer_links.TEXT_OPTION:
+            option = (body.option or "").strip() or None
+        elif body.option and body.option.casefold() != link.option.casefold():
+            raise HTTPException(status_code=400, detail="This link answers one option only.")
+        else:
+            option = link.option
         text = (body.text or "").strip() or None
         if option is None and not text:
             raise HTTPException(status_code=400, detail="Write an answer first.")

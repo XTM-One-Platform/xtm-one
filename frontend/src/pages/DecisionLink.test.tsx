@@ -98,12 +98,62 @@ describe("DecisionLink", () => {
       view({ option: "text", status: "answered", decided: { ...DECIDED, option: null, label: null, text: "Next week" }, answered_now: true }),
     );
     draw();
-    const field = await screen.findByLabelText("Your answer");
+    const field = await screen.findByLabelText("Or answer in your own words");
     expect(api.post).not.toHaveBeenCalled();
     fireEvent.change(field, { target: { value: "Next week" } });
     fireEvent.click(screen.getByRole("button", { name: /Send answer/ }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/decisions/links/tok/answer", { text: "Next week" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/decisions/links/tok/answer", { option: undefined, text: "Next week" }),
+    );
     expect(await screen.findByText("Next week")).toBeInTheDocument();
+  });
+
+  it("draws an open decision with the shared decision card: context as Markdown, deadline, recommended option", async () => {
+    api.get.mockResolvedValue(
+      view({
+        option: "text",
+        option_label: null,
+        deadline: "2026-11-24T17:00:00Z",
+        ask: {
+          ...ASK,
+          recommendation: "A",
+          context: "Three windows are **free** this week. See the [change calendar](https://example.org/cal).",
+        },
+      }),
+    );
+    draw();
+    const card = await screen.findByTestId("decision-link-card");
+    expect(card).toBeInTheDocument();
+    expect(screen.getByTestId("decision-link-card-question").textContent).toBe("Ship the release tonight?");
+    expect(screen.getByTestId("decision-link-card-deadline")).toBeInTheDocument();
+    expect(screen.getByTestId("decision-link-card-recommended")).toBeInTheDocument();
+    expect(screen.getAllByTestId("decision-link-card-option")).toHaveLength(2);
+    const context = screen.getByTestId("decision-link-card-context");
+    expect(context.textContent).not.toContain("**");
+    expect(screen.getByRole("link", { name: "change calendar" })).toHaveAttribute("href", "https://example.org/cal");
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("answers an option picked on the text link's card", async () => {
+    api.get.mockResolvedValue(view({ option: "text", option_label: null }));
+    api.post.mockResolvedValue(view({ option: "text", status: "answered", decided: { ...DECIDED, option: "B", label: "Wait for Monday" }, answered_now: true }));
+    draw();
+    fireEvent.click(await screen.findByRole("button", { name: /Wait for Monday/ }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/decisions/links/tok/answer", { option: "B", text: undefined }),
+    );
+    expect(await screen.findByText("Your answer is recorded.")).toBeInTheDocument();
+  });
+
+  it("shows the option link's card disabled while the answer is recorded", async () => {
+    api.get.mockResolvedValue(view());
+    api.post.mockReturnValue(new Promise(() => {}));
+    draw();
+    expect(await screen.findByTestId("decision-link-card")).toBeInTheDocument();
+    expect(screen.getByTestId("decision-link-state")).toHaveAttribute("data-state", "recording");
+    for (const option of screen.getAllByTestId("decision-link-card-option")) expect(option).toBeDisabled();
+    expect(screen.queryByLabelText("Or answer in your own words")).not.toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   it.each([
