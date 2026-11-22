@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import functools
 import ipaddress
+import mimetypes
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -88,10 +89,11 @@ ALLOWED_IMAGE_TYPES: dict[str, str] = {
 
 #: The icon types the download also takes (a vendor's ``favicon.ico`` is
 #: often its only public logo). A slide cannot carry ICO, so the bytes are
-#: converted to PNG (:func:`ico_to_png`) before anything is stored.
+#: converted to PNG (:func:`ico_to_png`) before anything is stored. The
+#: registered ``.ico`` type is read from the standard library's built-in
+#: table (no system file), beside the common ``image/x-icon``.
 ICON_IMAGE_TYPES: dict[str, str] = {
-    "image/x-icon": ".ico",
-    "image/vnd.microsoft.icon": ".ico",
+    mime: ".ico" for mime in ("image/x-icon", mimetypes.MimeTypes().guess_type("icon.ico")[0]) if mime
 }
 _ICO_MAGIC = b"\x00\x00\x01\x00"
 #: Past this an icon is not decoded (an ICO frame is at most 256x256; a PNG
