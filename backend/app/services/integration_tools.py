@@ -70,6 +70,7 @@ from app.integrations.providers.cybersixgill import (
 )
 from app.integrations.providers.cyware import build_tools as cyware_tools
 from app.integrations.providers.databricks import build_tools as databricks_tools
+from app.integrations.providers.dealhub import build_tools as dealhub_tools
 from app.integrations.providers.defender import build_tools as defender_tools
 from app.integrations.providers.discord_bot import build_tools as discord_bot_tools
 from app.integrations.providers.docusign import build_tools as docusign_tools
@@ -166,7 +167,6 @@ from app.integrations.providers.shodan import build_tools as shodan_tools
 from app.integrations.providers.slack import build_tools as slack_tools
 from app.integrations.providers.slack_bot import build_tools as slack_bot_tools
 from app.integrations.providers.socradar import build_tools as socradar_tools
-from app.integrations.providers.spendesk import build_tools as spendesk_tools
 from app.integrations.providers.splunk import build_tools as splunk_tools
 from app.integrations.providers.sublime import build_tools as sublime_tools
 from app.integrations.providers.sumologic import build_tools as sumologic_tools
@@ -1003,6 +1003,7 @@ PROVIDER_TOOLS = {
     "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "dealhub": dealhub_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "netsuite": netsuite_tools,
@@ -1050,7 +1051,6 @@ PROVIDER_TOOLS = {
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
     "airwallex": airwallex_tools,
-    "spendesk": spendesk_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1118,11 +1118,11 @@ _PERSIST_FILE_PROVIDERS = frozenset(
     {
         "aikido",
         "airwallex",
-        "spendesk",
         "anyrun",
         "ashby",
         "bluesky",
         "concord",
+        "dealhub",
         "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
@@ -2991,28 +2991,6 @@ async def _get_token(
         airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return airwallex_token_from_config(airwallex_secret, airwallex_extra)
 
-    # --- Spendesk (OAuth2 client credentials, production or sandbox host) ---
-    # The client secret is the API key column; the environment and the client
-    # id live in extra_config. The provider gets ``environment||client_id||secret``
-    # (partial when a part is missing, so a call names what to fix).
-    if provider == "spendesk":
-        from app.integrations.providers.spendesk import (
-            token_from_config as spendesk_token_from_config,
-        )
-
-        spendesk_extra = {}
-        if integ.extra_config_enc:
-            try:
-                spendesk_extra = await _reveal_extra(integ)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to decrypt extra_config for '%s' (spendesk): %s",
-                    integ.name,
-                    format_exception_message(exc),
-                )
-        spendesk_secret = (await reveal_field(integ, "api_key_enc")) or ""
-        return spendesk_token_from_config(spendesk_secret, spendesk_extra)
-
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
     # (admin.api.crowdsec.net) each use their own API key, both sent in the
@@ -4395,6 +4373,8 @@ async def _get_token(
     extra_field_providers: dict[str, str] = {
         "credly": "organization_id",
         "concord": "organization_id",
+        # DealHub: the instance host (api.dealhub.io when unset) as ``host||token``.
+        "dealhub": "instance_host",
         "google_search": "search_engine_id",
         "hibob": "service_user_id",
         # HackerOne uses HTTP Basic auth: the API token *identifier* (username)
