@@ -37,6 +37,27 @@ def test_every_capability_maps_to_types_the_catalog_uses() -> None:
         assert slots.providers_for(key, PROVIDER_CATALOG), key
 
 
+def test_filigran_ai_is_never_a_candidate_of_any_capability() -> None:
+    """An extraction model, not a data source: its threat_intel type stays for the catalog browser only."""
+    assert "threat_intel" in PROVIDER_CATALOG["filigran_ai"]["integration_types"]
+    for key in slots.CAPABILITIES:
+        assert "filigran_ai" not in slots.providers_for(key, PROVIDER_CATALOG), key
+
+
+def test_an_entry_flagged_out_of_capability_slots_is_never_offered() -> None:
+    catalog = {**_CATALOG, "extractor": {"integration_types": ["threat_intel"], "capability_slots": False}}
+    assert slots.providers_for("vulnerability_intelligence", catalog) == frozenset({"intel"})
+    states = slots.slot_states("Triage", {}, [_ref("x1", "extractor")], catalog)
+    assert states[0].capability == "vulnerability_intelligence"
+    assert states[0].candidates == []
+    assert states[0].state == slots.SLOT_UNAVAILABLE
+
+
+def test_jira_fills_the_ticketing_slot_and_keeps_its_repository_type() -> None:
+    assert "jira" in slots.providers_for("ticketing", PROVIDER_CATALOG)
+    assert "repository" in PROVIDER_CATALOG["jira"]["integration_types"]
+
+
 def test_every_slot_names_a_known_capability() -> None:
     for role, caps in slots.ROLE_SLOTS.items():
         assert caps, role
