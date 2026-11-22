@@ -50,6 +50,33 @@ def _slug(source: str) -> str:
     return source.replace("_", "-")
 
 
+def _state_reason(c: dict) -> str:
+    """Why a connector stands where it does, from the flags OpenCRQ answers.
+
+    OpenCRQ derives the state in order, first match wins (module
+    connectors/status.ts): no deployment credentials, then no tenant
+    binding, then the switch, then the runs. Unknown flags give no reason.
+    """
+    state = c.get("state")
+    stream = c.get("source") == _STREAM_SOURCE
+    if state == "unavailable" and c.get("platformConfigured") is False:
+        return "the OpenCRQ deployment holds no credentials for it for this tenant"
+    if state == "not_configured" and c.get("tenantConfigured") is False:
+        if stream:
+            return "no live stream and service account selected in this tenant"
+        return "no service account bound in this tenant"
+    if state == "never_synced":
+        if c.get("enabled") is False:
+            return "switched off in this tenant"
+        if not stream:
+            return "configured, no sync has finished yet"
+    if state == "failing":
+        if stream:
+            return "OpenCTI rejected the stream token"
+        return "the last sync failed"
+    return ""
+
+
 def _fmt_run(r: dict) -> str:
     line = f"- {r.get('status', '?')}, enqueued {r.get('enqueuedAt') or '?'}"
     if r.get("finishedAt"):
@@ -90,6 +117,9 @@ def register(
                 f"- {source} ({c.get('domain', '?')}, {c.get('mechanism', '?')}): "
                 f"{c.get('state', '?')}"
             )
+            reason = _state_reason(c)
+            if reason:
+                line += f" ({reason})"
             last = c.get("lastRun") or {}
             if last:
                 line += (

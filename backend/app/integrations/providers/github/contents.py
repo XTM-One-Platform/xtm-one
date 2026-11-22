@@ -1196,14 +1196,21 @@ async def _reconcile_checkout_drift(
     keep the record's commit)``, or the refusal. The last is true when the
     branch changed files of the checkout this commit does not carry: the
     record then stays at its commit, so the next commit merges them too
-    (#10061). The tip is read here; when it is the record's commit, nothing
-    else is requested and the change set is returned as it is.
+    (#10061). The tip is read here; when it is the record's commit and no
+    commit made from the checkout moved the record past the commit the tree
+    was read at, nothing else is requested and the change set is returned as
+    it is. A moved record (``base_commit`` set and not ``commit``) names a
+    commit whose files the workspace never held for the paths those commits
+    did not write, so they are merged against the baseline even then (#1040).
     """
     from .checkout_drift import reconcile
 
     recorded = _coerce_str(getattr(record, "commit", ""))
     if not _GIT_OBJECT_ID_RE.fullmatch(recorded):
         return files, delete_paths, "", {}, "", False
+    baseline = _coerce_str(getattr(record, "base_commit", ""))
+    if not _GIT_OBJECT_ID_RE.fullmatch(baseline) or baseline == recorded:
+        baseline = ""
     repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
     async with egress_client(timeout=60) as client:
         resolved, err = await _resolve_branch(client, headers, repo, owner, name, branch)
@@ -1221,7 +1228,7 @@ async def _reconcile_checkout_drift(
         )
         ref_object = _json_object(resp).get("object") if not err else None
         tip = _coerce_str(ref_object.get("sha")) if isinstance(ref_object, dict) else ""
-        if not _GIT_OBJECT_ID_RE.fullmatch(tip) or tip == recorded:
+        if not _GIT_OBJECT_ID_RE.fullmatch(tip) or (tip == recorded and not baseline):
             return files, delete_paths, "", {}, "", False
         writes = {str(item["path"]): item["content"].data for item in files}
         done = await reconcile(
@@ -1240,6 +1247,8 @@ async def _reconcile_checkout_drift(
                 str(path): _coerce_str(getattr(meta, "sha256", ""))
                 for path, meta in (getattr(record, "files", None) or {}).items()
             },
+            baseline=baseline,
+            committed=list(getattr(record, "branch", None) or ()),
         )
     if isinstance(done, str):
         return done

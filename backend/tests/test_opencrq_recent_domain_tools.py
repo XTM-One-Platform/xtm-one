@@ -477,7 +477,8 @@ READS = {
         [_sent("connectors.listConnectors")],
         ("connectors.listConnectors",),
         (
-            "nist (vulnerability, scheduled_pull): never_synced; schedule daily, "
+            "nist (vulnerability, scheduled_pull): never_synced "
+            "(configured, no sync has finished yet); schedule daily, "
             "next 2026-10-15T06:00:00.000Z; feeds cves",
             f"{BASE}/{TENANT}/integrations/connectors/nist/overview",
         ),

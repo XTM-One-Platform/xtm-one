@@ -17,6 +17,7 @@ from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
+from app.services import ctem_ticketing as ticketing
 
 ORG = uuid.uuid4()
 NOW = datetime.now(UTC)
@@ -100,6 +101,12 @@ def api(monkeypatch):
     monkeypatch.setattr(store, "list_cases", _list)
     monkeypatch.setattr(store, "get_case", _get)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
+
+    async def _ticketing_target(_db):
+        # The profile read (#1032) is covered in test_ctem_ticketing; the fake session has no execute().
+        return {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH}
+
+    monkeypatch.setattr(ticketing, "ticketing_target", _ticketing_target)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
 

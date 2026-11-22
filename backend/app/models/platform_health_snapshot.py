@@ -37,3 +37,6 @@ class PlatformHealthSnapshot(Base):
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+    #: When the platform last restarted as its registration showed it (version changed, or
+    #: heartbeat back after a gap): its availability checks open nothing for a grace after (#958).
+    restarted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
