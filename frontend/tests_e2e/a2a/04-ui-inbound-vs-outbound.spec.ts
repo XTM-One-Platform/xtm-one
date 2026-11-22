@@ -1043,9 +1043,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
       await route.fulfill({ response, json });
     });
     const lookup = (url: URL) => url.pathname.endsWith(`/api/v1/a2a/client/${outboundReg.id}`);
-    await page.route(lookup, (route) =>
-      recovered ? route.fallback() : route.fulfill({ status: 503, body: '' }),
-    );
+    await page.route(lookup, (route) => (recovered ? route.fallback() : route.fulfill({ status: 503, body: '' })));
     const failed = page.waitForResponse((r) => lookup(new URL(r.url())) && r.status() === 503);
     await page.goto(`/agents/${delegatingAgent.id}`);
     await failed;
