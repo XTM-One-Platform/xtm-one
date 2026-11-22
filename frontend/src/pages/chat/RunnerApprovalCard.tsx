@@ -45,7 +45,7 @@ import type { RunnerApprovalRequest } from "@/types";
 type Translate = ReturnType<typeof useFormatter>["t_i18n"];
 
 /** The runner's four answers as option keys: what each one sends. */
-export const RUNNER_ANSWERS: Record<string, { approved: boolean; remember: boolean }> = {
+const RUNNER_ANSWERS: Record<string, { approved: boolean; remember: boolean }> = {
   approve: { approved: true, remember: false },
   always_allow: { approved: true, remember: true },
   reject: { approved: false, remember: false },
@@ -82,7 +82,7 @@ export function runnerApprovalOptions(request: RunnerApprovalRequest, t_i18n: Tr
 }
 
 /** A held command as the card reads it. Pure: tests read it. */
-export function runnerApprovalView(request: RunnerApprovalRequest, remainingS: number, t_i18n: Translate): DecisionView {
+function runnerApprovalView(request: RunnerApprovalRequest, remainingS: number, t_i18n: Translate): DecisionView {
   const kindLabel = t_i18n(RUNNER_COMMAND_KIND_LABELS[request.kind] ?? request.kind);
   return {
     question: t_i18n("Run this {kind} on {name}?", {
