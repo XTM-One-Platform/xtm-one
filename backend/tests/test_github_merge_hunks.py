@@ -300,6 +300,32 @@ async def test_a_landed_merge_names_the_catalog_keys_the_branch_removed() -> Non
     assert result.rstrip().splitlines()[-1].startswith("Final head: ")
 
 
+def test_merge_path_ref_first_keeps_the_refs_key_order() -> None:
+    """#1116: main merged into a PR branch keeps main's appended keys first, the branch's own keys after."""
+    base, ours, theirs = (
+        _catalog(CATALOG_BASE),
+        _catalog({**CATALOG_BASE, "pr1": "p", "pr2": "p"}),
+        _catalog({**CATALOG_BASE, "main1": "m", "main2": "m"}),
+    )
+    default = merge_path(CATALOG, base.encode(), ours.encode(), theirs.encode())
+    assert list(json.loads(default.merged or "{}"))[-4:] == ["pr1", "pr2", "main1", "main2"]
+    merge = merge_path(CATALOG, base.encode(), ours.encode(), theirs.encode(), ref_first=True)
+    assert merge.clean and list(json.loads(merge.merged or "{}"))[-4:] == ["main1", "main2", "pr1", "pr2"]
+
+
+@pytest.mark.asyncio
+async def test_a_landed_merge_of_main_keeps_mains_catalog_order() -> None:
+    """#1116: the branch's diff against main after the merge holds the branch's keys only, appended last."""
+    ours = {**CATALOG_BASE, "pr1": "p"}
+    theirs = {**CATALOG_BASE, "main1": "m", "main2": "m"}
+    fake = FakeGitHub({CATALOG: _catalog(CATALOG_BASE)}, {CATALOG: _catalog(ours)}, {CATALOG: _catalog(theirs)})
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await _tool("merge_github_branch")(repo="acme/app", branch="feat/x")
+
+    assert result.startswith("Merged 'main' into 'feat/x'"), result
+    assert fake.sides["ours"][CATALOG] == _catalog({**theirs, "pr1": "p"})
+
+
 @pytest.mark.asyncio
 async def test_an_executable_script_on_every_side_merges_line_by_line() -> None:
     # createCommitOnBranch keeps the 100755 mode of the path it overwrites: no hand resolution is needed.
@@ -525,10 +551,12 @@ async def test_a_path_past_the_time_budget_is_a_conflict_and_the_paths_before_it
     monkeypatch.setattr(merge_hunks, "LINE_MERGE_SECONDS", 0.2)
     real = merge_hunks.merge_path
 
-    def slow_on_b(path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None) -> merge_hunks.PathMerge:
+    def slow_on_b(
+        path: str, base: bytes | None, ours: bytes | None, theirs: bytes | None, *, ref_first: bool = False
+    ) -> merge_hunks.PathMerge:
         if path == "b.py":
             time.sleep(1.0)
-        return real(path, base, ours, theirs)
+        return real(path, base, ours, theirs, ref_first=ref_first)
 
     monkeypatch.setattr(merge_hunks, "merge_path", slow_on_b)
     paths = ["a.py", "b.py", "c.py"]
