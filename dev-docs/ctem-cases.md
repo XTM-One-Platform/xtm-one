@@ -324,15 +324,21 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 ### 7.0 Shared visual language (UX round 1 B4, B5, B7; round 2 B1)
 
-- **One colour per state, everywhere** (board, list badge, case page, widget),
-  through the DS `Chip` `severity` and its feedback tokens, never a hand chip:
-  needs attention `medium` (alert), in progress `info`, mitigated, watching
-  `low` with the DS `eye` icon as the Chip's own `startIcon` (inside the chip,
-  same left edge and baseline as its siblings) and the
-  `feedback-success-tertiary` segment on every counts bar (#857, UX rounds 1
-  B3 and 2 B1: no free Chip severity, LIBRARY-FEEDBACK F06), resolved `low` (success,
-  `feedback-success-primary` segment), accepted risk `neutral`. AI purple is never used on Cases (it is
-  the AI colour only): crown jewels are a `neutral` Chip with the shield icon.
+- **One colour per state and per priority, everywhere** (board, list badge,
+  case page, widget, signal state of the loop trace), through the shared
+  outlined `ToneBadge` (`components/ui/tone-badge.tsx`), the hot colours Work
+  items and Tasks use, never the pastel severity tiles of the DS `Chip` (Sam,
+  22 Nov 2026, #1267): states needs attention orange, in progress blue,
+  mitigated, watching yellow with the DS `eye` icon inside the badge, resolved
+  green, accepted risk neutral; priorities critical red, high orange, medium
+  yellow, low green; loop severity P1 red, P2 orange, P3 yellow. Each tone is a
+  /10 wash of the hue, an edge and a label in its `-tertiary` token (4.5:1 text,
+  3:1 edge on every elevation surface in both themes, guard
+  `tests_unit/tone-badge-contrast.test.ts`). Counts bar segments take the same
+  hue (needs attention `feedback-warning-primary`, in progress
+  `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
+  `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
+  colour only): crown jewels are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
 - **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One

@@ -2,30 +2,28 @@
 
 /**
  * The visual language every CTEM Cases screen shares (dev-docs/ctem-cases.md
- * section 7.0): one DS Chip severity per state and per priority, owners as the
- * DS Avatar, "Unassigned" in secondary text, never a warning colour.
+ * section 7.0): one hot tone per state and per priority (the outlined
+ * ToneBadge Work items and Tasks use, #1267), owners as the DS Avatar,
+ * "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Chip, Icon } from "@filigran/design-system";
+import { Avatar, Icon } from "@filigran/design-system";
+import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO } from "@/lib/constants";
 import { formatList } from "@/lib/format-list";
 
-type ChipSeverity = "neutral" | "info" | "low" | "medium" | "high" | "critical";
-
 /**
- * One colour per state, everywhere (7.0): alert, info, success, neutral. The DS
- * Chip has six severities and no free one that means "mitigated" (high and
- * critical read as danger; LIBRARY-FEEDBACK F06), so mitigated, watching keeps
- * the success family and is told apart from resolved by its DS eye icon and its
- * own segment token (UX round 1 of #857, B3).
+ * One colour per state, everywhere (7.0, #1267): needs attention orange, in
+ * progress blue, mitigated, watching yellow (still watched, with the DS eye
+ * icon), resolved green, accepted risk neutral.
  */
-const CASE_STATE_SEVERITY: Record<CtemCaseState, ChipSeverity> = {
-  needs_attention: "medium",
-  in_progress: "info",
-  mitigated_watching: "low",
-  resolved: "low",
+const CASE_STATE_TONE: Record<CtemCaseState, HotTone> = {
+  needs_attention: "orange",
+  in_progress: "blue",
+  mitigated_watching: "yellow",
+  resolved: "green",
   accepted_risk: "neutral",
 };
 
@@ -38,11 +36,12 @@ export const CASE_STATE_LABEL: Record<CtemCaseState, string> = {
   accepted_risk: "Accepted risk",
 };
 
-const CASE_PRIORITY_SEVERITY: Record<CtemCasePriority, ChipSeverity> = {
-  critical: "critical",
-  high: "high",
-  medium: "medium",
-  low: "low",
+/** One colour per priority: critical red, high orange, medium yellow, low green. */
+const CASE_PRIORITY_TONE: Record<CtemCasePriority, HotTone> = {
+  critical: "red",
+  high: "orange",
+  medium: "yellow",
+  low: "green",
 };
 
 export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
@@ -56,9 +55,9 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 /**
- * The DS icon a state carries inside its Chip (the Chip's own startIcon, so the
- * chip keeps the left edge and baseline of its siblings), where its colour
- * alone is shared (UX round 2 of #857, B1).
+ * The DS icon a state carries inside its badge, before the label, so the
+ * badge keeps the left edge and baseline of its siblings (UX round 2 of #857,
+ * B1).
  */
 const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
 
@@ -66,18 +65,15 @@ export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();
   const icon = CASE_STATE_ICON[state];
   return (
-    <Chip
-      label={t_i18n(CASE_STATE_LABEL[state])}
-      severity={CASE_STATE_SEVERITY[state]}
-      className="shrink-0"
-      startIcon={icon ? <Icon name={icon} size={16} aria-hidden /> : undefined}
-    />
+    <ToneBadge tone={CASE_STATE_TONE[state]} icon={icon ? <Icon name={icon} size={16} aria-hidden /> : undefined}>
+      {t_i18n(CASE_STATE_LABEL[state])}
+    </ToneBadge>
   );
 }
 
 export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
   const { t_i18n } = useFormatter();
-  return <Chip label={t_i18n(CASE_PRIORITY_LABEL[priority])} severity={CASE_PRIORITY_SEVERITY[priority]} className="shrink-0" />;
+  return <ToneBadge tone={CASE_PRIORITY_TONE[priority]}>{t_i18n(CASE_PRIORITY_LABEL[priority])}</ToneBadge>;
 }
 
 /**
