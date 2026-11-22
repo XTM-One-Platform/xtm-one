@@ -124,4 +124,26 @@ describe("credential-leak and third-party signals", () => {
     expect(within(facts).queryByTestId("ctem-signal-evidence")?.textContent ?? "").not.toContain("relationship");
     expect(screen.getByTestId("ctem-decision-next-step")).toHaveTextContent("Becomes a case once a crown jewel depends on this organization");
   });
+
+  it("the trace of a third party that opened a case says its crown jewels once, in Decision inputs", async () => {
+    const dependent: CtemSignal = {
+      ...supplier,
+      evidence: { ...supplier.evidence, crown_jewels: ["Customer portal"], opencrq_asset_ids: ["asset-42"] },
+      state: "case_opened",
+      decision: {
+        version: 1,
+        outcome: "case",
+        reason_code: "in_scope",
+        reason_params: { criticality: "high", threshold: "high", confidence: "medium" },
+        reconcile: { assets: [], crown_jewels_named: ["Customer portal"], tech_stack: [] },
+        scope: { criticality: "high", threshold: "high", sources: [] },
+      },
+    };
+    const facts = await renderTrace(dependent);
+    const evidence = within(facts).queryByTestId("ctem-signal-evidence")?.textContent ?? "";
+    expect(evidence).not.toContain("crown_jewels");
+    expect(evidence).not.toContain("opencrq_asset_ids");
+    expect(evidence).not.toContain("asset-42");
+    expect(screen.getByTestId("ctem-decision-inputs")).toHaveTextContent("Customer portal");
+  });
 });

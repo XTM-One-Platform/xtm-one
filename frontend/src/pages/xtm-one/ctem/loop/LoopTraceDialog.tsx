@@ -222,6 +222,13 @@ const THIRD_PARTY_RELATIONSHIP = { provider: "Provider", customer: "Customer", p
 /** The evidence keys a leak or third-party signal's rows say, left out of the raw evidence list. */
 const SUBJECT_ROW_KEYS = ["stix_type", "account_disabled", "report", "relationship", "organization_criticality"] as const;
 
+/**
+ * The dependency keys of a third-party signal the scope gate reads (the crown
+ * jewels that depend on the organization, their OpenCRQ asset ids): Decision
+ * inputs already say them, so the raw evidence list leaves them out.
+ */
+const THIRD_PARTY_SCOPE_KEYS = ["crown_jewels", "opencrq_asset_ids"] as const;
+
 /** One named fact of a leaked identity or a third-party event (CTEM-29-UI). */
 export type SubjectFact =
   | { key: "observed_as"; type: string }
@@ -263,7 +270,8 @@ export function subjectFacts(subjectKind: string, evidence: Record<string, unkno
 /** The evidence keys a set of subject facts already says. */
 function subjectShownKeys(subjectKind: string, evidence: Record<string, unknown> | null | undefined): string[] {
   if (subjectKind !== "identity" && subjectKind !== "third_party") return [];
-  return [...SUBJECT_ROW_KEYS, ...Object.keys(evidence ?? {}).filter((k) => k.endsWith("_fingerprint"))];
+  const scopeKeys = subjectKind === "third_party" ? THIRD_PARTY_SCOPE_KEYS : [];
+  return [...SUBJECT_ROW_KEYS, ...scopeKeys, ...Object.keys(evidence ?? {}).filter((k) => k.endsWith("_fingerprint"))];
 }
 
 /** A subject fact as a row of the signal facts. */
