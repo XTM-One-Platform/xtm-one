@@ -48,7 +48,6 @@ import { MiniTrend } from "./ctem-viz";
 import { CtemScoreTip } from "./CtemScoreTip";
 import { LifecycleHeader } from "./LifecycleHeader";
 import { SignalCounter } from "./loop/SignalCounter";
-import { SignalSourcesButton } from "./loop/SignalSourcesDialog";
 import { assessmentBusy } from "./landing-refresh";
 import { historyWindow, seriesChange } from "./trend-window";
 
@@ -398,8 +397,8 @@ export function LifecycleBandCard({
         <div className="flex flex-wrap items-center gap-4 content-caption text-default-secondary" data-testid="ctem-story-key">
           {signals && (
             <span className="flex min-w-0 basis-full items-center gap-1 @5xl:basis-auto" data-testid="ctem-story-key-signals">
+              {/* The signal sources are a tab of the Signals page the counter opens (#1263): no icon of their own here. */}
               <SignalCounter counts={signals.counts} onOpen={signals.onOpen} />
-              <SignalSourcesButton />
             </span>
           )}
           <span className="flex flex-wrap items-center gap-4 @5xl:ml-auto" data-testid="ctem-story-key-rings">

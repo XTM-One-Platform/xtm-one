@@ -8,7 +8,7 @@ import {
   ArrowUpRight, Plus, ChevronRight, ShieldCheck, Link2,
   Scale, ExternalLink, Sparkles, RefreshCw, type LucideIcon,
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,8 +94,8 @@ import { ActivityFeed } from "./ctem/ActivityFeed";
 import { ActivityRow } from "./ctem/ActivityRow";
 import { deterministicActivity, feedCapacity, mergeActivity, signalActivity } from "./ctem/activity-feed";
 import { useRecentCtemSignals, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
-import { LOOP_PARAM, LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
-import { loopParam, signalsParam } from "./ctem/loop/loop-stages";
+import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
+import { signalsHref } from "./ctem/loop/signals-route";
 import { CoverageMatrixCard } from "./ctem/CoverageMatrixCard";
 import { ExposureStatsCard } from "./ctem/ExposureStatsCard";
 import { ValueBandCard } from "./ctem/ValueBandCard";
@@ -591,25 +591,11 @@ export default function CtemCommandCenter({
   const { data: recentSignals } = useRecentCtemSignals();
   const signalEvents = useMemo(() => signalActivity(recentSignals?.signals), [recentSignals]);
   const activityEvents = useMemo(() => mergeActivity(signalEvents, deterministicEvents), [signalEvents, deterministicEvents]);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const openSignalTrace = useCallback(
-    (signalId: string) => {
-      const next = new URLSearchParams(searchParams);
-      next.set(LOOP_PARAM, loopParam("signal", signalId));
-      setSearchParams(next);
-    },
-    [searchParams, setSearchParams],
-  );
-  // CTEM-01-UI: the signals counter of the lifecycle card opens the signal
-  // list of the loop trace, filtered on the state clicked.
-  const openSignalList = useCallback(
-    (state: CtemSignalState | null) => {
-      const next = new URLSearchParams(searchParams);
-      next.set(LOOP_PARAM, signalsParam(state));
-      setSearchParams(next);
-    },
-    [searchParams, setSearchParams],
-  );
+  // The signals of the loop are a page (#1263): a feed row opens its loop trace there.
+  const openSignalTrace = useCallback((signalId: string) => navigate(signalsHref({ signal: signalId })), [navigate]);
+  // CTEM-01-UI: the signals counter of the lifecycle card opens the Signals
+  // page filtered on the state clicked.
+  const openSignalList = useCallback((state: CtemSignalState | null) => navigate(signalsHref({ state })), [navigate]);
   const signalCounter = useMemo(
     () => (recentSignals ? { counts: recentSignals.counts, onOpen: openSignalList } : null),
     [recentSignals, openSignalList],
@@ -1994,7 +1980,7 @@ export default function CtemCommandCenter({
       />
 
       <PostureExplainDialog open={postureExplainOpen} onOpenChange={setPostureExplainOpen} posture={posture} />
-      <LoopTraceDialog />
+      <LegacySignalLinks />
     </div>
   );
 }

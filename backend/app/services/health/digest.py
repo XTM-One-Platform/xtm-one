@@ -87,6 +87,9 @@ class CycleDigest:
     agentic_findings: dict[str, int] | None = None
     #: A module checker cycle (#101 S15c, dev-docs 13.8): its check report's counts and failing checks.
     check_report: dict[str, Any] | None = None
+    #: The weekly digest (#101 S15e, dev-docs 13.8): its trigger's Modules part, per module, as the
+    #: schedule computed it from the stored reports (``cycles._digest_payload``), never a model's count.
+    modules: dict[str, Any] | None = None
     skipped: list[dict[str, Any]] = field(default_factory=list)
     #: Sections a lower level could not give (not installed, failed): shown as such.
     unavailable: list[str] = field(default_factory=list)
@@ -321,6 +324,21 @@ async def _load_section(db: AsyncSession, name: str, w: Window) -> tuple[Any, bo
         return None, False
 
 
+def _weekly_modules(run: Any) -> tuple[dict[str, Any] | None, bool]:
+    """The Modules part the weekly digest's trigger carries, and whether its read failed.
+
+    ``(None, False)`` for any other run; ``(None, True)`` when the schedule could not read the
+    reports (``modules_unavailable``), which the page shows as unavailable, never as 0.
+    """
+    payload = getattr(run, "trigger_payload", None) if run is not None else None
+    if not isinstance(payload, dict):
+        return None, False
+    if payload.get("modules_unavailable"):
+        return None, True
+    modules = payload.get("modules")
+    return (modules, False) if isinstance(modules, dict) else (None, False)
+
+
 def digest_status(cycle_status: str, run_status: str | None, skipped: list[dict]) -> str:
     """``completed`` only for a completed run with nothing skipped."""
     if cycle_status != "completed":
@@ -379,6 +397,9 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
             setattr(digest, name, value)
         else:
             digest.unavailable.append(name)
+    digest.modules, modules_unavailable = _weekly_modules(run)
+    if modules_unavailable:
+        digest.unavailable.append("modules")
 
     if run is None:
         digest.skipped.append({"what": "run", "reason": cycle.stop_reason or "not_started"})

@@ -9,7 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
-import { LoopTraceDialog, signalSourceLink } from "./LoopTraceDialog";
+import { SignalTraceBody, signalSourceLink } from "./SignalLoopTrace";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -56,7 +56,7 @@ describe("signal source link", () => {
     get.mockResolvedValue(regression);
     renderWithProviders(
       <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
-        <LoopTraceDialog />
+        <SignalTraceBody id={ID} />
       </MemoryRouter>,
     );
     const facts = await screen.findByTestId("ctem-signal-facts");

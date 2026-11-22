@@ -89,8 +89,8 @@ export function useRecentCtemSignals(limit = 6) {
  * `offset`, for the signal list of the loop trace (CTEM-01-UI; #877 UX round 1
  * B2: every signal reachable). Same stream key family as the recent read, so a
  * recorded signal joins the open list without a reload. `triggerPath` narrows
- * it to one trigger path (#1189: the per-path "Open signals" of the sources
- * dialog).
+ * it to one trigger path (#1189). The Signals page (#1263) reads every page of
+ * one path at 200 a time, so its table searches, sorts and exports them all.
  */
 export function useCtemSignalList(state: CtemSignalState | null, limit = 50, enabled = true, triggerPath: string | null = null) {
   const query = `${state ? `&state=${state}` : ""}${triggerPath ? `&trigger_path=${encodeURIComponent(triggerPath)}` : ""}`;

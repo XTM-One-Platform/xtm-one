@@ -15,7 +15,7 @@ from typing import Any, cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health import check_reports, cycles
+from app.services.health import check_reports, cycles, digest
 from app.services.health.check_reports import weekly_module_summary
 
 UNTIL = datetime(2026, 11, 22, 12, 0, tzinfo=UTC)
@@ -133,3 +133,23 @@ async def test_a_failed_read_says_unavailable(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(check_reports, "weekly_module_summary", broken)
     payload = await cycles._digest_payload(cast(AsyncSession, _DigestSession()), SINCE, UNTIL)
     assert payload == {"since": SINCE.isoformat(), "modules_unavailable": True}
+
+
+# The Cycles tab shows the part (#101 S15e): the weekly digest cycle's digest copies it from its run's trigger.
+
+
+def test_the_cycle_digest_takes_the_modules_part_from_its_run() -> None:
+    part = {"opencti": {"rounds": 7, "most_failed": []}}
+    run = SimpleNamespace(trigger_payload={"since": SINCE.isoformat(), "modules": part})
+    assert digest._weekly_modules(run) == (part, False)
+
+
+def test_the_cycle_digest_says_the_part_is_unavailable() -> None:
+    run = SimpleNamespace(trigger_payload={"since": SINCE.isoformat(), "modules_unavailable": True})
+    assert digest._weekly_modules(run) == (None, True)
+
+
+@pytest.mark.parametrize("payload", [None, {}, {"cycle_id": "c1"}, {"modules": "not a mapping"}])
+def test_another_cycle_has_no_modules_part(payload: Any) -> None:
+    assert digest._weekly_modules(SimpleNamespace(trigger_payload=payload)) == (None, False)
+    assert digest._weekly_modules(None) == (None, False)
