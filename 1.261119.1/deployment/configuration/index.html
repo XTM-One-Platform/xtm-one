@@ -7401,7 +7401,7 @@ route stays available and is the way back in.</p>
 <td><code>SANDBOX_REGISTRY_MIRROR_URL</code></td>
 <td>No</td>
 <td>— (off)</td>
-<td>URL of a read-only npm and PyPI mirror proxy for the containers <code>sandbox_run_command</code> and <code>sandbox_start_service</code> create (never the code interpreter or a custom tool), e.g. <code>http://registry-mirror:8080</code>. Set, its host is added to their egress allow-list and npm, Yarn, corepack, pip and uv install through it (<code>/npm/</code> and <code>/pypi/simple/</code> routes). The shipped proxy is <code>backend/sandbox/registry-mirror/nginx.conf</code>: GET and HEAD only, no credential forwarded, any other path refused. Keep <code>registry.npmjs.org</code>, <code>pypi.org</code> and <code>files.pythonhosted.org</code> out of <code>OPENSANDBOX_NETWORK_ALLOW</code> so the mirror is the only route. A URL with a user, a password, a query or a fragment is refused at startup. Empty: the dev images install offline from the caches they bake.</td>
+<td>URL of a read-only npm, PyPI and Maven Central mirror proxy for the containers <code>sandbox_run_command</code> and <code>sandbox_start_service</code> create (never the code interpreter or a custom tool), e.g. <code>http://registry-mirror:8080</code>. Set, its host is added to their egress allow-list and npm, Yarn, corepack, pip and uv install through it (<code>/npm/</code> and <code>/pypi/simple/</code> routes), and Maven through <code>/maven/</code> (a settings file mirroring every repository, <code>mirrorOf *</code>, named by <code>MAVEN_ARGS</code>). The shipped proxy is <code>backend/sandbox/registry-mirror/nginx.conf</code>: GET and HEAD only, no credential forwarded, any other path refused. Keep <code>registry.npmjs.org</code>, <code>pypi.org</code>, <code>files.pythonhosted.org</code> and <code>repo.maven.apache.org</code> out of <code>OPENSANDBOX_NETWORK_ALLOW</code> so the mirror is the only route. A URL with a user, a password, a query or a fragment is refused at startup. Empty: the dev images install offline from the caches they bake.</td>
 </tr>
 <tr>
 <td><code>SANDBOX_CPU</code></td>
@@ -8532,7 +8532,7 @@ call.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 15:02:38 UTC"><span class="timeago" datetime="2026-11-22T15:02:38+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 15:02:38 UTC">2026-11-22</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 16:21:52 UTC"><span class="timeago" datetime="2026-11-22T16:21:52+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 16:21:52 UTC">2026-11-22</span>
   </span>
 
     
