@@ -118,6 +118,20 @@ PLATFORM_USER_AGENT = "FiligranCopilot/1.0 (+https://filigran.io)"
 # ---------------------------------------------------------------------------
 
 
+_NOT_FOUND_WORDING = "resource not found"
+
+
+def is_not_found_error(err: str | None) -> bool:
+    """Whether *err* reports a 404: ``format_http_error``'s wording, or a message naming the status.
+
+    ``format_http_error`` words a 404 without the digits, so a ``"404" in err`` test alone never
+    matches an error built from a real response.
+    """
+    if not err:
+        return False
+    return _NOT_FOUND_WORDING in err or "404" in err
+
+
 def format_http_error(resp: httpx.Response, provider: str, action: str) -> str:
     """Build a human-readable error string from a non-success HTTP response.
 
@@ -153,7 +167,7 @@ def format_http_error(resp: httpx.Response, provider: str, action: str) -> str:
     if status == 404:
         detail = _extract_error_detail(resp)
         hint = f" Detail: {detail}" if detail else ""
-        return f"Error: {provider} resource not found while trying to {action}.{hint}"
+        return f"Error: {provider} {_NOT_FOUND_WORDING} while trying to {action}.{hint}"
     if status == 400:
         detail = _extract_error_detail(resp)
         # Surface the machine-readable ``category`` when the provider

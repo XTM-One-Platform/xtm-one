@@ -258,6 +258,11 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # (provisioning_user_id); the token only registers, refreshes or deletes
         # that assignment's own webhook.
         "services/jira_webhooks.py",
+        # CTEM ticketing sync (#917): the one Jira or ServiceNow integration an
+        # administrator declared as the organization's ticketing target, for its
+        # owner (integration.user_id); the token only finds, opens, updates and
+        # reads the CTEM case tickets of that target (adapter_for).
+        "services/ctem_ticketing.py",
         "services/openaev_trigger_provisioning.py",
         "services/opencti_trigger_provisioning.py",
         "services/organization_context_opencrq.py",
