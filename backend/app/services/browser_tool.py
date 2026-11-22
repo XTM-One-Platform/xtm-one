@@ -91,6 +91,8 @@ logger = logging.getLogger(__name__)
 
 SESSION_TIMEOUT_SECONDS = 300  # 5 minutes of inactivity
 MAX_PAGE_CONTENT_CHARS = 50_000
+#: How long the ``snapshot`` action waits for the element its ``selector`` names.
+SNAPSHOT_SELECTOR_TIMEOUT_MS = 5_000
 #: Ceiling on an ``evaluate`` result. A script that returns
 #: ``canvas.toDataURL()`` puts a 200 KB base64 blob into the model's context
 #: for nothing it can read; the cut says so and names the tools that carry an
@@ -2537,13 +2539,33 @@ async def browser_get_content(session_key: str) -> str:
         return f"{note}URL: {snapshot.get('url')}\nTitle: {snapshot.get('title')}\n\n{text}"
 
 
-async def browser_snapshot(session_key: str) -> str:
-    """Get an accessibility tree snapshot of the current page.
+def bound_snapshot(snapshot: str, *, scope: str, limit: int = MAX_PAGE_CONTENT_CHARS) -> str:
+    """*snapshot* cut at a line boundary under *limit* characters, the cut said and how to narrow it. Pure.
+
+    A catalog page answered 95,426 characters in one call: the outline is cut
+    like ``get_content`` and the answer names the ``selector`` that reads one
+    region of the page instead.
+    """
+    if len(snapshot) <= limit:
+        return snapshot
+    head = snapshot[:limit]
+    cut = head.rfind("\n")
+    if cut > 0:
+        head = head[:cut]
+    return (
+        f"{head}\n\n[Snapshot of {scope} truncated at {len(head):,} of {len(snapshot):,} characters: "
+        "pass selector (a CSS selector, e.g. 'main' or '[role=dialog]') to outline one region.]"
+    )
+
+
+async def browser_snapshot(session_key: str, selector: str = "") -> str:
+    """Get an accessibility tree snapshot of the current page, or of the element *selector* matches first.
 
     Returns a structured representation of interactive elements,
     headings, and key content — much more useful for agents than
-    raw HTML or plain text.
+    raw HTML or plain text. The outline is bounded (:func:`bound_snapshot`).
     """
+    scope = selector.strip() or "body"
     session = await _get_or_create_session(session_key)
     async with session.lock:
         session.last_used = time.time()
@@ -2551,7 +2573,10 @@ async def browser_snapshot(session_key: str) -> str:
         # Page.accessibility was removed in Playwright 1.57 and Page.aria_snapshot
         # only exists from 1.59; Locator.aria_snapshot (1.49+) ships in every
         # release without the former, and the page-level call snapshots the body.
-        aria_snapshot = getattr(session.page.locator("body"), "aria_snapshot", None)
+        target = session.page.locator(scope)
+        if scope != "body":
+            target = target.first
+        aria_snapshot = getattr(target, "aria_snapshot", None)
         if aria_snapshot is None:
             raise RuntimeError(
                 "The snapshot action needs Playwright's ARIA snapshot API "
@@ -2559,11 +2584,14 @@ async def browser_snapshot(session_key: str) -> str:
                 "installed Playwright does not provide. Use get_content or "
                 "screenshot instead."
             )
-        snapshot = await aria_snapshot()
+        # A selector that matches nothing fails within SNAPSHOT_SELECTOR_TIMEOUT_MS, never the 30 s default.
+        snapshot = await (aria_snapshot(timeout=SNAPSHOT_SELECTOR_TIMEOUT_MS) if scope != "body" else aria_snapshot())
         await _remember_state(session_key, session)  # as get_content
         if not snapshot or not snapshot.strip():
+            if scope != "body":
+                return f"No accessibility tree available for '{scope}' on this page."
             return "No accessibility tree available for this page."
-        return snapshot
+        return bound_snapshot(snapshot, scope="the page" if scope == "body" else f"'{scope}'")
 
 
 async def _describe_click_timeout(page: Any, selector: str, waited_ms: int, exc: Exception) -> str:
