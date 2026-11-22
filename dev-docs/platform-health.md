@@ -1200,7 +1200,8 @@ source (13.4 scope).
 | S15b-1 | Allow-list reshaped to the 13.5 lists (connector and feed tools removed, existing module reads added), renamed `MODULE_CHECKER_TOOLS`, scope test (o) | no |
 | S15b-2a | OpenCTI module health reads (`list_opencti_background_tasks`, `get_opencti_managers`, `get_opencti_platform_queues`, `list_opencti_stream_consumers`, `get_opencti_licence`), allow-listed, classifier and snapshot tests, `backend-snapshots` regenerated | no |
 | S15b-2b | OpenCTI `get_opencti_data_health` (objects created and updated per day over 7 days, total and newest creation, newest works with errors or timed out, platform-wide) and `get_opencti_error_rate` (Activity log entries with `event_status` error per day over 7 days), allow-listed, same tests | no |
-| S15b-2c | OpenAEV health reads of 13.5 in a new `providers/openaev/health_reads.py`, same tests | no |
+| S15b-2c | OpenAEV `get_openaev_platform_health` (`GET /api/settings`: version, licence, XTM Composer, XTM Hub, SMTP and IMAP; `GET /api/tenants/{tenant}/tenant-settings`: OpenCTI and OpenCRQ links enabled and URL set; OpenAEV exposes no last call result of a link, so that part is `not_run`) and `list_openaev_expectations_due` (`GET /api/injects/expectations`, READ on SIMULATION: expectations with no result yet by type, overdue, oldest) in a new `providers/openaev/health_reads.py`, allow-listed, same tests | no |
+| S15b-2c2 | OpenAEV `get_openaev_data_health` and `get_openaev_error_rate` of 13.5 (same file), each read verified against the OpenAEV API first | no |
 | S15b-2d | OpenCRQ health reads of 13.5, same tests | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
 | S15d | Lab measurement and default ceiling written in 13.7 | no |

@@ -20,7 +20,7 @@ and its rules are documented in ``app.models.fleet`` and
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -369,6 +369,28 @@ class FleetOrganizationRunEstimate(BaseModel):
     expected_runs_per_month: int
     #: Why no figure could be read (no OpenCTI connection, the primary's own triggers), else null.
     note: str | None = None
+
+
+class FleetSetupStep(BaseModel):
+    """One step of the CTEM loop guided setup (#1087 slice 2)."""
+
+    key: Literal["organization", "modules", "ecosystem", "gates", "preview", "enable"]
+    #: ``done`` / ``skipped`` as recorded for the current setup version, else ``ready`` (already in
+    #: place on the platform) or ``todo``.
+    state: Literal["done", "skipped", "ready", "todo"]
+    #: What the step shows, read live (counts, connected modules, slot states, level, opt-in).
+    facts: dict[str, Any] = Field(default_factory=dict)
+
+
+class FleetSetupStatusResponse(BaseModel):
+    """Where the CTEM loop guided setup stands; read only, administrators."""
+
+    version: str
+    #: The CTEM loop fleet, null when it is not seeded on this instance.
+    fleet_id: str | None = None
+    steps: list[FleetSetupStep] = Field(default_factory=list)
+    #: The step the flow opens on; null when every step is done or skipped.
+    resume_on: str | None = None
 
 
 class FleetRunEstimateResponse(BaseModel):

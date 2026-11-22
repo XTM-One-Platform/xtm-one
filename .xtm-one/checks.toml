@@ -446,6 +446,24 @@ needs = [".xtm-one/lab", "backend"]
 timeout = 280
 lifetime = 7200
 
+# The Google Chat decision card of every human gate (#842, S11) drawn from this checkout: .xtm-one/lab/google_chat_cards.py
+# imports backend/app/services/google_chat_decision_cards.py and renders render_google_chat_decision and link_message
+# on fixed decisions (no Google Workspace, no database), drawn with Google Chat's message layout. Pages:
+# /card?state=<state>&lang=en|es|fr|ja&theme=light|dark&width=desktop|narrow, /all (every state), /card.json (the
+# exact message, its card for Google's Card Builder). States: open per source (hitl, tool-approval, flow, work-item)
+# with and without recommendation and deadline, open-tool-approval-many, decided-option, decided-text, decided-tools,
+# expired, cancelled, refusal (private messages to the clicker), user-links (user auth: the S9b answer links).
+[service.lab-google-chat-cards]
+description = "The Google Chat cardsV2 decision card of this checkout drawn for review (every state, en/es/fr/ja, light and dark, desktop and narrow); no sign-in"
+argv = ["python", ".xtm-one/lab/google_chat_cards.py"]
+port = 4310
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+needs = [".xtm-one/lab", "backend"]
+timeout = 280
+lifetime = 7200
+
 # OpenAEV built from the PR head (xtm-one #11799, item 5): its own backend (Maven reactor, Flyway migrations) on
 # the lab's PostgreSQL and S3, OpenSearch and RabbitMQ from the OpenCTI lab's store services, the front from Vite
 # over it, seeded through the API (assets, an asset group, a scenario, a simulation), the platform administrator

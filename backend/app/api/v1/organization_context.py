@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -1104,13 +1104,43 @@ async def create_organization_fill_agent(
 class SetupPromptResponse(BaseModel):
     #: True when the caller must be shown the proposal now.
     propose: bool
-    #: The instance's recorded answer (``started``, ``later``, ``dismissed``), ``None`` while unanswered.
+    #: The instance's recorded answer to the current version (``started``, ``later``,
+    #: ``dismissed``), ``None`` while unanswered.
     outcome: str | None
     answered_at: datetime | None
+    #: The setup version this build carries (``ctem-loop-1``).
+    version: str
+    #: The version the instance last answered (``legacy`` for the unversioned #9173 answer).
+    answered_version: str | None = None
+    #: Whether an organization profile was ever saved (the flow opens on that step when not).
+    has_profile: bool = False
+    #: Step key -> ``done`` or ``skipped`` for the current version (the flow resumes past them).
+    steps: dict[str, str] = {}
 
 
 class AnswerSetupPromptRequest(BaseModel):
     outcome: Literal["started", "later", "dismissed"]
+
+
+if TYPE_CHECKING:
+    from app.services.organization_setup_prompt import SetupPromptState
+
+
+class SetupStepRequest(BaseModel):
+    step: Literal["organization", "modules", "ecosystem", "gates", "preview", "enable"]
+    state: Literal["done", "skipped"]
+
+
+def _setup_response(state: SetupPromptState, *, has_profile: bool) -> SetupPromptResponse:
+    return SetupPromptResponse(
+        propose=state.propose,
+        outcome=state.outcome,
+        answered_at=state.answered_at,
+        version=state.version,
+        answered_version=state.answered_version,
+        has_profile=has_profile,
+        steps=dict(state.steps),
+    )
 
 
 @router.get("/setup-prompt", response_model=SetupPromptResponse)
@@ -1118,24 +1148,25 @@ async def get_setup_prompt(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SetupPromptResponse:
-    """Whether the first-login organization setup is proposed to the caller (#9173, S3).
+    """Whether the first-connection setup is proposed to the caller (#9173 S3, versioned by #1087).
 
     Every signed-in user may ask; only an administrator of an XTM One
-    platform whose profile was never saved, on an instance that never
-    answered the proposal, gets ``propose: true``. A row read, no write.
+    platform on an instance that never answered the current setup version
+    gets ``propose: true`` (at install, and once after an upgrade carrying a
+    new version). A non-administrator reads ``propose: false`` and no step.
+    A row read, no write.
     """
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.core.config import settings
     from app.services import organization_setup_prompt as prompt
 
     row = await get_platform_settings(db)
-    eligible = bool(user.is_admin) and settings.is_xtm_one and row.organization_setup_prompted_at is None
-    has_profile = await prompt.has_saved_profile(db) if eligible else True
-    propose = prompt.should_propose(
-        is_admin=bool(user.is_admin), is_xtm_one=settings.is_xtm_one, has_profile=has_profile, row=row
-    )
+    is_admin = bool(user.is_admin)
+    propose = prompt.should_propose(is_admin=is_admin, is_xtm_one=settings.is_xtm_one, row=row)
     state = prompt.state_of(propose=propose, row=row)
-    return SetupPromptResponse(propose=state.propose, outcome=state.outcome, answered_at=state.answered_at)
+    if not (is_admin and settings.is_xtm_one):
+        return SetupPromptResponse(propose=False, outcome=None, answered_at=None, version=state.version)
+    return _setup_response(state, has_profile=await prompt.has_saved_profile(db))
 
 
 @router.post("/setup-prompt", response_model=SetupPromptResponse)
@@ -1144,9 +1175,9 @@ async def answer_setup_prompt(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> SetupPromptResponse:
-    """Record the instance's answer to the setup proposal, once (administrators, audited).
+    """Record the instance's answer to the current setup version, once (administrators, audited).
 
-    The first answer wins; a later call answers the recorded state unchanged.
+    The first answer to a version wins; a later call answers the recorded state unchanged.
     """
     from app.api.v1.platform_settings_helpers import get_platform_settings
     from app.services import organization_setup_prompt as prompt
@@ -1160,9 +1191,32 @@ async def answer_setup_prompt(
             action="configure",
             entity_type="organization_context",
             entity_name="setup_prompt",
-            summary=f"Answered the organization setup proposal: {body.outcome}",
-            details={"outcome": body.outcome},
+            summary=f"Answered the setup proposal {prompt.SETUP_VERSION}: {body.outcome}",
+            details={"outcome": body.outcome, "version": prompt.SETUP_VERSION},
         )
     await db.commit()
     state = prompt.state_of(propose=False, row=row)
-    return SetupPromptResponse(propose=False, outcome=state.outcome, answered_at=state.answered_at)
+    return _setup_response(state, has_profile=await prompt.has_saved_profile(db))
+
+
+@router.put("/setup-prompt/steps", response_model=SetupPromptResponse)
+async def record_setup_step(
+    body: SetupStepRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SetupPromptResponse:
+    """Record one step of the guided setup as done or skipped (administrators, #1087).
+
+    Each step saves on its own so leaving the flow midway loses nothing; the
+    next opening resumes past the recorded steps. A progress record only: the
+    step's own change (profile, slot binding, autonomy, enable) goes through
+    its own endpoint and its own audit.
+    """
+    from app.api.v1.platform_settings_helpers import get_platform_settings
+    from app.services import organization_setup_prompt as prompt
+
+    row = await get_platform_settings(db)
+    prompt.record_step(row, step=body.step, state=body.state)
+    await db.commit()
+    state = prompt.state_of(propose=prompt.should_propose(is_admin=True, is_xtm_one=True, row=row), row=row)
+    return _setup_response(state, has_profile=await prompt.has_saved_profile(db))

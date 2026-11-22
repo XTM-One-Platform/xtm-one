@@ -300,6 +300,12 @@ async def deliver_work_item_cards(*, limit: int = _SEND_BATCH, caller: CallerFac
             )
         ).all()
         for decision, item in rows:
+            if (notify.notify_spec(item.payload) or {}).get("channel") == notify.GOOGLE_CHAT:
+                # The Chat app's card, else the link message as a user (#842, S11).
+                from app.services.google_chat_decision_cards import deliver_work_item_card
+
+                sent += int(await deliver_work_item_card(db, decision, item, caller=caller))
+                continue
             target = card_target(item)
             recipient = recipient_user_id(decision.recipient)
             agent_id = item.created_by_agent_id or item.owner_agent_id
@@ -350,5 +356,10 @@ async def refresh_after_answer(decision_id: uuid.UUID) -> None:
                 person = await db.get(User, decision.answered_by)
                 name = (getattr(person, "full_name", None) or getattr(person, "email", None)) if person else None
             await update_sent_cards(db, decision_id, answered_by_name=name)
+            if decision is not None:
+                # The cards the Google Chat app posted (#842, S11), edited as the app.
+                from app.services.google_chat_decision_cards import update_sent_cards as update_chat_cards
+
+                await update_chat_cards(db, decision)
     except Exception:
         logger.exception("Decision %s: updating its sent cards failed", decision_id)
