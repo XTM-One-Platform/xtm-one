@@ -6,7 +6,7 @@
 // panel's own indicator, served through CHAT_PANEL_ENDPOINTS.quota.
 
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
 import { ComposerHeader, ComposerToolbar, ComposerVoiceCallButton } from "@/pages/chat-panel/ComposerParts";
@@ -54,9 +54,10 @@ describe("ComposerVoiceCallButton", () => {
   });
 });
 
-// The held runner commands are full decision cards: their stack is capped and
-// scrolls inside, so the composer and the latest message stay visible (#842 S8,
-// UX round 1 B1).
+// The held runner commands are full decision cards: they sit in one labelled
+// region whose height is capped and which scrolls inside, so the composer and
+// the latest message stay visible (#842 S8, UX round 1 B1). The cap itself is
+// layout, checked in the UX lab: the test reads the region by role.
 describe("ComposerHeader runner approvals", () => {
   const request = (id: string) =>
     ({
@@ -78,18 +79,16 @@ describe("ComposerHeader runner approvals", () => {
         desktop={null}
       />,
     );
-    const stack = screen.getByTestId("runner-approvals-stack");
-    expect(stack.className).toContain("max-h-[45vh]");
-    expect(stack.className).toContain("overflow-y-auto");
-    expect(stack.querySelectorAll('[data-testid="runner-card"]')).toHaveLength(2);
-    expect(screen.getByRole("region", { name: "Commands waiting for your approval" })).toBe(stack);
+    const stack = screen.getByRole("region", { name: "Commands waiting for your approval" });
+    expect(within(stack).getAllByTestId("runner-card").map((card) => card.textContent)).toEqual(["a", "b"]);
+    expect(screen.getAllByTestId("runner-card")).toHaveLength(2);
   });
 
   it("draws no stack when no command waits", () => {
     renderWithProviders(
       <ComposerHeader deepInvestigation runnerApprovals={[]} onRunnerApprovalDecided={() => {}} desktop={null} />,
     );
-    expect(screen.queryByTestId("runner-approvals-stack")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Commands waiting for your approval" })).toBeNull();
   });
 });
 
