@@ -158,3 +158,25 @@ def test_decided_state_names_who_which_and_when() -> None:
         "answered_at": when.isoformat(),
         "surface": "teams_chat",
     }
+
+
+def test_decided_card_names_the_answer_and_carries_no_button() -> None:
+    when = datetime(2026, 11, 22, 1, 0, tzinfo=UTC)
+    row = _decision(status="answered", answer={"option": "A"}, answered_at=when, surface="teams_chat")
+    card = links.decided_card(row, "Alice")
+    assert "actions" not in card
+    assert card["body"][1]["text"] == "Answered: Merge, by Alice, 2026-11-22 01:00 UTC"
+    parsed, err = parse_card(card)
+    assert err is None and parsed is not None
+
+
+def test_decided_card_of_a_written_answer_shows_the_text() -> None:
+    row = _decision(status="answered", answer={"text": "Wait for Monday"}, answered_at=None)
+    card = links.decided_card(row, None)
+    assert card["body"][1]["text"] == "Answered: a written answer"
+    assert card["body"][2]["text"] == "Wait for Monday"
+
+
+def test_decided_card_of_a_cancelled_decision_takes_no_answer() -> None:
+    card = links.decided_card(_decision(status="cancelled"), None)
+    assert card["body"][1]["text"] == "This decision is cancelled: it takes no answer."

@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_agentic_ai
 from app.api.v1.schemas.assignment import ApprovalDecision
 from app.core.database import get_db
-from app.models.decision import Decision
+from app.models.decision import Decision, DecisionEvent
 from app.models.user import User
 from app.services import decision_answer_links as answer_links
 from app.services.decision_links import decision_link
@@ -106,8 +106,23 @@ async def _link_view(db: AsyncSession, link: answer_links.AnswerLink, row: Decis
 
 async def _open_link(db: AsyncSession, token: str, user: User) -> tuple[Any, Decision]:
     link = answer_links.read_token(token)
-    answer_links.check_reader(link, user)
     row = (await db.execute(select(Decision).where(Decision.id == link.decision_id))).scalar_one_or_none()
+    try:
+        answer_links.check_reader(link, user)
+    except HTTPException as exc:
+        # A forwarded link answers nothing, and the audit trail says who tried (I.4.1).
+        if row is not None:
+            db.add(
+                DecisionEvent(
+                    decision_id=row.id,
+                    event="refused",
+                    actor_id=getattr(user, "id", None),
+                    surface=link.surface,
+                    detail={"status": exc.status_code, "reason": "answer link opened by someone else"},
+                )
+            )
+            await db.commit()
+        raise
     if row is None:
         raise HTTPException(status_code=404, detail="This decision no longer exists.")
     return link, row

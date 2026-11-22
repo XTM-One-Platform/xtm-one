@@ -232,6 +232,39 @@ def link_text(decision: Decision, recipient_id: uuid.UUID, surface: str) -> str:
     return "\n".join(lines)
 
 
+def decided_card(decision: Decision, answered_by_name: str | None) -> dict[str, Any]:
+    """The card a sent link card is replaced with once decided: who, which option, when; no buttons."""
+    ask = decision.ask or {}
+    state = decided_state(decision, answered_by_name)
+    if decision.status == "answered":
+        chosen = state["label"] or (state["text"] and "a written answer") or "an answer"
+        line = f"Answered: {chosen}"
+        if state["answered_by"]:
+            line += f", by {state['answered_by']}"
+        if decision.answered_at is not None:
+            line += f", {decision.answered_at:%Y-%m-%d %H:%M} UTC"
+    else:
+        line = f"This decision is {decision.status}: it takes no answer."
+    body: list[dict[str, Any]] = [
+        {
+            "type": "TextBlock",
+            "text": str(ask.get("question") or "A decision"),
+            "weight": "Bolder",
+            "size": "Medium",
+            "wrap": True,
+        },
+        {"type": "TextBlock", "text": line[:600], "wrap": True},
+    ]
+    if state["text"]:
+        body.append({"type": "TextBlock", "text": str(state["text"])[:1500], "wrap": True, "isSubtle": True})
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.4",
+        "body": body,
+    }
+
+
 def decided_state(decision: Decision, answered_by_name: str | None) -> dict[str, Any]:
     """What a decided link page and an updated card show: who, which option, when."""
     answer = decision.answer or {}
