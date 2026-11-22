@@ -76,4 +76,33 @@ describe("alertEmailsValid", () => {
     const many = Array.from({ length: 21 }, (_, i) => `a${i}@example.com`);
     expect(alertEmailsValid(withAlerts({ ...off, enabled: true, recipients: many }))).toBe(false);
   });
+
+  it("bounds the alert delay from 0 to a day in whole minutes", () => {
+    const valid = (alert_after_minutes: number) => alertEmailsValid(withAlerts({ ...off, alert_after_minutes }));
+    expect(valid(15)).toBe(true);
+    expect(valid(0)).toBe(true);
+    expect(valid(1440)).toBe(true);
+    expect(valid(-1)).toBe(false);
+    expect(valid(1441)).toBe(false);
+    expect(valid(Number.NaN)).toBe(false);
+  });
+});
+
+describe("AlertEmailsBlock alert delay", () => {
+  it("edits the delay of the immediate email, 15 minutes by default", () => {
+    const onChange = vi.fn();
+    renderWithProviders(<AlertEmailsBlock draft={withAlerts({ ...off, enabled: true, recipients: ["soc@example.com"] })} editing onChange={onChange} />);
+    const field = screen.getByRole("spinbutton", { name: "Send after" });
+    expect(field).toHaveValue(15);
+    fireEvent.change(field, { target: { value: "30" } });
+    const calls = onChange.mock.calls;
+    expect(calls[calls.length - 1]?.[0].alert_emails.alert_after_minutes).toBe(30);
+  });
+
+  it("reads the delay at rest when immediate emails are on", () => {
+    renderWithProviders(
+      <AlertEmailsBlock draft={withAlerts({ ...off, enabled: true, recipients: ["soc@example.com"], alert_after_minutes: 20 })} editing={false} onChange={() => {}} />,
+    );
+    expect(screen.getByTestId("settings.health.alert-emails")).toHaveTextContent("20 minutes");
+  });
 });
