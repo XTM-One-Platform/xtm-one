@@ -122,7 +122,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: total 472,200 on 21 Nov 2026).
 #: Raised to 472,950 for send_decision_card in the coordination group (#1156: +621,
 #: total 472,914 on 22 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 472_950
+#: Raised to 473,900 for record_module_check_report in the health_modules group (#101 S15c:
+#: about +900, carried by Platform Health's three module checkers alone, 22 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 473_900
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

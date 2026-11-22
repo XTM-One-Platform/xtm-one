@@ -25,6 +25,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
+#: The verdicts of one check of a module checker's playbook (section 13.6).
+CHECK_VERDICTS = ("pass", "warn", "fail", "not_run")
 #: How sure the analyst is of a recommendation.
 RECOMMENDATION_CONFIDENCES = ("high", "medium", "low")
 #: The longest recommendation text kept (section 12.4).
@@ -68,4 +70,38 @@ class HealthFindingRecommendation(Base):
     confidence: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=func.now()
+    )
+
+
+class HealthModuleCheckReport(Base):
+    """One module checker round on one registration: every check with its verdict (#101 S15c, section 13.6).
+
+    One row per cycle; a second ``record_module_check_report`` in the cycle replaces it.
+    No foreign key, as :class:`HealthFindingRecommendation`.
+    """
+
+    __tablename__ = "health_module_check_reports"
+    __table_args__ = (
+        UniqueConstraint("cycle_id", name="uq_health_module_check_reports_cycle"),
+        Index("ix_health_module_check_reports_registration_finished", "registration_id", "finished_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    #: The registered platform the round checked (``platform_registrations.id``).
+    registration_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: The checker cycle that wrote it (``health_cycles.id``).
+    cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: ``opencti`` | ``openaev`` | ``opencrq``.
+    module: Mapped[str] = mapped_column(String(16), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, server_default=func.now()
+    )
+    passed: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0, server_default=sa.text("0"))
+    warned: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0, server_default=sa.text("0"))
+    failed: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0, server_default=sa.text("0"))
+    not_run: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0, server_default=sa.text("0"))
+    #: ``[{"id", "verdict", "evidence", "recommendation", "reason", "finding_id"}]``.
+    checks: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
     )
