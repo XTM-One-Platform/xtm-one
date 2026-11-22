@@ -31,8 +31,6 @@ from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVE
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
 from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
 from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
-from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
-from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
@@ -104,13 +102,6 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "task_id": "The task the event names",
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
-}
-#: The filter keys of every Spendesk webhook event (the delivery envelope).
-_SPENDESK_FILTER_KEYS: dict[str, str] = {
-    "event.entity": "The Spendesk entity type of the event: payables or settlements",
-    "event.eventType": "The event type: created or prepared",
-    "companyId": "The Spendesk company (entity) that sent the event",
-    "data.id": "The id of the payable or settlement the event names",
 }
 #: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
 _NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
@@ -4942,79 +4933,6 @@ PROVIDER_CATALOG = {
             ],
         },
     },
-    "spendesk": {
-        "name": "Spendesk",
-        "description": (
-            "Spendesk spend management, the whole Public API, multi-entity: wallet summary, wallet "
-            "loads and settlements, card payments and transactions, requests, payables (expenses, "
-            "invoices, card payments) with receipt downloads and missing receipts, cards, members, "
-            "cost centres, analytical fields, expense categories, suppliers (bank details masked), "
-            "chart of accounts, accounting journals and webhooks; every write asks a person, plus "
-            "webhook triggers"
-        ),
-        "logo": "/logos/spendesk.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["spend_management"],
-        "supports_assignment_webhooks": True,
-        "available_events": [
-            {
-                "event": SPENDESK_TRIGGER_EVENTS[event],
-                "label": label,
-                "description": (
-                    "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk "
-                    "(the create_spendesk_webhook tool) pointing to the webhook URL shown below."
-                ),
-                "mechanism": "webhook",
-                "filter_keys": _SPENDESK_FILTER_KEYS,
-            }
-            for event, label in SPENDESK_EVENT_TYPES.items()
-        ],
-        # OAuth2 client credentials: the client secret is the stored secret.
-        "auth_type": "api_key",
-        "supported_auth_types": ["api_key"],
-        "fields": ["api_key"],
-        "extra_fields": {
-            "environment": "Spendesk environment",
-            "client_id": "Public API client ID",
-            "webhook_secret": "Webhook signing secret (x-spendesk-webhook-signature)",
-        },
-        "extra_field_options": {
-            "environment": [
-                {"value": "production", "label": "Production - public-api.spendesk.com"},
-                {"value": "sandbox", "label": "Sandbox - public-api.demo.spendesk.com"},
-            ],
-        },
-        "setup_guide": {
-            "title": "Spendesk Public API credential",
-            "url": "https://developer.spendesk.com/reference/general",
-            "steps": [
-                "In Spendesk, as an account owner, open Settings > Integrations > API access and create a Public API credential, at organisation level to reach every entity.",
-                "Grant the scopes the agents need: the :read scopes for a read-only binding, the :write scopes for approvals, cards, suppliers, members and bookkeeping.",
-                "Pick the environment, paste the client ID in the 'Public API client ID' field and the client secret in the 'API key' field.",
-                "Optional, for webhook triggers: create a webhook with the create_spendesk_webhook tool pointing to the webhook URL shown below, and paste the secret it answers in the 'Webhook signing secret' field.",
-                "Click 'Test Connection': it mints a token and lists the organisation's entities.",
-            ],
-            "permissions": [
-                {
-                    "scope": "payable:read, transaction:read, request:read",
-                    "description": "Read payables, receipts, transactions and requests",
-                },
-                {
-                    "scope": "settlement:read, wallet-summary:read, wallet-load:read",
-                    "description": "Read the wallet, its loads and settlements",
-                },
-                {
-                    "scope": "card:read, user:read, supplier:read, cost-center:read",
-                    "description": "Read cards, members, suppliers and cost centres",
-                },
-                {
-                    "scope": "the :write scopes",
-                    "description": "Optional: every write tool, each asks a person before it runs",
-                },
-            ],
-        },
-    },
     "wiz": {
         "name": "Wiz",
         "description": (
@@ -5888,6 +5806,80 @@ PROVIDER_CATALOG = {
                 },
             ],
             "notes": "For Metabase, the API key format is: enter your Metabase base URL in the extra config field, and the API key in the API Key field. The tools will use both to connect to your instance. For full functionality, ensure the API key has write permissions.",
+        },
+    },
+    "odoo": {
+        "name": "Odoo",
+        "description": "ERP & Accounting (multi-company) - Chart of accounts, Journals, Journal entries and items, Trial balance, General ledger, Aged receivable and payable, FEC-style exports (CSV / XLSX), Invoices, Bills and credit notes (with attachments), Payments and reconciliation, Bank statements, Taxes, Fiscal positions, Analytic accounts, Fixed assets, Currencies, Lock dates, Products, and any model through generic search_read (JSON-2 API, JSON-RPC fallback)",
+        "logo": "/logos/odoo.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {
+            "base_url": "Odoo URL (e.g. https://example.odoo.com)",
+            "database": "Database name",
+            "login": "Login (the user's email)",
+            "company_ids": "Default company ids, comma-separated (optional)",
+        },
+        # Polled from the records' create / write dates (providers/odoo/events.py,
+        # every 60 s): the external API has no outbound webhook.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": {
+                    "company": "Only records of these companies (ids or names)",
+                    "journal": "Only records of these journals (ids, codes or names)",
+                    "state": "Only records in these Odoo states (draft, posted, cancel; payments: in_process, paid...)",
+                },
+            }
+            for event, label, description in (
+                (
+                    "journal_entry_posted",
+                    "Journal entry posted",
+                    "Triggers when a journal entry is posted in Odoo or a posted entry changes (one run per change). Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "vendor_bill_created",
+                    "Vendor bill created",
+                    "Triggers when a vendor bill or refund is created in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+                (
+                    "payment_registered",
+                    "Payment registered",
+                    "Triggers when a payment is registered in Odoo. Uses polling (every minute); the first poll starts from now.",
+                ),
+            )
+        ],
+        "setup_guide": {
+            "title": "Odoo API Key Setup",
+            "url": "https://www.odoo.com/documentation/latest/developer/reference/external_api.html",
+            "steps": [
+                "Sign in to Odoo as the user the agents act as (a dedicated user is best: its access rights and companies bound what the tools reach).",
+                "Open the user menu > My Profile (Preferences) > Account Security and create a New API Key named '{APP_NAME}'.",
+                "Paste the key in the API Key field below.",
+                "Fill in the Odoo URL, the database name (Settings > Activate developer mode shows it; on odoo.com it is usually the subdomain) and the login.",
+                "Optionally list default company ids; every tool also takes company_ids, and list_odoo_companies names them.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Accounting / Invoicing: Billing or Accountant",
+                    "description": "Chart of accounts, journals, entries and items, reports, invoices, bills, payments, bank statements, taxes, analytics, assets, lock dates",
+                },
+                {
+                    "scope": "Allowed companies",
+                    "description": "The companies the user may switch to are the companies the tools reach (allowed_company_ids)",
+                },
+                {
+                    "scope": "Contacts",
+                    "description": "Partners and partner bank accounts",
+                },
+            ],
+            "notes": "Odoo 19+ answers the JSON-2 API (bearer API key); older versions are reached through JSON-RPC with the same key. Read or write follows the Odoo operation: every write tool (create, update, post, cancel, reset, register a payment, reconcile, lock dates, generic create / write / unlink / method) asks a person on every call. Bank account numbers answer masked to their last 4 characters. Bind read-only to withhold every write tool. See https://www.odoo.com/documentation/latest/developer/reference/external_api.html.",
         },
     },
     "databricks": {
@@ -10175,8 +10167,6 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "aikido": "eu||__dummy__||__dummy__",
     # Airwallex's token is environment||client_id||login_as||api_key.
     "airwallex": "production||__dummy__||||__dummy__",
-    # Spendesk's token is environment||client_id||client_secret.
-    "spendesk": "production||__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
