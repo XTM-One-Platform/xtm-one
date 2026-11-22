@@ -7777,6 +7777,12 @@ call.</p>
 <td><code>false</code></td>
 <td>On Slack, Teams, WhatsApp, Telegram, Discord and Google Chat, let an identified user's <code>@agent-key</code> (an agent's slug, else its hyphenated name) make that agent answer after the routed one, in the same reply - only an agent whose own channel settings let it answer that message (enabled, set to <strong>Receive</strong> and <strong>Publish</strong> on that channel, past the bot's receive whitelist, private-conversation and only-mention rules). Each agent that answers counts as one agentic action. <code>false</code>: a channel message is answered by its routed agent alone, whatever it mentions. The web chat's mentions are not affected by this setting.</td>
 </tr>
+<tr>
+<td><code>DECISIONS_READ_ENABLED</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Human gates: let the inbox, the bell and the decision cards read the unified decisions store. It takes effect only once every open question (a paused run, a pending tool approval, a flow waiting on a person, a work item waiting for an answer) has its decision: <code>GET /api/v1/decisions/backfill</code> (administrators) shows the count per source and whether the switch is on. <code>false</code>: they read each engine's own state, which stays current either way.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="built-in-web-search">Built-in web search</h2>
@@ -8520,7 +8526,7 @@ call.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 20, 2026 11:44:26 UTC"><span class="timeago" datetime="2026-11-20T11:44:26+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 20, 2026 11:44:26 UTC">2026-11-20</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 01:50:33 UTC"><span class="timeago" datetime="2026-11-22T01:50:33+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 01:50:33 UTC">2026-11-22</span>
   </span>
 
     
@@ -8548,6 +8554,11 @@ call.</p>
     
     <nav>
       
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
+      
         <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
           
           <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
@@ -8556,11 +8567,6 @@ call.</p>
         <a href="https://github.com/xfournet" class="md-author" title="@xfournet">
           
           <img src="https://avatars.githubusercontent.com/u/461943?v=4&amp;size=72" alt="xfournet">
-        </a>
-      
-        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
-          
-          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
         </a>
       
         <a href="https://github.com/fred-lr" class="md-author" title="@fred-lr">
