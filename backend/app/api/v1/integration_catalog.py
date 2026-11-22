@@ -29,6 +29,8 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
+from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
+from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -43,6 +45,13 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "task_id": "The task the event names",
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
+}
+#: The filter keys of every Spendesk webhook event (the delivery envelope).
+_SPENDESK_FILTER_KEYS: dict[str, str] = {
+    "event.entity": "The Spendesk entity type of the event: payables or settlements",
+    "event.eventType": "The event type: created or prepared",
+    "companyId": "The Spendesk company (entity) that sent the event",
+    "data.id": "The id of the payable or settlement the event names",
 }
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
@@ -4740,6 +4749,79 @@ PROVIDER_CATALOG = {
                 {
                     "scope": "issues:write and the other :write scopes",
                     "description": "Optional: triage, configuration and the destructive tools (each asks a person)",
+                },
+            ],
+        },
+    },
+    "spendesk": {
+        "name": "Spendesk",
+        "description": (
+            "Spendesk spend management, the whole Public API, multi-entity: wallet summary, wallet "
+            "loads and settlements, card payments and transactions, requests, payables (expenses, "
+            "invoices, card payments) with receipt downloads and missing receipts, cards, members, "
+            "cost centres, analytical fields, expense categories, suppliers (bank details masked), "
+            "chart of accounts, accounting journals and webhooks; every write asks a person, plus "
+            "webhook triggers"
+        ),
+        "logo": "/logos/spendesk.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["spend_management"],
+        "supports_assignment_webhooks": True,
+        "available_events": [
+            {
+                "event": SPENDESK_TRIGGER_EVENTS[event],
+                "label": label,
+                "description": (
+                    "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk "
+                    "(the create_spendesk_webhook tool) pointing to the webhook URL shown below."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _SPENDESK_FILTER_KEYS,
+            }
+            for event, label in SPENDESK_EVENT_TYPES.items()
+        ],
+        # OAuth2 client credentials: the client secret is the stored secret.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "environment": "Spendesk environment",
+            "client_id": "Public API client ID",
+            "webhook_secret": "Webhook signing secret (x-spendesk-webhook-signature)",
+        },
+        "extra_field_options": {
+            "environment": [
+                {"value": "production", "label": "Production - public-api.spendesk.com"},
+                {"value": "sandbox", "label": "Sandbox - public-api.demo.spendesk.com"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Spendesk Public API credential",
+            "url": "https://developer.spendesk.com/reference/general",
+            "steps": [
+                "In Spendesk, as an account owner, open Settings > Integrations > API access and create a Public API credential, at organisation level to reach every entity.",
+                "Grant the scopes the agents need: the :read scopes for a read-only binding, the :write scopes for approvals, cards, suppliers, members and bookkeeping.",
+                "Pick the environment, paste the client ID in the 'Public API client ID' field and the client secret in the 'API key' field.",
+                "Optional, for webhook triggers: create a webhook with the create_spendesk_webhook tool pointing to the webhook URL shown below, and paste the secret it answers in the 'Webhook signing secret' field.",
+                "Click 'Test Connection': it mints a token and lists the organisation's entities.",
+            ],
+            "permissions": [
+                {
+                    "scope": "payable:read, transaction:read, request:read",
+                    "description": "Read payables, receipts, transactions and requests",
+                },
+                {
+                    "scope": "settlement:read, wallet-summary:read, wallet-load:read",
+                    "description": "Read the wallet, its loads and settlements",
+                },
+                {
+                    "scope": "card:read, user:read, supplier:read, cost-center:read",
+                    "description": "Read cards, members, suppliers and cost centres",
+                },
+                {
+                    "scope": "the :write scopes",
+                    "description": "Optional: every write tool, each asks a person before it runs",
                 },
             ],
         },
@@ -9757,6 +9839,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "intel471": "__dummy__||__dummy__",
     # Aikido's token is region||client_id||client_secret.
     "aikido": "eu||__dummy__||__dummy__",
+    # Spendesk's token is environment||client_id||client_secret.
+    "spendesk": "production||__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
