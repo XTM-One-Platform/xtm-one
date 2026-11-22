@@ -13,12 +13,12 @@
  * cannot read answers "This item is not available to you". The activity
  * stream refreshes the signal query, so a stage lights without a reload.
  */
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Icon } from "@filigran/design-system";
+import { Chip, Icon } from "@filigran/design-system";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useProposeSignalScope,
+  CTEM_SIGNAL_STATES, useCtemSignal, useCtemSignalList, useCtemSignalPaths, useProposeSignalScope,
   type CtemDecisionRecord, type CtemSignal, type CtemSignalState,
 } from "@/hooks/api/useCtemSignalsApi";
 import { Button } from "@/components/ui/button";
@@ -672,6 +672,20 @@ function SignalTraceBody({ id }: { id: string }) {
 }
 
 /**
+ * The label of the trigger path a signal list is narrowed to, read from the
+ * path catalogue (`GET /ctem-signals/paths`): null while it loads, "Unknown"
+ * for an id the catalogue does not hold, never the raw id.
+ */
+function useSignalPathLabel(path: string | null): string | null {
+  const { t_i18n } = useFormatter();
+  const { data, isLoading } = useCtemSignalPaths();
+  if (!path) return null;
+  const found = data?.paths.find((p) => p.id === path);
+  if (found) return t_i18n(found.label);
+  return isLoading ? null : t_i18n("Unknown");
+}
+
+/**
  * The signals in one state (or every state), newest sighting first, each
  * opening its own trace (CTEM-01-UI). The trigger path leads every row: a path
  * with no CVE and no actor reads exactly like a vulnerability.
@@ -696,30 +710,35 @@ function SignalListBody({ state, path, onState, onClearPath, onOpen }: {
     ...CTEM_SIGNAL_STATES.map((s) => ({ key: s, label: t_i18n(SIGNAL_STATE_LABEL[s]), count: counts[s] ?? 0 })),
   ];
   const signals = data?.pages.flatMap((page) => page.signals) ?? [];
+  const pathLabel = useSignalPathLabel(path);
+  const allRef = useRef<HTMLButtonElement>(null);
+  // The chip's delete button leaves with the chip: focus lands on "All", never on the dialog (UX round 3 A1).
+  const clearPath = () => {
+    onClearPath();
+    requestAnimationFrame(() => allRef.current?.focus());
+  };
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid="ctem-signal-list">
       {/* The filters and the "n of N" count stay in view: the list below is the
           only scroller (#877 UX round 1 B2). */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-      {path && (
-        <span className="inline-flex items-center gap-1 rounded-sm bg-elevation-hover px-2 py-1 content-caption font-medium" data-testid="ctem-signal-path-filter" data-path={path}>
-          {t_i18n(signals[0]?.trigger_path_label || path)}
-          <button
-            type="button"
-            onClick={onClearPath}
-            aria-label={t_i18n("Remove filter")}
-            title={t_i18n("Remove filter")}
-            className={cn("inline-flex rounded-sm text-default-secondary hover:text-default-primary", BUTTON_ROLE_FOCUS_RING)}
-            data-testid="ctem-signal-path-filter-clear"
-          >
-            <Icon name="x" size={16} aria-hidden />
-          </button>
-        </span>
+      {/* The path's label comes from the path catalogue, never from the rows: an
+          empty filtered state has no row, and the id is never shown (UX round 3 B1 on #1194). */}
+      {path && pathLabel && (
+        <Chip
+          label={pathLabel}
+          onDelete={clearPath}
+          deleteLabel={t_i18n("Remove filter {name}", { name: pathLabel })}
+          className="shrink-0"
+          data-testid="ctem-signal-path-filter"
+          data-path={path}
+        />
       )}
       <div role="group" aria-label={t_i18n("Filter by state")} className="flex flex-wrap gap-1.5">
         {filters.map((f) => (
           <button
             key={f.key ?? "all"}
+            ref={f.key === null ? allRef : undefined}
             type="button"
             aria-pressed={f.key === state}
             onClick={() => onState(f.key)}

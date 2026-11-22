@@ -148,7 +148,7 @@ function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals
             </Button>
           )}
           {(path.total ?? 0) > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => onOpenSignals(path.id)} title={exactCount(path.total)} data-testid="ctem-signal-sources-open">
+            <Button variant="ghost" size="sm" onClick={() => onOpenSignals(path.id)} title={exactCount(path.total)} data-testid="ctem-signal-sources-path-open">
               {t_i18n("Open signals")} <span className="tabular-nums">{count(path.total)}</span>
             </Button>
           )}

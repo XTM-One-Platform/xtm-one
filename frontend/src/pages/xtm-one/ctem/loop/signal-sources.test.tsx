@@ -7,6 +7,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
+import { LoopTraceDialog } from "./LoopTraceDialog";
 import { SignalSourcesDialog } from "./SignalSourcesDialog";
 import { TriggerPathsCard } from "./TriggerPathsCard";
 import { connectHref, connectTarget, connectedCount, pathStatus } from "./signal-sources";
@@ -136,10 +137,31 @@ describe("SignalSourcesDialog", () => {
     );
     const rows = await screen.findAllByTestId("ctem-signal-sources-path");
     const vuln = rows.find((r) => r.getAttribute("data-path") === "new_vulnerability") as HTMLElement;
-    fireEvent.click(within(vuln).getByTestId("ctem-signal-sources-open"));
+    fireEvent.click(within(vuln).getByTestId("ctem-signal-sources-path-open"));
     const params = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
     expect(params.get("loop")).toBe("signals:all:new_vulnerability");
     expect(params.get("signal-sources")).toBeNull();
+  });
+
+  it("labels the path chip from the catalogue on an empty filtered list, never with the id, and its delete keeps the state (UX round 3 B1/B3 on #1194)", async () => {
+    get.mockImplementation(async (url: string) =>
+      url.startsWith("/ctem-signals/paths") ? { paths: PATHS } : { signals: [], total: 0, counts: {} },
+    );
+    function Probe() {
+      return <output data-testid="location-search">{useLocation().search}</output>;
+    }
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/?loop=signals:new:code_flaw"]}>
+        <LoopTraceDialog />
+        <Probe />
+      </MemoryRouter>,
+    );
+    const chip = await screen.findByTestId("ctem-signal-path-filter");
+    expect(chip.textContent).toContain("Code or dependency flaw before production");
+    expect(screen.queryByText("code_flaw")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter Code or dependency flaw before production" }));
+    const params = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
+    expect(params.get("loop")).toBe("signals:new");
   });
 
   it("stays closed without the query parameter", () => {

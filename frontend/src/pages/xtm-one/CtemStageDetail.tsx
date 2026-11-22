@@ -53,7 +53,7 @@ import { postureBusy } from "./ctem/landing-refresh";
 import { Spinner } from "@filigran/design-system";
 import { ScopingRing, DiscoveryArea, ValidationMatrix, type DiscoveryPoint } from "./ctem/stage-heroes";
 import { DiscoveryMix } from "./ctem/DiscoveryMix";
-import { SignalSourcesDialog } from "./ctem/loop/SignalSourcesDialog";
+import { LoopTraceDialog } from "./ctem/loop/LoopTraceDialog";
 import { TriggerPathsCard } from "./ctem/loop/TriggerPathsCard";
 import { ScopingMix } from "./ctem/ScopingMix";
 import { ValidationMix } from "./ctem/ValidationMix";
@@ -567,11 +567,12 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
-      {/* The loop's signals by trigger path and lens (CTEM-30, #937): each path's status and Connect are the Signal sources dialog's (#1194). */}
+      {/* The loop's signals by trigger path and lens (CTEM-30, #937): each path's status and Connect are the Signal sources dialog's (#1194).
+          LoopTraceDialog carries that dialog, so a path's "Open signals" opens its list here too (UX round 3 B2). */}
       {stage === "discovery" && vertical === "cyber" && (
         <>
           <TriggerPathsCard />
-          <SignalSourcesDialog />
+          <LoopTraceDialog />
         </>
       )}
       {/* Prioritization's mixed views and gap fillers (#11998), under the funnel. */}
