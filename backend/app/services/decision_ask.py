@@ -384,7 +384,9 @@ def normalize_run_ask(
     return run_ask
 
 
-def flow_ask(question: str, options: object = None, recommendation: object = None, deadline: object = None) -> dict[str, Any] | None:
+def flow_ask(
+    question: str, options: object = None, recommendation: object = None, deadline: object = None
+) -> dict[str, Any] | None:
     """The ask of a flow Ask-user node (#842, S6), ``None`` for a free-text node.
 
     A node with no options, recommendation or deadline parks as it always did

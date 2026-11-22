@@ -2171,12 +2171,8 @@ NODE_KINDS: tuple[NodeKind, ...] = (
         ),
         output_variables=(
             OutputVariable("response", "Response", "The answer the user typed.", type=OUTPUT_TEXT),
-            OutputVariable(
-                "option", "Option", "The key of the option chosen, empty for free text.", type=OUTPUT_TEXT
-            ),
-            OutputVariable(
-                "responded_by", "Responded by", "Who answered the question."
-            ),
+            OutputVariable("option", "Option", "The key of the option chosen, empty for free text.", type=OUTPUT_TEXT),
+            OutputVariable("responded_by", "Responded by", "Who answered the question."),
         ),
         searchable_terms=(
             "human", "hitl", "question", "approval", "input", "answer", "ask",

@@ -4774,8 +4774,10 @@ async def test_ask_user_with_options_parks_the_ask_and_resumes_with_the_option(m
         "nodes": [
             _node("t1", "trigger.manual"),
             _node(
-                "ask", "action.ask_user",
-                title="Validation", question="On publie ?",
+                "ask",
+                "action.ask_user",
+                title="Validation",
+                question="On publie ?",
                 options='[{"key": "A", "label": "Publier"}, {"key": "B", "label": "Attendre"}]',
                 recommendation="B",
                 deadline="2026-12-01T17:00:00Z",
