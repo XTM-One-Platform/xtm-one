@@ -3155,6 +3155,9 @@ def build_sandbox_workspace_tools(
                 + ". The tests failing on them are environmental, not a regression: grow the checkout with "
                 "materialize_repository add_paths to run them, or leave them to the pull request's CI."
             )
+            verdict = commands.missing_file_verdict(outcome, missing)
+            if verdict:
+                notes.append(verdict)
             if outcome.uncollected:
                 notes.append(commands.uncollected_note(outcome))
         stray = record.outside(outcome.written)

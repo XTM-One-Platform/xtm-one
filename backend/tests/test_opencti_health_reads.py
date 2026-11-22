@@ -36,14 +36,17 @@ async def _call(monkeypatch, fake, name):
     return result.content
 
 
-def test_the_reads_are_registered_and_allow_listed_for_the_analyst():
+def test_the_reads_are_registered_and_only_the_playbook_read_is_allow_listed() -> None:
+    """S15b-1 (section 13.5): the connector and feed reads stay tools of the provider
+    for other agents, but a module checker no longer reads them (13.4 scope)."""
     executor = CallableToolExecutor()
     names = {t.name for t in build_tools(TOKEN, executor)}
     assert set(NAMES) <= names
     for name in NAMES:
         assert infer_tool_type(name) == "read", name
         assert name in executor._handlers
-        assert module_analyst.refuse_module_tool("opencti", name) is None
+    allowed = {name for name in NAMES if module_analyst.refuse_module_tool("opencti", name) is None}
+    assert allowed == {"list_opencti_playbook_states"}
 
 
 def test_no_query_of_the_reads_is_a_mutation():

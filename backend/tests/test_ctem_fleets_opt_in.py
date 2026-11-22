@@ -25,6 +25,8 @@ _FLEET_ASSIGNMENTS = {
     ("ctem-vuln-prioritization-orchestrator", "Re-test due"),
     # OpenAEV results move the cases (CTEM-15, #918): listen-only, seeded off.
     ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
+    # The analyst's mark resumes the review gate (CTEM-16, #1089): listen-only, seeded off.
+    ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
     # The loop fleets run on cases (#891): seeded off, after migration c9160fleetoptin1.
     ("ctem-threat-response-orchestrator", "Case opened or reopened"),
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
@@ -76,6 +78,7 @@ _SEEDED_AFTER_C9160 = {
     ("ctem-threat-response-orchestrator", "Case opened or reopened"),
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
     ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
+    ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability flagged in a PIR"),
     ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"),
