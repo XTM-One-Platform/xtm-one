@@ -46,6 +46,43 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
 }
+#: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
+_NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
+    "subsidiary_id": "Only records of these subsidiaries (internal ids)",
+    "transaction_types": "Only these types among the event's (e.g. credit_memo, vendor_payment)",
+    "status": "Only records in one of these statuses (names or codes)",
+    "min_amount": "Only records whose absolute amount is at least this, in the transaction currency",
+    "change_kinds": "Only created or only updated records",
+}
+
+#: The NetSuite transaction change events: event, label, description.
+_NETSUITE_TRANSACTION_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "vendor_bill_changed",
+        "Vendor bill created or changed",
+        "Triggers when a vendor bill is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "invoice_changed",
+        "Invoice created or changed",
+        "Triggers when an invoice or a credit memo is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "payment_changed",
+        "Payment created or changed",
+        "Triggers when a customer or vendor payment is created or changed. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "journal_entry_changed",
+        "Journal entry created or changed",
+        "Triggers when a journal entry or an intercompany journal is created or changed. Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+)
+
 #: The filter keys of every Aikido webhook event (the delivery envelope and its payload).
 _AIKIDO_FILTER_KEYS: dict[str, str] = {
     "event_type": "The Aikido event type (issue.open.created, ci.gate.failed, zen.attack...)",
@@ -5235,6 +5272,32 @@ PROVIDER_CATALOG = {
                 {"value": "tba", "label": "Token-Based Authentication (OAuth 1.0a, HMAC-SHA256)"},
             ],
         },
+        # Polled with SuiteQL (services/netsuite_events.py, every 5 min): NetSuite
+        # posts no change notification without a script of the customer's.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _NETSUITE_TRANSACTION_FILTER_KEYS,
+            }
+            for event, label, description in _NETSUITE_TRANSACTION_EVENTS
+        ]
+        + [
+            {
+                "event": "accounting_period_changed",
+                "label": "Accounting period changed",
+                "description": (
+                    "Triggers when an accounting period is closed, reopened, locked or unlocked. "
+                    "Uses polling (every 5 minutes); the first poll starts from now."
+                ),
+                "mechanism": "polling",
+                "filter_keys": {
+                    "states": "Only periods now in one of these states: open, closed, ap_locked, ar_locked, all_locked",
+                },
+            }
+        ],
         "setup_guide": {
             "title": "NetSuite Setup",
             "url": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_162686838198.html",
@@ -9221,67 +9284,6 @@ PROVIDER_CATALOG = {
                 {"scope": "Notetaker Read", "description": "AI Notetaker interview transcripts (Ashby add-on)"},
             ],
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
-        },
-    },
-    "quotapath": {
-        "name": "QuotaPath",
-        "description": (
-            "Sales commission management - users, teams and managers, compensation plans and paths, "
-            "quotas, deals and their crediting, payouts (earned, paid, still owed), commission totals "
-            "by rep, team, plan and period, CSV payout and deal reports. Commission amounts are people "
-            "data; every write asks a person"
-        ),
-        "logo": "/logos/quotapath.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["sales_compensation"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
-        "available_events": [
-            {
-                "event": "payout_updated",
-                "label": "Payout created or updated",
-                "description": (
-                    "Triggers when a QuotaPath payout is created or changes (a deal credited, a rate or "
-                    "quota changed). Uses polling (every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_resolved",
-                "label": "Payout resolved",
-                "description": (
-                    "Triggers when a QuotaPath payout is resolved (the period paid out). Uses polling "
-                    "(every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_unresolved",
-                "label": "Payout newly owed",
-                "description": (
-                    "Triggers when a payout appears among the unresolved ones (commission owed, the "
-                    "accrual). Uses polling (every 15 min); what is owed when the trigger is enabled "
-                    "does not run."
-                ),
-                "mechanism": "polling",
-            },
-        ],
-        "setup_guide": {
-            "title": "QuotaPath API Key Setup",
-            "url": "https://api.quotapath.com/docs/",
-            "steps": [
-                "Sign in to QuotaPath as a workspace admin.",
-                "Open Settings > Integrations and generate an API key.",
-                "Paste the key in the field below. Test Connection reads the workspace users.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Workspace API key",
-                    "description": "Reads users, teams, plans, quotas, deals and payouts; writes deals, quotas and imports (each write asks a person)",
-                },
-            ],
-            "notes": "QuotaPath sends the key as 'Authorization: Token <key>' to https://api.quotapath.com/v1. Its public API has no disputes, adjustments, draws, payout-period approval or lock, CRM sync status, statement PDFs or webhooks: those stay in the QuotaPath application, and events are polled.",
         },
     },
     "linkedin": {
