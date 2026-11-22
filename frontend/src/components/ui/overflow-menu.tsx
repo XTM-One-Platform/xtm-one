@@ -21,7 +21,7 @@
  */
 
 import { Fragment, useId, type ReactNode } from "react";
-import { Button, Icon, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@filigran/design-system";
+import { Button, Icon, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, type IconName } from "@filigran/design-system";
 import { cn } from "@/lib/utils";
 
 export interface OverflowMenuItem {
@@ -29,6 +29,8 @@ export interface OverflowMenuItem {
   id: string;
   label: string;
   icon?: React.ElementType;
+  /** A design system icon name, drawn by its `Icon` at 16 px; wins over `icon`. */
+  glyph?: IconName;
   onSelect: () => void;
   disabled?: boolean;
   /** Why the item is disabled, shown under it while it is: an action refused
@@ -209,6 +211,8 @@ function renderRow(item: OverflowMenuItem, index: number) {
             <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
               <span className="size-1.5 rounded-full bg-accent" />
             </span>
+          ) : item.glyph ? (
+            <Icon name={item.glyph} size={16} className={cn(item.destructive && "text-feedback-error-tertiary")} />
           ) : RowIcon ? (
             // A destructive row's icon takes the label's token, so icon and
             // label read as one destructive row.

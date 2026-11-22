@@ -1163,7 +1163,7 @@ def build_browser_tool(
                 return await browser_get_content(session_key)
 
             elif action == "snapshot":
-                return await browser_snapshot(session_key)
+                return await browser_snapshot(session_key, selector or "")
 
             elif action == "click":
                 if not selector:
@@ -1397,7 +1397,7 @@ def build_browser_tool(
                     "type": "string",
                     "description": (
                         "CSS selector for the target element (required for 'click', 'type', 'hover', 'drag'; "
-                        "optional for 'screenshot': capture that element only)."
+                        "optional for 'screenshot'/'snapshot': that element only)."
                     ),
                 },
                 "text": {

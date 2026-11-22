@@ -1,0 +1,1102 @@
+[
+ {
+  "name": "get_rydoo_approver_branches",
+  "method": "GET",
+  "path": "/v2/approvers/{approverLine}/{approverId}/branches",
+  "summary": "The branches an approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_approver_custom_field_values",
+  "method": "GET",
+  "path": "/v2/approvers/{approverLine}/{approverId}/customFieldValues",
+  "summary": "The custom field values an approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_approver_groups",
+  "method": "GET",
+  "path": "/v2/approvers/{approverLine}/{approverId}/groups",
+  "summary": "The groups an approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_approver_projects",
+  "method": "GET",
+  "path": "/v2/approvers/{approverLine}/{approverId}/projects",
+  "summary": "The projects an approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_approver_users",
+  "method": "GET",
+  "path": "/v2/approvers/{approverLine}/{approverId}/users",
+  "summary": "The users an approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_conflict_approver_branches",
+  "method": "GET",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/branches",
+  "summary": "The branches a conflict approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_conflict_approver_custom_field_values",
+  "method": "GET",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/customFieldValues",
+  "summary": "The custom field values a conflict approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_conflict_approver_groups",
+  "method": "GET",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/groups",
+  "summary": "The groups a conflict approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_conflict_approver_projects",
+  "method": "GET",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/projects",
+  "summary": "The projects a conflict approver of an approval line covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_project_approvers",
+  "method": "GET",
+  "path": "/v2/projects/{projectId}/approvers",
+  "summary": "Approver and conflict approver assignments of a project",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_project_controllers",
+  "method": "GET",
+  "path": "/v2/projects/{projectId}/controllers",
+  "summary": "Controller assignments of a project",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_user_approvers",
+  "method": "GET",
+  "path": "/v2/users/{userId}/expenseapprovers",
+  "summary": "Expense approver assignments of a user",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_user_controllers",
+  "method": "GET",
+  "path": "/v2/users/{userId}/expensecontrollers",
+  "summary": "Controller assignments of a user",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_approver_branches",
+  "method": "PUT",
+  "path": "/v2/approvers/{approverLine}/{approverId}/branches",
+  "summary": "Replace the branches an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_approver_custom_field_values",
+  "method": "PUT",
+  "path": "/v2/approvers/{approverLine}/{approverId}/customFieldValues",
+  "summary": "Replace the custom field values an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_approver_groups",
+  "method": "PUT",
+  "path": "/v2/approvers/{approverLine}/{approverId}/groups",
+  "summary": "Replace the groups an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_approver_projects",
+  "method": "PUT",
+  "path": "/v2/approvers/{approverLine}/{approverId}/projects",
+  "summary": "Replace the projects an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_approver_users",
+  "method": "PUT",
+  "path": "/v2/approvers/{approverLine}/{approverId}/users",
+  "summary": "Replace the users an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_conflict_approver_branches",
+  "method": "PUT",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/branches",
+  "summary": "Replace the branches a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_conflict_approver_custom_field_values",
+  "method": "PUT",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/customFieldValues",
+  "summary": "Replace the custom field values a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_conflict_approver_groups",
+  "method": "PUT",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/groups",
+  "summary": "Replace the groups a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_conflict_approver_projects",
+  "method": "PUT",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/projects",
+  "summary": "Replace the projects a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_approver_branches",
+  "method": "PATCH",
+  "path": "/v2/approvers/{approverLine}/{approverId}/branches",
+  "summary": "Add or remove branches an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_approver_custom_field_values",
+  "method": "PATCH",
+  "path": "/v2/approvers/{approverLine}/{approverId}/customFieldValues",
+  "summary": "Add or remove custom field values an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_approver_groups",
+  "method": "PATCH",
+  "path": "/v2/approvers/{approverLine}/{approverId}/groups",
+  "summary": "Add or remove groups an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_approver_projects",
+  "method": "PATCH",
+  "path": "/v2/approvers/{approverLine}/{approverId}/projects",
+  "summary": "Add or remove projects an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_approver_users",
+  "method": "PATCH",
+  "path": "/v2/approvers/{approverLine}/{approverId}/users",
+  "summary": "Add or remove users an approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_conflict_approver_branches",
+  "method": "PATCH",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/branches",
+  "summary": "Add or remove branches a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_conflict_approver_custom_field_values",
+  "method": "PATCH",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/customFieldValues",
+  "summary": "Add or remove custom field values a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_conflict_approver_groups",
+  "method": "PATCH",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/groups",
+  "summary": "Add or remove groups a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_conflict_approver_projects",
+  "method": "PATCH",
+  "path": "/v2/approvers/conflict/{approverLine}/{approverId}/projects",
+  "summary": "Add or remove projects a conflict approver covers",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_project_approvers",
+  "method": "PUT",
+  "path": "/v2/projects/{projectId}/approvers",
+  "summary": "Edit the approver assignments of a project",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_project_controllers",
+  "method": "PUT",
+  "path": "/v2/projects/{projectId}/controllers",
+  "summary": "Edit the controller assignments of a project",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_user_approvers",
+  "method": "PUT",
+  "path": "/v2/users/{userId}/expenseapprovers",
+  "summary": "Edit the expense approver assignments of a user",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_user_controllers",
+  "method": "PUT",
+  "path": "/v2/users/{userId}/expensecontrollers",
+  "summary": "Edit the controller assignments of a user",
+  "group": "approval_flows",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_payment_methods",
+  "method": "GET",
+  "path": "/v2/paymentmethods/all/count",
+  "summary": "Count of payment methods",
+  "group": "bank_details",
+  "query": [
+   "AccountType",
+   "BranchId",
+   "Limit",
+   "Offset",
+   "Sort",
+   "Search",
+   "IsActive",
+   "ValidationStatus",
+   "IsReimbursable",
+   "CardNumber",
+   "CardType",
+   "AccountOwnership",
+   "userId"
+  ]
+ },
+ {
+  "name": "create_rydoo_payment_method",
+  "method": "POST",
+  "path": "/v1/paymentmethods",
+  "summary": "Create a payment method (card or bank account)",
+  "group": "bank_details",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_payment_methods",
+  "method": "GET",
+  "path": "/v2/paymentmethods/all",
+  "summary": "Payment methods: cards and employee bank accounts (numbers masked)",
+  "group": "bank_details",
+  "query": [
+   "AccountType",
+   "BranchId",
+   "Limit",
+   "Offset",
+   "Sort",
+   "Search",
+   "IsActive",
+   "ValidationStatus",
+   "IsReimbursable",
+   "CardNumber",
+   "CardType",
+   "AccountOwnership",
+   "userId"
+  ]
+ },
+ {
+  "name": "update_rydoo_payment_method",
+  "method": "PUT",
+  "path": "/v1/paymentmethods/{id}",
+  "summary": "Update a payment method (card or bank account)",
+  "group": "bank_details",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_branch",
+  "method": "GET",
+  "path": "/v2/branches/{branchId}",
+  "summary": "One branch (legal entity)",
+  "group": "branches",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_branches",
+  "method": "GET",
+  "path": "/v2/branches",
+  "summary": "Branches (legal entities) of the company",
+  "group": "branches",
+  "query": [
+   "limit",
+   "offset",
+   "sort",
+   "search",
+   "isActive"
+  ]
+ },
+ {
+  "name": "get_rydoo_category",
+  "method": "GET",
+  "path": "/v2/categories/{categoryId}",
+  "summary": "One expense category",
+  "group": "categories",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_categories",
+  "method": "GET",
+  "path": "/v2/categories",
+  "summary": "Expense categories",
+  "group": "categories",
+  "query": [
+   "limit",
+   "offset",
+   "sort",
+   "isActive",
+   "loadAllLevels",
+   "search",
+   "branchId",
+   "parentCategoryId"
+  ]
+ },
+ {
+  "name": "add_rydoo_custom_field_list_item",
+  "method": "POST",
+  "path": "/v2/company/customfields/{customFieldId}/listitems",
+  "summary": "Add a list item to a custom field (cost centre, GL code...)",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "assign_rydoo_list_item_users",
+  "method": "PATCH",
+  "path": "/v2/company/customfields/listitems/{listItemId}/users",
+  "summary": "Assign users who can see a custom field list item",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "assign_rydoo_user_list_items",
+  "method": "PATCH",
+  "path": "/v2/company/customfields/users/{userId}/listitems",
+  "summary": "Assign custom field list items a user can see",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_custom_field_list_items",
+  "method": "GET",
+  "path": "/v2/company/customfields/{customFieldId}/listitems/count",
+  "summary": "Count of list items of a custom field",
+  "group": "custom_fields",
+  "query": [
+   "search"
+  ]
+ },
+ {
+  "name": "count_rydoo_list_item_users",
+  "method": "GET",
+  "path": "/v2/company/customfields/listitems/{listItemId}/users/count",
+  "summary": "Count of user assignments of a list item",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_custom_field",
+  "method": "GET",
+  "path": "/v2/customfields/{customFieldId}",
+  "summary": "One custom field",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_custom_field_list_item",
+  "method": "GET",
+  "path": "/v2/company/customfields/listitems/{listItemId}",
+  "summary": "One list item of a custom field",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_custom_field_list_items",
+  "method": "GET",
+  "path": "/v2/company/customfields/{customFieldId}/listitems",
+  "summary": "List items of a custom field",
+  "group": "custom_fields",
+  "query": [
+   "search",
+   "limit",
+   "offset"
+  ]
+ },
+ {
+  "name": "list_rydoo_custom_field_role_combinations",
+  "method": "GET",
+  "path": "/v2/company/customfields/limitations/role-combinations",
+  "summary": "Valid role combinations for custom field limitations",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_custom_fields",
+  "method": "GET",
+  "path": "/v2/customfields",
+  "summary": "Custom fields (cost centres, GL codes, any company field)",
+  "group": "custom_fields",
+  "query": [
+   "limit",
+   "offset",
+   "sort",
+   "isActive",
+   "isFilter",
+   "search",
+   "type",
+   "target"
+  ]
+ },
+ {
+  "name": "list_rydoo_list_item_users",
+  "method": "GET",
+  "path": "/v2/company/customfields/listitems/{listItemId}/users",
+  "summary": "User assignments of a custom field list item",
+  "group": "custom_fields",
+  "query": [
+   "limit",
+   "offset"
+  ]
+ },
+ {
+  "name": "remove_rydoo_list_item_all_users",
+  "method": "DELETE",
+  "path": "/v2/company/customfields/listitems/{listItemId}/users",
+  "summary": "Unassign every user from a custom field list item",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "remove_rydoo_list_item_user",
+  "method": "DELETE",
+  "path": "/v2/company/customfields/listitems/{listItemId}/users/{userId}",
+  "summary": "Unassign one user from a custom field list item",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_custom_field_limitations",
+  "method": "PUT",
+  "path": "/v2/company/customfields/{customFieldId}/limitations",
+  "summary": "Update the limitations (roles) of a custom field",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_custom_field_list_item",
+  "method": "PUT",
+  "path": "/v2/company/customfields/listitems/{listitemId}",
+  "summary": "Update a list item of a custom field",
+  "group": "custom_fields",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_e_invoice_status",
+  "method": "GET",
+  "path": "/v1/e-invoices/{id}/status",
+  "summary": "Processing status of a submitted e-invoice",
+  "group": "e_invoices",
+  "query": []
+ },
+ {
+  "name": "submit_rydoo_e_invoice",
+  "method": "POST",
+  "path": "/v1/e-invoices",
+  "summary": "Submit an e-invoice (multipart file upload)",
+  "group": "e_invoices",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_branch_exchange_rates",
+  "method": "GET",
+  "path": "/v2/exchange-rates/get-active-branch-rates",
+  "summary": "Active custom exchange rates of a branch on a date",
+  "group": "exchange_rates",
+  "query": [
+   "BranchId",
+   "Date"
+  ]
+ },
+ {
+  "name": "set_rydoo_branch_exchange_rates",
+  "method": "POST",
+  "path": "/v2/exchange-rates/sync-branch-exchange-rates",
+  "summary": "Define the custom exchange rates of a branch",
+  "group": "exchange_rates",
+  "query": []
+ },
+ {
+  "name": "add_rydoo_expense",
+  "method": "POST",
+  "path": "/v3/expenses",
+  "summary": "Add an expense",
+  "group": "expenses",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_expense",
+  "method": "GET",
+  "path": "/v3/expenses/{id}",
+  "summary": "One expense with amounts, VAT lines, approval and audit data",
+  "group": "expenses",
+  "query": [
+   "Currencies",
+   "IncludeBranchCurrency"
+  ]
+ },
+ {
+  "name": "list_rydoo_exported_expenses",
+  "method": "GET",
+  "path": "/v3/expenses/exported",
+  "summary": "Approved expenses ready for accounting, by export date, branch, user, group or trip",
+  "group": "expenses",
+  "query": [
+   "exportedAtStartDate",
+   "exportedAtEndDate",
+   "branchId",
+   "tripId",
+   "onlyLatestVersions",
+   "userId",
+   "groupId",
+   "limit",
+   "startingAfter",
+   "includeMultipleVatParent"
+  ]
+ },
+ {
+  "name": "mark_rydoo_expense_reported",
+  "method": "PUT",
+  "path": "/v3/expenses/{id}/report",
+  "summary": "Mark an expense as reported (booked in the ERP)",
+  "group": "expenses",
+  "query": []
+ },
+ {
+  "name": "mark_rydoo_expense_unreported",
+  "method": "PUT",
+  "path": "/v3/expenses/{id}/unreport",
+  "summary": "Mark an expense as not reported",
+  "group": "expenses",
+  "query": []
+ },
+ {
+  "name": "mark_rydoo_expenses_reimbursed",
+  "method": "PUT",
+  "path": "/v2/expenses/reimburse",
+  "summary": "Set expenses to Reimbursed (bulk reimbursement job)",
+  "group": "expenses",
+  "query": []
+ },
+ {
+  "name": "reject_rydoo_expenses",
+  "method": "POST",
+  "path": "/v2/expenses/reject",
+  "summary": "Reject a set of expenses with a reason",
+  "group": "expenses",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_groups",
+  "method": "GET",
+  "path": "/v2/groups/count",
+  "summary": "Count of groups",
+  "group": "groups",
+  "query": [
+   "branchId",
+   "isActive",
+   "loadAllLevels",
+   "search"
+  ]
+ },
+ {
+  "name": "create_rydoo_group",
+  "method": "POST",
+  "path": "/v2/groups",
+  "summary": "Create a group (department)",
+  "group": "groups",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_group",
+  "method": "GET",
+  "path": "/v2/groups/{groupId}",
+  "summary": "One group (department)",
+  "group": "groups",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_groups",
+  "method": "GET",
+  "path": "/v2/groups",
+  "summary": "Groups (departments) of the company",
+  "group": "groups",
+  "query": [
+   "branchId",
+   "limit",
+   "offset",
+   "sort",
+   "isActive",
+   "loadAllLevels",
+   "search",
+   "parentGroupId",
+   "branchIds"
+  ]
+ },
+ {
+  "name": "update_rydoo_group",
+  "method": "PUT",
+  "path": "/v2/groups/{groupId}",
+  "summary": "Update a group (department)",
+  "group": "groups",
+  "query": []
+ },
+ {
+  "name": "create_rydoo_company_guest",
+  "method": "POST",
+  "path": "/v2/guests/company",
+  "summary": "Create a company-wide guest",
+  "group": "guests",
+  "query": []
+ },
+ {
+  "name": "create_rydoo_external_organization",
+  "method": "POST",
+  "path": "/v2/external-organizations",
+  "summary": "Create an external organisation",
+  "group": "guests",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_external_organizations",
+  "method": "GET",
+  "path": "/v2/external-organizations",
+  "summary": "External organisations (for guests)",
+  "group": "guests",
+  "query": [
+   "search",
+   "limit",
+   "offset"
+  ]
+ },
+ {
+  "name": "count_rydoo_linked_accounts",
+  "method": "GET",
+  "path": "/v2/linkedaccounts/count",
+  "summary": "Count of linked account connections",
+  "group": "linked_accounts",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_user_linked_accounts",
+  "method": "GET",
+  "path": "/v2/users/{id}/linkedaccounts/count",
+  "summary": "Count of linked accounts of a user",
+  "group": "linked_accounts",
+  "query": []
+ },
+ {
+  "name": "create_rydoo_user_linked_account",
+  "method": "POST",
+  "path": "/v2/users/{id}/linkedaccounts",
+  "summary": "Create a linked account connection for a user",
+  "group": "linked_accounts",
+  "query": []
+ },
+ {
+  "name": "delete_rydoo_user_linked_account",
+  "method": "DELETE",
+  "path": "/v2/users/{id}/linkedaccounts",
+  "summary": "Delete a linked account connection of a user",
+  "group": "linked_accounts",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_linked_account_roles",
+  "method": "GET",
+  "path": "/v2/linkedaccounts/roles",
+  "summary": "Roles a linked account can hold",
+  "group": "linked_accounts",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_linked_accounts",
+  "method": "GET",
+  "path": "/v2/linkedaccounts",
+  "summary": "Linked account connections of the company (delegations)",
+  "group": "linked_accounts",
+  "query": [
+   "limit",
+   "offset"
+  ]
+ },
+ {
+  "name": "list_rydoo_user_linked_accounts",
+  "method": "GET",
+  "path": "/v2/users/{id}/linkedaccounts",
+  "summary": "Linked accounts of a user",
+  "group": "linked_accounts",
+  "query": [
+   "limit",
+   "offset"
+  ]
+ },
+ {
+  "name": "update_rydoo_user_linked_account",
+  "method": "PUT",
+  "path": "/v2/users/{id}/linkedaccounts",
+  "summary": "Edit a linked account connection of a user",
+  "group": "linked_accounts",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_projects",
+  "method": "GET",
+  "path": "/v2/projects/count",
+  "summary": "Count of projects",
+  "group": "projects",
+  "query": [
+   "isActive",
+   "search",
+   "refId"
+  ]
+ },
+ {
+  "name": "create_rydoo_project",
+  "method": "POST",
+  "path": "/v2/projects",
+  "summary": "Create a project",
+  "group": "projects",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_project",
+  "method": "GET",
+  "path": "/v2/projects/{projectId}",
+  "summary": "One project",
+  "group": "projects",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_projects",
+  "method": "GET",
+  "path": "/v2/projects",
+  "summary": "Projects",
+  "group": "projects",
+  "query": [
+   "limit",
+   "isActive",
+   "offset",
+   "sort",
+   "search"
+  ]
+ },
+ {
+  "name": "update_rydoo_project",
+  "method": "PUT",
+  "path": "/v2/projects/{projectId}",
+  "summary": "Update a project",
+  "group": "projects",
+  "query": []
+ },
+ {
+  "name": "download_rydoo_receipt",
+  "method": "GET",
+  "path": "/v3/receipts/by-expense/{id}",
+  "summary": "Download the signed PDF receipt of an expense into the conversation",
+  "group": "receipts",
+  "query": []
+ },
+ {
+  "name": "upload_rydoo_receipt",
+  "method": "POST",
+  "path": "/v3/receipts",
+  "summary": "Upload the binary file of a receipt",
+  "group": "receipts",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_reimbursements",
+  "method": "GET",
+  "path": "/v1/reimbursements/count",
+  "summary": "Count of reimbursements",
+  "group": "reimbursements",
+  "query": [
+   "ModifiedFromDate",
+   "ModifiedToDate",
+   "Status",
+   "Limit",
+   "Offset"
+  ]
+ },
+ {
+  "name": "get_rydoo_reimbursement_job",
+  "method": "GET",
+  "path": "/v2/expenses/reimbursement-jobs/{jobId}",
+  "summary": "A bulk reimbursement job: state, counters, outcome per expense",
+  "group": "reimbursements",
+  "query": [
+   "limit",
+   "offset",
+   "outcome"
+  ]
+ },
+ {
+  "name": "list_rydoo_reimbursements",
+  "method": "GET",
+  "path": "/v1/reimbursements",
+  "summary": "Reimbursements (legacy standard reimbursements)",
+  "group": "reimbursements",
+  "query": [
+   "ModifiedFromDate",
+   "ModifiedToDate",
+   "Status",
+   "Limit",
+   "Offset"
+  ]
+ },
+ {
+  "name": "add_rydoo_user_roles",
+  "method": "PUT",
+  "path": "/v2/users/{userId}/user-role-assignments",
+  "summary": "Add role assignments to a user",
+  "group": "roles",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_user_role_permissions",
+  "method": "GET",
+  "path": "/v2/users/{userId}/user-role-assignments/{role}/permissions",
+  "summary": "Permissions of a user for a role (treasurer)",
+  "group": "roles",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_user_roles",
+  "method": "GET",
+  "path": "/v2/users/{userId}/user-role-assignments",
+  "summary": "Role assignments of a user",
+  "group": "roles",
+  "query": []
+ },
+ {
+  "name": "remove_rydoo_user_role",
+  "method": "DELETE",
+  "path": "/v2/users/{userId}/user-role-assignments/{role}",
+  "summary": "Remove a role assignment from a user",
+  "group": "roles",
+  "query": []
+ },
+ {
+  "name": "set_rydoo_user_role_permissions",
+  "method": "PUT",
+  "path": "/v2/users/{userId}/user-role-assignments/{role}/permissions",
+  "summary": "Set the permissions of a user for a role (treasurer)",
+  "group": "roles",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_user_role_branches",
+  "method": "PATCH",
+  "path": "/v2/users/{userId}/user-role-assignments/{role}/branches",
+  "summary": "Update the branches of a user's role assignment",
+  "group": "roles",
+  "query": []
+ },
+ {
+  "name": "count_rydoo_transactions",
+  "method": "GET",
+  "path": "/v2/transactions/count",
+  "summary": "Count of transactions",
+  "group": "transactions",
+  "query": [
+   "PaymentMethodType",
+   "Status",
+   "FromTransactionDate",
+   "ToTransactionDate",
+   "MatchStatus"
+  ]
+ },
+ {
+  "name": "create_rydoo_transaction",
+  "method": "POST",
+  "path": "/v2/transactions",
+  "summary": "Create a transaction",
+  "group": "transactions",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_transactions",
+  "method": "GET",
+  "path": "/v2/transactions",
+  "summary": "Card and bank transactions",
+  "group": "transactions",
+  "query": [
+   "PaymentMethodType",
+   "Status",
+   "FromTransactionDate",
+   "ToTransactionDate",
+   "MatchingStatus",
+   "Limit",
+   "Offset"
+  ]
+ },
+ {
+  "name": "count_rydoo_trips",
+  "method": "GET",
+  "path": "/v2/trips/count",
+  "summary": "Count of trips",
+  "group": "trips",
+  "query": [
+   "userId",
+   "isActive",
+   "search",
+   "status"
+  ]
+ },
+ {
+  "name": "create_rydoo_user_trip",
+  "method": "POST",
+  "path": "/v2/users/{userId}/trips",
+  "summary": "Add a trip for a user",
+  "group": "trips",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_trip",
+  "method": "GET",
+  "path": "/v2/trips/{tripId}",
+  "summary": "One trip",
+  "group": "trips",
+  "query": []
+ },
+ {
+  "name": "list_rydoo_trips",
+  "method": "GET",
+  "path": "/v2/trips",
+  "summary": "Trips",
+  "group": "trips",
+  "query": [
+   "limit",
+   "offset",
+   "sort",
+   "isActive",
+   "search",
+   "status"
+  ]
+ },
+ {
+  "name": "set_rydoo_trips_status",
+  "method": "POST",
+  "path": "/v2/trips/changestatus",
+  "summary": "Change the status of a set of trips",
+  "group": "trips",
+  "query": []
+ },
+ {
+  "name": "update_rydoo_trip",
+  "method": "PUT",
+  "path": "/v2/trips/{tripId}",
+  "summary": "Update a trip",
+  "group": "trips",
+  "query": []
+ },
+ {
+  "name": "create_rydoo_user",
+  "method": "POST",
+  "path": "/v2/users",
+  "summary": "Add a user to the company",
+  "group": "users",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_user",
+  "method": "GET",
+  "path": "/v2/users/{id}",
+  "summary": "One user",
+  "group": "users",
+  "query": []
+ },
+ {
+  "name": "get_rydoo_user_groups",
+  "method": "GET",
+  "path": "/v2/users/{id}/groups",
+  "summary": "The groups a user belongs to",
+  "group": "users",
+  "query": []
+ },
+ {
+  "name": "patch_rydoo_user_groups",
+  "method": "PATCH",
+  "path": "/v2/users/{id}/groups",
+  "summary": "Create or update the group assignments of a user",
+  "group": "users",
+  "query": []
+ },
+ {
+  "name": "replace_rydoo_user_groups",
+  "method": "PUT",
+  "path": "/v2/users/{id}/groups",
+  "summary": "Replace the groups a user belongs to",
+  "group": "users",
+  "query": []
+ },
+ {
+  "name": "search_rydoo_users",
+  "method": "GET",
+  "path": "/v2/users",
+  "summary": "Users (employees), by name, email or external id",
+  "group": "users",
+  "query": [
+   "search",
+   "email",
+   "firstName",
+   "lastName",
+   "hasCard",
+   "externalId",
+   "limit",
+   "offset"
+  ]
+ },
+ {
+  "name": "update_rydoo_user",
+  "method": "PUT",
+  "path": "/v2/users/{id}",
+  "summary": "Update a user",
+  "group": "users",
+  "query": []
+ }
+]

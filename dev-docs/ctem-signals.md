@@ -24,7 +24,7 @@ lenses disagree. Before this change none of that had a place to land.
 | 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants), `issue.sla.breached` (re-sights the issue's signal), `ci.gate.failed`, `scan.image.finished` with issues |
 | 4 | `proven_exploitable` | inside | tool and API |
 | 5 | `new_exposure` | outside | tool and API |
-| 6 | `stale_asset` | outside | tool and API |
+| 6 | `stale_asset` | outside | OpenAEV asset turned stale (CTEM-27), tool and API |
 | 7 | `surface_drift` | outside | tool and API |
 | 8 | `mitigation_regression` | inside | OpenAEV scenario score degraded (CTEM-15) |
 | 9 | `control_decay` | inside | tool and API |

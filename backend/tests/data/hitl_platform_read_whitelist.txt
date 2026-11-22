@@ -5,8 +5,8 @@
 # and read the diff before committing it: every added line is a tool that
 # will run unattended on every deployment, including scheduled runs nobody
 # is watching. Tools held back by hand live in HAND_GATED, not here.
-#
-# 138 tools; 60 read-classified tools deliberately held back.
+# No count in this header: a count line changes with every added tool and
+# made every two tool PRs conflict on it; the diff of the body is the count.
 
 openaev:export_openaev_scenario
 openaev:full_text_search_openaev
@@ -16,11 +16,13 @@ openaev:get_openaev_attack_pattern
 openaev:get_openaev_exercise
 openaev:get_openaev_injector_contract
 openaev:get_openaev_payload
+openaev:get_openaev_platform_health
 openaev:get_openaev_run_scope
 openaev:get_openaev_scenario
 openaev:get_openaev_team
 openaev:get_openaev_vulnerability
 openaev:list_openaev_domains
+openaev:list_openaev_expectations_due
 openaev:list_openaev_kill_chain_phases
 openaev:list_openaev_tags
 openaev:query_openaev_analytics
@@ -117,10 +119,12 @@ opencrq:list_opencrq_users
 opencrq:search_opencrq_cves
 opencrq:search_opencrq_mitre_techniques
 opencti:get_opencti_container_full
+opencti:get_opencti_data_health
 opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_error_rate
 opencti:get_opencti_licence
 opencti:get_opencti_managers
 opencti:get_opencti_platform_queues

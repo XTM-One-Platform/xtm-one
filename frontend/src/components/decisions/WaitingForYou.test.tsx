@@ -2,7 +2,8 @@
 // whatever its source, answered from the side panel through the one answer path.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { sourceText, waitingDecisionView, WaitingForYou } from "@/components/decisions/WaitingForYou";
 import type { WaitingDecision } from "@/hooks/api/useDecisionApi";
@@ -117,6 +118,47 @@ describe("WaitingForYou", () => {
       expect(post).toHaveBeenCalledWith("/decisions/flow1/answer", { option: "A", text: undefined, surface: "inbox" }),
     );
     await waitFor(() => expect(screen.queryByTestId("waiting-for-you-panel")).toBeNull());
+  });
+
+  it("keeps the next row's dialog open when the previous answer settles late", async () => {
+    // The answer settles once every invalidated list is read again: the inbox first (the row
+    // leaves, the reader opens the next one), then a slower work-items list. Its late close
+    // must not shut the dialog the reader opened meanwhile (flaky E2E waiting-for-you-inbox:138).
+    let items = FOUR;
+    get.mockImplementation(async () => ({ enabled: true, reason: null, items }));
+    let releaseWorkItems: (value: unknown) => void = () => undefined;
+    let workItemsReads = 0;
+    function WorkItemsList() {
+      useQuery({
+        queryKey: ["work-items"],
+        queryFn: () => {
+          workItemsReads += 1;
+          return workItemsReads === 1 ? Promise.resolve([]) : new Promise((resolve) => (releaseWorkItems = resolve));
+        },
+      });
+      return null;
+    }
+    renderWithProviders(
+      <>
+        <WorkItemsList />
+        <WaitingForYou />
+      </>,
+    );
+    const rows = await screen.findAllByTestId("waiting-for-you-row");
+    await waitFor(() => expect(workItemsReads).toBe(1));
+    fireEvent.click(within(rows[2]).getByText("Question of flow1"));
+    const first = await screen.findByTestId("waiting-for-you-panel");
+    items = FOUR.filter((r) => r.id !== "flow1");
+    fireEvent.click(within(first).getByText("Go flow1"));
+    // The inbox is read again: the answered row leaves and its dialog with it.
+    await waitFor(() => expect(screen.getAllByTestId("waiting-for-you-row")).toHaveLength(3));
+    await waitFor(() => expect(screen.queryByTestId("waiting-for-you-panel")).toBeNull());
+    fireEvent.click(within(screen.getAllByTestId("waiting-for-you-row")[0]).getByText("Question of run1"));
+    expect(await screen.findByTestId("waiting-for-you-panel")).toBeTruthy();
+    // The slower list settles now: the first answer's close comes last.
+    await waitFor(() => expect(workItemsReads).toBe(2));
+    await act(async () => releaseWorkItems([]));
+    expect(screen.getByRole("dialog", { name: "Run: Origin run1" })).toBeTruthy();
   });
 
   it("keeps the card read-only with the reason while AI is off", async () => {

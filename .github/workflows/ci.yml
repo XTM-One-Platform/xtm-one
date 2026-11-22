@@ -650,6 +650,9 @@ jobs:
   # fr.json whole the same way: count-plural alone failed eight merge groups
   # on 17-18 Nov 2026, a pull request each, found only in the queue. About a
   # minute of tests; frontend-unit runs them again with the rest of the suite.
+  # The source-scan guards anywhere under src/ (a test that lists a directory
+  # and reads its files, scripts/source-scan-tests.mjs) run here too: #745
+  # broke mode-split-guard.test.ts and only the merge group saw it.
   frontend-gates:
     name: Frontend gates
     runs-on: ubuntu-26.04
@@ -668,7 +671,7 @@ jobs:
       - name: Whole-tree gates
         working-directory: frontend
         timeout-minutes: 10
-        run: yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts
+        run: yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts && yarn vitest run $(node scripts/source-scan-tests.mjs)
 
   # The integration suite (2365 tests) ran 630 to 1127 s a shard on two shards
   # (green main runs 43242449940, 43236991020, 43236147709, 12 Nov 2026):

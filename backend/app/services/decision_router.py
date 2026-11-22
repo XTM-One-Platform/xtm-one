@@ -46,7 +46,9 @@ from app.models.decision_hooks import answer_surface
 
 #: The surfaces an answer may name; anything else is recorded as ``router``.
 SURFACES: frozenset[str] = frozenset(
-    {"router", "web", "inbox", "bell", "push", "teams_card", "slack_card", "whatsapp_card", "mail"}
+    {"router", "web", "inbox", "bell", "push", "mail"}
+    # The in-place cards of the bots (S9, S10, S11, S12).
+    | {"teams_card", "slack_card", "whatsapp_card", "google_chat_card"}
     # The channels an answer link (S9b, ``decision_answer_links``) is sent on.
     | {"teams_chat", "teams_channel", "google_chat", "email"}
 )
@@ -226,10 +228,12 @@ async def answer_decision(
     finally:
         answer_surface.reset(token)
     if row is not None:
-        # The link cards a Microsoft account sent for it show the decided state (S9b, I.4 (b), (c)).
+        # The link cards a Microsoft account sent for it show the decided state (S9b, I.4 (b), (c)),
+        # and so do the cards the Google Chat app posted (S11, I.4 (d)).
+        from app.services import google_chat_decision_cards as chat_cards
         from app.services.decision_graph_cards import has_sent_cards
 
-        if await has_sent_cards(db, row.id):
+        if await has_sent_cards(db, row.id) or await chat_cards.has_sent_cards(db, row.id):
             schedule_card_refresh(row.id)
     from app.models.decision import public_id
 

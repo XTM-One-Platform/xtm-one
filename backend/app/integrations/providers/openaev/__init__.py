@@ -34,6 +34,8 @@ The provider is split by domain:
 * ``taxonomy``         - tags, kill chain phases, attack patterns, variables.
 * ``findings``         - findings + vulnerabilities (writes).
 * ``platform``         - connectors (read) + platform settings.
+* ``health_reads``     - read-only module health reads of the Platform Health
+                         module checker (#101 S15b-2c).
 
 Token format passed by the dispatcher: ``base_url||api_token`` (the
 ``extra_config`` base_url is prepended by ``_get_token`` in
@@ -70,6 +72,7 @@ from .core import register_core
 from .dashboards import register as register_dashboards
 from .expectations import register as register_expectations
 from .findings import register as register_findings
+from .health_reads import register as register_health_reads
 from .injects import register as register_injects
 from .lessons_reports import register as register_lessons_reports
 from .notifications import register as register_notifications
@@ -184,6 +187,7 @@ def build_tools(
         registered_version_fn=registered_version_fn,
     )
     tools += register_autonomous(base_url, headers, executor)
+    tools += register_health_reads(base_url, headers, executor)
     # An 8-hex id prefix is answered by OpenAEV as a missing object ("Inject not
     # found"): refuse it by name before any request (app.integrations.short_id).
     install_short_id_guard(executor, [tool.name for tool in tools], platform="OpenAEV")

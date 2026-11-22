@@ -815,6 +815,18 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Répondre avant",
         "ja": "回答期限",
     },
+    "card_label_answered_at": {
+        "en": "Answered at",
+        "es": "Respondida el",
+        "fr": "Répondue le",
+        "ja": "回答日時",
+    },
+    "card_decision_waiting": {
+        "en": "A decision is waiting for you",
+        "es": "Una decisión le espera",
+        "fr": "Une décision vous attend",
+        "ja": "判断が必要です",
+    },
     "card_answer_text": {
         "en": "Add a comment or answer in your own words (optional)",
         "es": "Añada un comentario o responda con sus palabras (opcional)",
