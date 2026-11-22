@@ -392,6 +392,8 @@ DEFAULT_PRECEDENCE: dict[str, tuple[str, ...]] = {
     "category": (HAND_CLASS, "openaev", "opencrq", "opencti", "mdm", "edr", "*"),
     "subcategory": (HAND_CLASS, "openaev", "opencrq", "opencti", "mdm", "edr", "*"),
 }
+#: The class each endpoint source is registered under (#1251): what ``DEFAULT_PRECEDENCE`` ranks.
+BUILTIN_SOURCE_CLASSES: dict[str, str] = {"intune": "mdm", "defender": "edr"}
 #: Precedence of a field not listed above: a person first, then the suite, then anything.
 FALLBACK_PRECEDENCE: tuple[str, ...] = (HAND_CLASS, "openaev", "opencrq", "opencti", "*")
 #: Fields only a person sets on a synced thing (local enrichment, #1134): never taken from a sync.
@@ -405,6 +407,8 @@ def source_class(source: str, classes: Mapping[str, str] | None = None) -> str:
     source = (source or "").strip().lower()
     if classes and source in classes:
         return classes[source]
+    if source in BUILTIN_SOURCE_CLASSES:
+        return BUILTIN_SOURCE_CLASSES[source]
     if source in HAND_SOURCES:
         return HAND_CLASS
     if source.startswith("agent:"):

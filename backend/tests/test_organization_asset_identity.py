@@ -221,8 +221,11 @@ def test_source_class() -> None:
     assert ident.source_class("csv") == "hand"
     assert ident.source_class("agent:1234") == "agent"
     assert ident.source_class("openaev") == "openaev"
-    assert ident.source_class("intune") == "other"
-    assert ident.source_class("intune", {"intune": "mdm"}) == "mdm"
+    # The endpoint sources XTM One reads itself are registered (#1251); an unknown one stays other.
+    assert ident.source_class("intune") == "mdm"
+    assert ident.source_class("defender") == "edr"
+    assert ident.source_class("jamf") == "other"
+    assert ident.source_class("jamf", {"jamf": "mdm"}) == "mdm"
 
 
 # ── Software ──────────────────────────────────────────────────────────
