@@ -2149,7 +2149,9 @@ def register(
                     if not isinstance(c, _Edits)
                 )
             files_drift_note = drift_note
-        if total_bytes > _MAX_COMMIT_CONTENT_BYTES:
+        if total_bytes > _MAX_COMMIT_CONTENT_BYTES and not any(isinstance(c, _Edits) for _p, c, _x in staged):
+            # An 'edits' entry is resolved at the branch tip first: a set holding
+            # one is split below, once every file is known whole (#1307).
             split = _split_files_change_set(staged, total_bytes)
             if isinstance(split, str):
                 return split
@@ -2351,15 +2353,15 @@ def register(
                     if err:
                         return err
                     total_bytes += len(text.encode("utf-8"))
-                    if total_bytes > _MAX_COMMIT_CONTENT_BYTES:
-                        return (
-                            f"Error: the files add up to more than the {_MAX_COMMIT_CONTENT_BYTES} bytes one commit "
-                            "may carry; split them into several commits."
-                        )
                     written: str | bytes = text
                 else:
                     written = given
                 writes.append((path, written, executable))
+                if total_bytes > _MAX_COMMIT_CONTENT_BYTES:
+                    # Over the cap of one signed commit: the files are resolved
+                    # here and committed by the split path below; each part
+                    # runs the per-file checks again on the scratch branch.
+                    continue
                 #: The spellings this write renames by case, with their modes.
                 renamed: list[tuple[str, str]] = []
                 for twin in twins:
@@ -2433,6 +2435,27 @@ def register(
                 else:
                     tree_entry["content"] = written
                 tree_entries.append(tree_entry)
+            if total_bytes > _MAX_COMMIT_CONTENT_BYTES:
+                # 'edits' entries resolved whole at this tip: the change set goes
+                # through the split path as plain files, refused there if the
+                # branch moved past this tip meanwhile (#1307).
+                split = _split_files_change_set(writes, total_bytes)
+                if isinstance(split, str):
+                    return split
+                answer = await _commit_checkout_in_batches(
+                    repo,
+                    message,
+                    split,
+                    list(deletes),
+                    branch,
+                    files_drift_note,
+                    None,
+                    workspace_written=workspace_written,
+                    merged_on=tip,
+                )
+                if diffs:
+                    answer = f"{answer}\nEdits applied:\n" + "".join(diffs).rstrip("\n")
+                return answer
             for path in deletes:
                 entry, blocking, twins, err = await entry_at(path)
                 if err:
