@@ -5147,6 +5147,9 @@
   "Select which models to make available for agents and API proxy usage.": "Seleccione qué modelos poner a disposición de los agentes y del proxy API.",
   "Select which of the agent's integrations this assignment can use. Click the tool scope button to restrict individual tools.": "Seleccione qué integraciones del agente puede usar esta asignación. Haga clic en el botón de alcance de herramientas para restringir herramientas individuales.",
   "Select {field}...": "Seleccione {field}...",
+  "Enter {field}...": "Introduzca {field}...",
+  "Paste {field}...": "Pegue {field}...",
+  "About {field}": "Acerca de {field}",
   "Selected": "Seleccionado",
   "Selected file: {name}": "Archivo seleccionado: {name}",
   "Selected model ready. Click Run Selected.": "Modelo seleccionado listo. Haga clic en Ejecutar selección.",
@@ -15397,8 +15400,10 @@
   "A connected agent or fleet you cannot open was removed": "Se eliminó un agente o una flota conectados que no puede abrir",
   "A connected agent or fleet you cannot open changed": "Cambió un agente o una flota conectados que no puede abrir",
   "The built-in fleet {name} has changed since you duplicated it": "La flota integrada {name} ha cambiado desde que la duplicó",
+  "The built-in fleet {name} is now part of {successor}": "La flota integrada {name} ahora forma parte de {successor}",
   "The fleet {name} has changed since you duplicated it": "La flota {name} ha cambiado desde que la duplicó",
   "Your copy is not changed. Apply what you want from the original by hand.": "Su copia no se modifica. Aplique a mano lo que quiera del original.",
+  "Your copy is not changed and keeps running. New built-in improvements arrive in {successor}.": "Su copia no cambia y sigue funcionando. Las nuevas mejoras integradas llegan a {successor}.",
   "Open the original fleet": "Abrir la flota original",
   "{count, plural, one {# change} other {# changes}}": "{count, plural, one {# cambio} other {# cambios}}",
   "{change}: {fields}": "{change}: {fields}",
@@ -20296,5 +20301,11 @@
   "Ticket status": "Estado del ticket",
   "Re-test started: the ticket is done": "Re-test iniciado: el ticket está terminado",
   "Ticket created": "Ticket creado",
-  "{from} to {to}": "{from} a {to}"
+  "{from} to {to}": "{from} a {to}",
+  "Treatment plan": "Plan de tratamiento",
+  "Unnamed plan": "Plan sin nombre",
+  "Attached on {date}": "Vinculado el {date}",
+  "Attached the treatment plan": "Vinculó el plan de tratamiento",
+  "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "Aún no hay plan de tratamiento: la decisión de remediación escribe uno en OpenCRQ cuando OpenCRQ está conectado.",
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "Existe un plan en OpenCRQ: restringido a los lectores de OpenCRQ"
 }

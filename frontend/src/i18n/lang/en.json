@@ -5152,6 +5152,9 @@
   "Select which models to make available for agents and API proxy usage.": "Select which models to make available for agents and API proxy usage.",
   "Select which of the agent's integrations this assignment can use. Click the tool scope button to restrict individual tools.": "Select which of the agent's integrations this assignment can use. Click the tool scope button to restrict individual tools.",
   "Select {field}...": "Select {field}...",
+  "Enter {field}...": "Enter {field}...",
+  "Paste {field}...": "Paste {field}...",
+  "About {field}": "About {field}",
   "Selected": "Selected",
   "Selected file: {name}": "Selected file: {name}",
   "Selected model ready. Click Run Selected.": "Selected model ready. Click Run Selected.",
@@ -15397,8 +15400,10 @@
   "A connected agent or fleet you cannot open was removed": "A connected agent or fleet you cannot open was removed",
   "A connected agent or fleet you cannot open changed": "A connected agent or fleet you cannot open changed",
   "The built-in fleet {name} has changed since you duplicated it": "The built-in fleet {name} has changed since you duplicated it",
+  "The built-in fleet {name} is now part of {successor}": "The built-in fleet {name} is now part of {successor}",
   "The fleet {name} has changed since you duplicated it": "The fleet {name} has changed since you duplicated it",
   "Your copy is not changed. Apply what you want from the original by hand.": "Your copy is not changed. Apply what you want from the original by hand.",
+  "Your copy is not changed and keeps running. New built-in improvements arrive in {successor}.": "Your copy is not changed and keeps running. New built-in improvements arrive in {successor}.",
   "Open the original fleet": "Open the original fleet",
   "{count, plural, one {# change} other {# changes}}": "{count, plural, one {# change} other {# changes}}",
   "{change}: {fields}": "{change}: {fields}",
@@ -20296,5 +20301,11 @@
   "Ticket status": "Ticket status",
   "Re-test started: the ticket is done": "Re-test started: the ticket is done",
   "Ticket created": "Ticket created",
-  "{from} to {to}": "{from} to {to}"
+  "{from} to {to}": "{from} to {to}",
+  "Treatment plan": "Treatment plan",
+  "Unnamed plan": "Unnamed plan",
+  "Attached on {date}": "Attached on {date}",
+  "Attached the treatment plan": "Attached the treatment plan",
+  "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.",
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "A plan exists in OpenCRQ: restricted to OpenCRQ readers"
 }

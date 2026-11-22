@@ -5147,6 +5147,9 @@
   "Select which models to make available for agents and API proxy usage.": "エージェントとAPIプロキシで利用可能にするモデルを選択します。",
   "Select which of the agent's integrations this assignment can use. Click the tool scope button to restrict individual tools.": "このアサインメントが使用できるエージェントのインテグレーションを選択します。ツールスコープボタンをクリックすると個々のツールを制限できます。",
   "Select {field}...": "{field}を選択...",
+  "Enter {field}...": "{field}を入力...",
+  "Paste {field}...": "{field}を貼り付け...",
+  "About {field}": "{field}について",
   "Selected": "選択済み",
   "Selected file: {name}": "選択されたファイル：{name}",
   "Selected model ready. Click Run Selected.": "選択したモデルの準備ができました。「選択を実行」をクリックしてください。",
@@ -15397,8 +15400,10 @@
   "A connected agent or fleet you cannot open was removed": "開く権限のない接続エージェントまたはフリートが削除されました",
   "A connected agent or fleet you cannot open changed": "開く権限のない接続エージェントまたはフリートが変更されました",
   "The built-in fleet {name} has changed since you duplicated it": "組み込みフリート {name} は複製後に変更されています",
+  "The built-in fleet {name} is now part of {successor}": "組み込みフリート {name} は現在 {successor} の一部です",
   "The fleet {name} has changed since you duplicated it": "フリート {name} は複製後に変更されています",
   "Your copy is not changed. Apply what you want from the original by hand.": "コピーは変更されていません。必要な変更は元のフリートから手動で反映してください。",
+  "Your copy is not changed and keeps running. New built-in improvements arrive in {successor}.": "コピーは変更されず、そのまま動作します。新しい組み込みの改善は {successor} に追加されます。",
   "Open the original fleet": "元のフリートを開く",
   "{count, plural, one {# change} other {# changes}}": "{count, plural, other {# 件の変更}}",
   "{change}: {fields}": "{change}: {fields}",
@@ -20296,5 +20301,11 @@
   "Ticket status": "チケットのステータス",
   "Re-test started: the ticket is done": "再テスト開始: チケットが完了しました",
   "Ticket created": "チケットを作成しました",
-  "{from} to {to}": "{from} から {to}"
+  "{from} to {to}": "{from} から {to}",
+  "Treatment plan": "対応計画",
+  "Unnamed plan": "名前のない計画",
+  "Attached on {date}": "{date} に紐付け",
+  "Attached the treatment plan": "対応計画を紐付けました",
+  "No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.": "対応計画はまだありません。OpenCRQ が接続されていると、修復の決定が OpenCRQ に計画を作成します。",
+  "A plan exists in OpenCRQ: restricted to OpenCRQ readers": "OpenCRQ に計画があります。OpenCRQ の閲覧者のみ表示できます"
 }

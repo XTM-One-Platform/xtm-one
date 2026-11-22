@@ -79,9 +79,10 @@ def test_the_built_in_ctem_fleets_name_the_fields_they_need():
     fleets = [_fleet(slug, structured) for slug, structured in BUILTIN_FLEET_STRUCTURED.items()]
     readers = readers_from_fleets(fleets)
     named = {field: [row["name"] for row in rows] for field, rows in readers.items()}
-    assert "ctem-threat-response" in named["crown_jewels"]
+    assert "ctem-loop" in named["crown_jewels"]
     assert "ctem-vuln-prioritization" in named["tech_stack"]
     assert named["ai_systems"] == ["ctem-ai-security"]
+    # The retired fleets (CTEM-31) read nothing: they are gone from the catalog.
     assert all("ctem-posture" not in names for names in named.values())
 
 

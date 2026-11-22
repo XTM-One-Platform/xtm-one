@@ -47,7 +47,7 @@ from .checks import _CI_MAX_PAGES, _CI_PAGE_SIZE, ci_verdict, classify_ci, is_co
 from .contents import _json_object
 from .landed import pull_key, pull_probe
 from .merge import conflict_answer, outcome_line
-from .merge_resolution import _branch_tip
+from .merge_resolution import _branch_tip, ref_moved_and_undone
 
 _SOURCE = "integration:github"
 _MERGE_METHODS = {"MERGE", "SQUASH", "REBASE"}
@@ -1690,6 +1690,10 @@ def register(
         text = f"Merge {base_ref} into {branch}"
         before = await _branch_tip(client, headers, repo, repo_url, branch)
         answer = await conflict_answer(client, headers, repo, repo_url, branch, base_ref, text, {})
+        if ref_moved_and_undone(answer):
+            # The base moved between the line merge and the merge itself, and nothing stayed on the branch: the
+            # line merge is run once more against the base's new commit instead of handing the agent a refusal.
+            answer = await conflict_answer(client, headers, repo, repo_url, branch, base_ref, text, {})
         if answer.startswith("Merged"):
             # Every path merged line by line without an overlap: the branch took its base in signed commits.
             await mark_self_action(repo, number)
