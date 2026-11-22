@@ -967,11 +967,17 @@ assignment of any of the three members, decided from the database at run start, 
 
 ### 13.2 The orchestrator delegates the module round
 
-- **Daily module round.** A new orchestrator assignment `module_round` (schedule key
-  `module_round` in `cycles.SCHEDULE_KEYS`, once per UTC day) lists the active module
-  registrations and hands each to its module's checker (handover `delegate`), one cycle per
-  registration. It replaces the `daily` branch of `module_analyst_tick` (12.8). It runs with
-  zero open findings: the round is the check list, not the findings.
+- **Daily module round** (S15a-2). Once per UTC day, the trigger pass of
+  `module_analyst_tick` hands every active module registration that no cycle covered that
+  day to its module's checker (`CHECKS_KEY_BY_PROVIDER`), one cycle per registration,
+  trigger `schedule`, run payload `module_trigger: "round"`. It replaced the S14 `daily`
+  branch (`due_trigger` answers `change` or nothing; `round_due` decides the round). It runs
+  with zero open findings: the round is the check list, not the findings. The round is
+  started by the platform, not by a model run of the orchestrator: no registration is
+  skipped by a model, the orchestrator spends nothing on it, and the round shares the pass
+  cap (`MAX_STARTS_PER_PASS`, changes first) and the ceiling of 13.7. The orchestrator's
+  `delegate` handovers to the checkers (below) carry the fleet's graph and an
+  administrator's request in chat.
 - **Finding-set change** (12.2) and **on demand** ("Run checks now" on the module card,
   administrators) start the module's checker directly, with the same debounce and ceiling.
 - The orchestrator's handovers gain the three checkers; the fleet graph, Members and Data
@@ -1155,7 +1161,7 @@ source (13.4 scope).
 ### 13.9 Acceptance pinned by tests
 
 - (l) XTM One mode, Platform Health on, an OpenCTI, an OpenAEV and an OpenCRQ registered,
-  zero open findings: the daily `module_round` delegates one cycle per registration with no
+  zero open findings: the daily module round starts one cycle per registration with no
   admin action, each run calls its module's tools and records a report with every check of
   its playbook (backend test, stubbed model and integrations; lab retest at deploy).
 - (m) A stubbed module-native fault per module (OpenCTI: an enabled manager not running;
