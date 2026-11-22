@@ -147,6 +147,16 @@ companion inbox reads the same list. The list is one indexed read of the
 `decisions` table (G2: recipient, status, deadline), no model call on the read
 path.
 
+**Implementation (S5, read).** `GET /api/v1/decisions/waiting` (`app/services/decision_inbox.py`,
+`waiting_for`): the open rows whose `recipient` is the caller (`user:<id>`), one
+of their groups (`group:<id>`), `company`, or `admins` for an administrator,
+soonest `deadline` first (none last), then oldest `created_at`. Each row carries
+the public id, kind, question, the whole ask for the card, `origin` (the
+assignment, flow or work item title), `agent`, `asked_at`, `deadline` and the
+`decision_links` page. The list is served only while the read switch is on
+(section 8 step 3; its verdict reused one minute per process); otherwise the
+answer is `{enabled: false, reason, items: []}` and the per-engine views stay.
+
 ## 5. D. One bell kind
 
 A new kind `decision` replaces `hitl`, `flow_hitl` and `work_item_waiting` in
