@@ -53,6 +53,7 @@ Signature validation (both endpoints):
   - Perk: Tk-Signature header (HMAC-SHA256)
   - Aikido Security: X-Aikido-Webhook-Signature header (HMAC-SHA256, 30 s replay window)
   - Airwallex: x-signature over x-timestamp + body (HMAC-SHA256, 5 min replay window)
+  - Rydoo: unsigned expense events, gated by the static token below
   - Custom: X-Signature header (HMAC-SHA256)
   - Static token (direct-assignment endpoint): X-Webhook-Token (or its
     X-Webhook-Secret alias), or Authorization: Bearer — the secret verbatim,
@@ -196,6 +197,8 @@ from app.integrations.providers.airwallex.webhooks import TIMESTAMP_HEADER as AI
 from app.integrations.providers.airwallex.webhooks import is_delivery as is_airwallex_delivery
 from app.integrations.providers.airwallex.webhooks import trigger_event as airwallex_trigger_event
 from app.integrations.providers.airwallex.webhooks import verify_signature as verify_airwallex_signature
+from app.integrations.providers.rydoo.webhooks import is_delivery as is_rydoo_delivery
+from app.integrations.providers.rydoo.webhooks import trigger_event as rydoo_trigger_event
 from app.models.agent import Agent
 from app.models.assignment import (
     Assignment,
@@ -2184,6 +2187,12 @@ def _extract_event_key(request: Request, payload: dict) -> str:
     if is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
 
+    # Rydoo: a flat expense event (eventType, expenseId, companyId); the
+    # trigger key is rydoo_ and its snake form (ExpenseApproved ->
+    # rydoo_expense_approved).
+    if is_rydoo_delivery(payload):
+        return rydoo_trigger_event(payload["eventType"])
+
     # Generic / OpenCTI
     return payload.get("type", payload.get("action", "unknown"))
 
@@ -2215,6 +2224,8 @@ def _generic_webhook_event_key(payload: object, request: Request) -> object:
         return aikido_trigger_event(payload["event_type"])
     if isinstance(payload, dict) and is_airwallex_delivery(request.headers.get, payload):
         return airwallex_trigger_event(payload["name"])
+    if is_rydoo_delivery(payload):
+        return rydoo_trigger_event(payload["eventType"])
     gh_action = payload.get("action", "") if isinstance(payload, dict) else ""
     gh_event = request.headers.get("X-GitHub-Event", "")
     return f"{gh_event}.{gh_action}" if gh_event else gh_action
