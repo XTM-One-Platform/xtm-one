@@ -70,6 +70,7 @@ from app.integrations.providers.cybersixgill import (
 )
 from app.integrations.providers.cyware import build_tools as cyware_tools
 from app.integrations.providers.databricks import build_tools as databricks_tools
+from app.integrations.providers.dealhub import build_tools as dealhub_tools
 from app.integrations.providers.defender import build_tools as defender_tools
 from app.integrations.providers.discord_bot import build_tools as discord_bot_tools
 from app.integrations.providers.docusign import build_tools as docusign_tools
@@ -154,7 +155,6 @@ from app.integrations.providers.recorded_future import (
     build_tools as recorded_future_tools,
 )
 from app.integrations.providers.rss import build_tools as rss_tools
-from app.integrations.providers.rydoo import build_tools as rydoo_tools
 from app.integrations.providers.securityscorecard import (
     build_tools as securityscorecard_tools,
 )
@@ -1003,6 +1003,7 @@ PROVIDER_TOOLS = {
     "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "dealhub": dealhub_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "netsuite": netsuite_tools,
@@ -1050,7 +1051,6 @@ PROVIDER_TOOLS = {
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
     "airwallex": airwallex_tools,
-    "rydoo": rydoo_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1122,6 +1122,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "ashby",
         "bluesky",
         "concord",
+        "dealhub",
         "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
@@ -1152,7 +1153,6 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "openaev",
         "opencti",
         "perk",
-        "rydoo",
         "servicenow",
         "slack",
         "tanium",
@@ -2991,27 +2991,6 @@ async def _get_token(
         airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return airwallex_token_from_config(airwallex_secret, airwallex_extra)
 
-    # --- Rydoo (OAuth2 client credentials, one company, branches as entities) ---
-    # The client secret is the API key column; the client id lives in
-    # extra_config. The provider gets ``client_id||client_secret``.
-    if provider == "rydoo":
-        from app.integrations.providers.rydoo import (
-            token_from_config as rydoo_token_from_config,
-        )
-
-        rydoo_extra = {}
-        if integ.extra_config_enc:
-            try:
-                rydoo_extra = await _reveal_extra(integ)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to decrypt extra_config for '%s' (rydoo): %s",
-                    integ.name,
-                    format_exception_message(exc),
-                )
-        rydoo_secret = (await reveal_field(integ, "api_key_enc")) or ""
-        return rydoo_token_from_config(rydoo_secret, rydoo_extra)
-
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
     # (admin.api.crowdsec.net) each use their own API key, both sent in the
@@ -4394,6 +4373,8 @@ async def _get_token(
     extra_field_providers: dict[str, str] = {
         "credly": "organization_id",
         "concord": "organization_id",
+        # DealHub: the instance host (api.dealhub.io when unset) as ``host||token``.
+        "dealhub": "instance_host",
         "google_search": "search_engine_id",
         "hibob": "service_user_id",
         # HackerOne uses HTTP Basic auth: the API token *identifier* (username)
