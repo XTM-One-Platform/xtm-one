@@ -565,8 +565,6 @@ ee:
   - frontend/src/lib/*ai-draft.ts
   - frontend/src/pages/CustomDashboard*.tsx
   - frontend/src/pages/DashboardPublic.tsx
-  - frontend/src/pages/DecisionLink*.tsx
-  - frontend/src/hooks/api/useDecisionLinkApi.ts
   - frontend/src/pages/DashboardStaticRender.tsx
   - frontend/src/pages/DashboardStudio.tsx
   - frontend/src/pages/WidgetPacks.tsx
@@ -582,6 +580,7 @@ ee:
   - backend/app/models/decision_hooks.py
   - backend/app/services/decision_links.py
   - backend/app/services/decision_router.py
+  - backend/app/services/decision_waits.py
   - backend/app/services/agentic_executions.py
   - backend/app/services/integration_tools.py
   - backend/app/services/mcp_oauth_tokens.py
@@ -709,6 +708,7 @@ ce:
   - backend/app/data
   - backend/app/enterprise
   - backend/app/integrations/providers/aikido  # a connector
+  - backend/app/integrations/providers/airwallex  # a connector
   - backend/app/integrations/providers/ashby  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
   - backend/app/integrations/providers/drata  # a connector
