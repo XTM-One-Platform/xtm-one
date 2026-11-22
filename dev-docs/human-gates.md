@@ -213,6 +213,19 @@ second object for the same question), and fixes the only real harm of F1 (a
 routinely pausing scheduled assignment holding its queue). N defaults to 4
 hours for scheduled and event runs and is off for chat-started runs.
 
+**Implementation (S7).** `app/services/decision_waits.py`. `holds_assignment`
+replaces the bare status filter of the overlap guard (`has_active_run`,
+`count_active_runs`, `find_active_run`) and of the delivery queue's slot
+counts: an `awaiting_human` run whose open `decisions` row is older than
+`HUMAN_GATE_QUEUE_RELEASE_HOURS` (default 4, 0 turns it off) no longer holds
+its assignment, unless its `trigger_context.type` is chat-started
+(`chat_handover`). The wait is read from the decision row, so no column is
+added. `expire_overdue_decisions` runs on the autonomous tick: an open run
+decision past its `deadline` becomes `expired` (an `expired` event, surface
+`deadline`), and the run resumes with the ask's recommendation as its answer,
+else "No answer before the deadline"; a tool approval resumes with every call
+rejected.
+
 ## 8. G. Storage (decided: G2)
 
 - **G1, a projection over the existing storages**: decisions stay where they
@@ -518,6 +531,21 @@ old endpoints call, so the recipient rule is theirs; a refusal is a `refused`
 event), and `app/services/decision_links.py` (I.7, every bell route). The
 missed scheduled one-off decision (reschedule or cancel) and the e2e through
 the router ride with S2b.
+
+S2b as built: `app/services/decision_backfill.py` (`backfill`, `backfill_report`,
+`read_switch`), run by the data migration `c943decisionsbf1` (no DDL, keyset
+batches of 200, the count check logged per source) and repeated by
+`GET /api/v1/decisions/backfill` (admins: open gates, with a decision, missing
+ids, the switch and why it is off). The open tests are the dual write's own
+(`run_opening`, `flow_opening`, `work_item_opening`, `open_flow_park` in
+`decision_hooks.py`), so a backfilled row is the row the hook would have
+written; its `asked` event carries surface `backfill`. `DECISIONS_READ_ENABLED`
+(off) is ANDed with a complete count and the table's presence, so the
+downgrade turns the switch off by itself; the downgrade deletes only the open
+rows the backfill wrote and keeps answered ones as audit. Still owed after
+S2b: the missed scheduled one-off decision (its own slice: the scheduled
+item's writes are refused by `_refuse_scheduled`, so it needs its own answer
+function) and a Playwright e2e of the router (S3, with the card).
 
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
 (prompt), `agent_builder` tool texts, `hitl_whitelist` / `tools/approval.py` /
