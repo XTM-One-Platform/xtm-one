@@ -1027,15 +1027,25 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     // registration: without that the label never asks, and the 503 below
     // would never be served.
     const page = one.page;
+    // The handlers stay installed for the whole test and fall back once the
+    // backend is back: removing the last route while the click's lazy route
+    // chunk is in flight leaves that request pending for good (#1192).
+    let recovered = false;
     const list = (url: URL) => url.pathname === '/api/v1/integrations';
     await page.route(list, async (route) => {
+      if (recovered) {
+        await route.fallback();
+        return;
+      }
       const response = await route.fetch();
       const rows = (await response.json()) as Array<Record<string, unknown>>;
       const json = rows.map((row) => (row.id === outboundReg.id ? { ...row, a2a_direction: null } : row));
       await route.fulfill({ response, json });
     });
     const lookup = (url: URL) => url.pathname.endsWith(`/api/v1/a2a/client/${outboundReg.id}`);
-    await page.route(lookup, (route) => route.fulfill({ status: 503, body: '' }));
+    await page.route(lookup, (route) =>
+      recovered ? route.fallback() : route.fulfill({ status: 503, body: '' }),
+    );
     const failed = page.waitForResponse((r) => lookup(new URL(r.url())) && r.status() === 503);
     await page.goto(`/agents/${delegatingAgent.id}`);
     await failed;
@@ -1047,8 +1057,7 @@ test.describe.serial('A2A in the UI: inbound versus outbound', () => {
     // The backend is back. The row opens the integration in-app, and that page
     // reads the direction afresh instead of inheriting the failure the label
     // tolerated: a strict read mounting on a cached error throws it unretried.
-    await page.unroute(lookup);
-    await page.unroute(list);
+    recovered = true;
     await outbound.click();
     await expect(page.getByText('Outbound: our agents task this partner')).toBeVisible();
 
