@@ -35,7 +35,7 @@ import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select, text
@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.organization_asset import (
     OrganizationAsset,
     OrganizationAssetDecision,
+    OrganizationAssetSbom,
     OrganizationAssetSoftware,
     OrganizationAssetSource,
 )
@@ -78,13 +79,18 @@ def canonical_rows(
     *,
     precedence: Mapping[str, Sequence[str]] | None = None,
     decisions: identity.Decisions | None = None,
+    sboms: Mapping[identity.RecordRef, Sequence[identity.SourceRecord]] | None = None,
 ) -> list[dict[str, Any]]:
     """The canonical assets of profile *rows*: what :func:`rebuild_from_profile` writes (pure, testable).
 
     Each answer holds ``canonical_key``, ``name``, ``fields`` (field ->
     ``FieldValue.as_dict()``), ``merged_on``, ``possible_matches``,
     ``sources`` (one per record) and ``software`` (``merge_software``).
+    *sboms* maps a source record to the SBOM documents imported on it (source
+    ``sbom``): their software joins the asset holding that record, whatever it
+    was merged with; an SBOM on a record no longer present is left out.
     """
+    sboms = sboms or {}
     records = [identity.section_record("assets", row, index=i) for i, row in enumerate(rows)]
     out: list[dict[str, Any]] = []
     for thing in identity.match_records(records, decisions=decisions):
@@ -108,7 +114,9 @@ def canonical_rows(
                     }
                     for r in thing.records
                 ],
-                "software": identity.merge_software(thing.records),
+                "software": identity.merge_software(
+                    [*thing.records, *(doc for r in thing.records for doc in sboms.get(r.ref, ()))]
+                ),
             }
         )
     return out
@@ -135,7 +143,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     # Two first reads racing would both rebuild: the second waits for the first's transaction.
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"organization_assets:{org}"})
     rows = [row for row in (version.profile or {}).get("assets_exposure") or [] if isinstance(row, Mapping)]
-    things = canonical_rows(rows, decisions=await load_decisions(db, org))
+    things = canonical_rows(rows, decisions=await load_decisions(db, org), sboms=await load_sboms(db, org))
     # An asset whose canonical key is unchanged keeps its id across rebuilds, so an id
     # read from the API before an unrelated profile save still answers afterwards.
     known: dict[str, uuid.UUID] = {
@@ -188,6 +196,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
                     cpe=_cut(soft["cpe"], 300),
                     purl=_cut(soft["purl"], 500),
                     install_date=_cut(soft["install_date"], 40),
+                    bundled_in=_cut(soft.get("bundled_in"), 300),
                     first_seen_at=_seen(soft["first_seen"]),
                     last_seen_at=_seen(soft["last_seen"]),
                     sources=list(soft["sources"]),
@@ -374,6 +383,161 @@ def decision_dict(row: OrganizationAssetDecision) -> dict[str, Any]:
     }
 
 
+# ── SBOM import: software of an application or image on an asset ──────
+
+#: The source name SBOM components carry on an asset's software.
+SBOM_SOURCE = "sbom"
+
+
+class SbomImportError(ValueError):
+    """An SBOM import the store refuses on an unknown asset (the API answers 404)."""
+
+
+def sbom_components(sbom: Any) -> list[dict[str, Any]]:
+    """The rows an SBOM gives an asset: one per vendor, product and version, bundling component kept.
+
+    A version the SBOM does not give is ``unknown``, never an empty string; a
+    component listed twice (same vendor, product and version) is kept once.
+    """
+    out: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for comp in sbom.components:
+        version = comp.version or identity.UNKNOWN_VERSION
+        key = (_key(comp.vendor or ""), _key(comp.product), version)
+        if key in out:
+            continue
+        out[key] = {
+            "vendor": _cut(comp.vendor, 200),
+            "product": _cut(comp.product, 200),
+            "version": _cut(version, 100),
+            "cpe": _cut(comp.cpe, 300),
+            "purl": _cut(comp.purl, 500),
+            "bundled_in": _cut(sbom.bundled_in(comp), 300),
+        }
+    return list(out.values())
+
+
+def sbom_document_key(doc: Any, file_name: str) -> str:
+    """What an SBOM describes, so importing the same document again replaces it.
+
+    CycloneDX: ``metadata.component`` (``name version``); SPDX: ``name``; else the file name.
+    """
+    if isinstance(doc, Mapping):
+        meta = doc.get("metadata")
+        main = meta.get("component") if isinstance(meta, Mapping) else None
+        if isinstance(main, Mapping) and str(main.get("name") or "").strip():
+            return _cut(f"{main.get('name')} {main.get('version') or ''}", 300)
+        if doc.get("spdxVersion") and str(doc.get("name") or "").strip():
+            return _cut(doc.get("name"), 300)
+    return _cut(file_name or "sbom", 300)
+
+
+def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
+    return identity.SourceRecord(
+        source=SBOM_SOURCE,
+        external_id=f"{row.anchor_source}:{row.anchor_external_id}:{row.document_key}",
+        software=[
+            {**c, "first_seen": row.imported_at, "last_seen": row.imported_at}
+            for c in row.components or []
+            if isinstance(c, Mapping)
+        ],
+        last_seen=row.imported_at,
+    )
+
+
+async def load_sboms(
+    db: AsyncSession, organization_id: uuid.UUID
+) -> dict[identity.RecordRef, list[identity.SourceRecord]]:
+    """The SBOMs of *organization_id*, by the source record they are anchored on, as ``sbom`` records."""
+    rows = (
+        (
+            await db.execute(
+                select(OrganizationAssetSbom)
+                .where(OrganizationAssetSbom.organization_id == organization_id)
+                .order_by(OrganizationAssetSbom.imported_at, OrganizationAssetSbom.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: dict[identity.RecordRef, list[identity.SourceRecord]] = {}
+    for row in rows:
+        out.setdefault(identity.RecordRef(row.anchor_source, row.anchor_external_id), []).append(_sbom_record(row))
+    return out
+
+
+async def import_sbom(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    *,
+    data: bytes,
+    file_name: str = "",
+    author_user_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
+    """Import an SBOM on an asset and rebuild the store (the caller commits and audits).
+
+    The document is anchored on the asset's first source record, so it follows
+    the asset through every rebuild and merge. The same document imported again
+    replaces its components (idempotent); components another document gave are
+    kept. ``SbomImportError`` names an unknown asset; ``sbom_parser.SbomError``
+    a document refused.
+    """
+    import json
+
+    from app.services import sbom_parser
+
+    anchor = (
+        await db.execute(
+            select(OrganizationAssetSource.source, OrganizationAssetSource.external_id)
+            .join(OrganizationAsset, OrganizationAsset.id == OrganizationAssetSource.asset_id)
+            .where(OrganizationAsset.organization_id == organization_id, OrganizationAsset.id == asset_id)
+            .order_by(OrganizationAssetSource.source, OrganizationAssetSource.external_id)
+            .limit(1)
+        )
+    ).first()
+    if anchor is None:
+        raise SbomImportError("Asset not found")
+    sbom = sbom_parser.parse_bytes(data)
+    components = sbom_components(sbom)
+    document_key = sbom_document_key(json.loads(data), file_name)
+    source, external_id = str(anchor[0]), str(anchor[1])
+    row = (
+        await db.execute(
+            select(OrganizationAssetSbom).where(
+                OrganizationAssetSbom.organization_id == organization_id,
+                OrganizationAssetSbom.anchor_source == source,
+                OrganizationAssetSbom.anchor_external_id == external_id,
+                OrganizationAssetSbom.document_key == document_key,
+            )
+        )
+    ).scalar_one_or_none()
+    replaced = row is not None
+    if row is None:
+        row = OrganizationAssetSbom(
+            organization_id=organization_id,
+            anchor_source=source,
+            anchor_external_id=external_id,
+            document_key=document_key,
+        )
+        db.add(row)
+    row.format = sbom.format
+    row.file_name = _cut(file_name, 300)
+    row.components = components
+    row.author_user_id = author_user_id
+    row.imported_at = datetime.now(UTC)
+    await db.flush()
+    await rebuild_from_profile(db, organization_id)
+    return {
+        "id": str(row.id),
+        "format": sbom.format,
+        "document": document_key,
+        "components": len(components),
+        "unknown_versions": sum(1 for c in components if c["version"] == identity.UNKNOWN_VERSION),
+        "bundled": sum(1 for c in components if c["bundled_in"]),
+        "replaced": replaced,
+    }
+
+
 async def refresh_after_save(db: AsyncSession, organization_id: uuid.UUID | None = None) -> uuid.UUID | None:
     """Rebuild the store after a new profile version was saved in this transaction.
 
@@ -520,6 +684,7 @@ def _software_dict(row: OrganizationAssetSoftware) -> dict[str, Any]:
         "cpe": row.cpe,
         "purl": row.purl,
         "install_date": row.install_date or None,
+        "bundled_in": row.bundled_in or None,
         "first_seen": row.first_seen_at.isoformat() if row.first_seen_at else None,
         "last_seen": row.last_seen_at.isoformat() if row.last_seen_at else None,
         "sources": list(row.sources or []),

@@ -125,6 +125,10 @@ def openaev_checkout() -> Path:
     return where
 
 
+#: OpenAEV's ``enabled_dev_features`` in the lab: ``*`` turns every ``PreviewFeature`` on.
+PREVIEW_FEATURES = "*"
+
+
 def backend_env() -> dict[str, str]:
     """Spring's relaxed binding of application.properties onto the lab's stores, as OpenAEV's CI sets them."""
     return {
@@ -152,6 +156,9 @@ def backend_env() -> dict[str, str]:
         "OPENAEV_HEALTHCHECK_KEY": HEALTH_KEY,
         # No egress to the Hub from a lab: its connectivity check would only log failures.
         "OPENAEV_XTM_HUB_ENABLE": "false",
+        # Every preview feature on (PreviewFeature.FEATURE_FLAG_ALL, read as openaev.enabled-dev-features): a
+        # pull request behind a preview flag renders its screens in the lab instead of the flag-off fallback.
+        "OPENAEV_ENABLED_DEV_FEATURES": PREVIEW_FEATURES,
     }
 
 

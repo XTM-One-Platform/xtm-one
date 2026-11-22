@@ -1178,13 +1178,28 @@ source (13.4 scope).
   `HealthSettings.module_analyst` keeps its name in storage (no settings migration) and is
   labelled "Module health checks" in Spend limits.
 - Outside agentic quota under the S14 ceiling (12.5), one ledger for the three checkers.
-- **Default ceiling, to re-measure (S15d-3).** A round reads more than the S14 quiet cycle
-  (about 22,600 tokens): estimated 45,000 to 65,000 tokens per module per round with 8 to
-  12 checks (OpenCTI 12, OpenAEV 10, OpenCRQ 8; the per-connector reads are gone, the
-  data-health reads are aggregates). Provisional defaults, until the lab measurement replaces them here: per-cycle cap
-  **150,000 tokens**, **1,000,000 tokens and 8 USD a day, 20,000,000 tokens and 120 USD a
-  month**. The measurement runs the three rounds in the lab with zero open findings and
-  with one induced fault per module, and writes the figures in this section.
+- **Default ceiling, measured (S15d-3, 22 Nov 2026).** Lab `lab-module-health` on main
+  `7cc0b59`, live model `claude-opus-5-5` through the Copilot's LLM proxy, zero open findings,
+  no admin action: the trigger pass opened the three rounds at once (`trigger` schedule,
+  `module_trigger` round) and each closed in about 61 seconds with its report stored.
+
+  | Checker | Checks in the report | Tokens | Cost (USD) |
+  |---|---|---|---|
+  | OpenCTI | 12 (all `not_run`) | 53,786 | 0.256 |
+  | OpenAEV | 10 (all `not_run`) | 53,563 | 0.258 |
+  | OpenCRQ | 8 (all `not_run`) | 43,147 | 0.211 |
+
+  These are the floor of a round: the lab's registrations point at `.invalid` hosts, so
+  every read fails fast and returns no module data. A day of the three rounds costs
+  about 150,000 tokens and 0.73 USD at that floor, a 30-day month about 4,500,000 tokens
+  and 22 USD. Decision: the defaults that ship in `HealthSettings.module_analyst` stay,
+  **80,000 tokens per cycle, 500,000 tokens and 4 USD a day, 10,000,000 tokens and 60 USD
+  a month** (a round at the floor uses 54 to 67% of the cycle cap; the day and month caps
+  leave room for change cycles and the reads of reachable modules). The provisional
+  150,000 per cycle of the spec was never written to the settings and is withdrawn. The
+  figure of a round on reachable modules, and so whether 80,000 per cycle holds, is read
+  at the deploy retest on ctem.one; a round stopped at its cap there raises the default
+  in a follow-up of this section.
 - **Measurement lab (S15d-3).** `[service.lab-module-health]` is `[service.lab-live]` with
   `LAB_PLATFORM_HEALTH = "on"` (the seed turns Platform Health on through the real
   `PUT /health/settings`, `seed_platform_health`) and `LAB_WORKER = "1"`: the seed's
@@ -1245,6 +1260,6 @@ source (13.4 scope).
 | S15b-2c2 | OpenAEV `get_openaev_data_health` (`POST /api/scenarios/search`, `/api/exercises/search`, `/api/atomic-testings/search` with `size` 1, `totalElements` only: totals, updates in the last 7 days vs the 3 weeks before, since `*_created_at` is not `@Queryable`; simulations `RUNNING` 24 h past `exercise_end_date`; simulations `CANCELED` in 24 h, OpenAEV having no failed status; completeness and duplicate assets not exposed by the search API) and `get_openaev_error_rate` (atomic testings with `inject_status` in `ExecutionStatus.ERROR_STATUSES` per day over 7 days by `inject_updated_at`, with the daily mean; no platform error log in the OpenAEV API) in the same file, allow-listed, same tests | no |
 | S15b-2d | OpenCRQ `get_opencrq_data_health` (`riskScenarios.getRiskScenariosOverview`: scenarios by readiness status, inputs missing or outdated since the last score, never scored, oldest last score; `jobs.listAllRuns` with `limit` 1, `total` only: `crq-simulation` runs enqueued in the last 30 days vs the 30 before and the newest succeeded one, the overview carrying no scenario creation time) and `get_opencrq_platform_health` (`jobs.listAllRuns`: runs in `dlq` per day over 7 days by `finishedAt` with the daily mean, runs `running` started over 6 h ago; `connectors.listConnectors`: connectors by state, the failing ones, the OpenCTI and OpenAEV links configured and their state; no platform error log in the OpenCRQ API) in a new `providers/opencrq/health_reads.py`, allow-listed, `tool_procedures.json` and `tool_input_keys.json` regenerated, same tests | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m); shipped in two PRs: S15c-1 the store (`health_module_check_reports`, migration `h129healthcheckreports01`, one row per cycle), the tool in the `health_modules` group and `services/health/check_reports.py` (a warn opens `<module>.agentic.<check>` as a warning and a fail as a critical at once, a pass resolves it in the same cycle, not run leaves it, a live dismissal is refreshed and never reopened; `tests/test_health_check_reports.py`), the seeded checks prompt and the three playbooks telling the checker to store its verdicts; S15c-2 the cycle digest section `check_report` (counts, the checks not passed with their finding, a round that stored no report listed as skipped work `check_report`/`not_recorded`), `GET /health/modules/{module}/checks` (administrators, the latest report per registration, stored rows only so readable with AI off, 404 for a module of another mode) and test (m) (`tests/test_health_check_report_api_postgres.py`: a stubbed fault per module fails its check and opens a critical agentic finding, the next round resolves it); test (l) and the weekly digest's module part move to S15d with the round measurement | no |
-| S15d | Lab measurement and default ceiling written in 13.7, test (l), the weekly digest's module part; shipped in two PRs: S15d-1 the weekly digest's Modules part (`check_reports.weekly_module_summary`: per module, the rounds, registrations and verdict totals of the reports finished in the window and the 5 checks failed most, fail before warn, ties by id; computed by `cycles._digest_payload` into the digest's trigger payload as `modules`, `modules_unavailable` when the read fails, so the model restates figures it did not count; `tests/test_health_weekly_module_summary.py`); S15d-2 test (l) (`tests/test_health_module_round_postgres.py`: three registrations through their integrations, zero open findings, one trigger pass starts one checker cycle each with no admin action, each run's reads are its module's allow-list and its report holds every check of its playbook, a second pass the same UTC day starts none); S15d-3 the measurement lab `[service.lab-module-health]` (`LAB_PLATFORM_HEALTH`, `seed_platform_health`), then the lab measurement of the three rounds and the default ceiling written in 13.7 | no |
+| S15d | Lab measurement and default ceiling written in 13.7, test (l), the weekly digest's module part; shipped in two PRs: S15d-1 the weekly digest's Modules part (`check_reports.weekly_module_summary`: per module, the rounds, registrations and verdict totals of the reports finished in the window and the 5 checks failed most, fail before warn, ties by id; computed by `cycles._digest_payload` into the digest's trigger payload as `modules`, `modules_unavailable` when the read fails, so the model restates figures it did not count; `tests/test_health_weekly_module_summary.py`); S15d-2 test (l) (`tests/test_health_module_round_postgres.py`: three registrations through their integrations, zero open findings, one trigger pass starts one checker cycle each with no admin action, each run's reads are its module's allow-list and its report holds every check of its playbook, a second pass the same UTC day starts none); S15d-3 the measurement lab `[service.lab-module-health]` (`LAB_PLATFORM_HEALTH`, `seed_platform_health`), then the lab measurement of the three rounds (43,147 to 53,786 tokens a round at the unreachable-module floor) and the default ceiling written in 13.7 (the shipped 80,000 per cycle kept, the provisional 150,000 withdrawn) | no |
 | S15e | Health page: module card counts, report view, "Run checks now", Cycles title, weekly digest part, docs and i18n | yes |
 | S15f | Fleet surfaces (About, graph, Members, Data flow inputs), access matrix and link guard, UX Director journey review | yes |

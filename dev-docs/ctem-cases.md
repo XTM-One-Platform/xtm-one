@@ -178,10 +178,29 @@ prefix read); distribution backports are not visible.
 
 ### 4.3 Recompute
 
-- Runs on demand: `POST /api/v1/ctem-cases/recompute` (the list's "Recompute"),
-  any user, one per minute per user, no model call, no run, no quota
-  (`services/ctem_cases_source.py`). It reads OpenCTI and OpenAEV with the
-  caller's own credentials and MERGES into the shared cases (#11613): what the
+- Cases are inferred, never refreshed by hand: the UI has no Recompute button
+  (Sam, 22 Nov 2026). The recompute runs by itself on three paths
+  (`services/ctem_cases_refresh.py`), rules only, no model call, no run, no quota:
+  - the scheduler tick, once per `cases_recompute.interval_minutes` of the
+    organization profile (default 15, minimum 5, a Redis slot
+    `ctem:cases:recompute-pass:<vertical>`), as the run-as users of the CTEM loop
+    fleet's enabled automations, else each user who opened Cases in the last 14
+    days (newest 20), each with their own stored credentials; one identity
+    failing never stops the others;
+  - the page open: `GET /ctem-cases` starts a background recompute for a viewer
+    whose last one is older than the interval (the same one-per-minute slot);
+    the list re-reads on the `ctem_case_update` frame, in place, no toast;
+  - events: an OpenAEV or OpenCTI delivery that already moves a case (s.9bis,
+    `ctem_openaev_events`) keeps doing so between passes.
+  Every recompute records its freshness (`freshness` on the list answer:
+  `updated_at`, and `missing` with `missing_at` while a product did not answer);
+  the list header shows "Updated 4 min ago" (exact time on hover) and, after an
+  outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
+  a link to the integrations.
+- `POST /api/v1/ctem-cases/recompute` stays as an INTERNAL route for agents and
+  administrators (no screen calls it): any user, one per minute per user
+  (`services/ctem_cases_source.py`). Every path reads OpenCTI and OpenAEV with the
+  identity's own credentials and MERGES into the shared cases (#11613): what the
   caller sees open is added or reopened; a member is closed only when the
   caller can still read it by id and it is no longer open; a member the
   caller cannot see is left as it is, so a narrower view never closes or
@@ -403,10 +422,10 @@ then the existing AI assessment and facts grid unchanged.
 
 ### 7.2 Cases list `/ctem/cases`
 
-- Page header (`EntityPageHeader` list form): back link "Back to
-  Mobilization", title "Cases"; actions in the platform order (secondary
-  first, filled primary last), DS `Button` default height: Recompute,
-  Export CSV. The totals live in the
+- Page header (`CtemPageHeader`): title "Cases" alone, like Agents, Fleets
+  or Work items (no eyebrow: the left menu group already says CTEM; no back
+  link); its action slot holds only the quiet freshness line of s.4.3, never a
+  refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
 - State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
   exact counts: Needs attention, In progress, Resolved ("All time" in its
