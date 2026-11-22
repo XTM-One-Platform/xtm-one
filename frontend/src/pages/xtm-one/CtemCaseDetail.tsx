@@ -52,14 +52,11 @@ import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
+import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
-import { loopFleetOf } from "./ctem/case-loop-reason";
-import { caseAutomations, caseSources, caseWork } from "./ctem/case-workers";
-import { CaseWorkCard } from "./ctem/CaseWorkCard";
-import { useFleets } from "@/hooks/api/useFleetApi";
-import { useAssignments } from "@/hooks/api/useAssignmentApi";
-import { useAgents } from "@/hooks/api/useAgentApi";
+import { caseLoopWorker, loopFleetOf, opencrqConnected } from "./ctem/case-loop-reason";
+import { useFleetHealth, useFleets } from "@/hooks/api/useFleetApi";
 import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -241,27 +238,24 @@ export default function CtemCaseDetail() {
   const agenticLicensed = useAgenticAIEnabled();
   const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
   const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
-  // Who works the case (#1266): every automation on the case events, whatever fleet or agent
-  // owns it, and the runs those events started here; the products each section is written from.
+  // Why an empty section is empty (#1206): the CTEM loop fleet, the runs on the case, OpenCRQ.
   const fleets = useFleets({ optional: true, enabled: agenticLicensed });
   const loopFleet = loopFleetOf(fleets.data);
-  const assignments = useAssignments();
-  const agents = useAgents();
+  const loopHealth = useFleetHealth(loopFleet?.id, { optional: true });
   const { data: registrations } = usePlatformRegistrations();
-  const work = useMemo(
-    () =>
-      caseWork({
+  const loopState = useMemo(
+    () => ({
+      worker: caseLoopWorker({
         licensed: agenticLicensed,
-        // Only the automations that can start on THIS case: its events and its filter (UX round 1 on #1275, B1).
-        automations:
-          assignments.isError || assignments.data === undefined || !kase
-            ? undefined
-            : caseAutomations(assignments.data, agents.data, { id: kase.id, trigger_path: kase.trigger_path }),
+        fleets: fleets.data,
+        fleetsError: fleets.isError || loopHealth.isError,
+        automations: loopFleet ? loopHealth.data?.automations : null,
         runs: caseRuns?.runs,
       }),
-    [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns, kase],
+      opencrq: opencrqConnected(registrations),
+    }),
+    [agenticLicensed, fleets.data, fleets.isError, loopFleet, loopHealth.data, loopHealth.isError, caseRuns, registrations],
   );
-  const loopState = useMemo(() => ({ sources: caseSources(registrations) }), [registrations]);
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -575,25 +569,15 @@ export default function CtemCaseDetail() {
         <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# crown jewel} other {# crown jewels}}", { count: kase.crown_jewel_count })} />
       </div>
 
-      {kase.remediation_kind === "upgrade" && !kase.fixed_version && (
-        <p className="content-compact text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
-          {/* The running version comes from the asset inventory, never typed by hand in the tech stack (#1176). */}
-          {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version.")}
-        </p>
+      {/* The running versions come from the asset inventory, never typed by hand in the tech stack (#1252). */}
+      {kase.remediation_kind === "upgrade" && (
+        <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
       )}
 
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
           {t_i18n("{products} did not answer: details of its issues are unavailable.", { products: kase.details_unavailable.join(", ") })}
         </p>
-      )}
-
-      {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
-        <CaseWorkCard
-          work={work}
-          loopFleetId={loopFleet?.id ?? null}
-          onStart={kase.state === "needs_attention" ? () => open("start") : undefined}
-        />
       )}
 
       <CaseLoopProvider value={loopState}>
