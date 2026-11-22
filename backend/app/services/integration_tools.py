@@ -154,6 +154,7 @@ from app.integrations.providers.recorded_future import (
     build_tools as recorded_future_tools,
 )
 from app.integrations.providers.rss import build_tools as rss_tools
+from app.integrations.providers.rydoo import build_tools as rydoo_tools
 from app.integrations.providers.securityscorecard import (
     build_tools as securityscorecard_tools,
 )
@@ -1049,6 +1050,7 @@ PROVIDER_TOOLS = {
     "ovhcloud": ovhcloud_tools,
     "aikido": aikido_tools,
     "airwallex": airwallex_tools,
+    "rydoo": rydoo_tools,
     "sublime": sublime_tools,
     "proofpoint": proofpoint_tools,
     "servicenow": servicenow_tools,
@@ -1150,6 +1152,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "openaev",
         "opencti",
         "perk",
+        "rydoo",
         "servicenow",
         "slack",
         "tanium",
@@ -2987,6 +2990,27 @@ async def _get_token(
                 )
         airwallex_secret = (await reveal_field(integ, "api_key_enc")) or ""
         return airwallex_token_from_config(airwallex_secret, airwallex_extra)
+
+    # --- Rydoo (OAuth2 client credentials, one company, branches as entities) ---
+    # The client secret is the API key column; the client id lives in
+    # extra_config. The provider gets ``client_id||client_secret``.
+    if provider == "rydoo":
+        from app.integrations.providers.rydoo import (
+            token_from_config as rydoo_token_from_config,
+        )
+
+        rydoo_extra = {}
+        if integ.extra_config_enc:
+            try:
+                rydoo_extra = await _reveal_extra(integ)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to decrypt extra_config for '%s' (rydoo): %s",
+                    integ.name,
+                    format_exception_message(exc),
+                )
+        rydoo_secret = (await reveal_field(integ, "api_key_enc")) or ""
+        return rydoo_token_from_config(rydoo_secret, rydoo_extra)
 
     # --- CrowdSec (two independent x-api-key credentials) ---
     # The CTI API (cti.api.crowdsec.net) and the Service API
