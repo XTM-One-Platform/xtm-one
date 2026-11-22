@@ -330,6 +330,49 @@ async def test_list_payouts_reads_from_the_cursor(quotapath_api):
     assert "updated_since" not in recorder.requests[-1].url.params
 
 
+class _Redis:
+    def __init__(self, values: dict | None = None):
+        self.values = dict(values or {})
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def set(self, key, value, ex=None):
+        self.values[key] = value
+
+
+async def test_the_poller_starts_from_now_then_reads_from_its_cursor(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import event_poller
+
+    seen: dict = {}
+
+    async def _list(api_key, event_type, since):
+        seen.update(api_key=api_key, event_type=event_type, since=since)
+        return list(PAYOUTS["results"]), None
+
+    monkeypatch.setattr(events, "list_payouts", _list)
+    wf = SimpleNamespace(id="wf-1")
+    redis = _Redis()
+    assert await event_poller._poll_quotapath_payouts(KEY, "payout_resolved", wf, redis) == []
+    assert redis.values["event_cursor:wf-1"]
+    assert not seen
+
+    redis.values["event_cursor:wf-1"] = b"1700000000"
+    polled = await event_poller._poll_quotapath_payouts(KEY, "payout_resolved", wf, redis)
+    assert seen == {"api_key": KEY, "event_type": "payout_resolved", "since": 1700000000}
+    assert [e["entity"]["id"] for e in polled] == ["p-1", "p-2", "p-3"]
+    assert int(redis.values["event_cursor:wf-1"]) > 1700000000
+
+
+def test_the_poller_routes_every_quotapath_event():
+    from app.services import event_poller
+
+    for event in events.EVENTS:
+        assert event_poller.POLL_INTERVALS[event] == events.POLL_INTERVAL_SECONDS
+
+
 # --- catalog --------------------------------------------------------------------
 
 

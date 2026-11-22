@@ -962,7 +962,7 @@ async def _poll_opencrq_job_runs(credential: str, event_type: str, wf: Assignmen
     ]
 
 
-async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict]:
+async def _poll_quotapath_payouts(api_key: str, event_type: str, wf: Assignment, redis: Redis) -> list[dict[str, Any]]:
     """Poll the QuotaPath payouts of *event_type* since the last check (``quotapath.events``).
 
     The cursor is a Unix time in seconds: the updated-since lists read from it
