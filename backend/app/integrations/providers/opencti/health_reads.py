@@ -27,6 +27,14 @@ taking or returning a connector id:
   collections alone).
 * ``get_opencti_licence``: the enterprise licence state and expiry
   (``settings.platform_enterprise_edition``; OpenCTI 6.0 or later).
+* ``get_opencti_data_health``: knowledge objects created and updated per day over
+  7 days (``stixCoreObjectsTimeSeries`` on ``created_at`` and ``updated_at``),
+  the newest creation time (``stixCoreObjects``), the platform-wide total
+  (``stixCoreObjectsNumber``) and the newest works with errors or timed out
+  (``works``, MODULES), counted platform-wide: no connector is named.
+* ``get_opencti_error_rate``: activity log entries in error per day over 7 days
+  (``auditsTimeSeries`` on the ``Activity`` stream, ``event_status`` error;
+  SETTINGS_SECURITYACTIVITY).
 
 A module that lacks a field answers the error line, and the checker reports the
 check that needs it as ``not_run``.
@@ -39,6 +47,7 @@ the listing is returned wrapped as untrusted content.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from app.services.content_safety import wrap_untrusted
@@ -101,6 +110,36 @@ _LICENCE_QUERY: Final = (
     "query HealthLicence { settings { platform_enterprise_edition {"
     " license_validated license_expired license_expiration_date license_type } } }"
 )
+
+#: The days the data health and error rate reads cover.
+_DAYS: Final = 7
+#: The newest works the data health read counts errors over.
+_WORK_SAMPLE: Final = 200
+
+_SERIES_QUERY: Final = (
+    "query HealthDataSeries($field: String!, $startDate: DateTime!, $endDate: DateTime!) {"
+    " stixCoreObjectsTimeSeries(field: $field, operation: count, startDate: $startDate,"
+    ' endDate: $endDate, interval: "day") { date value } }'
+)
+_DATA_TOTALS_QUERY: Final = (
+    "query HealthDataTotals { stixCoreObjectsNumber { total count }"
+    " stixCoreObjects(first: 1, orderBy: created_at, orderMode: desc) { edges { node { created_at } } } }"
+)
+_WORKS_QUERY: Final = (
+    "query HealthWorks($first: Int) { works(first: $first, orderBy: timestamp, orderMode: desc) {"
+    " edges { node { status timestamp errors { timestamp } } } } }"
+)
+_ERROR_RATE_QUERY: Final = (
+    "query HealthErrorRate($startDate: DateTime!, $endDate: DateTime!, $filters: FilterGroup) {"
+    ' auditsTimeSeries(field: "timestamp", operation: count, startDate: $startDate,'
+    ' endDate: $endDate, interval: "day", types: ["Activity"], filters: $filters) { date value } }'
+)
+#: Activity entries whose ``event_status`` is ``error`` (the OpenCTI audit screen's red line).
+_ERROR_FILTER: Final[dict[str, Any]] = {
+    "mode": "and",
+    "filters": [{"key": ["event_status"], "values": ["error"], "operator": "eq"}],
+    "filterGroups": [],
+}
 
 #: The newest background tasks one call reads.
 _TASK_LIMIT: Final = 50
@@ -176,6 +215,20 @@ def _stream_line(node: dict[str, Any]) -> str:
         for c in consumers
     ]
     return "\n".join([f"{head}, consumers {len(consumers)}", *rows])
+
+
+def _window() -> dict[str, str]:
+    """The start and end of the last ``_DAYS`` days, ISO 8601 in UTC."""
+    end = datetime.now(UTC)
+    return {"startDate": (end - timedelta(days=_DAYS)).isoformat(), "endDate": end.isoformat()}
+
+
+def _series_line(label: str, series: Any) -> str:
+    """One line per series: the per-day values, oldest first, and their total."""
+    points = [p for p in (series or []) if isinstance(p, dict)]
+    values = [int(p.get("value") or 0) for p in points]
+    days = ", ".join(f"{str(p.get('date') or '?')[:10]} {v}" for p, v in zip(points, values, strict=True))
+    return f"{label} per day ({sum(values)} in {len(values)} days): {days or 'none'}"
 
 
 def _cut(lines: list[str]) -> list[str]:
@@ -291,6 +344,35 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             f" expires {ee.get('license_expiration_date') or 'never'}"
         )
 
+    async def get_opencti_data_health() -> str:
+        window = _window()
+        lines: list[str] = []
+        for field, label in (("created_at", "Objects created"), ("updated_at", "Objects updated")):
+            data, err = await _gql(_SERIES_QUERY, {"field": field, **window})
+            lines.append(f"{label}: {err}" if err else _series_line(label, data.get("stixCoreObjectsTimeSeries")))
+        data, err = await _gql(_DATA_TOTALS_QUERY)
+        if err:
+            lines.append(f"Totals: {err}")
+        else:
+            number = data.get("stixCoreObjectsNumber") or {}
+            newest = next(iter(_edges(data, "stixCoreObjects")), {}).get("created_at")
+            lines.append(f"Objects in total: {number.get('total', '?')}, newest created {newest or 'never'}")
+        data, err = await _gql(_WORKS_QUERY, {"first": _WORK_SAMPLE})
+        if err:
+            lines.append(f"Works: {err}")
+        else:
+            works = _edges(data, "works")
+            errored = sum(1 for w in works if w.get("errors"))
+            timed_out = sum(1 for w in works if w.get("status") == "timeout")
+            lines.append(f"Works (newest {len(works)}, platform-wide): {errored} with errors, {timed_out} timed out")
+        return f"OpenCTI data health (last {_DAYS} days):\n" + "\n".join(lines)
+
+    async def get_opencti_error_rate() -> str:
+        data, err = await _gql(_ERROR_RATE_QUERY, {**_window(), "filters": _ERROR_FILTER})
+        if err:
+            return f"Error rate: {err}"
+        return "OpenCTI " + _series_line("activity entries in error", data.get("auditsTimeSeries"))
+
     executor.register("list_opencti_connector_states", list_opencti_connector_states)
     executor.register("list_opencti_feed_states", list_opencti_feed_states)
     executor.register("list_opencti_playbook_states", list_opencti_playbook_states)
@@ -299,6 +381,8 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
     executor.register("get_opencti_platform_queues", get_opencti_platform_queues)
     executor.register("list_opencti_stream_consumers", list_opencti_stream_consumers)
     executor.register("get_opencti_licence", get_opencti_licence)
+    executor.register("get_opencti_data_health", get_opencti_data_health)
+    executor.register("get_opencti_error_rate", get_opencti_error_rate)
 
     return [
         ToolDefinition(
@@ -346,6 +430,18 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         ToolDefinition(
             name="get_opencti_licence",
             description="Read-only: OpenCTI enterprise licence state and expiry date.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencti_data_health",
+            description="Read-only: OpenCTI objects created and updated per day over 7 days, totals, newest works in error.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_opencti_error_rate",
+            description="Read-only: OpenCTI activity log entries in error per day over the last 7 days.",
             input_schema={"type": "object", "properties": {}, "required": []},
             source=_SOURCE,
         ),

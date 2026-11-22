@@ -43,6 +43,7 @@ import app.models.ctem_case
 import app.models.ctem_metric
 import app.models.ctem_posture_snapshot
 import app.models.ctem_signal
+import app.models.ctem_surface_observation
 import app.models.custom_dashboard
 import app.models.custom_integration_definition
 import app.models.custom_tool

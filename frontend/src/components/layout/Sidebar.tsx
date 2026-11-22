@@ -37,6 +37,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Lock, Menu, X } from "lucide-react";
 import {
+  Icon,
   Navbar,
   NavbarItem,
   NavbarSeparator,
@@ -131,7 +132,6 @@ function NavRow({
   const collapsed = useNavbarCollapsed();
   const aiOffReason = useAiDisabledReason();
   const unlicensedReason = useEnterpriseLockedReason();
-  const LeafIcon = leaf.icon;
   const label = navLabel(leaf, t_i18n);
   const lockReason = leaf.locked
     ? (leaf.lockReason === "unlicensed" ? unlicensedReason : aiOffReason)
@@ -160,7 +160,7 @@ function NavRow({
         aria-current={active ? "page" : undefined}
       >
         <NavRowBody
-          icon={<LeafIcon className="size-4" />}
+          icon={<Icon name={leaf.icon} size={16} />}
           badge={collapsed && lock("absolute -bottom-1 -right-1.5 size-2.5")}
           trailing={lock("ml-auto size-3")}
         >
@@ -198,13 +198,13 @@ function NavSubmenuRowBody({ leaf }: { leaf: NavLeaf }) {
   const { t_i18n } = useFormatter();
   const aiOffReason = useAiDisabledReason();
   const unlicensedReason = useEnterpriseLockedReason();
-  const LeafIcon = leaf.icon;
   const lockReason = leaf.locked
     ? (leaf.lockReason === "unlicensed" ? unlicensedReason : aiOffReason)
     : null;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
-      <LeafIcon className="size-3.5 shrink-0" aria-hidden />
+      {/* 16px as every row of the suite's navbars (DS NavbarItem), never 14px. */}
+      <Icon name={leaf.icon} size={16} />
       <span className="truncate">{navLabel(leaf, t_i18n)}</span>
       {leaf.locked && (
         <>
@@ -240,7 +240,6 @@ function NavGroupBlock({
   const collapsed = useNavbarCollapsed();
   const aiOffReason = useAiDisabledReason();
   const unlicensedReason = useEnterpriseLockedReason();
-  const GroupIcon = group.icon;
   const hub = group.to;
   const onHub = !!hub && activePath === hub;
 
@@ -298,7 +297,7 @@ function NavGroupBlock({
           )}
         </span>
       }
-      icon={<GroupIcon className="size-4 shrink-0" aria-hidden />}
+      icon={<Icon name={group.icon} size={16} />}
       open={open}
       onOpenChange={handleOpenChange}
       // The heading reads as selected on its hub page, as the label link did;
@@ -536,14 +535,13 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
        leaves. Before the library it needed a bespoke rail flyout to stay
        reachable when collapsed; the submenu handles both presentations. */
     if (section.collapsible && section.icon) {
-      const SectionIcon = section.icon;
       const leaves = section.entries.filter((e): e is NavLeaf => e.kind === "leaf");
       return (
         <div key={section.id}>
           {index > 0 && <NavbarSeparator />}
           <NavbarSubmenu
             label={section.label ? t_i18n(section.label) : section.id}
-            icon={<SectionIcon className="size-4 shrink-0" aria-hidden />}
+            icon={<Icon name={section.icon} size={16} />}
             {...submenuState(section.id)}
           >
             {leaves.map((leaf) => submenuRow(leaf, activePath, onNavigate))}

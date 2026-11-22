@@ -252,9 +252,18 @@ def test_the_sandbox_frontend_gates_check_runs_the_ci_command_as_a_pre_push_guar
     spec = checks["check"]["frontend-gates"]
     assert spec["cwd"] == "frontend"
     assert spec["argv"][:2] == ["sh", "-c"]
-    assert spec["argv"][2] == f"exec {_gates_command()}"
+    assert spec["argv"][2] == _gates_command()
     for name in ("no-class-name-assertions.test.ts", "App.tsx", "index.css", "en.json"):
         assert any(fnmatch.fnmatchcase(name, glob) for glob in spec["pre_push"]), name
+
+
+def test_a_pull_request_runs_every_source_scan_guard():
+    # #745 broke src/lib/mode-split-guard.test.ts, a guard that reads the
+    # whole tree: vitest related never selects it, so only the merge group
+    # went red. The gates job runs every such guard the script lists.
+    command = _gates_command()
+    assert "&& yarn vitest run $(node scripts/source-scan-tests.mjs)" in command
+    assert (REPO_ROOT / "frontend" / "scripts" / "source-scan-tests.mjs").is_file()
 
 
 def test_the_gate_filter_reads_a_shallow_glob_only():
