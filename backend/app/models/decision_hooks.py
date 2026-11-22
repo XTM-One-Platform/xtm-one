@@ -283,6 +283,10 @@ def work_item_opening(item: Any) -> Opening:
     ask = dict(item.ask) if isinstance(item.ask, dict) and item.ask.get("question") else {}
     if not ask:
         ask = {"question": str(item.blocked_reason or item.title or "A person's answer is needed")}
+    from app.services.decision_ask import with_reference_links
+
+    # The pull requests and issues the item tracks, as link buttons, when its ask names no source (#1177).
+    ask = with_reference_links(ask, getattr(item, "blocked_on_refs", None), getattr(item, "payload", None)) or ask
     recipient = owner_recipient(item.waits_for_user_id or item.user_id)
     return "work_item", ask, recipient, deadline_of(ask)
 

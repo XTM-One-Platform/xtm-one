@@ -279,7 +279,11 @@ async def update_sent_cards(
     decision = await db.get(Decision, decision_id)
     if decision is None or decision.status == "open":
         return counts
-    card = answer_links.decided_card(decision, answered_by_name)
+    from app.services.channel_notices import user_notice_language
+
+    # The kept object buttons are worded in the reader's language, as the sent card was (#1177).
+    language = await user_notice_language(db, recipient_user_id(decision.recipient))
+    card = answer_links.decided_card(decision, answered_by_name, language)
     for sent in await _sent_cards(db, decision_id):
         kind = target_kind(sent)
         arguments = {**_where(sent), "message_id": str(sent["message_id"]), "message": "", "card": card}

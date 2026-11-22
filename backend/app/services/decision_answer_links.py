@@ -238,7 +238,9 @@ def link_card(
     The layout of the in-app ``DecisionCard``: the kicker (where the decision
     comes from), the question, the context, one row per option (label and
     effect, the recommended one highlighted), the deadline, then one button
-    per option, "Answer with text" and "Open in XTM One". Each option button
+    per option, "Answer with text", one button per object of the ask (a pull
+    request, a ticket: :func:`decision_ask.card_links`, #1177) and "Open in XTM
+    One". Each option button
     answers it in one click from the recipient's session. Its words are in
     *language* (en, fr, es, ja). ``providers/microsoft/_cards.py``
     ``parse_card`` accepts it as is.
@@ -283,6 +285,7 @@ def link_card(
         }
         for link in answer_links(decision, recipient_id, surface, language)
     ]
+    actions.extend(_object_actions(decision, language))
     if (source := _source_url(decision)) is not None:
         actions.append({"type": "Action.OpenUrl", "title": notice("card_open", language), "url": source})
     return {
@@ -292,6 +295,16 @@ def link_card(
         "body": body,
         "actions": actions,
     }
+
+
+def _object_actions(decision: Decision, language: str | None) -> list[dict[str, Any]]:
+    """One ``Action.OpenUrl`` per object of the ask (a pull request, a ticket), at most four (#1177)."""
+    from app.services.decision_ask import card_links
+
+    return [
+        {"type": "Action.OpenUrl", "title": link["label"][:40], "url": link["url"]}
+        for link in card_links(decision.ask, language)
+    ]
 
 
 def _question(ask: dict[str, Any], language: str | None) -> str:
@@ -313,14 +326,23 @@ def question_lines(decision: Decision, language: str | None = None) -> list[str]
 
 def link_text(decision: Decision, recipient_id: uuid.UUID, surface: str, language: str | None = None) -> str:
     """The plain-text form (email): the question and one link per option, in *language*."""
+    from app.services.decision_ask import card_links
+
     lines = question_lines(decision, language)
     for link in answer_links(decision, recipient_id, surface, language):
+        lines.append(f"{link['label']}: {link['url']}")
+    # The objects of the ask (a pull request, a ticket) after the answers (#1177).
+    for link in card_links(decision.ask, language):
         lines.append(f"{link['label']}: {link['url']}")
     return "\n".join(lines)
 
 
-def decided_card(decision: Decision, answered_by_name: str | None) -> dict[str, Any]:
-    """The card a sent link card is replaced with once decided: who, which option, when; no buttons."""
+def decided_card(decision: Decision, answered_by_name: str | None, language: str | None = None) -> dict[str, Any]:
+    """The card a sent link card is replaced with once decided: who, which option, when.
+
+    No answer button; the buttons of the objects of the ask (a pull request, a
+    ticket) stay, so the person still reaches what was decided on (#1177).
+    """
     ask = decision.ask or {}
     state = decided_state(decision, answered_by_name)
     if decision.status == "answered":
@@ -344,12 +366,16 @@ def decided_card(decision: Decision, answered_by_name: str | None) -> dict[str, 
     ]
     if state["text"]:
         body.append({"type": "TextBlock", "text": str(state["text"])[:1500], "wrap": True, "isSubtle": True})
-    return {
+    card: dict[str, Any] = {
         "type": "AdaptiveCard",
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "version": "1.4",
         "body": body,
     }
+    actions = _object_actions(decision, language)
+    if actions:
+        card["actions"] = actions
+    return card
 
 
 def decided_state(decision: Decision, answered_by_name: str | None) -> dict[str, Any]:
