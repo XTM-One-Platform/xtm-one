@@ -31,13 +31,67 @@ from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVE
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
 from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
 from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
-from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
-from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
 logger = logging.getLogger(__name__)
 
+#: The filter keys of every Pennylane event (services/pennylane_events.py).
+_PENNYLANE_FILTER_KEYS: dict[str, str] = {
+    "min_amount": "Only records of at least this amount in euros, tax included",
+    "max_amount": "Only records of at most this amount in euros, tax included",
+    "supplier_id": "Only records of these Pennylane supplier ids",
+    "customer_id": "Only records of these Pennylane customer ids",
+    "journal_id": "Only transactions of these journal ids",
+    "bank_account_id": "Only transactions of these bank account ids",
+    "status": "Only invoices in these statuses (payment_status for supplier invoices)",
+    "currency": "Only records in these currencies (EUR, USD...)",
+}
+#: Each Pennylane event: (event, label, description).
+_PENNYLANE_EVENTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "supplier_invoice_created",
+        "Supplier invoice created",
+        "Triggers when a supplier invoice is added in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "supplier_invoice_updated",
+        "Supplier invoice updated",
+        "Triggers when a supplier invoice changes in Pennylane (one run per change). Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_created",
+        "Customer invoice created",
+        "Triggers when a customer invoice is created in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_updated",
+        "Customer invoice updated",
+        "Triggers when a customer invoice changes in Pennylane (one run per change). Uses polling "
+        "(every 5 minutes); the first poll starts from now.",
+    ),
+    (
+        "customer_invoice_paid",
+        "Customer invoice paid",
+        "Triggers once when a customer invoice is paid in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "transaction_created",
+        "Bank transaction created",
+        "Triggers when a bank transaction is added in Pennylane. Uses polling (every 5 minutes); "
+        "the first poll starts from now.",
+    ),
+    (
+        "transaction_matched",
+        "Bank transaction matched",
+        "Triggers when a bank transaction is matched to invoices in Pennylane, again when the "
+        "matched invoices change. Uses polling (every 5 minutes); the first poll starts from now.",
+    ),
+)
 #: The filter keys of every Wordsmith event (the event's ``data`` and envelope, lifted).
 _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "type": "The Wordsmith event type",
@@ -47,13 +101,6 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "task_id": "The task the event names",
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
-}
-#: The filter keys of every Spendesk webhook event (the delivery envelope).
-_SPENDESK_FILTER_KEYS: dict[str, str] = {
-    "event.entity": "The Spendesk entity type of the event: payables or settlements",
-    "event.eventType": "The event type: created or prepared",
-    "companyId": "The Spendesk company (entity) that sent the event",
-    "data.id": "The id of the payable or settlement the event names",
 }
 #: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
 _NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
@@ -4885,79 +4932,6 @@ PROVIDER_CATALOG = {
             ],
         },
     },
-    "spendesk": {
-        "name": "Spendesk",
-        "description": (
-            "Spendesk spend management, the whole Public API, multi-entity: wallet summary, wallet "
-            "loads and settlements, card payments and transactions, requests, payables (expenses, "
-            "invoices, card payments) with receipt downloads and missing receipts, cards, members, "
-            "cost centres, analytical fields, expense categories, suppliers (bank details masked), "
-            "chart of accounts, accounting journals and webhooks; every write asks a person, plus "
-            "webhook triggers"
-        ),
-        "logo": "/logos/spendesk.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["spend_management"],
-        "supports_assignment_webhooks": True,
-        "available_events": [
-            {
-                "event": SPENDESK_TRIGGER_EVENTS[event],
-                "label": label,
-                "description": (
-                    "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk "
-                    "(the create_spendesk_webhook tool) pointing to the webhook URL shown below."
-                ),
-                "mechanism": "webhook",
-                "filter_keys": _SPENDESK_FILTER_KEYS,
-            }
-            for event, label in SPENDESK_EVENT_TYPES.items()
-        ],
-        # OAuth2 client credentials: the client secret is the stored secret.
-        "auth_type": "api_key",
-        "supported_auth_types": ["api_key"],
-        "fields": ["api_key"],
-        "extra_fields": {
-            "environment": "Spendesk environment",
-            "client_id": "Public API client ID",
-            "webhook_secret": "Webhook signing secret (x-spendesk-webhook-signature)",
-        },
-        "extra_field_options": {
-            "environment": [
-                {"value": "production", "label": "Production - public-api.spendesk.com"},
-                {"value": "sandbox", "label": "Sandbox - public-api.demo.spendesk.com"},
-            ],
-        },
-        "setup_guide": {
-            "title": "Spendesk Public API credential",
-            "url": "https://developer.spendesk.com/reference/general",
-            "steps": [
-                "In Spendesk, as an account owner, open Settings > Integrations > API access and create a Public API credential, at organisation level to reach every entity.",
-                "Grant the scopes the agents need: the :read scopes for a read-only binding, the :write scopes for approvals, cards, suppliers, members and bookkeeping.",
-                "Pick the environment, paste the client ID in the 'Public API client ID' field and the client secret in the 'API key' field.",
-                "Optional, for webhook triggers: create a webhook with the create_spendesk_webhook tool pointing to the webhook URL shown below, and paste the secret it answers in the 'Webhook signing secret' field.",
-                "Click 'Test Connection': it mints a token and lists the organisation's entities.",
-            ],
-            "permissions": [
-                {
-                    "scope": "payable:read, transaction:read, request:read",
-                    "description": "Read payables, receipts, transactions and requests",
-                },
-                {
-                    "scope": "settlement:read, wallet-summary:read, wallet-load:read",
-                    "description": "Read the wallet, its loads and settlements",
-                },
-                {
-                    "scope": "card:read, user:read, supplier:read, cost-center:read",
-                    "description": "Read cards, members, suppliers and cost centres",
-                },
-                {
-                    "scope": "the :write scopes",
-                    "description": "Optional: every write tool, each asks a person before it runs",
-                },
-            ],
-        },
-    },
     "wiz": {
         "name": "Wiz",
         "description": (
@@ -9368,6 +9342,76 @@ PROVIDER_CATALOG = {
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
         },
     },
+    "pennylane": {
+        "name": "Pennylane",
+        "description": "Accounting, Invoicing & Banking - Ledger entries and lines, Trial balance, FEC and general ledger exports, Customer and supplier invoices (with PDFs, payments, matching), Customers, Suppliers, Products, Quotes, Bank transactions, Analytical categories (Company API v2)",
+        "logo": "/logos/pennylane.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["accounting", "finance"],
+        "auth_type": "api_key",
+        "fields": ["api_key"],
+        "extra_fields": {"company_id": "Company ID (firm token only)"},
+        # Polled from the Company API v2 changelogs (services/pennylane_events.py,
+        # every 5 minutes), each change read with its record.
+        "available_events": [
+            {
+                "event": event,
+                "label": label,
+                "description": description,
+                "mechanism": "polling",
+                "filter_keys": _PENNYLANE_FILTER_KEYS,
+            }
+            for event, label, description in _PENNYLANE_EVENTS
+        ],
+        "setup_guide": {
+            "title": "Pennylane API Token Setup",
+            "url": "https://app.pennylane.com",
+            "steps": [
+                "Log in to Pennylane as an administrator of the company.",
+                "Open Settings > Connectivity > Developers and generate an API token (Company API v2).",
+                "Give it the read-only scopes your agents need, and the write scopes only where they may write (listed below).",
+                "Paste the token in the API Key field below. One integration per Pennylane company.",
+                "With a firm (accounting practice) token, also fill in the Company ID of the company it should act on.",
+            ],
+            "permissions": [
+                {
+                    "scope": "ledger_entries:readonly",
+                    "description": "Ledger entries and lines, lettering, their analytics and changelogs",
+                },
+                {
+                    "scope": "ledger_accounts:readonly / journals:readonly",
+                    "description": "Chart of accounts and journals",
+                },
+                {
+                    "scope": "trial_balance:readonly / fiscal_years:readonly",
+                    "description": "Trial balance and fiscal years",
+                },
+                {
+                    "scope": "exports:fec / exports:gl / exports:agl",
+                    "description": "FEC, general ledger and analytical general ledger exports",
+                },
+                {
+                    "scope": "customer_invoices:readonly / supplier_invoices:readonly",
+                    "description": "Invoices, lines, payments, matched transactions, PDFs, changelogs",
+                },
+                {
+                    "scope": "customers:readonly / suppliers:readonly / products:readonly / quotes:readonly",
+                    "description": "Customers, suppliers (IBAN masked), products, quotes",
+                },
+                {
+                    "scope": "bank_accounts:readonly / transactions:readonly",
+                    "description": "Bank accounts and transactions with their matching",
+                },
+                {"scope": "categories:readonly", "description": "Analytical category groups and categories"},
+                {
+                    "scope": "*:all (write)",
+                    "description": "Draft customer invoices, supplier invoice updates, customers, suppliers, ledger entries, matching, analytical categorisation, paid status (each on its own resource scope); file_attachments:all for uploads",
+                },
+            ],
+            "notes": "Pennylane allows 25 requests per 5 seconds per token; a 429 is retried after Retry-After. A tool that lacks a scope names it. No tool initiates a payment, changes bank details or touches mandates. Bind read-only to withhold every write tool; list_pennylane_bank_accounts is the only tool showing bank account data. See https://pennylane.readme.io/reference.",
+        },
+    },
     "linkedin": {
         "name": "LinkedIn",
         "description": "Posts (text, images, video, documents), Pages (Organizations), Analytics, Comments, Reactions",
@@ -9999,8 +10043,6 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "aikido": "eu||__dummy__||__dummy__",
     # Airwallex's token is environment||client_id||login_as||api_key.
     "airwallex": "production||__dummy__||||__dummy__",
-    # Spendesk's token is environment||client_id||client_secret.
-    "spendesk": "production||__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
