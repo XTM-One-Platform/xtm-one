@@ -20843,5 +20843,7 @@
   "SBOM file": "SBOMファイル",
   "Import SBOM": "SBOMをインポート",
   "Keep these two records apart?": "この2つのレコードを分けたままにしますか？",
-  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "識別子に関係なく、2つの資産になります。分割は監査され、同期をまたいで保持されます。"
+  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "識別子に関係なく、2つの資産になります。分割は監査され、同期をまたいで保持されます。",
+  "No product declared by hand. The Tech stack list also counts the software of your assets.": "手動で登録された製品はありません。Tech stack の一覧には資産のソフトウェアも含まれます。",
+  "The products you declare by hand. The Tech stack list adds the software of your assets.": "手動で登録する製品です。Tech stack の一覧には資産のソフトウェアが追加されます。"
 }
