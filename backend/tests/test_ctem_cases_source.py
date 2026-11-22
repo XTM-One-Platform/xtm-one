@@ -7,6 +7,7 @@ writes nothing when a product cannot answer, and the API throttles and gates it.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from types import SimpleNamespace
 
 import httpx
@@ -127,8 +128,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
 
     applied: list = []
 
-    async def apply(db, *, organization_id, vertical, issues, closed, now):
-        applied.append(list(closed))
+    async def apply(db: Any, **kw: Any) -> dict[str, int]:
+        applied.append(list(kw["closed"]))
         return {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
 
     async def members(db, *, organization_id, vertical):
@@ -224,8 +225,8 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
 
     applied: list = []
 
-    async def apply(db, *, organization_id, vertical, issues, closed, now):
-        applied.append(sorted(i.member_id for i in issues))
+    async def apply(db: Any, **kw: Any) -> dict[str, int]:
+        applied.append(sorted(i.member_id for i in kw["issues"]))
         return {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
 
     async def members(db, *, organization_id, vertical):
