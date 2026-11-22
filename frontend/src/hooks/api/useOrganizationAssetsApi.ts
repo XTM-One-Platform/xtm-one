@@ -140,7 +140,16 @@ export function useCanonicalAsset(id: string | undefined, software: { offset: nu
     queryFn: () => api.get(`/organization-context/assets/${id}?${qs}`),
     enabled: Boolean(id),
     placeholderData: keepPreviousData,
+    // An asset a sync, a merge or a split replaced answers 404: the page draws its not-found state, never the
+    // section error boundary, and a retry would not bring it back (UX round 1 on #1254, B5).
+    retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
+    throwOnError: (error) => !isAssetNotFound(error),
   });
+}
+
+/** A 404 on one asset: it does not exist (any more). */
+export function isAssetNotFound(error: unknown): boolean {
+  return (error as { status?: number } | null)?.status === 404;
 }
 
 /** The strong identifier kinds, most reliable first (organization_asset_identity.DEFAULT_KEY_ORDER). */

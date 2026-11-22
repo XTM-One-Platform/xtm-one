@@ -14,6 +14,7 @@ import { DataTable, type DataTableColumn, type DataTableFilter } from "@/compone
 import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { Icon } from "@filigran/design-system";
 import {
   useAssetFacets,
   useCanonicalAssets,
@@ -32,7 +33,7 @@ import { formatCount } from "@/lib/number-format";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
 import { InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetLabel, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetLabel, sourceLabel } from "./ctem/inventory";
 
 type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
 
@@ -50,6 +51,9 @@ const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
   { key: "internet_facing", label: "Internet facing" },
   { key: "source", label: "Source" },
 ];
+
+/** The query parameter of the administrator's edit view: the list and its edit cards never share the screen. */
+const EDIT_PARAM = "edit";
 
 /** The most records one merge names (organization_asset_store.MAX_MERGE_RECORDS). */
 const MAX_MERGE_RECORDS = 50;
@@ -112,8 +116,8 @@ function AssetsTab() {
     {
       key: "category",
       header: "Category",
-      cell: (a) => assetLabel(a.subcategory ?? a.category),
-      csv: (a) => a.subcategory ?? a.category,
+      cell: (a) => assetLabel(assetCategory(a)),
+      csv: (a) => assetCategory(a),
       hideable: true,
     },
     {
@@ -316,14 +320,41 @@ export default function CtemInventory() {
   const [tab] = useTabParam<InventoryTab>("assets");
   // Editing the profile stays administrator-only, as in Settings; everyone else reads the tables.
   const { isAdmin } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   // The Sources tab (slice 3) holds the inventory syncs and asset matching; it embeds no profile card.
   const editCards = tab === "sources" ? null : (EDIT_CARDS[tab] ?? EDIT_CARDS.assets);
+  // One list per screen, nothing below it (UX round 1, B2 and B3): an administrator edits in a view of its own,
+  // opened from the header, and every reader, administrators included, sees the same list.
+  const editing = isAdmin && Boolean(editCards) && searchParams.get(EDIT_PARAM) === "1";
+  const setEditing = (on: boolean) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (on) next.set(EDIT_PARAM, "1");
+        else next.delete(EDIT_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
   return (
     <div className="space-y-4">
       <CtemPageHeader
         title={t_i18n(INVENTORY_LABEL)}
         hint={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         hintLabel={t_i18n("About the inventory")}
+        actions={
+          isAdmin && editCards ? (
+            editing ? (
+              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
+                <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
+              </Button>
+            ) : (
+              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setEditing(true)} data-testid="ctem-inventory-edit">
+                <Icon name="pencil" size={16} aria-hidden /> {t_i18n("Edit")}
+              </Button>
+            )
+          ) : undefined
+        }
       />
       <DetailTabs<InventoryTab>
         ariaLabel={t_i18n("Inventory sections")}
@@ -336,18 +367,19 @@ export default function CtemInventory() {
           { key: "sources", label: "Sources" },
         ]}
       />
-      {tab === "sources" ? (
+      {editing && editCards ? (
+        <OrganizationSection key={tab} embed={{ cards: editCards }} />
+      ) : tab === "sources" ? (
         <InventorySourcesCard />
       ) : tab === "asset-groups" ? (
-        isAdmin ? null : <AssetGroupsTab />
+        <AssetGroupsTab />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
       ) : tab === "ai-systems" ? (
-        isAdmin ? null : <AiSystemsTab />
+        <AiSystemsTab />
       ) : (
         <AssetsTab />
       )}
-      {isAdmin && editCards && <OrganizationSection key={tab} embed={{ cards: editCards }} />}
     </div>
   );
 }

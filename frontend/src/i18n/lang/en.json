@@ -20843,5 +20843,7 @@
   "SBOM file": "SBOM file",
   "Import SBOM": "Import SBOM",
   "Keep these two records apart?": "Keep these two records apart?",
-  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs."
+  "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.": "They become two assets, whatever their identifiers say. The split is audited and lasts across syncs.",
+  "No product declared by hand. The Tech stack list also counts the software of your assets.": "No product declared by hand. The Tech stack list also counts the software of your assets.",
+  "The products you declare by hand. The Tech stack list adds the software of your assets.": "The products you declare by hand. The Tech stack list adds the software of your assets."
 }

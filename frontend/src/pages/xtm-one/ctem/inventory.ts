@@ -27,6 +27,14 @@ export function sourceLabel(source: string): string {
   return SOURCE_LABELS[source] ?? source;
 }
 
+/**
+ * The category an asset shows: its subcategory when it has one, else its category. The API answers "" for no
+ * subcategory, so `??` would keep the empty string (UX round 1 on #1254, B1).
+ */
+export function assetCategory(asset: { category?: string | null; subcategory?: string | null }): string {
+  return asset.subcategory || asset.category || "";
+}
+
 /** A stored enum value (`web_application`, `very_high`) as a phrase; empty for a missing value. */
 export function assetLabel(value: string | null | undefined): string {
   if (!value) return "";

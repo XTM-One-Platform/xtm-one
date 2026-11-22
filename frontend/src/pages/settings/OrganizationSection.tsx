@@ -201,6 +201,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The whole page, or only the cards an embedding page names.
   const full = !embed;
   const show = (card: ProfileCard) => !embed || embed.cards.includes(card);
+  // On CTEM > Inventory the card edits the hand-declared products only, while the Tech stack list also counts the
+  // software of the assets: its empty text says so instead of claiming nothing is matched (UX round 1 on #1254, B4).
+  const techEmptyLabel = embed
+    ? t_i18n("No product declared by hand. The Tech stack list also counts the software of your assets.")
+    : t_i18n("No product yet: vulnerabilities cannot be matched to what you run.");
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
@@ -2095,7 +2100,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             data-testid="settings.organization.tech-stack"
             icon={Server}
             title={t_i18n("Tech stack")}
-            description={t_i18n("The products you run, matched against vulnerabilities.")}
+            description={
+              embed
+                ? t_i18n("The products you declare by hand. The Tech stack list adds the software of your assets.")
+                : t_i18n("The products you run, matched against vulnerabilities.")
+            }
             action={
               <>
                 {attention("tech_stack")}
@@ -2117,10 +2126,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               rowLabel: (v) => v.product,
               storageKey: "settings-organization-tech-stack",
               rowTestId: "settings.organization.tech-row",
-              emptyLabel: t_i18n("No product yet: vulnerabilities cannot be matched to what you run."),
+              emptyLabel: techEmptyLabel,
             }) ??
               (current.tech_stack.length === 0 ? (
-                <p className="text-default-secondary">{t_i18n("No product yet: vulnerabilities cannot be matched to what you run.")}</p>
+                <p className="text-default-secondary">{techEmptyLabel}</p>
               ) : (
                 <DataTable
                   rows={current.tech_stack.map((value, index) => ({ index, value }))}
@@ -2133,7 +2142,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   exportName="tech-stack"
                   urlKey="ots_"
                   storageKey="settings-organization-tech-stack"
-                  emptyLabel={t_i18n("No product yet: vulnerabilities cannot be matched to what you run.")}
+                  emptyLabel={techEmptyLabel}
                 />
               ))}
           </SettingsCard>
