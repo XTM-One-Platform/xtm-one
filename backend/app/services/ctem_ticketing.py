@@ -37,7 +37,7 @@ from typing import Any, ClassVar, Protocol, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import OPEN_STATES, CtemCase
+from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent
 from app.services import ctem_case_loop as case_loop
 
 logger = logging.getLogger(__name__)
@@ -53,12 +53,31 @@ DEFAULT_JIRA_PRIORITY = {"P1": "Highest", "P2": "High", "P3": "Medium"}
 DEFAULT_SERVICENOW_URGENCY = {"P1": "1", "P2": "2", "P3": "3"}
 
 
-class TicketingError(Exception):
-    """A sync step the system refused; ``fix`` names the one action that fixes it."""
+#: The stable code of each fix a sync failure names (``sync.fix_code``): the UI
+#: says the fix in the reader's language from it (case-ticket.tsx), never from
+#: the English ``fix`` sentence, which stays for agents and logs.
+FIX_CODES = (
+    "check_integration",
+    "reconnect_jira",
+    "map_jira_status",
+    "choose_servicenow_table",
+    "check_servicenow_credentials",
+    "relink_case",
+)
 
-    def __init__(self, message: str, fix: str = "check the ticketing integration in Settings"):
+
+class TicketingError(Exception):
+    """A sync step the system refused; ``fix`` names the one action that fixes it, ``fix_code`` its stable code."""
+
+    def __init__(
+        self,
+        message: str,
+        fix: str = "check the ticketing integration in Settings",
+        fix_code: str = "check_integration",
+    ):
         super().__init__(message)
         self.fix = fix
+        self.fix_code = fix_code if fix_code in FIX_CODES else "check_integration"
 
 
 @dataclass(frozen=True)
@@ -369,7 +388,7 @@ async def push_case_state(
             return outcome
         remote = await adapter.update(str(ticket["key"]), draft, status="open" if reopen else wanted)
     except TicketingError as exc:
-        _mark(db, case, ticket, adapter, "error", now, error=str(exc), fix=exc.fix)
+        _mark(db, case, ticket, adapter, "error", now, error=str(exc), fix=exc.fix, fix_code=exc.fix_code)
         outcome.error = str(exc)
         return outcome
     case_loop.record_ticket(
@@ -417,7 +436,18 @@ async def pull_ticket_status(
     try:
         remote = remote or await adapter.read_status(str(ticket["key"]))
     except TicketingError as exc:
-        _mark(db, case, ticket, adapter, "out_of_date", now, error=str(exc), fix=exc.fix, keep_since=True)
+        _mark(
+            db,
+            case,
+            ticket,
+            adapter,
+            "out_of_date",
+            now,
+            error=str(exc),
+            fix=exc.fix,
+            fix_code=exc.fix_code,
+            keep_since=True,
+        )
         outcome.error = str(exc)
         return outcome
     before = ticket.get("status")
@@ -460,6 +490,7 @@ def _mark(
     *,
     error: str = "",
     fix: str = "",
+    fix_code: str = "check_integration",
     keep_since: bool = False,
 ) -> None:
     """Write a sync state that is not ``in_sync`` (the since of a running out-of-date is kept)."""
@@ -472,6 +503,7 @@ def _mark(
         "provider": getattr(adapter, "provider", previous.get("provider", "")),
         "error": error[:300],
         "fix": fix[:200],
+        "fix_code": fix_code,
     }
     case_loop.record_ticket(
         db,
@@ -507,7 +539,11 @@ class JiraAdapter:
 
         resp, err = await jira_request(method, f"{api3(self.base)}/{path}", action, headers=self.headers, **kwargs)
         if err or resp is None:
-            raise TicketingError(err or f"Jira did not answer to {action}", fix="reconnect the Jira integration")
+            raise TicketingError(
+                err or f"Jira did not answer to {action}",
+                fix="reconnect the Jira integration",
+                fix_code="reconnect_jira",
+            )
         return resp.json() if resp.content else {}
 
     def _remote(self, issue: dict[str, Any]) -> RemoteTicket:
@@ -578,6 +614,7 @@ class JiraAdapter:
         raise TicketingError(
             f"no Jira transition of {key} leads to {status}",
             fix="map a Jira status to this case status in the ticketing sync settings",
+            fix_code="map_jira_status",
         )
 
     async def comment(self, key: str, text: str) -> None:
@@ -611,6 +648,7 @@ class ServiceNowAdapter:
             raise TicketingError(
                 f"the ServiceNow table {self.table!r} has no ticketing sync",
                 fix=f"choose one of {', '.join(SERVICENOW_TABLES)} in the ticketing settings",
+                fix_code="choose_servicenow_table",
             )
         self.group = group
         self.status_map = status_map or {}
@@ -621,7 +659,9 @@ class ServiceNowAdapter:
         resp, err = await sn_request(method, url, action, headers=self.headers, **kwargs)
         if err or resp is None:
             raise TicketingError(
-                err or f"ServiceNow did not answer to {action}", fix="check the ServiceNow credentials"
+                err or f"ServiceNow did not answer to {action}",
+                fix="check the ServiceNow credentials",
+                fix_code="check_servicenow_credentials",
             )
         return result_of(resp)
 
@@ -681,7 +721,11 @@ class ServiceNowAdapter:
     async def _sys_id(self, key: str) -> str:
         row = await self._row(f"number={key}", f"resolve {key}")
         if not row:
-            raise TicketingError(f"ServiceNow has no {self.table} {key}", fix="relink the case to an existing record")
+            raise TicketingError(
+                f"ServiceNow has no {self.table} {key}",
+                fix="relink the case to an existing record",
+                fix_code="relink_case",
+            )
         return str(row["sys_id"])
 
     async def update(self, key: str, draft: TicketDraft, *, status: str | None = None) -> RemoteTicket:
@@ -698,7 +742,11 @@ class ServiceNowAdapter:
     async def read_status(self, key: str) -> RemoteTicket:
         row = await self._row(f"number={key}", f"read {key}")
         if not row:
-            raise TicketingError(f"ServiceNow has no {self.table} {key}", fix="relink the case to an existing record")
+            raise TicketingError(
+                f"ServiceNow has no {self.table} {key}",
+                fix="relink the case to an existing record",
+                fix_code="relink_case",
+            )
         return self._remote(row)
 
 
@@ -825,17 +873,28 @@ async def sync_case(
             return SyncOutcome(notes=[note])
         outcome = await ensure_ticket(db, case, adapter, sync, integration=integration, base_url=base_url, now=now)
         outcome.action = "created"
+        _frame_if_moved(events, case, outcome, now)
         return outcome
     wanted = target_status(case)
     if (wanted and ticket.get("status") != wanted) or needs_reopen(case, ticket):
         outcome = await push_case_state(db, case, adapter, sync, base_url=base_url, now=now)
         outcome.action = "pushed"
+        _frame_if_moved(events, case, outcome, now)
         return outcome
     outcome = await pull_ticket_status(db, case, adapter, sync, now=now)
     outcome.action = "pulled"
     if outcome.retest_requested:
-        _raise_retest(events, case, now)
+        _raise_retest(events, case, now, db=db)
+    _frame_if_moved(events, case, outcome, now)
     return outcome
+
+
+def _frame_if_moved(
+    events: case_loop.PendingEvents | None, case: CtemCase, outcome: SyncOutcome, now: datetime
+) -> None:
+    """Raise the live ``ctem_case_update`` frame when a sync step changed the case's ticket (CTEM-19-UI, #1032)."""
+    if events is not None and (outcome.created or outcome.updated or outcome.error or outcome.retest_requested):
+        events.frame(case, "ticket", now)
 
 
 async def sync_one(
@@ -884,11 +943,27 @@ async def sync_one(
     }
 
 
-def _raise_retest(events: case_loop.PendingEvents | None, case: CtemCase, now: datetime) -> None:
-    """Queue ``ctem_case.retest_requested`` once per ticket change (dedupe key: case and ticket time)."""
+def _raise_retest(
+    events: case_loop.PendingEvents | None, case: CtemCase, now: datetime, *, db: AsyncSession | None = None
+) -> None:
+    """Queue ``ctem_case.retest_requested`` once per ticket change (dedupe key: case and ticket time).
+
+    With *db*, the case history also records it (``retest_requested``, CTEM-19-UI #1032), so the
+    case page says the re-test started because the ticket reached done.
+    """
+    ticket = managed_ticket(case) or {}
+    if db is not None:
+        db.add(
+            CtemCaseEvent(
+                case_id=case.id,
+                actor="system",
+                kind="retest_requested",
+                at=now,
+                evidence=f"{ticket.get('integration')}:{ticket.get('key')}",
+            )
+        )
     if events is None:
         return
-    ticket = managed_ticket(case) or {}
     events.add(
         CASE_RETEST_REQUESTED,
         {**case_loop.case_data(case), "ticket_integration": ticket.get("integration"), "ticket_key": ticket.get("key")},
@@ -970,7 +1045,8 @@ async def apply_inbound_status(
         source = cast(TicketingAdapter, _InboundSource(provider))
         outcome = await pull_ticket_status(db, case, source, sync, remote=remote, now=now)
         if outcome.retest_requested:
-            _raise_retest(events, case, now)
+            _raise_retest(events, case, now, db=db)
+        _frame_if_moved(events, case, outcome, now)
         return outcome
     return None
 
@@ -1012,6 +1088,24 @@ async def apply_jira_delivery(integration_id: str, payload: Any) -> SyncOutcome 
     except Exception:
         logger.warning("CTEM ticket status from a Jira delivery left to the sync pull", exc_info=True)
         return None
+
+
+async def ticketing_target(db: AsyncSession) -> dict[str, Any]:
+    """Whether a ticketing target is declared, for the case screens (CTEM-19-UI, #1032).
+
+    Reads the profile only (no credential, no remote call): ``connected`` false
+    carries the reason and the settings link the screens show, never an error.
+    """
+    from app.services import organization_context as oc
+
+    row = await oc.current_version(db)
+    integration = ""
+    if row is not None:
+        target = getattr(oc.parse_profile(row.profile), "ticketing", None)
+        integration = (getattr(target, "integration", "") or "").strip()
+    if not integration:
+        return {"connected": False, "reason": NOT_CONNECTED, "settings": SETTINGS_PATH}
+    return {"connected": True, "settings": SETTINGS_PATH}
 
 
 #: The providers the sync knows, by integration provider key. A new ticketing
