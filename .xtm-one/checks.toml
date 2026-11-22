@@ -428,6 +428,24 @@ needs = [".xtm-one/lab", ".xtm-one/stores.py"]
 timeout = 1800
 lifetime = 7200
 
+# The Slack decision card of every human gate (#842, S10) drawn from this checkout: .xtm-one/lab/slack_cards.py
+# imports backend/app/services/slack_decision_cards.py and renders render_slack_decision and text_modal on fixed
+# decisions (no Slack workspace, no database), drawn with Slack's message, modal and ephemeral layout. Pages:
+# /card?state=<state>&lang=en|es|fr|ja&theme=light|dark&width=desktop|narrow, /all (every state), /card.json (the
+# exact Block Kit payload, for Slack's Block Kit Builder). States: open per source (hitl, tool-approval, flow,
+# work-item) with and without recommendation and deadline, open-tool-approval-many, decided-option, decided-text,
+# decided-tools, expired, cancelled, modal, refusal.
+[service.lab-slack-cards]
+description = "The Slack Block Kit decision card of this checkout drawn for review (every state, en/es/fr/ja, light and dark, desktop and narrow); no sign-in"
+argv = ["python", ".xtm-one/lab/slack_cards.py"]
+port = 4300
+image = "python-dev"
+ready_path = "/lab/ready"
+ready_log = "lab up: "
+needs = [".xtm-one/lab", "backend"]
+timeout = 280
+lifetime = 7200
+
 # OpenAEV built from the PR head (xtm-one #11799, item 5): its own backend (Maven reactor, Flyway migrations) on
 # the lab's PostgreSQL and S3, OpenSearch and RabbitMQ from the OpenCTI lab's store services, the front from Vite
 # over it, seeded through the API (assets, an asset group, a scenario, a simulation), the platform administrator
@@ -1813,8 +1831,9 @@ fallback = { image = "toolchain-node", when = "YN0080", reason = "the checkout's
 # build; frontend/AGENTS.md) and frontend-bump-build again, then
 # frontend-bump-classes (reads the build's dist) and frontend-bump-unit
 # (vitest, args: test files) and frontend-bump-knip (CI's dead-code step).
-# frontend-bump-types and frontend-bump-knip declare stands_for: their whole
-# run counts as the pre-push run of frontend-types and frontend-knip.
+# frontend-bump-types, frontend-bump-knip and frontend-bump-classes declare
+# stands_for: their whole run counts as the pre-push run of frontend-types,
+# frontend-knip and frontend-design-system-classes.
 [check.frontend-lock-update]
 description = "regenerate frontend/yarn.lock after a dependency bump in package.json (toolchain-node, registry allow-list; links nothing)"
 argv = ["yarn", "install", "--mode=update-lockfile"]
@@ -1878,6 +1897,9 @@ cwd = "frontend"
 timeout = 300
 image = "toolchain-node"
 report = "lines"
+# Its whole run counts as frontend-design-system-classes' pre-push run: nodejs-dev cannot link a bumped lock,
+# and this reads the build's own CSS (CI's form of the gate), so it proves at least what --compile does (#1106).
+stands_for = ["frontend-design-system-classes"]
 
 [check.frontend-bump-unit]
 description = "frontend unit tests (vitest) after a dependency bump, on toolchain-node (frontend-lock-update, then this); args: a test file"
@@ -2000,6 +2022,23 @@ affected_always = [
   "src/pages/settings/settings-form-kit.test.ts",
   "src/no-class-name-assertions.test.ts",
 ]
+
+# CI's "Frontend gates" job (ci.yml frontend-gates, "Whole-tree gates"
+# step), the same command: the ratchet gates and catalog tests that scan the
+# whole tree, so the change that breaks one names none of their files. A
+# pre-push guard: frontend-unit affected=true picks them only when it runs, so
+# a push without it went red on Frontend gates one round later (#1080,
+# src/no-class-name-assertions.test.ts). sh -c because the step's src/*.test.ts
+# is a shell glob; test_ci_suites_in_merge_queue pins the two commands equal.
+[check.frontend-gates]
+description = "the frontend whole-tree gates as CI's 'Frontend gates' job (after frontend-install): tests_unit/, src/*.test.ts, src/i18n/, the settings form kit; a pre-push guard"
+argv = ["sh", "-c", "exec yarn vitest run --project unit tests_unit/ src/*.test.ts src/i18n/ src/pages/settings/settings-form-kit.test.ts"]
+cwd = "frontend"
+timeout = 900
+image = "nodejs-dev"
+report = "lines"
+needs = [".xtm-one/lab/chatbot-host", "apps/microsoft-office/src/lib"]
+pre_push = ["*.ts", "*.tsx", "*.css", "*.json"]
 
 # The same vitest run in update mode, for a deliberate change to what a test
 # pins: `--update=all` rewrites the __snapshots__ of the files given (never a

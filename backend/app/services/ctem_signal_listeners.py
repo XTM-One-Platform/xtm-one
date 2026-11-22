@@ -31,6 +31,7 @@ the case on a provider re-scan (``ctem_case_loop.close_signal_members``).
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -81,6 +82,9 @@ LISTENERS: tuple[Listener, ...] = (
     Listener("aikido", AIKIDO_ISSUE_EVENTS, (), "code_flaw", "inside", "code"),
     Listener("aikido", ("ci_gate_failed", "scan_image_finished"), ("scan",), "code_flaw", "inside", "code"),
     Listener("openaev", ("scenario_score_degraded",), ("scenario",), "mitigation_regression", "inside", "asset"),
+    # CTEM-29: an account or an address a leak source wrote into OpenCTI (path 10, the identity
+    # as subject). Only the login or address and the disabled flag are kept, never a secret.
+    Listener("opencti", ("create", "update"), ("user-account", "email-addr"), "credential_leak", "world", "identity"),
 )
 
 
@@ -103,10 +107,36 @@ def _opencti_object(payload: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     return kind, data
 
 
+#: Where an OpenCTI account or address observable carries the identity, first found wins.
+_IDENTITY_KEYS = ("value", "account_login", "user_id", "display_name")
+
+
+def _identity_signal(kind: str, data: Mapping[str, Any], payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """CTEM-29: a leaked identity (an email address or a user account) as a path 10 signal.
+
+    Kept only when the identity carries a domain (``name@domain``): the scope gate
+    reads it against the profile's owned domains. The account's disabled flag is
+    carried so a disabled account is closed "not exposed"; a credential value is
+    never read from the delivery.
+    """
+    ref = next((_text(data.get(k)).lower() for k in _IDENTITY_KEYS if "@" in _text(data.get(k))), "")
+    if not ref:
+        return None
+    evidence: dict[str, Any] = {"event": _text(payload.get("type")), "stix_type": kind}
+    if isinstance(data.get("is_disabled"), bool):
+        evidence["account_disabled"] = data["is_disabled"]
+    meta = payload.get("_opencti_event")
+    if isinstance(meta, dict) and _text(meta.get("message")):
+        evidence["message"] = _text(meta.get("message"))[:500]
+    return {"external_id": _text(data.get("id")) or None, "ref": ref, "label": ref, "evidence": evidence}
+
+
 def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
     kind, data = _opencti_object(payload)
     if row.object_types and kind not in row.object_types:
         return None
+    if row.subject_kind == "identity":
+        return _identity_signal(kind, data, payload)
     external_id = _text(data.get("id"))
     if kind.startswith("relationship:"):
         target = _text(data.get("target_ref"))
@@ -353,6 +383,73 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
     except Exception:
         logger.warning("CTEM signal from a %s %s delivery not recorded", provider, event_key, exc_info=True)
         return False
+
+
+async def note_tracked_organizations(payload: Mapping[str, Any], organization_ids: list[str], *, verified: bool) -> int:
+    """CTEM-29: one path 11 signal per tracked organization an OpenCTI report or incident names.
+
+    *organization_ids* are the XTM One organizations ``organization_events.annotate_payload``
+    found in the delivery. The subject is the organization's name, so the scope gate
+    resolves it to the asset row that names it and, through a crown jewel's asset names,
+    to the crown jewel its services support; no dependency sends it to the watchlist.
+    No model call; never raises. How many signals were recorded.
+    """
+    from app.core.config import settings
+
+    if not verified or settings.is_copilot_like or not organization_ids or not isinstance(payload, Mapping):
+        return 0
+    kind, data = _opencti_object(payload)
+    if kind not in ("report", "incident"):
+        return 0
+    from app.core.database import async_session
+    from app.services import ctem_case_loop, ctem_scope_gate_store, ctem_signals
+    from app.services.ctem_loop_stream import publish_signal_update
+    from app.services.organizations import get_organization, get_primary
+
+    recorded = 0
+    try:
+        async with async_session() as db:
+            primary = await get_primary(db)
+            if primary is None:
+                return 0
+            for raw in organization_ids:
+                try:
+                    tracked = await get_organization(db, uuid.UUID(str(raw)))
+                except ValueError:
+                    continue
+                if tracked is None or tracked.role == "primary" or tracked.archived_at is not None:
+                    continue
+                evidence: dict[str, Any] = {
+                    "event": _text(payload.get("type")),
+                    "stix_type": kind,
+                    "report": _text(data.get("name"))[:300],
+                    "relationship": tracked.relationship or "",
+                    "organization_criticality": tracked.criticality,
+                }
+                signal, created = await ctem_signals.record_signal(
+                    db,
+                    organization_id=primary.id,
+                    signal=ctem_signals.SignalInput(
+                        trigger_path="third_party_event",
+                        lens="world",
+                        source_provider="opencti",
+                        source_external_id=f"{_text(data.get('id'))}:{tracked.id}" if data.get("id") else None,
+                        subject_kind="third_party",
+                        subject_ref=tracked.name,
+                        subject_label=tracked.name,
+                        evidence=evidence,
+                    ),
+                    recorded_via="listener",
+                    recorded_by=ctem_signals.SYSTEM_ACTOR,
+                )
+                pending = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
+                await db.commit()
+                await ctem_case_loop.publish_pending(pending)
+                await publish_signal_update(db, signal)
+                recorded += 1
+    except Exception:
+        logger.warning("CTEM third-party signal from an OpenCTI %s not recorded", kind, exc_info=True)
+    return recorded
 
 
 async def _close_at_source(provider: str, external_id: str) -> int:
