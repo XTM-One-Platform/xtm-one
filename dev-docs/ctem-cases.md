@@ -534,8 +534,11 @@ then the existing AI assessment and facts grid unchanged.
 
 ### 7.3 Case page `/ctem/cases/:id`
 
-- Header: `EntityPageHeader` with back link "Back to Cases", the fix as
-  title, badges (state Chip, priority Chip, owner Avatar, due date), actions
+- Header: the CTEM header band (`CtemPageHeader`) with the shared
+  `LocationBackButton` "Back to Cases" first, above the band and outside its
+  border, exactly as on an entity page (Sam, 22 Nov 2026: no CTEM-only back
+  link inside the band), the fix as title, badges on the breadcrumb line
+  (state Chip, priority Chip, owner Avatar, due date), actions
   in the platform order: More (`IconButton` + `Menu`: Split, Merge, Open in
   Act now, A6), Accept risk, Assign, then the next state as the filled
   primary ("Start", "Resolve", "Reopen").
