@@ -20697,14 +20697,11 @@
   "Not computed yet": "Aún no calculado",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} no respondió a las {time}, casos sin cambios.} other {{products} no respondieron a las {time}, casos sin cambios.}}",
   "Open the {product} integration": "Abrir la integración de {product}",
-  "Add a sync": "Añadir una sincronización",
-  "Start with your sources": "Empiece por sus fuentes",
-  "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Elija una plataforma y las secciones que rellena, previsualice las filas y manténgalas sincronizadas.",
-  "No sync yet": "Sin sincronización",
-  "{count, plural, one {# sync} other {# syncs}}": "{count, plural, one {# sincronización} other {# sincronizaciones}}",
-  "Feeds no section yet": "Aún no alimenta ninguna sección",
-  "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{section} desde {source}: {count, plural, one {# fila} other {# filas}}",
-  "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "Quién alimenta el perfil: las filas de cada plataforma las mantiene su sincronización y aquí son de solo lectura; las filas escritas, CSV, API y de agente siguen siendo suyas.",
-  "The OpenCRQ sync failed": "La sincronización con OpenCRQ falló",
-  "Sync with OpenCRQ now": "Sincronizar con OpenCRQ ahora"
+  "Empty: OpenCRQ is not connected.": "Vacío: OpenCRQ no está conectado.",
+  "Connect OpenCRQ": "Conectar OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "Ninguna automatización trabaja este caso: la flota del bucle CTEM no está configurada.",
+  "Waiting for {agent}, working this case since {since}.": "Esperando a {agent}, que trabaja este caso desde {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "Esperando un paso de la flota, que trabaja este caso desde {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Abierto a partir de vulnerabilidades de OpenCTI cotejadas con su inventario",
+  "Opened from OpenAEV findings on your assets": "Abierto a partir de hallazgos de OpenAEV en sus activos"
 }
