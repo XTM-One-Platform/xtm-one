@@ -20580,5 +20580,21 @@
   "Answers on {ports}": "Answers on {ports}",
   "Ports that answer": "Ports that answer",
   "DNS target": "DNS target",
-  "Certificate names": "Certificate names"
+  "Certificate names": "Certificate names",
+  "Evidence health": "Evidence health",
+  "Evidence expired: older than the re-test delay": "Evidence expired: older than the re-test delay",
+  "Attested by a person only, never measured by a connector": "Attested by a person only, never measured by a connector",
+  "Reported by a connector, never measured": "Reported by a connector, never measured",
+  "Blind spot: no source reports this asset": "Blind spot: no source reports this asset",
+  "Blind spot: the version is unknown": "Blind spot: the version is unknown",
+  "Blind spot: a connector sync emptied": "Blind spot: a connector sync emptied",
+  "Connector sync": "Connector sync",
+  "{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open": "{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open",
+  "{kind}: emptied; its findings stay open": "{kind}: emptied; its findings stay open",
+  "No evidence since": "No evidence since",
+  "Never measured": "Never measured",
+  "Risk scenario": "Risk scenario",
+  "Evidence sources": "Evidence sources",
+  "{origin}, last reported {date}": "{origin}, last reported {date}",
+  "No source reports this asset": "No source reports this asset"
 }
