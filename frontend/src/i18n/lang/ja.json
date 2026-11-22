@@ -1895,6 +1895,7 @@
   "Command center": "コマンドセンター",
   "Command palette": "コマンドパレット",
   "Commands": "コマンド",
+  "Commands waiting for your approval": "承認待ちのコマンド",
   "Comment": "コメント",
   "Commit message (optional)": "コミットメッセージ（任意）",
   "Commit message for content change (optional)": "コンテンツ変更のコミットメッセージ（任意）",
