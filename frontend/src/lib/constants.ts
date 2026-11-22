@@ -376,7 +376,6 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   sekoia: "Sekoia.io",
   sublime: "Sublime Security",
   aikido: "Aikido Security",
-  airwallex: "Airwallex",
   whatsapp: "WhatsApp",
   securityscorecard: "SecurityScorecard",
   pagerduty: "PagerDuty",
@@ -425,6 +424,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   docusign: "DocuSign",
   google_a2a: "Google Agent Platform A2A",
   nova: "Nova Prompt Safety",
+  netsuite: "NetSuite",
 };
 
 // ── MCP transport display names ─────────────────────────────────────────────
@@ -583,7 +583,8 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
-  finance: "Finance & Treasury",
+  erp: "ERP",
+  finance: "Finance",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
