@@ -41,6 +41,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -81,6 +82,10 @@ SURFACE = "google_chat_card"
 #: The surface the answer links of a message posted as a user record (S9b).
 LINK_SURFACE = "google_chat"
 CARD_ID = "xtm-decision"
+#: Resource names interpolated into Chat API paths: their documented shapes only.
+_USER_NAME = re.compile(r"^users/[A-Za-z0-9_.@-]+$")
+_SPACE_NAME = re.compile(r"^spaces/[A-Za-z0-9_-]+$")
+_MESSAGE_NAME = re.compile(r"^spaces/[A-Za-z0-9_-]+/messages/[A-Za-z0-9_.-]+$")
 
 #: Google Chat's limits: 6 buttons read well in one button list, 25 characters
 #: fit a button on a phone, 4,000 characters per text paragraph.
@@ -449,15 +454,274 @@ async def post_message(token: str, space: str, message: dict[str, Any]) -> dict[
     return data
 
 
+#: The ``via`` of the ``notified`` events this module records: the app's card, a user's link message.
+VIA_CARD = "google_chat_card"
+VIA_LINKS = "google_chat_links"
+
+
 async def send_decision_card(db: AsyncSession, decision: Decision, token: str, space: str, *, language: str) -> bool:
-    """Post *decision*'s card into *space* as the Chat app; ``True`` when Chat took it."""
+    """Post *decision*'s card into *space* as the Chat app; ``True`` when Chat took it.
+
+    Records a ``notified`` event naming the message, so an answer given
+    elsewhere (the web page, a link) updates the card (:func:`update_sent_cards`).
+    """
+    from app.models.decision import DecisionEvent
+
     # No viewer: the card the whole space reads (proposals redacted), answered per click.
     view = await load_view(db, decision, None, language)
     sent = await post_message(token, space, render_google_chat_decision(view, language))
     if sent is None:
         return False
+    db.add(
+        DecisionEvent(
+            decision_id=decision.id,
+            event="notified",
+            surface=SURFACE,
+            detail={"via": VIA_CARD, "space": space, "message_name": str(sent.get("name") or ""), "language": language},
+        )
+    )
+    await db.commit()
     logger.info("Google Chat decision card for %s sent", decision.public_id)
     return True
+
+
+async def patch_message(token: str, message_name: str, message: dict[str, Any]) -> bool:
+    """``spaces.messages.patch`` of the app's own card message (text and cardsV2)."""
+    if not _MESSAGE_NAME.match(message_name or ""):
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.patch(
+                f"{CHAT_API_BASE}/{message_name}",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                params={"updateMask": "text,cardsV2"},
+                json=message,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Google Chat decision card not updated: %s", format_exception_message(exc))
+        return False
+    return resp.status_code == 200
+
+
+async def update_sent_cards(db: AsyncSession, decision: Decision, *, token: str | None = None) -> dict[str, int]:
+    """Replace every card the app sent for a decided *decision* with its decided state, as the app.
+
+    A click already replaced the clicked card (``UPDATE_MESSAGE``); this
+    covers an answer given anywhere else. A refused edit is counted, never
+    raised. Returns ``{"updated": n, "refused": m}``.
+    """
+    from sqlalchemy import select
+
+    from app.models.decision import DecisionEvent
+
+    counts = {"updated": 0, "refused": 0}
+    if decision.status == "open":
+        return counts
+    rows = (
+        (
+            await db.execute(
+                select(DecisionEvent.detail).where(
+                    DecisionEvent.decision_id == decision.id, DecisionEvent.event == "notified"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    sent = [d for d in rows if isinstance(d, dict) and d.get("via") == VIA_CARD and d.get("message_name")]
+    if not sent:
+        return counts
+    token = token if token is not None else await app_token()
+    for detail in sent:
+        language = str(detail.get("language") or "en")
+        view = await load_view(db, decision, None, language)
+        ok = bool(token) and await patch_message(
+            token, str(detail["message_name"]), render_google_chat_decision(view, language)
+        )
+        counts["updated" if ok else "refused"] += 1
+    return counts
+
+
+# --- Delivery as the Chat app (slice 2) -----------------------------------------
+
+#: The linked Chat identity key prefix (``google_chat:users/<id>``), recorded when a person messages the app.
+IDENTITY_PREFIX = "google_chat:"
+
+
+def space_name(space: str) -> str | None:
+    """*space* as a ``spaces/<id>`` resource name, else ``None`` (it goes into a URL path)."""
+    value = (space or "").strip()
+    value = value if value.startswith("spaces/") else f"spaces/{value}"
+    return value if _SPACE_NAME.match(value) else None
+
+
+def chat_user_name(user: Any) -> str | None:
+    """The Chat ``users/<id>`` a person linked by messaging the app, else ``None``."""
+    for key in getattr(user, "channel_identities", None) or {}:
+        if isinstance(key, str) and key.startswith(IDENTITY_PREFIX):
+            name = key.removeprefix(IDENTITY_PREFIX)
+            if _USER_NAME.match(name):
+                return name
+    return None
+
+
+async def app_token() -> str:
+    """An access token of the ``googlechat_bot`` channel bot (app auth), ``""`` when none is configured."""
+    from app.channels.google_chat import GoogleChatChannel, _get_googlechat_creds
+
+    creds = await _get_googlechat_creds()
+    if not creds:
+        return ""
+    return await GoogleChatChannel(creds["credentials_json"])._get_access_token()
+
+
+async def direct_message_space(token: str, user_name: str) -> str | None:
+    """The app's DM space with *user_name* (``spaces.findDirectMessage``), else ``None``."""
+    if not _USER_NAME.match(user_name or ""):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{CHAT_API_BASE}/spaces:findDirectMessage",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"name": user_name},
+            )
+            data = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Google Chat direct message lookup failed: %s", format_exception_message(exc))
+        return None
+    if resp.status_code != 200 or not isinstance(data, dict):
+        return None
+    return space_name(str(data.get("name") or ""))
+
+
+async def send_to_space(db: AsyncSession, decision: Decision, space: str, *, language: str) -> bool:
+    """Post *decision*'s card into *space* as the Chat app (path (d), app auth); ``False`` when it could not.
+
+    ``False`` covers no channel bot, a space name that is not one, and a
+    refusal by Chat (the app is not in the space): the caller then falls back.
+    """
+    target = space_name(space)
+    if target is None:
+        return False
+    token = await app_token()
+    if not token:
+        return False
+    return await send_decision_card(db, decision, token, target, language=language)
+
+
+async def send_to_person(db: AsyncSession, decision: Decision, user: Any, *, language: str) -> bool:
+    """Post *decision*'s card in the app's DM with *user*; ``False`` when no DM with the app exists."""
+    name = chat_user_name(user)
+    if name is None:
+        return False
+    token = await app_token()
+    if not token:
+        return False
+    space = await direct_message_space(token, name)
+    if space is None:
+        return False
+    return await send_decision_card(db, decision, token, space, language=language)
+
+
+async def app_space_for(db: AsyncSession, spec: dict[str, Any] | Any) -> str | None:
+    """The space the Chat app posts in for a ``google_chat`` notify ask: its ``space``, else the person's DM."""
+    if spec.get("space"):
+        return space_name(str(spec["space"]))
+    email = str(spec.get("user") or "")
+    if not email:
+        return None
+    from app.channels.router import resolve_user_by_email
+
+    person = await resolve_user_by_email(db, email)
+    name = chat_user_name(person) if person is not None else None
+    if name is None:
+        return None
+    token = await app_token()
+    return await direct_message_space(token, name) if token else None
+
+
+#: Sends tried for one work item decision before the tick stops trying.
+MAX_SEND_ATTEMPTS = 3
+
+
+async def _attempts(db: AsyncSession, decision_id: Any) -> tuple[bool, int]:
+    """Whether a card or link message went out for *decision_id* (or was refused for good), and failed sends."""
+    from sqlalchemy import select
+
+    from app.models.decision import DecisionEvent
+
+    rows = (
+        (
+            await db.execute(
+                select(DecisionEvent.detail).where(
+                    DecisionEvent.decision_id == decision_id, DecisionEvent.event == "notified"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    mine = [d for d in rows if isinstance(d, dict) and d.get("via") in (VIA_CARD, VIA_LINKS)]
+    done = any(d.get("message_name") or d.get("sent") or d.get("permanent") for d in mine)
+    return done, sum(1 for d in mine if d.get("error"))
+
+
+async def deliver_work_item_card(db: AsyncSession, decision: Decision, item: Any, *, caller: Any = None) -> bool:
+    """Send the open decision of a work item whose notify ask names ``google_chat`` (I.4 path (d)).
+
+    App auth first: the cardsV2 card in the space, or in the app's DM with
+    the person, answered in place. Else as a user through the ask's Google
+    integration: the question with one signed answer link per option (S9b),
+    into the ask's space. Bounded to :data:`MAX_SEND_ATTEMPTS`; ``True`` when sent.
+    """
+    from app.models.decision import DecisionEvent
+    from app.services import work_item_notify as notify
+    from app.services.channel_notices import notice_language
+    from app.services.decision_graph_cards import recipient_user_id
+
+    done, failures = await _attempts(db, decision.id)
+    if done or failures >= MAX_SEND_ATTEMPTS:
+        return False
+    spec = notify.notify_spec(item.payload) or {}
+    language = notice_language()
+    space = await app_space_for(db, spec)
+    if space is not None and await send_to_space(db, decision, space, language=language):
+        return True
+    recipient = recipient_user_id(decision.recipient)
+    agent_id = item.created_by_agent_id or item.owner_agent_id
+    error: str | None = None
+    permanent = False
+    if not spec.get("integration") or not spec.get("space") or recipient is None or agent_id is None:
+        error, permanent = "the Chat app could not post and no Google integration and space are set", True
+    else:
+        sender = SimpleNamespace(
+            id=decision.id, user_id=item.user_id, created_by_agent_id=agent_id, owner_agent_id=None
+        )
+        try:
+            factory = caller or notify.agent_graph_caller
+            async with factory(sender, str(spec["integration"]), "google") as call:
+                sent, answer = await call(
+                    "send_google_chat_message",
+                    {"space_name": str(spec["space"]), "message": link_message(decision, recipient)},
+                )
+            if not sent:
+                error, permanent = answer[:500] or "not sent", notify.is_permanent_refusal(answer)
+        except Exception as exc:  # recorded, retried on the next tick, bounded
+            error = format_exception_message(exc)[:500]
+            permanent = isinstance(exc, notify.PermanentNotifyError)
+    detail: dict[str, Any] = {"via": VIA_LINKS, "space": str(spec.get("space") or "")}
+    if error is None:
+        detail["sent"] = True
+    else:
+        detail["error"] = error
+        if permanent:
+            detail["permanent"] = True
+    db.add(DecisionEvent(decision_id=decision.id, event="notified", surface=LINK_SURFACE, detail=detail))
+    await db.commit()
+    if error is not None:
+        logger.warning("Decision %s: the Google Chat message was not sent: %s", decision.id, error)
+    return error is None
 
 
 def link_message(decision: Decision, recipient_id: Any) -> str:

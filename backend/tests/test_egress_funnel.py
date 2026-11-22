@@ -93,7 +93,7 @@ PLATFORM_INTERNAL = {
     "services/sandbox_workspace/preview.py": (
         "previews of started sandbox services on the operator's own OpenSandbox proxy; a relay would see its API key"
     ),
-    "services/google_chat_decision_cards.py": "Google Chat API calls (spaces.messages.create) of the platform-hosted Chat app",
+    "services/google_chat_decision_cards.py": "Google Chat API calls (spaces.messages.create and patch, spaces.findDirectMessage) of the platform-hosted Chat app",
     "services/slack_decision_cards.py": "Slack Web API calls (chat.update, views.open) of the platform-hosted Slack bot",
     "services/slack_events.py": "Slack identity lookups for the platform-hosted Slack bot",
     "services/telemetry.py": "Filigran telemetry",

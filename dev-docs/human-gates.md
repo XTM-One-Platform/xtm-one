@@ -664,8 +664,25 @@ identity, and the answer goes through `answer_decision` with surface
 `google_chat_card`; the answer replaces the card (`UPDATE_MESSAGE`), a refusal
 is a private message to the clicker alone (`privateMessageViewer`) and the card
 stays (I.5). As a user, `link_message` carries the S9b answer links (surface
-`google_chat`). Slice 2 wires the sends (run notify and work item notify into
-a DM or a space) and the `lab-google-chat-cards` service for the UX round.
+`google_chat`).
+
+S11, slice 2 (the sends): a run's `trigger_config.notify_via: google_chat`
+posts to `trigger_config.notify_space`, else to the app's DM with the run's
+owner (their linked `google_chat:users/<id>` identity, `spaces.findDirectMessage`);
+a run paused on a decision goes as its card, anything else as text, and no
+channel bot, no space and no DM is the web notification. A work item's
+`payload.notify` takes `channel: google_chat` with `space` (`spaces/<id>`) or
+`user` (an email, the app's DM), and an optional Google `integration`: no
+Microsoft integration is needed. The scheduler tick sends an open work item
+decision as the app's card (app auth) where the app is in the space or has a
+DM with the person, else as a user through that Google integration with the
+S9b answer links (`send_google_chat_message`, the item's agent's toolset,
+scope and approval gate, as for every notify send), at most three attempts,
+each recorded as a `notified` event (`via` `google_chat_card` with the message
+name, or `google_chat_links`). An answer given anywhere else (web, link, Teams)
+edits every card the app posted (`spaces.messages.patch`, decided state), as
+the Graph cards are. The end notification follows the same order. Every Chat
+resource name that reaches a URL path is checked against its documented shape.
 
 Surfaces touched, all slices: `assignment_engine` (HITL tool), `assignment_helpers`
 (prompt), `agent_builder` tool texts, `hitl_whitelist` / `tools/approval.py` /
