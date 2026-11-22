@@ -6,7 +6,7 @@
 # will run unattended on every deployment, including scheduled runs nobody
 # is watching. Tools held back by hand live in HAND_GATED, not here.
 #
-# 138 tools; 60 read-classified tools deliberately held back.
+# 140 tools; 60 read-classified tools deliberately held back.
 
 openaev:export_openaev_scenario
 openaev:full_text_search_openaev
@@ -117,10 +117,12 @@ opencrq:list_opencrq_users
 opencrq:search_opencrq_cves
 opencrq:search_opencrq_mitre_techniques
 opencti:get_opencti_container_full
+opencti:get_opencti_data_health
 opencti:get_opencti_draft_info
 opencti:get_opencti_entity
 opencti:get_opencti_entity_history
 opencti:get_opencti_entity_stats
+opencti:get_opencti_error_rate
 opencti:get_opencti_licence
 opencti:get_opencti_managers
 opencti:get_opencti_platform_queues
