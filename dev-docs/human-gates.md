@@ -22,7 +22,7 @@ message carries resolves (section 9, I.7).
 
 | # | Gate | Where it is asked | Stored as | Answered by | UI | Bell kind |
 |---|---|---|---|---|---|---|
-| 1 | Run free-text HITL | `request_human_input(question, context)`, registered by `assignment_engine` when `resolve_hitl` (agent default, assignment override) is on | `AssignmentRun.human_input_question` = question and `"Context: ..."` joined in one string; status `awaiting_human` | `POST /assignments/runs/{id}/respond` (`answer_paused_run`), `response` text | `components/ui/run-human-input.tsx` (run card, Operations row, run detail, run activity list, fleet pending approvals) | `hitl` |
+| 1 | Run free-text HITL | `request_human_input(question, context)`, registered by `assignment_engine` when `resolve_hitl` (agent default, assignment override) is on | `AssignmentRun.human_input_question` = question and `"Context: ..."` joined in one string; status `awaiting_human` | `POST /assignments/runs/{id}/respond` (`answer_paused_run`), `response` text | `components/decisions/RunPauseDecision.tsx` (S8; replaced `components/ui/run-human-input.tsx`) (run card, Operations row, run detail, run activity list, fleet pending approvals) | `hitl` |
 | 2 | Per-tool approval | the gate of `hitl_whitelist.py` / `tools/approval.py` before a gated tool call | `pending_approvals`, `approval_decisions`; standing approvals in `ToolApprovalPreference` (schema fingerprint) | same endpoint, `decisions: [{decision: approve, approve_always, reject}]` | `ActionProposalCard`, `FleetPendingApprovals` | `hitl` (push Approve / Reject actions) |
 | 3 | Irreversible consent | a tool (today `merge_opencti_entities`) asks through gate 1 for `APPROVE <code>` | inside the free-text reply, `human_input_history` | parsed server-side by `hitl_consent.py` | none of its own | `hitl` |
 | 4 | Flow Ask-user node | `flow_runner._exec_ask_user` (title, question) | park `{kind: human, question, released, response, responded_by}` in `FlowRun.state.waiting` | `POST /flows/runs/{id}/respond`, `response` text | flow builder run panel | `flow_hitl` (activity row) |
@@ -100,7 +100,7 @@ Per source:
 | HITL prompt | `DEFAULT_HITL_PROMPT`, the agent and assignment overrides and the `agent_builder` tool texts teach the options form in one sentence each; no prompt grows by more than one sentence (no system prompt inflation). |
 | Per-tool approval | Rendered as a decision whose options are Approve (`approve`), Approve always (`approve_always`, only where standing approvals are allowed today) and Reject (`reject`). Fingerprints, standing approvals and batch decisions are unchanged: the router turns the chosen option into today's `decisions` payload. |
 | Irreversible consent | Becomes an explicit option (`kind: consent`, label "Approve this irreversible action", effect naming the action). Choosing it writes the same `APPROVE <code>` entry in `human_input_history`, so `hitl_consent.py` stays the server-side check, unchanged. A typed `APPROVE <code>` reply keeps working. |
-| Flow Ask-user | The node config gains `options` and `recommendation` (and `deadline`); `{{ask.response}}` stays the text, `{{ask.option}}` is new. A node without options behaves as today. |
+| Flow Ask-user | The node config gains `options` and `recommendation` (and `deadline`); `{{ask.response}}` stays the text, `{{ask.option}}` is new. A node without options behaves as today. Shipped in S6: `decision_ask.flow_ask` normalises the node's ask with the work item's model and guard (a bad option list fails the node with the reason), the park stores it as `waiting.ask`, the decision opens with it and its deadline, the answer (an option key or label, or `<key>: <note>` from the router) sets `waiting.option` through `flow_option`, and the flow run detail exposes `awaiting_input_ask` for the run panel's `FlowDecisionCard`. |
 | Work item | Unchanged: it is the model. |
 
 ## 3. B. One card
@@ -146,16 +146,6 @@ A row opens the same `DecisionCard` in a side panel and answers there. The
 companion inbox reads the same list. The list is one indexed read of the
 `decisions` table (G2: recipient, status, deadline), no model call on the read
 path.
-
-**Implementation (S5, read).** `GET /api/v1/decisions/waiting` (`app/services/decision_inbox.py`,
-`waiting_for`): the open rows whose `recipient` is the caller (`user:<id>`), one
-of their groups (`group:<id>`), `company`, or `admins` for an administrator,
-soonest `deadline` first (none last), then oldest `created_at`. Each row carries
-the public id, kind, question, the whole ask for the card, `origin` (the
-assignment, flow or work item title), `agent`, `asked_at`, `deadline` and the
-`decision_links` page. The list is served only while the read switch is on
-(section 8 step 3; its verdict reused one minute per process); otherwise the
-answer is `{enabled: false, reason, items: []}` and the per-engine views stay.
 
 ## 5. D. One bell kind
 
