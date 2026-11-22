@@ -329,7 +329,7 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
   const { t_i18n } = useFormatter();
   return (
     <div
-      className="h-full w-full rounded-lg border border-dashed border-elevation-subtle"
+      className="h-full w-full rounded-sm border border-dashed border-elevation-subtle"
       data-testid="work-item-graph-zone"
       data-group={data.groupKey}
     >

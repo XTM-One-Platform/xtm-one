@@ -13,12 +13,9 @@
  * `.graph-canvas`, so nothing leaks into the rest of the app.
  */
 
+/* The grid dots: the subtle border token, which follows the theme on its own. */
 .graph-canvas {
-  --flow-grid: hsl(220 16% 30%);
-}
-
-[data-mode="light"] .graph-canvas {
-  --flow-grid: hsl(220 16% 85%);
+  --flow-grid: var(--border-elevation-subtle);
 }
 
 .graph-canvas .react-flow {
