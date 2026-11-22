@@ -2125,6 +2125,10 @@ export interface Agent {
   enabled: boolean;
   is_builtin: boolean;
   is_company_managed: boolean;
+  /** A built-in's organization notes, appended after its persona (#914). */
+  customer_notes?: string | null;
+  /** The customer-layer fields a person set on a built-in, kept across seed runs (#914). */
+  customer_fields?: string[] | null;
   is_public_catalog?: boolean;
   /** The catalog download carries the code of personal custom tools. */
   catalog_include_personal_tools?: boolean;
@@ -12614,13 +12618,8 @@ export interface PlatformFormsResponse {
 // Notifications and linked phones
 // ---------------------------------------------------------------------------
 
-/**
- * A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`).
- * `decision` is every human gate (#842, S4); `hitl`, `flow_hitl` and
- * `work_item_waiting` stay readable for one release as its aliases.
- */
+/** A notification kind (`NOTIFICATION_KINDS`, `services/notification_feed.py`). */
 export type NotificationKind =
-  | "decision"
   | "hitl"
   | "flow_hitl"
   | "run"
@@ -12650,17 +12649,12 @@ export interface NotificationItem {
   summary: string | null;
   /** A security audit notification announcing a critical finding. */
   critical: boolean;
-  /** The run a run decision waits on, or the flow run a flow decision asks from. */
+  /** The run a `hitl` item waits on, or the flow run a `flow_hitl` item asks from. */
   run_id: string | null;
-  /** What a `decision` entry waits on (`DECISION_SOURCES`). */
-  source?: NotificationDecisionSource | null;
   /** A decision still waiting: unread until answered, never read by opening it (#991). */
   awaiting_answer?: boolean;
   unread: boolean;
 }
-
-/** The source of a `decision` notification. */
-export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
@@ -16309,6 +16303,8 @@ export interface HealthAlertEmailSettings {
   min_severity: "critical" | "warning" | "info";
   immediate: boolean;
   digest: boolean;
+  /** Minutes a critical finding stays open before its immediate email (default 15, 0 to 1440). */
+  alert_after_minutes?: number;
 }
 
 /** `HealthOpenCTIThresholds` of `services/health/settings.py`. */
