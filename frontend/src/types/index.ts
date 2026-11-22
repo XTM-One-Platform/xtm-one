@@ -16493,6 +16493,8 @@ export interface HealthCycle {
   signal: HealthSignalReading | null;
   digest: HealthDigest | null;
   requested_by_me: boolean;
+  /** The target's name: a module cycle's registration title, an agent's, flow's or assignment's name; null when it no longer exists. */
+  target_name?: string | null;
 }
 
 export interface HealthCycleStart {

@@ -119,6 +119,9 @@ class CycleResponse(BaseModel):
     signal: dict | None
     digest: dict | None
     requested_by_me: bool
+    #: The target's name: a module cycle's registration title (13.8), an agent's, flow's or
+    #: assignment's name; ``None`` when the target no longer exists.
+    target_name: str | None = None
 
 
 class SignalResponse(BaseModel):
@@ -169,7 +172,12 @@ class ImprovementListResponse(BaseModel):
 
 
 def _cycle_response(
-    cycle: HealthCycle, record: HealthCycleRun | None, user: User, *, narrative_readable: bool
+    cycle: HealthCycle,
+    record: HealthCycleRun | None,
+    user: User,
+    *,
+    narrative_readable: bool,
+    target_name: str | None = None,
 ) -> CycleResponse:
     digest = record.digest if record else None
     if digest and not narrative_readable:
@@ -190,6 +198,7 @@ def _cycle_response(
         signal=record.signal if record else None,
         digest=digest,
         requested_by_me=bool(record and record.requested_by_user_id == user.id),
+        target_name=target_name,
     )
 
 
@@ -396,10 +405,20 @@ async def list_cycles(
         query = query.where(HealthCycle.target_type == target_type, HealthCycle.target_id == target_id)
     if cycle_status:
         query = query.where(HealthCycle.status == cycle_status)
-    rows = await db.execute(query.order_by(HealthCycle.opened_at.desc()).limit(limit).offset(offset))
+    rows = (await db.execute(query.order_by(HealthCycle.opened_at.desc()).limit(limit).offset(offset))).all()
     # A non-admin lists one target's cycles (``_require_target_reader``): one check covers every row.
     readable = await may_read_cycle_narrative(db, user, group_ids, target_type, target_id)
-    return [_cycle_response(cycle, record, user, narrative_readable=readable) for cycle, record in rows.all()]
+    names = await _target_names(db, [cycle for cycle, _ in rows])
+    return [
+        _cycle_response(
+            cycle,
+            record,
+            user,
+            narrative_readable=readable,
+            target_name=names.get((cycle.target_type, cycle.target_id)),
+        )
+        for cycle, record in rows
+    ]
 
 
 @router.get("/cycles/{cycle_id}", response_model=CycleResponse)
@@ -416,26 +435,36 @@ async def get_cycle(cycle_id: str, user: User = Depends(get_current_user), db: A
     if row is None or not await may_read_cycle(db, user, group_ids, row[0].target_type, row[0].target_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=CYCLE_NOT_FOUND)
     readable = await may_read_cycle_narrative(db, user, group_ids, row[0].target_type, row[0].target_id)
-    return _cycle_response(row[0], row[1], user, narrative_readable=readable)
+    names = await _target_names(db, [row[0]])
+    return _cycle_response(
+        row[0], row[1], user, narrative_readable=readable, target_name=names.get((row[0].target_type, row[0].target_id))
+    )
 
 
 async def _target_names(db: AsyncSession, states: list) -> dict[tuple[str, uuid.UUID], str]:
-    """The name of every signal's target, one query per kind; a deleted target is absent.
+    """The name of every signal's or cycle's target, one query per kind; a deleted target is absent.
 
-    The caller already reads these targets (``_require_target_reader``): an
-    administrator lists every signal, anyone else one target they manage.
+    A module cycle's target is a platform registration, named by its title (13.8). The
+    caller already reads these targets (``_require_target_reader``): an administrator
+    lists every signal and cycle, anyone else one target they manage.
     """
     from app.models.agent import Agent
     from app.models.assignment import Assignment
     from app.models.flow import Flow
+    from app.models.platform_registration import PlatformRegistration
 
-    models = {"agent": Agent, "flow": Flow, "assignment": Assignment}
+    columns = {
+        "agent": (Agent.id, Agent.name),
+        "flow": (Flow.id, Flow.name),
+        "assignment": (Assignment.id, Assignment.name),
+        "module": (PlatformRegistration.id, PlatformRegistration.platform_title),
+    }
     names: dict[tuple[str, uuid.UUID], str] = {}
-    for kind, model in models.items():
-        ids = {s.target_id for s in states if s.target_type == kind}
+    for kind, (id_column, name_column) in columns.items():
+        ids = {s.target_id for s in states if s.target_type == kind and s.target_id is not None}
         if not ids:
             continue
-        rows = await db.execute(select(model.id, model.name).where(model.id.in_(ids)))
+        rows = await db.execute(select(id_column, name_column).where(id_column.in_(ids)))
         names.update({(kind, row_id): name for row_id, name in rows.all()})
     return names
 
