@@ -158,6 +158,15 @@ export function stickyBarBottom(barBottoms: readonly number[]): number {
   return barBottoms.reduce((low, bottom) => Math.max(low, bottom), 0);
 }
 
+/**
+ * The page bars a table header must clear: only those placed before the area in the page.
+ * A sticky bar that comes after the table (a tab bar under a card) sits below it at rest;
+ * counting it pushed the header to the bottom of the table and hid its last row (#1294 UX r1 B1).
+ */
+export function pageBarsAbove(area: Node, bars: readonly HTMLElement[]): HTMLElement[] {
+  return bars.filter((bar) => (bar.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 && !bar.contains(area));
+}
+
 /** How far to push the header down so it sits under the top bar, kept inside the area. */
 export function stickyShift(barBottom: number, areaTop: number, areaHeight: number, headHeight: number): number {
   return Math.round(Math.min(Math.max(0, barBottom - areaTop), Math.max(0, areaHeight - headHeight)));
@@ -183,7 +192,7 @@ export function usePageStickyHead(area: HTMLElement | null, head: HTMLElement | 
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = area.getBoundingClientRect();
-        const pageBars = Array.from(main.querySelectorAll<HTMLElement>(`[${PAGE_STICKY_BAR_ATTRIBUTE}]`));
+        const pageBars = pageBarsAbove(area, Array.from(main.querySelectorAll<HTMLElement>(`[${PAGE_STICKY_BAR_ATTRIBUTE}]`)));
         const barBottom = stickyBarBottom([
           bar && bar !== main ? bar.getBoundingClientRect().bottom : 0,
           ...pageBars.map((pageBar) => pageBar.getBoundingClientRect().bottom),
