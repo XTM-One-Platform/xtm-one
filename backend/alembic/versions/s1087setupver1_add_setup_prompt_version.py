@@ -8,7 +8,7 @@ probe -> terminate_lock_holders -> set_lock_timeout -> guarded DDL
 (``platform_settings`` is read by every request).
 
 Revision ID: s1087setupver1
-Revises: c943decisionsbf1
+Revises: c1110ctemsurface1
 Create Date: 2026-11-22
 """
 
@@ -23,7 +23,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "s1087setupver1"
 # NOT a constant: must always be main's CURRENT head, re-pointed on every rebase
 # (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | None = "c943decisionsbf1"
+down_revision: str | None = "c1110ctemsurface1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
