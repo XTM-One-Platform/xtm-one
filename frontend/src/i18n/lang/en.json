@@ -20841,5 +20841,18 @@
   "No check round since the last digest": "No check round since the last digest",
   "Failed most": "Failed most",
   "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}": "{rounds, plural, one {# round} other {# rounds}} on {registrations, plural, one {# registration} other {# registrations}}",
-  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}"
+  "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}": "{failed, plural, one {# failed} other {# failed}}, {warned, plural, one {# warning} other {# warnings}}",
+  "Attack path and blast radius": "Attack path and blast radius",
+  "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.": "No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.",
+  "No attack path leaves this asset in the latest simulations.": "No attack path leaves this asset in the latest simulations.",
+  "Hops, nearest first": "Hops, nearest first",
+  "Attack starts from": "Attack starts from",
+  "Proven": "Proven",
+  "Inferred": "Inferred",
+  "Proven by {name}, {date}": "Proven by {name}, {date}",
+  "Proven by {name}": "Proven by {name}",
+  "Proven by an OpenAEV simulation, {date}": "Proven by an OpenAEV simulation, {date}",
+  "Primary assets reached": "Primary assets reached",
+  "None: no business asset sits behind the assets reached.": "None: no business asset sits behind the assets reached.",
+  "Recorded the attack path": "Recorded the attack path"
 }
