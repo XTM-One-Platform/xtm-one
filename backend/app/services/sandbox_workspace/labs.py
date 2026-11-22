@@ -498,14 +498,32 @@ def _chain_failed(pod: dict[str, Any], resolved: ResolvedService) -> str:
     return ""
 
 
+def _starting_detail(pod: dict[str, Any], container: str) -> str:
+    """What a not-ready container is doing, from its status: the waiting reason (an image pull shows as
+    ``ContainerCreating``) and its restart count, so a silent step reads as more than ``starting``."""
+    status = _statuses(pod).get(container) or {}
+    reason = str(((status.get("state") or {}).get("waiting") or {}).get("reason") or "")
+    restarts = int(status.get("restartCount") or 0)
+    parts = [reason] if reason else []
+    if restarts:
+        parts.append(f"restarted {restarts}x")
+    return f" ({', '.join(parts)})" if parts else ""
+
+
 def service_states(pod: dict[str, Any], held: dict[str, Any]) -> str:
-    """One line naming each service of the lab: ``ready``, ``starting`` or why it ended (its exit code)."""
+    """One line naming each service of the lab: ``ready``, ``starting`` (with its waiting reason and restart
+    count when the container reports them) or why it ended (its exit code)."""
     containers = held.get("containers") or {}
     states = []
     for name in held.get("services") or []:
         container = containers.get(name) or container_name(name)
         ended = _terminated(pod, container)
-        states.append(f"{name} {ended or ('ready' if _target_ready(pod, container) else 'starting')}")
+        if ended:
+            states.append(f"{name} {ended}")
+        elif _target_ready(pod, container):
+            states.append(f"{name} ready")
+        else:
+            states.append(f"{name} starting{_starting_detail(pod, container)}")
     return "services: " + ", ".join(states) if states else ""
 
 
