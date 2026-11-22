@@ -106,16 +106,29 @@ def build_tools(
 
     # ── Write tools ───────────────────────────────────────────────────────
 
-    async def send_whatsapp_bot_message(to: str, text: str) -> str:
-        """Send a text message to a WhatsApp number.
+    async def send_whatsapp_bot_message(to: str, text: str = "", decision: str = "") -> str:
+        """Send a text message to a WhatsApp number, or a decision as reply buttons.
 
         *to* should be the recipient phone number in international format
-        (e.g. ``14155552671``).
+        (e.g. ``14155552671``). *decision* names a human gate (``run:<uuid>``,
+        ``work_item:<uuid>`` ...): it is sent as the decision's buttons or
+        list, answered in place (#842, S12), and *text* is not used.
         """
         if not is_publish_allowed(to, _allowed_ids):
             return f"Access denied: recipient {to} is not in the publish contacts list for this channel bot."
-        # WhatsApp draws no Markdown: a link is sent as its full URL (#10115).
-        text = markdown_links_as_plain_urls(text)
+        fields: dict[str, Any]
+        if decision and decision.strip():
+            from app.services.decision_whatsapp import decision_message_for_tool
+
+            rendered = await decision_message_for_tool(decision.strip())
+            if isinstance(rendered, str):
+                return rendered
+            fields = rendered
+        elif text:
+            # WhatsApp draws no Markdown: a link is sent as its full URL (#10115).
+            fields = {"type": "text", "text": {"body": markdown_links_as_plain_urls(text)[:4096]}}
+        else:
+            return "Error: pass the message text, or a decision to send as reply buttons."
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
                 client,
@@ -124,12 +137,7 @@ def build_tools(
                 _PROVIDER,
                 "send message",
                 headers=headers,
-                json={
-                    "messaging_product": "whatsapp",
-                    "to": to,
-                    "type": "text",
-                    "text": {"body": text[:4096]},
-                },
+                json={"messaging_product": "whatsapp", "to": to, **fields},
             )
             if err:
                 return err
@@ -368,8 +376,12 @@ def build_tools(
                         "type": "string",
                         "description": "Message text (max 4096 characters)",
                     },
+                    "decision": {
+                        "type": "string",
+                        "description": "A decision id (run: or work_item: then its UUID): sent as reply buttons the person answers in place, 1:1 only; text is then ignored",
+                    },
                 },
-                "required": ["to", "text"],
+                "required": ["to"],
             },
             source=_SOURCE,
             priority=0,

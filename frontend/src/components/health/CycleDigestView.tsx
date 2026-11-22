@@ -27,6 +27,7 @@ import {
   HEALTH_DIGEST_STATUS_VARIANTS,
   healthReasonLabel,
   healthSkipLabel,
+  isModuleCheckerRole,
   labelOf,
 } from "@/lib/health";
 import type { HealthDigest } from "@/types";
@@ -72,6 +73,7 @@ export function CycleDigestView({ digest }: { digest: HealthDigest }) {
   const n = (value: number) => intl.formatNumber(value);
   const missing = new Set(digest.unavailable);
   const proposals = digest.proposals;
+  const moduleChecker = isModuleCheckerRole(digest.specialist);
   return (
     <div className="space-y-3">
       <div className="grid gap-2 sm:grid-cols-3">
@@ -81,7 +83,7 @@ export function CycleDigestView({ digest }: { digest: HealthDigest }) {
             value={counts(digest.consolidations, missing.has("consolidations"), t_i18n)}
           />
         )}
-        {digest.specialist === "module_analyst" && (
+        {moduleChecker && (
           <>
             <Figure
               label={t_i18n("Recommendations attached")}
@@ -95,7 +97,7 @@ export function CycleDigestView({ digest }: { digest: HealthDigest }) {
         )}
         {digest.specialist !== "memory_steward" && (
           <>
-            {digest.specialist !== "module_analyst" && (
+            {!moduleChecker && (
               <>
                 <Figure label={t_i18n("Findings")} value={counts(digest.findings, missing.has("findings"), t_i18n)} />
                 <Figure

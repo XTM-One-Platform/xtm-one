@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health import HealthCycle
 from app.models.health_cycle import HealthCycleRun
+from app.services.health.identity import MODULE_CHECKER_ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -260,8 +261,12 @@ _SECTIONS_BY_SPECIALIST: Final[dict[str, tuple[str, ...]]] = {
     "quality_analyst": ("findings", "experiments", "proposals", "dry_run_writes"),
     "flow_lab": ("findings", "experiments", "proposals", "dry_run_writes"),
     "experimenter": ("experiments", "proposals", "dry_run_writes"),
-    # What it attached to its registration's findings and the agentic findings it opened (#101 S14d).
-    "module_analyst": ("recommendations", "agentic_findings", "proposals", "dry_run_writes"),
+    # What a module checker attached to its registration's findings and the agentic findings it
+    # opened (#101 S14d, S15); ``module_analyst`` reads the cycles the S14 member closed.
+    **{
+        role: ("recommendations", "agentic_findings", "proposals", "dry_run_writes")
+        for role in sorted(MODULE_CHECKER_ROLES)
+    },
     # An investigation delegates to every specialist; the weekly digest reads cycles.
     "orchestrator": ("findings", "experiments", "proposals", "dry_run_writes"),
 }
@@ -324,7 +329,7 @@ async def build_digest(db: AsyncSession, cycle: HealthCycle) -> CycleDigest:
         signal=record.signal if record is not None else None,
         budget=(
             await _module_analyst_budget(db, run, health.module_analyst.cycle_tokens)
-            if cycle.specialist == "module_analyst"
+            if cycle.specialist in MODULE_CHECKER_ROLES
             else {
                 "spent_tokens": int(cycle.spent_tokens),
                 "spent_cost_usd": str(cycle.spent_cost_usd),
