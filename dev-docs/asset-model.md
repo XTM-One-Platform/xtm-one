@@ -231,8 +231,9 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
   (`entity_type organization_context`, `entity_name asset_decision`):
   - `GET /api/v1/organization-context/assets/decisions` (any signed-in user): the decisions, newest first.
   - `POST /api/v1/organization-context/assets/decisions` `{kind, records: [{source, external_id}], reason}`: 201
-    with the decision; 422 for a record the store does not hold, a wrong record count or a decision already
-    recorded.
+    with the decision; 422 for a record the store does not hold, a wrong record count, a decision already
+    recorded, or a record addressed by its position (`row-<index>`, a row typed by hand with no `external_id`:
+    the address moves when a row above it is removed, so the row gets an `external_id` first).
   - `DELETE /api/v1/organization-context/assets/decisions/{id}`: 204; the keys decide again.
 
 ## 10. OpenCRQ alignment

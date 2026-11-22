@@ -61,11 +61,24 @@ def test_a_split_keeps_apart_what_the_serial_would_merge_and_a_merge_joins_what_
         ("merge", [("a", "1"), ("a", "1")], "2 to"),
         ("split", [("a", "1"), ("b", "2"), ("c", "3")], "exactly 2"),
         ("split", [("a", ""), ("b", "2")], "source and an external_id"),
+        ("merge", [("manual", "row-3"), ("intune", "d-1")], "addressed by their position"),
     ],
 )
 def test_a_bad_decision_is_refused(kind: str, records: list[tuple[str, str]], message: str) -> None:
     with pytest.raises(store.DecisionError, match=message):
         store.check_decision(kind, [{"source": s, "external_id": e} for s, e in records])
+
+
+def test_a_hand_typed_row_is_addressed_by_its_position_so_a_decision_on_it_is_refused() -> None:
+    record = identity.section_record("assets", {"name": "nas", "source": "manual"}, index=4)
+    assert record.external_id == "row-4"
+    with pytest.raises(store.DecisionError, match="external_id first: manual:row-4"):
+        store.check_decision(
+            "split", [{"source": "manual", "external_id": "row-4"}, {"source": "b", "external_id": "2"}]
+        )
+    assert store.check_decision(
+        "split", [{"source": "manual", "external_id": "row-4a"}, {"source": "b", "external_id": "2"}]
+    )
 
 
 def test_a_row_upsert_adds_another_source_record_of_a_named_asset_beside_it() -> None:

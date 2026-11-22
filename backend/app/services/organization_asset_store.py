@@ -28,6 +28,7 @@ The profile stays the source of the rows; the store is its canonical view.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -251,11 +252,26 @@ async def load_decisions(db: AsyncSession, organization_id: uuid.UUID) -> identi
     return decisions_of(rows)
 
 
+#: The address ``identity.section_record`` gives a row typed by hand (no ``external_id``):
+#: its position in the section, which moves when a row above it is removed.
+_POSITIONAL_ID = re.compile(r"row-\d+")
+
+
 def check_decision(kind: str, records: Sequence[Mapping[str, Any]]) -> list[identity.RecordRef]:
-    """The records of a merge or split, checked (``DecisionError`` on a bad request)."""
+    """The records of a merge or split, checked (``DecisionError`` on a bad request).
+
+    A record addressed by its position (a row typed by hand, ``row-<index>``) is
+    refused: a stored decision on it would apply to another row once the list
+    changes. Such a row gets an ``external_id`` first.
+    """
     if kind not in DECISION_KINDS:
         raise DecisionError(f"kind must be one of {', '.join(DECISION_KINDS)}")
     refs = _refs(records)
+    positional = [r.label() for r in refs if _POSITIONAL_ID.fullmatch(r.external_id)]
+    if positional:
+        raise DecisionError(
+            "record(s) addressed by their position, give the row an external_id first: " + ", ".join(positional[:10])
+        )
     if kind == MERGE and not 2 <= len(refs) <= MAX_MERGE_RECORDS:
         raise DecisionError(f"a merge names 2 to {MAX_MERGE_RECORDS} different records")
     if kind == SPLIT and len(refs) != 2:
