@@ -20544,7 +20544,7 @@
   "No DNS record backs it": "No DNS record backs it",
   "Names of {domain} point inside the owned address ranges": "Names of {domain} point inside the owned address ranges",
   "Points to {ip}, outside them": "Points to {ip}, outside them",
-  "Last seen on {date}": "Last seen on {date}",
+  "The host last answered on {date}": "The host last answered on {date}",
   "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}",
   "Not declared and not seen by an earlier pass": "Not declared and not seen by an earlier pass",
   "Answers on {ports}": "Answers on {ports}",

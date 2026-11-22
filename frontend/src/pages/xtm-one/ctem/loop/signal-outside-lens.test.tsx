@@ -109,7 +109,8 @@ describe("outside-lens signals of the attack surface pass", () => {
       evidence: { ...base, last_seen_at: "2026-11-01T00:00:00Z", stale_after_days: 1 },
     };
     const facts = await renderTrace(stale);
-    expect(within(facts).getByText(/^Last seen on /)).toBeTruthy();
+    expect(within(facts).getByText(/^The host last answered on /)).toBeTruthy();
+    expect(within(facts).queryByText(/^Last seen on /)).toBeNull();
     expect(within(facts).getByText("Unseen for at least 1 day")).toBeTruthy();
     expect(facts).not.toHaveTextContent("last_seen_at");
   });

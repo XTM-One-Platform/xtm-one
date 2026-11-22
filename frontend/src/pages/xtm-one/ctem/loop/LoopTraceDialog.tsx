@@ -392,7 +392,7 @@ function surfaceDiffRows(diff: SurfaceDiff, t_i18n: ReturnType<typeof useFormatt
       ];
     case "unseen":
       return [
-        { label: t_i18n("Baseline"), value: t_i18n("Last seen on {date}", { date: day(diff.lastSeen) }) },
+        { label: t_i18n("Baseline"), value: t_i18n("The host last answered on {date}", { date: day(diff.lastSeen) }) },
         { label: t_i18n("Observed"), value: t_i18n("{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}", { count: diff.days }) },
       ];
     case "new_host":
