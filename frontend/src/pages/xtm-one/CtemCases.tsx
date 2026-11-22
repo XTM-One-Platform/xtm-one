@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useNow } from "@/hooks/useTick";
 import { caseDueFlags } from "./ctem/cases-due";
+import { CASE_CREATED_RANGES, CASE_CREATED_RANGE_LABEL, caseCreatedRanges } from "./ctem/cases-created-range";
 import { caseAttention, caseOpenedAt } from "./ctem/case-attention";
 import { CasesAttentionBand } from "./ctem/CasesAttentionBand";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
@@ -110,7 +111,9 @@ export default function CtemCases() {
       header: "Fix",
       // The title gives way first at 1080 so the State chip is never cut and the
       // table never scrolls (#865 prod retest D2; UX round 1 on #897, B1).
-      cell: (c) => <TruncatedText text={c.title} className="max-w-[15rem] min-[1280px]:max-w-[28rem] font-medium" />,
+      // 22rem at 1280 and up keeps every default column inside the container at 1728 in FR
+      // (prod retest of #1182, gap ctem-cases-fr-columns-overflow).
+      cell: (c) => <TruncatedText text={c.title} className="max-w-[15rem] min-[1280px]:max-w-[22rem] font-medium" />,
       sortValue: (c) => c.title.toLowerCase(),
       csv: (c) => c.title,
     },
@@ -132,6 +135,9 @@ export default function CtemCases() {
       sortValue: (c) => c.open_issue_count,
       csv: (c) => c.open_issue_count,
       firstSort: "desc",
+      // Below 6xl the Attention score already carries it: the State chip is never cut at 1080 in FR.
+      hideBelow: "6xl",
+      hideable: true,
     },
     {
       key: "crown_jewels",
@@ -184,7 +190,7 @@ export default function CtemCases() {
     {
       key: "owner",
       header: "Owner",
-      cell: (c) => <span className="block max-w-[12rem]"><CaseOwner name={ownerName(c.owner_user_id)} /></span>,
+      cell: (c) => <span className="block max-w-[10rem]"><CaseOwner name={ownerName(c.owner_user_id)} /></span>,
       sortValue: (c) => (ownerName(c.owner_user_id) ?? "").toLowerCase(),
       csv: (c) => ownerName(c.owner_user_id) ?? "",
       hideBelow: "6xl",
@@ -342,6 +348,24 @@ export default function CtemCases() {
               { value: "yes", label: t_i18n("Touches a crown jewel") },
               { value: "no", label: t_i18n("No crown jewel") },
             ],
+          },
+          {
+            key: "kev",
+            label: "KEV",
+            values: (c) => [c.kev_count > 0 ? "yes" : "no"],
+            options: [
+              { value: "yes", label: t_i18n("Has a KEV issue") },
+              { value: "no", label: t_i18n("No KEV issue") },
+            ],
+          },
+          {
+            // A case opened 3 days ago is in the last 7, 30 and 90 days (cases-created-range).
+            key: "created",
+            label: "Created",
+            values: (c) => caseCreatedRanges(c, now),
+            options: CASE_CREATED_RANGES.map((r) => ({ value: r, label: t_i18n(CASE_CREATED_RANGE_LABEL[r]) })),
+            // Ordinal scale: the most recent range first, never alphabetical.
+            ordered: true,
           },
         ]}
         exportName="ctem-cases"
