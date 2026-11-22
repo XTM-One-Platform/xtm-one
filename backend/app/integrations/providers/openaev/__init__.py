@@ -47,6 +47,7 @@ from typing import Any
 
 from app.core.module_versions import RegisteredVersionFn
 from app.integrations.http import RefreshFn, parse_compound_token
+from app.integrations.short_id import install_short_id_guard
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
@@ -183,4 +184,7 @@ def build_tools(
         registered_version_fn=registered_version_fn,
     )
     tools += register_autonomous(base_url, headers, executor)
+    # An 8-hex id prefix is answered by OpenAEV as a missing object ("Inject not
+    # found"): refuse it by name before any request (app.integrations.short_id).
+    install_short_id_guard(executor, [tool.name for tool in tools], platform="OpenAEV")
     return tools
