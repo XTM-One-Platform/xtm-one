@@ -9,7 +9,7 @@
 # Only providers a deployment has actually connected contribute at runtime;
 # this lists what each WOULD contribute, which is what review needs to see.
 #
-# 1993 tools across 115 providers; 52 held back by hand.
+# 1990 tools across 115 providers; 53 held back by hand.
 
 abusech:get_abusech_ioc
 abusech:list_abusech_recent_iocs
@@ -354,28 +354,6 @@ databricks:query_databricks_serving_endpoint
 databricks:query_databricks_sql
 databricks:query_databricks_vector_index
 databricks:read_databricks_file
-dealhub:download_dealhub_products_excel
-dealhub:download_dealhub_quote_document
-dealhub:export_dealhub_playbook_data
-dealhub:get_dealhub_async_request_status
-dealhub:get_dealhub_async_request_summary
-dealhub:get_dealhub_crm_import_detail
-dealhub:get_dealhub_crm_import_status
-dealhub:get_dealhub_dealroom_signers
-dealhub:get_dealhub_generate_quote_template
-dealhub:get_dealhub_product_catalog
-dealhub:get_dealhub_product_hierarchy
-dealhub:get_dealhub_quote
-dealhub:get_dealhub_quote_id
-dealhub:get_dealhub_user
-dealhub:get_dealhub_user_by_login
-dealhub:get_dealhub_version
-dealhub:get_dealhub_version_by_name
-dealhub:list_dealhub_quotes
-dealhub:list_dealhub_users
-dealhub:list_dealhub_version_products
-dealhub:list_dealhub_versions
-dealhub:lookup_dealhub_crm_import
 defender:get_defender_alert
 defender:get_defender_detection_rule
 defender:get_defender_device_secure_score
@@ -1158,6 +1136,25 @@ n8n:get_n8n_workflow
 n8n:get_n8n_workflow_tags
 n8n:list_n8n_executions
 n8n:list_n8n_workflows
+netsuite:describe_netsuite_records
+netsuite:get_netsuite_aging
+netsuite:get_netsuite_balance_sheet
+netsuite:get_netsuite_entity_bank_details
+netsuite:get_netsuite_income_statement
+netsuite:get_netsuite_intercompany_balances
+netsuite:get_netsuite_record
+netsuite:get_netsuite_transaction
+netsuite:get_netsuite_trial_balance
+netsuite:list_netsuite_accounting_periods
+netsuite:list_netsuite_accounts
+netsuite:list_netsuite_bank_lines
+netsuite:list_netsuite_currencies
+netsuite:list_netsuite_items
+netsuite:list_netsuite_records
+netsuite:list_netsuite_segments
+netsuite:list_netsuite_subsidiaries
+netsuite:list_netsuite_transactions
+netsuite:search_netsuite_entities
 newsapi:get_newsapi_headlines
 newsapi:list_newsapi_sources
 newsapi:search_newsapi_articles

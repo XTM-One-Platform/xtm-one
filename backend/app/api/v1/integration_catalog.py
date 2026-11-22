@@ -29,7 +29,6 @@ from app.api.v1.schemas.integration import ProviderTool
 from app.core.config import settings
 from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVENT_TYPES
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
-from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
 
@@ -4999,55 +4998,6 @@ PROVIDER_CATALOG = {
             "notes": "Authentication uses the X-API-KEY HTTP header. If the key is missing or invalid, the API returns 401 Unauthorized. You can generate multiple API keys from your Concord account.",
         },
     },
-    "dealhub": {
-        "name": "DealHub",
-        "description": (
-            "DealHub CPQ, every documented API: quotes with line items, totals, discounts, playbook "
-            "answers and approval steps, quote documents, DealRoom signers, opportunities; simulate, "
-            "generate, submit for approval, publish and sign quotes; users; price book; versions, "
-            "playbooks, product catalog and hierarchy. Every write asks a person before it runs"
-        ),
-        "logo": "/logos/dealhub.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["cpq"],
-        # A secret bearer token a CPQ administrator generates; the instance
-        # host (api.dealhub.io unless the account is on another instance)
-        # lives in extra config.
-        "auth_type": "api_key",
-        "supported_auth_types": ["api_key"],
-        "fields": ["api_key"],
-        "extra_fields": {
-            "instance_host": "DealHub API host (api.dealhub.io when empty)",
-            "webhook_token": "Webhook token (real-time quote events; several tokens separated by commas while rotating)",
-        },
-        # Quote events: DealHub webhooks (Token authentication) in real time,
-        # polling of the quote statuses every 15 minutes as the fallback
-        # (services/dealhub_events.py).
-        "available_events": _dealhub_catalog_events(),
-        "setup_guide": {
-            "title": "DealHub API token",
-            "url": "https://developers.dealhub.io/docs/authentication-overview",
-            "steps": [
-                "In DealHub, as a CPQ administrator, generate an API token (Settings > Integrations > API).",
-                "Paste the token in the 'API key' field.",
-                "Leave 'DealHub API host' empty for api.dealhub.io, or set your instance's host (a name under dealhub.io).",
-                "Click 'Test Connection': it reads the account's active users.",
-                "Optional, real-time quote events: generate a long random token and paste it in 'Webhook token'; in DealHub, System Settings > API Settings > Webhooks, add a webhook whose URL is this integration's webhook URL ({base_url}/api/hooks/integrations/<integration id>), select the quote events and the Token authentication type with the same token. Without it, the events are polled every 15 minutes.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Quote, Headless and CRM APIs",
-                    "description": "Read quotes, approvals, documents and DealRoom signers; generate, submit, publish and sign quotes (each write asks a person)",
-                },
-                {
-                    "scope": "User, Pricing and Version APIs",
-                    "description": "Read users, prices, versions, playbooks and the product catalog; change them (each write asks a person)",
-                },
-            ],
-            "notes": "DealHub has no API to approve or reject an approval step: approvals are read on the quote and decided in DealHub. The Subskribe billing API has its own credential and is not part of this integration.",
-        },
-    },
     "docusign": {
         "name": "DocuSign",
         "description": "e-Signature — send PDF and Word files of a conversation for signature as envelopes, follow signers, download the signed document, templates (eSignature REST API v2.1)",
@@ -5153,6 +5103,104 @@ PROVIDER_CATALOG = {
                 "read from /oauth/userinfo after sign-in. A demo (developer) account only "
                 "produces test signatures; a production integration key must be promoted "
                 "(Go Live) by DocuSign first."
+            ),
+        },
+    },
+    "netsuite": {
+        "name": "NetSuite",
+        "description": "Oracle NetSuite ERP, OneWorld-ready: SuiteQL, any record, subsidiaries, periods, chart of accounts, transactions and journal lines, trial balance, income statement and balance sheet per subsidiary or consolidated, AR/AP aging, intercompany balances; master data, bills, invoices, payments, journals, bank details and period close, the sensitive writes asked first",
+        "logo": "/logos/netsuite.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["erp", "finance"],
+        # Both modes sign their own requests (a client credentials grant with a
+        # certificate, or OAuth 1.0a TBA): the secret goes in the API Key field,
+        # the account and identifiers in extra_config.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "account_id": "Account ID (Setup > Company > Company Information, e.g. 1234567 or 1234567_SB1 for a sandbox)",
+            "auth_mode": "Authentication",
+            "oauth_client_id": "Client ID of the integration record - OAuth 2.0 machine-to-machine",
+            "certificate_id": "Certificate ID (OAuth 2.0 Client Credentials Setup) - OAuth 2.0 machine-to-machine",
+            "oauth_scopes": "OAuth 2.0 scopes (default rest_webservices; add restlets to call RESTlets)",
+            "consumer_key": "Consumer key of the integration record - Token-Based Authentication",
+            "consumer_secret": "Consumer secret of the integration record - Token-Based Authentication",
+            "token_id": "Token ID of the access token - Token-Based Authentication",
+            "companion_script_id": "Companion RESTlet script ID (saved searches, file cabinet, attachments; optional)",
+            "companion_deploy_id": "Companion RESTlet deployment ID",
+        },
+        "extra_field_options": {
+            "auth_mode": [
+                {
+                    "value": "m2m",
+                    "label": "OAuth 2.0 machine-to-machine (client credentials with a certificate), recommended",
+                },
+                {"value": "tba", "label": "Token-Based Authentication (OAuth 1.0a, HMAC-SHA256)"},
+            ],
+        },
+        "setup_guide": {
+            "title": "NetSuite Setup",
+            "url": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_162686838198.html",
+            "steps": [
+                "Enable the features (Setup > Company > Enable Features > SuiteCloud): REST Web Services, OAuth 2.0 (machine-to-machine) or Token-Based Authentication, and SuiteAnalytics Workbook for SuiteQL.",
+                "Create a dedicated role with the permissions listed below and assign it to an integration user (a person or a dedicated employee record). Grant only the write permissions the agents need: every tool family is its own tool, and the sensitive ones ask a person on every call.",
+                "Create an integration record (Setup > Integration > Manage Integrations > New): for OAuth 2.0 machine-to-machine check Client Credentials (Machine to Machine) Grant and the scope REST Web Services (and RESTlets to call RESTlets); for TBA check Token-Based Authentication. Copy the client ID, or the consumer key and secret, shown once.",
+                "OAuth 2.0 machine-to-machine (recommended): generate a key pair and a certificate (openssl req -new -x509 -newkey rsa:3072 -nodes -keyout private.pem -out public.pem -days 730 -sha256), then Setup > Integration > OAuth 2.0 Client Credentials (M2M) Setup > Create New: the entity (integration user), the role, the application and public.pem. Paste the Certificate ID and the Client ID below and private.pem in the API Key field.",
+                "Token-Based Authentication: create an access token (Setup > Users/Roles > Access Tokens > New) for the application, user and role; paste the consumer key and secret and the token ID below and the token secret in the API Key field.",
+                "Optional, saved searches, file cabinet downloads, transaction PDFs and attachments: deploy the companion RESTlet documented in the integrations usage guide (SuiteScript 2.1, the actions search, file, pdf and attach), add the RESTlets scope to the integration record and the OAuth scopes field, and paste its script and deployment IDs below.",
+                "Set the account ID (sandbox: 1234567_SB1), choose the authentication mode, save, then Test Connection: it reads the subsidiaries the role reaches.",
+            ],
+            "permissions": [
+                {
+                    "scope": "Setup > REST Web Services (Full)",
+                    "description": "Every REST call: records, metadata catalog, SuiteQL",
+                },
+                {
+                    "scope": "Setup > Log in using OAuth 2.0 Access Tokens (Full), or Log in using Access Tokens (Full) for TBA",
+                    "description": "Authenticate the integration",
+                },
+                {
+                    "scope": "Reports > SuiteAnalytics Workbook (Edit)",
+                    "description": "SuiteQL queries (every read tool)",
+                },
+                {
+                    "scope": "Lists > Subsidiaries, Accounts, Accounting Periods, Departments, Classes, Locations, Currency, Customers, Vendors, Items (View)",
+                    "description": "Reference data and the finance statements",
+                },
+                {
+                    "scope": "Transactions > Find Transaction, Invoice, Credit Memo, Customer Payment, Sales Order, Bills, Vendor Payment, Purchase Order, Make Journal Entry, Intercompany Journal (View)",
+                    "description": "Transactions, journal lines, aging, intercompany balances",
+                },
+                {
+                    "scope": "Lists > Customers, Vendors, Items, Departments, Classes, Locations (Create or Edit)",
+                    "description": "create_netsuite_record and update_netsuite_record (master data)",
+                },
+                {
+                    "scope": "Transactions > Bills, Pay Bills, Invoice, Credit Memo, Customer Payment, Make Journal Entry, Intercompany Journal (Create or Edit)",
+                    "description": "create_netsuite_transaction and update_netsuite_transaction (ask a person on every call)",
+                },
+                {
+                    "scope": "Setup > Manage Accounting Periods (Full)",
+                    "description": "set_netsuite_period_status: close, reopen, lock (asks a person on every call)",
+                },
+                {
+                    "scope": "Custom record Entity Bank Details (View; Edit to change them)",
+                    "description": "get_netsuite_entity_bank_details, set_netsuite_entity_bank_details (the write asks a person)",
+                },
+                {
+                    "scope": "Lists > Documents and Files (View; Create to attach)",
+                    "description": "download_netsuite_file and attach_netsuite_file through the companion RESTlet",
+                },
+            ],
+            "notes": (
+                "Reads are free; master-data writes are writes; posting transactions (bills, invoices, payments, "
+                "journals), period close and lock, entity bank detail changes and RESTlet calls other than GET ask a "
+                "person on every call. Each family is its own tool, so a binding narrows it with the integration's "
+                "allowed tools. Concurrency and governance limits (HTTP 429) are retried with backoff on reads, never "
+                "on writes. Consolidated statements use BUILTIN.CONSOLIDATE at the period's "
+                "consolidation rates. A role missing a permission or a locked period is reported as such."
             ),
         },
     },
@@ -9699,6 +9747,8 @@ _URL_DUMMY_PROVIDERS = {
 # exact shape it parses. Tenable needs base_url||access_key||secret_key (both
 # keys non-empty); Intel 471 api_username||api_key, with no URL.
 _SHAPED_DUMMIES: dict[str, str] = {
+    # NetSuite's token is account||mode||...||secret.
+    "netsuite": "1234567||tba||__dummy__||__dummy__||__dummy__||__dummy__",
     # PagerDuty's token is region||from_email||api_key.
     "pagerduty": "us||agent@example.com||__dummy__",
     # Zendesk's token is subdomain||email||api_token.
