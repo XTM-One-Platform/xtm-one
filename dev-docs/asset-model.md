@@ -164,7 +164,29 @@ Re-import is keyed on source and `external_id`: a row this source wrote is updat
 (`manual`, `csv`, `api`) is never overwritten, and a row this source wrote that the read no longer returns
 is reported as gone, kept unless the administrator removes it. A truncated or failed read removes nothing.
 
-## 9. OpenCRQ alignment
+## 9. One thing across sources (#1178)
+
+`backend/app/services/organization_asset_identity.py` is the pure rule (no I/O, no model call) that turns the
+records several sources hold on one thing into one canonical thing; the store of the next slices persists it.
+
+- Identity: strong keys in a configurable order (`DEFAULT_KEY_ORDER`: serial, cloud resource id, device id, MAC,
+  FQDN, hostname), each normalised (placeholder serials and null MACs dropped). An IP address is weak: it never
+  merges, it is answered as a possible match. No merge when one source holds two ids, when a higher-ranked key
+  differs on both sides, or when an administrator split the pair; an administrator's merge wins over the keys.
+  The answer does not depend on the order of the records and says why (`merged on serial`).
+- Fields: each field keeps every source's value; the value shown follows a per-field precedence of source classes
+  (`DEFAULT_PRECEDENCE`: endpoint manager and EDR for OS and software, OpenCRQ for criticality, OpenAEV for
+  exposure), customisable; `unknown` never wins over a known value; local fields come from hand sources only.
+- Software: one entry per vendor, product and version across sources, with first and last seen; an unknown
+  version is `unknown`, never empty.
+- Tech stack: derived from asset software (`derive_tech_stack`), one item per vendor and product with the
+  versions seen and the assets running each; typed SaaS and cloud rows stay, without versions. The CPE comes
+  from an administrator's override (kept across syncs), else a source that reported it, else a dictionary
+  lookup with its confidence, else `unresolved`: never guessed.
+- Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
+  vendor and product, crown jewels, AI systems, PIRs, tracked organizations) use the same matching.
+
+## 10. OpenCRQ alignment
 
 OpenCRQ-Platform/opencrq#3152 closed the three divergences: `security_platform` and its 10 subcategories are
 accepted (section 1), an asset carries groups and tags (sections 5 and 6), and an owner sent as a name is resolved

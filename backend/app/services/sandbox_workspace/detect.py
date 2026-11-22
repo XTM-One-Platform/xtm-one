@@ -264,6 +264,12 @@ _NODE_SCRIPTS = (
 #: (``check:bundle-size``, ``i18n:check``) is otherwise met in CI only. The words of
 #: :data:`_SCRIPT_SKIP` leave a script out.
 _NODE_SCRIPT_VERBS = frozenset({"generate", "extract", "compile", "check", "test", "validate", "verify"})
+#: A script whose body runs a code generator (``"relay": "relay-compiler relay.config.json"``,
+#: ``"build:types": "graphql-codegen ..."``) is a check whatever its name: a narrow checkout carries
+#: no generated sources (``src/generated``, ``__generated__``), so the types or unit check needs it first.
+_NODE_CODEGEN = re.compile(
+    r"(?:^|[\s;&|(])(?:graphql-codegen|gql-gen|relay-compiler|openapi-typescript|orval|prisma\s+generate|buf\s+generate)(?=\s|$|[;&|)])"
+)
 #: A unit script that is a Node wrapper of its own (``node test/run.mjs``), and the loader files beside
 #: it the Node test runner is given with ``--import`` by the ``node-unit-file`` check.
 _NODE_WRAPPER = re.compile(r"^(?:\./)?[\w./-]+\.m?js$")
@@ -2458,6 +2464,8 @@ def _mapping(value: object) -> dict[str, object]:
 def _node_named_scripts(collector: _Collector, directory: str, path: str, manager: str, scripts: dict, used: set[str]) -> None:
     """The namespaced generator and gate scripts of a manifest (:data:`_NODE_SCRIPT_VERBS`), one check each.
 
+    A script that runs a code generator (:data:`_NODE_CODEGEN`) is one too, namespaced or not.
+
     Named ``node-<script>`` (``check:bundle-size`` gives ``node-check-bundle-size``, a member's
     ``i18n:check`` gives ``front:node-i18n-check``), listed after the kinds and run after the install
     of their directory like any other node check.
@@ -2468,7 +2476,10 @@ def _node_named_scripts(collector: _Collector, directory: str, path: str, manage
         body = scripts[script]
         lowered = script.lower()
         segments = lowered.split(":")
-        if script in used or not isinstance(body, str) or len(segments) < 2 or not _NODE_SCRIPT_VERBS & set(segments):
+        if script in used or not isinstance(body, str):
+            continue
+        codegen = bool(_NODE_CODEGEN.search(body))
+        if not codegen and (len(segments) < 2 or not _NODE_SCRIPT_VERBS & set(segments)):
             continue
         if any(word in lowered for word in _SCRIPT_SKIP) or "no test specified" in body:
             continue

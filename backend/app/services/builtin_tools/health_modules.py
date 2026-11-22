@@ -14,7 +14,8 @@
 """The Module Analyst's platform tools (#101 S14a-2b, ``dev-docs/platform-health.md`` section 12).
 
 The ``health_modules`` group: ``list_module_findings`` (read) and
-``record_finding_recommendation`` (the Module Analyst's own write). Both act inside
+``record_finding_recommendation`` and ``record_module_check_report`` (S15c, section 13.6:
+the module checker's own writes). All act inside
 XTM One only: the findings are the health engine's rows, the recommendation a
 ``health_finding_recommendations`` row. Nothing here reaches a module; the module
 reads are the registration integration's own read tools behind
@@ -26,6 +27,9 @@ Access, read on the rows at every call:
   (module surfaces are for administrators, section 8.1).
 * ``record_finding_recommendation``: the Module Analyst alone, in one of its cycles,
   on a finding of the registration that cycle investigates.
+* ``record_module_check_report``: a module checker alone, in one of its cycles, on the
+  registration that cycle checks; its verdicts drive the ``<module>.agentic.<check>``
+  findings (``services/health/check_reports.py``).
 
 Every value that came from a module or a model is returned inside an untrusted-data
 block; errors are generic, reasons in logs.
@@ -60,6 +64,7 @@ MAX_EVIDENCE_ENTRIES = 20
 
 _NOT_ALLOWED = "Error: only an administrator or Platform Health's Module Analyst reads module findings."
 _NOT_IN_CYCLE = "Error: a recommendation is recorded only inside a Module Analyst cycle."
+_NOT_IN_CYCLE_REPORT = "Error: a check report is recorded only inside a module checker cycle."
 
 
 def _is_analyst(reader: Reader) -> bool:
@@ -270,12 +275,88 @@ async def _record_finding_recommendation(
     return json.dumps({"recommendation_id": str(row.id), "finding_id": finding.id, "created": created})
 
 
+async def _record_module_check_report(
+    db: AsyncSession,
+    reader: Reader,
+    checks: list[dict[str, Any]] | None = None,
+    started_at: str = "",
+) -> str:
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.models.health_cycle import HealthCycleRun
+    from app.models.health_module_analyst import HealthModuleCheckReport
+    from app.services.health.access import WRITE_REFUSED
+    from app.services.health.check_reports import CheckReportError, apply_verdicts, clean_checks, counts
+
+    # The module checker's own write, inside its own cycle (section 13.6).
+    principal_role = str(getattr(reader.principal, "role", "") or "")
+    refusal = reader.write_refusal(principal_role if _is_analyst(reader) else ANALYST_ROLE)
+    if refusal or not _is_analyst(reader):
+        return refusal or WRITE_REFUSED
+    if reader.cycle_id is None:
+        raise RefusalError(_NOT_IN_CYCLE_REPORT)
+    try:
+        verdicts = clean_checks(checks)
+    except CheckReportError as exc:
+        raise RefusalError(str(exc)) from exc
+    cycle = (
+        await db.execute(
+            select(HealthCycleRun.target_type, HealthCycleRun.target_id).where(
+                HealthCycleRun.cycle_id == reader.cycle_id
+            )
+        )
+    ).one_or_none()
+    if cycle is None or cycle.target_type != "module" or cycle.target_id is None:
+        raise RefusalError(_NOT_IN_CYCLE_REPORT)
+    module = await _module_registration(db, cycle.target_id)
+    now = datetime.now(UTC)
+    started = _parse_time(started_at)
+    finding_ids, findings = await apply_verdicts(
+        db, module=module, registration_id=cycle.target_id, verdicts=verdicts, now=now
+    )
+    entries = [v.as_entry(fid) for v, fid in zip(verdicts, finding_ids, strict=True)]
+    tally = counts(verdicts)
+    row = (
+        await db.execute(select(HealthModuleCheckReport).where(HealthModuleCheckReport.cycle_id == reader.cycle_id))
+    ).scalar_one_or_none()
+    created = row is None
+    if row is None:
+        row = HealthModuleCheckReport(registration_id=cycle.target_id, cycle_id=reader.cycle_id, module=module)
+        db.add(row)
+    # One report per cycle: a second call replaces it.
+    row.started_at, row.finished_at, row.checks = started, now, entries
+    row.passed, row.warned, row.failed, row.not_run = (
+        tally["passed"],
+        tally["warned"],
+        tally["failed"],
+        tally["not_run"],
+    )
+    await db.commit()
+    return json.dumps({"report_id": str(row.id), "created": created, **tally, "findings": findings})
+
+
+def _parse_time(value: str) -> Any:
+    from datetime import datetime
+
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
 # ── Definitions ──────────────────────────────────────────────────────────────
 
 
 def _definitions() -> list[ToolDefinition]:
-    from app.models.health_module_analyst import RECOMMENDATION_CONFIDENCES, RECOMMENDATION_MAX_CHARS
+    from app.models.health_check import CATEGORIES
+    from app.models.health_module_analyst import CHECK_VERDICTS, RECOMMENDATION_CONFIDENCES, RECOMMENDATION_MAX_CHARS
     from app.services.builtin_tool_groups import builtin_source
+    from app.services.health.check_reports import MAX_CHECK_EVIDENCE, MAX_CHECKS
 
     source = builtin_source(MODULES_GROUP_ID)
     return [
@@ -329,6 +410,51 @@ def _definitions() -> list[ToolDefinition]:
             },
             source=source,
         ),
+        ToolDefinition(
+            name="record_module_check_report",
+            description=(
+                "End your round: every playbook check with its verdict and evidence; recommendation on warn and "
+                "fail, reason on not_run. Warn or fail opens its agentic finding, pass resolves it."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "checks": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_CHECKS,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "verdict": {"type": "string", "enum": list(CHECK_VERDICTS)},
+                                "category": {"type": "string", "enum": list(CATEGORIES)},
+                                "recommendation": {"type": "string"},
+                                "reason": {"type": "string"},
+                                "evidence": {
+                                    "type": "array",
+                                    "maxItems": MAX_CHECK_EVIDENCE,
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "tool": {"type": "string"},
+                                            "arguments": {"type": "object"},
+                                            "values": {"type": "object"},
+                                            "read_at": {"type": "string"},
+                                        },
+                                        "required": ["tool"],
+                                    },
+                                },
+                            },
+                            "required": ["id", "verdict"],
+                        },
+                    },
+                    "started_at": {"type": "string"},
+                },
+                "required": ["checks"],
+            },
+            source=source,
+        ),
     ]
 
 
@@ -340,6 +466,7 @@ def build_health_module_tools(
     handlers: dict[str, Callable[..., Awaitable[str]]] = {
         "list_module_findings": _list_module_findings,
         "record_finding_recommendation": _record_finding_recommendation,
+        "record_module_check_report": _record_module_check_report,
     }
     return build_group(
         user_id,

@@ -164,6 +164,11 @@ def finding_key(check_id: str, subject: dict[str, str]) -> str:
     return hashlib.sha256(body.encode()).hexdigest()
 
 
+def dismissal_live(row: HealthCheckFinding, now: datetime) -> bool:
+    """Whether *row*'s dismissal still holds at *now* (no expiry, or an expiry ahead)."""
+    return _dismissal_live(row, now)
+
+
 def _dismissal_live(row: HealthCheckFinding, now: datetime) -> bool:
     record = row.dismissal or {}
     until = record.get("until")
