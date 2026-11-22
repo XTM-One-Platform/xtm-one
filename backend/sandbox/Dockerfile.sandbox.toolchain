@@ -148,12 +148,18 @@ RUN uv venv --python /usr/local/bin/python3.14 /opt/ansible \
 # the checks detected on a Poetry project (`poetry install`, `poetry run
 # pytest|ruff|mypy|flake8`) run as its CI runs them (OpenAEV-Platform/collectors
 # CI pins poetry==2.3.2). Its virtualenvs go to the user cache, never into the
-# checkout.
+# checkout. poetry-plugin-pypi-mirror (BSD-3-Clause) sends every pypi.org
+# request to POETRY_PYPI_MIRROR_URL when the pool sets a registry mirror
+# (registry_mirror.command_env), with no change to the checkout or its lock:
+# Poetry reads neither PIP_INDEX_URL nor UV_DEFAULT_INDEX.
 ARG POETRY_VERSION=2.3.2
+ARG POETRY_PLUGIN_PYPI_MIRROR_VERSION=0.6.5
 RUN uv venv --python /usr/local/bin/python3.14 /opt/poetry \
     && uv pip install --no-cache --python /opt/poetry/bin/python "poetry==${POETRY_VERSION}" \
+        "poetry-plugin-pypi-mirror==${POETRY_PLUGIN_PYPI_MIRROR_VERSION}" \
     && ln -s /opt/poetry/bin/poetry /usr/local/bin/poetry \
-    && poetry --version
+    && poetry --version \
+    && uv pip show --python /opt/poetry/bin/python poetry-plugin-pypi-mirror
 
 USER sandboxuser
 

@@ -14,41 +14,91 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Pure logic of the fleet Members view's Capabilities table (#1128): one row
- * per member x capability slot, the icon of each capability kind, the status
- * order that puts what is left to bind first, and the default open state of
- * the two cards above the Members table (Capabilities open, Fleet defaults
- * folded).
+ * Pure logic of the fleet Members view's Capabilities table: one row per
+ * capability type the fleet needs (#1201; one row per member x slot before,
+ * #1128), the icon of each capability kind, the status order that puts what
+ * is left to bind first, the fleet choice and the per-member overrides, and
+ * the default open state of the two cards above the Members table
+ * (Capabilities open, Fleet defaults folded).
  */
 import type { IconName } from "@filigran/design-system";
 
-import type { FleetCapabilitySlot, FleetMemberSlots } from "@/hooks/api/useFleetApi";
+import type { FleetCapabilityType, FleetCapabilityTypeMember, FleetSlotIntegration } from "@/hooks/api/useFleetApi";
 
 /** Capabilities is what a fleet setup needs first: open on arrival. */
 export const CAPABILITIES_OPEN_BY_DEFAULT = true;
 /** Fleet defaults are secondary: one summary bar until the user opens it. */
 export const FLEET_DEFAULTS_OPEN_BY_DEFAULT = false;
 
-/** The words of a slot's state, short and plain (13bis.10). @i18n-keys */
-export const SLOT_STATE_LABELS = {
-  filled: "Connected",
-  empty: "Not bound",
-  unavailable: "None connected",
-} as const satisfies Record<FleetCapabilitySlot["state"], string>;
+/** The words of a type row's state, short and plain (13bis.10). @i18n-keys */
+export const TYPE_STATE_LABELS = {
+  connected: "Connected",
+  partial: "Partial",
+  not_bound: "Not bound",
+  none_connected: "None connected",
+} as const satisfies Record<FleetCapabilityType["state"], string>;
 
-/** A slot that can be bound but is not reads as a warning, apart from "None connected" (UX r1 A1 of #994). */
-export const SLOT_STATE_VARIANTS = {
-  filled: "success",
-  empty: "warning",
-  unavailable: "outline",
-} as const satisfies Record<FleetCapabilitySlot["state"], string>;
+/** What can be bound but is not reads as a warning, apart from "None connected" (UX r1 A1 of #994). */
+export const TYPE_STATE_VARIANTS = {
+  connected: "success",
+  partial: "warning",
+  not_bound: "warning",
+  none_connected: "outline",
+} as const satisfies Record<FleetCapabilityType["state"], string>;
 
-/** What is left to do first: Not bound, then None connected, then Connected. */
-const SLOT_STATE_ORDER: Record<FleetCapabilitySlot["state"], number> = {
-  empty: 0,
-  unavailable: 1,
-  filled: 2,
+/**
+ * The longest state label of the four catalogs, in characters ("Ninguna conectada", es), and the
+ * Status column sized from it: 6.9 px a character at the badge's 12 px (measured: "Aucune connectée",
+ * 16 characters, is a 126 px badge), the badge's 8 px padding a side and the cell's 12 px a side
+ * (UX r1 B5 and r2 B1 of #1209). capability-slots-table.test.ts fails when a catalog grows a longer label.
+ */
+export const STATUS_LABEL_MAX_CHARS = 17;
+export const STATUS_COLUMN_WIDTH = Math.ceil(STATUS_LABEL_MAX_CHARS * 6.9) + 16 + 24;
+
+/** The Members column: "# members" in the four catalogs. */
+export const MEMBERS_COLUMN_WIDTH = 112;
+/** The row actions cell: the type picker's 240 px box and 12 px a side. */
+export const ROW_ACTIONS_WIDTH = 264;
+/**
+ * Below this table width (the 7xl container) the Members and Integration columns step aside to
+ * the Columns pill, as the cases table does, so capability names keep their room at 1080 and in
+ * the setup dialog (UX r2 B1 of #1209): the type picker still shows the fleet choice and the
+ * opened row lists the members.
+ */
+export const SECONDARY_COLUMNS_HIDE_BELOW = "7xl" as const;
+export const SECONDARY_COLUMNS_HIDE_BELOW_PX = 1280;
+/** What a capability cell spends beside its name: two 16 px icons, two 8 px gaps, 12 px padding a side. */
+export const CAPABILITY_CELL_CHROME = 16 * 2 + 8 * 2 + 24;
+
+/**
+ * The width the fixed layout leaves each flexible column (Capability, and Integration when drawn)
+ * at a table width: what Status, the row actions and, when drawn, Members leave, shared.
+ */
+export function flexibleColumnWidth(tableWidth: number): number {
+  const wide = tableWidth >= SECONDARY_COLUMNS_HIDE_BELOW_PX;
+  const left = tableWidth - STATUS_COLUMN_WIDTH - ROW_ACTIONS_WIDTH - (wide ? MEMBERS_COLUMN_WIDTH : 0);
+  return wide ? left / 2 : left;
+}
+
+/** What is left to do first: Not bound, Partial, None connected, then Connected. */
+const TYPE_STATE_ORDER: Record<FleetCapabilityType["state"], number> = {
+  not_bound: 0,
+  partial: 1,
+  none_connected: 2,
+  connected: 3,
 };
+
+/** The capabilities that take several integrations at once: the picker is a multi-select (#1201). */
+export const MULTI_CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(["notification"]);
+
+/** The picker value of a capability's built-in option (never an integration id). */
+const BUILTIN_VALUE_PREFIX = "builtin:";
+
+/**
+ * The picker value of a member's "No integration" choice: a member overridden to none is an
+ * option of the list, never a clear control beside the field (UX r1 B1 of #1209).
+ */
+export const NO_INTEGRATION_VALUE = "none:";
 
 /**
  * One design-system icon per capability of the backend catalog
@@ -72,40 +122,91 @@ export function capabilityIcon(capability: string): IconName {
   return CAPABILITY_ICONS[capability] ?? FALLBACK_CAPABILITY_ICON;
 }
 
-/** One row of the Capabilities table: a member and one of its slots. */
-export interface CapabilitySlotRow {
-  key: string;
-  member: FleetMemberSlots;
-  slot: FleetCapabilitySlot;
-}
-
-/** Every member x slot, in the API order (members, then each member's slots). */
-export function capabilitySlotRows(members: readonly FleetMemberSlots[]): CapabilitySlotRow[] {
-  return members.flatMap((member) =>
-    member.slots.map((slot) => ({ key: `${member.member_id}:${slot.capability}`, member, slot })),
-  );
-}
-
 /** The sort value of the Status column: ascending puts Not bound first. */
-export function slotStateRank(row: CapabilitySlotRow): number {
-  return SLOT_STATE_ORDER[row.slot.state];
+export function typeStateRank(type: FleetCapabilityType): number {
+  return TYPE_STATE_ORDER[type.state];
 }
 
-/** The text a search reads on a row: capability, member, role and every bound integration. */
-export function slotRowSearchFields(row: CapabilitySlotRow, label: string): string[] {
+/** The text a search reads on a type row: capability, its members and roles, and every bound integration. */
+export function typeSearchFields(type: FleetCapabilityType, label: string): string[] {
   return [
     label,
-    row.slot.capability,
-    row.member.name,
-    row.member.role_label,
-    ...row.slot.bound.flatMap((integration) => [integration.name, integration.provider]),
+    type.capability,
+    type.builtin?.label ?? "",
+    ...type.members.flatMap((member) => [
+      member.name,
+      member.role_label,
+      ...member.bound.flatMap((integration) => [integration.name, integration.provider]),
+    ]),
   ];
 }
 
-/** Connected slots and every slot, for the header summary. */
-export function slotCounts(members: readonly FleetMemberSlots[]): { connected: number; total: number } {
-  const slots = members.flatMap((member) => member.slots);
-  return { connected: slots.filter((slot) => slot.state === "filled").length, total: slots.length };
+/** Connected capability types and every type, for the header summary. */
+export function typeCounts(types: readonly FleetCapabilityType[]): { connected: number; total: number } {
+  return { connected: types.filter((type) => type.state === "connected").length, total: types.length };
+}
+
+/** The members of a type with an override of their own ("Custom"). */
+export function customMembers(type: FleetCapabilityType): FleetCapabilityTypeMember[] {
+  return type.members.filter((member) => member.custom);
+}
+
+/** Whether the reader may change the type at all: at least one member they may edit. */
+export function typeEditable(type: FleetCapabilityType): boolean {
+  return type.members.some((member) => member.can_edit);
+}
+
+/** The custom members a type-level write would overwrite if the person confirms: the editable ones. */
+export function overwritableCustomMembers(type: FleetCapabilityType): FleetCapabilityTypeMember[] {
+  return customMembers(type).filter((member) => member.can_edit);
+}
+
+/** The ids of a bound set, sorted, so two sets compare by value. */
+export function integrationIds(integrations: readonly FleetSlotIntegration[]): string[] {
+  return integrations.map((integration) => integration.integration_id).sort();
+}
+
+/** The picker value of the built-in option of *type* (empty when it has none). */
+export function builtinValue(type: Pick<FleetCapabilityType, "builtin">): string {
+  return type.builtin ? `${BUILTIN_VALUE_PREFIX}${type.builtin.key}` : "";
+}
+
+/**
+ * The integrations a single-choice pick writes: the built-in option and an
+ * emptied field write none (the built-in option alone, or nothing), any other
+ * value is that one integration.
+ */
+export function idsForPick(value: string): string[] {
+  return !value || value.startsWith(BUILTIN_VALUE_PREFIX) || value === NO_INTEGRATION_VALUE ? [] : [value];
+}
+
+/**
+ * The next set of a multi-channel pick after one toggle: the built-in option
+ * is always on and never toggled off, an integration is added or removed.
+ */
+export function toggledIds(current: readonly string[], value: string): string[] {
+  if (value.startsWith(BUILTIN_VALUE_PREFIX)) return [...current].sort();
+  return (current.includes(value) ? current.filter((id) => id !== value) : [...current, value]).sort();
+}
+
+/** The value a single-choice picker shows: the bound integration, else the built-in option, else nothing. */
+export function pickerValue(type: Pick<FleetCapabilityType, "builtin">, bound: readonly FleetSlotIntegration[]): string {
+  return bound[0]?.integration_id ?? builtinValue(type);
+}
+
+/** The members of a type whose slot nothing fills: no integration bound and no built-in option. */
+export function unsetMembers(type: FleetCapabilityType): FleetCapabilityTypeMember[] {
+  return type.builtin ? [] : type.members.filter((member) => member.bound.length === 0);
+}
+
+/**
+ * The value the type picker shows. A Partial type shows none: the fleet choice reads in the
+ * Integration column with how many members are not set, and picking it, the same value
+ * included, writes it on every member without it (UX r1 B2 of #1209: re-picking the shown
+ * value wrote nothing).
+ */
+export function typePickerValue(type: FleetCapabilityType): string {
+  return type.state === "partial" ? "" : pickerValue(type, type.choice);
 }
 
 /** The instruction part of the folded Fleet defaults summary. @i18n-keys */
@@ -117,11 +218,4 @@ export const DEFAULTS_INSTRUCTION_SUMMARY = {
 /** Which instruction words the folded summary shows: a blank instruction reads as none. */
 export function instructionSummaryKey(instruction: string | null | undefined): keyof typeof DEFAULTS_INSTRUCTION_SUMMARY {
   return (instruction ?? "").trim() ? "set" : "none";
-}
-
-/** The distinct capabilities of the rows, in first-seen order, for the capability filter. */
-export function capabilityOptions(rows: readonly CapabilitySlotRow[]): { value: string; label: string }[] {
-  const seen = new Map<string, string>();
-  for (const row of rows) if (!seen.has(row.slot.capability)) seen.set(row.slot.capability, row.slot.label);
-  return [...seen].map(([value, label]) => ({ value, label }));
 }

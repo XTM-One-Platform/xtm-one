@@ -28,19 +28,30 @@ integration to a slot adds it to the member agent's ``integration_bindings``:
 the customer layer of a built-in (``services.builtin_customer_layer``), which
 the seed never rewrites.
 
+Capabilities by type (#1201): a fleet makes one choice per capability
+(:func:`type_states`), written on every member slot of that type
+(:func:`members_to_write`); a member whose bound set is not empty and differs
+from the fleet choice is ``custom`` and is kept by a later type write unless the person
+confirms the override. Two capabilities carry a built-in option that needs no
+integration and is never stored as a binding (:data:`BUILTIN_OPTIONS`): the
+XTM One inventory (the organization context assets) for the asset inventory,
+and in-app delivery (bell, decisions, work items) for notification, which is
+always on so an external channel only adds to it. Notification also takes the
+``email`` type: the built-in Platform email and mail integrations fill it.
+
 Pure functions only: the router loads the rows and writes the agent.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 #: Capability key -> label and the catalog ``integration_types`` that fill it.
 CAPABILITIES: dict[str, dict[str, Any]] = {
     "ticketing": {"label": "Ticketing", "integration_types": ("ticketing", "itsm", "project_management")},
-    "notification": {"label": "Notification", "integration_types": ("messaging", "incident_management")},
+    "notification": {"label": "Notification", "integration_types": ("messaging", "incident_management", "email")},
     "edr_xdr": {"label": "EDR / XDR", "integration_types": ("edr", "xdr")},
     "scanner": {
         "label": "Vulnerability scanner",
@@ -67,6 +78,39 @@ ROLE_SLOTS: dict[str, tuple[str, ...]] = {
 SLOT_FILLED = "filled"
 SLOT_EMPTY = "empty"
 SLOT_UNAVAILABLE = "unavailable"
+
+#: The state of a capability type across the members that use it (#1201).
+TypeStateName = Literal["connected", "partial", "not_bound", "none_connected"]
+TYPE_CONNECTED: TypeStateName = "connected"
+TYPE_PARTIAL: TypeStateName = "partial"
+TYPE_NOT_BOUND: TypeStateName = "not_bound"
+TYPE_NONE_CONNECTED: TypeStateName = "none_connected"
+
+
+@dataclass(frozen=True)
+class BuiltinOption:
+    """An option of a capability served by XTM One itself: no integration, never a binding."""
+
+    key: str
+    label: str
+    #: Always active: external integrations add to it and it cannot be removed.
+    always_on: bool = True
+
+
+#: Capability key -> its built-in option, offered first and active by default (#1201).
+BUILTIN_OPTIONS: dict[str, BuiltinOption] = {
+    # The organization context assets, fed by OpenAEV, OpenCRQ, OpenCTI, Intune,
+    # Defender and the other asset sources: those are sources of this inventory,
+    # never alternatives offered in the slot.
+    "asset_inventory": BuiltinOption(key="xtm_one_inventory", label="XTM One inventory (built in)"),
+    # The bell, the decisions surface and work items; no external send.
+    "notification": BuiltinOption(key="in_app", label="In XTM One only"),
+}
+
+
+def builtin_for(capability: str) -> BuiltinOption | None:
+    """The built-in option of *capability*, if it has one."""
+    return BUILTIN_OPTIONS.get(capability)
 
 
 class SlotBindingRefusedError(Exception):
@@ -115,6 +159,7 @@ class SlotState:
     state: str
     bound: list[IntegrationRef] = field(default_factory=list)
     candidates: list[IntegrationRef] = field(default_factory=list)
+    builtin: BuiltinOption | None = None
 
 
 def bound_ids(bindings: Mapping[str, Any] | None) -> dict[str, set[str]]:
@@ -154,7 +199,9 @@ def slot_states(
         ]
         bound_set = {b.integration_id for b in bound}
         candidates = [i for i in pool if i.provider in providers and i.integration_id not in bound_set]
-        if bound:
+        builtin = builtin_for(capability)
+        # A built-in option fills the slot by itself: never "None connected".
+        if bound or builtin is not None:
             state = SLOT_FILLED
         elif candidates:
             state = SLOT_EMPTY
@@ -167,6 +214,7 @@ def slot_states(
                 state=state,
                 bound=bound,
                 candidates=candidates,
+                builtin=builtin,
             )
         )
     return states
@@ -206,6 +254,154 @@ def bindings_with(
     held = bound_ids(bindings)
     held.setdefault(integration.provider, set()).add(integration.integration_id)
     return {provider: sorted(ids) for provider, ids in held.items() if ids}
+
+
+def bindings_set(
+    role_label: str | None,
+    capability: str,
+    bindings: Mapping[str, Any] | None,
+    integrations: Iterable[IntegrationRef],
+    catalog: Mapping[str, Any],
+    *,
+    company_managed_only: bool = False,
+) -> dict[str, list[str]]:
+    """*bindings* with exactly *integrations* bound for *capability* (#1201).
+
+    The ids of the capability's providers that are not in *integrations* are
+    unbound; the bindings of every other provider are kept as they are. Each
+    integration passes the :func:`bindings_with` checks, so a refusal leaves
+    nothing half written. An empty *integrations* clears the capability (the
+    built-in option, when the capability has one, stays active).
+    """
+    _check_slot(role_label, capability)
+    wanted = list(integrations)
+    providers = providers_for(capability, catalog)
+    held = bound_ids(bindings)
+    keep = {i.integration_id for i in wanted}
+    for provider in providers:
+        held[provider] = {iid for iid in held.get(provider, set()) if iid in keep}
+    out: Mapping[str, Any] = {provider: sorted(ids) for provider, ids in held.items() if ids}
+    for integration in wanted:
+        out = bindings_with(
+            role_label, capability, out, integration, catalog, company_managed_only=company_managed_only
+        )
+    return {provider: list(ids) for provider, ids in out.items()}
+
+
+@dataclass
+class TypeMember:
+    """One member using a capability type, as the expanded type row shows it."""
+
+    member_id: str
+    agent_id: str
+    name: str
+    role_label: str
+    can_edit: bool
+    bound: list[IntegrationRef]
+    #: Its bound set is not empty and differs from the fleet choice (an override).
+    #: An empty slot is not an override: a type-level choice fills it.
+    custom: bool
+
+
+@dataclass
+class TypeState:
+    """A capability across the fleet's members (#1201): one row of the type view."""
+
+    capability: str
+    label: str
+    state: TypeStateName
+    #: The fleet choice: the bound set most members share (first member on a tie).
+    choice: list[IntegrationRef]
+    candidates: list[IntegrationRef]
+    members: list[TypeMember]
+    builtin: BuiltinOption | None = None
+
+
+def _ids(refs: Iterable[IntegrationRef]) -> frozenset[str]:
+    return frozenset(r.integration_id for r in refs)
+
+
+def fleet_choice(bound_sets: Sequence[frozenset[str]]) -> frozenset[str]:
+    """The non-empty bound set most members share; on a tie the first member's (empty when none)."""
+    filled = [ids for ids in bound_sets if ids]
+    if not filled:
+        return frozenset()
+    counts: dict[frozenset[str], int] = {}
+    for ids in filled:
+        counts[ids] = counts.get(ids, 0) + 1
+    best = max(counts.values())
+    return next(ids for ids in filled if counts[ids] == best)
+
+
+def type_states(members: Sequence[tuple[TypeMember, Sequence[SlotState]]]) -> list[TypeState]:
+    """One :class:`TypeState` per capability the members' roles declare, in first-seen order.
+
+    *members* pairs each member (its ``bound`` and ``custom`` are recomputed
+    here per capability) with its :func:`slot_states`. The state reads
+    ``connected`` when every member's slot is filled (a built-in option fills
+    it), ``partial`` when some are, ``not_bound`` when none is but a connected
+    integration can be bound, ``none_connected`` otherwise.
+    """
+    order: list[str] = []
+    per_cap: dict[str, list[tuple[TypeMember, SlotState]]] = {}
+    for member, states in members:
+        for slot in states:
+            if slot.capability not in per_cap:
+                order.append(slot.capability)
+                per_cap[slot.capability] = []
+            per_cap[slot.capability].append((member, slot))
+    out: list[TypeState] = []
+    for capability in order:
+        rows = per_cap[capability]
+        choice_ids = fleet_choice([_ids(slot.bound) for _, slot in rows])
+        refs: dict[str, IntegrationRef] = {}
+        for _, slot in rows:
+            for ref in [*slot.bound, *slot.candidates]:
+                if ref.name or ref.integration_id not in refs:
+                    refs[ref.integration_id] = ref
+        filled = sum(1 for _, slot in rows if slot.state == SLOT_FILLED)
+        state: TypeStateName
+        if filled == len(rows):
+            state = TYPE_CONNECTED
+        elif filled:
+            state = TYPE_PARTIAL
+        elif any(slot.state == SLOT_EMPTY for _, slot in rows):
+            state = TYPE_NOT_BOUND
+        else:
+            state = TYPE_NONE_CONNECTED
+        out.append(
+            TypeState(
+                capability=capability,
+                label=CAPABILITIES[capability]["label"],
+                state=state,
+                choice=[refs[iid] for iid in sorted(choice_ids)],
+                candidates=sorted(refs.values(), key=lambda r: (r.name or r.provider).lower()),
+                members=[
+                    TypeMember(
+                        member_id=member.member_id,
+                        agent_id=member.agent_id,
+                        name=member.name,
+                        role_label=member.role_label,
+                        can_edit=member.can_edit,
+                        bound=list(slot.bound),
+                        custom=bool(slot.bound) and _ids(slot.bound) != choice_ids,
+                    )
+                    for member, slot in rows
+                ],
+                builtin=builtin_for(capability),
+            )
+        )
+    return out
+
+
+def members_to_write(state: Any, *, override_custom: bool) -> list[str]:
+    """The member ids a type-level choice writes (#1201).
+
+    Every member the reader may edit, except a ``custom`` one, which keeps its
+    override unless the person confirmed (*override_custom*). *state* is a
+    :class:`TypeState` or its API model (same ``members`` fields).
+    """
+    return [m.member_id for m in state.members if m.can_edit and (override_custom or not m.custom)]
 
 
 def bindings_without(

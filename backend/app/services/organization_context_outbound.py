@@ -1,0 +1,208 @@
+# SPDX-License-Identifier: Apache-2.0
+
+"""Outbound syncs of the organization profile: XTM One is the master (#1134 S3).
+
+A sync has one direction and one master, never a free two-way merge:
+
+- ``inbound`` (the default): the platform is the master; its rows are
+  read-only in the profile (``organization_context_import``);
+- ``outbound``: the XTM One list (typed, CSV, API or agent-maintained) is the
+  master; the platform rows this sync CREATED follow it (created, updated,
+  deleted to match). ``OrganizationContextSync.outbound_ids`` holds them,
+  keyed on the XTM One row; a platform row the sync did not create is never
+  touched, except the criticality of a crown jewel already linked to it by
+  ``opencrq_asset_id`` (the existing jewel -> OpenCRQ criticality push).
+
+:data:`DIRECTIONS` is the support matrix read from the platform APIs the
+providers call today; a pair without ``outbound`` names why. :func:`plan_outbound`
+is the pure rule; :func:`run_outbound` writes it with the owner's token, like
+an inbound run.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.organization_context import OrganizationProfile, is_platform_source
+
+INBOUND = "inbound"
+OUTBOUND = "outbound"
+SYNC_DIRECTIONS: tuple[str, ...] = (INBOUND, OUTBOUND)
+
+#: (section, source) -> the directions supported, and why outbound is not (empty when it is).
+DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
+    ("crown_jewels", "opencrq"): ((INBOUND, OUTBOUND), ""),
+    ("assets", "openaev"): ((INBOUND,), "Planned: OpenAEV endpoint writes are not wired for syncs yet."),
+    ("asset_groups", "openaev"): ((INBOUND,), "Planned: OpenAEV asset group writes are not wired for syncs yet."),
+    ("pirs", "opencti"): ((INBOUND,), "Planned: OpenCTI PIR writes are not wired for syncs yet."),
+    ("assets", "opencti"): ((INBOUND,), "OpenCTI Systems are owned by its connectors."),
+    ("ai_systems", "openaev"): ((INBOUND,), "OpenAEV has no AI system object to write."),
+    ("tech_stack", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
+}
+
+#: Supporting assets an outbound run creates with: a crown jewel carries no OpenCRQ category.
+OUTBOUND_CATEGORY = "generic_asset"
+
+
+def directions(section: str, source: str) -> tuple[tuple[str, ...], str]:
+    """The directions *section* from *source* supports, and why outbound is not (empty when it is)."""
+    return DIRECTIONS.get((section, source), ((INBOUND,), "This pairing reads only."))
+
+
+def supports(section: str, source: str, direction: str) -> bool:
+    return direction in directions(section, source)[0]
+
+
+@dataclass
+class OutboundPlan:
+    """What an outbound run writes on the platform; nothing in the profile changes."""
+
+    create: list[tuple[str, str]] = field(default_factory=list)  # (name, criticality)
+    update: list[tuple[str, str, str]] = field(default_factory=list)  # (asset id, name, criticality)
+    delete: list[tuple[str, str]] = field(default_factory=list)  # (key, asset id)
+    skipped: list[str] = field(default_factory=list)  # jewels a platform owns (never pushed back)
+    error: str = ""
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "create": [{"name": n, "criticality": c} for n, c in self.create],
+            "update": [{"opencrq_asset_id": a, "name": n, "criticality": c} for a, n, c in self.update],
+            "delete": [{"name": k, "opencrq_asset_id": a} for k, a in self.delete],
+            "skipped": list(self.skipped),
+            "error": self.error,
+        }
+
+
+def _key(name: str) -> str:
+    return name.strip().casefold()
+
+
+def plan_outbound(
+    profile: OrganizationProfile, assets: list[dict[str, Any]], outbound_ids: dict[str, str]
+) -> OutboundPlan:
+    """Crown jewels -> OpenCRQ supporting assets, the profile the master (no I/O).
+
+    A jewel whose source is a platform (``opencrq`` included) is the platform's
+    row: never pushed back, listed in ``skipped``. A jewel linked by
+    ``opencrq_asset_id`` keeps its asset's criticality equal to its own. A
+    jewel neither linked nor created yet is created; an asset this sync created
+    whose jewel is gone is deleted.
+    """
+    from app.services.organization_context_opencrq import TO_OPENCRQ, _asset_name
+
+    by_id = {str(a.get("id")): a for a in assets if a.get("id")}
+    plan = OutboundPlan()
+    wanted: set[str] = set()
+    for jewel in profile.crown_jewels:
+        key = _key(jewel.name)
+        criticality = TO_OPENCRQ[jewel.criticality]
+        linked = (jewel.opencrq_asset_id or "").strip()
+        if is_platform_source(jewel.source) and not linked:
+            plan.skipped.append(jewel.name)
+            continue
+        # A linked jewel (an OpenCRQ row or a typed jewel linked by name) keeps the asset's own name:
+        # only its criticality is the profile's.
+        asset_id = linked or outbound_ids.get(key, "")
+        wanted.add(key)
+        asset = by_id.get(asset_id) if asset_id else None
+        if asset is None:
+            if linked:
+                continue  # linked to an asset OpenCRQ no longer holds: reported by the reconcile, never recreated
+            plan.create.append((jewel.name, criticality))
+            continue
+        if str(asset.get("criticality") or "").lower() != criticality or (
+            not linked and _asset_name(asset) != jewel.name
+        ):
+            plan.update.append((asset_id, jewel.name if not linked else _asset_name(asset), criticality))
+    for key, asset_id in outbound_ids.items():
+        if key not in wanted and asset_id in by_id:
+            plan.delete.append((key, asset_id))
+    return plan
+
+
+async def run_outbound(
+    db: AsyncSession, sync: Any, *, user_id: uuid.UUID, apply: bool
+) -> tuple[OutboundPlan, dict[str, str]]:
+    """Plan and, with *apply*, write an outbound sync; ``(plan, outbound_ids after the run)``.
+
+    Only ``crown_jewels`` to ``opencrq`` is wired (:data:`DIRECTIONS`). Reads
+    and writes with *user_id*'s token; a failed read writes nothing.
+    """
+    from app.integrations.providers.opencrq._common import _resolve_tenant, _trpc
+    from app.services import organization_context as org_context
+    from app.services import organization_context_opencrq as ocrq
+
+    ids = dict(getattr(sync, "outbound_ids", None) or {})
+    if not supports(sync.section, sync.source, OUTBOUND):
+        return OutboundPlan(error=directions(sync.section, sync.source)[1] or "outbound is not supported"), ids
+    connection = await ocrq._opencrq_connection(db, str(user_id))
+    if isinstance(connection, str):
+        return OutboundPlan(error=connection), ids
+    base_url, headers = connection
+    tenant, err = await _resolve_tenant(base_url, headers, str((sync.filters or {}).get("tenant_id") or ""))
+    if err:
+        return OutboundPlan(error=str(err)), ids
+    assets, err = await ocrq._list_assets(base_url, headers, tenant or "")
+    if err:
+        return OutboundPlan(error=err), ids
+    current = await org_context.current_version(db)
+    plan = plan_outbound(org_context.parse_profile(current.profile if current else {}), assets, ids)
+    if not apply:
+        return plan, ids
+
+    errors: list[str] = []
+    for name, criticality in plan.create:
+        asset_id = str(uuid.uuid4())
+        _, err = await _trpc(
+            base_url,
+            headers,
+            "supportingAssets.createSupportingAsset",
+            "create supporting asset",
+            input={
+                "id": asset_id,
+                "name": name,
+                "exposure": "unknown",
+                "categoryId": OUTBOUND_CATEGORY,
+                "criticality": criticality,
+            },
+            mutation=True,
+            tenant_id=tenant or "",
+        )
+        if err:
+            errors.append(f"{name}: {err}")
+        else:
+            ids[_key(name)] = asset_id
+    for asset_id, name, criticality in plan.update:
+        _, err = await _trpc(
+            base_url,
+            headers,
+            "supportingAssets.updateSupportingAsset",
+            "update supporting asset",
+            input={"id": asset_id, "name": name, "criticality": criticality},
+            mutation=True,
+            tenant_id=tenant or "",
+        )
+        if err:
+            errors.append(f"{name}: {err}")
+    gone = [asset_id for _, asset_id in plan.delete]
+    if gone:
+        _, err = await _trpc(
+            base_url,
+            headers,
+            "supportingAssets.deleteSupportingAssets",
+            "delete supporting assets",
+            input=gone,
+            mutation=True,
+            tenant_id=tenant or "",
+        )
+        if err:
+            errors.append(f"delete: {err}")
+        else:
+            for key, _ in plan.delete:
+                ids.pop(key, None)
+    plan.error = "; ".join(errors)[:500]
+    return plan, ids

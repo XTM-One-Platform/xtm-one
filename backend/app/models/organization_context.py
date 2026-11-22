@@ -138,6 +138,7 @@ class OrganizationContextSync(Base):
         CheckConstraint(
             "frequency IN ('hourly', 'daily', 'weekly')", name="ck_organization_context_syncs_frequency_valid"
         ),
+        CheckConstraint("direction IN ('inbound', 'outbound')", name="ck_organization_context_syncs_direction_valid"),
         Index("ix_organization_context_syncs_due", "enabled", "next_run_at"),
     )
 
@@ -156,6 +157,16 @@ class OrganizationContextSync(Base):
     #: The source ids an administrator excluded from this sync (#1134): never imported, removed if present.
     excluded_external_ids: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: ``inbound`` (the platform is the master, its rows are read-only here) or ``outbound`` (the XTM One
+    #: list is the master: the rows this sync created on the platform follow it, #1134 S3).
+    direction: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="inbound", server_default=text("'inbound'")
+    )
+    #: Outbound: the platform rows this sync created, keyed on the XTM One row (its name, case-folded).
+    #: Only these are updated and deleted; the platform's other rows are never touched.
+    outbound_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     frequency: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")
     #: Hour and minute of the run in ``timezone`` (the hour is ignored hourly).

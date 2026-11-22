@@ -77,14 +77,32 @@ def zone(name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def validate(*, section: str, source: str, frequency: str, hour: int, minute: int, weekday: int, timezone: str) -> None:
+def validate(
+    *,
+    section: str,
+    source: str,
+    frequency: str,
+    hour: int,
+    minute: int,
+    weekday: int,
+    timezone: str,
+    direction: str = "inbound",
+) -> None:
     """Refuse a definition the scheduler could not run; nothing returned when it is valid."""
     from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
 
     if section != ALL_SECTIONS and section not in SYNCABLE_SECTIONS:
         raise SyncRefusedError(f"section must be one of {', '.join((*SYNCABLE_SECTIONS, ALL_SECTIONS))}")
     if section != ALL_SECTIONS and source not in imp.SECTION_SOURCES[section]:
         raise SyncRefusedError(f"{source or 'no source'} cannot feed {section}")
+    if direction not in outbound.SYNC_DIRECTIONS:
+        raise SyncRefusedError("direction must be inbound or outbound")
+    if direction == outbound.OUTBOUND and (
+        section == ALL_SECTIONS or not outbound.supports(section, source, direction)
+    ):
+        reason = outbound.directions(section, source)[1] if section != ALL_SECTIONS else "Sync all has no direction."
+        raise SyncRefusedError(f"{section} to {source or 'no source'} cannot be outbound: {reason}")
     if frequency not in ("hourly", "daily", "weekly"):
         raise SyncRefusedError("frequency must be hourly, daily or weekly")
     if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= weekday <= 6):
@@ -111,12 +129,16 @@ def define(
     weekday: int = 0,
     timezone: str = "UTC",
     enabled: bool = True,
+    direction: str | None = None,
 ) -> None:
     """Write a validated definition on *sync*, saved by *owner_id*; refused with :class:`SyncRefusedError`.
 
     Shared by the REST routes and the agent tools, so both save the same rows.
     Saving again is how a paused sync resumes: it then reads with this owner's token.
+    *direction* omitted keeps the stored one (inbound for a new sync) and the rows an outbound run created.
     """
+    stored_direction = getattr(sync, "direction", None) or "inbound"
+    direction = direction or stored_direction
     all_sections = section == ALL_SECTIONS
     source = "" if all_sections else source
     validate(
@@ -127,7 +149,14 @@ def define(
         minute=minute,
         weekday=weekday,
         timezone=timezone,
+        direction=direction,
     )
+    if stored_direction != direction:
+        # The rows created on the platform belong to the outbound run that made them: a new direction starts clean.
+        sync.outbound_ids = {}
+    elif getattr(sync, "outbound_ids", None) is None:
+        sync.outbound_ids = {}
+    sync.direction = direction
     sync.section = section
     sync.source = source
     sync.filters = {} if all_sections else dict(filters or {})
@@ -252,6 +281,9 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync.paused_reason = reason
             result["error"] = reason
             return result
+        if (getattr(sync, "direction", None) or "inbound") == "outbound":
+            await _run_outbound(db, sync, owner, result, trigger=trigger)
+            return result
         plan, _version = await imp.preview_import(
             db,
             user_id=owner.id,
@@ -299,6 +331,42 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
         sync.last_run_at = datetime.now(UTC)
         sync.last_result = dict(result)
         await _release_lock(sync.id)
+
+
+async def _run_outbound(
+    db: AsyncSession, sync: OrganizationContextSync, owner: User, result: dict[str, Any], *, trigger: str
+) -> None:
+    """An outbound run (#1134 S3): the platform follows the profile; counts are the platform's rows."""
+    from app.services import organization_context_outbound as outbound
+    from app.services.audit import log_audit
+
+    plan, ids = await outbound.run_outbound(db, sync, user_id=owner.id, apply=True)
+    sync.outbound_ids = ids
+    result["direction"] = "outbound"
+    result["added"], result["updated"], result["removed"] = len(plan.create), len(plan.update), len(plan.delete)
+    result["skipped_platform_rows"] = len(plan.skipped)
+    if plan.error:
+        result["error"] = plan.error[:500]
+        if _pausing(plan.error):
+            sync.paused_reason = plan.error[:500]
+    if result["error"] or result["added"] or result["updated"] or result["removed"]:
+        await log_audit(
+            db,
+            user=owner,
+            action="trigger",
+            entity_type="organization_context_sync",
+            entity_id=sync.id,
+            entity_name=f"{sync.section} to {sync.source}",
+            summary=(
+                f"Outbound organization sync of {sync.section} to {sync.source} ({trigger}): "
+                + (
+                    f"failed: {result['error']}"
+                    if result["error"]
+                    else f"{result['added']} created, {result['updated']} updated, {result['removed']} deleted"
+                )
+            )[:500],
+            details={**result, "trigger": trigger, "plan": plan.summary()},
+        )
 
 
 async def section_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
