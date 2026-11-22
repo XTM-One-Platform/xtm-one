@@ -20699,5 +20699,10 @@
   "A leaked secret issue": "漏洩したシークレットの問題",
   "An account or an email address of your domains is written by a leak source": "漏洩ソースが自社ドメインのアカウントやメールアドレスを登録した",
   "A report or incident names one of your tracked organizations": "レポートやインシデントが追跡中の組織に言及した",
-  "The evidence health pass finds a supporting asset with no evidence": "証跡ヘルスパスが証跡のない支援資産を検出した"
+  "The evidence health pass finds a supporting asset with no evidence": "証跡ヘルスパスが証跡のない支援資産を検出した",
+  "Agentic checks": "エージェントによるチェック",
+  "No check round yet": "チェックはまだ実行されていません",
+  "Show the checks": "チェックを表示",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
 }

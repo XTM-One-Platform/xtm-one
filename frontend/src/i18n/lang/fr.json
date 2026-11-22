@@ -20699,5 +20699,10 @@
   "A leaked secret issue": "Un problème de secret divulgué",
   "An account or an email address of your domains is written by a leak source": "Un compte ou une adresse e-mail de vos domaines est écrit par une source de fuites",
   "A report or incident names one of your tracked organizations": "Un rapport ou un incident cite l'une de vos organisations suivies",
-  "The evidence health pass finds a supporting asset with no evidence": "La passe de santé des preuves trouve un actif de soutien sans preuve"
+  "The evidence health pass finds a supporting asset with no evidence": "La passe de santé des preuves trouve un actif de soutien sans preuve",
+  "Agentic checks": "Contrôles agentiques",
+  "No check round yet": "Aucune série de contrôles pour l’instant",
+  "Show the checks": "Voir les contrôles",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# non exécuté} other {# non exécutés}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# réussi} other {# réussis}}, {warned, plural, one {# avertissement} other {# avertissements}}, {failed, plural, one {# en échec} other {# en échec}}"
 }
