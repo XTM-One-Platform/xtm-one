@@ -3229,6 +3229,41 @@ def seed_platform_health(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"Platform Health": {"id": "enabled", "url": f"{base}/health"}}
 
 
+def seed_health_findings(token: str, base: str) -> dict[str, dict[str, str]]:
+    """Open, dismissed and resolved Platform Health findings on real rows, XTM One mode only (#1303).
+
+    A check opens a finding on its second failing pass and the Module Analyst needs a live model, so a fresh lab
+    shows 0 open findings everywhere: ``seed_health_findings.py`` writes them through the engine's own writer.
+    Read back on ``GET /health/overview`` (open counts above 0) and ``GET /health/findings`` (every open id
+    listed). Logged ``seeded health findings: <url>``. May raise: the caller logs and skips.
+    """
+    if os.environ.get("PLATFORM_MODE", "") != "xtm_one":
+        return {}
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "health_findings.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_health_findings.py"), admin, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_health_findings.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    written = json.loads(out.read_text())
+    overview = api("GET", "/health/overview", token)
+    cards = overview.get("modules") if isinstance(overview, dict) else None
+    if not sum(card.get("critical", 0) + card.get("warning", 0) + card.get("info", 0) for card in cards or []):
+        raise RuntimeError("GET /health/overview answers 0 open findings after the seed")
+    listed = api("GET", "/health/findings?limit=200", token)
+    shown = {f.get("id") for f in (listed.get("items") if isinstance(listed, dict) else None) or []}
+    if not written["open"] or set(written["open"]) - shown:
+        raise RuntimeError(f"GET /health/findings lists {len(shown)} of the {len(written['open'])} seeded open findings")
+    url = f"{base}/health"
+    return {
+        "health findings": {"id": ",".join(written["open"]), "url": url},
+        "health findings dismissed": {"id": ",".join(written["dismissed"]), "url": url},
+        "health findings resolved": {"id": ",".join(written["resolved"]), "url": url},
+    }
+
+
 #: The agent whose welcome screen shows suggestion chips: ``GET /chat/suggestions`` answers an agent's own
 #: ``web_suggested_prompts`` and nothing else, so with no agent carrying some the chatbot's welcome screen
 #: never renders its chips. The third is long enough for the design system's Chip to cut it at 250 px.
@@ -7116,6 +7151,10 @@ def seed_entities() -> None:
         seeded.update(seed_platform_health(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["Platform Health"] = str(exc)[:600]
+    try:
+        seeded.update(seed_health_findings(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["health findings"] = str(exc)[:600]
     try:
         seeded.update(seed_chat_suggestions(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal

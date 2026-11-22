@@ -282,6 +282,7 @@ def test_opencrq_allow_list_covers_business_domains():
         "delete_opencrq_risk_scenarios",
         "get_opencrq_scenario_exposure",
         "get_opencrq_cve_exploitation",
+        "get_opencrq_attack_path_reach",
         "run_opencrq_crq_simulation",
         "get_opencrq_crq_what_if",
         "update_opencrq_tef_input",
