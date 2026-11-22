@@ -74,5 +74,12 @@ def test_a_block_one_side_already_holds_twice_is_not_a_copy_of_the_merge() -> No
     assert duplicated_block(ours, theirs, merge.text) == 0
 
 
+def test_a_run_where_two_hunks_meet_is_not_a_copy() -> None:
+    # Each side changes one line; the merged run 'A b C' is held by neither side, and is no copy.
+    merge = merge_text("a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n")
+    assert merge.conflicts == 0 and merge.text == "A\nb\nC\n"
+    assert duplicated_block("A\nb\nc\n", "a\nb\nC\n", merge.text) == 0
+
+
 def test_braces_and_blank_lines_alone_are_not_a_block() -> None:
     assert duplicated_block("a\n", "b\n", "}\n)\n\n}\n)\n\n") == 0

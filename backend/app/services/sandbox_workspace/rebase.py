@@ -489,13 +489,13 @@ def duplicated_block(ours: str, theirs: str, merged: str) -> int:
     at different places (a branch carrying a change the ref also squashed), both copies are written and
     the merge reads clean. A run of :data:`DUPLICATE_RUN_LINES` substantive lines found more times in
     *merged* than in *ours* and in *theirs* is that copy; the line answered is the start of the first
-    extra one.
+    extra one. A run neither side holds is not a copy: it is where two merged hunks meet.
     """
     held = [_runs(text.splitlines()) for text in (ours, theirs)]
     first = 0
     for window, starts in _runs(merged.splitlines()).items():
         most = max(len(side.get(window, ())) for side in held)
-        if len(starts) > most:
+        if most and len(starts) > most:
             line = starts[most] + 1
             first = line if not first else min(first, line)
     return first
