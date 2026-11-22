@@ -87,7 +87,14 @@ from typing import Any, cast
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.health.engine import Check, CheckResult, close_out, register_check
+from app.services.health.engine import (
+    Check,
+    CheckResult,
+    apply_grace,
+    close_out,
+    in_startup_grace,
+    register_check,
+)
 
 MODULE = "xtm_one"
 #: How often the platform checks run (section 3, "Scheduling": aligned on the registration heartbeat).
@@ -149,7 +156,11 @@ def _platform_check(read: PlatformRead) -> Callable[[AsyncSession, datetime], Aw
 
         if settings.is_copilot_like:
             return []
-        return await read(db, now)
+        results = list(await read(db, now))
+        if in_startup_grace(now):
+            # XTM One just started: workers and dependencies still boot (#958).
+            return apply_grace(results, lambda r: r.module == MODULE)
+        return results
 
     run.__name__ = read.__name__
     run.__doc__ = read.__doc__

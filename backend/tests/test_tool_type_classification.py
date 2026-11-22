@@ -152,12 +152,17 @@ def test_no_consolidated_management_tool_is_read():
 
 #: Hunting tools whose definition declares ``read_only``: each only queries
 #: telemetry (KQL, Deep Visibility, ES|QL, EQL, HarfangLab hunting GETs).
+#: The NetSuite pair queries too: ``run_netsuite_suiteql`` refuses anything
+#: but a SELECT (or WITH ... SELECT), and ``run_netsuite_saved_search`` runs a
+#: saved search by id through the companion RESTlet's read action.
 DECLARED_READ_ONLY_HUNTS = {
     "run_defender_hunting_query": "defender",
     "run_sentinelone_dv_query": "sentinelone",
     "run_elastic_esql_query": "elastic_security",
     "run_elastic_eql_query": "elastic_security",
     "hunt_harfanglab_process_hash": "harfanglab",
+    "run_netsuite_suiteql": "netsuite",
+    "run_netsuite_saved_search": "netsuite",
 }
 
 

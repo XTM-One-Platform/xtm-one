@@ -183,6 +183,10 @@
     "mitreAttack.getTechniques",
     "tenants.getTenants"
   ],
+  "get_opencrq_organization": [
+    "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
   "get_opencrq_platform_rbac": [
     "platformCapabilities.getPlatformCapabilities",
     "platformGroups.getPlatformGroups",

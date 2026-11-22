@@ -79,6 +79,7 @@ from app.api.v1 import (
     dashboard_public,
     dashboard_widget_packs,
     datasets,
+    decisions,
     desktop_login,
     email_signatures,
     evaluations,
@@ -4373,6 +4374,7 @@ application.include_router(
 application.include_router(
     work_items.router, prefix="/api/v1/work-items", tags=["work-items"]
 )
+application.include_router(decisions.router, prefix="/api/v1/decisions", tags=["decisions"])
 application.include_router(
     shared_state.router, prefix="/api/v1/shared-state", tags=["shared-state"]
 )
