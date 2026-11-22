@@ -51,6 +51,8 @@ function AssetsTab() {
       header: "Asset",
       cell: (a) => <TruncatedText text={a.name} className="max-w-[18rem] font-medium" />,
       csv: (a) => a.name,
+      // The store answers by name: the one server sort.
+      sortValue: (a) => a.name.toLowerCase(),
     },
     {
       key: "category",
@@ -153,6 +155,8 @@ function TechStackTab() {
       header: "Product",
       cell: (i) => <TruncatedText text={[i.vendor, i.product].filter(Boolean).join(" ")} className="max-w-[18rem] font-medium" />,
       csv: (i) => [i.vendor, i.product].filter(Boolean).join(" "),
+      // The inventory answers by vendor and product: the one server sort.
+      sortValue: (i) => `${i.vendor} ${i.product}`.toLowerCase(),
     },
     {
       key: "kind",

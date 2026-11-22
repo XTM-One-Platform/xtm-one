@@ -20736,5 +20736,6 @@
   "No product matches this search": "No product matches this search",
   "About the inventory": "About the inventory",
   "This asset does not exist any more: a newer sync, a merge or a split may have replaced it.": "This asset does not exist any more: a newer sync, a merge or a split may have replaced it.",
-  "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.": "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run."
+  "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.": "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.",
+  "Search source or id": "Search source or id"
 }

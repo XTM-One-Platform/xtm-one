@@ -20736,5 +20736,6 @@
   "No product matches this search": "Ningún producto coincide con esta búsqueda",
   "About the inventory": "Acerca del inventario",
   "This asset does not exist any more: a newer sync, a merge or a split may have replaced it.": "Este activo ya no existe: una sincronización más reciente, una fusión o una separación puede haberlo sustituido.",
-  "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.": "Un activo por elemento real en todas sus fuentes: los registros de varias fuentes sobre un mismo elemento se fusionan por sus identificadores. La pila tecnológica se construye a partir del software que ejecutan los activos."
+  "One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.": "Un activo por elemento real en todas sus fuentes: los registros de varias fuentes sobre un mismo elemento se fusionan por sus identificadores. La pila tecnológica se construye a partir del software que ejecutan los activos.",
+  "Search source or id": "Buscar fuente o identificador"
 }

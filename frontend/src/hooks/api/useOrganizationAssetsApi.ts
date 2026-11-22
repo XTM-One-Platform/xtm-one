@@ -6,11 +6,11 @@
  * Read by the CTEM > Inventory page; every list is paginated on the server (`limit` at most 200).
  */
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 /** One field of a canonical asset: the value shown, the source that set it and every source's value. */
-export interface AssetFieldOrigin {
+interface AssetFieldOrigin {
   value: unknown;
   source?: string | null;
   values?: Record<string, unknown>;
@@ -69,7 +69,7 @@ export interface Page<T> {
   limit: number;
 }
 
-export interface TechStackVersion {
+interface TechStackVersion {
   version: string;
   asset_count: number;
 }
@@ -86,36 +86,6 @@ export interface TechStackItem {
   cpe?: string;
   cpe_source?: string;
   cpe_confidence?: string;
-}
-
-export interface AssetDecision {
-  id: string;
-  kind: "merge" | "split";
-  records: { source: string; external_id: string }[];
-  reason: string;
-  created_at?: string;
-}
-
-export interface AssetIdentitySettings {
-  saved: { key_order: string[]; precedence: Record<string, string[]> };
-  defaults: {
-    key_order: string[];
-    weak_keys: string[];
-    precedence: Record<string, string[]>;
-    fallback_precedence: string[];
-    local_fields: string[];
-  };
-  effective: { key_order: string[]; precedence: Record<string, string[]> };
-}
-
-export interface SbomImportResult {
-  id: string;
-  format: string;
-  document: string;
-  components: number;
-  unknown_versions: number;
-  bundled: number;
-  replaced: boolean;
 }
 
 const KEY = ["organization-assets"] as const;
@@ -157,54 +127,5 @@ export function useTechStackInventory(query: { q?: string; offset: number; limit
     queryKey: [...KEY, "tech-stack", qs],
     queryFn: () => api.get(`/organization-context/inventory/tech-stack?${qs}`),
     placeholderData: keepPreviousData,
-  });
-}
-
-/** How assets are matched and which source each field shows (saved, defaults, effective). */
-export function useAssetIdentitySettings() {
-  return useQuery<AssetIdentitySettings>({
-    queryKey: [...KEY, "identity"],
-    queryFn: () => api.get("/organization-context/assets/identity"),
-  });
-}
-
-/** The administrators' merge and split decisions, newest first. */
-export function useAssetDecisions() {
-  return useQuery<{ items: AssetDecision[] }>({
-    queryKey: [...KEY, "decisions"],
-    queryFn: () => api.get("/organization-context/assets/decisions"),
-  });
-}
-
-/** Merge source records into one asset, or keep two apart (administrators, audited). */
-export function useRecordAssetDecision() {
-  const qc = useQueryClient();
-  return useMutation<AssetDecision, Error, { kind: "merge" | "split"; records: { source: string; external_id: string }[]; reason?: string }>({
-    mutationFn: (body) => api.post("/organization-context/assets/decisions", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
-  });
-}
-
-/** Drop a merge or split: the identity keys decide again. */
-export function useRemoveAssetDecision() {
-  const qc = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => api.delete(`/organization-context/assets/decisions/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
-  });
-}
-
-/** Import a CycloneDX or SPDX JSON SBOM on an asset (administrators, audited). */
-export function useImportAssetSbom(assetId: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation<SbomImportResult, Error, File>({
-    mutationFn: (file) => {
-      const form = new FormData();
-      form.append("file", file, file.name);
-      return api.postForm(`/organization-context/assets/${assetId}/sbom`, form);
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
-    // The dialog says every failure inline (refused over 10,000 components, not CycloneDX or SPDX).
-    meta: { suppressGlobalErrorToast: true },
   });
 }

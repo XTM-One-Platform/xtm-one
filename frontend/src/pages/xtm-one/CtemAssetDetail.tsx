@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Server } from "lucide-react";
+import { Icon } from "@filigran/design-system";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { NotFoundState } from "@/components/ui/not-found-state";
 import { TruncatedText } from "@/components/ui/truncated-text";
@@ -18,6 +18,9 @@ import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetLabel, sourceLabel } from "./ctem/inventory";
 
 const SOFTWARE_PAGE = 100;
+
+/* The library glyph handed to NotFoundState (no direct lucide-react import, src/no-direct-lucide-import.test.ts). */
+const AssetGlyph = ({ className }: { className?: string }) => <Icon name="server" size={16} className={className} />;
 
 /** The fields of the header band, in the order people read them. */
 const HEADER_FIELDS = ["category", "criticality", "internet_facing", "owner"] as const;
@@ -41,7 +44,7 @@ export default function CtemAssetDetail() {
   if (isError && !data) {
     return (
       <NotFoundState
-        icon={Server}
+        icon={AssetGlyph}
         title="Asset not found"
         description="This asset does not exist any more: a newer sync, a merge or a split may have replaced it."
         actionLabel="Back to Inventory"
@@ -64,6 +67,8 @@ export default function CtemAssetDetail() {
       header: "Software",
       cell: (s) => <TruncatedText text={[s.vendor, s.product].filter(Boolean).join(" ")} className="max-w-[18rem] font-medium" />,
       csv: (s) => [s.vendor, s.product].filter(Boolean).join(" "),
+      // The store pages the software by vendor and product: the page reads in that order.
+      sortValue: (s) => `${s.vendor} ${s.product}`.toLowerCase(),
     },
     {
       key: "version",
@@ -97,14 +102,22 @@ export default function CtemAssetDetail() {
   ];
 
   const recordColumns: DataTableColumn<AssetSourceRecord>[] = [
-    { key: "source", header: "Source", cell: (r) => sourceLabel(r.source), csv: (r) => r.source },
+    { key: "source", header: "Source", cell: (r) => sourceLabel(r.source), csv: (r) => r.source, sortValue: (r) => r.source },
     {
       key: "external_id",
       header: "Its id there",
       cell: (r) => <TruncatedText text={r.external_id} className="max-w-[18rem] font-mono" />,
       csv: (r) => r.external_id,
     },
-    { key: "last_seen", header: "Last seen", cell: (r) => date(r.last_seen), csv: (r) => r.last_seen },
+    {
+      key: "last_seen",
+      header: "Last seen",
+      cell: (r) => date(r.last_seen),
+      csv: (r) => r.last_seen,
+      sortValue: (r) => r.last_seen,
+      firstSort: "desc",
+      hideable: true,
+    },
   ];
 
   return (
@@ -146,8 +159,12 @@ export default function CtemAssetDetail() {
           rows={data?.records ?? []}
           columns={recordColumns}
           rowKey={(r) => `${r.source}|${r.external_id}`}
-          paginate={false}
+          defaultSort={{ key: "source", direction: "asc" }}
+          defaultPageSize={25}
+          searchFields={(r) => [r.source, sourceLabel(r.source), r.external_id]}
+          searchPlaceholder={t_i18n("Search source or id")}
           noFilters="The few records merged into one asset."
+          exportName="ctem-asset-sources"
           isLoading={isLoading && !data}
           emptyLabel={t_i18n("No source record.")}
           rowTestId="ctem-asset-record-row"
