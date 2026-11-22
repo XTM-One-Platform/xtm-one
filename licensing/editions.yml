@@ -275,6 +275,7 @@ ee:
   - frontend/src/components/fleets/**
   - frontend/src/components/investigation/**
   - frontend/src/components/memory/**
+  - frontend/src/components/decisions/**
   - frontend/src/components/presentation/**
   - frontend/src/components/report/**
   - frontend/src/components/roi/**
@@ -724,7 +725,6 @@ ce:
   - backend/app/integrations/providers/ovhcloud  # a connector
   - backend/app/integrations/providers/purview  # a connector
   - backend/app/integrations/providers/recorded_future  # a connector
-  - backend/app/integrations/providers/rydoo  # a connector
   - backend/app/integrations/providers/servicenow  # a connector
   - backend/app/integrations/providers/splunk  # a connector
   - backend/app/integrations/providers/virustotal  # a connector
