@@ -14,21 +14,18 @@ import { caseDueFlags } from "./ctem/cases-due";
 import { caseAttention, caseOpenedAt } from "./ctem/case-attention";
 import { CasesAttentionBand } from "./ctem/CasesAttentionBand";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { Icon } from "@filigran/design-system";
-import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { useToast } from "@/components/ui/toast";
 import { useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   CTEM_CASE_STATES,
   useCtemCases,
-  useRecomputeCtemCases,
   type CtemCaseState,
   type CtemCaseSummary,
 } from "@/hooks/api/useCtemCasesApi";
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
+import { CasesFreshness } from "./ctem/CasesFreshness";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
@@ -52,9 +49,7 @@ function initialStateTab(param: string | null): StateTab {
 
 export default function CtemCases() {
   const { t_i18n, intl } = useFormatter();
-  const { toast } = useToast();
   const { data, isLoading, isError, refetch } = useCtemCases();
-  const recompute = useRecomputeCtemCases();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTabState] = useState<StateTab>(() => initialStateTab(searchParams.get("state")));
   // The tab is in the URL (`?state=`): the command center widget opens the list on a state.
@@ -82,28 +77,6 @@ export default function CtemCases() {
   const counts = data?.counts;
   const total = counts ? CTEM_CASE_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
   const rows = tab === "all" ? cases : cases.filter((c) => c.state === tab);
-
-  const runRecompute = () =>
-    recompute.mutate(undefined, {
-      onSuccess: (result) =>
-        toast(
-          result.applied
-            ? {
-                title: t_i18n("Cases recomputed"),
-                // The issues the declared tech stack version keeps out of every case (CTEM-11, #928).
-                ...(result.not_affected
-                  ? { description: t_i18n("{count, plural, one {# issue is not affected by the version you run.} other {# issues are not affected by the version you run.}}", { count: result.not_affected }) }
-                  : {}),
-                variant: "success",
-              }
-            : {
-                title: t_i18n("Nothing recomputed"),
-                description: t_i18n("{products} did not answer: no case was changed.", { products: (result.missing ?? []).join(", ") }),
-                variant: "info",
-              },
-        ),
-      onError: (error) => toast({ title: t_i18n("Recompute failed"), description: error.message, variant: "error" }),
-    });
 
   const DAY_MS = 24 * 3600 * 1000;
   const ageDays = (c: CtemCaseSummary) => {
@@ -280,18 +253,14 @@ export default function CtemCases() {
   return (
     <div className="space-y-6">
       {/* The one CTEM header band (#11660): the definition behind the "i".
-          Cases is a row of the CTEM menu group, not a page under
-          Remediation: the breadcrumb names the group, no back link. */}
+          Cases is a row of the CTEM menu group, titled like Agents or Fleets:
+          no eyebrow, no back link, no refresh button (cases recompute by
+          themselves, dev-docs/ctem-cases.md s.4.3); the freshness line says when. */}
       <CtemPageHeader
-        eyebrow={<span>{t_i18n("CTEM")}</span>}
         title={t_i18n("Cases")}
         hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
         hintLabel={t_i18n("About cases")}
-        actions={
-          <Button variant="outline" className="gap-1.5" onClick={runRecompute} disabled={recompute.isPending}>
-            <Icon name="refresh-cw" size={16} /> {t_i18n("Recompute")}
-          </Button>
-        }
+        actions={<CasesFreshness freshness={data?.freshness} now={now} />}
       />
 
       <CasesAttentionBand cases={cases} now={now} />

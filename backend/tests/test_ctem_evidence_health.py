@@ -22,6 +22,7 @@ def _asset(asset_id: str, state: str, last: str | None = "2026-09-01T00:00:00.00
         "supportingAssetId": asset_id,
         "supportingAssetName": kw.pop("name", f"host-{asset_id}"),
         "supportingAssetDerivedName": None,
+        "markingRefs": kw.pop("markings", []),
         "impact": 0.4,
         "state": state,
         "lastEvidenceAt": last,
@@ -30,8 +31,16 @@ def _asset(asset_id: str, state: str, last: str | None = "2026-09-01T00:00:00.00
     }
 
 
-def _health(*assets: dict[str, Any], sources: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    return {"assets": list(assets), "counts": {}, "sources": sources or [], "total": len(assets)}
+def _health(
+    *assets: dict[str, Any], sources: list[dict[str, Any]] | None = None, markings: Any = None
+) -> dict[str, Any]:
+    return {
+        "assets": list(assets),
+        "counts": {},
+        "markingRefs": [] if markings is None else markings,
+        "sources": sources or [],
+        "total": len(assets),
+    }
 
 
 # ── profile ─────────────────────────────────────────────────────────────
@@ -118,6 +127,34 @@ def test_the_evidence_names_the_scenario_and_keeps_no_finding_content() -> None:
         "impact",
         "sources",
     }
+
+
+TLP_RED = "marking-definition--5e57c739-391a-4eb3-b6be-7d15ca92d5ed"
+
+
+def test_a_marked_asset_is_never_named_in_a_signal() -> None:
+    gaps = health.gaps_of(
+        SCENARIO, _health(_asset("a1", "expired", name="srv-red", markings=[TLP_RED]), _asset("a2", "expired"))
+    )
+    assert [g.evidence["opencrq_asset_ids"] for g in gaps] == [["a2"]]
+    assert all("srv-red" not in g.subject_label for g in gaps)
+
+
+def test_an_asset_whose_markings_are_not_stated_fails_closed() -> None:
+    asset = _asset("a1", "expired")
+    del asset["markingRefs"]
+    assert health.gaps_of(SCENARIO, _health(asset)) == []
+
+
+def test_a_marked_or_unstated_scenario_names_no_asset_but_keeps_an_emptied_source() -> None:
+    emptied = [
+        {"kind": "openaev-findings-sync", "lastRunAt": None, "latestTotal": 0, "previousTotal": 9, "emptied": True}
+    ]
+    marked = health.gaps_of(SCENARIO, _health(_asset("a1", "expired"), sources=emptied, markings=[TLP_RED]))
+    assert [g.state for g in marked] == ["source_emptied"]
+    unstated = _health(_asset("a1", "expired"))
+    del unstated["markingRefs"]
+    assert health.gaps_of(SCENARIO, unstated) == []
 
 
 def test_the_key_moves_only_when_the_state_or_the_last_evidence_moves() -> None:

@@ -113,6 +113,10 @@ ASSET_TAXONOMY: dict[str, tuple[str, ...]] = {
         "ai_gateway",
         "vulnerability_scanner",
     ),
+    #: What the organization builds and ships (#1233): a third-party dependency is not an asset, it is
+    #: the software (SBOM) of the repository; container images, registries and IaC templates stay where
+    #: they are. An OpenAEV or OpenCTI without the value receives ``generic_asset`` (asset-model.md).
+    "source_code": ("code_repository", "ci_cd_pipeline", "package_registry", "software_package", "code_other"),
     "generic_asset": (),
 }
 ASSET_CATEGORIES: tuple[str, ...] = tuple(ASSET_TAXONOMY)
@@ -152,6 +156,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "attack_surface",
     # CTEM-28: read by the evidence health pass, never dumped into the always-on block.
     "evidence_health",
+    # Cases recompute interval (#1216): read by the scheduled cases pass, never dumped into the always-on block.
+    "cases_recompute",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -342,6 +348,7 @@ class AssetEntry(BaseModel):
         "saas_application",
         "ai_target",
         "security_platform",
+        "source_code",
         "generic_asset",
     ] = "generic_asset"
     #: A subcategory of ``category`` (empty: none chosen).
@@ -599,6 +606,20 @@ class EvidenceHealthPass(BaseModel):
     cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
 
 
+class CasesRecompute(BaseModel):
+    """How often the shared CTEM cases are recomputed from the source products (``dev-docs/ctem-cases.md`` s.4.3).
+
+    On by default: cases are inferred, never refreshed by hand. The scheduled
+    pass reads with the CTEM loop fleet's run-as users, else the recent viewers
+    of Cases; a viewer opening the page past the interval gets one too.
+    """
+
+    model_config = _Strict
+
+    #: Minutes between two scheduled recomputes (every 15 minutes by default, at least 5).
+    interval_minutes: int = Field(default=15, ge=5, le=24 * 60)
+
+
 def normalize_address_ranges(value: list[str]) -> list[str]:
     """CIDR blocks in their network form, each once (a bare address is its /32 or /128)."""
     import ipaddress
@@ -664,6 +685,8 @@ class OrganizationProfile(BaseModel):
     attack_surface: AttackSurfacePass = Field(default_factory=AttackSurfacePass)
     #: The opt-in evidence health pass: evidence decay and blind spots (CTEM-28).
     evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
+    #: How often the shared CTEM cases are recomputed with no user action.
+    cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
     #: The Exposure Posture score (0-100) the organization aims for, drawn as the
     #: target line of the CTEM Governance & Risk page (#11547 S2e). Empty: no target,
     #: the page asks for one. Not a contract field and never preloaded.

@@ -172,6 +172,7 @@ def _patch_route(monkeypatch: pytest.MonkeyPatch, row: Any, *, xtm_one: bool) ->
     from unittest.mock import PropertyMock
 
     from app.api.v1 import platform_settings_helpers
+    from app.core import config
     from app.services import audit
 
     audits: list[dict[str, Any]] = []
@@ -188,8 +189,11 @@ def _patch_route(monkeypatch: pytest.MonkeyPatch, row: Any, *, xtm_one: bool) ->
     monkeypatch.setattr(platform_settings_helpers, "get_platform_settings", _settings_row)
     monkeypatch.setattr(audit, "log_audit", _log_audit)
     monkeypatch.setattr(prompt, "has_saved_profile", _has_profile)
-    monkeypatch.setattr("app.core.config.Settings.is_xtm_one", PropertyMock(return_value=xtm_one))
-    monkeypatch.setattr("app.core.config.Settings.is_copilot_like", PropertyMock(return_value=not xtm_one))
+    # Patch the class of the instance the route reads, never config.Settings by name:
+    # after a module reload the two differ and the patch would miss (#1239).
+    settings_class = type(config.settings)
+    monkeypatch.setattr(settings_class, "is_xtm_one", PropertyMock(return_value=xtm_one))
+    monkeypatch.setattr(settings_class, "is_copilot_like", PropertyMock(return_value=not xtm_one))
     return audits
 
 

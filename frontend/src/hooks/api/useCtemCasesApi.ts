@@ -211,12 +211,24 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   ticketing?: CtemTicketingTarget;
 }
 
+/**
+ * When the shared cases were last recomputed from the source products, with no
+ * user action (dev-docs/ctem-cases.md s.4.3), and the products that did not
+ * answer since. Absent on an API older than the automatic recompute.
+ */
+export interface CtemCasesFreshness {
+  updated_at: string | null;
+  missing: string[];
+  missing_at: string | null;
+}
+
 export interface CtemCaseList {
   vertical: string;
   counts: Record<CtemCaseState, number>;
   cases: CtemCaseSummary[];
   details_unavailable: string[];
   ticketing?: CtemTicketingTarget;
+  freshness?: CtemCasesFreshness;
 }
 
 export interface CtemCaseUpdate {
@@ -234,14 +246,6 @@ export interface CtemCaseUpdate {
 export interface CtemCaseBulkResult {
   updated: string[];
   failed: { id: string; reason: string }[];
-}
-
-export interface CtemRecomputeResult {
-  applied: boolean;
-  missing?: string[];
-  /** Issues kept out of every case: OpenCTI relates them to none of the declared tech stack versions (CTEM-11). */
-  not_affected?: number;
-  [key: string]: unknown;
 }
 
 export function isRestrictedIssue(issue: CtemCaseIssue): issue is CtemCaseRestrictedIssue {
@@ -382,14 +386,6 @@ export function useSplitCtemCase() {
   const qc = useQueryClient();
   return useMutation<CtemCaseDetail, Error, { title: string; issue_ids: string[]; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/split", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
-  });
-}
-
-export function useRecomputeCtemCases() {
-  const qc = useQueryClient();
-  return useMutation<CtemRecomputeResult, Error, void>({
-    mutationFn: () => api.post("/ctem-cases/recompute"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
   });
 }
