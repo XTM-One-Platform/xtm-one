@@ -20468,5 +20468,7 @@
   "Kept as a fingerprint only, never the value": "Kept as a fingerprint only, never the value",
   "Named in": "Named in",
   "Organization criticality": "Organization criticality",
-  "From {source}": "From {source}"
+  "From {source}": "From {source}",
+  "Freshness": "Freshness",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Stale: not seen by OpenAEV past the tenant's threshold"
 }

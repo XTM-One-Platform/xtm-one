@@ -20468,5 +20468,7 @@
   "Kept as a fingerprint only, never the value": "Se guarda solo como huella, nunca el valor",
   "Named in": "Citado en",
   "Organization criticality": "Criticidad de la organización",
-  "From {source}": "Desde {source}"
+  "From {source}": "Desde {source}",
+  "Freshness": "Actualidad",
+  "Stale: not seen by OpenAEV past the tenant's threshold": "Obsoleto: OpenAEV no lo ha visto más allá del umbral del tenant"
 }
