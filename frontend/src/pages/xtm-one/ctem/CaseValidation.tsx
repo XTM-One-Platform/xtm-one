@@ -63,7 +63,7 @@ export function CaseValidation({
     waiting || (answered && !!gate?.evidence),
   );
   const item = waiting ? ((items.data ?? []).find(waitsForAnswer) ?? null) : null;
-  const chosen = answered ? chosenOptionLabel(items.data?.[0]?.ask?.options, gate?.evidence) : null;
+  const chosen = answered ? chosenOptionLabel(items.data?.[0], gate?.evidence) : null;
   const auto = autoPassReason(gate?.to, rows[0]);
   const who = gate?.to === "answered" ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
 

@@ -60,12 +60,20 @@ describe("case-validation helpers", () => {
     expect(autoPassReason("waited", SAFE)).toBeNull();
   });
 
-  it("reads the chosen option's label, never inventing one", () => {
-    const options = [{ key: "A", label: "Run it" }, { key: "B", label: "Skip it" }];
-    expect(chosenOptionLabel(options, "A")).toBe("Run it");
-    expect(chosenOptionLabel(options, "C")).toBeNull();
+  it("reads the chosen label from payload.answer, the shape the answer endpoint leaves (ask cleared)", () => {
+    const answered = { ask: null, payload: { answer: { option: "A", label: "Run the test that changes the target" } } };
+    expect(chosenOptionLabel(answered, "A")).toBe("Run the test that changes the target");
+    expect(chosenOptionLabel(answered, "a")).toBe("Run the test that changes the target");
+    expect(chosenOptionLabel(answered, "B")).toBeNull();
+    expect(chosenOptionLabel({ ask: null, payload: { answer: { option: "A", label: " " } } }, "A")).toBeNull();
+  });
+
+  it("falls back to the ask's options, never inventing a label", () => {
+    const item = { payload: {}, ask: { options: [{ key: "A", label: "Run it" }, { key: "B", label: "Skip it" }] } };
+    expect(chosenOptionLabel(item, "A")).toBe("Run it");
+    expect(chosenOptionLabel(item, "C")).toBeNull();
     expect(chosenOptionLabel(undefined, "A")).toBeNull();
-    expect(chosenOptionLabel(options, null)).toBeNull();
+    expect(chosenOptionLabel(item, null)).toBeNull();
   });
 });
 
@@ -91,7 +99,15 @@ describe("CaseValidation", () => {
   });
 
   it("names the chosen option's label once a person answered, from the closed decision item", () => {
-    state.items = [{ id: "w1", status: "done", needs_human: false, ask: { question: "Run it?", options: [{ key: "A", label: "Run it" }] } }];
+    state.items = [
+      {
+        id: "w1",
+        status: "done",
+        needs_human: false,
+        ask: null,
+        payload: { answer: { option: "A", label: "Run it", question: "Run it?", answered_at: "2026-11-21T10:05:00Z" } },
+      },
+    ];
     const history = [ev({ from: "ctem.validation.non_readonly", to: "answered", reason: "u1", evidence: "A" })];
     renderWithProviders(
       <CaseValidation caseId="c1" validations={[SAFE]} history={history} personName={(id) => (id === "u1" ? "Ada" : null)} />,

@@ -40,17 +40,34 @@ export function safeModeOf(v: Pick<Validation, "safe_mode">): keyof typeof SAFE_
   return null;
 }
 
+/** The part of a decision work item the chosen label is read from. */
+export interface AnsweredDecision {
+  payload?: Record<string, unknown> | null;
+  ask?: { options?: readonly { key: string; label: string }[] | null } | null;
+}
+
+function sameKey(a: unknown, key: string): boolean {
+  return typeof a === "string" && a.toLowerCase() === key.toLowerCase();
+}
+
 /**
- * The label of the option a person chose on gate A, read from the decision
- * item's own options (UX round 1 B1: never the key alone). Null when the item
- * or the option is not visible to the viewer: the card then names the key.
+ * The label of the option a person chose on gate A (UX rounds 1 and 2 B1:
+ * never the key alone). An answered item has no ask any more: the answer
+ * endpoint clears it and stores the choice in `payload.answer`
+ * ({option, label}), so that is read first; the ask's options are a second
+ * source for an item still carrying them. Null when the item or the option is
+ * not visible to the viewer: the card then names the key.
  */
 export function chosenOptionLabel(
-  options: readonly { key: string; label: string }[] | null | undefined,
+  item: AnsweredDecision | null | undefined,
   key: string | null | undefined,
 ): string | null {
-  if (!key) return null;
-  const label = options?.find((o) => o.key === key)?.label?.trim();
+  if (!key || !item) return null;
+  const answer = item.payload?.answer as { option?: unknown; label?: unknown } | undefined;
+  if (answer && sameKey(answer.option, key) && typeof answer.label === "string" && answer.label.trim()) {
+    return answer.label.trim();
+  }
+  const label = item.ask?.options?.find((o) => sameKey(o.key, key))?.label?.trim();
   return label || null;
 }
 
