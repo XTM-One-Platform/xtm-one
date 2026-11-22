@@ -2486,6 +2486,7 @@ def build_sandbox_workspace_tools(
         absent: set[str] = set()
         dropped: list[str] = []
         extra: list[str] = []
+        removals: list[str] = []
         if outside is not None and outside.paths:
             extra = list(outside.paths)
             lead = (
@@ -2599,11 +2600,42 @@ def build_sandbox_workspace_tools(
             ours[repo_path] = hashlib.sha256(data).hexdigest()
         for repo_path in dropped:
             ours.pop(repo_path, None)
+        # A record a from_checkout commit moved (#1029) keeps the checkout-time hash of every file the
+        # commit did not write, so the workspace holds them older than the branch commit it names when
+        # the branch gained commits the checkout never held (main merged in on the server). The branch
+        # side of each such file is read at that commit, else a file only the ref changed was kept over
+        # it and a file both changed lost what the branch had gained, reported as a clean merge.
+        refreshed: list[str] = []
+        if record.base_commit and record.commit and not _same_commit(record.base_commit, record.commit):
+            at_branch = await _archive_tree(
+                record.provider, record.repository, record.commit, scope, operation="checkout_rebase"
+            )
+            if isinstance(at_branch, ToolResult):
+                return at_branch
+            stale, gone = rebasing.stale_branch_sides(
+                {p: f for p, f in checked_out.files.items() if p not in pulled},
+                ours,
+                dict(at_branch[0].files),
+                in_scope=checked_out.covers,
+            )
+            for repo_path, data in stale.items():
+                pulled[repo_path] = data
+                ours[repo_path] = hashlib.sha256(data).hexdigest()
+            for repo_path in gone:
+                ours.pop(repo_path, None)
+                removals.append(record.workspace_path(repo_path))
+            refreshed = sorted([*stale, *gone])
+            if refreshed and base_files is None and merge_base and _same_commit(merge_base, record.commit):
+                # The branch commit is the merge base itself: its tree, not the older record, is the base.
+                base_files = dict(at_branch[0].files)
+                record_for_plan = dataclasses.replace(
+                    record, files=rebasing.base_files_of(record, base_files, checked_out=checked_out)
+                )
         steps = rebasing.plan(record_for_plan, ours, theirs, in_scope=record.covers, checked_out=record.files)
-        summary = rebasing.RebaseSummary(pulled=sorted(extra))
+        summary = rebasing.RebaseSummary(pulled=sorted(extra), refreshed=refreshed)
         # The branch's files brought in are written as they are unless a step below replaces them.
         writes: dict[str, bytes] = dict(pulled)
-        removals: list[str] = [record.workspace_path(p) for p in dropped]
+        removals.extend(record.workspace_path(p) for p in dropped)
         gate = asyncio.Semaphore(6)
 
         async def merged(step: rebasing.FileStep) -> rebasing.FileMerge | tuple[None, int, str]:
