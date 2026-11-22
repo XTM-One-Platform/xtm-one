@@ -656,6 +656,69 @@ def record_treatment_plan(
     return case
 
 
+#: An OpenCTI object id: its internal UUID or its STIX id ``grouping--<uuid>`` (CTEM-16-UI, #1115).
+_GROUPING_ID = re.compile(
+    r"^(?:grouping--)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+)
+#: An OpenCTI Grouping page: ``https://host/dashboard/analyses/groupings/<uuid>``.
+_GROUPING_URL = re.compile(
+    r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/groupings/([0-9a-fA-F-]{36})(?:/[A-Za-z0-9._-]*)?$"
+)
+
+
+def record_threat_package(
+    db: AsyncSession,
+    case: CtemCase,
+    package: dict[str, Any],
+    previous: dict[str, Any] | None = None,
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Attach the threat package the review step drafted to the case (CTEM-16-UI, #1115).
+
+    *package* is ``{grouping_id, name, url, coverage_id}``: the OpenCTI Grouping
+    the orchestrator drafted (``create_opencti_container``), its name, its
+    OpenCTI page for that id, and the security coverage requested on it
+    (``manage_opencti_security_coverage`` action ``create``), when requested.
+    One ``threat_package`` event: ``to`` the Grouping id, ``reason`` the name,
+    ``evidence`` the url, ``from`` the coverage id; the view serves the name,
+    the url and the ids only to a viewer who reads OpenCTI. *previous* is the
+    package already attached: the same package again writes nothing. Never
+    moves the case state. The caller commits.
+    """
+    if not isinstance(package, dict):
+        raise rules.CaseRuleError("threat_package must be an object with grouping_id, name, url and coverage_id")
+    grouping_id = str(package.get("grouping_id") or "").strip()
+    found = _GROUPING_ID.match(grouping_id)
+    if found is None:
+        raise rules.CaseRuleError(
+            "threat_package.grouping_id must be the OpenCTI Grouping id (its UUID, or its STIX id: grouping-- then the UUID)"
+        )
+    url = str(package.get("url") or "").strip()
+    match = _GROUPING_URL.match(url) if url else None
+    if url and (match is None or match.group(1).lower() != found.group(1).lower()):
+        raise rules.CaseRuleError("threat_package.url must be the OpenCTI page of that Grouping (its groupings page)")
+    name = str(package.get("name") or "").strip()[:300]
+    coverage_id = str(package.get("coverage_id") or "").strip()[:300]
+    stored = {"grouping_id": grouping_id, "name": name or None, "url": url or None, "coverage_id": coverage_id or None}
+    if previous and all(previous.get(k) == v for k, v in stored.items()):
+        return case
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "threat_package",
+            now or datetime.now(UTC),
+            from_value=stored["coverage_id"],
+            to_value=grouping_id,
+            reason=stored["name"],
+            evidence=stored["url"],
+        )
+    )
+    return case
+
+
 #: The validation kind written when the source closed every member of a case (CTEM-25).
 RESCAN_KIND = "rescan"
 

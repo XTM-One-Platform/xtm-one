@@ -603,6 +603,7 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     read = await read_open_issues(db, user_id, vertical, members=members)
     view = ViewerView(missing=list(read.missing), complete=read.complete)
     view.opencrq = await _reads_opencrq(db, user_id)
+    view.opencti = await _reads_opencti(db, user_id)
     for issue in read.closed:
         view.issues[issue.member_id] = issue
     for issue in read.issues:
@@ -622,6 +623,16 @@ async def _reads_opencrq(db: AsyncSession, user_id: str) -> bool:
         return await _user_creds(db, user_id, "opencrq") is not None
     except Exception as exc:  # unreadable is not readable: the names stay restricted
         logger.info("CTEM cases: OpenCRQ access unreadable for %s: %s", user_id, format_exception_message(exc))
+        return False
+
+
+async def _reads_opencti(db: AsyncSession, user_id: str) -> bool:
+    """Whether *user_id* reads OpenCTI with their own credentials (CTEM-16-UI, #1115): the
+    gate on the Grouping name, ids and link of a case's threat package."""
+    try:
+        return await _user_creds(db, user_id, "opencti") is not None
+    except Exception as exc:  # unreadable is not readable: the package stays restricted
+        logger.info("CTEM cases: OpenCTI access unreadable for %s: %s", user_id, format_exception_message(exc))
         return False
 
 
