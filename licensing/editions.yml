@@ -560,6 +560,7 @@ ee:
   - frontend/src/pages/settings/OrganizationAssetsImportDialog.tsx
   - frontend/src/pages/settings/OrganizationFillAgentDialog.tsx  # creates an agent and its schedule (#11888)
   - frontend/src/pages/settings/OrganizationExposureCards.tsx
+  - frontend/src/pages/settings/OrganizationOutsideLensCard.tsx  # CTEM-26 outside lens settings (#1140)
   - frontend/src/hooks/api/useCustomDashboardApi.ts
   - frontend/src/hooks/api/useWidgetPackApi.ts
   - frontend/src/hooks/api/dashboard-access.ts
