@@ -305,7 +305,7 @@ export function OrganizationListEditor<V>({
           disabledReason: (key) => (byKey.get(key)?.removed ? t_i18n("Removed: undo it to select it.") : undefined),
           actions: (
             <>
-              {bulkFields.length > 0 && <BulkSet fields={bulkFields} onApply={(patch) => onRows(patchRows(rows, selected, patch as Partial<V>))} />}
+              {bulkFields.length > 0 && <BulkSet fields={bulkFields} onApply={(patch) => onRows(patchRows(rows, selected, patch as Partial<V>, locked?.column))} />}
               <Button variant="secondary" className="gap-1.5" onClick={bulkRemove} data-testid="settings.organization.bulk-remove">
                 <Icon name="trash-2" size={16} aria-hidden /> {t_i18n("Remove")}
               </Button>
