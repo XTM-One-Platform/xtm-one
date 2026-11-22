@@ -567,10 +567,10 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
-      {/* The loop's signals by trigger path and lens (CTEM-30, #937): a path with no source reads "Not configured". */}
+      {/* The loop's signals by trigger path and lens (CTEM-30, #937): each path's status and Connect are the Signal sources dialog's (#1194). */}
       {stage === "discovery" && vertical === "cyber" && (
         <>
-          <TriggerPathsCard onConnect={() => navigate("/")} />
+          <TriggerPathsCard />
           <SignalSourcesDialog />
         </>
       )}

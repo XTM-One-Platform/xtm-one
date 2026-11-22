@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { SignalSourcesDialog } from "./SignalSourcesDialog";
+import { TriggerPathsCard } from "./TriggerPathsCard";
 import { connectHref, connectTarget, connectedCount, pathStatus } from "./signal-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -94,6 +95,33 @@ describe("SignalSourcesDialog", () => {
     const code = rows.find((r) => r.getAttribute("data-path") === "code_flaw") as HTMLElement;
     expect(within(code).getByText("Not connected")).toBeTruthy();
     expect(within(code).getByRole("button", { name: "Connect" })).toBeTruthy();
+  });
+
+  it("agrees with the Discovery card on every path, whatever `configured` says (UX round 1 B1 on #1194)", async () => {
+    // The lab case: configured=true with status not_connected, configured=false with status connected.
+    const mixed: CtemSignalPath[] = [
+      path({ id: "code_flaw", label: "Code flaw", configured: true, status: "not_connected", sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }] }),
+      path({ id: "third_party_event", label: "Third party", default_lens: "world", configured: false, status: "connected", sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }] }),
+      path({ id: "blind_spot", label: "Blind spot", default_lens: "outside", configured: false, status: "agents_api", sources: [] }),
+    ];
+    get.mockResolvedValue({ paths: mixed });
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/?signal-sources=1"]}>
+        <TriggerPathsCard />
+        <SignalSourcesDialog />
+      </MemoryRouter>,
+    );
+    const dialogRows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const cardRows = await screen.findAllByTestId("ctem-trigger-path");
+    const statusOf = (rows: HTMLElement[]) => Object.fromEntries(rows.map((r) => [r.getAttribute("data-path"), r.getAttribute("data-status")]));
+    expect(statusOf(cardRows)).toEqual(statusOf(dialogRows));
+    expect(statusOf(cardRows)).toEqual({ code_flaw: "not_connected", third_party_event: "connected", blind_spot: "agents_api" });
+    const code = cardRows.find((r) => r.getAttribute("data-path") === "code_flaw") as HTMLElement;
+    // The open modal hides the page behind it from the accessibility tree.
+    expect(within(code).getByRole("button", { name: "Connect", hidden: true })).toBeTruthy();
+    const third = cardRows.find((r) => r.getAttribute("data-path") === "third_party_event") as HTMLElement;
+    expect(within(third).queryByRole("button", { name: "Connect", hidden: true })).toBeNull();
+    expect(screen.getByText("1 of 3 trigger paths connected")).toBeTruthy();
   });
 
   it("stays closed without the query parameter", () => {
