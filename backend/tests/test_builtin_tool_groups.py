@@ -39,7 +39,7 @@ _MIN_FUNCTIONS = {
     "web": 3,
     "design": 12,
     "cti": 6,
-    "coordination": 24,
+    "coordination": 25,
     "generate_report": 3,
     "deep_investigation": 2,
     "memory_steward": 3,

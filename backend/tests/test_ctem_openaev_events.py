@@ -73,6 +73,29 @@ def test_the_score_degradation_is_a_path_8_signal() -> None:
     assert "mitigation_regression" in listeners.paths_with_listener()
 
 
+def test_a_critical_asset_reached_is_a_path_4_signal() -> None:
+    # CTEM-13: OpenAEV names the simulation only; the subject is the run, linked back to OpenAEV.
+    found = listeners.match(
+        "openaev",
+        "critical_asset_reached",
+        _delivery("critical_asset_reached", "SIMULATION", "sim-1", "[simulation] Web"),
+    )
+    assert found is not None
+    row, signal = found
+    assert row.trigger_path == "proven_exploitable" and row.lens == "inside"
+    assert signal["external_id"] == "sim-1"
+    assert signal["evidence"]["event"] == "critical_asset_reached"
+    assert signal["evidence"]["platform_url"] == "https://aev.example"
+    assert "proven_exploitable" in listeners.paths_with_listener()
+    # The same event on another resource records nothing.
+    assert (
+        listeners.match("openaev", "critical_asset_reached", _delivery("critical_asset_reached", "SCENARIO", "x"))
+        is None
+    )
+    # A case that waits on the simulation is moved by it.
+    assert "critical_asset_reached" in aev.CASE_EVENT_KEYS
+
+
 def test_the_stale_asset_trigger_filters_on_the_stale_status() -> None:
     # CTEM-27: OpenAEV's freshness job raises an asset update on the STALE transition;
     # the trigger keeps only updates of an asset whose status reads STALE.

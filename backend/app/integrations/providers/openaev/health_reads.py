@@ -4,7 +4,8 @@
 
 #101 S15b-2c (``dev-docs/platform-health.md`` 13.5): every count is platform-wide
 (the integration's tenant), none takes or returns a collector, injector or
-executor id (13.4 scope). No argument selects a write; every request is a GET.
+executor id (13.4 scope). No argument selects a write; every request is a GET
+or a ``POST .../search`` (a read under SEARCH access control).
 
 * ``get_openaev_platform_health``: ``GET /api/settings`` (platform version,
   licence state and expiry, XTM Composer, XTM Hub, SMTP and IMAP availability)
@@ -17,6 +18,24 @@ executor id (13.4 scope). No argument selects a write; every request is a GET.
   SIMULATION), counted by type, with the overdue ones (created more than their
   expiration time ago) and the oldest creation time. The route is read only:
   this tool never posts a verdict (``expectations.py`` keeps the write path).
+
+S15b-2c2 adds two reads. Both send ``POST .../search`` with ``size`` 1 and read
+``totalElements`` only: a search is a read (SEARCH access control), no row
+leaves the module.
+
+* ``get_openaev_data_health``: ``POST /api/scenarios/search``,
+  ``/api/exercises/search`` and ``/api/atomic-testings/search`` counted in total
+  and by ``*_updated_at`` over the last 7 days vs the 3 weeks before (the
+  ``*_created_at`` fields are not ``@Queryable`` in OpenAEV, so growth is read
+  on updates and says so), simulations ``RUNNING`` with an ``exercise_end_date``
+  over 24 h past, and simulations ``CANCELED`` updated in 24 h (OpenAEV has no
+  failed simulation status). Completeness (scenarios with no inject, simulations
+  with no target, assets in no group, injects with no expectation) and duplicate
+  assets are not filterable through the search API: answered ``not exposed``.
+* ``get_openaev_error_rate``: atomic testings whose ``inject_status`` is in
+  ``ExecutionStatus.ERROR_STATUSES`` (ERROR, PARTIAL) per day over 7 days, by
+  ``inject_updated_at``, with the 7-day daily mean. OpenAEV exposes no platform
+  error log through its API, so that part is ``not exposed``.
 
 A request the role cannot make answers its own line and the other still
 answers; the checker reports the check that needs it as ``not_run``.
@@ -31,7 +50,7 @@ from typing import Any, Final
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api
+from ._common import _api, _search_body
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +129,109 @@ def _expectations_answer(rows: list[dict[str, Any]], now: datetime) -> str:
     )
 
 
+#: ``ExecutionStatus.ERROR_STATUSES`` that the filter pickers expose (the two
+#: deprecated ``MAYBE_*`` values are ``@Hidden`` and never written any more).
+_ERROR_STATUSES: Final = ("ERROR", "PARTIAL")
+
+#: (search path, updated-at field, label) of the objects counted by the data read.
+_VOLUME: Final = (
+    ("/api/scenarios/search", "scenario_updated_at", "Scenarios"),
+    ("/api/exercises/search", "exercise_updated_at", "Simulations"),
+    ("/api/atomic-testings/search", "inject_updated_at", "Atomic testings"),
+)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _window(field: str, start: datetime | None, end: datetime | None) -> list[dict[str, Any]]:
+    clauses: list[dict[str, Any]] = []
+    if start is not None:
+        clauses.append({"key": field, "operator": "gte", "values": [_iso(start)]})
+    if end is not None:
+        clauses.append({"key": field, "operator": "lt", "values": [_iso(end)]})
+    return clauses
+
+
 def register(base_url: str, headers: dict[str, str], executor: CallableToolExecutor) -> list[ToolDefinition]:
+    async def _count(path: str, filters: list[dict[str, Any]], action: str) -> tuple[int | None, str | None]:
+        group = {"mode": "and", "filters": filters} if filters else None
+        resp, err = await _api(base_url, headers, "post", path, action, json=_search_body(size=1, filter_group=group))
+        if err:
+            return None, err
+        body = resp.json() if resp is not None else {}
+        total = body.get("totalElements") if isinstance(body, dict) else None
+        return (int(total), None) if isinstance(total, int) else (None, "no totalElements in the answer")
+
+    async def get_openaev_data_health() -> str:
+        now = datetime.now(UTC)
+        week, prior = now - timedelta(days=7), now - timedelta(days=28)
+        lines: list[str] = []
+        for path, field, label in _VOLUME:
+            total, err = await _count(path, [], f"count {label.lower()}")
+            if err:
+                lines.append(f"{label}: {err}")
+                continue
+            recent, err_recent = await _count(path, _window(field, week, None), f"count {label.lower()} updated")
+            before, err_before = await _count(path, _window(field, prior, week), f"count {label.lower()} updated")
+            if err_recent or err_before or recent is None or before is None:
+                lines.append(f"{label}: total {total}; updates per week: {err_recent or err_before}")
+                continue
+            lines.append(
+                f"{label}: total {total}; updated last 7 days {recent}, "
+                f"weekly mean of the 3 weeks before {before / 3:.1f}"
+            )
+        running, err = await _count(
+            "/api/exercises/search",
+            [
+                {"key": "exercise_status", "operator": "eq", "values": ["RUNNING"]},
+                *_window("exercise_end_date", None, now - timedelta(hours=24)),
+            ],
+            "count simulations running past their end",
+        )
+        lines.append(f"Simulations running over 24 h past their end: {err or running}")
+        canceled, err = await _count(
+            "/api/exercises/search",
+            [
+                {"key": "exercise_status", "operator": "eq", "values": ["CANCELED"]},
+                *_window("exercise_updated_at", now - timedelta(hours=24), None),
+            ],
+            "count simulations canceled",
+        )
+        lines.append(f"Simulations canceled in the last 24 h: {err or canceled}")
+        lines.append(
+            "Completeness (scenarios with no inject, simulations with no target, assets in no group, "
+            "injects with no expectation) and duplicate assets: not exposed by the OpenAEV search API"
+        )
+        lines.append("Creation times are not filterable in OpenAEV: growth is read on updates")
+        return "OpenAEV data health:\n" + "\n".join(lines)
+
+    async def get_openaev_error_rate() -> str:
+        today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        status = {"key": "inject_status", "operator": "eq", "values": list(_ERROR_STATUSES)}
+        days: list[str] = []
+        counts: list[int] = []
+        for back in range(6, -1, -1):
+            start = today - timedelta(days=back)
+            end = start + timedelta(days=1)
+            count, err = await _count(
+                "/api/atomic-testings/search",
+                [status, *_window("inject_updated_at", start, end)],
+                "count atomic testings in error",
+            )
+            if err or count is None:
+                return f"OpenAEV error rate: {err}"
+            counts.append(count)
+            days.append(f"{start.date().isoformat()} {count}")
+        mean = sum(counts) / len(counts)
+        return (
+            f"OpenAEV error rate (atomic testings in {'/'.join(_ERROR_STATUSES)}, by update day, UTC):\n"
+            + "\n".join(days)
+            + f"\n7-day daily mean {mean:.1f}; today {counts[-1]}"
+            + "\nPlatform error log and failed internal jobs: not exposed by the OpenAEV API"
+        )
+
     async def get_openaev_platform_health() -> str:
         lines: list[str] = []
         resp, err = await _api(base_url, headers, "get", "/api/settings", "read platform settings")
@@ -141,6 +262,8 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
 
     executor.register("get_openaev_platform_health", get_openaev_platform_health)
     executor.register("list_openaev_expectations_due", list_openaev_expectations_due)
+    executor.register("get_openaev_data_health", get_openaev_data_health)
+    executor.register("get_openaev_error_rate", get_openaev_error_rate)
 
     return [
         ToolDefinition(
@@ -152,6 +275,18 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         ToolDefinition(
             name="list_openaev_expectations_due",
             description="Read-only: OpenAEV expectations with no result yet, counted by type, overdue and oldest.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_openaev_data_health",
+            description="Read-only: OpenAEV scenario, simulation and atomic test counts, weekly activity, simulations stuck or canceled.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="get_openaev_error_rate",
+            description="Read-only: OpenAEV atomic tests in error per day over 7 days, with the daily mean.",
             input_schema={"type": "object", "properties": {}, "required": []},
             source=_SOURCE,
         ),

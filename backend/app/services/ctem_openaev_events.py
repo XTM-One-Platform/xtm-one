@@ -17,9 +17,10 @@ Two things happen there, whatever assignment the delivery reaches:
   events), read the result in OpenAEV and write it on the case with
   ``record_ctem_case_validation``, which resolves or reopens the case.
 
-Path 4 (an attack path reaching a critical asset) needs an OpenAEV event
-that does not exist yet (CTEM-13); it plugs into :data:`CASE_EVENT_KEYS`
-and the signal table when it ships.
+Path 4 (an attack path reaching a critical asset, OpenAEV's
+``CRITICAL_ASSET_REACHED`` since CTEM-13) records a ``proven_exploitable``
+signal through the signal table and, as a case event key, moves the cases
+that wait on the simulation.
 """
 
 from __future__ import annotations
@@ -41,7 +42,9 @@ PROVIDER = "openaev"
 #: The platform event a case raises when an OpenAEV result it waits on arrives.
 CASE_VALIDATION_FINISHED = "ctem_case.validation_finished"
 #: The delivered events that can carry a case's validation or re-test result.
-CASE_EVENT_KEYS: frozenset[str] = frozenset({"simulation_finished", "finding_updated", "finding_deleted"})
+CASE_EVENT_KEYS: frozenset[str] = frozenset(
+    {"simulation_finished", "finding_updated", "finding_deleted", "critical_asset_reached"}
+)
 #: The states in which a case still waits on a result (a resolved case reopens through a failed re-test).
 WAITING_STATES: tuple[str, ...] = ("needs_attention", "in_progress", "mitigated_watching", "resolved")
 #: Most cases one delivery is matched against.

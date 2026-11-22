@@ -20052,6 +20052,7 @@
   "OpenAEV result received": "Resultado de OpenAEV recibido",
   "Finding updated": "Hallazgo modificado",
   "Scenario score degraded": "Puntuación del escenario degradada",
+  "Critical asset reached": "Activo crítico alcanzado",
   "Vulnerability created": "Vulnerabilidad creada",
   "Triggers when a finding changes in OpenAEV (assets, occurrences, status).": "Se activa cuando un hallazgo cambia en OpenAEV (activos, ocurrencias, estado).",
   "Triggers when a finding is deleted in OpenAEV.": "Se activa cuando se elimina un hallazgo en OpenAEV.",
@@ -20059,6 +20060,7 @@
   "Triggers when an asset (endpoint) changes in OpenAEV.": "Se activa cuando un activo (endpoint) cambia en OpenAEV.",
   "Triggers when an asset (endpoint) is created in OpenAEV.": "Se activa cuando se crea un activo (endpoint) en OpenAEV.",
   "Triggers when the score of a scenario drops in OpenAEV: a control that held no longer does.": "Se activa cuando la puntuación de un escenario baja en OpenAEV: un control que funcionaba ya no lo hace.",
+  "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "Se activa cuando la ruta de ataque de una simulación finalizada alcanzó un activo de criticidad alta o muy alta en OpenAEV.",
   "Opened by": "Abierto por",
   "The signals of this case could not be read.": "No se pudieron leer las señales de este caso.",
   "No signal opened this case: it groups open issues read from the products.": "Ninguna señal abrió este caso: agrupa problemas abiertos leídos de los productos.",
@@ -20514,5 +20516,16 @@
   "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "Envíe una señal de prueba para ver avanzar el bucle: se registra por la entrada real y se abre en su traza del bucle.",
   "The test signal could not be recorded.": "No se pudo registrar la señal de prueba.",
   "Open the command center": "Abrir el centro de mando",
-  "Send a test signal": "Enviar una señal de prueba"
+  "Send a test signal": "Enviar una señal de prueba",
+  "Analyst review": "Revisión del analista",
+  "Analyst review skipped by policy": "Revisión del analista omitida por la política",
+  "The fleet requests the coverage without a person": "La flota solicita la cobertura sin intervención de una persona",
+  "the analyst's mark in OpenCTI": "la marca del analista en OpenCTI",
+  "Unnamed Grouping": "Agrupación sin nombre",
+  "The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.": "La revisión espera a un analista: la decisión está en su lista Esperándote, o pone la etiqueta de revisión en la agrupación en OpenCTI.",
+  "A Grouping exists in OpenCTI: restricted to OpenCTI readers": "Existe una agrupación en OpenCTI: restringida a los lectores de OpenCTI",
+  "Drafted the threat package": "Redactó el paquete de amenaza",
+  "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "Aún no hay paquete de amenaza: la flota redacta uno en OpenCTI cuando el caso está clasificado.",
+  "Threat package drafted, coverage not requested yet": "Paquete de amenaza redactado, cobertura aún no solicitada",
+  "Coverage requested in OpenCTI": "Cobertura solicitada en OpenCTI"
 }

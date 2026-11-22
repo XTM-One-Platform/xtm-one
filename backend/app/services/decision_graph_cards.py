@@ -90,7 +90,13 @@ def _where(target: Mapping[str, Any]) -> dict[str, str]:
     return {"chat_id": str(target["chat_id"])}
 
 
-def _send_arguments(decision: Decision, recipient_id: uuid.UUID, target: Mapping[str, Any]) -> dict[str, Any]:
+def _send_arguments(
+    decision: Decision,
+    recipient_id: uuid.UUID,
+    target: Mapping[str, Any],
+    language: str | None = None,
+    kicker: str | None = None,
+) -> dict[str, Any]:
     """The send tool's arguments: the link card for Teams, the link text for an email."""
     kind = target_kind(target)
     question = str((decision.ask or {}).get("question") or "A decision is waiting for you")
@@ -98,10 +104,10 @@ def _send_arguments(decision: Decision, recipient_id: uuid.UUID, target: Mapping
         return {
             "to": str(target["email"]),
             "subject": question[:200],
-            "body": answer_links.link_text(decision, recipient_id, _SURFACE[kind]),
+            "body": answer_links.link_text(decision, recipient_id, _SURFACE[kind], language),
             "content_type": "text",
         }
-    card = answer_links.link_card(decision, recipient_id, _SURFACE[kind])
+    card = answer_links.link_card(decision, recipient_id, _SURFACE[kind], language, kicker)
     return {**_where(target), "message": question[:300], "card": card}
 
 
@@ -126,15 +132,18 @@ async def send_link_card(
     recipient_id: uuid.UUID,
     target: Mapping[str, Any],
     caller: CallerFactory | None = None,
+    language: str | None = None,
+    kicker: str | None = None,
 ) -> str:
     """Post the link card of *decision* for *recipient_id* to *target*, as *agent_id* acting for *user_id*.
 
     Returns the message id (``""`` for an email, which has none to edit);
     records a ``notified`` event naming the message so the answer can update
     it. A refused send raises :class:`NotifyError` and records nothing.
+    *language* writes the card's words, *kicker* is the line above the question.
     """
     kind = target_kind(target)
-    arguments = _send_arguments(decision, recipient_id, target)
+    arguments = _send_arguments(decision, recipient_id, target, language, kicker)
     async with (caller or notify.agent_graph_caller)(_sender(decision.id, user_id, agent_id), integration) as call:
         sent, answer = await call(_SEND[kind], arguments)
     message_id = (message_id_of(answer) if kind != "email" else "") if sent else None
@@ -173,6 +182,84 @@ async def _sent_cards(db: AsyncSession, decision_id: uuid.UUID) -> list[dict[str
 async def has_sent_cards(db: AsyncSession, decision_id: uuid.UUID) -> bool:
     """Whether a link card was sent for *decision_id* through a Microsoft account."""
     return bool(await _sent_cards(db, decision_id))
+
+
+async def sent_card_to(db: AsyncSession, decision_id: uuid.UUID, target: Mapping[str, Any]) -> str | None:
+    """The message id of the link card already sent for *decision_id* to *target*, else ``None``."""
+    where = _where(target)
+    for sent in await _sent_cards(db, decision_id):
+        if all(str(sent.get(k) or "") == v for k, v in where.items()):
+            return str(sent["message_id"])
+    return None
+
+
+async def send_agent_card(
+    db: AsyncSession,
+    item: Any,
+    *,
+    agent_id: uuid.UUID,
+    agent_name: str,
+    user_id: uuid.UUID,
+    integration: str,
+    target: Mapping[str, Any],
+    caller: CallerFactory | None = None,
+) -> tuple[str, bool]:
+    """Post the decision card of a waiting work item to *target*, as the agent of the current run.
+
+    The agent DMs the decision itself (``send_decision_card``): no
+    ``payload.notify`` is needed, so the item's end sends no text. The card is
+    the link card in the recipient's language, its kicker naming the agent; the
+    ``notified`` event it records lets :func:`update_sent_cards` turn it into
+    the decided card whichever channel closes the decision. A test item may
+    only reach a test recipient or the account's own chat. Returns
+    ``(message_id, already_sent)``; raises :class:`NotifyError` with the reason
+    when nothing can be sent.
+    """
+    from app.services.channel_notices import notice, user_notice_language
+    from app.services.decision_card_delivery import open_decision
+
+    kind = target_kind(target)
+    if kind == "email":
+        raise notify.PermanentNotifyError("a decision card goes to a Teams chat_id, or a team_id and a channel_id")
+    if notify.is_test_item(getattr(item, "correlation_key", None), getattr(item, "title", None)):
+        key = (
+            (f"{target['team_id']}/{target['channel_id']}" if kind == "channel" else str(target["chat_id"]))
+            .strip()
+            .lower()
+        )
+        if key != notify.SELF_CHAT_ID and key not in notify._test_recipients():
+            raise notify.PermanentNotifyError(
+                "a test work item may only send its card to a target of WORK_ITEM_NOTIFY_TEST_RECIPIENTS "
+                f"or the account's own chat (chat_id {notify.SELF_CHAT_ID})"
+            )
+    decision = await open_decision(db, "work_item", item.id)
+    if decision is None:
+        raise notify.PermanentNotifyError(
+            "the work item has no open decision: park it with needs_human and an ask first"
+        )
+    recipient = recipient_user_id(decision.recipient)
+    if recipient is None:
+        raise notify.PermanentNotifyError(
+            f"the decision waits for {decision.recipient}, not one person: its answer links are minted for one"
+        )
+    existing = await sent_card_to(db, decision.id, target)
+    if existing is not None:
+        return existing, True
+    language = await user_notice_language(db, recipient)
+    kicker = notice("card_from_by", language, source=notice("card_source_work_item", language), agent=agent_name)
+    message_id = await send_link_card(
+        db,
+        decision,
+        agent_id=agent_id,
+        user_id=user_id,
+        integration=integration,
+        recipient_id=recipient,
+        target=target,
+        caller=caller,
+        language=language,
+        kicker=kicker,
+    )
+    return message_id, False
 
 
 async def update_sent_cards(
