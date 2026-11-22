@@ -412,6 +412,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   giphy: "GIPHY",
   credly: "Credly",
   concord: "Concord",
+  dealhub: "DealHub",
   ashby: "Ashby",
   linkedin: "LinkedIn",
   x: "X (Twitter)",
@@ -426,6 +427,7 @@ export const INTEGRATION_PROVIDER_NAMES: Record<string, string> = {
   google_a2a: "Google Agent Platform A2A",
   nova: "Nova Prompt Safety",
   netsuite: "NetSuite",
+  pennylane: "Pennylane",
 };
 
 // ── MCP transport display names ─────────────────────────────────────────────
@@ -584,8 +586,10 @@ const INTEGRATION_TYPE_LABEL_KEYS = {
   a2a: "Agent to Agent (A2A)",
   marketplace: "Marketplace & Resources",
   guardrails: "Guardrails",
+  accounting: "Accounting",
   erp: "ERP",
   finance: "Finance & Treasury",
+  cpq: "Quoting (CPQ)",
 } as const;
 
 /** Integration type labels by type id; display them through `t_i18n`, search haystacks keep the English form. */
@@ -868,6 +872,7 @@ export const PROVIDER_LOGOS: Record<string, string> = assetPaths({
   giphy: "/logos/giphy.svg",
   credly: "/logos/credly.svg",
   concord: "/logos/concord.svg",
+  dealhub: "/logos/dealhub.svg",
   ashby: "/logos/ashby.svg",
   linkedin: "/logos/linkedin.svg",
   x: "/logos/x.svg",

@@ -70,6 +70,7 @@ from app.integrations.providers.cybersixgill import (
 )
 from app.integrations.providers.cyware import build_tools as cyware_tools
 from app.integrations.providers.databricks import build_tools as databricks_tools
+from app.integrations.providers.dealhub import build_tools as dealhub_tools
 from app.integrations.providers.defender import build_tools as defender_tools
 from app.integrations.providers.discord_bot import build_tools as discord_bot_tools
 from app.integrations.providers.docusign import build_tools as docusign_tools
@@ -137,6 +138,7 @@ from app.integrations.providers.opencrq.procedure_manifest import PROBE, Manifes
 from app.integrations.providers.opencti import build_tools as opencti_tools
 from app.integrations.providers.ovhcloud import build_tools as ovhcloud_tools
 from app.integrations.providers.pagerduty import build_tools as pagerduty_tools
+from app.integrations.providers.pennylane import build_tools as pennylane_tools
 from app.integrations.providers.perk import build_tools as perk_tools
 from app.integrations.providers.picus import build_tools as picus_tools
 from app.integrations.providers.planhat import build_tools as planhat_tools
@@ -998,8 +1000,10 @@ PROVIDER_TOOLS = {
     "filigran_ai": filigran_ai_tools,
     "hubspot": hubspot_tools,
     "drata": drata_tools,
+    "pennylane": pennylane_tools,
     "credly": credly_tools,
     "concord": concord_tools,
+    "dealhub": dealhub_tools,
     "wordsmith": wordsmith_tools,
     "docusign": docusign_tools,
     "netsuite": netsuite_tools,
@@ -1118,6 +1122,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "ashby",
         "bluesky",
         "concord",
+        "dealhub",
         "wordsmith",
         "crowdstrike",
         "crowdstrike_ngsiem",
@@ -1127,6 +1132,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "docusign",
         "doppel",
         "drata",
+        "pennylane",
         "facebook",
         "figma",
         "flashpoint",
@@ -4301,6 +4307,21 @@ async def _get_token(
                 format_exception_message(exc),
             )
 
+    # Pennylane: a firm token names the company of each request (X-Company-Id).
+    if provider == "pennylane" and integ.extra_config_enc:
+        try:
+            extra = await _reveal_extra(integ)
+            company_id = str(extra.get("company_id") or "").strip()
+            if company_id:
+                return f"{company_id}||{token}"
+        except Exception as exc:
+            logger.warning(
+                "Failed to extract company_id from extra_config for '%s' (%s): %s",
+                integ.name,
+                provider,
+                format_exception_message(exc),
+            )
+
     # LinkedIn: prepend account_type and organization_id from extra_config
     if provider == "linkedin" and integ.extra_config_enc:
         try:
@@ -4352,6 +4373,8 @@ async def _get_token(
     extra_field_providers: dict[str, str] = {
         "credly": "organization_id",
         "concord": "organization_id",
+        # DealHub: the instance host (api.dealhub.io when unset) as ``host||token``.
+        "dealhub": "instance_host",
         "google_search": "search_engine_id",
         "hibob": "service_user_id",
         # HackerOne uses HTTP Basic auth: the API token *identifier* (username)

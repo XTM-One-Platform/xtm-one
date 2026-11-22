@@ -92,6 +92,10 @@ interface CtemCaseValidation {
   at: string;
   mitigation_only?: boolean;
   note?: string | null;
+  /** CTEM-12: only read-only injects ran (true), a non-read-only one ran (false); absent when unknown. */
+  safe_mode?: boolean;
+  /** CTEM-12: the target asset groups in the order they were tested. */
+  run_order?: string[];
 }
 
 /** A member issue the caller sees. */
@@ -160,12 +164,27 @@ export interface CtemCaseExploitation {
   at: string | null;
 }
 
+/**
+ * The OpenCRQ treatment plan the remediation decision created for a case
+ * (CTEM-18-UI, #1068). `restricted` true for a viewer who does not read
+ * OpenCRQ: then only `at` is served.
+ */
+export interface CtemCaseTreatmentPlan {
+  restricted: boolean;
+  id?: string;
+  name?: string | null;
+  url?: string | null;
+  at: string | null;
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
+  /** Null when no plan is attached; absent on an API older than #1068. */
+  treatment_plan?: CtemCaseTreatmentPlan | null;
   ticketing?: CtemTicketingTarget;
 }
 

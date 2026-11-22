@@ -545,6 +545,8 @@ export interface FleetSourceChanges {
   /** False on a fork older than the kept structure: the diff is not known. */
   diff_available: boolean;
   changes: FleetSourceChange[];
+  /** The seeded fleet that took over a retired built-in source (CTEM-31), else absent or `null`. */
+  successor?: { fleet_id: string; slug: string; name: string } | null;
 }
 
 /**

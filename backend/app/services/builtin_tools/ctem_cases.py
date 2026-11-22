@@ -215,6 +215,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         note: str = "",
         exploitation: list[dict[str, Any]] | None = None,
         gate: dict[str, Any] | None = None,
+        treatment_plan: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -273,6 +274,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         option=str(gate.get("option") or ""),
                         actor=agent_id,
                     )
+                if treatment_plan is not None:
+                    history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    case_loop.record_treatment_plan(
+                        db, case, treatment_plan, view_of.treatment_plan_of(history), actor=agent_id
+                    )
                 await db.commit()
                 refreshed = await _shown(db, wanted, org_id, vertical)
                 return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
@@ -290,6 +296,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         kind: str = "retest",
         mitigation_only: bool = False,
         note: str = "",
+        safe_mode: bool | None = None,
+        run_order: list[str] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -316,6 +324,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     result=result,
                     mitigation_only=bool(mitigation_only),
                     note=note or None,
+                    safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                    run_order=[str(n) for n in run_order] if isinstance(run_order, list) else None,
                     actor=agent_id,
                     events=pending,
                 )
@@ -616,7 +626,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="update_ctem_case",
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading of the triage step, or a loop gate passed or waited. in_progress needs an owner; "
+                "reading of the triage step, a loop gate passed or waited, or the risk treatment plan of "
+                "the decision. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -660,6 +671,19 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         },
                         "required": ["key", "outcome"],
                     },
+                    "treatment_plan": {
+                        "type": "object",
+                        "description": (
+                            "The risk treatment plan the remediation decision created for this case, as the "
+                            "plan tool answered it: its id, name and Link url."
+                        ),
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
                 },
                 "required": ["case_id"],
             },
@@ -685,6 +709,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "kind": {"type": "string", "description": "validation or retest (default retest)."},
                     "mitigation_only": {"type": "boolean"},
                     "note": {"type": "string"},
+                    "safe_mode": {"type": "boolean", "description": "True when only read-only injects ran."},
+                    "run_order": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Target asset groups in the order they were tested.",
+                    },
                 },
                 "required": ["case_id", "provider", "ref", "result"],
             },

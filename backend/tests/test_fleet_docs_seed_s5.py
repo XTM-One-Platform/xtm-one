@@ -17,7 +17,7 @@ _CONTEXT = {
     "automations": [
         {
             "name": "Weekly threat sweep",
-            "member": "Threat Response Orchestrator",
+            "member": "Loop Orchestrator",
             "trigger": "On a schedule",
             "schedule": "Every Monday at 07:00 (UTC)",
             "event": "",
@@ -35,7 +35,7 @@ _CONTEXT = {
     ],
     "tools": [
         {
-            "member": "Threat Response Orchestrator",
+            "member": "Loop Orchestrator",
             "integrations": ["opencti"],
             "mcp_servers": [],
             "tool_groups": ["shared_state"],
@@ -46,7 +46,7 @@ _CONTEXT = {
 
 
 def test_the_computed_facts_go_on_top_of_the_shipped_parts():
-    shipped = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]
+    shipped = BUILTIN_FLEET_STRUCTURED["ctem-loop"]
     merged = with_computed_facts(shipped, _CONTEXT)
     assert merged["automations"] == _CONTEXT["automations"]
     assert merged["integrations"] == _CONTEXT["tools"]
@@ -76,7 +76,7 @@ def test_no_context_leaves_the_parts_as_shipped():
 async def test_the_seed_merges_the_computed_facts_and_survives_a_failed_read(monkeypatch):
     from app.services import fleet_doc_generation
 
-    fleet = SimpleNamespace(slug="ctem-threat-response")
+    fleet = SimpleNamespace(slug="ctem-loop")
 
     class _Savepoint:
         async def __aenter__(self):
