@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Refuse a short id prefix before any request to a platform that resolves full ids only.
 
 OpenCTI and OpenAEV resolve an object by its full id (a UUID, or a STIX id
