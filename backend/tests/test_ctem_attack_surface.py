@@ -72,6 +72,15 @@ def test_the_pass_is_off_by_default_and_stays_out_of_the_always_on_block() -> No
     assert "address_ranges" not in dict(oc.CONTRACT_FIELDS)
 
 
+async def test_the_settings_picker_reads_the_supported_providers() -> None:
+    """The Settings provider picker (#1140 slice 2) lists what the pass reads, so it grows with each reader."""
+    from app.api.v1.organization_context import list_attack_surface_providers
+
+    answer = await list_attack_surface_providers(_user=None)  # type: ignore[arg-type]
+    assert answer.providers == list(surface.SUPPORTED_PROVIDERS)
+    assert "shodan" in answer.providers
+
+
 # ── path 5: new exposure ────────────────────────────────────────────────
 
 
