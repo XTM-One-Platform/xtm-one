@@ -20266,5 +20266,16 @@
   "Ticket status": "チケットのステータス",
   "Re-test started: the ticket is done": "再テスト開始: チケットが完了しました",
   "Ticket created": "チケットを作成しました",
-  "{from} to {to}": "{from} から {to}"
+  "{from} to {to}": "{from} から {to}",
+  "a person": "担当者",
+  "Pre-approved runbook {runbook}": "事前承認済みのランブック {runbook}",
+  "Within the approval threshold": "承認しきい値の範囲内",
+  "Above the approval threshold": "承認しきい値を超えています",
+  "Expected loss unknown, an approval threshold is set": "予想損失は不明で、承認しきい値が設定されています",
+  "The fleet runs this gate without a person": "フリートはこのゲートを人を介さずに実行します",
+  "The fleet makes this gate wait for a person": "フリートはこのゲートで人の判断を待ちます",
+  "Residual risk": "残存リスク",
+  "Time to apply": "適用までの期間",
+  "Pre-approved runbook": "事前承認済みのランブック",
+  "{label}: {value}": "{label}: {value}"
 }
