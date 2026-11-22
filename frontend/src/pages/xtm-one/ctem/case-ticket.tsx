@@ -6,8 +6,8 @@
  * the key linking to the ticket, its status, and the sync state (linked, in
  * sync, out of date since a time, error with its fix). A case with no ticket
  * says nothing unless no ticketing is declared at all: then "No ticketing
- * connected" links to the settings. Shared by the Cases board, the Cases list
- * and the case page, so the three say the same thing in the same words; the
+ * connected" links to the settings. Shared by the Cases board (Mobilization) and
+ * the case page, so both say the same thing in the same words; the
  * `ctem_case_update` frame a sync step raises re-reads the case, so the chip
  * moves live.
  */

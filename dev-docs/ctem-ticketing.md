@@ -42,6 +42,8 @@ The autonomous tick runs `ctem_ticketing.sync_cases` once per `CTEM_TICKETING_SY
 
 A pull that moves a ticket to done on an open case raises `ctem_case.retest_requested` (a viewer-checked case event, #933: the case id and routing with `ticket_integration` and `ticket_key`, heard only by readers of the case) once; the fleets run the re-test and the case closes on its result.
 
+On screen (CTEM-19-UI, #1032): every sync step that creates, moves or fails on a case's ticket (and every inbound status that moves it) raises the `ctem_case_update` frame with `event_kind` `ticket`, so the ticket chip on the Cases board (Mobilization) and the case page moves without a reload; a re-test asked by a done ticket also writes a `retest_requested` row on the case history. The list and case reads answer `ticketing` (`connected`, `reason`, `settings`) from the profile alone, so the case page says `No ticketing connected` with the settings link. The chip is `frontend/src/pages/xtm-one/ctem/case-ticket.tsx`.
+
 Inbound status (`apply_inbound_status`): a status an event carries for a ticket of the declared integration is mapped like a pull (customer `status_map` first) onto the case that manages that key, in the same transaction; a ticket no case manages, or an event of another integration, changes nothing. A delivery that fails to apply is logged and left to the next pull, never refused.
 
 ## 5. Gates

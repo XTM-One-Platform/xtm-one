@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import CtemCase
 from app.services import ctem_ticketing as tk
@@ -485,6 +487,40 @@ async def test_a_jira_status_event_moves_its_case_at_once_and_asks_the_retest_on
     )
     assert not again.updated and [n for n, _d, _i in events.items] == [tk.CASE_RETEST_REQUESTED]
     assert tk.managed_ticket(case)["sync"]["state"] == "in_sync"
+    # CTEM-19-UI (#1032): each move raised the live frame, the unchanged replay none,
+    # and the case history says the re-test started because the ticket is done.
+    assert [f["event_kind"] for f in events.frames] == ["ticket", "ticket"]
+    assert all(f["case_id"] == str(case.id) for f in events.frames)
+    retests = [r for r in db.added if getattr(r, "kind", None) == "retest_requested"]
+    assert len(retests) == 1
+    assert getattr(retests[0], "evidence", None) == "jira-1:ITS-1" and getattr(retests[0], "actor", None) == "system"
+
+
+@pytest.mark.asyncio
+async def test_the_case_screens_read_whether_ticketing_is_declared(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CTEM-19-UI (#1032): the profile alone answers, no credential and no remote call."""
+    from app.services import organization_context as oc
+
+    profile: dict[str, Any] = {"ticketing": {"integration": "", "project": ""}}
+    row = type("V", (), {"organization_id": uuid.uuid4(), "profile": profile})()
+    db = cast(AsyncSession, FakeSession())
+
+    async def _current(db: object, organization_id: object = None) -> object:
+        return row
+
+    async def _none(db: object, organization_id: object = None) -> None:
+        return None
+
+    monkeypatch.setattr(oc, "current_version", _none)
+    assert await tk.ticketing_target(db) == {
+        "connected": False,
+        "reason": tk.NOT_CONNECTED,
+        "settings": tk.SETTINGS_PATH,
+    }
+    monkeypatch.setattr(oc, "current_version", _current)
+    assert (await tk.ticketing_target(db))["connected"] is False
+    profile["ticketing"] = {"integration": "jira-1", "project": "ITS"}
+    assert await tk.ticketing_target(db) == {"connected": True, "settings": tk.SETTINGS_PATH}
 
 
 @pytest.mark.asyncio

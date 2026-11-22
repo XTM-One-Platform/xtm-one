@@ -841,7 +841,9 @@ async def sync_case(
     return outcome
 
 
-def _frame_if_moved(events: case_loop.PendingEvents | None, case: CtemCase, outcome: SyncOutcome, now: datetime) -> None:
+def _frame_if_moved(
+    events: case_loop.PendingEvents | None, case: CtemCase, outcome: SyncOutcome, now: datetime
+) -> None:
     """Raise the live ``ctem_case_update`` frame when a sync step changed the case's ticket (CTEM-19-UI, #1032)."""
     if events is not None and (outcome.created or outcome.updated or outcome.error or outcome.retest_requested):
         events.frame(case, "ticket", now)
