@@ -934,6 +934,7 @@ BUILTIN_AGENTS: list[dict] = [
             "manage_opencti_profile",
             "manage_opencti_retention_rule",
             "manage_opencti_role",
+            "manage_opencti_security_coverage",
             "manage_opencti_status_template",
             "manage_opencti_trigger",
             "manage_opencti_user",
