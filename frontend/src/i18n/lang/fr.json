@@ -20854,5 +20854,19 @@
   "Proven by an OpenAEV simulation, {date}": "Prouvé par une simulation OpenAEV, {date}",
   "Primary assets reached": "Actifs primaires atteints",
   "None: no business asset sits behind the assets reached.": "Aucun : aucun actif métier ne se trouve derrière les actifs atteints.",
-  "Recorded the attack path": "Chemin d'attaque enregistré"
+  "Recorded the attack path": "Chemin d'attaque enregistré",
+  "No grouping": "Aucun regroupement",
+  "Fix family": "Famille de correctif",
+  "Upgrade": "Mise à niveau",
+  "Patch": "Correctif",
+  "Course of action": "Plan d'action",
+  "Close exposure": "Fermer l'exposition",
+  "Decommission": "Retrait du service",
+  "Rotate credential": "Renouveler l'identifiant",
+  "Restore control": "Rétablir le contrôle",
+  "Supplier action": "Action du fournisseur",
+  "Restore coverage": "Rétablir la couverture",
+  "Unknown user": "Utilisateur inconnu",
+  "{count, plural, one {# row} other {# rows}}": "{count, plural, one {# ligne} other {# lignes}}",
+  "Group by: {group}": "Grouper par : {group}"
 }

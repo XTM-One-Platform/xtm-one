@@ -516,6 +516,16 @@ then the existing AI assessment and facts grid unchanged.
   Due ascending (the most urgent case on top), `?sort=priority&dir=desc` in
   the URL; a click on the active column flips the direction, another column
   takes over the sort.
+- **Grouping (#1176)**: a "Group by" pill at the right of the toolbar, the
+  anatomy of Columns (a toolbar select is refused by the data-table gates):
+  No grouping, Owner, State, Priority, Fix family; accented and named while
+  a grouping is on ("Group by: Owner"), kept in the URL as
+  `?c_group=`. The shared `DataTable` `groupBy` (`lib/table-rows.ts`
+  `groupRows`) keeps the rows of one group together, the sort kept inside each
+  group, with one header row per group on the page naming it and its row count
+  over every page. Order: states in their life order, priorities critical
+  first, owners by id with unowned cases last, fix families by kind
+  (`pages/xtm-one/ctem/cases-grouping.ts`).
 - **Selection**: `SelectionBox` rows and header (indeterminate when part of
   the page is selected, A4), "N selected" and "Select all 34 matching" in the
   toolbar, bulk actions as the shared `ListBulkAction` buttons (32 px, the
