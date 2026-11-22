@@ -32,6 +32,7 @@ from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_cases as rules
+from app.services import ctem_cases_source as source
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
 from app.services import ctem_loop_measures as measures
@@ -157,11 +158,6 @@ async def list_ctem_cases(
             "details_unavailable": [],
             "ticketing": {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH},
         }
-    # Cases stay current with no button (s.4.3): a viewer whose last recompute is
-    # older than the interval gets one in the background; the list re-reads on its frame.
-    from app.services import ctem_cases_refresh as refresh
-
-    await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
     cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
     view = await view_of.viewer_view(db, str(user.id), vertical)
     rows, counts = view_of.list_for_viewer(
@@ -181,8 +177,6 @@ async def list_ctem_cases(
         # Whether a ticketing target is declared (CTEM-19-UI, #1032): the case
         # screens say "No ticketing connected" with the settings link.
         "ticketing": await ticketing.ticketing_target(db),
-        # When the cases were last recomputed, and a product that did not answer since (s.4.3).
-        "freshness": await refresh.freshness(vertical),
     }
 
 
@@ -255,6 +249,7 @@ async def split_ctem_case(
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     organization_id = await _organization_id(db)
     view = await view_of.viewer_view(db, str(user.id), vertical)
+    pending = case_loop.PendingEvents()
     try:
         case = await store.create_manual_case(
             db,
@@ -265,10 +260,12 @@ async def split_ctem_case(
             visible=set(view.open_ids),
             actor=str(user.id),
             reason=(body.reason or "").strip() or None,
+            events=pending,
         )
     except rules.CaseRuleError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await db.commit()
+    await case_loop.publish_pending(pending)
     shown = await visible_case(db, case.id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -322,9 +319,6 @@ async def recompute_ctem_cases(
 ) -> dict[str, Any]:
     """Merge the open issues the caller sees into the shared cases now (one per minute per user).
 
-    Internal since the cases recompute by themselves (s.4.3): no screen calls it;
-    agents and administrators may.
-
     Reads OpenCTI and OpenAEV with the caller's own credentials (#11613): adds
     and reopens what the caller sees open, resolves only what the caller's read
     confirms closed, so any user may run it and a narrower view closes
@@ -336,9 +330,7 @@ async def recompute_ctem_cases(
     organization_id = await _organization_id(db)
     if not await recompute_slot(str(user.id), vertical):
         raise HTTPException(status_code=429, detail="One recompute per minute: try again shortly")
-    from app.services import ctem_cases_refresh as refresh
-
-    return await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    return await source.recompute_for_user(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
 
 
 async def recompute_slot(user_id: str, vertical: str) -> bool:

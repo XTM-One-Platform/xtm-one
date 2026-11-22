@@ -178,29 +178,10 @@ prefix read); distribution backports are not visible.
 
 ### 4.3 Recompute
 
-- Cases are inferred, never refreshed by hand: the UI has no Recompute button
-  (Sam, 22 Nov 2026). The recompute runs by itself on three paths
-  (`services/ctem_cases_refresh.py`), rules only, no model call, no run, no quota:
-  - the scheduler tick, once per `cases_recompute.interval_minutes` of the
-    organization profile (default 15, minimum 5, a Redis slot
-    `ctem:cases:recompute-pass:<vertical>`), as the run-as users of the CTEM loop
-    fleet's enabled automations, else each user who opened Cases in the last 14
-    days (newest 20), each with their own stored credentials; one identity
-    failing never stops the others;
-  - the page open: `GET /ctem-cases` starts a background recompute for a viewer
-    whose last one is older than the interval (the same one-per-minute slot);
-    the list re-reads on the `ctem_case_update` frame, in place, no toast;
-  - events: an OpenAEV or OpenCTI delivery that already moves a case (s.9bis,
-    `ctem_openaev_events`) keeps doing so between passes.
-  Every recompute records its freshness (`freshness` on the list answer:
-  `updated_at`, and `missing` with `missing_at` while a product did not answer);
-  the list header shows "Updated 4 min ago" (exact time on hover) and, after an
-  outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
-  a link to the integrations.
-- `POST /api/v1/ctem-cases/recompute` stays as an INTERNAL route for agents and
-  administrators (no screen calls it): any user, one per minute per user
-  (`services/ctem_cases_source.py`). Every path reads OpenCTI and OpenAEV with the
-  identity's own credentials and MERGES into the shared cases (#11613): what the
+- Runs on demand: `POST /api/v1/ctem-cases/recompute` (the list's "Recompute"),
+  any user, one per minute per user, no model call, no run, no quota
+  (`services/ctem_cases_source.py`). It reads OpenCTI and OpenAEV with the
+  caller's own credentials and MERGES into the shared cases (#11613): what the
   caller sees open is added or reopened; a member is closed only when the
   caller can still read it by id and it is no longer open; a member the
   caller cannot see is left as it is, so a narrower view never closes or
@@ -217,6 +198,22 @@ prefix read); distribution backports are not visible.
 - A resolved case whose issues return is reopened ("needs attention") with a
   history line "reopened: issues open again at source".
 - State, owner, due date, notes and history are never written by recompute.
+- Every case a recompute writes is worked by the loop (#1206): a new case
+  raises `ctem_case.opened`, a reopen `ctem_case.reopened`, a resolve
+  `ctem_case.resolved`, collected in `ctem_case_loop.PendingEvents` and
+  published after the commit with the loop's stable event ids, so the fleets'
+  case listeners start a run on a reader case exactly as on a signal case. A
+  recompute that changes nothing raises nothing. The opening writes an
+  `announced` case event; a manual split announces its new case the same way.
+- Severity and SLA of a reader case (#1206): an open case takes the scope gate
+  severity of the priority of the issues the read sees (critical P1 24 h, high
+  P2 72 h, medium and low P3 30 days, `DEFAULT_SLA_HOURS`); a more urgent read
+  escalates it and pulls the SLA earlier, a less urgent one never relaxes it.
+- Backfill (#1206): the scheduled case sweep (`announce_unannounced`) raises
+  `ctem_case.opened` once for every open case that holds neither an
+  `announced` event nor a `created` event from a signal (the cases written
+  before #1206), at most 200 per pass, and records `announced`, so it never
+  repeats. No migration.
 - Manual merge: the surviving case lists the merged keys; recompute maps all
   of them to it. Manual split: the user picks member issues; the new case
   carries a pinned key `split:<uuid>` that owns those issue ids; recompute
@@ -406,10 +403,10 @@ then the existing AI assessment and facts grid unchanged.
 
 ### 7.2 Cases list `/ctem/cases`
 
-- Page header (`CtemPageHeader`): title "Cases" alone, like Agents, Fleets
-  or Work items (no eyebrow: the left menu group already says CTEM; no back
-  link); its action slot holds only the quiet freshness line of s.4.3, never a
-  refresh button. Export CSV is in the table toolbar. The totals live in the
+- Page header (`EntityPageHeader` list form): back link "Back to
+  Mobilization", title "Cases"; actions in the platform order (secondary
+  first, filled primary last), DS `Button` default height: Recompute,
+  Export CSV. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
 - State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
   exact counts: Needs attention, In progress, Resolved ("All time" in its
@@ -601,7 +598,7 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
 
-**Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id; filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
+**Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id, by every writer of a case: the loop (signals, validations, sweep), the source recompute, a manual split and the backfill of section 4.3 (#1206); filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
 
 **OpenAEV results move the case (CTEM-15, #918).** The seeded assignment "OpenAEV results into cases" of the vulnerability fleet provisions the OpenAEV triggers `simulation_finished`, `finding_updated`, `finding_deleted`, `scenario_score_degraded` and `critical_asset_reached` (optional: an OpenAEV that refuses it keeps the others, its state lists it under `unsupported_events` and the next check retries); its filter drops every delivery, so it never runs. On a verified delivery, the webhook route (`services/ctem_openaev_events.py`) finds the cases that wait on the delivered object (an `openaev` validation reference whose `ref` names it, or an `openaev` member with that id; states `needs_attention`, `in_progress`, `mitigated_watching`, `resolved`), writes one `source_event` history entry per case and raises `ctem_case.validation_finished` once per case and occurrence, with `openaev {event, resource_type, resource_id, platform_url}` on top of the case routing; like the other case events it is in `VIEWER_CHECKED_EVENTS`, so only a run whose user reads the case hears it (#933). Both loop fleets hear it (routed by `trigger_path`), read the result in OpenAEV and write it with `record_ctem_case_validation`, which resolves or reopens the case. No poll, no model call before the run. A `scenario_score_degraded` delivery records a path 8 (`mitigation_regression`) signal through the signal table; an `asset_stale` delivery (an `ASSET` update trigger filtered on `asset_status` = `STALE`, raised once by OpenAEV's freshness job when an asset stays unseen past the tenant's `asset_stale_after_days`, CTEM-27) records a path 6 (`stale_asset`) signal, outside lens, the asset as subject. OpenAEV sends it only to readers of the asset in the trigger's tenant; XTM One records it as a `system` signal, which only administrators read. A `critical_asset_reached` delivery (CTEM-13: a finished simulation's attack path reached a high or very high criticality asset) records a path 4 (`proven_exploitable`) signal with the simulation as subject and its OpenAEV link, and moves the cases waiting on that simulation like `simulation_finished`; the case history names it "Critical asset reached". OpenAEV names no asset in it: the reached assets are read in its attack path with the reader's own rights.
 

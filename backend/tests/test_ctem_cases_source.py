@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -127,8 +128,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
 
     applied: list = []
 
-    async def apply(db, *, organization_id, vertical, issues, closed, now):
-        applied.append(list(closed))
+    async def apply(db: Any, **kw: Any) -> dict[str, int]:
+        applied.append(list(kw["closed"]))
         return {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
 
     async def members(db, *, organization_id, vertical):
@@ -224,8 +225,8 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
 
     applied: list = []
 
-    async def apply(db, *, organization_id, vertical, issues, closed, now):
-        applied.append(sorted(i.member_id for i in issues))
+    async def apply(db: Any, **kw: Any) -> dict[str, int]:
+        applied.append(sorted(i.member_id for i in kw["issues"]))
         return {"created": 1, "updated": 0, "resolved": 0, "reopened": 0, "no_known_fix": 0}
 
     async def members(db, *, organization_id, vertical):
@@ -290,7 +291,7 @@ async def test_recompute_route_builds_the_callers_own_cases_and_is_throttled(mon
     async def slot(user_id, vertical):
         return next(slots)
 
-    monkeypatch.setattr(source, "recompute_for_user", recompute)
+    monkeypatch.setattr(api_module.source, "recompute_for_user", recompute)
     monkeypatch.setattr(api_module, "recompute_slot", slot)
     member = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     async with _client(monkeypatch, member) as client:
