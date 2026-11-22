@@ -454,6 +454,9 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "update_organization_sync",
     "delete_organization_sync",
     "run_organization_sync",
+    # The rows a source wrote (#1276): an administrator purging them or handing them
+    # to people, saved as a new version of the profile; no model involved.
+    "apply_organization_source_rows",
     # The asset store's merge and split (#1178, S3): an administrator deciding which
     # source records are one asset; a stored decision and a rebuild, no model involved.
     "record_asset_decision",

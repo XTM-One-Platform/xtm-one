@@ -373,6 +373,14 @@ async def test_known_merge_states_cost_no_reread(monkeypatch):
     assert "still computing" not in result
 
 
+def test_the_default_reread_window_outlasts_a_busy_base():
+    """Nine PRs of one base read unknown on three calls of a 3 s window: the default waits longer."""
+    pauses = pr_states._UNKNOWN_BACKOFF
+    assert sum(pauses) >= 12.0, "a base recomputing many PRs needs more than a few seconds"
+    assert sum(pauses) <= 20.0, "the call stays well inside a tool call's budget"
+    assert list(pauses) == sorted(pauses), "the pauses grow, so a quick settle costs little"
+
+
 def test_is_computing_reads_open_pull_requests_only():
     assert pr_states.is_computing(_unknown(1))
     assert pr_states.is_computing(_pr(1, merge="UNKNOWN"))
