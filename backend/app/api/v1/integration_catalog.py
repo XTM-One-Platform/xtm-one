@@ -31,6 +31,8 @@ from app.integrations.providers.aikido.webhooks import EVENT_TYPES as AIKIDO_EVE
 from app.integrations.providers.aikido.webhooks import TRIGGER_EVENTS as AIKIDO_TRIGGER_EVENTS
 from app.integrations.providers.airwallex.webhooks import EVENT_TYPES as AIRWALLEX_EVENT_TYPES
 from app.integrations.providers.airwallex.webhooks import TRIGGER_EVENTS as AIRWALLEX_TRIGGER_EVENTS
+from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK_EVENT_TYPES
+from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
@@ -102,6 +104,13 @@ _WORDSMITH_FILTER_KEYS: dict[str, str] = {
     "task_id": "The task the event names",
     "resource_type": "The type of the object the event is about",
     "actor_kind": "Who caused the event: user, agent or system",
+}
+#: The filter keys of every Spendesk webhook event (the delivery envelope).
+_SPENDESK_FILTER_KEYS: dict[str, str] = {
+    "event.entity": "The Spendesk entity type of the event: payables or settlements",
+    "event.eventType": "The event type: created or prepared",
+    "companyId": "The Spendesk company (entity) that sent the event",
+    "data.id": "The id of the payable or settlement the event names",
 }
 #: The filter keys of the NetSuite transaction change events (services/netsuite_events.py).
 _NETSUITE_TRANSACTION_FILTER_KEYS: dict[str, str] = {
@@ -4933,6 +4942,79 @@ PROVIDER_CATALOG = {
             ],
         },
     },
+    "spendesk": {
+        "name": "Spendesk",
+        "description": (
+            "Spendesk spend management, the whole Public API, multi-entity: wallet summary, wallet "
+            "loads and settlements, card payments and transactions, requests, payables (expenses, "
+            "invoices, card payments) with receipt downloads and missing receipts, cards, members, "
+            "cost centres, analytical fields, expense categories, suppliers (bank details masked), "
+            "chart of accounts, accounting journals and webhooks; every write asks a person, plus "
+            "webhook triggers"
+        ),
+        "logo": "/logos/spendesk.svg",
+        "category": "integration",
+        "integration_category": "business_operations",
+        "integration_types": ["spend_management"],
+        "supports_assignment_webhooks": True,
+        "available_events": [
+            {
+                "event": SPENDESK_TRIGGER_EVENTS[event],
+                "label": label,
+                "description": (
+                    "Triggers on this Spendesk webhook event. Create a webhook for it in Spendesk "
+                    "(the create_spendesk_webhook tool) pointing to the webhook URL shown below."
+                ),
+                "mechanism": "webhook",
+                "filter_keys": _SPENDESK_FILTER_KEYS,
+            }
+            for event, label in SPENDESK_EVENT_TYPES.items()
+        ],
+        # OAuth2 client credentials: the client secret is the stored secret.
+        "auth_type": "api_key",
+        "supported_auth_types": ["api_key"],
+        "fields": ["api_key"],
+        "extra_fields": {
+            "environment": "Spendesk environment",
+            "client_id": "Public API client ID",
+            "webhook_secret": "Webhook signing secret (x-spendesk-webhook-signature)",
+        },
+        "extra_field_options": {
+            "environment": [
+                {"value": "production", "label": "Production - public-api.spendesk.com"},
+                {"value": "sandbox", "label": "Sandbox - public-api.demo.spendesk.com"},
+            ],
+        },
+        "setup_guide": {
+            "title": "Spendesk Public API credential",
+            "url": "https://developer.spendesk.com/reference/general",
+            "steps": [
+                "In Spendesk, as an account owner, open Settings > Integrations > API access and create a Public API credential, at organisation level to reach every entity.",
+                "Grant the scopes the agents need: the :read scopes for a read-only binding, the :write scopes for approvals, cards, suppliers, members and bookkeeping.",
+                "Pick the environment, paste the client ID in the 'Public API client ID' field and the client secret in the 'API key' field.",
+                "Optional, for webhook triggers: create a webhook with the create_spendesk_webhook tool pointing to the webhook URL shown below, and paste the secret it answers in the 'Webhook signing secret' field.",
+                "Click 'Test Connection': it mints a token and lists the organisation's entities.",
+            ],
+            "permissions": [
+                {
+                    "scope": "payable:read, transaction:read, request:read",
+                    "description": "Read payables, receipts, transactions and requests",
+                },
+                {
+                    "scope": "settlement:read, wallet-summary:read, wallet-load:read",
+                    "description": "Read the wallet, its loads and settlements",
+                },
+                {
+                    "scope": "card:read, user:read, supplier:read, cost-center:read",
+                    "description": "Read cards, members, suppliers and cost centres",
+                },
+                {
+                    "scope": "the :write scopes",
+                    "description": "Optional: every write tool, each asks a person before it runs",
+                },
+            ],
+        },
+    },
     "wiz": {
         "name": "Wiz",
         "description": (
@@ -9466,67 +9548,6 @@ PROVIDER_CATALOG = {
             "notes": "Ashby uses HTTP Basic Auth: the API key is the username with an empty password, and every endpoint is a POST. A tool that lacks a permission says which one to grant. Ashby allows 1,000 requests per minute per key and 15 report runs per minute per organization. See https://developers.ashbyhq.com/reference/authentication for the permission table.",
         },
     },
-    "quotapath": {
-        "name": "QuotaPath",
-        "description": (
-            "Sales commission management - users, teams and managers, compensation plans and paths, "
-            "quotas, deals and their crediting, payouts (earned, paid, still owed), commission totals "
-            "by rep, team, plan and period, CSV payout and deal reports. Commission amounts are people "
-            "data; every write asks a person"
-        ),
-        "logo": "/logos/quotapath.svg",
-        "category": "integration",
-        "integration_category": "business_operations",
-        "integration_types": ["sales_compensation"],
-        "auth_type": "api_key",
-        "fields": ["api_key"],
-        "available_events": [
-            {
-                "event": "payout_updated",
-                "label": "Payout created or updated",
-                "description": (
-                    "Triggers when a QuotaPath payout is created or changes (a deal credited, a rate or "
-                    "quota changed). Uses polling (every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_resolved",
-                "label": "Payout resolved",
-                "description": (
-                    "Triggers when a QuotaPath payout is resolved (the period paid out). Uses polling "
-                    "(every 15 min); the first poll starts from now."
-                ),
-                "mechanism": "polling",
-            },
-            {
-                "event": "payout_unresolved",
-                "label": "Payout newly owed",
-                "description": (
-                    "Triggers when a payout appears among the unresolved ones (commission owed, the "
-                    "accrual). Uses polling (every 15 min); what is owed when the trigger is enabled "
-                    "does not run."
-                ),
-                "mechanism": "polling",
-            },
-        ],
-        "setup_guide": {
-            "title": "QuotaPath API Key Setup",
-            "url": "https://api.quotapath.com/docs/",
-            "steps": [
-                "Sign in to QuotaPath as a workspace admin.",
-                "Open Settings > Integrations and generate an API key.",
-                "Paste the key in the field below. Test Connection reads the workspace users.",
-            ],
-            "permissions": [
-                {
-                    "scope": "Workspace API key",
-                    "description": "Reads users, teams, plans, quotas, deals and payouts; writes deals, quotas and imports (each write asks a person)",
-                },
-            ],
-            "notes": "QuotaPath sends the key as 'Authorization: Token <key>' to https://api.quotapath.com/v1. Its public API has no disputes, adjustments, draws, payout-period approval or lock, CRM sync status, statement PDFs or webhooks: those stay in the QuotaPath application, and events are polled.",
-        },
-    },
     "pennylane": {
         "name": "Pennylane",
         "description": "Accounting, Invoicing & Banking - Ledger entries and lines, Trial balance, FEC and general ledger exports, Customer and supplier invoices (with PDFs, payments, matching), Customers, Suppliers, Products, Quotes, Bank transactions, Analytical categories (Company API v2)",
@@ -10228,6 +10249,8 @@ _SHAPED_DUMMIES: dict[str, str] = {
     "aikido": "eu||__dummy__||__dummy__",
     # Airwallex's token is environment||client_id||login_as||api_key.
     "airwallex": "production||__dummy__||||__dummy__",
+    # Spendesk's token is environment||client_id||client_secret.
+    "spendesk": "production||__dummy__||__dummy__",
 }
 
 # Sentinel needs a 6-part compound token (tenant||client_id||secret||sub||rg||ws)
