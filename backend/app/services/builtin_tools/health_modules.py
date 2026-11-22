@@ -216,7 +216,7 @@ async def _record_finding_recommendation(
     from app.services.health.module_analyst import MODULE_PROVIDERS
 
     # Reserved to a module checker's own principal (any of the three roles, section 13.1).
-    principal_role = getattr(reader.principal, "role", None)
+    principal_role = str(getattr(reader.principal, "role", "") or "")
     refusal = reader.write_refusal(principal_role if _is_analyst(reader) else ANALYST_ROLE)
     if refusal or not _is_analyst(reader):
         return refusal or WRITE_REFUSED

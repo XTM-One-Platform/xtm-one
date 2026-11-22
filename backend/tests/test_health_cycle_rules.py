@@ -207,7 +207,7 @@ def test_assignment_keys_cover_every_schedule():
 
 
 @pytest.mark.parametrize("provider", ["opencti", "openaev", "opencrq"])
-def test_each_module_checker_writes_no_module_and_hands_nothing_over(provider):
+def test_each_module_checker_writes_no_module_and_hands_nothing_over(provider: str) -> None:
     """Sections 12.3 and 13.1: a checker carries no tool group that writes a module, hands
     nothing over, has its playbook skill and its own checks assignment; only the
     orchestrator delegates to it (the module round of section 13.2).
@@ -227,7 +227,7 @@ def test_each_module_checker_writes_no_module_and_hands_nothing_over(provider):
     assert fleet_seed.ASSIGNMENT_BY_KEY[fleet_seed.CHECKS_KEY_BY_PROVIDER[provider]].agent_slug == spec.slug
 
 
-def test_the_opencti_checker_is_the_s14_module_analyst_renamed_in_place():
+def test_the_opencti_checker_is_the_s14_module_analyst_renamed_in_place() -> None:
     """Section 13.1: same row (former slug), same assignment row (former name)."""
     spec = next(s for s in fleet_seed.FLEET_AGENTS if s.slug == "health-opencti-checker")
     assert "health-module-analyst" in spec.former_slugs
@@ -236,7 +236,7 @@ def test_the_opencti_checker_is_the_s14_module_analyst_renamed_in_place():
     assert fleet_seed.checks_assignment_names("quality_analyst") == ()
 
 
-def test_every_playbook_skill_is_shipped():
+def test_every_playbook_skill_is_shipped() -> None:
     from app.agents.builtin_agents import BUILTIN_SKILLS
     from app.agents.seed import _resolve_seed_content
 

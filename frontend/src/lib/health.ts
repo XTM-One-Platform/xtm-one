@@ -72,6 +72,9 @@ export const HEALTH_SPECIALIST_LABELS = {
   quality_analyst: "Quality Analyst",
   flow_lab: "Flow Lab",
   experimenter: "Experimenter",
+  opencti_checker: "OpenCTI Health Checker",
+  openaev_checker: "OpenAEV Health Checker",
+  opencrq_checker: "OpenCRQ Health Checker",
   module_analyst: "Module Analyst",
 } as const;
 

@@ -25,13 +25,13 @@ AGENT_ID = uuid.uuid4()
 SEEDED_NAME = ASSIGNMENT_BY_KEY["opencti_checks"].name
 
 
-def _agent(**kw):
+def _agent(**kw: object) -> SimpleNamespace:
     values = {"id": AGENT_ID, "health_role": "opencti_checker", "is_builtin": True, "is_company_managed": True}
     values.update(kw)
     return SimpleNamespace(**values)
 
 
-def _assignment(**kw):
+def _assignment(**kw: object) -> SimpleNamespace:
     values = {"agent_id": AGENT_ID, "name": SEEDED_NAME}
     values.update(kw)
     return SimpleNamespace(**values)
@@ -49,16 +49,16 @@ def test_the_seeded_module_analyst_run_is_exempt():
         ("opencrq_checker", "opencrq_checks"),
     ],
 )
-def test_each_checker_is_exempt_on_its_own_checks_assignment(role, key):
+def test_each_checker_is_exempt_on_its_own_checks_assignment(role: str, key: str) -> None:
     assert mab.is_module_checker_run(_agent(health_role=role), _assignment(name=ASSIGNMENT_BY_KEY[key].name))
 
 
-def test_a_checker_on_another_checkers_assignment_is_not_exempt():
+def test_a_checker_on_another_checkers_assignment_is_not_exempt() -> None:
     other = ASSIGNMENT_BY_KEY["openaev_checks"].name
     assert mab.is_module_checker_run(_agent(health_role="opencti_checker"), _assignment(name=other)) is False
 
 
-def test_the_s14_role_and_assignment_name_stay_exempt_until_the_seed_renames_them():
+def test_the_s14_role_and_assignment_name_stay_exempt_until_the_seed_renames_them() -> None:
     """Section 13.1: the row keeps ``module_analyst`` until the next boot rewrites it."""
     s14 = _assignment(name="Platform Health module investigation")
     assert mab.is_module_checker_run(_agent(health_role="module_analyst"), s14) is True

@@ -38,7 +38,7 @@ def test_no_tool_of_the_group_reaches_a_module():
     assert listed.isdisjoint(d.name for d in tools.build_health_module_tools("")[0])
 
 
-def test_each_module_checker_carries_the_group():
+def test_each_module_checker_carries_the_group() -> None:
     from app.services.health.fleet_seed import FLEET_AGENTS
     from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
 
@@ -60,7 +60,7 @@ def test_the_group_is_wired_in_xtm_one_mode_only(monkeypatch):
 
 
 @pytest.mark.parametrize("role", [None, "quality_analyst", "orchestrator"])
-async def test_only_a_module_checker_records_a_recommendation(role):
+async def test_only_a_module_checker_records_a_recommendation(role: str | None) -> None:
     answer = await tools._record_finding_recommendation(
         None, _reader(role=role, admin=True), finding_id="f", text="t", confidence="high"
     )
@@ -78,10 +78,14 @@ async def test_a_recommendation_outside_a_cycle_is_refused():
 
 
 @pytest.mark.parametrize("role", ["opencti_checker", "openaev_checker", "opencrq_checker", "module_analyst"])
-async def test_every_checker_role_reaches_the_cycle_check(role):
+async def test_every_checker_role_reaches_the_cycle_check(role: str) -> None:
     with pytest.raises(RefusalError) as refused:
         await tools._record_finding_recommendation(
-            None, _reader(role=role), finding_id="f", text="t", confidence="high"
+            None,  # type: ignore[arg-type]
+            _reader(role=role),
+            finding_id="f",
+            text="t",
+            confidence="high",
         )
     assert refused.value.message == tools._NOT_IN_CYCLE
 
