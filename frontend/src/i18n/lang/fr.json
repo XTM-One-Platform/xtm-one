@@ -20525,5 +20525,12 @@
   "Drafted the threat package": "A rédigé le paquet de menace",
   "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "Pas encore de paquet de menace : la flotte en rédige un dans OpenCTI une fois le cas trié.",
   "Threat package drafted, coverage not requested yet": "Paquet de menace rédigé, couverture pas encore demandée",
-  "Coverage requested in OpenCTI": "Couverture demandée dans OpenCTI"
+  "Coverage requested in OpenCTI": "Couverture demandée dans OpenCTI",
+  "Context: {value}": "Contexte : {value}",
+  "Scope: {value}": "Périmètre : {value}",
+  "Collaboration instruction set": "Consigne de collaboration définie",
+  "No collaboration instruction": "Aucune consigne de collaboration",
+  "Search capabilities, members, integrations...": "Rechercher fonctionnalités, membres, intégrations...",
+  "No capability slot": "Aucun emplacement de fonctionnalité",
+  "No slot matches the search and filters": "Aucun emplacement ne correspond à la recherche et aux filtres"
 }

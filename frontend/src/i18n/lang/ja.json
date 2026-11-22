@@ -20525,5 +20525,12 @@
   "Drafted the threat package": "脅威パッケージを作成しました",
   "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.": "脅威パッケージはまだありません。ケースのトリアージ後、フリートが OpenCTI に作成します。",
   "Threat package drafted, coverage not requested yet": "脅威パッケージを作成しました。カバレッジはまだ要求していません",
-  "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました"
+  "Coverage requested in OpenCTI": "OpenCTI でカバレッジを要求しました",
+  "Context: {value}": "コンテキスト: {value}",
+  "Scope: {value}": "範囲: {value}",
+  "Collaboration instruction set": "連携の指示あり",
+  "No collaboration instruction": "連携の指示なし",
+  "Search capabilities, members, integrations...": "機能、メンバー、連携を検索...",
+  "No capability slot": "機能スロットはありません",
+  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません"
 }
