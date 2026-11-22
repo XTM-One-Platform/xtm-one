@@ -88,6 +88,63 @@ def _endpoint_input(current: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+async def _bulk_update(
+    base_url: str,
+    headers: dict[str, str],
+    *,
+    asset_ids: list[str] | None,
+    filter_json: str,
+    category: str,
+    subcategory: str,
+    url: str,
+    criticality: str,
+    tags: list[str] | None,
+) -> str:
+    """One ``PUT /api/assets/bulk`` (OpenAEV #9654) over ids or a filter group."""
+    ids = [i for i in (asset_ids or []) if i]
+    if bool(ids) == bool(filter_json):
+        return "bulk_update needs exactly one selection: asset_ids or asset_filter."
+    body: dict[str, Any] = {}
+    if ids:
+        body["asset_ids_to_process"] = ids
+    else:
+        try:
+            parsed = json.loads(filter_json)
+        except ValueError as exc:
+            return f"asset_filter must be valid JSON: {exc}"
+        filter_err = _validate_filter_group(parsed)
+        if filter_err:
+            return f"asset_filter is invalid. {filter_err}"
+        body["search_pagination_input"] = {"filterGroup": parsed}
+    changes: dict[str, Any] = {}
+    if category:
+        changes["asset_category"] = category.strip().upper()
+    if subcategory:
+        changes["asset_subcategory"] = subcategory.strip().upper()
+    if url:
+        changes["asset_url"] = url
+    if criticality:
+        changes["asset_criticality"] = criticality.strip().upper()
+    if tags:
+        changes["asset_tags_to_add"] = tags
+    if not changes:
+        return "Provide at least one of category, subcategory, url, criticality or tags."
+    if "asset_subcategory" in changes and "asset_category" not in changes:
+        return "A subcategory needs its category: pass category too."
+    body.update(changes)
+    resp, err = await _api(base_url, headers, "put", "/api/assets/bulk", "bulk update assets", json=body)
+    if err:
+        if "404" in err or "405" in err or "not found" in err.lower():
+            return (
+                f"{err}\nThis OpenAEV has no bulk asset update (it needs OpenAEV with "
+                "PUT /api/assets/bulk): update the assets one by one with action 'update'."
+            )
+        return err
+    updated = resp.json() if resp is not None else None
+    count = len(updated) if isinstance(updated, list) else 0
+    return f"Updated {count} asset(s): {', '.join(sorted(changes))}."
+
+
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -107,8 +164,22 @@ def register(
         criticality: str = "",
         internet_facing: bool | None = None,
         external_reference: str = "",
+        asset_ids: list[str] | None = None,
+        asset_filter: str = "",
     ) -> str:
         action = (action or "").strip().lower()
+        if action == "bulk_update":
+            return await _bulk_update(
+                base_url,
+                headers,
+                asset_ids=asset_ids,
+                filter_json=asset_filter,
+                category=category,
+                subcategory=subcategory,
+                url=url,
+                criticality=criticality,
+                tags=tags,
+            )
         if not asset_id:
             return "asset_id (endpoint_id) is required."
 
@@ -200,7 +271,7 @@ def register(
             return f"Deleted endpoint {asset_id}."
 
         return (
-            f"Unknown action '{action}'. Valid actions: update, delete. "
+            f"Unknown action '{action}'. Valid actions: update, delete, bulk_update. "
             "(Use search_openaev_assets / get_openaev_asset to read.)"
         )
 
@@ -441,16 +512,26 @@ def register(
             name="manage_openaev_asset",
             description=(
                 "Update or delete an OpenAEV asset (endpoint). Actions: 'update' "
-                "(asset_id + any of the fields; the others are kept) and 'delete' "
-                "(asset_id). "
+                "(asset_id + any of the fields; the others are kept), 'delete' "
+                "(asset_id) and 'bulk_update' (asset_ids or asset_filter; sets category, "
+                "subcategory, url, criticality, adds tags on every match). "
                 "Endpoints are normally created by deploying an agent; use "
                 "search_openaev_assets / get_openaev_asset to read."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["update", "delete"]},
+                    "action": {"type": "string", "enum": ["update", "delete", "bulk_update"]},
                     "asset_id": {"type": "string", "description": "Endpoint ID."},
+                    "asset_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "bulk_update: the asset ids.",
+                    },
+                    "asset_filter": {
+                        "type": "string",
+                        "description": "bulk_update: asset search filter group as JSON.",
+                    },
                     "name": {"type": "string"},
                     "description": {"type": "string"},
                     "hostname": {"type": "string"},
@@ -472,7 +553,7 @@ def register(
                     "internet_facing": {"type": "boolean"},
                     "external_reference": {"type": "string"},
                 },
-                "required": ["action", "asset_id"],
+                "required": ["action"],
             },
             source=_SOURCE,
         ),
