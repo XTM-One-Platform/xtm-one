@@ -360,6 +360,21 @@ The bot's card tools (`send_teams_bot_channel_card`, `send_teams_bot_chat_card`,
 `work_item:<id>`) in place of `card`: `decision_card_delivery.decision_card_for_tool`
 renders the same card, so an agent posts a decision without writing card JSON.
 
+As built (S10, Slack): `services/slack_decision_cards.py` draws the same
+`DecisionView` as Block Kit (header, source, question, context, one button per
+option with the recommendation `primary`, "Answer with text" opening a modal,
+the links, "Waiting for <name>"); a tool approval shows its tool names only
+(a Slack message is read by every member) and has no text answer. Clicks and
+the modal come to `POST /api/channels/slack/interactions` (`channels/slack.py`),
+signing-secret checked and failing closed as `/slack/events`; the clicker is
+resolved by Slack email then the linked Slack identity, and the answer goes
+through `decision_router.answer_decision` with surface `slack_card`. An answer
+replaces the message with the decided card (`chat.update`); a refusal (not the
+recipient, already answered, asked again, not linked) is an ephemeral to the
+clicker and the card is unchanged. The D notify path (`notify.py`
+`_notify_slack`) sends a paused run's open decision as this card. Setup: the
+Slack app's Interactivity Request URL is `{base_url}/api/channels/slack/interactions`.
+
 ### I.3 Answering in place
 
 A button calls the answer router of E as the person who clicked: identity by
