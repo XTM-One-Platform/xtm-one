@@ -216,9 +216,8 @@ def render_summary(row: Any, *, tracked_count: int = 0) -> str:
     counts = category_counts(profile, tracked_count=tracked_count)
     head = (
         f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version}). "
-        "The rest of the profile is in categories: read exactly the one your work needs with "
-        'get_organization_context(category="tech_stack", query="cisco", offset=0, limit=50) reads one '
-        '(any name of the index below); category="*" lists them.'
+        "The rest is in the categories below: read only the one your work needs with "
+        'get_organization_context(category="<name>", query="cisco") (it pages); category="*" lists them.'
     )
     index = "Categories:\n" + "\n".join(
         cats.index_line(category, counts[category.name]) for category in cats.CATEGORIES
