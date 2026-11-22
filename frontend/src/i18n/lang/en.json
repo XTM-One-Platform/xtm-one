@@ -20751,5 +20751,21 @@
   "OpenCTI Systems are owned by its connectors.": "OpenCTI Systems are owned by its connectors.",
   "OpenAEV has no AI system object to write.": "OpenAEV has no AI system object to write.",
   "OpenAEV software inventory is read from its agents.": "OpenAEV software inventory is read from its agents.",
-  "This pairing reads only.": "This pairing reads only."
+  "This pairing reads only.": "This pairing reads only.",
+  "Running versions": "Running versions",
+  "this product": "this product",
+  "No asset in the inventory reports {product}: the running versions come from the assets (Intune, Defender, an SBOM, OpenAEV).": "No asset in the inventory reports {product}: the running versions come from the assets (Intune, Defender, an SBOM, OpenAEV).",
+  "{count, plural, =0 {No asset is below {version}} one {# asset still below {version}} other {# assets still below {version}}}": "{count, plural, =0 {No asset is below {version}} one {# asset still below {version}} other {# assets still below {version}}}",
+  "{count, plural, =0 {No asset runs {version} or later yet} one {# asset runs {version} or later} other {# assets run {version} or later}}": "{count, plural, =0 {No asset runs {version} or later yet} one {# asset runs {version} or later} other {# assets run {version} or later}}",
+  "{count, plural, one {# asset runs a version that cannot be compared} other {# assets run a version that cannot be compared}}": "{count, plural, one {# asset runs a version that cannot be compared} other {# assets run a version that cannot be compared}}",
+  "{count, plural, one {# more version not listed} other {# more versions not listed}}": "{count, plural, one {# more version not listed} other {# more versions not listed}}",
+  "No version": "No version",
+  "Below the fixed version": "Below the fixed version",
+  "On the fixed version or later": "On the fixed version or later",
+  "Cannot be compared": "Cannot be compared",
+  "SBOM": "SBOM",
+  "CSV import": "CSV import",
+  "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.": "The asset inventory reports {product} on {assets, plural, one {# asset} other {# assets}} in {versions, plural, one {# version} other {# versions}}.",
+  "Asset count": "Asset count",
+  "Versions not listed": "Versions not listed"
 }
