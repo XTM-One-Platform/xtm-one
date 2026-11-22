@@ -20654,5 +20654,10 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, other {同期された # 行を削除しますか?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回の同期実行 ({when}) で再び追加されます。}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, other {{platform} からの行です: 除外しない限り、次回のインポートで再び追加されます。}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, other {同期はこれらを再びインポートしません。後で除外リストから外せます。}}",
+  "Agentic checks": "エージェントによるチェック",
+  "No check round yet": "チェックはまだ実行されていません",
+  "Show the checks": "チェックを表示",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}"
 }
