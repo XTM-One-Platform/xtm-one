@@ -69,11 +69,6 @@ export function currentStage(stages: LoopStageView[]): LoopStageView | undefined
   return stages.find((s) => s.status === "current" || s.status === "stopped");
 }
 
-/** The `?loop=` value of a signal (section 4: the trace's deep link). */
-export function loopParam(kind: "signal" | "case", id: string): string {
-  return `${kind}:${id}`;
-}
-
 /**
  * The `?loop=` value of the signal list, in one state or every state
  * (CTEM-01-UI), optionally on one trigger path (#1189: a path card of the

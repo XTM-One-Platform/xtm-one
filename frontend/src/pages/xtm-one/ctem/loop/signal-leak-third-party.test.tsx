@@ -13,7 +13,7 @@ import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import { decisionSentence, nextStepSentence } from "./DecisionReason";
-import { LoopTraceDialog, subjectFacts } from "./LoopTraceDialog";
+import { SignalTraceBody, subjectFacts } from "./SignalLoopTrace";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -70,7 +70,7 @@ function renderTrace(signal: CtemSignal) {
   get.mockResolvedValue(signal);
   renderWithProviders(
     <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
-      <LoopTraceDialog />
+      <SignalTraceBody id={ID} />
     </MemoryRouter>,
   );
   return screen.findByTestId("ctem-signal-facts");

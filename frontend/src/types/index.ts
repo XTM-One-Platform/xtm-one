@@ -16463,9 +16463,22 @@ export interface HealthDigest {
   recommendations?: Record<string, number> | null;
   /** A Module Analyst cycle: agentic findings of its registration `opened` and `resolved` in its window. */
   agentic_findings?: Record<string, number> | null;
+  /** The weekly digest (#101 S15e): per module, the check rounds of the week and the checks failed most. */
+  modules?: Partial<Record<HealthModule, HealthWeeklyModuleSummary>> | null;
   skipped: HealthDigestSkip[];
   unavailable: string[];
   narrative: string | null;
+}
+
+/** One module of the weekly digest's Modules part (`check_reports.weekly_module_summary`). */
+export interface HealthWeeklyModuleSummary {
+  rounds: number;
+  registrations: number;
+  passed: number;
+  warned: number;
+  failed: number;
+  not_run: number;
+  most_failed: { id: string; failed: number; warned: number }[];
 }
 
 interface HealthSignalReading {
