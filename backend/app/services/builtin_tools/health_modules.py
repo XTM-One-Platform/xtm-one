@@ -18,7 +18,7 @@ The ``health_modules`` group: ``list_module_findings`` (read) and
 XTM One only: the findings are the health engine's rows, the recommendation a
 ``health_finding_recommendations`` row. Nothing here reaches a module; the module
 reads are the registration integration's own read tools behind
-``services/health/module_analyst.MODULE_ANALYST_TOOLS`` (S14a-2b-2).
+``services/health/module_analyst.MODULE_CHECKER_TOOLS`` (S14a-2b-2).
 
 Access, read on the rows at every call:
 
@@ -433,7 +433,7 @@ async def add_module_read_tools(
     The registration the cycle investigates is read from the cycle row, never from the
     payload, and its integration (the one the registration created) is built read-only:
     write tools are withheld by the read-only binding rule, then everything outside
-    ``MODULE_ANALYST_TOOLS`` is withheld too. Any other run gets nothing.
+    ``MODULE_CHECKER_TOOLS`` is withheld too. Any other run gets nothing.
     """
     if MODULES_GROUP_ID not in builtin_tool_ids or not module_tools_offered():
         return 0

@@ -737,7 +737,7 @@ only). Two locks, both enforced where the tools are built, never by a prompt sen
 
 1. The binding is read-only (`services/integration_read_only.py`): every write tool is
    withheld from the model and refused by the executor.
-2. An explicit allow-list of read tools per provider (`MODULE_ANALYST_TOOLS`, one tuple
+2. An explicit allow-list of read tools per provider (`MODULE_CHECKER_TOOLS` since S15b-1, one tuple
    per provider in `services/health/module_analyst.py`), so a read tool added later to a
    module integration is not reachable until it is listed. A tool name outside the list
    is refused with the read-only reason.
@@ -898,7 +898,7 @@ decision written here).
   (S14a-2b-4), called by the assignment engine for every run carrying the group: the
   registration is read from the run's own cycle row (target type `module`, same agent),
   never from the payload; its integration is built with the read-only binding rule, then
-  every tool outside `MODULE_ANALYST_TOOLS` is withheld and refused by name. Any other
+  every tool outside `MODULE_CHECKER_TOOLS` is withheld and refused by name. Any other
   run, Copilot mode or an inactive registration gets no module tool.
 - The orchestrator does not delegate to the analyst; it starts only from its own
   triggers. **Superseded by section 13.2 (S15):** the orchestrator delegates the module
@@ -1081,7 +1081,7 @@ allow-list first.
 ### 13.5 Tools
 
 The two locks of 12.3 stay: the registration's integration under the read-only binding, and
-`MODULE_ANALYST_TOOLS` (renamed `MODULE_CHECKER_TOOLS`, one tuple per provider). Each tool
+`MODULE_CHECKER_TOOLS` (the S14 `MODULE_ANALYST_TOOLS`, renamed in S15b-1, one tuple per provider). Each tool
 added is a read tool the classifier reads as a read (test (k) of 12.9). No tool on the
 list reads a specific connector, feed, collector, injector, executor or third-party data
 source (13.4 scope).
@@ -1195,7 +1195,8 @@ source (13.4 scope).
 | S15 spec | This section | no |
 | S15a-1 | Members: rename in place and two new checkers, roles (`module_analyst` kept as the alias of rows written before S15), `is_module_checker_run`, cycles started on the module's own checker, orchestrator handovers, playbook skills (seed data), the Cycles label of each checker, tests (n) and the 12.9 extensions | no |
 | S15a-2 | Orchestrator `module_round` schedule replacing the daily branch of the triggers pass (13.2) | no |
-| S15b | Tools: allow-list widened, new read-only health tools per provider, classifier and snapshot tests, `backend-snapshots` regenerated | no |
+| S15b-1 | Allow-list reshaped to the 13.5 lists (connector and feed tools removed, existing module reads added), renamed `MODULE_CHECKER_TOOLS`, scope test (o) | no |
+| S15b-2 | New read-only health tools per provider (`health_reads.py`), classifier and snapshot tests, `backend-snapshots` regenerated | no |
 | S15c | Report store (migration), `record_module_check_report`, agentic finding open and resolve per check, digest sections, API (`GET /health/modules/{module}/checks`), tests (l), (m) | no |
 | S15d | Lab measurement and default ceiling written in 13.7 | no |
 | S15e | Health page: module card counts, report view, "Run checks now", Cycles title, weekly digest part, docs and i18n | yes |

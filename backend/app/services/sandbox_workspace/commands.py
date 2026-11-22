@@ -328,6 +328,29 @@ def uncollected_note(outcome: CommandOutcome) -> str:
     return text
 
 
+def missing_file_verdict(outcome: CommandOutcome, outside: list[str]) -> str:
+    """The sentence giving the run's verdict without the tests that failed on a file outside the checkout, or ``""``.
+
+    *outside* holds the workspace paths of :attr:`CommandOutcome.missing` the narrow checkout does not
+    hold. A JUnit report names each failing test with its body: a test whose body names one of them
+    failed on the checkout, not on the change. Without the count the answer said "1 failed" next to a
+    note calling it environmental, and the run was read as red (issue #1111).
+    """
+    report = outcome.report
+    if report is None or report.kind != "junit" or report.problem or not report.failures or not outside:
+        return ""
+    on_checkout = [name for name, body in report.failures if any(path in body for path in outside)]
+    if not on_checkout:
+        return ""
+    rest = len(report.failures) - len(on_checkout)
+    verdict = "the tests this checkout can run pass" if not rest else f"{rest} other test(s) fail on the change"
+    names = ", ".join(on_checkout[:3]) + (", ..." if len(on_checkout) > 3 else "")
+    return (
+        f"Without the {len(on_checkout)} test(s) failing on those files ({names}): {report.passed} passed, "
+        f"{rest} failed: {verdict} (the exit code still counts them)."
+    )
+
+
 #: A line of output saying a file was missing: Python, Node, TypeScript and the shell spell it so.
 _MISSING_LINE = re.compile(r"No such file or directory|ENOENT|FileNotFoundError|Cannot find module|error TS6053")
 #: A TypeScript diagnostic for a relative import it could not resolve: ``src/a.ts(8,30): error TS2307: Cannot
