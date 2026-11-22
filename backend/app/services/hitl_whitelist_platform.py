@@ -152,6 +152,8 @@ HAND_GATED: dict[str, str] = {
     "download_perk_invoice_pdf": _DOWNLOAD_REASON,
     "download_servicenow_attachment": _DOWNLOAD_REASON,
     "download_slack_file": _DOWNLOAD_REASON,
+    "download_spendesk_payable_attachment": _DOWNLOAD_REASON,
+    "download_spendesk_purchase_order_document": _DOWNLOAD_REASON,
     "download_tanium_file_evidence": _DOWNLOAD_REASON,
     "download_threatq_export": _DOWNLOAD_REASON,
     "download_threatq_file": _DOWNLOAD_REASON,
