@@ -115,12 +115,14 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
     });
 
   // The fleet setup's enable steps (#1151), shared by step 6 and the end screen (UX r2 B1): the same plan and
-  // enable call as before, opened on Run as and automations since this flow already walked the slots and gates.
+  // enable call as before, walking only Run as and automations and Review since this flow already walked the slots
+  // and gates, under this flow's title (UX r1 B1 of #1157).
   const enableDialog = fleetId && fleet.data && (
     <FleetSetupWizard
       fleetId={fleetId}
       fleetName={fleet.data.name}
       startAt="automations"
+      title={t_i18n("Set up the CTEM loop")}
       open={enableOpen}
       onOpenChange={(next) => {
         setEnableOpen(next);

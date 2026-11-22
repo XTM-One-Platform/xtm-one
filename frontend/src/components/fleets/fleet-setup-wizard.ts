@@ -50,10 +50,14 @@ export const WIZARD_STEP_INTROS = {
 
 /**
  * The steps a fleet walks: Integrations only when one of its members declares
- * a capability slot (`hasSlots` false drops it; unknown keeps it).
+ * a capability slot (`hasSlots` false drops it; unknown keeps it). With `from`
+ * (a parent flow that already walked the earlier steps, the CTEM loop setup:
+ * UX r1 B1), only the steps from it on: the earlier ones are not reachable.
  */
-export function wizardSteps(hasSlots: boolean | null): WizardStepKey[] {
-  return WIZARD_STEPS.filter((key) => key !== "integrations" || hasSlots !== false);
+export function wizardSteps(hasSlots: boolean | null, from?: WizardStepKey): WizardStepKey[] {
+  const walked = WIZARD_STEPS.filter((key) => key !== "integrations" || hasSlots !== false);
+  const start = from ? walked.indexOf(from) : -1;
+  return start > 0 ? walked.slice(start) : walked;
 }
 
 /** The step after *key* in *steps*, or null after the last one. */

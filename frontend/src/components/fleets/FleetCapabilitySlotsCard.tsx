@@ -65,10 +65,20 @@ const SLOT_STATE_VARIANTS = {
   unavailable: "outline",
 } as const;
 
-export function FleetCapabilitySlotsCard({ fleet, defaultOpen = false }: { fleet: Fleet; /** Expanded on mount (the setup wizard's Integrations step, #1151). */ defaultOpen?: boolean }) {
+export function FleetCapabilitySlotsCard({
+  fleet,
+  inSetup = false,
+}: {
+  fleet: Fleet;
+  /** Inside the setup wizard (#1151, UX r1 B2 and A1): always expanded, no collapse, every link to /integrations in a new tab with a refetch on return. */
+  inSetup?: boolean;
+}) {
   const { t_i18n } = useFormatter();
-  const { data, isLoading, error } = useFleetCapabilitySlots(fleet.id);
-  const [open, setOpen] = useState(defaultOpen);
+  const { data, isLoading, error, refetch } = useFleetCapabilitySlots(fleet.id);
+  const [expanded, setOpen] = useState(false);
+  const open = inSetup || expanded;
+  // In the setup, a link to /integrations opens a new tab and the slots are read again when this tab regains focus.
+  const onConnect = inSetup ? () => window.addEventListener("focus", () => void refetch(), { once: true }) : undefined;
   if (isLoading || error || !data || data.members.length === 0) return null;
   const slots = data.members.flatMap((member) => member.slots);
   const connected = slots.filter((slot) => slot.state === "filled").length;
@@ -90,22 +100,24 @@ export function FleetCapabilitySlotsCard({ fleet, defaultOpen = false }: { fleet
               {t_i18n("{total, plural, one {{connected} of # slot connected} other {{connected} of # slots connected}}", { connected, total: slots.length })}
             </span>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto shrink-0"
-            aria-expanded={open}
-            aria-controls="fleet-capability-slots-rows"
-            onClick={() => setOpen((value) => !value)}
-          >
-            {open ? t_i18n("Hide slots") : t_i18n("Show slots")}
-          </Button>
+          {!inSetup && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto shrink-0"
+              aria-expanded={open}
+              aria-controls="fleet-capability-slots-rows"
+              onClick={() => setOpen((value) => !value)}
+            >
+              {open ? t_i18n("Hide slots") : t_i18n("Show slots")}
+            </Button>
+          )}
         </div>
         {open && (
           <ul id="fleet-capability-slots-rows">
             {data.members.map((member) => (
-              <MemberSlots key={member.member_id} fleetId={fleet.id} member={member} />
+              <MemberSlots key={member.member_id} fleetId={fleet.id} member={member} onConnect={onConnect} />
             ))}
           </ul>
         )}
@@ -115,7 +127,7 @@ export function FleetCapabilitySlotsCard({ fleet, defaultOpen = false }: { fleet
 }
 
 /** One row per member: name and role on the left, its slots inline across the width. */
-function MemberSlots({ fleetId, member }: { fleetId: string; member: FleetMemberSlots }) {
+function MemberSlots({ fleetId, member, onConnect }: { fleetId: string; member: FleetMemberSlots; onConnect?: () => void }) {
   const { t_i18n } = useFormatter();
   return (
     <li aria-label={member.name} className="grid gap-2 border-t border-elevation-subtle py-2 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -127,14 +139,25 @@ function MemberSlots({ fleetId, member }: { fleetId: string; member: FleetMember
       </div>
       <ul className="flex min-w-0 flex-wrap gap-x-4 gap-y-2">
         {member.slots.map((slot) => (
-          <SlotRow key={slot.capability} fleetId={fleetId} member={member} slot={slot} />
+          <SlotRow key={slot.capability} fleetId={fleetId} member={member} slot={slot} onConnect={onConnect} />
         ))}
       </ul>
     </li>
   );
 }
 
-function SlotRow({ fleetId, member, slot }: { fleetId: string; member: FleetMemberSlots; slot: FleetCapabilitySlot }) {
+function SlotRow({
+  fleetId,
+  member,
+  slot,
+  onConnect,
+}: {
+  fleetId: string;
+  member: FleetMemberSlots;
+  slot: FleetCapabilitySlot;
+  /** Set inside the setup wizard: the link opens a new tab and calls it. */
+  onConnect?: () => void;
+}) {
   // The slot's label comes from the API: translated when the catalog holds it, shown as is otherwise.
   const { t_i18n, t_text } = useFormatter();
   const { toast } = useToast();
@@ -193,11 +216,16 @@ function SlotRow({ fleetId, member, slot }: { fleetId: string; member: FleetMemb
           className="w-[200px] shrink-0"
         />
       )}
-      {slot.state === "unavailable" && member.can_edit && (
-        <Link to="/integrations" className="content-caption text-accent hover:underline">
-          {t_i18n("Connect one")}
-        </Link>
-      )}
+      {slot.state === "unavailable" && member.can_edit &&
+        (onConnect ? (
+          <a href="/integrations" target="_blank" rel="noopener noreferrer" className="content-caption text-accent hover:underline" onClick={onConnect}>
+            {t_i18n("Connect one")}
+          </a>
+        ) : (
+          <Link to="/integrations" className="content-caption text-accent hover:underline">
+            {t_i18n("Connect one")}
+          </Link>
+        ))}
     </li>
   );
 }

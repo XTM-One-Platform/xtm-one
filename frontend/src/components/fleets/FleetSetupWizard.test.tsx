@@ -200,6 +200,22 @@ describe("FleetSetupWizard", () => {
     expect(screen.getByRole("button", { name: "Enable 2 automations" })).toBeDisabled();
   });
 
+  it("opened from a parent flow, counts and shows only its own steps under the parent's title (UX r1 B1)", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <FleetSetupWizard fleetId="f1" fleetName="CTEM loop" open startAt="automations" title="Set up the CTEM loop" onOpenChange={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("dialog", { name: "Set up the CTEM loop" })).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByTestId("fleet-setup-dot-about")).not.toBeInTheDocument();
+  });
+
+  it("says how many automations switch on in a sentence on Review (UX r1 B3)", () => {
+    open("review");
+    expect(screen.getByTestId("fleet-setup-review")).toHaveTextContent("2 automations switch on");
+  });
+
   it("resumes on the step the person stopped on", () => {
     writeWizardProgress("f1", { step: "automations", settled: ["about", "autonomy"], skippedIntegrations: false });
     open();
@@ -212,6 +228,11 @@ describe("fleet-setup-wizard rules", () => {
     expect(wizardSteps(false)).toEqual(["about", "autonomy", "automations", "review"]);
     expect(wizardSteps(true)).toContain("integrations");
     expect(wizardSteps(null)).toContain("integrations");
+  });
+
+  it("walks only the steps from startAt on when a parent flow walked the earlier ones (UX r1 B1)", () => {
+    expect(wizardSteps(true, "automations")).toEqual(["automations", "review"]);
+    expect(wizardSteps(false, "about")).toEqual(["about", "autonomy", "automations", "review"]);
   });
 
   it("opens on startAt, else the saved step still walked, else the first", () => {

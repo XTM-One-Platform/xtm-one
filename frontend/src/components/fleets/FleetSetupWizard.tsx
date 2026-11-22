@@ -95,13 +95,16 @@ export function FleetSetupWizard({
   open,
   onOpenChange,
   startAt,
+  title,
 }: {
   fleetId: string;
   fleetName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Open on this step instead of the saved one (the CTEM loop setup opens on Run as and automations). */
+  /** Walk only the steps from this one on (the CTEM loop setup opens on Run as and automations; UX r1 B1). */
   startAt?: WizardStepKey;
+  /** The parent flow's title, kept when the wizard finishes another setup (UX r1 B1). */
+  title?: string;
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
@@ -122,7 +125,7 @@ export function FleetSetupWizard({
   const [enabledCount, setEnabledCount] = useState<number | null>(null);
 
   const hasSlots = slots.data ? slots.data.members.some((member) => member.slots.length > 0) : slots.isError ? false : null;
-  const steps = useMemo(() => wizardSteps(hasSlots), [hasSlots]);
+  const steps = useMemo(() => wizardSteps(hasSlots, startAt), [hasSlots, startAt]);
 
   // Open on the saved step (or startAt), once per opening; reset on close.
   useEffect(() => {
@@ -197,7 +200,7 @@ export function FleetSetupWizard({
     : !documentation.data
       ? t_i18n("Estimating runs a month...")
       : range
-        ? t_i18n("{min} to {max, plural, one {# run} other {# runs}} a month, from the fleet's documented triggers (About > Quota estimate)", { min: range.min, max: range.max })
+        ? t_i18n("{min} to {max, plural, one {# run} other {# runs}} a month, from the fleet's documented triggers (the same estimate as on the fleet's About tab)", { min: range.min, max: range.max })
         : t_i18n("No estimate written for this fleet");
   const slotTotals = slotCounts(slots.data?.members);
   const blocked = items.filter((item) => item.missing.length > 0);
@@ -245,7 +248,7 @@ export function FleetSetupWizard({
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent size="lg" data-testid="fleet-setup-wizard" data-step={step}>
         <DialogHeader>
-          <DialogTitle>{t_i18n("Set up {fleet}", { fleet: fleetName })}</DialogTitle>
+          <DialogTitle>{title ?? t_i18n("Set up {fleet}", { fleet: fleetName })}</DialogTitle>
           <DialogDescription>{t_i18n("Step {current} of {total}", { current: index + 1, total: steps.length })}</DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4">
@@ -283,7 +286,7 @@ export function FleetSetupWizard({
 
           {step === "integrations" && fleet.data && (
             <div className="space-y-3" data-testid="fleet-setup-integrations">
-              <FleetCapabilitySlotsCard fleet={fleet.data} defaultOpen />
+              <FleetCapabilitySlotsCard fleet={fleet.data} inSetup />
               <p className="content-compact text-default-secondary">
                 <a href="/integrations" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={() => window.addEventListener("focus", () => void slots.refetch(), { once: true })}>
                   {t_i18n("Connect a new integration")}
@@ -401,7 +404,7 @@ export function FleetSetupWizard({
             <ul className="space-y-2 content-compact" data-testid="fleet-setup-review">
               <li className="flex flex-wrap items-center gap-2">
                 <span className="w-40 shrink-0 font-medium">{t_i18n("Automations")}</span>
-                <span>{t_i18n("{count, plural, =0 {None picked} one {# switches on} other {# switch on}}", { count })}</span>
+                <span>{t_i18n("{count, plural, =0 {No automation picked} one {# automation switches on} other {# automations switch on}}", { count })}</span>
                 {blocked.length > 0 && (
                   <Badge variant="warning">{t_i18n("{count, plural, one {# stays off} other {# stay off}}", { count: blocked.length })}</Badge>
                 )}
