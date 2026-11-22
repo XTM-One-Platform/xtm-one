@@ -11,7 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
-import { LoopTraceDialog, freshnessFacts } from "./LoopTraceDialog";
+import { SignalTraceBody, freshnessFacts } from "./SignalLoopTrace";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -58,7 +58,7 @@ describe("asset freshness facts", () => {
     get.mockResolvedValue(stale);
     renderWithProviders(
       <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
-        <LoopTraceDialog />
+        <SignalTraceBody id={ID} />
       </MemoryRouter>,
     );
     const facts = await screen.findByTestId("ctem-signal-facts");

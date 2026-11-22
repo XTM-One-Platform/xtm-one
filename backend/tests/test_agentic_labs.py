@@ -834,6 +834,23 @@ async def test_the_status_names_a_service_that_exited_with_its_code(redis):
     assert again.ready and again.service_id != outcome.service_id and outcome.service_id in fake.deleted
 
 
+@pytest.mark.usefixtures("lab_settings", "no_quota")
+async def test_the_status_names_why_a_starting_service_waits_and_its_restarts(redis):
+    workspace = _workspace()
+    fake = _Kube()
+    fake.never_ready = True
+    outcome = await labs.start_lab(
+        await _resolved(workspace), workspace=workspace, client=fake, sleep=_no_sleep, background=True
+    )
+    for status in fake.pods[outcome.service_id]["status"]["containerStatuses"]:
+        if status["name"] == "svc-db":
+            status["state"] = {"waiting": {"reason": "ContainerCreating"}}
+        if status["name"] == "svc-lab":
+            status["restartCount"] = 2
+    status = await labs.lab_status(workspace, outcome.service_id, client=fake)
+    assert "services: db starting (ContainerCreating), lab starting (restarted 2x)" in status.text, status.text
+
+
 async def _resolved_with_ready_log(workspace: WorkspaceSession) -> services.ResolvedService:
     text = SERVICES.replace('ready_path = "/api/health"\n', 'ready_path = "/api/health"\nready_log = "lab up: "\n')
     await workspace.put_tree([("co/.xtm-one/checks.toml", text.encode()), ("co/backend/app.py", b"print('hi')\n")])
