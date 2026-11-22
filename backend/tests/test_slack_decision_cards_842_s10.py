@@ -133,6 +133,17 @@ def test_bold_next_to_japanese_text_gets_a_word_boundary_and_english_stays_plain
     assert "\u200b" not in en
 
 
+def test_a_value_holding_slot_text_is_substituted_once():
+    """A name such as ``{agent}`` looped forever in ``_bold_runs`` (review of #1086 by davidloiret)."""
+    line = cards._bold_runs("From {source} by {agent}", source="{agent}", agent="{source} {agent}")
+    assert line["text"] == "From *{agent}* by *{source} {agent}*"
+
+
+def test_bold_runs_keeps_an_unknown_slot_and_adds_word_boundaries():
+    line = cards._bold_runs("a{name}b {other}", name="x")
+    assert line["text"] == "a\u200b*x*\u200bb {other}"
+
+
 def test_each_option_keeps_its_own_line():
     """The options list was folded onto one line by ``_clip`` (seen in the render lab, UX round 1 of #1086)."""
     message = cards.render_slack_decision(_view(), "en")

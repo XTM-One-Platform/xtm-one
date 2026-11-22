@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -108,22 +109,30 @@ def _section(text: dict[str, Any]) -> dict[str, Any]:
 
 
 _ZWSP = "\u200b"
+_SLOT = re.compile(r"(\{[a-z_]+\})")
 
 
 def _bold_runs(template: str, **values: str) -> dict[str, Any]:
-    """A catalog sentence with its ``{name}`` values in bold, each value escaped (never formatted raw)."""
-    escaped = _escape(template)
-    for key, value in values.items():
-        slot = "{" + key + "}"
-        while slot in escaped:
-            at = escaped.index(slot)
-            before, after = escaped[:at], escaped[at + len(slot) :]
-            # Slack reads *bold* only at a word boundary: next to a letter (a Japanese sentence has no
-            # spaces) a zero-width space makes one, else the asterisks show (UX round 1 of #1086, ja).
-            lead = _ZWSP if before[-1:].isalnum() else ""
-            tail = _ZWSP if after[:1].isalnum() else ""
-            escaped = f"{before}{lead}*{_escape(value)}*{tail}{after}"
-    return {"type": "mrkdwn", "text": escaped, "verbatim": True}
+    """A catalog sentence with its ``{name}`` values in bold, each value escaped (never formatted raw).
+
+    The template is split once on its slots and each slot is substituted once, so a value that holds
+    a slot's own text (an agent named ``{agent}``) is never read as a slot again.
+    """
+    pieces = _SLOT.split(_escape(template))
+    out: list[str] = []
+    for index, piece in enumerate(pieces):
+        key = piece[1:-1] if index % 2 else None
+        if key is None or key not in values:
+            out.append(piece)
+            continue
+        before = out[-1][-1:] if out else ""
+        after = pieces[index + 1][:1] if index + 1 < len(pieces) else ""
+        # Slack reads *bold* only at a word boundary: next to a letter (a Japanese sentence has no
+        # spaces) a zero-width space makes one, else the asterisks show (UX round 1 of #1086, ja).
+        lead = _ZWSP if before.isalnum() else ""
+        tail = _ZWSP if after.isalnum() else ""
+        out.append(f"{lead}*{_escape(values[key])}*{tail}")
+    return {"type": "mrkdwn", "text": "".join(out), "verbatim": True}
 
 
 def _slack_date(value: str | None, fallback_language: str) -> str | None:
