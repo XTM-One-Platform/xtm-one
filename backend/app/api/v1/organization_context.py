@@ -1372,7 +1372,13 @@ async def _save_rows_plan(
     current = await org_context.current_version(db)
     base = org_context.parse_profile(current.profile if current else {})
     try:
-        plan = osources.plan_rows(base, source=source, mode=mode, sync_id=str(sync.id) if sync is not None else "")
+        plan = osources.plan_rows(
+            base,
+            source=source,
+            mode=mode,
+            sync_id=str(sync.id) if sync is not None else "",
+            fields=osources.sync_fields(sync.section) if sync is not None else None,
+        )
     except osources.SourceRefusedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     if not plan.count or plan.profile is None:
@@ -1414,7 +1420,9 @@ async def preview_organization_sync_rows(
     base = org_context.parse_profile(current.profile if current else {})
     if not row.source:
         return RowsPlanResponse(source="", mode=mode, count=0, counts={}, rows={}, kept_elsewhere={})
-    plan = osources.plan_rows(base, source=row.source, mode=mode, sync_id=str(row.id))
+    plan = osources.plan_rows(
+        base, source=row.source, mode=mode, sync_id=str(row.id), fields=osources.sync_fields(row.section)
+    )
     return RowsPlanResponse(**plan.as_dict())
 
 

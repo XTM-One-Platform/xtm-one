@@ -219,6 +219,15 @@ def _row_name(row: Any) -> str:
     return str(getattr(row, "name", "") or getattr(row, "product", "") or "")
 
 
+def sync_fields(section: str) -> tuple[str, ...]:
+    """The profile fields a sync of *section* writes: its one row field, none for ``pirs`` or ``all``.
+
+    A sync's purge or release is limited to them, so deleting the ``assets`` sync of a platform never
+    touches that platform's tech stack, AI systems or asset groups (review on #1278).
+    """
+    return tuple(attr for attr, key in SOURCED_FIELDS.items() if key == section)
+
+
 def plan_rows(
     profile: OrganizationProfile,
     *,
@@ -228,6 +237,8 @@ def plan_rows(
     fields: tuple[str, ...] | None = None,
 ) -> PurgePlan:
     """Purge or release the rows *source* wrote (only those *sync_id* wrote when given).
+
+    *fields* limits the plan to those profile fields (``None``: every sourced field; empty: none).
 
     A row a sync wrote carries its ``sync_id``; rows written before the stamp count as the sync's when
     their source is the sync's. Hand sources are refused for a purge: a person's rows are never purged.
@@ -239,7 +250,7 @@ def plan_rows(
         raise SourceRefusedError("rows entered by hand are never purged; remove them in their table")
     plan = PurgePlan(source=key, mode=mode)
     draft = profile.model_copy(deep=True)
-    for attr in fields or tuple(SOURCED_FIELDS):
+    for attr in tuple(SOURCED_FIELDS) if fields is None else fields:
         rows = list(getattr(draft, attr, None) or [])
 
         def owned(row: Any) -> bool:
