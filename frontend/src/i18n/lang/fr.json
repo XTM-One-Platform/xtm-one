@@ -20580,5 +20580,21 @@
   "Answers on {ports}": "Répond sur {ports}",
   "Ports that answer": "Ports qui répondent",
   "DNS target": "Cible DNS",
-  "Certificate names": "Noms du certificat"
+  "Certificate names": "Noms du certificat",
+  "Evidence health": "Santé des preuves",
+  "Evidence expired: older than the re-test delay": "Preuve expirée : plus ancienne que le délai de re-test",
+  "Attested by a person only, never measured by a connector": "Attesté par une personne uniquement, jamais mesuré par un connecteur",
+  "Reported by a connector, never measured": "Signalé par un connecteur, jamais mesuré",
+  "Blind spot: no source reports this asset": "Angle mort : aucune source ne signale cet actif",
+  "Blind spot: the version is unknown": "Angle mort : la version est inconnue",
+  "Blind spot: a connector sync emptied": "Angle mort : une synchronisation de connecteur s’est vidée",
+  "Connector sync": "Synchronisation du connecteur",
+  "{kind}: {latest, plural, one {# row} other {# rows}} after {previous}; its findings stay open": "{kind} : {latest, plural, one {# ligne} other {# lignes}} après {previous} ; ses constats restent ouverts",
+  "{kind}: emptied; its findings stay open": "{kind} : vidée ; ses constats restent ouverts",
+  "No evidence since": "Aucune preuve depuis",
+  "Never measured": "Jamais mesuré",
+  "Risk scenario": "Scénario de risque",
+  "Evidence sources": "Sources de preuve",
+  "{origin}, last reported {date}": "{origin}, dernier signalement le {date}",
+  "No source reports this asset": "Aucune source ne signale cet actif"
 }
