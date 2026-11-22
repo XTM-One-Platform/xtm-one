@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health_check import STATUS_DISMISSED, STATUS_OPEN, STATUS_RESOLVED, HealthCheckFinding
