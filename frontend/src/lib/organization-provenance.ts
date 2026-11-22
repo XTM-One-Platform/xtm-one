@@ -45,7 +45,7 @@ export function sourcePlatform(source: string | undefined): string {
 
 /** The Source labels a table and its filter draw for the hand and agent kinds. @i18n-keys */
 export const SOURCE_KIND_LABELS = {
-  manual: "Typed",
+  manual: "Entered by hand",
   csv: "CSV",
   api: "API",
   agent: "Agent",
