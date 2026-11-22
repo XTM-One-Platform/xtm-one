@@ -61,6 +61,15 @@ def test_poetry_is_pinned_in_toolchain_python_and_asserted_offline():
     assert "poetry --version" in line
 
 
+def test_poetry_carries_the_pypi_mirror_plugin_the_mirror_env_names():
+    # Without it `poetry install` dials pypi.org past the registry mirror (#1250).
+    python_stage = DOCKERFILE.read_text().split("AS toolchain-python", 1)[1].split("\nFROM ", 1)[0]
+    assert re.search(r"ARG POETRY_PLUGIN_PYPI_MIRROR_VERSION=\d+\.\d+\.\d+", python_stage)
+    assert '"poetry-plugin-pypi-mirror==${POETRY_PLUGIN_PYPI_MIRROR_VERSION}"' in python_stage
+    mirror = (ROOT / "backend" / "app" / "services" / "sandbox_workspace" / "registry_mirror.py").read_text()
+    assert '"POETRY_PYPI_MIRROR_URL": pypi' in mirror
+
+
 def test_toolchain_rust_installs_the_libraries_runner_ci_installs():
     rust_stage = DOCKERFILE.read_text().split("AS toolchain-rust", 1)[1].split("\nFROM ", 1)[0]
     assert "apt.sandbox.toolchain.rust.txt" in rust_stage
