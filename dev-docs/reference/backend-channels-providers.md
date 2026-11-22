@@ -38,6 +38,8 @@ The Slack channel bot requires these **Bot Token Scopes** (the list the Settings
 
 After subscribing, invite the bot to each channel where it should respond (`/invite @BotName`).
 
+**Interactivity** (under "Interactivity & Shortcuts"): turn it on and set the Request URL to `{base_url}/api/channels/slack/interactions`. Decision cards (`services/slack_decision_cards.py`) are answered from their buttons and the "Answer with text" modal; the request is checked with the same signing secret as the events and fails closed without it.
+
 ## Teams Private/Shared Channel Support
 
 Standard (public) Teams channels receive all messages via Bot Framework (RSC grant). Private and shared channels **don't** — Bot Framework only delivers @mentions.
