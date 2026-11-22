@@ -100,8 +100,7 @@ import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
 import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
-import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
-import { OrganizationSourcesPanel } from "./OrganizationSourcesPanel";
+import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
@@ -114,13 +113,8 @@ import {
   PROFILE_CARD_TAB,
   PROFILE_TABS,
   PROFILE_TAB_LABELS,
-  SETTINGS_PROFILE_TABS,
-  type ProfileCard,
   type ProfileTab,
   changedTabs,
-  isInventoryTab,
-  profileCardHref,
-  profileFieldHref,
   groupByTab,
   parseProfileCard,
   profileTabOfPath,
@@ -186,26 +180,8 @@ const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not link
  */
 const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
-/** CTEM > Inventory, where the technology and exposure cards live (#1178). */
-const INVENTORY_HOME = "/ctem/inventory";
-
-/**
- * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the tech stack,
- * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
- * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
- */
-export type OrganizationEmbed = { cards: readonly ProfileCard[] };
-
-export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
+export function OrganizationSection() {
   const { t_i18n, locale, intl } = useFormatter();
-  // The whole page, or only the cards an embedding page names.
-  const full = !embed;
-  const show = (card: ProfileCard) => !embed || embed.cards.includes(card);
-  // On CTEM > Inventory the card edits the hand-declared products only, while the Tech stack list also counts the
-  // software of the assets: its empty text says so instead of claiming nothing is matched (UX round 1 on #1254, B4).
-  const techEmptyLabel = embed
-    ? t_i18n("No product declared by hand. The Tech stack list also counts the software of your assets.")
-    : t_i18n("No product yet: vulnerabilities cannot be matched to what you run.");
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
@@ -248,18 +224,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // returns to the previous one; the query (?setup=1) is kept.
   const location = useLocation();
   const navigate = useNavigate();
-  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : profileTabOfPath(location.pathname);
-  // An old link to the Technology or Exposure tab of Settings opens CTEM > Inventory, where those cards live (#1178).
-  useEffect(() => {
-    if (embed || !isInventoryTab(tab)) return;
-    const card = parseProfileCard(new URLSearchParams(location.search).get(PROFILE_CARD_PARAM));
-    navigate(card ? profileCardHref(card) : tab === "technology" ? `${INVENTORY_HOME}/tech-stack` : INVENTORY_HOME, { replace: true });
-  }, [embed, tab, location.search, navigate]);
+  const tab = profileTabOfPath(location.pathname);
   const [focusRetry, setFocusRetry] = useState(0);
   // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
   const endCardLanding = useRef<(() => void) | null>(null);
   const goToTab = (next: ProfileTab | null) => {
-    if (embed || !next || next === tab) return;
+    if (!next || next === tab) return;
     navigate({ pathname: profileTabPath(next), search: location.search });
   };
   // Whether the tab bar is stuck under the top bar (UX r1 B2 on #12332): a 1 px sentinel above it
@@ -571,9 +541,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // parameter leaves the URL in place, so Back returns to the page the link was on.
   const requestedCard = parseProfileCard(searchParams.get(PROFILE_CARD_PARAM));
   useEffect(() => {
-    if (!requestedCard || !data || !show(requestedCard)) return;
+    if (!requestedCard || !data) return;
     const cardTab = PROFILE_CARD_TAB[requestedCard];
-    if (!embed && cardTab !== tab) {
+    if (cardTab !== tab) {
       navigate({ pathname: profileTabPath(cardTab), search: location.search }, { replace: true });
       return;
     }
@@ -592,16 +562,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       },
       { replace: true },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- show() reads embed, fixed for the page's life
   }, [requestedCard, data, tab, fieldId, navigate, location.search, setSearchParams]);
   // A missing field opens its tab first, then the form on the field (#12329).
   const jumpTo = (path: string) => {
-    // A field whose card moved to CTEM > Inventory opens it there (#1178).
-    const fieldTab = tabOfField(path);
-    if (!embed && fieldTab && isInventoryTab(fieldTab)) {
-      navigate(profileFieldHref(path));
-      return;
-    }
     setFolded(new Set());
     goToTab(tabOfField(path));
     if (!editing) startEdit();
@@ -1476,8 +1439,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     );
   /** The fields not filled in a tab, at the top of its panel: each opens the form on it. */
   const missingIn = (key: ProfileTab) => {
-    // An embedding page shows the cards alone: the missing fields open the whole form, on Settings.
-    if (embed) return null;
     const paths = missing.filter((path) => tabOfField(path) === key);
     if (paths.length === 0) return null;
     return (
@@ -1498,7 +1459,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   return (
     <div data-testid="settings.organization" className="space-y-4">
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
-      {full && (
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-3xl space-y-1">
           <h3 className="flex items-center gap-2 title-xs">
@@ -1556,7 +1516,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           </div>
         )}
       </div>
-      )}
 
       {setupGuide && editing && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
@@ -1566,7 +1525,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
       {/* One compact row instead of the four figure cards (#12329): the completeness is per tab on the tab
           bar, the fields not filled sit at the top of their tab, and onboarding stays one click away. */}
-      {full && missing.length > 0 && !editing && (
+      {missing.length > 0 && !editing && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
             {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
@@ -1580,7 +1539,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
       )}
 
-      {full && draftFailed && !editing && (
+      {draftFailed && !editing && (
         <div role="alert" data-testid="settings.organization.draft-error" className="flex items-center justify-between gap-3 rounded-sm border border-alert-error bg-alert-error p-3 content-base">
           <p className="space-x-1">
             <span className="font-medium">{t_i18n("The draft could not be made")}</span>
@@ -1644,38 +1603,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
-          {/* Sources first (#1134 S2): who feeds which section, before what the tabs hold. */}
-          {full && (
-          <OrganizationSourcesPanel
-            profile={current}
-            connected={connectedPlatforms}
-            onAddSync={() => setPlatformImportOpen(true)}
-            disabled={editing || cardOpen !== null || drafting.isPending}
-          />
-          )}
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
               (UX r1 B2). The sentinel above it tells when it is stuck. */}
-          {full && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
-          {full && (
+          <div ref={tabBarSentinel} aria-hidden className="h-px" />
           <div
             {...{ [PAGE_STICKY_BAR_ATTRIBUTE]: "" }}
             data-stuck={tabBarStuck || undefined}
             className={cn("sticky top-[var(--fds-header-height,68px)] z-20 flex py-1", tabBarStuck && "border-b border-elevation-subtle bg-elevation-default")}
           >
-            <DetailTabs tabs={SETTINGS_PROFILE_TABS.map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
+            <DetailTabs tabs={PROFILE_TABS.map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
           </div>
-          )}
-          {/* The Technology and Exposure cards moved to CTEM > Inventory (#1178, Sam 22 Nov 2026): one line points there. */}
-          {full && (
-            <div data-testid="settings.organization.inventory-pointer" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
-              <p>{t_i18n("The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.")}</p>
-              <Button variant="secondary" onClick={() => navigate(INVENTORY_HOME)}>
-                {t_i18n("Open the inventory")}
-              </Button>
-            </div>
-          )}
           {tab === "identity" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
           {missingIn("identity")}
@@ -2090,7 +2029,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           {tab === "technology" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.technology)} className="space-y-4" data-testid="settings.organization.panel-technology">
           {missingIn("technology")}
-          {show("tech_stack") && (
           <SettingsCard
             id={`${fieldId}-tech_stack`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -2100,11 +2038,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             data-testid="settings.organization.tech-stack"
             icon={Server}
             title={t_i18n("Tech stack")}
-            description={
-              embed
-                ? t_i18n("The products you declare by hand. The Tech stack list adds the software of your assets.")
-                : t_i18n("The products you run, matched against vulnerabilities.")
-            }
+            description={t_i18n("The products you run, matched against vulnerabilities.")}
             action={
               <>
                 {attention("tech_stack")}
@@ -2126,10 +2060,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               rowLabel: (v) => v.product,
               storageKey: "settings-organization-tech-stack",
               rowTestId: "settings.organization.tech-row",
-              emptyLabel: techEmptyLabel,
+              emptyLabel: t_i18n("No product yet: vulnerabilities cannot be matched to what you run."),
             }) ??
               (current.tech_stack.length === 0 ? (
-                <p className="text-default-secondary">{techEmptyLabel}</p>
+                <p className="text-default-secondary">{t_i18n("No product yet: vulnerabilities cannot be matched to what you run.")}</p>
               ) : (
                 <DataTable
                   rows={current.tech_stack.map((value, index) => ({ index, value }))}
@@ -2142,13 +2076,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   exportName="tech-stack"
                   urlKey="ots_"
                   storageKey="settings-organization-tech-stack"
-                  emptyLabel={techEmptyLabel}
+                  emptyLabel={t_i18n("No product yet: vulnerabilities cannot be matched to what you run.")}
                 />
               ))}
           </SettingsCard>
-          )}
 
-          {show("ai_systems") && (
           <SettingsCard
             id={`${fieldId}-ai_systems`}
             className={SECTION_BAR_ANCHOR_CLASS}
@@ -2200,7 +2132,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 />
               ))}
           </SettingsCard>
-          )}
           </div>
           )}
 
@@ -2208,10 +2139,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.exposure)} className="space-y-4" data-testid="settings.organization.panel-exposure">
             {missingIn("exposure")}
             {/* The field changes proposed outside the form, the loop trace's scope proposal first among them (CTEM-30). */}
-            {full && <OrganizationProposalsCard />}
-            {exposureCards((["assets_exposure", "asset_groups", "prioritization_policy"] as const).filter(show))}
+            <OrganizationProposalsCard />
+            {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
-            {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
+            <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />
           </div>
           )}
 
@@ -2220,10 +2151,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.knowledge)} className="space-y-4" data-testid="settings.organization.panel-knowledge">
             {missingIn("knowledge")}
             {exposureCards(["enterprise_knowledge"])}
-            {/* The imports saved with a schedule (#11913): the business profile's here, the inventory's on CTEM > Inventory > Sources (#1178). */}
-            <OrganizationSyncsCard scope="profile" />
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
+            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
+                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). */}
+            <OrganizationSourcesSyncs onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 
