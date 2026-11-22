@@ -148,6 +148,7 @@ from app.integrations.providers.proofpoint import build_tools as proofpoint_tool
 from app.integrations.providers.purview import build_tools as purview_tools
 from app.integrations.providers.qradar import build_tools as qradar_tools
 from app.integrations.providers.qualys import build_tools as qualys_tools
+from app.integrations.providers.quotapath import build_tools as quotapath_tools
 from app.integrations.providers.ransomware_live import (
     build_tools as ransomware_live_tools,
 )
@@ -1011,6 +1012,7 @@ PROVIDER_TOOLS = {
     "netsuite": netsuite_tools,
     "jira": jira_tools,
     "ashby": ashby_tools,
+    "quotapath": quotapath_tools,
     "hibob": hibob_tools,
     "linkedin": linkedin_tools,
     "x": x_tools,
@@ -1156,6 +1158,7 @@ _PERSIST_FILE_PROVIDERS = frozenset(
         "openaev",
         "opencti",
         "perk",
+        "quotapath",
         "servicenow",
         "slack",
         "tanium",
