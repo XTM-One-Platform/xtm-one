@@ -20699,5 +20699,10 @@
   "A leaked secret issue": "A leaked secret issue",
   "An account or an email address of your domains is written by a leak source": "An account or an email address of your domains is written by a leak source",
   "A report or incident names one of your tracked organizations": "A report or incident names one of your tracked organizations",
-  "The evidence health pass finds a supporting asset with no evidence": "The evidence health pass finds a supporting asset with no evidence"
+  "The evidence health pass finds a supporting asset with no evidence": "The evidence health pass finds a supporting asset with no evidence",
+  "Agentic checks": "Agentic checks",
+  "No check round yet": "No check round yet",
+  "Show the checks": "Show the checks",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# not run} other {# not run}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}"
 }

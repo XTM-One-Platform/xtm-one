@@ -20699,5 +20699,10 @@
   "A leaked secret issue": "Un problema de secreto filtrado",
   "An account or an email address of your domains is written by a leak source": "Una fuente de filtraciones registra una cuenta o dirección de correo de sus dominios",
   "A report or incident names one of your tracked organizations": "Un informe o incidente nombra a una de sus organizaciones seguidas",
-  "The evidence health pass finds a supporting asset with no evidence": "La pasada de salud de evidencias halla un activo de apoyo sin evidencia"
+  "The evidence health pass finds a supporting asset with no evidence": "La pasada de salud de evidencias halla un activo de apoyo sin evidencia",
+  "Agentic checks": "Comprobaciones agénticas",
+  "No check round yet": "Aún no hay ninguna ronda de comprobaciones",
+  "Show the checks": "Ver las comprobaciones",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# sin ejecutar} other {# sin ejecutar}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# superada} other {# superadas}}, {warned, plural, one {# advertencia} other {# advertencias}}, {failed, plural, one {# fallida} other {# fallidas}}"
 }
