@@ -4885,7 +4885,7 @@ PROVIDER_CATALOG = {
         "fields": ["api_key"],
         "extra_fields": {
             "client_id": "API client ID",
-            "webhook_token": "Webhook token (a long random secret you choose; needed for webhook triggers, the URL given to Rydoo ends with ?token=<this token>)",
+            "webhook_token": "Webhook token (a long random secret you choose; needed for webhook triggers, see the setup guide)",
         },
         "setup_guide": {
             "title": "Rydoo API client",
