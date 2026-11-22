@@ -6146,6 +6146,12 @@ PROVIDER_CATALOG = {
                 "description": "Triggers when the score of a scenario drops in OpenAEV: a control that held no longer does.",
                 "mechanism": "webhook",
             },
+            {
+                "event": "critical_asset_reached",
+                "label": "Critical asset reached",
+                "description": "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.",
+                "mechanism": "webhook",
+            },
         ],
         "auth_type": "api_key",
         "fields": ["api_key"],

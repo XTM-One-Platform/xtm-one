@@ -147,6 +147,8 @@ const SOURCE_EVENT_LABEL: Record<string, string> = {
   simulation_finished: "Simulation finished",
   finding_updated: "Finding updated",
   finding_deleted: "Finding deleted",
+  // The simulation's attack path reached a high or very high criticality asset (CTEM-13-UI, #1142).
+  critical_asset_reached: "Critical asset reached",
 };
 
 /** The result word of a validation history row, translated where drawn. */

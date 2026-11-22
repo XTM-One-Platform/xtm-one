@@ -2915,6 +2915,7 @@ CTEM_OPENAEV_LOOP_EVENTS: tuple[str, ...] = (
     "finding_updated",
     "finding_deleted",
     "scenario_score_degraded",
+    "critical_asset_reached",
 )
 #: A key no OpenAEV delivery carries: the trigger provisions and listens, never runs.
 CTEM_LISTEN_ONLY_FILTER: dict[str, Any] = {"_ctem_listen_only": {"exists": True}}
@@ -2923,7 +2924,8 @@ CTEM_F2_OPENAEV_ASSIGNMENT: dict[str, Any] = {
     "name": "OpenAEV results into cases",
     "description": (
         "Listens to OpenAEV: a finished simulation or a changed finding moves the CTEM case it "
-        "concerns, a degraded scenario score records a regression signal. No run of its own."
+        "concerns, a degraded scenario score records a regression signal, an attack path reaching "
+        "a critical asset records a proven-exploitable signal. No run of its own."
     ),
     "trigger_type": "integration_event",
     # Created by the seed, never saved before exact matching: marked exact, and
