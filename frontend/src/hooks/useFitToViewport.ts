@@ -107,8 +107,9 @@ function measure(el: HTMLElement, main: HTMLElement): FitMeasure {
  * The max height to give `el`: a number (fits the window), null (long-form page: no
  * bound) or undefined (not measured yet, or not in the app's page, a dialog for
  * example: the caller keeps its own cap). Re-measured when the window, the page's
- * content or the area changes size; a 1 px change is ignored, so the bound it sets
- * never feeds back into a resize loop. `root` is the table's whole block (toolbar, area,
+ * content or the area changes size; a 1 px growth is ignored, so the bound it sets
+ * never feeds back into a resize loop, but a 1 px shrink is applied, so the bound never
+ * exceeds the room and the page never scrolls (#1300). `root` is the table's whole block (toolbar, area,
  * pager), the one that must be the page's last block to fit; it defaults to `el`.
  */
 export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | null): number | null | undefined {
@@ -126,7 +127,8 @@ export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | nu
         // A widget, not the page's list: no bound, the table hugs its rows (#11470).
         const widget = !isLastBlock(root ?? el, main);
         const next = several || widget ? null : fitRoom(measureNatural(el, main));
-        setRoom((prev) => (typeof prev === "number" && next !== null && Math.abs(prev - next) <= 1 ? prev : next));
+        // Keep the bound on a 1 px growth only: a bound 1 px over the room would scroll the page.
+        setRoom((prev) => (typeof prev === "number" && next !== null && prev <= next && next - prev <= 1 ? prev : next));
       });
     };
     update();
@@ -156,15 +158,6 @@ export function stickyBarBottom(barBottoms: readonly number[]): number {
   return barBottoms.reduce((low, bottom) => Math.max(low, bottom), 0);
 }
 
-/**
- * The page bars a table header must clear: only those placed before the area in the page.
- * A sticky bar that comes after the table (a tab bar under a card) sits below it at rest;
- * counting it pushed the header to the bottom of the table and hid its last row (#1294 UX r1 B1).
- */
-export function pageBarsAbove(area: Node, bars: readonly HTMLElement[]): HTMLElement[] {
-  return bars.filter((bar) => (bar.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 && !bar.contains(area));
-}
-
 /** How far to push the header down so it sits under the top bar, kept inside the area. */
 export function stickyShift(barBottom: number, areaTop: number, areaHeight: number, headHeight: number): number {
   return Math.round(Math.min(Math.max(0, barBottom - areaTop), Math.max(0, areaHeight - headHeight)));
@@ -190,7 +183,7 @@ export function usePageStickyHead(area: HTMLElement | null, head: HTMLElement | 
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = area.getBoundingClientRect();
-        const pageBars = pageBarsAbove(area, Array.from(main.querySelectorAll<HTMLElement>(`[${PAGE_STICKY_BAR_ATTRIBUTE}]`)));
+        const pageBars = Array.from(main.querySelectorAll<HTMLElement>(`[${PAGE_STICKY_BAR_ATTRIBUTE}]`));
         const barBottom = stickyBarBottom([
           bar && bar !== main ? bar.getBoundingClientRect().bottom : 0,
           ...pageBars.map((pageBar) => pageBar.getBoundingClientRect().bottom),

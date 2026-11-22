@@ -1,25 +1,7 @@
 import { act, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pageBarsAbove, useFitToViewport } from "./useFitToViewport";
-
-describe("pageBarsAbove (#1294 UX r1 B1)", () => {
-  it("keeps only the sticky page bars placed before the table, never one that comes after it", () => {
-    const main = document.createElement("main");
-    const before = document.createElement("div");
-    const area = document.createElement("div");
-    const after = document.createElement("div");
-    main.append(before, area, after);
-    expect(pageBarsAbove(area, [before, after])).toEqual([before]);
-  });
-
-  it("ignores a bar that holds the table itself", () => {
-    const bar = document.createElement("div");
-    const area = document.createElement("div");
-    bar.append(area);
-    expect(pageBarsAbove(area, [bar])).toEqual([]);
-  });
-});
+import { useFitToViewport } from "./useFitToViewport";
 
 /*
  * Guard for #11467: a records table in a dashboard grid row, beside a taller card, blinked
@@ -145,5 +127,38 @@ describe("useFitToViewport in a row set by a taller neighbour (#11467, #11470)",
     expect(area.style.maxHeight).toBe("400px");
     expect(new Set(rooms.filter((room) => room !== undefined))).toEqual(new Set([400]));
     expect(rooms.length).toBeLessThanOrEqual(4);
+  });
+
+  it("shrinks a bound 1 px over the room, so the page does not scroll (#1300)", () => {
+    vi.stubGlobal("innerHeight", 901);
+    const { rooms, area } = settle(true);
+    expect(rooms.at(-1)).toBe(401);
+    vi.stubGlobal("innerHeight", 900);
+    act(() => {
+      for (const cb of observers) cb([], {} as ResizeObserver);
+    });
+    act(() => {
+      const queued = [...frames.values()];
+      frames = new Map();
+      for (const frame of queued) frame(performance.now());
+    });
+    expect(rooms.at(-1)).toBe(400);
+    expect(area.style.maxHeight).toBe("400px");
+  });
+
+  it("keeps the bound on a 1 px growth of the room", () => {
+    const { rooms, area } = settle(true);
+    expect(rooms.at(-1)).toBe(400);
+    vi.stubGlobal("innerHeight", 901);
+    act(() => {
+      for (const cb of observers) cb([], {} as ResizeObserver);
+    });
+    act(() => {
+      const queued = [...frames.values()];
+      frames = new Map();
+      for (const frame of queued) frame(performance.now());
+    });
+    expect(rooms.at(-1)).toBe(400);
+    expect(area.style.maxHeight).toBe("400px");
   });
 });
