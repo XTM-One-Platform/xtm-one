@@ -271,7 +271,7 @@ async def investigate_module(
     # Agentic work: refused while AI is off or unlicensed, before any cycle opens.
     _agentic_gate: None = Depends(require_agentic_ai),
 ) -> ModuleInvestigationResponse:
-    """ "Investigate now": a Module Analyst cycle on every active registration of *module* (section 12.7).
+    """ "Run checks now": the module checker's round on every active registration of *module* (13.2, 13.8).
 
     Administrators, XTM One mode, Platform Health and the Module Analyst on; the
     cycle is the analyst's own (its quota exemption and ceiling apply), a
@@ -296,7 +296,7 @@ async def investigate_module(
     if not registrations:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "no_registration", "message": "No active registration of this module to investigate."},
+            detail={"code": "no_registration", "message": "No active registration of this module to check."},
         )
     items: list[ModuleInvestigationStart] = []
     for registration_id in registrations:
@@ -326,7 +326,7 @@ async def investigate_module(
                 entity_type="health_cycle",
                 entity_id=result.cycle_id,
                 entity_name=module,
-                summary=f"Asked the Platform Health Module Analyst to investigate {module}",
+                summary=f"Asked Platform Health to run the {module} checks",
                 details={"target_type": "module", "target_id": str(registration_id)},
                 request=request,
             )

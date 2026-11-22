@@ -69,6 +69,20 @@ describe("ModuleCheckReportLine", () => {
     expect(api.get).toHaveBeenCalledWith("/health/modules/opencti/checks");
   });
 
+  it("renders nothing with no round under the Last check round block (UX round 1 B1 on #1269)", async () => {
+    api.get.mockImplementation(answer({ module: "opencti", items: [] }));
+    renderWithProviders(<ModuleCheckReportLine module="opencti" hideEmpty />);
+    await vi.waitFor(() => expect(api.get).toHaveBeenCalledWith("/health/modules/opencti/checks"));
+    expect(screen.queryByText("No check round yet")).toBeNull();
+    expect(screen.queryByTestId("health-checks-opencti")).toBeNull();
+  });
+
+  it("keeps the counts under the Last check round block once a round reported", async () => {
+    api.get.mockImplementation(answer({ module: "openaev", items: [report({ passed: 1, warned: 0, failed: 1, not_run: 1 })] }));
+    renderWithProviders(<ModuleCheckReportLine module="openaev" hideEmpty />);
+    expect((await screen.findByTestId("health-checks-counts")).textContent).toBe("1 passed, 0 warnings, 1 failed, 1 not run");
+  });
+
   it("counts in the singular at 1 and with the count at 0", async () => {
     api.get.mockImplementation(answer({ module: "openaev", items: [report({ passed: 1, warned: 0, failed: 1, not_run: 1 })] }));
     renderWithProviders(<ModuleCheckReportLine module="openaev" />);
