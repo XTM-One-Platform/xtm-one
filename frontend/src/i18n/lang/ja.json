@@ -20514,5 +20514,12 @@
   "Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.": "テストシグナルを送信してループの動きを確認します。実際の取り込み経路で記録され、そのループトレースが開きます。",
   "The test signal could not be recorded.": "テストシグナルを記録できませんでした。",
   "Open the command center": "コマンドセンターを開く",
-  "Send a test signal": "テストシグナルを送信"
+  "Send a test signal": "テストシグナルを送信",
+  "Context: {value}": "コンテキスト: {value}",
+  "Scope: {value}": "範囲: {value}",
+  "Collaboration instruction set": "連携の指示あり",
+  "No collaboration instruction": "連携の指示なし",
+  "Search capabilities, members, integrations...": "機能、メンバー、連携を検索...",
+  "No capability slot": "機能スロットはありません",
+  "No slot matches the search and filters": "検索とフィルターに一致するスロットはありません"
 }
