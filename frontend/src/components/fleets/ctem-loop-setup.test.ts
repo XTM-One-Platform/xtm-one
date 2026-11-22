@@ -10,6 +10,7 @@ import {
   countFact,
   ecosystemSlots,
   isSettled,
+  loopRuns,
   nextStep,
   openingStep,
   previousStep,
@@ -30,6 +31,16 @@ describe("ctem-loop-setup end (slice 4)", () => {
     expect(a.subject.kind).toBe("vulnerability");
     expect(a.evidence).toMatchObject({ test: true, origin: "ctem-loop-setup" });
     expect(a.dedupe_key).not.toBe(b.dedupe_key);
+  });
+
+  it("says the loop runs only when an automation of the fleet is on (UX r2 B1)", () => {
+    const status = (enabled: unknown) => ({ steps: [step("enable", { automations_enabled: enabled, automations_total: 21 })] }) as unknown as FleetSetupStatus;
+    expect(loopRuns(status(0))).toBe(false);
+    expect(loopRuns(status("3"))).toBe(false);
+    expect(loopRuns({ steps: [] } as unknown as FleetSetupStatus)).toBe(false);
+    expect(loopRuns(undefined)).toBe(false);
+    expect(loopRuns(status(1))).toBe(true);
+    expect(loopRuns(status(21))).toBe(true);
   });
 
   it("opens the command center on the signal's loop trace", () => {

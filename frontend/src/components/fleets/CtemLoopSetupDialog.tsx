@@ -52,6 +52,7 @@ import {
   countFact,
   ecosystemSlots,
   isSettled,
+  loopRuns,
   nextStep,
   openingStep,
   previousStep,
@@ -113,37 +114,72 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
       },
     });
 
+  // The Enable fleet dialog, shared by step 6 and the end screen (UX r2 B1).
+  const enableDialog = fleetId && fleet.data && (
+    <FleetEnableDialog
+      fleetId={fleetId}
+      fleetName={fleet.data.name}
+      open={enableOpen}
+      onOpenChange={(next) => {
+        setEnableOpen(next);
+        if (!next) void status.refetch();
+      }}
+    />
+  );
+
   if (open && finished) {
+    // The end screen tells what is true (UX r2 B1): "set up" and the test signal
+    // only once an automation is on; otherwise the setup is saved and the loop is off.
+    const runs = loopRuns(status.data);
+    const openCommandCenter = () => {
+      onOpenChange(false);
+      navigate("/");
+    };
     return (
-      <Dialog open onOpenChange={(next) => !next && onOpenChange(false)}>
-        <DialogContent size="md" data-testid="ctem-loop-setup-done">
-          <DialogHeader>
-            <DialogTitle>{t_i18n("The CTEM loop is set up")}</DialogTitle>
-            <DialogDescription>
-              {t_i18n("Every signal now goes through reconcile and the scope gate, and the command center shows where each one stands.")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-2 content-base">
-            <p>{t_i18n("Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.")}</p>
-            {sendTest.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The test signal could not be recorded.")}</p>}
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="secondary" className="mr-auto" disabled={sendTest.isPending} onClick={() => { onOpenChange(false); navigate("/"); }}>
-              {t_i18n("Open the command center")}
-            </Button>
-            <Button
-              className="gap-1.5"
-              disabled={sendTest.isPending}
-              aria-busy={sendTest.isPending || undefined}
-              onClick={sendTestSignal}
-              data-testid="ctem-loop-setup-test-signal"
-            >
-              <Icon name="send" size={16} aria-hidden />
-              {t_i18n("Send a test signal")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <>
+        <Dialog open={!enableOpen} onOpenChange={(next) => !next && onOpenChange(false)}>
+          <DialogContent size="md" data-testid="ctem-loop-setup-done" data-loop-runs={runs ? "true" : "false"}>
+            <DialogHeader>
+              <DialogTitle>{runs ? t_i18n("The CTEM loop is set up") : t_i18n("The setup is saved, the CTEM loop is off")}</DialogTitle>
+              <DialogDescription>
+                {runs
+                  ? t_i18n("Every signal now goes through reconcile and the scope gate, and the command center shows where each one stands.")
+                  : t_i18n("No automation of the CTEM loop fleet is on, so no signal is processed yet. Review and enable the fleet to start the loop.")}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogBody className="space-y-2 content-base">
+              {runs ? (
+                <p>{t_i18n("Send a test signal to watch the loop move: it is recorded through the real intake and opens on its loop trace.")}</p>
+              ) : (
+                <p>{t_i18n("A test signal can be sent once the fleet is enabled.")}</p>
+              )}
+              {sendTest.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The test signal could not be recorded.")}</p>}
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="secondary" className="mr-auto" disabled={sendTest.isPending} onClick={openCommandCenter}>
+                {t_i18n("Open the command center")}
+              </Button>
+              {runs ? (
+                <Button
+                  className="gap-1.5"
+                  disabled={sendTest.isPending}
+                  aria-busy={sendTest.isPending || undefined}
+                  onClick={sendTestSignal}
+                  data-testid="ctem-loop-setup-test-signal"
+                >
+                  <Icon name="send" size={16} aria-hidden />
+                  {t_i18n("Send a test signal")}
+                </Button>
+              ) : (
+                <Button disabled={!fleetId} onClick={() => setEnableOpen(true)} data-testid="ctem-loop-setup-done-enable">
+                  {t_i18n("Review and enable")}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {enableDialog}
+      </>
     );
   }
 
@@ -253,17 +289,7 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {fleetId && fleet.data && (
-        <FleetEnableDialog
-          fleetId={fleetId}
-          fleetName={fleet.data.name}
-          open={enableOpen}
-          onOpenChange={(next) => {
-            setEnableOpen(next);
-            if (!next) void status.refetch();
-          }}
-        />
-      )}
+      {enableDialog}
     </>
   );
 }

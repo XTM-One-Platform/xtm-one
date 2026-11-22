@@ -138,6 +138,16 @@ export function signalTracePath(signalId: string): string {
   return `/?loop=${encodeURIComponent(`signal:${signalId}`)}`;
 }
 
+/**
+ * Whether the CTEM loop runs: at least one automation of the fleet is on, as
+ * the enable step reads it (`automations_enabled`). The end of the setup says
+ * "set up" and offers a test signal only then (UX r2 B1: an admin who skipped
+ * or finished without "Review and enable" has a saved setup and a loop that is off).
+ */
+export function loopRuns(status: FleetSetupStatus | null | undefined): boolean {
+  return countFact(stepOf(status, "enable"), "automations_enabled") > 0;
+}
+
 /** A number fact, 0 when absent or not a number. */
 export function countFact(step: FleetSetupStep | undefined, name: string): number {
   const value = step?.facts[name];
