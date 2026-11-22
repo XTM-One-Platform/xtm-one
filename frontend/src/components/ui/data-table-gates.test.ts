@@ -191,6 +191,57 @@ const columnArrays = (text: string) =>
     return end ? set.slice(0, end.index + end[0].length) : set;
   });
 
+/** Gate 10: what a row action must not draw (a link or an anchor): row actions are buttons (UX r1 B1 of #1133). */
+const ROW_ACTION_LINK = /<Link\b|<a\b/;
+
+/**
+ * Gate 10: the render of each `rowActions={...}` prop of a file: the inline function, or the body of
+ * the local function it names (`rowActions={bindAction}` and `const bindAction = (row) => {...};`).
+ */
+function rowActionRenders(text: string): string[] {
+  return propBlocks(text, "rowActions").map((block) => {
+    const name = /^\s*(\w+)\s*\}?\s*$/.exec(block)?.[1] ?? /^\s*(?:\w+\s*\?\s*)?(\w+)\s*(?::\s*undefined)?\s*\}/.exec(block)?.[1];
+    if (!name) return block;
+    const start = new RegExp(`(?:const|function)\\s+${name}\\b`).exec(text);
+    if (!start) return block;
+    const rest = text.slice(start.index, start.index + 4000);
+    const end = /\n {2,4}\};?\n/.exec(rest);
+    return end ? rest.slice(0, end.index + end[0].length) : rest;
+  });
+}
+
+/**
+ * Gate 10: a cut text named whole only by a native `title` (one opening tag carrying a `truncate`
+ * class and a `title=`): it opens no tooltip on keyboard focus. A cut text in a cell is a
+ * `<TruncatedText>` (design standards s.3; UX r2 B2 of #1133).
+ */
+const TITLED_CUT = /<[A-Za-z][\w.]*\b[^<>]*\btruncate\b[^<>]*\btitle=|<[A-Za-z][\w.]*\b[^<>]*\btitle=[^<>]*\btruncate\b/;
+
+/** Gate 10: tables whose cells still name a cut text with a native title (only shrinks; found when the gate landed). */
+const PENDING_TITLED_CUTS: string[] = [
+  "components/fleets/FleetGateReview.tsx",
+  "components/fleets/FleetPendingApprovals.tsx",
+  "components/health/HealthSignalsList.tsx",
+  "components/health/ImprovementsInbox.tsx",
+  "components/roi/RoiRecordsList.tsx",
+  "components/roi/RoiReportParts.tsx",
+  "pages/agent-detail/MemoryTab.tsx",
+  "pages/agent-detail/ObservabilityTab.tsx",
+  "pages/ai-adoption/GapsTab.tsx",
+  "pages/analytics/BreakdownCard.tsx",
+  "pages/analytics/ErrorsCard.tsx",
+  "pages/profile/agent-accounts/AgentAccountDecisionsTab.tsx",
+  "pages/profile/agent-accounts/AgentAccountMessagesSentTab.tsx",
+  "pages/profile/agent-accounts/AgentAccountOverview.tsx",
+  "pages/settings/FleetMemberPresetsSection.tsx",
+  "pages/settings/TrackedOrganizations.tsx",
+  "pages/settings/TrackedOrganizationsAiDraftReview.tsx",
+  "pages/Traces.tsx",
+  "pages/TraceSessions.tsx",
+  "pages/Value.tsx",
+  "pages/xtm-one/CtemCaseDetail.tsx",
+];
+
 /** Classes that give a row or a cell its own height, padding or a wrap past the second line. */
 const ROW_SIZING = /\b(min-h-\S+|h-(\d+|\[)\S*|py-\S+|line-clamp-[3-9]|whitespace-pre-wrap|whitespace-normal)/;
 
@@ -501,6 +552,42 @@ describe("Data table gates (dev-docs/reference/data-tables.md)", () => {
         return columnArrays(text).some((set) => sameAction.test(set)) ? [`${path}: ${handler}`] : [];
       });
     expect(offenders, "draw the cell as plain text: the row opens it (onRowClick)").toEqual([]);
+  });
+
+  it("10. draws no link in a row action: row actions are buttons, the row is the link (#12070, UX r1 B1 of #1133)", () => {
+    const offenders = callers
+      .filter(({ text }) => USES_TABLE.test(text))
+      .flatMap(({ path, text }) => rowActionRenders(text).flatMap((render) => (ROW_ACTION_LINK.test(render) ? [`${path}: ${ROW_ACTION_LINK.exec(render)?.[0]}`] : [])));
+    expect(offenders, "draw a row action as a Button (navigate in its onClick); the row opens its target with rowHref or onRowClick").toEqual([]);
+  });
+
+  it("10. reads the render of a rowActions prop, inline or named", () => {
+    const named = "const act = (row: R) => {\n    return <Link to=\"/x\">Go</Link>;\n  };\n<DataTable\n  rowActions={act}\n  rows={rows}\n/>";
+    const inline = "<DataTable\n  rowActions={(row) => <a href=\"/x\">Go</a>}\n  rows={rows}\n/>";
+    const clean = "<DataTable\n  rowActions={(row) => <Button onClick={go}>Go</Button>}\n  rows={rows}\n/>";
+    expect(rowActionRenders(named).some((render) => ROW_ACTION_LINK.test(render))).toBe(true);
+    expect(rowActionRenders(inline).some((render) => ROW_ACTION_LINK.test(render))).toBe(true);
+    expect(rowActionRenders(clean).some((render) => ROW_ACTION_LINK.test(render))).toBe(false);
+  });
+
+  it("10. names no cut text with a native title in a cell: TruncatedText opens the tooltip on focus (UX r2 B2 of #1133)", () => {
+    const offenders = callers
+      .filter(({ path, text }) => USES_TABLE.test(text) && !PENDING_TITLED_CUTS.includes(path))
+      .flatMap(({ path, text }) => (columnArrays(text).some((set) => TITLED_CUT.test(set)) ? [path] : []));
+    expect(offenders, "draw the cut text with <TruncatedText text={...} />, with no title").toEqual([]);
+  });
+
+  it("10. keeps PENDING_TITLED_CUTS to the files whose cells still carry a titled cut text", () => {
+    const byPath = new Map(callers.map(({ path, text }) => [path, text]));
+    const stale = PENDING_TITLED_CUTS.filter((path) => !columnArrays(byPath.get(path) ?? "").some((set) => TITLED_CUT.test(set)));
+    expect(stale, "drop an aligned file from PENDING_TITLED_CUTS in the same change").toEqual([]);
+  });
+
+  it("10. reads a titled cut text in either attribute order", () => {
+    expect(TITLED_CUT.test('<span className="truncate" title={name}>')).toBe(true);
+    expect(TITLED_CUT.test('<span title={name} className="block truncate">')).toBe(true);
+    expect(TITLED_CUT.test("<TruncatedText text={name} />")).toBe(false);
+    expect(TITLED_CUT.test('<span className="truncate">{name}</span>')).toBe(false);
   });
 
   it("8. hides no column with a window breakpoint: hideBelow keeps the Columns picker true", () => {

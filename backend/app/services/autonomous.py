@@ -1659,6 +1659,18 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM attack surface pass error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM evidence health pass (CTEM-28): evidence decay (path 9) and blind spots
+        # (path 12) from OpenCRQ, opt-in in the profile, its own cadence
+        # (evidence_health.cadence_hours, default daily). Rules only, no model call.
+        try:
+            from app.services import ctem_evidence_health
+
+            evidence_counts = await ctem_evidence_health.scheduled_pass(db)
+            if evidence_counts:
+                logger.info("CTEM evidence health pass: %s", evidence_counts)
+        except Exception as e:
+            logger.error("CTEM evidence health pass error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # CTEM ticketing sync (#917): create the ticket of a mobilized case,
         # pull the ticket status (ServiceNow's inbound), push the case state.
         # Rules only, no model call; its own cadence (CTEM_TICKETING_SYNC_SECONDS, default 5 min).

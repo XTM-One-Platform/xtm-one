@@ -39,12 +39,13 @@ import {
   ReactFlow,
   useReactFlow,
   useStore,
+  useStoreApi,
   type Edge,
   type EdgeProps,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon, Spinner } from "@filigran/design-system";
 import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
 
@@ -66,6 +67,7 @@ import { cn } from "@/lib/utils";
 import { PRIORITY_LABELS, STATUS_LABELS, waitsForReader } from "@/lib/work-item-context";
 import type { AgentFlowFocusMode } from "@/lib/agent-flow-focus";
 import { criticalLeaves, drawnCounts, focusChains, shownGraph } from "@/lib/work-item-graph";
+import { anchoredViewport, graphFitKey, type GraphPoint } from "@/lib/work-item-graph-viewport";
 import {
   DEFAULT_WORK_ITEM_GRAPH_LAYOUT,
   GROUP_NODE_SIZE,
@@ -603,7 +605,9 @@ export function WorkItemGraphView({
   }, [visible, laid, chains]);
 
   const loading = isLoading || !graph || !shown || !visible;
-  const layoutKey = `${layoutChoice}|${groupBy}|${[...collapsedKeys].join(",")}|${focusMode}|${visible?.nodes.length ?? 0}`;
+  // The reader's choices alone refit the canvas (#1158): a live refresh that adds, drops or
+  // moves items never does, so a reader zoomed into a cluster keeps their camera.
+  const fitKey = graphFitKey({ layout: layoutChoice, groupBy, collapsedKeys, focusMode, selected, showDone });
   const groupByLabels: Record<WorkItemGraphGroupBy, string> = {
     none: t_i18n("None"),
     program: t_i18n("Program"),
@@ -734,7 +738,7 @@ export function WorkItemGraphView({
                 onPaneClick={() => setSelected(null)}
                 proOptions={{ hideAttribution: true }}
               >
-                <FitOnResize layoutKey={layoutKey} />
+                <GraphCamera fitKey={fitKey} positions={laid?.positions} />
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--flow-grid)" />
                 {/* No minimap: the fleet graph has none, and at fit view it covered cards (UX r1 B1 on #1067). */}
                 <Controls showInteractive={false} position="bottom-left" />
@@ -778,15 +782,31 @@ function GraphFrame({ testId, label, children }: { testId?: string; label?: stri
 }
 
 /**
- * Fits the graph again when the canvas changes size (UX r1 A1 on #979) or its drawing
- * changes (a layout, a grouping, a group collapsed, #1062): `fitView` alone runs on mount.
+ * The camera of the canvas. It fits the graph again when the canvas changes size (UX r1
+ * A1 on #979) or the reader changes the drawing (a layout, a grouping, a group collapsed,
+ * a focus, done shown, #1062): `fitView` alone runs on mount, and a change of filters
+ * reads the graph again behind the loader, so the canvas mounts and fits. A live refresh
+ * (#1158) never fits: it keeps the zoom and pans by what the layout moved the node
+ * nearest the centre, so what the reader looks at stays where it is.
  */
-function FitOnResize({ layoutKey }: { layoutKey: string }) {
-  const { fitView } = useReactFlow();
+function GraphCamera({ fitKey, positions }: { fitKey: string; positions: ReadonlyMap<string, GraphPoint> | undefined }) {
+  const { fitView, getViewport, setViewport } = useReactFlow();
+  const store = useStoreApi();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   useEffect(() => {
     if (width > 0 && height > 0) void fitView(FIT_VIEW_OPTIONS);
-  }, [width, height, layoutKey, fitView]);
+  }, [width, height, fitKey, fitView]);
+  const drawn = useRef<{ fitKey: string; positions: ReadonlyMap<string, GraphPoint> } | null>(null);
+  useEffect(() => {
+    if (!positions) return;
+    const last = drawn.current;
+    drawn.current = { fitKey, positions };
+    // A first drawing or a choice of the reader: the fit above frames it.
+    if (!last || last.fitKey !== fitKey || last.positions === positions) return;
+    const { width: canvasWidth, height: canvasHeight } = store.getState();
+    const next = anchoredViewport(last.positions, positions, getViewport(), { width: canvasWidth, height: canvasHeight });
+    if (next) void setViewport(next);
+  }, [fitKey, positions, store, getViewport, setViewport]);
   return null;
 }

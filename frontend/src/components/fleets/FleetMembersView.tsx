@@ -42,6 +42,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Icon } from "@filigran/design-system";
 import { Boxes, Building2, Crown, Layers, Lock, MessagesSquare, PanelRight, Pencil, RotateCcw, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -108,6 +109,7 @@ import {
   type MembersTableState,
 } from "./members-view";
 import { ApplyPresetDialog } from "./ApplyPresetDialog";
+import { DEFAULTS_INSTRUCTION_SUMMARY, FLEET_DEFAULTS_OPEN_BY_DEFAULT, instructionSummaryKey } from "./capability-slots-table";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { MemberInstructionPanel } from "./MemberInstructionPanel";
 import { OrganizationScopeDialog } from "./OrganizationScopeDialog";
@@ -690,10 +692,22 @@ interface FleetDefaultsBarProps {
  * (UX round 1 of #9422, B1).
  */
 export function FleetDefaultsBar(props: FleetDefaultsBarProps) {
-  return <FleetDefaultsForm key={JSON.stringify(props.fleet.member_defaults ?? null)} {...props} />;
+  // Open or folded is held above the keyed form, so a save (which remounts it) keeps it open (#1128).
+  const [expanded, setExpanded] = useState(FLEET_DEFAULTS_OPEN_BY_DEFAULT);
+  return <FleetDefaultsForm key={JSON.stringify(props.fleet.member_defaults ?? null)} {...props} expanded={expanded} onExpandedChange={setExpanded} />;
 }
 
-function FleetDefaultsForm({ fleet, members, organizations, canEdit, saving, onSave, onApplyPreset }: FleetDefaultsBarProps) {
+function FleetDefaultsForm({
+  fleet,
+  members,
+  organizations,
+  canEdit,
+  saving,
+  onSave,
+  onApplyPreset,
+  expanded,
+  onExpandedChange,
+}: FleetDefaultsBarProps & { expanded: boolean; onExpandedChange: (expanded: boolean) => void }) {
   const { t_i18n } = useFormatter();
   const [scopeDialog, setScopeDialog] = useState(false);
   const currentScope = fleet.member_defaults?.organization_scope ?? PRIMARY_SCOPE;
@@ -711,25 +725,57 @@ function FleetDefaultsForm({ fleet, members, organizations, canEdit, saving, onS
   if (instruction !== current.collaboration_instruction) dirty.collaboration_instruction = instruction;
   const changed = Object.keys(dirty) as (keyof typeof current)[];
   const impact = changed.includes("context_inclusion") ? contextImpact : instructionImpact;
+  // Folded by default (#1128): Capabilities is what a fleet setup needs first. An edit in
+  // progress keeps the form open, so a fold never hides unsaved values.
+  const open = expanded || changed.length > 0;
+  const scopeSummary = scopeTags(currentScope, organizations)
+    .map((tag) => (tag.translate ? t_i18n(tag.text) : tag.text))
+    .join(", ");
 
   return (
-    <Card data-testid="fleet-defaults-bar">
+    <Card data-testid="fleet-defaults-bar" data-open={open ? "true" : "false"}>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start gap-2">
           <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-default-secondary" aria-hidden />
           {/* The title stays on one line; the description moves under it and wraps when the row is short
-              (es at 1024), never cut (UX round 2 of #9422, B2). */}
+              (es at 1024), never cut (UX round 2 of #9422, B2). Folded, the line says the current values. */}
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
             <h3 className="shrink-0 whitespace-nowrap content-compact font-medium">{t_i18n("Fleet defaults")}</h3>
-            <span className="min-w-0 content-compact text-default-secondary">{t_i18n("What a member inherits while it does not override the setting")}</span>
+            {open ? (
+              <span className="min-w-0 content-compact text-default-secondary">{t_i18n("What a member inherits while it does not override the setting")}</span>
+            ) : (
+              <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-defaults-summary">
+                {t_i18n("Context: {value}", { value: t_i18n(CONTEXT_INCLUSION_SHORT_LABELS[current.context_inclusion]) })}
+                {" · "}
+                {t_i18n("Scope: {value}", { value: scopeSummary })}
+                {" · "}
+                {t_i18n(DEFAULTS_INSTRUCTION_SUMMARY[instructionSummaryKey(current.collaboration_instruction)])}
+              </span>
+            )}
           </div>
-          {canEdit && (
+          {canEdit && open && (
             <Button type="button" variant="outline" size="sm" className="ml-auto shrink-0 gap-1.5" disabled={saving} onClick={onApplyPreset}>
               <Layers className="h-3.5 w-3.5" aria-hidden />
               {t_i18n("Apply a preset")}
             </Button>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn("shrink-0 gap-1.5", !(canEdit && open) && "ml-auto")}
+            aria-expanded={open}
+            aria-controls="fleet-defaults-form"
+            disabled={changed.length > 0}
+            onClick={() => onExpandedChange(!expanded)}
+            data-testid="fleet-defaults-toggle"
+          >
+            {open ? t_i18n("Hide") : canEdit ? t_i18n("Edit") : t_i18n("Show")}
+            <Icon name="chevron-down" size={16} className={cn("transition-transform", open && "rotate-180")} aria-hidden />
+          </Button>
         </div>
+        {open && (
+        <div id="fleet-defaults-form" className="space-y-3">
         <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)_minmax(0,260px)]">
           <div className="space-y-1.5">
             <Label className={DEFAULTS_LABEL_CLASS}>
@@ -822,6 +868,8 @@ function FleetDefaultsForm({ fleet, members, organizations, canEdit, saving, onS
               {t_i18n("Save defaults")}
             </Button>
           </div>
+        )}
+        </div>
         )}
       </CardContent>
     </Card>
