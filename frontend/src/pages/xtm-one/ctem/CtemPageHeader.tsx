@@ -5,12 +5,18 @@
  * of item 5f629f38): the command center, every stage page and every CTEM sub
  * page draw this band instead of a hero card or a free title block.
  *
+ * The back link is the app's shared LocationBackButton (a `state.backTo`
+ * of the opening page wins, as everywhere else), drawn first at the content
+ * edge ABOVE the band and outside its border, exactly as on an entity page
+ * (EntityPageHeader); there is no CTEM-only back link (Sam, 22 Nov 2026).
+ *
  * One bordered band on the page grid, at most two rows:
- * - title block: a breadcrumb line (back link, current page, page chips) over
- *   the title at heading size with its "i" (the methodology lives there, never
- *   as a paragraph in the header);
- * - stat cells: label above, value below, separated by hairlines, one figure
- *   per cell (a figure is never drawn twice);
+ * - title block: a breadcrumb line (current page, page chips) over the title
+ *   at heading size with its "i" (the methodology lives there, never as a
+ *   paragraph in the header);
+ * - stat cells: label above, value below, separated by hairlines that run
+ *   the band's full content height, the cells centred on it, one figure per
+ *   cell (a figure is never drawn twice);
  * - actions: right aligned on the title line;
  * - chips (the product pills of the command center): right aligned.
  *
@@ -31,10 +37,8 @@
  * round 1 on #11677, B1 and B2). Every element keeps one line
  * (`whitespace-nowrap`, truncation with the full text on hover).
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Icon } from "@filigran/design-system";
-import { Link } from "react-router-dom";
-
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { LocationBackButton } from "@/components/ui/back-button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useFormatter } from "@/i18n";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
@@ -59,11 +63,12 @@ export interface CtemHeaderStat {
 }
 
 export interface CtemPageHeaderProps {
-  /** The page above this one; omitted on the command center (the root). */
+  /** The page above this one, drawn as the shared BackButton above the band;
+   *  omitted on the command center (the root). `label` is an i18n key. */
   back?: { to: string; label: string };
-  /** The current page's name in the breadcrumb, after the back link. */
+  /** The current page's name, first on the breadcrumb line. */
   crumb?: string;
-  /** The first line when there is no back link (the command center's eyebrow). */
+  /** The first item of the breadcrumb line (the command center's eyebrow). */
   eyebrow?: ReactNode;
   /** Small chips and facts on the breadcrumb line (vertical, owner, edition). */
   crumbExtras?: ReactNode;
@@ -158,7 +163,7 @@ export function CtemPageHeader({
   }, [onContentHeight]);
   const layout = headerLayout(width);
   const stacked = layout !== "narrow";
-  const hasCrumb = Boolean(back || eyebrow || crumbExtras);
+  const hasCrumb = Boolean(crumb || eyebrow || crumbExtras);
   // Narrow: the breadcrumb takes a full-width row of the band, so its line
   // wraps on the band's width and the actions sit on the h1 line.
   const crumbRow = hasCrumb && layout === "narrow";
@@ -169,31 +174,16 @@ export function CtemPageHeader({
       style={crumbRow ? CRUMB_ROW_STYLE : BREADCRUMB_STYLE}
       className="flex min-w-0 items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap content-caption text-default-secondary"
     >
-      {back ? (
-        <>
-          <Link
-            to={back.to}
-            className={cn("inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-accent transition-colors", BUTTON_ROLE_FOCUS_RING)}
-            data-testid="ctem-page-header-back"
-          >
-            <Icon name="chevron-left" size={16} /> {t_i18n(back.label)}
-          </Link>
-          {crumb && (
-            <>
-              <span aria-hidden>/</span>
-              {/* The current page keeps its words ("Stage 2 of 5" was cut
-                  at 1080, A1 of round 2 on #11677): the chips after it give way. */}
-              <span className="shrink-0 font-medium text-default-primary" aria-current="page" title={crumb}>
-                {crumb}
-              </span>
-            </>
-          )}
-        </>
-      ) : (
-        eyebrow
+      {eyebrow}
+      {crumb && (
+        // The current page keeps its words ("Stage 2 of 5" was cut at 1080,
+        // A1 of round 2 on #11677): the chips after it give way.
+        <span className="shrink-0 font-medium text-default-primary" aria-current="page" title={crumb}>
+          {crumb}
+        </span>
       )}
       {/* The extras are items of the breadcrumb line itself (the wrapper
-          draws no box): the back link and the current page stay on line 1,
+          draws no box): the current page stays on line 1,
           an extra that does not fit goes whole to the next caption line,
           which starts at the left edge of the breadcrumb, never in a column
           beside the crumb (#604, UX round 1 on #605). An item wider than the
@@ -206,7 +196,10 @@ export function CtemPageHeader({
     </nav>
   );
   return (
-    <div data-testid="ctem-page-header" data-layout={layout}>
+    <div data-testid="ctem-page-header" data-layout={layout} className={cn(back && HEADER_WITH_BACK_CLASS)}>
+      {/* The app's one back link, as on an entity page: first, at the
+          content edge, above the band and outside its border. */}
+      {back && <LocationBackButton to={back.to} label={back.label} />}
       <header
         ref={ref}
         style={{ gridTemplateColumns: grid.columns, gridTemplateAreas: grid.areas }}
@@ -230,6 +223,10 @@ export function CtemPageHeader({
           <CtemStatRow
             stats={stats!}
             stacked={stacked}
+            // The cells take the band's full content height: the hairlines
+            // run top to bottom and each cell centres its figure on the same
+            // axis as the title block and the actions.
+            style={STAT_AREA_STYLE}
             className={cn("justify-self-start [grid-area:stats]", stacked && "border-l border-elevation-subtle-soft")}
           />
         )}
@@ -259,13 +256,13 @@ export function CtemPageHeader({
  * language). A label longer than its cell truncates with the full text on
  * hover. Also the compact score row of the command center hero.
  */
-export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderStat[]; stacked: boolean; className?: string }) {
+export function CtemStatRow({ stats, stacked, className, style }: { stats: CtemHeaderStat[]; stacked: boolean; className?: string; style?: CSSProperties }) {
   const { t_i18n } = useFormatter();
   return (
     <div
       role="group"
       aria-label={t_i18n("Key figures")}
-      style={STAT_ROW_STYLE}
+      style={{ ...STAT_ROW_STYLE, ...style }}
       className={cn("flex min-w-0 max-w-full items-stretch gap-y-1.5", className)}
       data-testid="ctem-page-header-stats"
     >
@@ -275,6 +272,12 @@ export function CtemStatRow({ stats, stacked, className }: { stats: CtemHeaderSt
     </div>
   );
 }
+
+/** The wrapper's rhythm when the back link sits above the band: the spacing of EntityPageHeader (`space-y-1`). */
+const HEADER_WITH_BACK_CLASS = "space-y-1";
+
+/** The stat cells take the band's full content height, so their hairlines run top to bottom and their figures centre on the title's axis; read by the test. */
+export const STAT_AREA_STYLE = { alignSelf: "stretch" } as const;
 
 /** Wrap, never clip: the rule the no-overflow test pins. */
 export const STAT_ROW_STYLE = { flexWrap: "wrap", overflow: "visible" } as const;
