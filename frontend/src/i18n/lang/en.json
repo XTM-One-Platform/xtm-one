@@ -20738,5 +20738,16 @@
   "No check round yet": "No check round yet",
   "Show the checks": "Show the checks",
   "{count, plural, one {# not run} other {# not run}}": "{count, plural, one {# not run} other {# not run}}",
-  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}"
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}",
+  "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.": "The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.",
+  "About signals": "About signals",
+  "Where this signal is in the exposure management loop, and why.": "Where this signal is in the exposure management loop, and why.",
+  "Search signal, path or source": "Search signal, path or source",
+  "No signal seen yet: your sources are connected and nothing reached the loop.": "No signal seen yet: your sources are connected and nothing reached the loop.",
+  "No signal yet: no source is connected.": "No signal yet: no source is connected.",
+  "No signal matches these filters": "No signal matches these filters",
+  "{connected} of {total}": "{connected} of {total}",
+  "Open signal sources": "Open signal sources",
+  "Trigger path": "Trigger path",
+  "State and why": "State and why"
 }
