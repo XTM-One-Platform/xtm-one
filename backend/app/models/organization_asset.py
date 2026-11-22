@@ -133,3 +133,34 @@ class OrganizationAssetSoftware(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The sources that report this entry on the asset.
     sources: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+
+
+class OrganizationAssetDecision(Base):
+    """An administrator's merge or split of source records (#1178, S3).
+
+    ``merge``: the records are one asset whatever their keys say. ``split``:
+    the two records are never one asset. Kept apart from the asset rows, so a
+    rebuild of the store (a newer profile) applies them again; removing the
+    decision lets the keys decide again.
+    """
+
+    __tablename__ = "organization_asset_decisions"
+    __table_args__ = (Index("ix_organization_asset_decisions_org", "organization_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    #: ``merge`` or ``split``.
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    #: ``[{source, external_id}]``: two or more for a merge, exactly two for a split.
+    records: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    reason: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, server_default=text("now()")
+    )
