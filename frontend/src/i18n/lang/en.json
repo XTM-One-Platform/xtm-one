@@ -20696,5 +20696,12 @@
   "The evidence health pass finds a supporting asset with no evidence": "The evidence health pass finds a supporting asset with no evidence",
   "Not computed yet": "Not computed yet",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}",
-  "Open the {product} integration": "Open the {product} integration"
+  "Open the {product} integration": "Open the {product} integration",
+  "Empty: OpenCRQ is not connected.": "Empty: OpenCRQ is not connected.",
+  "Connect OpenCRQ": "Connect OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "No automation works this case: the CTEM loop fleet is not set up.",
+  "Waiting for {agent}, working this case since {since}.": "Waiting for {agent}, working this case since {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "Waiting for a fleet step, working this case since {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
+  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets"
 }
