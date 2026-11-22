@@ -18,8 +18,8 @@ Five runs per fleet (``RUNS``), on its home members, every one ``awaiting_human`
   API answers ``approval_answered`` true and the pending panels leave it out);
 * ``older``: one pending approval, paused 30 hours ago.
 
-The fleets: the corporate fleet, and the built-in fleet "Threat-informed exposure
-response" (``ctem-threat-response``) when the deployment seeds it, else the first
+The fleets: the corporate fleet, and the built-in fleet "CTEM loop"
+(``ctem-loop``, CTEM-31) when the deployment seeds it, else the first
 built-in fleet (the lab's own, ``seed_builtin_fleet.py``). Nothing resumes them:
 a pause is resumed only by the respond endpoints, which emit the resume outbox
 event, and the stale-run sweeps never touch ``awaiting_human``. No model call.
@@ -37,7 +37,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 SEEDED_BY = {"seeded_by": "lab"}
-BUILTIN_FLEET_SLUG = "ctem-threat-response"
+BUILTIN_FLEET_SLUG = "ctem-loop"
 #: The question of the ``long-question`` run: over 150 characters, so the card's wrapping renders.
 LONG_QUESTION = (
     "Seeded by the lab: the quarterly exposure review found 14 internet-facing hosts that match the "

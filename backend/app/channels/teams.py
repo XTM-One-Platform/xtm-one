@@ -899,6 +899,15 @@ async def teams_messages(request: Request):
         from_user.get("aadObjectId") or from_user.get("id") or "unknown",
     )
 
+    # The bot is in this conversation (a 1:1, a group chat or a channel): a
+    # decision card sent there later is posted by the bot and answered in place
+    # (#842, S9; human-gates.md I.4 path (a)).
+    _bot_service_url = str(data.get("serviceUrl") or "")
+    if conversation.get("id") and _is_botframework_service_url(_bot_service_url):
+        from app.services.decision_card_delivery import remember_bot_conversation
+
+        await remember_bot_conversation(str(conversation["id"]), _bot_service_url, conversation_type)
+
     if activity_type == "conversationUpdate":
         recipient_id = data.get("recipient", {}).get("id", "")
         members_added = data.get("membersAdded", [])
