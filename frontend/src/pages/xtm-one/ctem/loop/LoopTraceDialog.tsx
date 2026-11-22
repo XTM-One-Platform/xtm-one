@@ -298,6 +298,29 @@ function subjectFactRow(fact: SubjectFact, t_i18n: ReturnType<typeof useFormatte
   }
 }
 
+/** The evidence keys an OpenAEV freshness fact says, left out of the raw evidence list. */
+const FRESHNESS_ROW_KEYS = ["event", "resource_type"] as const;
+
+/** One named fact of an OpenAEV asset freshness signal (CTEM-27-UI). */
+type FreshnessFact = { key: "stale" };
+
+/**
+ * What an OpenAEV stale-asset signal says (CTEM-27-UI): the asset turned stale
+ * in OpenAEV, unseen past the tenant's stale threshold (the provisioned event
+ * `asset_stale`, backend openaev_trigger_provisioning, read by the path 6
+ * listener). Another source or event gives none: a plain asset update is no
+ * freshness verdict.
+ */
+export function freshnessFacts(provider: string, evidence: Record<string, unknown> | null | undefined): FreshnessFact[] {
+  if (provider !== "openaev" || evidence?.event !== "asset_stale") return [];
+  return [{ key: "stale" }];
+}
+
+/** A freshness fact as a row of the signal facts. */
+function freshnessFactRow(t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  return { label: t_i18n("Freshness"), value: t_i18n("Stale: not seen by OpenAEV past the tenant's threshold") };
+}
+
 /** A rule fact as a row of the signal facts: a label that never says "triggered" unless the rule matched. */
 function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
   if (fact.key === "pir") {
@@ -324,9 +347,11 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
   const ruleFacts = signalRuleFacts(signal.evidence, signal.decision);
   const findingFacts = aikidoFacts(signal.source.provider, signal.evidence);
   const identityFacts = subjectFacts(signal.subject.kind, signal.evidence);
+  const staleFacts = freshnessFacts(signal.source.provider, signal.evidence);
   const shownKeys: string[] = [
     ...ruleFacts.map((fact) => fact.key),
     ...(findingFacts.length > 0 ? AIKIDO_ROW_KEYS : []),
+    ...(staleFacts.length > 0 ? FRESHNESS_ROW_KEYS : []),
     ...subjectShownKeys(signal.subject.kind, signal.evidence),
   ];
   const evidence = Object.entries(signal.evidence ?? {})
@@ -353,6 +378,7 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
     ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
     ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
+    ...staleFacts.map(() => freshnessFactRow(t_i18n)),
     { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
     { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
     { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },

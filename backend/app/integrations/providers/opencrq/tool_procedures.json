@@ -147,6 +147,11 @@
     "organizations.getOrganization",
     "tenants.getTenants"
   ],
+  "get_opencrq_data_health": [
+    "jobs.listAllRuns",
+    "riskScenarios.getRiskScenariosOverview",
+    "tenants.getTenants"
+  ],
   "get_opencrq_evidence": [
     "supportingAssets.getEvidenceDetail",
     "tenants.getTenants"
@@ -193,6 +198,11 @@
   ],
   "get_opencrq_organization": [
     "organizations.getOrganization",
+    "tenants.getTenants"
+  ],
+  "get_opencrq_platform_health": [
+    "connectors.listConnectors",
+    "jobs.listAllRuns",
     "tenants.getTenants"
   ],
   "get_opencrq_platform_rbac": [
