@@ -73,6 +73,90 @@ def test_the_score_degradation_is_a_path_8_signal() -> None:
     assert "mitigation_regression" in listeners.paths_with_listener()
 
 
+def test_a_failed_reachability_assertion_is_a_path_5_outside_exposure() -> None:
+    # CTEM-26 (#1164): the receiver stamps the scenario's assertion flag on the event.
+    delivery = _delivery("scenario_score_degraded", "SCENARIO", "s1")
+    delivery["_openaev_event"]["reachability_assertion"] = True
+    found = listeners.match("openaev", "scenario_score_degraded", delivery)
+    assert found is not None
+    row, signal = found
+    assert (row.trigger_path, row.lens, row.subject_kind) == ("new_exposure", "outside", "asset")
+    assert signal["external_id"] == "s1"
+    assert signal["evidence"]["reachability_assertion"] is True
+    assert "new_exposure" in listeners.paths_with_listener()
+
+
+@pytest.mark.parametrize("flag", [False, None, "true"])
+def test_a_scenario_that_is_not_an_assertion_stays_path_8(flag: Any) -> None:
+    delivery = _delivery("scenario_score_degraded", "SCENARIO", "s1")
+    if flag is not None:
+        delivery["_openaev_event"]["reachability_assertion"] = flag
+    found = listeners.match("openaev", "scenario_score_degraded", delivery)
+    assert found is not None
+    row, signal = found
+    assert row.trigger_path == "mitigation_regression"
+    assert "reachability_assertion" not in signal["evidence"]
+
+
+def _scenario_api(monkeypatch: pytest.MonkeyPatch, body: Any = None, err: str | None = None) -> list[str]:
+    calls: list[str] = []
+
+    async def read(integration_id: str, scenario_id: str) -> bool | None:
+        calls.append(scenario_id)
+        if err:
+            raise RuntimeError(err)
+        value = body.get(aev.ASSERTION_FIELD) if isinstance(body, dict) else None
+        return value if isinstance(value, bool) else None
+
+    monkeypatch.setattr(aev, "_read_assertion_flag", read)
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "platform_mode", "xtm_one")
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_the_receiver_stamps_the_assertion_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _scenario_api(monkeypatch, {"scenario_id": "s1", aev.ASSERTION_FIELD: True})
+    delivery = _delivery("scenario_score_degraded", "SCENARIO", "s1")
+    flag = await aev.stamp_reachability_assertion(
+        "scenario_score_degraded", delivery, integration_id=str(uuid.uuid4()), verified=True
+    )
+    assert flag is True and calls == ["s1"]
+    assert delivery["_openaev_event"]["reachability_assertion"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_receiver_reads_nothing_for_other_deliveries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _scenario_api(monkeypatch, {aev.ASSERTION_FIELD: True})
+    unverified = _delivery("scenario_score_degraded", "SCENARIO", "s1")
+    assert (
+        await aev.stamp_reachability_assertion(
+            "scenario_score_degraded", unverified, integration_id="i", verified=False
+        )
+        is None
+    )
+    other = _delivery("asset_stale", "ASSET", "a1")
+    assert await aev.stamp_reachability_assertion("asset_stale", other, integration_id="i", verified=True) is None
+    assert calls == []
+    assert "reachability_assertion" not in unverified["_openaev_event"]
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_scenario_keeps_path_8(monkeypatch: pytest.MonkeyPatch) -> None:
+    _scenario_api(monkeypatch, err="boom")
+    delivery = _delivery("scenario_score_degraded", "SCENARIO", "s1")
+    assert (
+        await aev.stamp_reachability_assertion(
+            "scenario_score_degraded", delivery, integration_id=str(uuid.uuid4()), verified=True
+        )
+        is None
+    )
+    assert "reachability_assertion" not in delivery["_openaev_event"]
+    found = listeners.match("openaev", "scenario_score_degraded", delivery)
+    assert found is not None and found[0].trigger_path == "mitigation_regression"
+
+
 def test_a_critical_asset_reached_is_a_path_4_signal() -> None:
     # CTEM-13: OpenAEV names the simulation only; the subject is the run, linked back to OpenAEV.
     found = listeners.match(

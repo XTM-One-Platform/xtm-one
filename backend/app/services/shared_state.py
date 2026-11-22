@@ -789,6 +789,41 @@ def compact_open_items(value: dict[str, Any], policy: dict[str, Any]) -> dict[st
 OVERFLOW_RESOLVE_MAX_KEYS = 10
 
 
+def overflow_part_key(base: str, part: int) -> str:
+    """The key of overflow part *part* of *base*: the base itself, then ``BASE:part-N``."""
+    return base if part <= 1 else f"{base}:part-{part}"
+
+
+def repoint_spilled(
+    value: dict[str, Any],
+    spilled: dict[str, dict[str, dict[str, Any]]],
+    old_key: str,
+    new_key: str,
+    id_field: str,
+) -> int:
+    """Point the fields of *spilled* at *new_key* instead of *old_key* in *value* (in place); the count.
+
+    Used when an overflow part is full and the spill rolls to the next part:
+    only the pointers this write made (they name *old_key*) change.
+    """
+    count = 0
+    for name, items in spilled.items():
+        held = value.get(name)
+        if not isinstance(held, list):
+            continue
+        for index, item in enumerate(held):
+            if not isinstance(item, dict) or str(item.get(id_field)) not in items:
+                continue
+            identity = str(item.get(id_field))
+            new_item = dict(item)
+            for field in items[identity]:
+                if new_item.get(field) == f"{OVERFLOW_POINTER}{old_key}/{name}/{identity}#{field}":
+                    new_item[field] = f"{OVERFLOW_POINTER}{new_key}/{name}/{identity}#{field}"
+                    count += 1
+            held[index] = new_item
+    return count
+
+
 def split_overflow_pointer(field_value: object) -> tuple[str, str, str, str] | None:
     """The (key, list, item, field) an ``overflow://KEY/LIST/ITEM#FIELD`` pointer names, or None.
 
@@ -2802,23 +2837,39 @@ async def upsert_state(
         if not spilled_out:
             return
         policy = getattr(state, "retention", None) or {}
-        target = policy.get("overflow_key")
-        if not target:
+        base = policy.get("overflow_key")
+        if not base:
             return
         count = sum(len(fields) for items in spilled_out.values() for fields in items.values())
-        await upsert_state(
-            user_id=user_id,
-            key=target,
-            status=SHARED_STATE_ACTIVE_STATUS,
-            acting_agent_id=acting_agent_id,
-            is_company_managed=bool(state.is_company_managed),
-            workspace_id=state.workspace_id,
-            writer=writer,
-            value={name: dict(items) for name, items in spilled_out.items()},
-            deep=True,
-            note=f"moved {count} field(s) out of {key} by its retention max_item_chars",
-            run_id=run_id,
-        )
+        # A part at the hard limit refuses the spill: it rolls to the next
+        # part (BASE:part-2, ...) and the pointers this write made are
+        # re-pointed before the source commits, up to the read's key cap.
+        target = base
+        for part in range(1, OVERFLOW_RESOLVE_MAX_KEYS + 1):
+            target = overflow_part_key(base, part)
+            try:
+                await upsert_state(
+                    user_id=user_id,
+                    key=target,
+                    status=SHARED_STATE_ACTIVE_STATUS,
+                    acting_agent_id=acting_agent_id,
+                    is_company_managed=bool(state.is_company_managed),
+                    workspace_id=state.workspace_id,
+                    writer=writer,
+                    value={name: dict(items) for name, items in spilled_out.items()},
+                    deep=True,
+                    note=f"moved {count} field(s) out of {key} by its retention",
+                    run_id=run_id,
+                )
+                break
+            except ValueError as exc:
+                if "hard limit" not in str(exc) or part == OVERFLOW_RESOLVE_MAX_KEYS:
+                    raise
+        if target != base:
+            moved = dict(state.value or {})
+            repoint_spilled(moved, spilled_out, base, target, policy.get("item_key") or "id")
+            state.value = moved
+            spilled_answer["overflow_rolled_to"] = target
         spilled_answer["spilled"] = {name: len(items) for name, items in spilled_out.items()}
         spilled_answer["spilled_to"] = target
 
