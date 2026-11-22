@@ -3,10 +3,10 @@
 /**
  * The section links of the Sources and syncs table (#1134 S2 part 2, #1276): the label of each
  * section a source feeds, and the link that opens the section's tab filtered on that source.
- * Pure, so the table and its tests share it.
+ * A section that moved to CTEM > Inventory (#1178) opens there. Pure, so the table and its tests share it.
  */
 
-import { profileTabPath, type ProfileCard, PROFILE_CARD_PARAM, PROFILE_CARD_TAB } from "./organization-profile-tabs";
+import { profileCardHref, type ProfileCard } from "./organization-profile-tabs";
 
 /** The profile lists that carry a row source, in the order of the tabs. */
 const SOURCED_SECTIONS = ["crown_jewels", "tech_stack", "ai_systems", "assets_exposure", "asset_groups"] as const;
@@ -38,13 +38,13 @@ const SECTION_CARD: Record<SourcedSection, ProfileCard> = {
 };
 
 /**
- * The link of a section chip: the section's tab, landed on its card, with the table filtered on
- * the source's label where the table has a Source filter (the label the filter lists).
+ * The link of a section chip: the section's tab (on the Inventory when it moved there), landed on
+ * its card, with the table filtered on the source's label where the table has a Source filter.
  */
 export function sourceSectionHref(section: SourcedSection, sourceLabel: string): string {
   const card = SECTION_CARD[section];
-  const params = new URLSearchParams({ [PROFILE_CARD_PARAM]: card });
+  const params = new URLSearchParams();
   const prefix = SOURCE_FILTER_PREFIX[section];
   if (prefix) params.set(`${prefix}f_source`, sourceLabel);
-  return `${profileTabPath(PROFILE_CARD_TAB[card])}?${params.toString()}`;
+  return profileCardHref(card, params);
 }
