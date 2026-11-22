@@ -211,6 +211,15 @@ class FleetSlotIntegration(BaseModel):
     name: str = ""
 
 
+class FleetSlotBuiltin(BaseModel):
+    """A capability's built-in option (#1201): served by XTM One, never stored as a binding."""
+
+    key: str
+    label: str
+    #: Always active: an external integration adds to it and it cannot be removed.
+    always_on: bool = True
+
+
 class FleetCapabilitySlot(BaseModel):
     """One capability a member's role can use, and how it is filled."""
 
@@ -221,6 +230,8 @@ class FleetCapabilitySlot(BaseModel):
     state: Literal["filled", "empty", "unavailable"]
     bound: list[FleetSlotIntegration] = Field(default_factory=list)
     candidates: list[FleetSlotIntegration] = Field(default_factory=list)
+    #: The built-in option, when the capability has one: it fills the slot by itself.
+    builtin: FleetSlotBuiltin | None = None
 
 
 class FleetMemberSlots(BaseModel):
@@ -235,9 +246,54 @@ class FleetMemberSlots(BaseModel):
     slots: list[FleetCapabilitySlot] = Field(default_factory=list)
 
 
+class FleetCapabilityTypeMember(BaseModel):
+    """One member using a capability type, in the expanded type row (#1201)."""
+
+    member_id: str
+    agent_id: str
+    name: str = ""
+    role_label: str = ""
+    can_edit: bool = False
+    bound: list[FleetSlotIntegration] = Field(default_factory=list)
+    #: Its bound set differs from the fleet choice: an override ("Custom").
+    custom: bool = False
+
+
+class FleetCapabilityType(BaseModel):
+    """A capability across the fleet's members: one row of the type view (#1201)."""
+
+    capability: str
+    label: str
+    #: ``connected`` (every member filled), ``partial`` (some), ``not_bound``
+    #: (none, a connected one can be bound) or ``none_connected``.
+    state: Literal["connected", "partial", "not_bound", "none_connected"]
+    #: The fleet choice: the bound set most members share.
+    choice: list[FleetSlotIntegration] = Field(default_factory=list)
+    candidates: list[FleetSlotIntegration] = Field(default_factory=list)
+    members: list[FleetCapabilityTypeMember] = Field(default_factory=list)
+    builtin: FleetSlotBuiltin | None = None
+
+
 class FleetCapabilitySlotsResponse(BaseModel):
     fleet_id: str
     members: list[FleetMemberSlots] = Field(default_factory=list)
+    #: The same slots grouped by capability (#1201): one row per type.
+    types: list[FleetCapabilityType] = Field(default_factory=list)
+
+
+class FleetCapabilityTypeSet(BaseModel):
+    """The fleet choice of a capability, written on every member slot of that type (#1201)."""
+
+    #: Exactly the integrations bound; empty leaves the built-in option alone (when any).
+    integration_ids: list[str] = Field(default_factory=list, max_length=20)
+    #: Also write the members whose slot is custom (an override); otherwise they keep it.
+    override_custom: bool = False
+
+
+class FleetSlotSet(BaseModel):
+    """Exactly the integrations bound on one member's slot: an override or a reset (#1201)."""
+
+    integration_ids: list[str] = Field(default_factory=list, max_length=20)
 
 
 class FleetSlotBind(BaseModel):

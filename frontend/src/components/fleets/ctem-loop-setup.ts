@@ -58,17 +58,6 @@ export type LoopModule = keyof typeof MODULE_DEGRADED;
 export const LOOP_MODULES: readonly LoopModule[] = ["opencti", "openaev", "opencrq"];
 export const MODULE_NAMES: Record<LoopModule, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
 
-/** @i18n-keys */
-export const ECOSYSTEM_LABELS = {
-  edr_xdr: "EDR / XDR",
-  ticketing: "Ticketing",
-  scanner: "Scanners",
-  notification: "Notifications",
-} as const;
-
-export type EcosystemCapability = keyof typeof ECOSYSTEM_LABELS;
-export const ECOSYSTEM_CAPABILITIES: readonly EcosystemCapability[] = ["edr_xdr", "ticketing", "scanner", "notification"];
-
 /** A step already settled: recorded done or skipped for the current setup version. */
 export function isSettled(state: FleetSetupStep["state"] | undefined): boolean {
   return state === "done" || state === "skipped";
@@ -100,18 +89,6 @@ export function stepOf(status: FleetSetupStatus | null | undefined, key: SetupSt
 export function connectedModules(step: FleetSetupStep | undefined): LoopModule[] {
   const connected = new Set(Array.isArray(step?.facts.connected) ? (step.facts.connected as string[]) : []);
   return LOOP_MODULES.filter((module) => connected.has(module));
-}
-
-/** Each ecosystem capability's best slot state as the Ecosystem step's facts give it; unread reads `unavailable`. */
-export function ecosystemSlots(step: FleetSetupStep | undefined): Record<EcosystemCapability, "filled" | "empty" | "unavailable"> {
-  const raw = (step?.facts.slots ?? {}) as Record<string, string>;
-  const pick = (value: string | undefined) => (value === "filled" || value === "empty" ? value : "unavailable");
-  return {
-    edr_xdr: pick(raw.edr_xdr),
-    ticketing: pick(raw.ticketing),
-    scanner: pick(raw.scanner),
-    notification: pick(raw.notification),
-  };
 }
 
 /**
