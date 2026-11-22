@@ -20544,7 +20544,7 @@
   "No DNS record backs it": "Aucun enregistrement DNS ne le soutient",
   "Names of {domain} point inside the owned address ranges": "Les noms de {domain} pointent dans les plages d'adresses détenues",
   "Points to {ip}, outside them": "Pointe vers {ip}, hors de ces plages",
-  "Last seen on {date}": "Vu pour la dernière fois le {date}",
+  "The host last answered on {date}": "L'hôte a répondu pour la dernière fois le {date}",
   "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, one {Non vu depuis au moins # jour} other {Non vu depuis au moins # jours}}",
   "Not declared and not seen by an earlier pass": "Non déclaré et non vu par un passage précédent",
   "Answers on {ports}": "Répond sur {ports}",

@@ -20544,7 +20544,7 @@
   "No DNS record backs it": "対応する DNS レコードなし",
   "Names of {domain} point inside the owned address ranges": "{domain} の名前は所有アドレス範囲内を指す",
   "Points to {ip}, outside them": "範囲外の {ip} を指す",
-  "Last seen on {date}": "最終確認: {date}",
+  "The host last answered on {date}": "ホストの最終応答日: {date}",
   "{count, plural, one {Unseen for at least # day} other {Unseen for at least # days}}": "{count, plural, other {少なくとも # 日間未確認}}",
   "Not declared and not seen by an earlier pass": "未宣言で、以前のパスでも未確認",
   "Answers on {ports}": "{ports} で応答",
