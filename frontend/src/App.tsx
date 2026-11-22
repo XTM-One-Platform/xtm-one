@@ -49,6 +49,8 @@ const CtemGovernance = lazyWithRetry(() => import("@/pages/xtm-one/CtemGovernanc
 const ExposureBriefing = lazyWithRetry(() => import("@/pages/xtm-one/ExposureBriefing"));
 const CtemCases = lazyWithRetry(() => import("@/pages/xtm-one/CtemCases"));
 const CtemCaseDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemCaseDetail"));
+const CtemInventory = lazyWithRetry(() => import("@/pages/xtm-one/CtemInventory"));
+const CtemAssetDetail = lazyWithRetry(() => import("@/pages/xtm-one/CtemAssetDetail"));
 /* Hub pages for the three nav groups that have one — the parent label in the
  * sidebar is a real destination, not just an expand/collapse row. */
 const Work = lazyWithRetry(() => import("@/pages/Work"));
@@ -680,6 +682,10 @@ export default function App() {
         <Route path="/ctem/governance" element={<XtmOneRoute><Page><CtemGovernance /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
         <Route path="/ctem/cases/:id" element={<XtmOneRoute><Page><CtemCaseDetail /></Page></XtmOneRoute>} />
+        {/* CTEM > Inventory (#1178): the old Assets links land on it. */}
+        <Route path="/ctem/assets" element={<Navigate to="/ctem/inventory" replace />} />
+        <Route path="/ctem/inventory/assets/:id" element={<XtmOneRoute><Page><CtemAssetDetail /></Page></XtmOneRoute>} />
+        <Route path="/ctem/inventory/:tab?" element={<XtmOneRoute><Page><CtemInventory /></Page></XtmOneRoute>} />
         <Route path="/ctem/:stage" element={<XtmOneRoute><Page><CtemStageDetail /></Page></XtmOneRoute>} />
         <Route path="/briefing" element={<XtmOneRoute><Page><ExposureBriefing /></Page></XtmOneRoute>} />
         {/* The chat's chunk loads in its empty frame, never a page skeleton the panel's own would replace. */}

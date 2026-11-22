@@ -233,6 +233,8 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ["Exposure management"],
         children: [
           { ...leaf("/ctem/cases", "clipboard-check", "Cases", (f) => f.ctemCases), keywords: ["CTEM", "Exposure cases"] },
+          /* The inventory (#1178, Sam 22 Nov 2026): assets and the tech stack built from their software. */
+          { ...leaf("/ctem/inventory", "server", "Inventory", (f) => f.ctemCases), keywords: ["CTEM", "Assets", "Tech stack"] },
         ],
       },
       /* The agents and what they form and follow (#9301): the label opens a
