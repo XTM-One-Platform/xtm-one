@@ -87,6 +87,37 @@ def default_dedupe_key(trigger_path: str, provider: str, external_id: str | None
     return f"{trigger_path}:sha256:{hashlib.sha256(tail.encode('utf-8')).hexdigest()}"
 
 
+#: Evidence keys that may hold a credential or secret value (CTEM-29): never stored as given.
+SECRET_KEYS: frozenset[str] = frozenset(
+    {"password", "secret", "token", "api_key", "apikey", "private_key", "credential", "credentials", "hash"}
+)
+
+
+def fingerprint(value: object) -> str:
+    """The SHA-256 fingerprint a secret is kept as, enough to see the same secret twice."""
+    return "sha256:" + hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+
+
+def mask_secrets(evidence: dict[str, Any]) -> dict[str, Any]:
+    """*evidence* with every secret value replaced by its fingerprint, at any depth."""
+
+    def walk(value: Any) -> Any:
+        if isinstance(value, dict):
+            out: dict[str, Any] = {}
+            for key, item in value.items():
+                if str(key).lower() in SECRET_KEYS and item not in (None, "") and not isinstance(item, dict | list):
+                    out[f"{key}_fingerprint"] = fingerprint(item)
+                else:
+                    out[key] = walk(item)
+            return out
+        if isinstance(value, list):
+            return [walk(item) for item in value]
+        return value
+
+    masked: dict[str, Any] = walk(evidence)
+    return masked
+
+
 def normalize(inp: SignalInput) -> SignalInput:
     """The input checked and trimmed, its lens and dedupe key filled; :class:`SignalError` otherwise."""
     if inp.trigger_path not in PATH_CATALOG:
@@ -104,6 +135,9 @@ def normalize(inp: SignalInput) -> SignalInput:
         raise SignalError("subject_ref is required (hostname, IP, URL, CPE, CVE id, account, organization...)")
     external_id = _clean(inp.source_external_id, 300) or None
     evidence = dict(inp.evidence or {})
+    if inp.trigger_path == "credential_leak":
+        # CTEM-29: a leak signal keeps a fingerprint and the source link, never the secret.
+        evidence = mask_secrets(evidence)
     if len(repr(evidence)) > MAX_EVIDENCE_CHARS:
         raise SignalError(f"evidence is larger than {MAX_EVIDENCE_CHARS} characters: keep the facts and a link")
     observed = inp.observed_at

@@ -887,6 +887,25 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Cette décision a déjà reçu une réponse.",
         "ja": "この判断にはすでに回答済みです。",
     },
+    # --- The Slack decision card (#842, S10) ---------------------------
+    "card_answer_with_text": {
+        "en": "Answer with text",
+        "es": "Responder con texto",
+        "fr": "Répondre par écrit",
+        "ja": "テキストで回答",
+    },
+    "card_modal_title": {
+        "en": "Your answer",
+        "es": "Su respuesta",
+        "fr": "Votre réponse",
+        "ja": "回答",
+    },
+    "card_cancel": {
+        "en": "Cancel",
+        "es": "Cancelar",
+        "fr": "Annuler",
+        "ja": "キャンセル",
+    },
     "card_decision_failed": {
         "en": "This couldn't be done. Open the decision in XTM One.",
         "es": "No se pudo realizar. Abra la decisión en XTM One.",

@@ -444,6 +444,27 @@ async def _send_run_decision_card(db: AsyncSession, run: AssignmentRun, user: ob
         return False
 
 
+async def _send_run_slack_decision_card(
+    db: AsyncSession, run: AssignmentRun, user: object, bot_token: str, slack_user_id: str
+) -> bool:
+    """Send the paused run's decision as its Slack card, answered in place (#842, S10, I.2).
+
+    ``False`` when the run has no open decision or Slack refused the card: the
+    caller then sends its text as before.
+    """
+    from app.services.decision_card_delivery import open_decision
+    from app.services.slack_decision_cards import send_decision_card
+
+    try:
+        decision = await open_decision(db, "run", run.id)
+        if decision is None:
+            return False
+        return await send_decision_card(db, decision, bot_token, slack_user_id, language=notice_language(user))
+    except Exception as exc:
+        logger.warning("Slack decision card for run %s not sent: %s", run.id, format_exception_message(exc))
+        return False
+
+
 async def _notify_slack(
     db: AsyncSession, agent: Agent, message: str, run: AssignmentRun
 ) -> None:
@@ -498,6 +519,11 @@ async def _notify_slack(
                 message,
                 is_company=False,
             )
+            return
+
+        if run.status == "awaiting_human" and await _send_run_slack_decision_card(
+            db, run, user, bot_token, slack_user_id
+        ):
             return
 
         resp = await client.post(
