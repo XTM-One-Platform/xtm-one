@@ -158,7 +158,7 @@ CTEM_LOOP_FLEET: dict[str, Any] = {
         "closed by a passing re-test. It also keeps the posture, the PIR answers, the detection "
         "coverage and the risk register current."
     ),
-    "icon": "Repeat",
+    "icon": "Workflow",
     "orchestrator": _LOOP,
     "leads": [
         _POSTURE,
@@ -167,6 +167,10 @@ CTEM_LOOP_FLEET: dict[str, Any] = {
         RISK_BUDGET_DESK_FLEET["orchestrator"],
     ],
     "members": _LOOP_MEMBERS,
+    # The posture lead answers people in chat (where the organization stands), as it
+    # did as the orchestrator of the posture fleet; every other role is reached
+    # through the loop orchestrator.
+    "chat_members": [_POSTURE],
     "connected": _connected(
         PIR_DESK_FLEET,
         DETECTION_DESK_FLEET,

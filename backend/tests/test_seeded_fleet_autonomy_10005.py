@@ -20,14 +20,10 @@ _CTEM = sorted(BUILTIN_FLEET_STRUCTURED)
 #: Per fleet at Low: the gates that still wait for a person. Every other gate runs alone and is logged.
 _WAITS_AT_LOW = {
     # The CTEM loop fleets (#916, CTEM-34): one decision per case out of the box, Mobilize.
-    "ctem-threat-response": {"ctem.mobilize"},
+    "ctem-loop": {"ctem.mobilize"},
     "ctem-vuln-prioritization": {"ctem.mobilize"},
     "ctem-ai-security": {"ctem.mobilize"},
-    "ctem-posture": set(),
     "ctem-third-party-risk": {"ctem.mobilize"},
-    "opencti-pir-desk": {"indicator.revoke"},
-    "openaev-detection-desk": {"openaev.simulation.launch"},
-    "opencrq-risk-budget-desk": set(),
 }
 
 
@@ -64,7 +60,7 @@ def test_at_low_only_the_mobilize_tickets_pause_in_the_tool_path():
 
     #917 adds sync_ctem_case_ticket: its create=true call opens the case ticket under the same gate.
     """
-    gates = BUILTIN_FLEET_STRUCTURED["ctem-threat-response"]["gates"]
+    gates = BUILTIN_FLEET_STRUCTURED["ctem-loop"]["gates"]
     rules = gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, gates)
     assert {r["name"] for r in rules} == {
         "create_jira_issue",

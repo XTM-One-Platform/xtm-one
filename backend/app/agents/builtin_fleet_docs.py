@@ -68,10 +68,16 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "when relevant to the profile or at the PIR threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
         "validated scenario once a fix is deployed.\n"
-        "- **Posture**: the weekly stage assessments and the exposure briefing (on by default), the "
-        "event refresh and the monthly board report.\n"
-        "- **Module desks**: a PIR match in OpenCTI, a finished OpenAEV simulation, an OpenCRQ "
-        "scenario re-priced, and their weekly and monthly answers."
+        "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
+        "- **Event refresh** and **Monthly board report**: a closed case refreshes the stages it "
+        "touched; the board report on the 1st of the month.\n"
+        "- **PIR match created**: the Intelligence desk answers a PIR match in OpenCTI; with the "
+        "**Weekly PIR answer**, the **Half-year threat landscape** and the **Stale indicator clean-up**.\n"
+        "- **Simulation finished**: the Validation desk sorts every result of an OpenAEV simulation; "
+        "with the **Weekly validation plan**, the **Weekly coverage report** and its own re-tests.\n"
+        "- **Scenario re-priced**, **Finding re-scored** and **Control validation ingested**: the Risk "
+        "desk explains what moved in OpenCRQ; with the **Weekly investment review** and the "
+        "**Monthly Board pack**."
     ),
     "flow": (
         "1. Signal: any trigger path records a signal; reconcile and the scope gate decide case or watchlist.\n"
@@ -1126,7 +1132,11 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         *CTEM_POSTURE_STRUCTURED["quota"],
         *(q for q in OPENCTI_PIR_DESK_STRUCTURED["quota"] if q["trigger"] == "PIR match created"),
         *(q for q in OPENAEV_DETECTION_DESK_STRUCTURED["quota"] if q["trigger"] == "Simulation finished"),
-        *(q for q in OPENCRQ_RISK_BUDGET_DESK_STRUCTURED["quota"] if q["trigger"] == "Scenario re-priced"),
+        *(
+            q
+            for q in OPENCRQ_RISK_BUDGET_DESK_STRUCTURED["quota"]
+            if q["trigger"] in {"Scenario re-priced", "Finding re-scored", "Control validation ingested"}
+        ),
     ],
 }
 

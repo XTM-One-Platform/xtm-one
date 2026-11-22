@@ -1419,7 +1419,7 @@ def test_the_awaiting_human_seed_pauses_runs_on_approvals_and_a_question_on_two_
     assert len(ids) == len(set(ids))
     assert {r["agent_id"] for r in rows} == {"agent-a", "agent-b"}
     assert all(r["trigger_context"]["seeded_by"] == "lab" for r in rows)
-    assert module.BUILTIN_FLEET_SLUG == "ctem-threat-response"
+    assert module.BUILTIN_FLEET_SLUG == "ctem-loop"
 
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}

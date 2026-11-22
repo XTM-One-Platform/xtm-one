@@ -39,9 +39,12 @@ def test_a_stored_version_with_a_retired_section_is_read_without_it():
 @pytest.mark.parametrize("slug", _SLUGS)
 def test_the_documentation_names_each_seeded_automation_of_its_fleet(slug):
     from app.agents.builtin_agents import BUILTIN_ASSIGNMENTS
+    from app.agents.builtin_fleets import BUILTIN_FLEET_LEADS
 
-    fleet = next(f for f in BUILTIN_FLEETS if f["slug"] == slug)
-    names = [a["name"] for a in BUILTIN_ASSIGNMENTS if a.get("agent_slug") == fleet["orchestrator"]]
+    # The orchestrator's automations and every lead's (CTEM-31: a role folded into the
+    # generic loop keeps its automations, so the About page names them all).
+    leads = BUILTIN_FLEET_LEADS[slug]
+    names = [a["name"] for a in BUILTIN_ASSIGNMENTS if a.get("agent_slug") in leads]
     assert names, slug
     triggers = BUILTIN_FLEET_DOCS[slug]["triggers"]
     for name in names:
@@ -117,6 +120,8 @@ def test_a_profile_prerequisite_opens_the_tab_and_card_of_its_field_never_the_ba
 
 def test_an_entry_keeps_its_own_documentation_and_an_unknown_slug_gets_none():
     own = {"purpose": "Mine"}
-    assert builtin_fleet_documentation({"slug": "ctem-posture", "documentation": own}) is own
-    assert builtin_fleet_documentation({"slug": "ctem-posture"}) is BUILTIN_FLEET_DOCS["ctem-posture"]
+    assert builtin_fleet_documentation({"slug": "ctem-loop", "documentation": own}) is own
+    assert builtin_fleet_documentation({"slug": "ctem-loop"}) is BUILTIN_FLEET_DOCS["ctem-loop"]
+    # A retired fleet (CTEM-31) gets no documentation of its own any more.
+    assert builtin_fleet_documentation({"slug": "ctem-posture"}) is None
     assert builtin_fleet_documentation({"slug": "lab-fleet"}) is None
