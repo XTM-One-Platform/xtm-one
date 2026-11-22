@@ -99,6 +99,17 @@ describe("evidence health signal facts", () => {
     expect(within(facts).queryByText("Evidence sources")).toBeNull();
   });
 
+  it("never shows the backend reason sentence as a raw evidence line", async () => {
+    const facts = await renderTrace({
+      ...expired,
+      evidence: { ...expired.evidence, reason: "no evidence within the re-test delay" },
+    });
+    expect(within(facts).getByText("Evidence expired: older than the re-test delay")).toBeTruthy();
+    const evidence = within(facts).queryByTestId("ctem-signal-evidence");
+    expect(evidence?.textContent ?? "").not.toContain("reason");
+    expect(evidence?.textContent ?? "").not.toContain("no evidence within the re-test delay");
+  });
+
   it("an emptied connector sync gives its row counts and keeps its findings open", async () => {
     const facts = await renderTrace({
       ...expired,

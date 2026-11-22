@@ -36,6 +36,8 @@ export const EVIDENCE_HEALTH_ROW_KEYS = [
   "last_run_at",
   "latest_total",
   "previous_total",
+  // The backend reason sentence (English, unlocalized): the state row says it in words.
+  "reason",
 ] as const;
 
 const EVENTS = new Set(["evidence_expired", "coverage_gap"]);
