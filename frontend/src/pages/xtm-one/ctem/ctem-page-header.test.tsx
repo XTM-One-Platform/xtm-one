@@ -1,5 +1,6 @@
-// The one header band of the CTEM pages (#11660): back link and current page
-// on the breadcrumb line, the title with its "i" (no paragraph), one cell per
+// The one header band of the CTEM pages (#11660): the app's shared back
+// button above the band (Sam, 22 Nov 2026), the current page on the
+// breadcrumb line, the title with its "i" (no paragraph), one cell per
 // figure, the actions and the chips in their grid areas, an opening cell as a
 // named button.
 
@@ -12,7 +13,7 @@ import en from "@/i18n/lang/en.json";
 import es from "@/i18n/lang/es.json";
 import fr from "@/i18n/lang/fr.json";
 import ja from "@/i18n/lang/ja.json";
-import { BREADCRUMB_STYLE, CRUMB_EXTRAS_STYLE, CRUMB_ROW_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
+import { BREADCRUMB_STYLE, CRUMB_EXTRAS_STYLE, CRUMB_ROW_STYLE, CtemPageHeader, HEADER_MEDIUM_PX, HEADER_WIDE_PX, STAT_AREA_STYLE, STAT_ROW_STYLE, headerGrid, headerLayout } from "./CtemPageHeader";
 
 const CATALOGS: Record<string, Record<string, string>> = { en, fr, es, ja };
 /** The widest stat row of the CTEM pages (the command center's five cells). */
@@ -27,19 +28,43 @@ function draw(props: Partial<Parameters<typeof CtemPageHeader>[0]> = {}) {
 }
 
 describe("CtemPageHeader", () => {
-  it("draws the back link, the current page and one h1 with its hint, no paragraph", () => {
+  it("draws the current page and one h1 with its hint, no paragraph", () => {
     draw({ back: { to: "/", label: "Back to Command Center" }, crumb: "Stage 2 of 5", hint: "Threat-informed defense coverage", hintLabel: "About Discovery" });
-    expect(screen.getByTestId("ctem-page-header-back").getAttribute("href")).toBe("/");
     expect(screen.getByText("Stage 2 of 5").getAttribute("aria-current")).toBe("page");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("img", { name: "About Discovery" })).toBeTruthy();
     expect(screen.getByTestId("ctem-page-header").querySelector("p")).toBeNull();
   });
 
-  it("draws the eyebrow when there is no back link", () => {
+  // Sam, 22 Nov 2026: the CTEM back link is the app's back link, the shared
+  // BackButton of every entity page, first and above the band, never a
+  // caption link inside it.
+  it("draws the shared back button above the band, outside its border, never inside it", () => {
+    draw({ back: { to: "/", label: "Back to Command Center" }, crumb: "Stage 2 of 5" });
+    const wrapper = screen.getByTestId("ctem-page-header");
+    const back = screen.getByRole("button", { name: "Back to Command Center" });
+    const band = wrapper.querySelector("header")!;
+    expect(wrapper.firstElementChild).toBe(back);
+    expect(band.contains(back)).toBe(false);
+    expect(screen.queryByTestId("ctem-page-header-back")).toBeNull();
+    expect(band.querySelector("a")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" }).textContent).toBe("Stage 2 of 5");
+  });
+
+  it("draws the eyebrow and no back button on the root page", () => {
     draw({ eyebrow: <span>CTEM Command Center</span> });
     expect(screen.getByText("CTEM Command Center")).toBeTruthy();
-    expect(screen.queryByTestId("ctem-page-header-back")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
+  });
+
+  // Sam, 22 Nov 2026: the stat cells take the band's full content height
+  // (hairlines top to bottom), centred on the title's axis.
+  it("stretches the stat row over the band's height", () => {
+    draw({ stats: [{ id: "score", label: "Score", value: 3 }] });
+    const row = screen.getByTestId("ctem-page-header-stats");
+    expect(row.style.alignSelf).toBe(STAT_AREA_STYLE.alignSelf);
+    // The wrap rule is kept with it.
+    expect(row.style.flexWrap).toBe(STAT_ROW_STYLE.flexWrap);
   });
 
   it("draws one cell per figure and opens the cell that has a target", () => {
@@ -153,8 +178,8 @@ describe("CtemPageHeader", () => {
     expect(screen.getByTestId("ctem-page-header-title").contains(nav)).toBe(false);
     expect(nav.style.overflow).not.toBe("hidden");
     expect(nav.style.minWidth).toBe("0");
-    // The back link and the current page come before every extra on line 1.
-    expect(nav.firstElementChild).toBe(screen.getByTestId("ctem-page-header-back"));
+    // The current page comes before every extra on line 1.
+    expect(nav.firstElementChild).toBe(screen.getByText("Stage 2 of 5"));
     expect(extras.textContent).toBe("Not enough data to scoreOwner agent");
   });
 

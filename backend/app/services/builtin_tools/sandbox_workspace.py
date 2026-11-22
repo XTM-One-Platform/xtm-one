@@ -4151,10 +4151,11 @@ def build_sandbox_workspace_tools(
         ToolDefinition(
             name="sandbox_json_keys",
             description=(
-                "Set, rename, remove or read top-level keys of i18n catalogs (JSON, or one TS/JS object literal) in "
-                "one call, each file written back in its own layout, all or nothing. Order: rename, set, remove; get "
-                "reads after. A rename plus a set of the new key changes key and value in place. Use it, not "
-                "code_interpreter or one sandbox_edit_file per file, to add a key everywhere."
+                "Set, rename, remove or read top-level keys of i18n catalogs (JSON, one TS/JS object literal, "
+                "or gettext .po keyed by msgid) in one call, each file written back in its own layout, all or "
+                "nothing. Order: rename, set, remove; get reads after. A rename plus a set of the new key changes "
+                "key and value in place. Use it, not code_interpreter or one sandbox_edit_file per file, to add a "
+                "key everywhere."
             ),
             input_schema={
                 "type": "object",
