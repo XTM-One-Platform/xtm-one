@@ -31,6 +31,7 @@ from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_case_loop as case_loop
+from app.services import ctem_case_versions as case_versions
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_cases_view as view_of
@@ -394,7 +395,13 @@ async def get_ctem_case(
     shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    return {**shown[1], "ticketing": await ticketing.ticketing_target(db)}
+    (case, _, _), rendered = shown
+    return {
+        **rendered,
+        # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
+        "running_versions": await case_versions.for_case(db, case),
+        "ticketing": await ticketing.ticketing_target(db),
+    }
 
 
 @router.patch("/{case_id}")

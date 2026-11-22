@@ -176,6 +176,30 @@ Versions compare part by part (numbers as numbers, `rc`/`beta`/`alpha`/`dev`
 before the release, a post-release letter after it, an epoch `1:` and a `v`
 prefix read); distribution backports are not visible.
 
+### 4.2ter Running versions from the asset inventory (#1252)
+
+The version an organization runs is read from its assets, never typed in the
+tech stack: the canonical asset store (`organization_asset_software`, #1178)
+holds one row per asset, product and version, with the sources that report it
+(Intune, Defender, an SBOM, OpenAEV). The case read (`GET
+/api/v1/ctem-cases/{id}` and the `get_ctem_case` tool) carries
+`running_versions` for an upgrade case (`ctem_case_versions.for_case`), `null`
+for any other case or when no asset runs the product:
+
+- `versions`: one row per version of the case's product (its label, or vendor
+  and product), the number of distinct assets running it and its sources, the
+  most assets first, at most 50 (`more_versions` counts the rest);
+- with a fixed version known: each row's `status` (`below_fixed`, `fixed`,
+  `not_comparable` for `unknown` or an unreadable version) and the totals
+  `assets_below_fixed`, `assets_on_fixed`, `assets_not_comparable`;
+- with no fixed version: `fixed_version_checked` names the sources looked in
+  (section 4.2bis, steps 1 and 2); nothing asks the user to type a version.
+
+Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
+failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
+An asset already on the fixed version leaving the case's scope, and the case
+page, are later slices of #1252.
+
 ### 4.3 Recompute
 
 - Cases are inferred, never refreshed by hand: the UI has no Recompute button
