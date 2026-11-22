@@ -2,8 +2,8 @@
 
 /**
  * The visual language every CTEM Cases screen shares (dev-docs/ctem-cases.md
- * section 7.0): one hot tone per state and per priority (the outlined
- * ToneBadge Work items and Tasks use, #1267), owners as the DS Avatar,
+ * section 7.0): one hot tone per state and per priority (the shared outlined
+ * ToneBadge, the hot hues of Work items and Tasks, #1267), owners as the DS Avatar,
  * "Unassigned" in secondary text, never a warning colour.
  */
 import { Avatar, Icon } from "@filigran/design-system";

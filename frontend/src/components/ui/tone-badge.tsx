@@ -6,13 +6,15 @@ import { cn } from "@/lib/utils";
 
 /**
  * The hot tones of a status or a priority: red, orange, yellow, green, blue,
- * and neutral (#1267). One meaning per colour, the palette Work items and
- * Tasks already use, drawn as an outlined pill: a light wash of the hue, an
+ * and neutral (#1267). One meaning per colour, the hot hues Work items and
+ * Tasks use, here drawn as an outlined pill (their page-local badges have no
+ * visible edge yet and are not on this component): a light wash of the hue, an
  * edge in the hue and the text a step away from the surface in the same
  * family (the `-tertiary` feedback tokens), so the label reads at 4.5:1 and
  * the edge at 3:1 on every elevation surface in both themes. Never the
- * pastel severity tiles of the library Chip. Guard:
- * tests_unit/tone-badge-contrast.test.ts.
+ * pastel severity tiles of the library Chip. Guards:
+ * tests_unit/tone-badge-contrast.test.ts (contrast) and
+ * tests_unit/ctem-tone-badge-guard.test.ts (CTEM chips use it).
  */
 export type HotTone = "red" | "orange" | "yellow" | "green" | "blue" | "neutral";
 

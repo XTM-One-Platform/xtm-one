@@ -326,15 +326,20 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 - **One colour per state and per priority, everywhere** (board, list badge,
   case page, widget, signal state of the loop trace), through the shared
-  outlined `ToneBadge` (`components/ui/tone-badge.tsx`), the hot colours Work
-  items and Tasks use, never the pastel severity tiles of the DS `Chip` (Sam,
+  outlined `ToneBadge` (`components/ui/tone-badge.tsx`), the hot hues of Work
+  items and Tasks (whose page-local badges have no visible edge and are not on
+  `ToneBadge` yet), never the pastel severity tiles of the DS `Chip` (Sam,
   22 Nov 2026, #1267): states needs attention orange, in progress blue,
   mitigated, watching yellow with the DS `eye` icon inside the badge, resolved
   green, accepted risk neutral; priorities critical red, high orange, medium
   yellow, low green; loop severity P1 red, P2 orange, P3 yellow. Each tone is a
   /10 wash of the hue, an edge and a label in its `-tertiary` token (4.5:1 text,
   3:1 edge on every elevation surface in both themes, guard
-  `tests_unit/tone-badge-contrast.test.ts`). Counts bar segments take the same
+  `tests_unit/tone-badge-contrast.test.ts`). No CTEM page draws a state,
+  priority, severity or signal state with the DS `Chip`, a tone map typed other
+  than `HotTone`, or a `Badge` coloured from the feedback tokens (guard
+  `tests_unit/ctem-tone-badge-guard.test.ts`; the stage assessment "Out of
+  date" badge is an orange `ToneBadge`). Counts bar segments take the same
   hue (needs attention `feedback-warning-primary`, in progress
   `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
   `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
