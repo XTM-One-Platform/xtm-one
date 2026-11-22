@@ -103,9 +103,17 @@ describe("integration credential labels match the SecretField label", () => {
   });
 
   it("labels provider extra fields with the Label at full field height", () => {
-    expect(extraFieldInputs).toContain('<Label className="block text-default-primary">{desc}</Label>');
-    expect(extraFieldInputs).toMatch(/<Label htmlFor=\{`extra-field-\$\{key\}`\} className="text-default-primary">\{desc\}<\/Label>/);
+    expect(extraFieldInputs).toContain('<Label htmlFor={htmlFor} className="text-default-primary">{label.name}</Label>');
+    expect(extraFieldInputs).toMatch(/<ExtraFieldLabelRow htmlFor=\{`extra-field-\$\{key\}`\} label=\{label\} \/>/);
     expect(extraFieldInputs).not.toContain("h-8");
+  });
+
+  it("gives provider extra fields an info bubble, an Optional mark and a human placeholder, never the raw key", () => {
+    expect(extraFieldInputs).toContain('<InfoTip label={t_i18n("About {field}", { field: label.name })} content={label.detail} />');
+    expect(extraFieldInputs).toContain('{t_i18n("Optional")}');
+    expect(extraFieldInputs).not.toMatch(/: key\}/);
+    expect(extraFieldInputs).toContain('helpFor?.(key)');
+    expect(extraFieldInputs).toContain("choices ? undefined");
     expect(extraFieldInputs).not.toMatch(/<p className="content-compact text-default-secondary">\{desc\}/);
   });
 
