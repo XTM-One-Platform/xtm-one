@@ -25,6 +25,11 @@ chat or channel message through ``update_microsoft_chat_message`` /
 ``update_microsoft_channel_message``). When Graph refuses the edit the
 message keeps its links: the link page they open shows the decided state and
 answers nothing, which is the stated fallback of I.4.
+
+An email (``send_microsoft_email``, notify channel ``email``) carries the same
+links as plain text (:func:`decision_answer_links.link_text`, surface
+``email``). A sent email cannot be edited: its links open the decided page
+once the decision is closed.
 """
 
 from __future__ import annotations
@@ -47,10 +52,14 @@ from app.services import work_item_notify as notify
 logger = logging.getLogger(__name__)
 
 #: The send and edit tools of each kind of target.
-_SEND = {"chat": "send_microsoft_chat_message", "channel": "send_microsoft_channel_message"}
+_SEND = {
+    "chat": "send_microsoft_chat_message",
+    "channel": "send_microsoft_channel_message",
+    "email": "send_microsoft_email",
+}
 _UPDATE = {"chat": "update_microsoft_chat_message", "channel": "update_microsoft_channel_message"}
 #: The surface a link minted for each kind of target records on its answer.
-_SURFACE = {"chat": "teams_chat", "channel": "teams_channel"}
+_SURFACE = {"chat": "teams_chat", "channel": "teams_channel", "email": "email"}
 _MESSAGE_ID = re.compile(r"Message ID: ([^\s.]+)")
 #: The ``notified`` events of this module carry this ``via``.
 VIA = "graph_link_card"
@@ -59,19 +68,41 @@ VIA = "graph_link_card"
 CallerFactory = Callable[[Any, str], Any]
 
 
-def target_kind(target: Mapping[str, Any]) -> Literal["chat", "channel"]:
-    """``channel`` for ``{team_id, channel_id}``, ``chat`` for ``{chat_id}``; anything else is refused."""
+def target_kind(target: Mapping[str, Any]) -> Literal["chat", "channel", "email"]:
+    """``channel`` for ``{team_id, channel_id}``, ``chat`` for ``{chat_id}``, ``email`` for ``{email}``."""
     if target.get("team_id") and target.get("channel_id"):
         return "channel"
     if target.get("chat_id"):
         return "chat"
-    raise notify.PermanentNotifyError("a decision card goes to a chat_id, or to a team_id and a channel_id")
+    if target.get("email"):
+        return "email"
+    raise notify.PermanentNotifyError(
+        "a decision card goes to a chat_id, to a team_id and a channel_id, or to an email address"
+    )
 
 
 def _where(target: Mapping[str, Any]) -> dict[str, str]:
-    if target_kind(target) == "channel":
+    kind = target_kind(target)
+    if kind == "channel":
         return {"team_id": str(target["team_id"]), "channel_id": str(target["channel_id"])}
+    if kind == "email":
+        return {"email": str(target["email"])}
     return {"chat_id": str(target["chat_id"])}
+
+
+def _send_arguments(decision: Decision, recipient_id: uuid.UUID, target: Mapping[str, Any]) -> dict[str, Any]:
+    """The send tool's arguments: the link card for Teams, the link text for an email."""
+    kind = target_kind(target)
+    question = str((decision.ask or {}).get("question") or "A decision is waiting for you")
+    if kind == "email":
+        return {
+            "to": str(target["email"]),
+            "subject": question[:200],
+            "body": answer_links.link_text(decision, recipient_id, _SURFACE[kind]),
+            "content_type": "text",
+        }
+    card = answer_links.link_card(decision, recipient_id, _SURFACE[kind])
+    return {**_where(target), "message": question[:300], "card": card}
 
 
 def message_id_of(answer: str) -> str | None:
@@ -98,18 +129,16 @@ async def send_link_card(
 ) -> str:
     """Post the link card of *decision* for *recipient_id* to *target*, as *agent_id* acting for *user_id*.
 
-    Returns the message id; records a ``notified`` event naming the message so
-    the answer can update it. A refused send raises :class:`NotifyError` and
-    records nothing.
+    Returns the message id (``""`` for an email, which has none to edit);
+    records a ``notified`` event naming the message so the answer can update
+    it. A refused send raises :class:`NotifyError` and records nothing.
     """
     kind = target_kind(target)
-    card = answer_links.link_card(decision, recipient_id, _SURFACE[kind])
-    question = str((decision.ask or {}).get("question") or "A decision is waiting for you")
-    arguments: dict[str, Any] = {**_where(target), "message": question[:300], "card": card}
+    arguments = _send_arguments(decision, recipient_id, target)
     async with (caller or notify.agent_graph_caller)(_sender(decision.id, user_id, agent_id), integration) as call:
         sent, answer = await call(_SEND[kind], arguments)
-    message_id = message_id_of(answer) if sent else None
-    if not message_id:
+    message_id = (message_id_of(answer) if kind != "email" else "") if sent else None
+    if message_id is None or (kind != "email" and not message_id):
         raise notify.NotifyError((answer or "the decision card was not sent")[:500])
     db.add(
         DecisionEvent(
@@ -123,7 +152,7 @@ async def send_link_card(
                 "integration": integration,
                 "recipient_id": str(recipient_id),
                 **_where(target),
-                "message_id": message_id,
+                **({"message_id": message_id} if message_id else {"sent": True}),
             },
         )
     )
@@ -199,14 +228,17 @@ _SEND_BATCH = 20
 
 
 def card_target(item: Any) -> dict[str, str] | None:
-    """Where a waiting work item's card goes: its notify ask's chat or channel, else ``None``.
+    """Where a waiting work item's card goes: its notify ask's chat, channel or email, else ``None``.
 
-    A notify ask naming a person by address (``user``) has no conversation
+    A Teams ask naming a person by address (``user``) has no conversation
     to post a card in yet: it keeps the text notification at the item's end.
+    An ``email`` ask gets the answer links by email.
     """
     spec = notify.notify_spec(getattr(item, "payload", None))
     if not spec or not spec.get("integration"):
         return None
+    if spec.get("channel") == "email" and spec.get("user"):
+        return {"email": str(spec["user"])}
     if spec.get("team_id") and spec.get("channel_id"):
         return {"team_id": str(spec["team_id"]), "channel_id": str(spec["channel_id"])}
     if spec.get("chat_id"):
@@ -230,12 +262,12 @@ async def _send_attempts(db: AsyncSession, decision_id: uuid.UUID) -> tuple[bool
         select(DecisionEvent.detail).where(DecisionEvent.decision_id == decision_id, DecisionEvent.event == "notified")
     )
     details = [d for d in result.scalars().all() if isinstance(d, dict) and d.get("via") == VIA]
-    finished = any(d.get("message_id") or d.get("permanent") for d in details)
+    finished = any(d.get("message_id") or d.get("sent") or d.get("permanent") for d in details)
     return finished, sum(1 for d in details if d.get("error"))
 
 
 async def deliver_work_item_cards(*, limit: int = _SEND_BATCH, caller: CallerFactory | None = None) -> int:
-    """Post the link card of every open work item decision whose item names a Teams chat or channel.
+    """Post the link card of every open work item decision whose item names a Teams chat, channel or email.
 
     Called by the scheduler tick. The item's ``payload.notify`` names the
     Microsoft integration and the chat or channel; the agent that created the

@@ -70,8 +70,9 @@ logger = logging.getLogger(__name__)
 NOTIFY_KEY = "notify"
 DELIVERY_KEY = "delivery"
 #: The channels a notify ask may name. ``teams`` is accepted as an alias of
-#: ``teams_dm`` (a person or a chat); ``teams_channel`` is a Teams channel.
-CHANNELS: frozenset[str] = frozenset({"teams_dm", "teams", "teams_channel"})
+#: ``teams_dm`` (a person or a chat); ``teams_channel`` is a Teams channel;
+#: ``email`` is an Outlook email to a person's address (#842, S9b).
+CHANNELS: frozenset[str] = frozenset({"teams_dm", "teams", "teams_channel", "email"})
 #: The sending account's own Teams chat (Graph's self-chat): nobody else is in it.
 SELF_CHAT_ID = "48:notes"
 #: Sends tried before the item's user is told on the web instead.
@@ -95,9 +96,12 @@ _CHAT_TOOL = "create_microsoft_chat"
 #: The integration tools that post in an existing chat and in a channel.
 _CHAT_MESSAGE_TOOL = "send_microsoft_chat_message"
 _CHANNEL_TOOL = "send_microsoft_channel_message"
+#: The integration tool that sends an email (channel ``email``).
+_EMAIL_TOOL = "send_microsoft_email"
 #: The sentence each tool answers on success; anything else is a failure.
 _SENT: dict[str, str] = {
     _CHAT_TOOL: "Initial message sent.",
+    _EMAIL_TOOL: "Email sent to ",
     _CHAT_MESSAGE_TOOL: "Chat message sent.",
     _CHANNEL_TOOL: "Message sent to channel.",
     "update_microsoft_chat_message": "Chat message updated.",
@@ -139,6 +143,8 @@ def target_label(spec: Mapping[str, Any]) -> str:
     """Who or where a notify ask sends to, for logs and the give-up notice."""
     if spec.get("channel") == "teams_channel":
         return "a Teams channel"
+    if spec.get("channel") == "email":
+        return f"the email address {spec.get('user') or ''}"
     if spec.get("chat_id"):
         return "the account's own Teams chat" if spec["chat_id"] == SELF_CHAT_ID else "a Teams chat"
     return str(spec.get("user") or "")
@@ -165,6 +171,10 @@ def _clean_target(spec: Mapping[str, Any], channel: str) -> dict[str, str]:
             )
         return {"channel": "teams_channel", "team_id": team_id, "channel_id": channel_id}
     user = str(spec.get("user") or "").strip()
+    if channel == "email":
+        if "@" not in user or any(c.isspace() or c == "," for c in user):
+            raise NotifyError("payload.notify with channel email needs user, one email address")
+        return {"channel": "email", "user": user}
     chat_id = str(spec.get("chat_id") or "").strip()
     if user and chat_id:
         raise NotifyError(
@@ -262,7 +272,7 @@ def normalize_notify_payload(
     if channel not in CHANNELS:
         raise NotifyError(
             f"payload.notify.channel '{channel}' is not supported "
-            "(supported: teams_dm, teams_channel)"
+            "(supported: teams_dm, teams_channel, email)"
         )
     target = _clean_target(spec, channel)
     integration = str(spec.get("integration") or "").strip()
@@ -453,8 +463,18 @@ async def _usable_agent(db: Any, item: Any, agent_id: Any) -> Any:
     return agent
 
 
-def _tool_call(spec: Mapping[str, Any], text: str) -> tuple[str, dict[str, Any]]:
-    """The integration tool and its arguments that deliver *text* to the ask's target."""
+def _tool_call(spec: Mapping[str, Any], text: str, subject: str = "") -> tuple[str, dict[str, Any]]:
+    """The integration tool and its arguments that deliver *text* to the ask's target.
+
+    *subject* is the email's subject (channel ``email``); the Teams tools ignore it.
+    """
+    if spec.get("channel") == "email":
+        return _EMAIL_TOOL, {
+            "to": str(spec["user"]),
+            "subject": (subject or "Work item notification")[:200],
+            "body": text,
+            "content_type": "text",
+        }
     if spec.get("channel") == "teams_channel":
         return _CHANNEL_TOOL, {
             "team_id": str(spec["team_id"]),
@@ -553,7 +573,7 @@ async def _send_teams_dm(item: Any, spec: Mapping[str, Any], text: str) -> None:
     :class:`PermanentNotifyError`.
     """
     async with agent_graph_caller(item, str(spec["integration"])) as _call:
-        tool, arguments = _tool_call(spec, text)
+        tool, arguments = _tool_call(spec, text, subject=str(getattr(item, "title", "") or ""))
         sent, content = await _call(tool, arguments)
         if not sent and tool == _CHAT_TOOL and _SELF_RECIPIENT in content.lower():
             # The recipient is the sending account: its own chat is the 1:1.
@@ -661,14 +681,17 @@ def notify_payload_for(
     channel_id: str | None = None,
     message: str | None = None,
     include_result: bool = False,
+    email: bool = False,
 ) -> dict[str, Any]:
     """A ``payload.notify`` value, for callers that build one in code.
 
     The target is *user* (a person), *chat_id* (a Teams chat) or *team_id*
-    and *channel_id* (a Teams channel).
+    and *channel_id* (a Teams channel); *email* sends to *user* by email.
     """
     spec: dict[str, Any]
-    if team_id or channel_id:
+    if email:
+        spec = {"channel": "email", "user": user or ""}
+    elif team_id or channel_id:
         spec = {"channel": "teams_channel", "team_id": team_id or "", "channel_id": channel_id or ""}
     elif chat_id:
         spec = {"channel": "teams_dm", "chat_id": chat_id}

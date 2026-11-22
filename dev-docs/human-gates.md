@@ -336,7 +336,7 @@ JSON: they pass a decision.
 ### I.2 Every path that sends a decision uses it
 
 - The notify path of D (the bell copy sent to Teams, Slack or email).
-- `work_item_notify` (`teams_dm`, `teams_channel` and the other targets).
+- `work_item_notify` (`teams_dm`, `teams_channel`, `email` and the other targets).
 - An agent posting a decision itself: the channel send tools take a
   `decision` argument (the ask contract) instead of hand-made card JSON, and a
   decision posted this way is the same decision the inbox lists (one id, one
