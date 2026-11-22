@@ -20713,5 +20713,10 @@
   "{section} from {source}: {count, plural, one {# row} other {# rows}}": "{source} からの{section}: {count, plural, other {# 行}}",
   "Who feeds the profile: each platform's rows are kept by its sync and read-only here; typed, CSV, API and agent rows stay yours.": "プロファイルの供給元: 各プラットフォームの行はその同期が管理し、ここでは読み取り専用です。入力、CSV、API、エージェントの行はあなたが管理します。",
   "The OpenCRQ sync failed": "OpenCRQ の同期に失敗しました",
-  "Sync with OpenCRQ now": "今すぐ OpenCRQ と同期"
+  "Sync with OpenCRQ now": "今すぐ OpenCRQ と同期",
+  "Agentic checks": "エージェントによるチェック",
+  "No check round yet": "チェックはまだ実行されていません",
+  "Show the checks": "チェックを表示",
+  "{count, plural, one {# not run} other {# not run}}": "{count, plural, other {未実行 #}}",
+  "{passed, plural, one {# passed} other {# passed}}, {warned, plural, one {# warning} other {# warnings}}, {failed, plural, one {# failed} other {# failed}}": "{passed, plural, other {合格 #}}、{warned, plural, other {警告 #}}、{failed, plural, other {失敗 #}}"
 }
