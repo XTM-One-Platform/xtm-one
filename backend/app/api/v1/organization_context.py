@@ -379,6 +379,85 @@ async def import_organization_assets(
     return response
 
 
+class CanonicalAssetsPage(BaseModel):
+    #: One summary per canonical asset (one real thing across sources, #1178).
+    items: list[dict[str, Any]]
+    total: int
+    offset: int
+    limit: int
+
+
+async def _built_store(db: AsyncSession) -> uuid.UUID | None:
+    """The primary's store built from its current profile, committed when the read had to build it."""
+    from app.services.organization_asset_store import ensure_built
+
+    org = await ensure_built(db)
+    await db.commit()
+    return org
+
+
+@router.get("/assets", response_model=CanonicalAssetsPage)
+async def list_canonical_assets(
+    q: str = Query("", max_length=200),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> CanonicalAssetsPage:
+    """The canonical assets (one per real thing, its sources and software count), paginated by name."""
+    from app.services.organization_asset_store import list_assets
+
+    org = await _built_store(db)
+    if org is None:
+        return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
+    page = await list_assets(db, org, q=q, offset=offset, limit=limit)
+    return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/assets/by-software", response_model=CanonicalAssetsPage)
+async def list_assets_of_software(
+    product: str = Query(..., min_length=1, max_length=200),
+    vendor: str = Query("", max_length=200),
+    version: str = Query("", max_length=100),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> CanonicalAssetsPage:
+    """The assets running a software (vendor and version optional), with the version each runs."""
+    from app.services.organization_asset_store import assets_of_software
+
+    org = await _built_store(db)
+    if org is None:
+        return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
+    page = await assets_of_software(
+        db, org, product=product, vendor=vendor, version=version, offset=offset, limit=limit
+    )
+    return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/assets/{asset_id}")
+async def get_canonical_asset(
+    asset_id: uuid.UUID,
+    software_offset: int = Query(0, ge=0),
+    software_limit: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One canonical asset: each field with the source that set it and every source's value, its records, its software."""
+    from app.services.organization_asset_store import get_asset
+
+    org = await _built_store(db)
+    found = (
+        await get_asset(db, org, asset_id, software_offset=software_offset, software_limit=software_limit)
+        if org is not None
+        else None
+    )
+    if found is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return found
+
+
 @router.post("/opencrq-sync", response_model=OpenCrqSyncResponse)
 async def sync_organization_context_with_opencrq(
     body: OpenCrqSyncRequest,
