@@ -985,7 +985,7 @@ is) is a playbook: a numbered list of named checks, each with
 
 A check whose tool is not available on the module's version is reported `not_run` with the
 reason, never guessed. The checker runs every check of its playbook in one cycle, in order,
-and records the report (13.5) at the end, a partial report when the ceiling stops it.
+and records the report (13.6) at the end, a partial report when the ceiling stops it.
 
 ### 13.4 Check lists (first version)
 
