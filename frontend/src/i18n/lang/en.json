@@ -20648,5 +20648,12 @@
   "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}": "{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}",
   "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}": "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}",
   "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}": "{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}",
-  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}"
+  "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}": "{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}",
+  "Empty: OpenCRQ is not connected.": "Empty: OpenCRQ is not connected.",
+  "Connect OpenCRQ": "Connect OpenCRQ",
+  "No automation works this case: the CTEM loop fleet is not set up.": "No automation works this case: the CTEM loop fleet is not set up.",
+  "Waiting for {agent}, working this case since {since}.": "Waiting for {agent}, working this case since {since}.",
+  "Waiting for a fleet step, working this case since {since}.": "Waiting for a fleet step, working this case since {since}.",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
+  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets"
 }

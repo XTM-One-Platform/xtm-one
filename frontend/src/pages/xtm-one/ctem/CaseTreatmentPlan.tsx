@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CtemCaseTreatmentPlan } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
+import { CaseSectionReason } from "./CaseSectionReason";
 
 export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null | undefined }) {
   const { t_i18n, intl } = useFormatter();
@@ -24,9 +25,11 @@ export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null
       </CardHeader>
       <CardContent className="content-base">
         {!plan ? (
-          <p className="text-default-secondary">
-            {t_i18n("No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.")}
-          </p>
+          <CaseSectionReason
+            own={t_i18n("No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.")}
+            needsOpencrq
+            testId="ctem-case-treatment-plan-empty"
+          />
         ) : (
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             {plan.restricted ? (
