@@ -124,8 +124,11 @@ export function useSyncedRemoval() {
       title={t_i18n("{count, plural, one {Remove # synced row?} other {Remove # synced rows?}}", { count })}
       description={
         nextRuns.length > 0
-          ? t_i18n("They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.", { platform: platforms, when: timeUntil(nextRuns[0], locale) })
-          : t_i18n("They come from {platform}: the next import brings them back unless you exclude them.", { platform: platforms })
+          ? t_i18n(
+              "{count, plural, one {It comes from {platform}: the next run of its sync, {when}, brings it back unless you exclude it.} other {They come from {platform}: the next run of their sync, {when}, brings them back unless you exclude them.}}",
+              { count, platform: platforms, when: timeUntil(nextRuns[0], locale) },
+            )
+          : t_i18n("{count, plural, one {It comes from {platform}: the next import brings it back unless you exclude it.} other {They come from {platform}: the next import brings them back unless you exclude them.}}", { count, platform: platforms })
       }
       confirmLabel={t_i18n("Remove")}
       onConfirm={() => close(true)}
@@ -134,7 +137,7 @@ export function useSyncedRemoval() {
         <SettingsSwitchField
           id={switchId}
           label={t_i18n("Exclude from this sync")}
-          helper={t_i18n("The sync never imports them again. You can take them out of its exclusions later.")}
+          helper={t_i18n("{count, plural, one {The sync never imports it again. You can take it out of its exclusions later.} other {The sync never imports them again. You can take them out of its exclusions later.}}", { count })}
           checked={exclude}
           onCheckedChange={setExclude}
         />

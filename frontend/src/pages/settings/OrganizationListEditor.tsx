@@ -51,6 +51,8 @@ export interface ListEditColumn<V> {
   header: string;
   width?: number;
   hideable?: boolean;
+  /** The DataTable container width below which the column steps aside (still sorted and pickable). */
+  hideBelow?: DataTableColumn<unknown>["hideBelow"];
   headerClassName?: string;
   /** The cell of a closed row. */
   read: (value: V) => ReactNode;
@@ -187,6 +189,7 @@ export function OrganizationListEditor<V>({
     header: column.header,
     width: column.width,
     hideable: column.hideable,
+    hideBelow: column.hideBelow,
     headerClassName: column.headerClassName,
     firstSort: column.firstSort,
     sortValue: column.sortValue ? (row: EditRow<V>) => column.sortValue!(row.base) : undefined,

@@ -775,11 +775,15 @@ export function OrganizationSection() {
       </span>
     );
   };
+  // Source steps aside below a 72rem card (UX r1 B1 and B2 on #1174): at 1080 the fixed 128 px cut
+  // Business service and Owner to nothing. The lock tip and the Source filter still name it there.
+  const SOURCE_WIDTH = 112;
   const sourceColumn = <R extends { value: Provenance }>(): DataTableColumn<R> => ({
     key: "source",
     header: "Source",
     hideable: true,
-    width: 128,
+    hideBelow: "6xl",
+    width: SOURCE_WIDTH,
     cell: ({ value }) => sourceCell(value),
     interactive: true,
     sortValue: ({ value }) => sourceLabel(value).toLowerCase(),
@@ -795,7 +799,8 @@ export function OrganizationSection() {
     key: "source",
     header: "Source",
     hideable: true,
-    width: 128,
+    hideBelow: "6xl",
+    width: SOURCE_WIDTH,
     read: (v) => sourceCell(v),
     sortValue: (v) => sourceLabel(v).toLowerCase(),
     firstSort: "asc",
