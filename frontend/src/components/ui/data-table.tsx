@@ -22,7 +22,7 @@
  * hands the state to the caller (`onStateChange`), which sends it to the API.
  * `EntityTable` (asset index pages) is a preset of this component.
  */
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, Columns3, Download, ListFilter } from "lucide-react";
 import { Icon } from "@filigran/design-system";
@@ -636,6 +636,9 @@ function DataTableView<T>({
     observer.observe(lead);
     return () => observer.disconnect();
   }, [lead]);
+  // The lead and box widths at which the one-row toolbar's full labels ran past its box.
+  const [toolbarRow, setToolbarRow] = useState<HTMLDivElement | null>(null);
+  const [fullLabelsOverflow, setFullLabelsOverflow] = useState<{ lead: number; box: number } | null>(null);
 
   // A typed search reaches the state after a pause, so the URL (and a server query) follow the words, not the keys.
   const [searchText, setSearchText] = useState(state.search);
@@ -1178,7 +1181,18 @@ function DataTableView<T>({
   // A table narrower than 896 px (a card at 1024) draws Columns and Export CSV as icon
   // buttons with their name in a tooltip, and the page size as its number: the full
   // labels pushed them to a second row at 1024 in en and fr (UX r2 B1 on #10336).
-  const compactToolbar = boxWidth !== null && boxWidth < COMPACT_TOOLBAR_BELOW_PX;
+  // A one-row toolbar whose full labels were measured past its box, at this lead width or a
+  // wider one and this box width or a narrower one, draws the compact controls too: the Tasks
+  // lead (Status, Quick filters) left 852 px at 1440 and the full-label right group ran the
+  // row 84 px past its box (merge queue E2E on #1004). The room the full labels need depends
+  // on the row's controls, so it is measured, never a constant.
+  const leadNeedsCompact =
+    filtersInPill &&
+    boxWidth !== null &&
+    fullLabelsOverflow !== null &&
+    leadWidth >= fullLabelsOverflow.lead &&
+    boxWidth <= fullLabelsOverflow.box;
+  const compactToolbar = boxWidth !== null && (boxWidth < COMPACT_TOOLBAR_BELOW_PX || leadNeedsCompact);
   // A one-row toolbar whose lead leaves less room than its compact controls need
   // wraps, so the right group (total, page size, view) takes its own line instead of
   // pushing the row past its box: the fleet Worksets list at 1080 overflowed by up to
@@ -1189,6 +1203,12 @@ function DataTableView<T>({
   // (the Cases list at 1080 ended at 1167 px with two rows selected, UX r2 B6 on #11666).
   const selectionShown = Boolean(selection) && selected.length > 0;
   const toolbarWraps = !filtersInPill || leadCrowds || selectionShown;
+  // Before paint: a one-row toolbar drawn with its full labels that runs past its box records
+  // the lead and box widths, so the next render draws the compact controls (no flash).
+  useLayoutEffect(() => {
+    if (!toolbarRow || !filtersInPill || toolbarWraps || compactToolbar || boxWidth === null) return;
+    if (toolbarRow.scrollWidth > toolbarRow.clientWidth + 1) setFullLabelsOverflow({ lead: leadWidth, box: boxWidth });
+  }, [toolbarRow, filtersInPill, toolbarWraps, compactToolbar, boxWidth, leadWidth]);
   // A card list (`renderGrid`) has no header row: its page box is the first control of the
   // toolbar, never a row of its own above the cards (Sam on /operations/shared-state, 14 Nov 2026).
   // Its slot holds its width during the first read, so the toolbar does not move when it lands.
@@ -1201,6 +1221,7 @@ function DataTableView<T>({
     <div ref={setBox} className={cn("space-y-3", fill && "flex flex-1 flex-col")}>
       {toolbarShown && (
         <div
+          ref={setToolbarRow}
           data-testid="data-table-toolbar"
           data-lead-crowds={leadCrowds ? "true" : undefined}
           data-wraps={toolbarWraps ? "true" : undefined}
