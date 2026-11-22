@@ -28,7 +28,7 @@ import type { FleetEnableItem } from "@/hooks/api/useFleetApi";
 export type WizardStepKey = "about" | "integrations" | "autonomy" | "automations" | "review";
 
 /** Every step in the order the wizard walks them. */
-export const WIZARD_STEPS: readonly WizardStepKey[] = ["about", "integrations", "autonomy", "automations", "review"];
+const WIZARD_STEPS: readonly WizardStepKey[] = ["about", "integrations", "autonomy", "automations", "review"];
 
 /** @i18n-keys */
 export const WIZARD_STEP_TITLES = {

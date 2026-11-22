@@ -28,7 +28,7 @@ import { CTEM_LOOP_FLEET_SLUG, showsCtemLoopSetupEntry } from "./CtemLoopSetupEn
 import { FleetSetupWizard } from "./FleetSetupWizard";
 
 /** Whether a fleet opens the CTEM loop's own guided setup rather than the generic wizard. */
-export function usesCtemLoopSetup(slug: string | null | undefined, isAdmin: boolean, isXtmOne: boolean, impersonating: boolean): boolean {
+function usesCtemLoopSetup(slug: string | null | undefined, isAdmin: boolean, isXtmOne: boolean, impersonating: boolean): boolean {
   return slug === CTEM_LOOP_FLEET_SLUG && showsCtemLoopSetupEntry(isAdmin, isXtmOne, impersonating);
 }
 
