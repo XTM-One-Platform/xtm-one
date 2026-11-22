@@ -10843,6 +10843,7 @@
   "Declared, seen in the last run": "宣言済み、前回の実行で確認",
   "Input data": "入力データ",
   "{count, plural, one {# node} other {# nodes}}": "{count, plural, other {# ノード}}",
+  "{count, plural, one {# item} other {# items}}": "{count, plural, other {#件}}",
   "Drag a field into a text box, or click it to copy its reference.": "フィールドをテキストボックスにドラッグするか、クリックして参照をコピーします。",
   "Run the flow, or declare a structure (Structured output, trigger parameters, event type), to see the fields here.": "フローを実行するか、構造（Structured output、トリガーのパラメーター、イベントタイプ）を宣言すると、ここにフィールドが表示されます。",
   "Dropped or expired": "破棄または期限切れ",

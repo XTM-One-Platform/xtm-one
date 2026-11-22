@@ -10843,6 +10843,7 @@
   "Declared, seen in the last run": "Déclaré, vu lors de la dernière exécution",
   "Input data": "Données d'entrée",
   "{count, plural, one {# node} other {# nodes}}": "{count, plural, one {# nœud} other {# nœuds}}",
+  "{count, plural, one {# item} other {# items}}": "{count, plural, one {# élément} other {# éléments}}",
   "Drag a field into a text box, or click it to copy its reference.": "Glissez un champ dans une zone de texte, ou cliquez dessus pour copier sa référence.",
   "Run the flow, or declare a structure (Structured output, trigger parameters, event type), to see the fields here.": "Exécutez le flow, ou déclarez une structure (Structured output, paramètres du déclencheur, type d'événement), pour voir les champs ici.",
   "Dropped or expired": "Abandonné ou expiré",
