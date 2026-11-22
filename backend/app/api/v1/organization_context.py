@@ -1138,7 +1138,8 @@ class OrganizationSyncRequest(BaseModel):
     #: The source ids this sync never imports (#1134); omitted: the stored list is kept.
     excluded_external_ids: list[str] | None = None
     #: inbound: the platform is the master; outbound: the XTM One list is (#1134 S3, GET /syncs/directions).
-    direction: Literal["inbound", "outbound"] = "inbound"
+    #: Omitted: the stored direction is kept (inbound for a new sync), so an edit never resets an outbound sync.
+    direction: Literal["inbound", "outbound"] | None = None
     frequency: Literal["hourly", "daily", "weekly"] = "daily"
     hour: int = 6
     minute: int = 0

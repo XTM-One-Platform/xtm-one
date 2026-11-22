@@ -40,10 +40,16 @@ def test_validate_refuses_outbound_where_the_platform_cannot_be_written():
         osync.validate(section="crown_jewels", source="opencrq", direction="both", **OK)
 
 
-def test_define_keeps_inbound_by_default_and_a_new_direction_forgets_the_created_rows():
+def test_define_keeps_the_stored_direction_when_omitted_and_a_new_direction_forgets_the_created_rows():
     sync = SimpleNamespace(direction="outbound", outbound_ids={"crm": "a1"})
+    # A save that omits the direction (a PUT from an older client) keeps outbound and its created rows.
     osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+    assert sync.direction == "outbound" and sync.outbound_ids == {"crm": "a1"}
+    osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq", direction="inbound")
     assert sync.direction == "inbound" and sync.outbound_ids == {}
+    new = SimpleNamespace()
+    osync.define(new, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+    assert new.direction == "inbound" and new.outbound_ids == {}
     fresh = SimpleNamespace()
     osync.define(fresh, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq", direction="outbound")
     assert fresh.direction == "outbound" and fresh.outbound_ids == {}

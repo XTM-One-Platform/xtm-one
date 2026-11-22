@@ -129,13 +129,16 @@ def define(
     weekday: int = 0,
     timezone: str = "UTC",
     enabled: bool = True,
-    direction: str = "inbound",
+    direction: str | None = None,
 ) -> None:
     """Write a validated definition on *sync*, saved by *owner_id*; refused with :class:`SyncRefusedError`.
 
     Shared by the REST routes and the agent tools, so both save the same rows.
     Saving again is how a paused sync resumes: it then reads with this owner's token.
+    *direction* omitted keeps the stored one (inbound for a new sync) and the rows an outbound run created.
     """
+    stored_direction = getattr(sync, "direction", None) or "inbound"
+    direction = direction or stored_direction
     all_sections = section == ALL_SECTIONS
     source = "" if all_sections else source
     validate(
@@ -148,7 +151,7 @@ def define(
         timezone=timezone,
         direction=direction,
     )
-    if (getattr(sync, "direction", None) or "inbound") != direction:
+    if stored_direction != direction:
         # The rows created on the platform belong to the outbound run that made them: a new direction starts clean.
         sync.outbound_ids = {}
     elif getattr(sync, "outbound_ids", None) is None:
