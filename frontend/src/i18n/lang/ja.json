@@ -19693,6 +19693,7 @@
   "Zen: attack wave": "Zen: 攻撃の波",
   "Zen: new outbound connection": "Zen: 新しい送信接続",
   "Pentest running": "ペンテスト実行中",
+  "Expense submitted": "経費が提出されました",
   "Pentest paused": "ペンテスト一時停止",
   "Pentest finished": "ペンテスト完了",
   "Pentest failed": "ペンテスト失敗",
@@ -20048,10 +20049,6 @@
   "Restricted asset": "制限された資産",
   "Techniques in attack order": "攻撃順のテクニック",
   "Recorded how it would be exploited": "想定される悪用方法を記録しました",
-  "{starts}, next {time}": "{starts}、次回 {time}",
-  "{starts}, off in Settings": "{starts}、設定でオフ",
-  "Platform Health is off in Settings": "設定で Platform Health がオフです",
-  "Platform Health switched on in Settings": "設定で Platform Health がオン",
   "Under 1 hour": "1時間未満",
   "Proposed changes": "提案された変更",
   "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, other {# 件が判断待ち}}",
@@ -20067,5 +20064,12 @@
   "Re-test passed on {date}": "{date} に再テストに合格",
   "Not reproduced": "再現なし",
   "Reproduced": "再現あり",
-  "Not re-tested yet": "未再テスト"
+  "Not re-tested yet": "未再テスト",
+  "Expense recalled": "経費が取り下げられました",
+  "Expense deleted": "経費が削除されました",
+  "Expense approved": "経費が承認されました",
+  "Expense controlled": "経費が確認されました",
+  "Expense unapproved": "経費の承認が取り消されました",
+  "Expense rejected": "経費が却下されました",
+  "Triggers on this Rydoo expense webhook event. Rydoo activates the webhook on request (your CSM or connect@rydoo.com) for the webhook URL shown below. Without it, schedule the list_rydoo_exported_expenses tool instead.": "この Rydoo 経費 Webhook イベントで起動します。Rydoo は依頼に応じて（担当 CSM または connect@rydoo.com）、下に表示される Webhook URL に対して Webhook を有効化します。有効化されていない場合は、代わりに list_rydoo_exported_expenses ツールをスケジュールしてください。"
 }
