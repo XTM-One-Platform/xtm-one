@@ -19693,6 +19693,7 @@
   "Zen: attack wave": "Zen : vague d'attaques",
   "Zen: new outbound connection": "Zen : nouvelle connexion sortante",
   "Pentest running": "Pentest en cours",
+  "Expense submitted": "Note de frais soumise",
   "Pentest paused": "Pentest en pause",
   "Pentest finished": "Pentest terminé",
   "Pentest failed": "Pentest échoué",
@@ -20048,10 +20049,6 @@
   "Restricted asset": "Actif restreint",
   "Techniques in attack order": "Techniques dans l’ordre de l’attaque",
   "Recorded how it would be exploited": "A enregistré comment elle serait exploitée",
-  "{starts}, next {time}": "{starts}, prochain {time}",
-  "{starts}, off in Settings": "{starts}, désactivé dans les Paramètres",
-  "Platform Health is off in Settings": "Platform Health est désactivé dans les Paramètres",
-  "Platform Health switched on in Settings": "Platform Health activé dans les Paramètres",
   "Under 1 hour": "Moins d'une heure",
   "Proposed changes": "Modifications proposées",
   "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, one {# attend une décision} other {# attendent une décision}}",
@@ -20067,5 +20064,12 @@
   "Re-test passed on {date}": "Nouveau test réussi le {date}",
   "Not reproduced": "Non reproduit",
   "Reproduced": "Reproduit",
-  "Not re-tested yet": "Pas encore retesté"
+  "Not re-tested yet": "Pas encore retesté",
+  "Expense recalled": "Note de frais rappelée",
+  "Expense deleted": "Note de frais supprimée",
+  "Expense approved": "Note de frais approuvée",
+  "Expense controlled": "Note de frais contrôlée",
+  "Expense unapproved": "Approbation de la note de frais annulée",
+  "Expense rejected": "Note de frais rejetée",
+  "Triggers on this Rydoo expense webhook event. Rydoo activates the webhook on request (your CSM or connect@rydoo.com) for the webhook URL shown below. Without it, schedule the list_rydoo_exported_expenses tool instead.": "Se déclenche sur cet événement du webhook de notes de frais Rydoo. Rydoo active le webhook sur demande (votre CSM ou connect@rydoo.com) pour l'URL de webhook affichée ci-dessous. Sans lui, planifiez plutôt l'outil list_rydoo_exported_expenses."
 }

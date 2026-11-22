@@ -19693,6 +19693,7 @@
   "Zen: attack wave": "Zen: oleada de ataques",
   "Zen: new outbound connection": "Zen: nueva conexión saliente",
   "Pentest running": "Pentest en curso",
+  "Expense submitted": "Gasto enviado",
   "Pentest paused": "Pentest en pausa",
   "Pentest finished": "Pentest finalizado",
   "Pentest failed": "Pentest fallido",
@@ -20048,10 +20049,6 @@
   "Restricted asset": "Activo restringido",
   "Techniques in attack order": "Técnicas en el orden del ataque",
   "Recorded how it would be exploited": "Registró cómo se explotaría",
-  "{starts}, next {time}": "{starts}, próximo {time}",
-  "{starts}, off in Settings": "{starts}, desactivado en Ajustes",
-  "Platform Health is off in Settings": "Platform Health está desactivado en Configuración",
-  "Platform Health switched on in Settings": "Platform Health activado en Configuración",
   "Under 1 hour": "Menos de 1 hora",
   "Proposed changes": "Cambios propuestos",
   "{count, plural, one {# waits for a decision} other {# wait for a decision}}": "{count, plural, one {# espera una decisión} other {# esperan una decisión}}",
@@ -20067,5 +20064,12 @@
   "Re-test passed on {date}": "Nueva prueba superada el {date}",
   "Not reproduced": "No reproducido",
   "Reproduced": "Reproducido",
-  "Not re-tested yet": "Aún sin nueva prueba"
+  "Not re-tested yet": "Aún sin nueva prueba",
+  "Expense recalled": "Gasto retirado",
+  "Expense deleted": "Gasto eliminado",
+  "Expense approved": "Gasto aprobado",
+  "Expense controlled": "Gasto controlado",
+  "Expense unapproved": "Aprobación del gasto anulada",
+  "Expense rejected": "Gasto rechazado",
+  "Triggers on this Rydoo expense webhook event. Rydoo activates the webhook on request (your CSM or connect@rydoo.com) for the webhook URL shown below. Without it, schedule the list_rydoo_exported_expenses tool instead.": "Se activa con este evento del webhook de gastos de Rydoo. Rydoo activa el webhook a petición (su CSM o connect@rydoo.com) para la URL de webhook que se muestra abajo. Sin él, programe en su lugar la herramienta list_rydoo_exported_expenses."
 }
