@@ -566,8 +566,6 @@ ee:
   - frontend/src/lib/*ai-draft.ts
   - frontend/src/pages/CustomDashboard*.tsx
   - frontend/src/pages/DashboardPublic.tsx
-  - frontend/src/pages/DecisionLink*.tsx
-  - frontend/src/hooks/api/useDecisionLinkApi.ts
   - frontend/src/pages/DashboardStaticRender.tsx
   - frontend/src/pages/DashboardStudio.tsx
   - frontend/src/pages/WidgetPacks.tsx
@@ -592,6 +590,7 @@ ee:
   - backend/app/services/provisioning.py
   - backend/app/services/quota_exhausted_notice.py
   - backend/app/services/rollout_counters.py
+  - backend/app/services/slack_decision_cards.py
   - backend/app/services/storage_purge.py
   - backend/app/services/teams_link_cards.py
   - frontend/src/components/ui/a2a-unavailable-notice.tsx
@@ -715,6 +714,7 @@ ce:
   - backend/app/integrations/providers/airwallex  # a connector
   - backend/app/integrations/providers/ashby  # a connector
   - backend/app/integrations/providers/crowdsec  # a connector
+  - backend/app/integrations/providers/dealhub  # a connector
   - backend/app/integrations/providers/drata  # a connector
   - backend/app/integrations/providers/entra  # a connector
   - backend/app/integrations/providers/github  # a connector
