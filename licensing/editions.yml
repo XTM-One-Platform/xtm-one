@@ -722,6 +722,7 @@ ce:
   - backend/app/integrations/providers/jira  # a connector
   - backend/app/integrations/providers/microsoft  # a connector
   - backend/app/integrations/providers/notion  # a connector
+  - backend/app/integrations/providers/odoo  # a connector
   - backend/app/integrations/providers/opencrq  # a connector
   - backend/app/integrations/providers/opencti  # a connector
   - backend/app/integrations/providers/ovhcloud  # a connector
