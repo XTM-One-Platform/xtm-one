@@ -108,6 +108,14 @@ def test_a_person_card_is_a_person_node_and_the_item_carries_its_ask():
     assert ("C", "person:u-1") in _edges(graph, "person")
 
 
+def test_an_item_node_carries_what_the_waiting_for_me_filter_reads() -> None:
+    asked = {"id": "C", "title": "c", "status": "blocked", "needs_human": True, "user_id": "u-1"}
+    graph = build_graph([asked])
+    c = next(n for n in graph["nodes"] if n["id"] == "C")
+    assert c["user_id"] == "u-1" and c["needs_human"] is True and c["scheduled"] is False
+    assert {"waits_for_user_id", "owner_agent_id", "due_at"} <= c.keys()
+
+
 def test_program_children_hang_from_their_root_by_key_and_by_payload():
     items, blockers = _seeded()
     graph = build_graph(items, blockers)

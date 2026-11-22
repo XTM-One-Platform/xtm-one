@@ -3,7 +3,7 @@
 /**
  * "Opened by" on a case page (CTEM-03-UI, #892; dev-docs/ctem-loop-visibility.md
  * sections 3 and 4): the signals that opened or joined the case, each with its
- * lens, its trigger path and the scope gate's reason in one sentence, and a
+ * lens, its trigger path, its source (CTEM-29-UI), the scope gate's reason in one sentence, and a
  * link to its loop trace (`?loop=signal:<id>`). Read through
  * `GET /ctem-signals?case_id=`, which applies the reader's visibility; a case
  * opened by no signal (one the recompute built from source issues) says so.
@@ -15,6 +15,7 @@ import { useCtemCaseSignals } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
 import { decisionSentence } from "./loop/DecisionReason";
+import { signalProviderName } from "./loop/LoopTraceDialog";
 import { loopParam } from "./loop/loop-stages";
 
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
@@ -43,6 +44,10 @@ export function CaseOpenedBy({ caseId }: { caseId: string }) {
                 <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                   <span className="font-medium">{t_i18n(s.trigger_path_label || s.trigger_path)}</span>
                   <span className="text-default-secondary">{t_i18n(LENS_LABEL[s.lens] ?? s.lens)}</span>
+                  {/* Where the signal came from (CTEM-29-UI): the leak source, OpenCTI for a supplier report. */}
+                  <span className="text-default-secondary" data-testid="ctem-case-opened-by-source">
+                    {t_i18n("From {source}", { source: signalProviderName(s.source.provider) })}
+                  </span>
                   <span className="min-w-0 truncate text-default-secondary" title={s.subject.label || s.subject.ref}>
                     {s.subject.label || s.subject.ref}
                   </span>
