@@ -835,6 +835,23 @@ async def finish_stopped_resolution(
     )
 
 
+#: Words of the refusal when the ref moved between the snapshot and the merge (see :func:`ref_moved_and_undone`).
+_REF_MOVED = "the resolutions were checked against"
+
+
+def ref_moved_and_undone(answer: str) -> bool:
+    """Whether *answer* refused a merge only because the ref moved, the branch left as it was.
+
+    The refusal names the ref's new commit and either wrote nothing or moved the branch back to its head
+    before the call: a fresh line merge against the new ref commit is then safe to run once more.
+    """
+    return (
+        answer.startswith("Error")
+        and _REF_MOVED in answer
+        and ("Nothing was written." in answer or "its head before this call, so the alignment commits" in answer)
+    )
+
+
 #: The last line of an answer that wrote commits: the 40-character id of the last commit this call wrote.
 _FINAL_HEAD_RE = re.compile(r"^Final head: (?P<sha>[0-9a-f]{40}) ", re.MULTILINE)
 
@@ -1074,7 +1091,7 @@ async def resolve_and_merge(
     source_now = await _branch_tip(client, headers, repo, repo_url, head)
     if source_now != theirs.commit:
         moved = (
-            f"'{head}' now points at {source_now[:12]}, not at {theirs.commit[:12]} the resolutions were checked against"
+            f"'{head}' now points at {source_now[:12]}, not at {theirs.commit[:12]} {_REF_MOVED}"
             if source_now
             else f"'{head}' could not be read again to check it still points at {theirs.commit[:12]}"
         )
