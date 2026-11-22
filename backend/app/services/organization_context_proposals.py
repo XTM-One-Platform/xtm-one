@@ -62,13 +62,21 @@ class ProposalError(ValueError):
 #: the CTEM watchlist's "propose to raise the scope" (CTEM-30, #937). An administrator
 #: still accepts it field by field; nothing is applied on proposal.
 PROPOSABLE_POLICY_PATHS: tuple[str, ...] = ("prioritization_policy.scope_min_criticality",)
+#: Outside-lens settings of the primary profile an agent may set or propose (CTEM-26): the
+#: owned domains, the address ranges (CIDR, validated by the profile model) and the attack
+#: surface pass. They stay exposure fields: out of the always-on block and of missing_fields.
+PROPOSABLE_EXPOSURE_PATHS: tuple[str, ...] = ("owned_domains", "address_ranges", "attack_surface")
 
 
 def _contract_paths(role: str) -> tuple[str, ...]:
     from app.services.organizations import TRACKED_CONTRACT_FIELDS
 
     if role == "primary":
-        return tuple(path for path, _label in org_context.CONTRACT_FIELDS) + PROPOSABLE_POLICY_PATHS
+        return (
+            tuple(path for path, _label in org_context.CONTRACT_FIELDS)
+            + PROPOSABLE_POLICY_PATHS
+            + PROPOSABLE_EXPOSURE_PATHS
+        )
     return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 
 
@@ -455,6 +463,7 @@ __all__ = [
     "MAX_CHANGES",
     "MAX_NEW_TRACKED",
     "MAX_TRACKED_DRAFT_ROWS",
+    "PROPOSABLE_EXPOSURE_PATHS",
     "PROPOSABLE_POLICY_PATHS",
     "ProposalError",
     "apply_changes",

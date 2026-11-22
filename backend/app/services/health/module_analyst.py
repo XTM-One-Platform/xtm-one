@@ -90,6 +90,9 @@ MODULE_CHECKER_TOOLS: Final[dict[str, tuple[str, ...]]] = {
         # S15b-2c: module health reads of ``providers/openaev/health_reads.py``.
         "get_openaev_platform_health",
         "list_openaev_expectations_due",
+        # S15b-2c2: data health and error rate of the same file.
+        "get_openaev_data_health",
+        "get_openaev_error_rate",
     ),
     "opencrq": (
         "get_opencrq_platform_version",

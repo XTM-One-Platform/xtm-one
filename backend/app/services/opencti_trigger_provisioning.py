@@ -767,8 +767,25 @@ PIR_WEBHOOK_TEMPLATE = (
 )
 
 
+#: The array properties of the provisioned PIR playbook whose items OpenCTI's
+#: playbook form draws as chips (``ComboboxField``: the chip text is the item's
+#: ``label``, its icon the item's ``type``) while the runtime reads ``value``
+#: alone (``PirField`` for ``inPirFilters``, ``ObjectMembersField`` for
+#: ``authorized_members``). They are written as the form writes them, and
+#: compared by their set of ``value``: a label or a type rewritten by a save in
+#: OpenCTI is not a drift.
+CHIP_ITEM_KEYS: dict[str, tuple[str, ...]] = {
+    PIR_ENTRY_COMPONENT: ("inPirFilters",),
+    NOTIFIER_COMPONENT: ("authorized_members",),
+}
+
+
 def pir_playbook_nodes(
-    spec: dict[str, Any], notifier_id: str, member_id: str
+    spec: dict[str, Any],
+    notifier_id: str,
+    member_id: str,
+    member_name: str = "",
+    pir_names: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """The two node configurations of a PIR playbook: (Listen PIR events, Send to notifier).
 
@@ -779,8 +796,13 @@ def pir_playbook_nodes(
     entities whose score in those PIRs is at least ``pir_min_score`` (the string
     form OpenCTI stores). The notifier delivers to the integration's own OpenCTI
     user only: OpenCTI filters each delivery by what that user may read.
+
+    Each chip item carries ``label`` and ``type`` as the OpenCTI form saves
+    them (an item with ``value`` alone is drawn as an empty chip); a name
+    OpenCTI did not answer falls back to the id, never to an empty label.
     """
     pir_ids = sorted(spec.get("pir_ids") or [])
+    names = pir_names or {}
     score_filter = {
         "mode": "and",
         "filters": [
@@ -789,47 +811,135 @@ def pir_playbook_nodes(
         "filterGroups": [],
     }
     entry = {
-        "inPirFilters": [{"value": pid} for pid in pir_ids],
+        "inPirFilters": [{"value": pid, "label": names.get(pid) or pid, "type": "Pir"} for pid in pir_ids],
         "create": True,
         "update": True,
         "delete": False,
         "create_rel": False,
         "filters": json.dumps(score_filter, sort_keys=True),
     }
-    notify = {"notifiers": [notifier_id], "authorized_members": [{"value": member_id}]}
+    notify = {
+        "notifiers": [notifier_id],
+        "authorized_members": [{"value": member_id, "label": member_name or member_id, "type": "User"}],
+    }
     return entry, notify
 
 
-def _node_configs(definition: Any) -> dict[str, Any]:
-    """``component_id -> parsed configuration`` of a stored ``playbook_definition``."""
+def _chip_values(items: Any) -> list[str] | None:
+    """The sorted ``value`` of each chip item, or ``None`` when *items* is not a list of them."""
+    if not isinstance(items, list):
+        return None
+    values: list[str] = []
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("value"), str):
+            return None
+        values.append(item["value"])
+    return sorted(values)
+
+
+def same_node_configuration(component_id: str, wanted: dict[str, Any], stored: Any) -> bool:
+    """Whether *stored* is *wanted*, the chip items of :data:`CHIP_ITEM_KEYS` compared by ``value`` only."""
+    if not isinstance(stored, dict):
+        return False
+    keys = CHIP_ITEM_KEYS.get(component_id, ())
+    if {k: v for k, v in wanted.items() if k not in keys} != {k: v for k, v in stored.items() if k not in keys}:
+        return False
+    return all(_chip_values(wanted.get(k)) == _chip_values(stored.get(k)) for k in keys)
+
+
+def _without_chip_labels(component_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """*config* with each chip item reduced to its ``value`` (the form provisioned before the labels)."""
+    keys = CHIP_ITEM_KEYS.get(component_id, ())
+    return {k: ([{"value": i["value"]} for i in v] if k in keys else v) for k, v in config.items()}
+
+
+def unlabelled_chip_items(component_id: str, stored: dict[str, Any]) -> bool:
+    """Whether a chip item of *stored* has no ``label`` (OpenCTI draws it as an empty chip)."""
+    for key in CHIP_ITEM_KEYS.get(component_id, ()):
+        for item in stored.get(key) or []:
+            label = item.get("label") if isinstance(item, dict) else None
+            if not isinstance(label, str) or not label.strip():
+                return True
+    return False
+
+
+def _stored_nodes(definition: Any) -> dict[str, dict[str, Any]]:
+    """``component_id -> node`` of a stored ``playbook_definition``, its ``configuration`` parsed."""
     try:
         parsed = json.loads(definition) if isinstance(definition, str) else definition
     except ValueError:
         return {}
-    out: dict[str, Any] = {}
+    out: dict[str, dict[str, Any]] = {}
     for node in (parsed or {}).get("nodes") or []:
         raw = node.get("configuration")
         try:
-            out[str(node.get("component_id"))] = json.loads(raw) if isinstance(raw, str) else raw
+            config = json.loads(raw) if isinstance(raw, str) else raw
         except ValueError:
-            out[str(node.get("component_id"))] = None
+            config = None
+        out[str(node.get("component_id"))] = {**node, "configuration": config}
     return out
 
 
-async def _own_user_id(gql: Gql) -> str:
-    data, err = await gql("query XtmMe { me { id } }", None)
+async def _own_user(gql: Gql) -> tuple[str, str]:
+    """``(id, name)`` of the integration's OpenCTI user."""
+    data, err = await gql("query XtmMe { me { id name } }", None)
     if err:
         raise RuntimeError(err)
-    user_id = (data.get("me") or {}).get("id")
+    me = data.get("me") or {}
+    user_id = me.get("id")
     if not user_id:
         raise RuntimeError("OpenCTI returned no id for the integration's user")
-    return str(user_id)
+    return str(user_id), str(me.get("name") or "")
+
+
+async def _pir_names(gql: Gql, pir_ids: list[str]) -> dict[str, str]:
+    """``id -> name`` of the PIRs the integration's user reads, for the chip labels.
+
+    A label is display only: a failed read leaves the ids as labels and never
+    stops the provisioning.
+    """
+    if not pir_ids:
+        return {}
+    data, err = await gql("query XtmPirs { pirs(first: 500) { edges { node { id name } } } }", None)
+    if err:
+        return {}
+    names: dict[str, str] = {}
+    for edge in ((data or {}).get("pirs") or {}).get("edges") or []:
+        node = (edge or {}).get("node") or {}
+        if node.get("id") in pir_ids and node.get("name"):
+            names[str(node["id"])] = str(node["name"])
+    return names
+
+
+async def _relabel_node(gql: Gql, playbook_id: str, node: dict[str, Any], config: dict[str, Any]) -> None:
+    """Write *config* on *node* in place (``playbookReplaceNode``: same id, links and position)."""
+    _, err = await gql(
+        "mutation XtmNodeReplace($id: ID!, $nodeId: ID!, $input: PlaybookAddNodeInput!) "
+        "{ playbookReplaceNode(id: $id, nodeId: $nodeId, input: $input) }",
+        {
+            "id": playbook_id,
+            "nodeId": node.get("id"),
+            "input": {
+                "name": node.get("name") or "",
+                "component_id": node.get("component_id"),
+                "position": node.get("position") or {"x": 0, "y": 0},
+                "configuration": json.dumps(config, sort_keys=True),
+            },
+        },
+    )
+    if err:
+        raise RuntimeError(err)
 
 
 async def _ensure_pir_playbook(
     gql: Gql, playbook_id: str | None, name: str, entry: dict[str, Any], notify: dict[str, Any]
 ) -> str:
-    """One running playbook *name* holding exactly *entry* then *notify*; rebuilt on any drift."""
+    """One running playbook *name* holding *entry* then *notify*; rebuilt on any drift.
+
+    The chip items (:data:`CHIP_ITEM_KEYS`) are compared by ``value``: a node
+    whose items carry the right values but no label (provisioned before the
+    labels) is patched in place, a label rewritten in OpenCTI is kept.
+    """
     playbook_id = playbook_id or await _find_by_name(gql, "playbooks", name)
     if playbook_id:
         data, err = await gql(
@@ -840,12 +950,19 @@ async def _ensure_pir_playbook(
             raise RuntimeError(err)
         current = data.get("playbook")
         if current:
-            configs = _node_configs(current.get("playbook_definition"))
+            nodes = _stored_nodes(current.get("playbook_definition"))
+            wanted = {PIR_ENTRY_COMPONENT: entry, NOTIFIER_COMPONENT: notify}
             if (
                 current.get("name") == name
                 and current.get("playbook_running")
-                and configs == {PIR_ENTRY_COMPONENT: entry, NOTIFIER_COMPONENT: notify}
+                and set(nodes) == set(wanted)
+                and all(
+                    same_node_configuration(cid, config, nodes[cid]["configuration"]) for cid, config in wanted.items()
+                )
             ):
+                for cid, config in wanted.items():
+                    if unlabelled_chip_items(cid, nodes[cid]["configuration"]):
+                        await _relabel_node(gql, playbook_id, nodes[cid], config)
                 return playbook_id
             # Edited in OpenCTI: rebuilt, never patched node by node.
             await _delete(gql, "playbookDelete", playbook_id)
@@ -954,7 +1071,9 @@ async def reconcile(
             if state.get("trigger_id"):
                 # The assignment moved from a live trigger to the PIR playbook.
                 await _delete(gql, "triggerKnowledgeDelete", state["trigger_id"])
-            entry, notify = pir_playbook_nodes(spec, notifier_id, await _own_user_id(gql))
+            member_id, member_name = await _own_user(gql)
+            pir_names = await _pir_names(gql, list(spec.get("pir_ids") or []))
+            entry, notify = pir_playbook_nodes(spec, notifier_id, member_id, member_name, pir_names)
             playbook_id = await _ensure_pir_playbook(gql, state.get("playbook_id"), name, entry, notify)
             return {
                 "status": "provisioned",
@@ -963,7 +1082,18 @@ async def reconcile(
                 "mode": PIR_PLAYBOOK_MODE,
                 "notifier_id": notifier_id,
                 "playbook_id": playbook_id,
-                "fingerprint": fingerprint(name, json.dumps([entry, notify], sort_keys=True), url),
+                # Chip labels are display only: a renamed PIR or user is not a new provisioning.
+                "fingerprint": fingerprint(
+                    name,
+                    json.dumps(
+                        [
+                            _without_chip_labels(PIR_ENTRY_COMPONENT, entry),
+                            _without_chip_labels(NOTIFIER_COMPONENT, notify),
+                        ],
+                        sort_keys=True,
+                    ),
+                    url,
+                ),
                 "checked_at": stamp,
             }
         config = notifier_configuration(url, secret)

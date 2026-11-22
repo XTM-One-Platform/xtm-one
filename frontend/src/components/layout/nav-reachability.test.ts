@@ -68,7 +68,7 @@ interface Reach {
    *  locked `unlicensed` on Community Edition only, open with AI off. */
   lock?: "ai" | "license";
   guard: Guard;
-  /** Listed in XTM One mode only: domain content of the XTM platforms (Intents, #445). */
+  /** Listed in XTM One mode only: domain content of the XTM platforms (Intents, #445; CTEM cases, #1135). */
   xtmOneOnly?: true;
 }
 
@@ -80,6 +80,8 @@ const ADMIN_AND_GROUP_MANAGERS: readonly Role[] = ["admin", "groupManager"];
 const REACHABILITY: readonly Reach[] = [
   { to: "/", roles: EVERYONE, guard: "none" },
   { to: "/chat", roles: EVERYONE, gate: "chat", lock: "ai", guard: "none" },
+  // The record of the CTEM loop (#1135): every user, open with AI off; the route sits behind XtmOneRoute, a mode guard.
+  { to: "/ctem/cases", roles: EVERYONE, guard: "none", xtmOneOnly: true },
   { to: "/flows", roles: EVERYONE, guard: "none" },
   { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" },
   { to: "/agents", roles: EVERYONE, lock: "ai", guard: "none" },
@@ -170,8 +172,8 @@ test("every role, mode, flag set and AI state reaches exactly the pages of the t
     for (const xtmOne of [false, true]) {
       for (const flagSet of FLAG_SETS) {
         for (const ai of AI_STATES) {
-          // `intents` follows the mode, as Sidebar.tsx and use-nav-group.ts set it.
-          const flags: NavFlags = { ...flagSet.gates, xtmOne, intents: xtmOne, aiEnabled: ai.aiEnabled, aiLicensed: ai.aiLicensed };
+          // `intents` and `ctemCases` follow the mode, as Sidebar.tsx and use-nav-group.ts set them.
+          const flags: NavFlags = { ...flagSet.gates, xtmOne, intents: xtmOne, ctemCases: xtmOne, aiEnabled: ai.aiEnabled, aiLicensed: ai.aiLicensed };
           const combination = `${role}, ${xtmOne ? "XTM One" : "Copilot"} mode, ${flagSet.name}, ${ai.name}`;
           assert.deepEqual(actual(role, flags), expected(role, flags), combination);
           combinations += 1;
@@ -183,7 +185,7 @@ test("every role, mode, flag set and AI state reaches exactly the pages of the t
 });
 
 test("the palette lists each page once", () => {
-  const flags: NavFlags = { ...allGates(true), xtmOne: true, intents: true, aiEnabled: true, aiLicensed: true };
+  const flags: NavFlags = { ...allGates(true), xtmOne: true, intents: true, ctemCases: true, aiEnabled: true, aiLicensed: true };
   const routes = navDestinations(resolveNav(flags, true)).map((dest) => dest.to);
   assert.deepEqual(routes.filter((to, index) => routes.indexOf(to) !== index), []);
   const table = REACHABILITY.map((reach) => reach.to);
