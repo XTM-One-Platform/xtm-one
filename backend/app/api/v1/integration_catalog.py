@@ -4885,6 +4885,7 @@ PROVIDER_CATALOG = {
         "fields": ["api_key"],
         "extra_fields": {
             "client_id": "API client ID",
+            "webhook_token": "Webhook token (a long random secret you choose; needed for webhook triggers, the URL given to Rydoo ends with ?token=<this token>)",
         },
         "setup_guide": {
             "title": "Rydoo API client",
@@ -4893,7 +4894,7 @@ PROVIDER_CATALOG = {
                 "Ask Rydoo (your CSM or connect@rydoo.com) for API access: Rydoo issues a client ID and a client secret for the company.",
                 "Paste the client ID in the 'API client ID' field and the client secret in the 'API key' field.",
                 "Click 'Test Connection': it mints a token and lists the company's branches (legal entities).",
-                "Optional, for webhook triggers: give Rydoo the webhook URL shown below and ask them to activate the expense webhook.",
+                "Optional, for webhook triggers: set 'Webhook token' to a long random secret, then give Rydoo the webhook URL shown below followed by ?token=<webhook token> and ask them to activate the expense webhook. A delivery without the token, or with no token configured, is refused.",
                 "Every write tool (reject, mark reported or reimbursed, create or update a user, group, project, list item or payment method) asks a person on each call; bind read-only to withhold them.",
             ],
             "permissions": [

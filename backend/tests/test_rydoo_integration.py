@@ -6,19 +6,32 @@ reference, 21 Nov 2026) through an httpx MockTransport: no network.
 
 from __future__ import annotations
 
+import json
+import uuid
 from collections.abc import Callable, Iterator
+from types import SimpleNamespace
 from typing import Any, cast
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers, QueryParams
 
+from app.api.v1 import webhooks as webhook_routes
 from app.api.v1.integration_catalog import PROVIDER_CATALOG, build_dummy_token
+from app.core.utils import redact_secret_text
 from app.integrations import http as http_mod
 from app.integrations.providers import rydoo
 from app.integrations.providers.rydoo import _client, _tools
 from app.integrations.providers.rydoo._client import build_rydoo_token, parse_rydoo_token
-from app.integrations.providers.rydoo.webhooks import EVENT_TYPES, TRIGGER_EVENTS, is_delivery, trigger_event
+from app.integrations.providers.rydoo.webhooks import (
+    EVENT_TYPES,
+    TRIGGER_EVENTS,
+    is_delivery,
+    token_matches,
+    trigger_event,
+)
 from app.services.integration_read_only import integration_tool_access, withhold_write_tools
 from app.services.integration_tools import PROVIDER_TOOLS
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -311,12 +324,111 @@ def test_a_delivery_is_recognised_by_its_envelope() -> None:
     assert not is_delivery(["not", "a", "dict"])
 
 
+_DELIVERY = json.dumps(
+    {"eventType": "ExpenseApproved", "expenseId": "e-1", "userId": "u-1", "companyId": "c-1"}
+).encode()
+
+
+class _Session:
+    """``async_session()`` answering every query with the Rydoo integration row."""
+
+    def __init__(self, row: object) -> None:
+        self._row = row
+
+    async def __aenter__(self) -> _Session:
+        return self
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        return False
+
+    async def execute(self, *_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(scalar_one_or_none=lambda: self._row)
+
+
+class _ReachedError(Exception):
+    """The delivery passed the token gate and reached the dedup cache."""
+
+
+class _Delivery(SimpleNamespace):
+    async def body(self) -> bytes:
+        return cast(bytes, self._body)
+
+
+def _serve_rydoo(monkeypatch: pytest.MonkeyPatch, config: dict[str, Any] | None) -> None:
+    row = SimpleNamespace(id=uuid.uuid4(), provider="rydoo", extra_config_enc="enc" if config is not None else None)
+    monkeypatch.setattr(webhook_routes, "async_session", lambda: _Session(row))
+    monkeypatch.setattr(webhook_routes, "decrypt_value", lambda _enc: json.dumps(config or {}))
+
+    async def _claim(*_args: object, **_kwargs: object) -> None:
+        raise _ReachedError
+
+    monkeypatch.setattr(webhook_routes, "_claim_webhook_dedup_slot", _claim)
+
+
+def _rydoo_delivery(query: str = "", headers: dict[str, str] | None = None) -> _Delivery:
+    return _Delivery(
+        headers=Headers(headers or {}),
+        query_params=QueryParams(query),
+        _body=_DELIVERY,
+        method="POST",
+        url=f"https://xtm.example/api/hooks/integrations/x{'?' + query if query else ''}",
+    )
+
+
+@pytest.mark.parametrize(
+    ("config", "query", "headers"),
+    [
+        (None, "", None),
+        ({"client_id": "cid"}, "", None),
+        ({"client_id": "cid"}, "token=anything", None),
+        ({"webhook_token": "t0ken-long-enough"}, "", None),
+        ({"webhook_token": "t0ken-long-enough"}, "token=wrong", None),
+        ({"webhook_token": "t0ken-long-enough"}, "", {"X-Webhook-Token": "wrong"}),
+        ({"webhook_token": False}, "token=False", None),
+    ],
+)
+async def test_a_delivery_without_the_integration_token_is_refused_before_the_dedup_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    config: dict[str, Any] | None,
+    query: str,
+    headers: dict[str, str] | None,
+) -> None:
+    _serve_rydoo(monkeypatch, config)
+    with pytest.raises(HTTPException) as exc_info:
+        await webhook_routes.receive_integration_webhook(str(uuid.uuid4()), cast(Any, _rydoo_delivery(query, headers)))
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("query", "headers"),
+    [("token=t0ken-long-enough", None), ("", {"X-Webhook-Token": "t0ken-long-enough"})],
+)
+async def test_a_delivery_with_the_integration_token_passes_the_gate(
+    monkeypatch: pytest.MonkeyPatch, query: str, headers: dict[str, str] | None
+) -> None:
+    _serve_rydoo(monkeypatch, {"client_id": "cid", "webhook_token": "t0ken-long-enough"})
+    with pytest.raises(_ReachedError):
+        await webhook_routes.receive_integration_webhook(str(uuid.uuid4()), cast(Any, _rydoo_delivery(query, headers)))
+
+
+def test_token_matches_never_accepts_an_empty_side() -> None:
+    assert token_matches("abc", "abc")
+    assert not token_matches("", "abc")
+    assert not token_matches("abc", "")
+    assert not token_matches("abd", "abc")
+
+
+def test_the_token_in_the_url_is_redacted_from_the_run_context() -> None:
+    url = "https://xtm.example/api/hooks/integrations/x?token=t0ken-long-enough"
+    assert "t0ken-long-enough" not in redact_secret_text(url)
+
+
 # --- catalog -------------------------------------------------------------------------
 
 
 def test_catalog_entry_events_and_dispatcher() -> None:
     entry = cast(dict[str, Any], PROVIDER_CATALOG["rydoo"])
-    assert entry["extra_fields"] == {"client_id": "API client ID"}
+    assert set(entry["extra_fields"]) == {"client_id", "webhook_token"}
     available = cast(list[dict[str, Any]], entry["available_events"])
     assert {e["event"] for e in available} == set(TRIGGER_EVENTS.values())
     assert all("eventType" in e["filter_keys"] for e in available)

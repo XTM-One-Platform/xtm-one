@@ -6,15 +6,24 @@ Rydoo's expense webhook ("Expense webhook" guide) posts one JSON object per
 status change of an expense: ``eventTimestamp``, ``expenseId``, ``userId``,
 ``companyId``, ``eventType`` and ``correlationId``. Rydoo activates it on
 request (the company's CSM or connect@rydoo.com) for a URL the company gives;
-it documents no signature, so the integration webhook URL is protected by the
-platform's static token (``X-Webhook-Token`` or the ``?token=`` the URL
-carries), never left open. When webhooks are not activated, the
-exported-expenses tool is the polling fallback.
+it documents no signature and no custom header, so the integration webhook
+URL carries the integration's ``webhook_token`` (a secret the company
+chooses) as ``?token=``. A delivery without that token, or on an integration
+with no token configured, is refused (``api/v1/webhooks.py``). When webhooks
+are not activated, the exported-expenses tool is the polling fallback.
 """
 
 from __future__ import annotations
 
 from typing import Any, TypeGuard
+
+from app.core.security import timing_safe_header_eq
+
+#: The extra-config key of the token every delivery must carry.
+TOKEN_FIELD = "webhook_token"  # noqa: S105 - a config key, not a secret
+
+#: The query parameter of the webhook URL that carries it.
+TOKEN_PARAM = "token"  # noqa: S105 - a query parameter name, not a secret
 
 #: Every expense event the webhook sends (Rydoo guide, 22 May 2026).
 EVENT_TYPES: dict[str, str] = {
@@ -56,3 +65,11 @@ def is_delivery(payload: object) -> TypeGuard[dict[str, Any]]:
     if not all(isinstance(payload.get(key), str) and payload.get(key) for key in _ENVELOPE):
         return False
     return payload["eventType"] in EVENT_TYPES
+
+
+def token_matches(presented: str, configured: str) -> bool:
+    """Whether a delivery's token is the integration's, in constant time.
+
+    Empty on either side never matches.
+    """
+    return bool(presented) and bool(configured) and timing_safe_header_eq(presented, configured)
