@@ -186,6 +186,31 @@ records several sources hold on one thing into one canonical thing; the store of
 - Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
   vendor and product, crown jewels, AI systems, PIRs, tracked organizations) use the same matching.
 
+### 9.1 The store (S2)
+
+`backend/app/models/organization_asset.py` keeps the engine's answer per organization, so the asset list is no
+longer bound by the profile JSON (5,000 rows) and an asset can carry hundreds of software entries:
+
+| Table | One row per | Unique | Index |
+|---|---|---|---|
+| `organization_assets` | canonical asset: name shown, `fields` (value, source, every source's value), `merged_on`, `possible_matches`, `profile_version` | `(organization_id, canonical_key)` | `(organization_id, name_key)` for the list and its search |
+| `organization_asset_sources` | source record: source, its id there, identifiers, fields, last seen | `(organization_id, source, external_id)` | `asset_id` |
+| `organization_asset_software` | vendor, product, version on an asset (`unknown` when no source knows it), CPE, PURL, install date, first and last seen, sources | `(asset_id, vendor_key, product_key, version)` | `(organization_id, product_key, version)` for "assets of a software" |
+
+The migration (`o1178assets01`) creates the tables and backfills nothing. `organization_asset_store.ensure_built`
+builds an organization's store from its current profile on the first read and rebuilds it when a newer profile
+version is saved (one advisory lock per organization, so two first reads build once). Until S3 the profile stays
+the source of the rows and the store is its canonical view; syncs and agent tools write through it in S3.
+
+Read API (any signed-in user, primary organization, every list paginated, `limit` at most 200):
+
+- `GET /api/v1/organization-context/assets?q=&offset=&limit=`: canonical assets by name, each with its sources and
+  software count.
+- `GET /api/v1/organization-context/assets/{id}?software_offset=&software_limit=`: one asset, each field with the
+  source that set it and every source's value, the merge explanation, its records and a page of its software.
+- `GET /api/v1/organization-context/assets/by-software?product=&vendor=&version=`: the assets running a software,
+  with the version each runs.
+
 ## 10. OpenCRQ alignment
 
 OpenCRQ-Platform/opencrq#3152 closed the three divergences: `security_platform` and its 10 subcategories are
