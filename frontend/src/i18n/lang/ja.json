@@ -20993,5 +20993,8 @@
   "OS, compliance and ownership, each as a prefixed tag": "OS、コンプライアンス、所有形態をそれぞれプレフィックス付きタグとして",
   "OS, exposure level, health and risk, each as a prefixed tag": "OS、露出レベル、正常性、リスクをそれぞれプレフィックス付きタグとして",
   "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "利用不可: {source} の連携が接続されていません。設定 > 連携 で接続してください。",
-  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "利用不可: {source} の連携にトークンがありません。設定 > 連携 で再度承認してください。"
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "利用不可: {source} の連携にトークンがありません。設定 > 連携 で再度承認してください。",
+  "CTEM Read": "CTEM 読み取り",
+  "Read the CTEM signals and cases the person you act for can see, read-only": "代理で操作する相手が閲覧できる CTEM のシグナルとケースを読み取り専用で参照します",
+  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。"
 }
