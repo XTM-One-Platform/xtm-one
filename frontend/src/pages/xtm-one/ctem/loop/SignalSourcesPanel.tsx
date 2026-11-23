@@ -5,7 +5,9 @@
  * every trigger path the loop knows, read from `GET /ctem-signals/paths` and
  * never hard-coded, as a compact table grouped by lens (Sam, 23 Nov 2026, #1344):
  * trigger path (label, description on line 2), sources (logo and name, the kind
- * as secondary text, the event that fires it in a tooltip), status (its own
+ * as secondary text, the event that fires it in a tooltip; only what feeds the
+ * path on this platform, a provider with no integration here folded into one
+ * muted "+N possible", Sam 23 Nov 2026, #1401), status (its own
  * column so every chip aligns: Connected, Off, Not connected, or Agents and API
  * only, a path with no automatic source never reading connected), signals in 30
  * days, last signal, and one action: Connect or Turn on the first unbound
@@ -14,7 +16,7 @@
  * of the first cell.
  *
  * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
- * from the page's tabs and summary strip.
+ * from the CTEM menu, the page's tabs and its summary strip.
  */
 import { useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
@@ -28,6 +30,7 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { signalsHref } from "./signals-route";
 import {
@@ -40,6 +43,7 @@ import {
   PATH_STATUS_TONE,
   pathStatus,
   SOURCE_KIND_LABEL,
+  splitSources,
 } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
@@ -56,13 +60,20 @@ const LENS_HELP = {
   world: "What happens in the threat landscape that may concern you",
 } as const;
 
-/** One source: logo and name, the kind as secondary text, the event that fires it in a tooltip (never a third line). */
+/**
+ * One source: logo and name, the kind as secondary text, the event that fires it in a tooltip (never a third line).
+ * A pass turned off says Off after its kind; a source whose provider is not connected here (shown only on a path
+ * with nothing live) draws a greyed logo and a muted name, and its tooltip says so.
+ */
 function SourceItem({ source }: { source: CtemSignalPathSource }) {
   const { t_i18n } = useFormatter();
   // The loop trace's naming (signalProviderName), read here without importing that module: it imports this one.
   const name = sourceName(source);
+  const possible = !source.bound && !source.off;
+  const event = source.event ? t_i18n(source.event) : null;
+  const tip = possible ? [event, t_i18n("Not connected on this platform")].filter(Boolean).join(". ") : event;
   return (
-    <Tip content={source.event ? t_i18n(source.event) : null}>
+    <Tip content={tip}>
       <span
         tabIndex={0}
         className="inline-flex min-w-0 items-center gap-1.5 rounded-sm"
@@ -71,10 +82,37 @@ function SourceItem({ source }: { source: CtemSignalPathSource }) {
         data-kind={source.kind}
         data-bound={source.bound}
         data-off={source.off ? true : undefined}
+        data-possible={possible ? true : undefined}
       >
-        <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
+        <ProviderLogo provider={source.provider} className={cn("size-4 shrink-0", possible && "opacity-50 grayscale")} decorative />
         <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
         <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
+        {source.off && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
+      </span>
+    </Tip>
+  );
+}
+
+/** The sources a path could have but this platform has no integration for: one muted item, the list in its tooltip. */
+function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
+  const { t_i18n } = useFormatter();
+  const tip = (
+    <span className="flex flex-col gap-0.5">
+      {sources.map((s) => (
+        <span key={`${s.provider}:${s.kind}`}>{`${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])})`}</span>
+      ))}
+      <span className="text-default-secondary">{t_i18n("Not connected on this platform")}</span>
+    </span>
+  );
+  return (
+    <Tip content={tip}>
+      <span
+        tabIndex={0}
+        className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
+        data-testid="ctem-signal-sources-possible"
+        data-providers={sources.map((s) => s.provider).join(" ")}
+      >
+        {t_i18n("{count, plural, other {+# possible}}", { count: sources.length })}
       </span>
     </Tip>
   );
@@ -95,21 +133,38 @@ function SourceList({ path, className, compact }: { path: CtemSignalPath; classN
   if (sources.length === 0) {
     return <span className={className ? `${className} text-default-secondary` : "text-default-secondary"}>{t_i18n("None")}</span>;
   }
+  // Nothing live: the path reads Not connected, so its possible sources are listed muted (Connect names the first).
+  // Something live: only the live sources are listed, the possible ones folded into "+N possible" (#1401).
+  const { live, possible } = splitSources(path);
+  const shown = live.length > 0 ? live : possible;
+  const folded = live.length > 0 ? possible : [];
   if (compact) {
-    const names = sources.map((s) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])})`).join(", ");
+    const label = (s: CtemSignalPathSource) =>
+      `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])}${s.off ? `, ${t_i18n("Off")}` : ""})`;
+    const names = shown.map(label).join(", ");
+    const tip = [
+      names,
+      folded.length > 0 ? `${t_i18n("Not connected on this platform")}: ${folded.map(label).join(", ")}` : null,
+    ].filter(Boolean).join(". ");
     return (
-      <Tip content={names}>
-        <span tabIndex={0} className="block min-w-0 flex-1 truncate rounded-sm" data-testid="ctem-signal-sources-compact">
-          {names}
+      <Tip content={tip}>
+        <span tabIndex={0} className="flex min-w-0 flex-1 items-center gap-2 rounded-sm" data-testid="ctem-signal-sources-compact">
+          <span className={cn("min-w-0 truncate", live.length === 0 && "text-default-secondary")}>{names}</span>
+          {folded.length > 0 && (
+            <span className="shrink-0" data-testid="ctem-signal-sources-compact-possible">
+              {t_i18n("{count, plural, other {+# possible}}", { count: folded.length })}
+            </span>
+          )}
         </span>
       </Tip>
     );
   }
   return (
-    <span className={className ? `${className} flex min-w-0 flex-wrap gap-x-3` : "flex min-w-0 flex-wrap gap-x-3"}>
-      {sources.map((s) => (
+    <span className={className ? `${className} flex min-w-0 flex-wrap items-center gap-x-3` : "flex min-w-0 flex-wrap items-center gap-x-3"}>
+      {shown.map((s) => (
         <SourceItem key={`${s.provider}:${s.kind}`} source={s} />
       ))}
+      {folded.length > 0 && <PossibleSources sources={folded} />}
     </span>
   );
 }

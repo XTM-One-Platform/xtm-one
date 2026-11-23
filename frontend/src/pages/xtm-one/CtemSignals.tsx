@@ -3,9 +3,11 @@
 /**
  * The Signals page `/ctem/signals` (#1263): the signals of the exposure
  * management loop and the signal sources, as one page with two tabs instead of
- * the two dialogs it replaces. Reached from the command center (the key row
- * counters, the signal sources button, the activity feed), a case's "Opened
- * by" and the Discovery stage; no menu entry.
+ * the two dialogs it replaces. A row of the CTEM menu group between Cases and
+ * Inventory (Sam, 23 Nov 2026, #1401), titled with the app's standard list
+ * header like Cases, no back link; also reached from the command center (the
+ * key row counters, the signal sources button, the activity feed), a case's
+ * "Opened by" and the Discovery stage.
  *
  * Signals: the state filter carries the API's counts (the key row's), the
  * trigger path filter is read by the server, the table searches, sorts, pages
@@ -37,7 +39,7 @@ import {
 } from "@/hooks/api/useCtemSignalsApi";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
-import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { ListPageHeader } from "@/components/ui/list-page-header";
 import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./ctem/loop/DecisionReason";
 import { SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
 import { SignalTraceBody, signalProviderName } from "./ctem/loop/SignalLoopTrace";
@@ -67,12 +69,10 @@ export default function CtemSignals() {
   const paths = pathData?.paths ?? [];
   return (
     <div className="space-y-6" data-testid="ctem-signals-page">
-      <CtemPageHeader
-        back={{ to: "/", label: "Back to Command Center" }}
-        crumb={t_i18n("Signals")}
+      <ListPageHeader
         title={t_i18n("Signals")}
-        hint={t_i18n("The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.")}
-        hintLabel={t_i18n("About signals")}
+        info={t_i18n("The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.")}
+        infoLabel={t_i18n("About signals")}
       />
       <SignalsSummaryStrip />
       <DetailTabs<Tab>

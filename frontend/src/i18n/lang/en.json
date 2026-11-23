@@ -21126,5 +21126,8 @@
   "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster.": "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster.",
   "Resource ID": "Resource ID",
   "Hide from the command center. The setup stays on the CTEM loop fleet page.": "Hide from the command center. The setup stays on the CTEM loop fleet page.",
-  "Hide the CTEM loop setup from the command center": "Hide the CTEM loop setup from the command center"
+  "Hide the CTEM loop setup from the command center": "Hide the CTEM loop setup from the command center",
+  "Not connected on this platform": "Not connected on this platform",
+  "{count, plural, other {+# possible}}": "{count, plural, other {+# possible}}",
+  "Trigger paths": "Trigger paths"
 }

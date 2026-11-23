@@ -84,10 +84,17 @@ are read on the platform's connected integrations
 organization-wide: a reader who cannot see the administrator's Shodan or
 OpenCRQ integration reads the same `connected` or `off` as the administrator.
 
-The Sources tab of the Signals page (`/ctem/signals/sources`,
-`SignalSourcesPanel.tsx`) is a compact table grouped by lens: trigger path,
-sources (the event sentence in a tooltip), status, signals in 30 days, last
-signal, action; rows of at most two lines. Connect sends a listener to
+The Signals page (`/ctem/signals`) is a row of the CTEM menu group, between
+Cases and Inventory (#1401), with the standard list header. Its Sources tab
+(`/ctem/signals/sources`, `SignalSourcesPanel.tsx`) is a compact table grouped
+by lens: trigger path, sources (the event sentence in a tooltip), status,
+signals in 30 days, last signal, action; rows of at most two lines. The
+Sources column lists what feeds the path on this platform: the bound sources
+and the passes `off` (marked Off). A source neither bound nor off (no
+integration of its provider) is folded into one muted "+N possible" whose
+tooltip lists them with "Not connected on this platform" (`splitSources`); a
+path with no bound or off source lists them muted inline, under its Not
+connected status. Connect sends a listener to
 `/integrations/new?provider=`; Connect or Turn on sends a pass and the
 playbook to their card in Settings > Organization (attack surface: outside
 lens; evidence health: its card beside it on CTEM > Inventory, whose `?card=`

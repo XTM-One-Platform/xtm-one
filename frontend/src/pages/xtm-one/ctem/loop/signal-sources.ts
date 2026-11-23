@@ -39,6 +39,17 @@ export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): Ct
   return sources.some((s) => s.off) ? "off" : "not_connected";
 }
 
+/**
+ * A path's sources split by what feeds it on this platform (Sam, 23 Nov 2026, #1401): `live` are the
+ * bound sources and the passes turned off (their provider is connected, Turn on is one click);
+ * `possible` are the sources whose provider has no integration here. A possible source is never
+ * listed with the weight of a live one: the Sources tab folds them into one muted "+N possible".
+ */
+export function splitSources(path: Pick<CtemSignalPath, "sources">): { live: CtemSignalPathSource[]; possible: CtemSignalPathSource[] } {
+  const sources = path.sources ?? [];
+  return { live: sources.filter((s) => s.bound || s.off), possible: sources.filter((s) => !s.bound && !s.off) };
+}
+
 /** "N of M trigger paths connected": agents-only paths count in M, never in N. */
 export function connectedCount(paths: readonly Pick<CtemSignalPath, "status" | "sources">[]): number {
   return paths.filter((p) => pathStatus(p) === "connected").length;
