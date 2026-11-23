@@ -265,16 +265,20 @@ async def load_visible_asset(file_id: object, user_id: object) -> FileAttachment
         async with async_session() as db:
             group_ids = await get_user_group_ids(db, user_uuid)
             return (
-                await db.execute(
-                    select(FileAttachment)
-                    .join(TemplateContainer, TemplateContainer.id == FileAttachment.template_container_id)
-                    .where(
-                        FileAttachment.id == asset_id,
-                        FileAttachment.source == TEMPLATE_ASSET_SOURCE,
-                        caller_visible_filter(TemplateContainer, user_uuid, group_ids),
+                (
+                    await db.execute(
+                        select(FileAttachment)
+                        .join(TemplateContainer, TemplateContainer.id == FileAttachment.template_container_id)
+                        .where(
+                            FileAttachment.id == asset_id,
+                            FileAttachment.source == TEMPLATE_ASSET_SOURCE,
+                            caller_visible_filter(TemplateContainer, user_uuid, group_ids),
+                        )
                     )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
     except Exception as exc:
         logger.warning("Template asset %s not loaded: %s", asset_id, exc)
         return None

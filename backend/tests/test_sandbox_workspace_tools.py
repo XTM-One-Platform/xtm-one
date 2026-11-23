@@ -467,7 +467,9 @@ async def test_put_takes_a_template_asset_the_caller_can_see(store, monkeypatch)
     monkeypatch.setattr(template_containers, "load_visible_asset", visible)
     monkeypatch.setattr(FileRef, "from_attachment", staticmethod(lambda _row: ref))
     put = await composite.execute_tool(
-        ToolCall(id="1", name="sandbox_put_file", arguments={"file_id": f"[[FILE:{asset_id}]]", "path": "brand/logo.svg"})
+        ToolCall(
+            id="1", name="sandbox_put_file", arguments={"file_id": f"[[FILE:{asset_id}]]", "path": "brand/logo.svg"}
+        )
     )
     assert "to workspace/brand/logo.svg (6 B" in put.content, put.content
     assert asked == [(str(asset_id), str(user))]
