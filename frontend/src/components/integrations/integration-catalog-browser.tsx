@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { SelectionBox } from "@/components/ui/list-control-bar";
+import { FacetCheckbox, FacetGroupLabel, FacetSidebar } from "@/components/ui/facet-sidebar";
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from "@/components/ui/select";
@@ -135,74 +135,6 @@ function matchesFilters(
     if (!f.install.some((i) => (i === "installed" ? is : !is))) return false;
   }
   return true;
-}
-
-// ── Sidebar primitives ───────────────────────────────────────────────────────
-
-function FacetCheckbox({
-  checked, onToggle, label, count, icon: Icon,
-}: {
-  checked: boolean;
-  onToggle: () => void;
-  label: string;
-  count: number;
-  icon?: React.ElementType;
-}) {
-  // The box is the shared SelectionBox, the one every selectable list draws, so its edge keeps
-  // 3:1 in both themes; the row around it is a pointer target only (the box is the keyboard stop and
-  // carries the checkbox role, its name and its state). A facet with no match and not checked is disabled.
-  const disabled = count === 0 && !checked;
-  return (
-    <div
-      className={cn(
-        "group flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left transition-colors",
-        disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-elevation-hover",
-      )}
-      onClick={disabled ? undefined : onToggle}
-    >
-      <SelectionBox checked={checked} onToggle={onToggle} label={label} disabled={disabled} />
-      {Icon && (
-        <Icon
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 transition-colors",
-            checked ? "text-accent" : disabled ? "text-default-disabled" : "text-default-secondary",
-          )}
-        />
-      )}
-      {/* One line per facet, as in OpenCTI and OpenAEV (Sam, 18 Nov 2026): a label too long for the
-          fixed aside is cut with an ellipsis and named whole by the design-system tooltip, on hover
-          and on keyboard focus, so every row keeps the same height and the count stays right-aligned. */}
-      <TruncatedText
-        text={label}
-        className={cn(
-          "flex-1 content-compact transition-colors",
-          checked
-            ? "font-medium text-default-primary"
-            : disabled
-              ? "text-default-disabled"
-              : "text-default-secondary group-hover:text-default-primary",
-        )}
-      />
-      <span
-        className={cn(
-          "shrink-0 rounded-sm bg-elevation-hover px-1.5 py-px content-compact tabular-nums",
-          // A disabled facet's count takes the disabled ink with its label and icon, so its "0" never reads as enabled.
-          disabled ? "text-default-disabled" : "text-default-secondary",
-        )}
-      >
-        {count}
-      </span>
-    </div>
-  );
-}
-
-function FacetGroupLabel({ text }: { text: string }) {
-  // One line too: a long group name ("Engineering & Operations") is cut and named whole by the tooltip.
-  return (
-    <p className="flex min-w-0 px-2 font-sans-geologica content-compact font-semibold uppercase tracking-[0.12em] text-default-secondary">
-      <TruncatedText text={text} className="flex-1" />
-    </p>
-  );
 }
 
 // ── Provider card ────────────────────────────────────────────────────────────
@@ -718,18 +650,8 @@ export function IntegrationCatalogBrowser({
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        {/* Faceted sidebar */}
-        <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-64 lg:overflow-y-auto lg:pr-1">
-          <div className="space-y-5 rounded-sm border border-elevation-subtle-soft layer-1 bg-elevation-default p-4 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <p className="font-sans-geologica content-base font-semibold">{t_i18n("Filters")}</p>
-              {hasFilters && (
-                <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 content-compact text-default-secondary" onClick={clearAll}>
-                  <RotateCcw className="h-3 w-3" /> {t_i18n("Clear all")}
-                </Button>
-              )}
-            </div>
-
+        {/* Faceted sidebar: the shared component the CTEM asset list draws too (#1501). */}
+        <FacetSidebar hasFilters={hasFilters} onClearAll={clearAll}>
             {installState && (
               <div className="space-y-1">
                 <FacetGroupLabel text={t_i18n("Status")} />
@@ -794,8 +716,7 @@ export function IntegrationCatalogBrowser({
                 ))}
               </div>
             </div>
-          </div>
-        </aside>
+        </FacetSidebar>
 
         {/* Results */}
         <div className="min-w-0 flex-1 space-y-4">
