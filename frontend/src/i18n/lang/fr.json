@@ -21077,5 +21077,16 @@
   "The products you declare by hand. The Tech stack list adds the software of your assets.": "Les produits que vous déclarez à la main. La liste Tech stack ajoute les logiciels de vos actifs.",
   "Installed software": "Logiciel installé",
   "No AI system declared for the AI security fleet yet.": "Aucun système d'IA déclaré pour la flotte de sécurité de l'IA pour l'instant.",
-  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# actif cible d'IA est dans l'inventaire} other {# actifs cibles d'IA sont dans l'inventaire}}"
+  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# actif cible d'IA est dans l'inventaire} other {# actifs cibles d'IA sont dans l'inventaire}}",
+  "Waits for approval": "Attend une approbation",
+  "Not usable": "Inutilisable",
+  "Not company-managed": "Non gérée par l'entreprise",
+  "Sign-in not finished": "Connexion non terminée",
+  "At {level}": "Au niveau {level}",
+  "Gated actions at {level}": "Actions soumises à approbation au niveau {level}",
+  "Deletes data or speaks in a person's name outside XTM One; it cannot be taken back.": "Supprime des données ou s'exprime au nom d'une personne hors d'XTM One ; impossible à annuler.",
+  "Creates or changes content outside XTM One that other people and systems act on.": "Crée ou modifie hors d'XTM One un contenu sur lequel d'autres personnes et systèmes agissent.",
+  "A reversible mark, label or draft outside XTM One.": "Une marque, une étiquette ou un brouillon réversible hors d'XTM One.",
+  "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} est connectée mais n'est pas gérée par l'entreprise : les membres de cette flotte n'utilisent que des intégrations gérées par l'entreprise. Un administrateur peut la rendre gérée par l'entreprise.",
+  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} n'est pas encore connectée : terminez sa connexion sur la page de l'intégration."
 }

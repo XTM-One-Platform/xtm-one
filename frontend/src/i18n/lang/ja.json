@@ -21077,5 +21077,16 @@
   "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, other {ほかに # 件の資産が表示されていません}}",
   "CTEM Read": "CTEM 読み取り",
   "Read the CTEM signals and cases the person you act for can see, read-only": "代理で操作する相手が閲覧できる CTEM のシグナルとケースを読み取り専用で参照します",
-  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。"
+  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。",
+  "Waits for approval": "承認待ち",
+  "Not usable": "使用不可",
+  "Not company-managed": "会社管理外",
+  "Sign-in not finished": "サインイン未完了",
+  "At {level}": "{level} の場合",
+  "Gated actions at {level}": "{level} で承認が必要なアクション",
+  "Deletes data or speaks in a person's name outside XTM One; it cannot be taken back.": "XTM One の外でデータを削除するか、個人の名前で発信します。元に戻せません。",
+  "Creates or changes content outside XTM One that other people and systems act on.": "他の人やシステムが利用するコンテンツを XTM One の外で作成または変更します。",
+  "A reversible mark, label or draft outside XTM One.": "XTM One の外での元に戻せるマーク、ラベル、または下書き。",
+  "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} は接続済みですが会社管理ではありません。このフリートのメンバーは会社管理の連携のみを使用します。管理者が会社管理に変更できます。",
+  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} はまだ接続されていません。連携ページでサインインを完了してください。"
 }
