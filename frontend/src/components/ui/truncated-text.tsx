@@ -41,8 +41,12 @@ export function TruncatedText({ text, className, lines }: { text: string; classN
     const node = ref.current;
     if (!node) return;
     setInFocusable(Boolean(node.parentElement?.closest(FOCUSABLE_ANCESTOR)));
+    // One line: the browser draws the ellipsis at any sub-pixel overflow, and both widths
+    // are rounded integers, so any excess is a drawn cut (141 > 140; UX r3 B3 on #1590).
+    // A clamp keeps a 1 px tolerance on the height, where line-height rounding alone
+    // leaves a pixel without cutting a line.
     const measure = () =>
-      setCut(lines ? node.scrollHeight > node.clientHeight + 1 : node.scrollWidth > node.clientWidth + 1);
+      setCut(lines ? node.scrollHeight > node.clientHeight + 1 : node.scrollWidth > node.clientWidth);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);

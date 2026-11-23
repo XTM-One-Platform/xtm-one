@@ -453,9 +453,9 @@ Due date: set by the user, or suggested from the priority SLA of the policy
 
 - **One colour per state and per priority, everywhere** (board, list badge,
   case page, widget, signal state of the loop trace), through the shared
-  outlined `ToneBadge` (`components/ui/tone-badge.tsx`), the hot hues of Work
-  items and Tasks (whose page-local badges have no visible edge and are not on
-  `ToneBadge` yet), never the pastel severity tiles of the DS `Chip` (Sam,
+  `ToneBadge` (`components/ui/tone-badge.tsx`), the hot hues of Work items and
+  Tasks, drawn in the single chip style of the DS `Chip` since design system
+  1.13.0 (30% fill, default label, 1px inset hairline in the hue; #1595) (Sam,
   22 Nov 2026, #1267): states needs attention orange, in progress blue,
   mitigated, watching yellow with the DS `eye` icon inside the badge, resolved
   green, accepted risk neutral; priorities critical red, high orange, medium
