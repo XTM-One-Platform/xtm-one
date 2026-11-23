@@ -32,6 +32,7 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { VisibilityEmptyHint } from "@/components/ui/visibility-filter";
 import { useVisibilityParam, visibilityQuery } from "@/hooks/useVisibilityParam";
+import { writeVisibility } from "@/lib/visibility";
 import { useSegmentCounts } from "@/hooks/api/useSegmentCounts";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SelectionBox } from "@/components/ui/list-control-bar";
@@ -342,6 +343,33 @@ export default function WorkItemsTab({
     [setSearchParams],
   );
 
+  // The "Waiting for me" chip (#1499): on, it resets every other filter (status, search, owner,
+  // fleet unless locked, scope, segment to All) in the same write so the rows shown are the
+  // chip's count; a second click clears the view alone.
+  const toggleQuickView = useCallback(
+    (key: string) => {
+      if (key !== WAITING_FOR_ME_VIEW || key === viewParam) {
+        setView(key === viewParam ? "" : key);
+        return;
+      }
+      const keys = ["view", "stale", "scope", "agent", "status", ...(lockedFleet ? [] : ["fleet"])];
+      setSearchParams(
+        (prev) => {
+          const next = clearFilterParams(prev, keys, URL_KEY);
+          if (!workspace && !lockedFleet) {
+            const all = writeVisibility(next, "all");
+            all.set("view", key);
+            return all;
+          }
+          next.set("view", key);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [viewParam, setView, setSearchParams, lockedFleet, workspace],
+  );
+
   // "Clear all filters" (toolbar, no-results line, empty states): every filter the count counts
   // and the status, search and page in ONE write; the open item, the segment (`vis`), the sort
   // and the page size stay (#1001: the table cleared only its own keys, the button looked dead).
@@ -438,7 +466,13 @@ export default function WorkItemsTab({
   // owner, fleet, segment), never the loaded page; the view itself left out so each chip says
   // what a click on it would show.
   const quickBase = { ...otherFilters, stale_only: false, scheduled_only: false, waiting_for_me: false, vis };
-  const { data: waitingCountData } = useWorkItemCount({ ...quickBase, waiting_for_me: true }, false, !landing);
+  // "Waiting for me" counts every open item waiting for the caller (#1499): every segment, no
+  // status, search, owner or picked fleet, so the chip reads the same number wherever the list
+  // stands and a click (which resets those filters) shows exactly that many rows. A host page's
+  // workspace or locked fleet is not a filter and stays: the lock is counted whatever `?scope=` an
+  // administrator set, since the click clears that scope and lists inside the lock.
+  const waitingFilters = { open_only: true, waiting_for_me: true, workspace, fleet: lockedFleet };
+  const { data: waitingCountData } = useWorkItemCount(waitingFilters, false, !fleetPending);
   const { data: staleViewCountData } = useWorkItemCount({ ...quickBase, stale_only: true }, false, !landing);
   const quickOptions = [
     {
@@ -1265,7 +1299,7 @@ export default function WorkItemsTab({
               testId="work-items-quick-filters"
               options={quickOptions}
               value={viewParam}
-              onChange={(key) => setView(key === viewParam ? "" : key)}
+              onChange={toggleQuickView}
             />
             {noReasonCount > 0 && (
               <Tip content={t_i18n("Show the blocked work items: each one with no reason carries a No reason chip.")} wrap>
