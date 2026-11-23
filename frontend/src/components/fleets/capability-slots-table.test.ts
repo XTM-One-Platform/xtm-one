@@ -138,7 +138,18 @@ describe("capability types table (#1201)", () => {
   });
 
   it("gives every catalog capability its own icon and an unknown one the fallback", () => {
-    for (const capability of ["ticketing", "notification", "edr_xdr", "scanner", "easm", "vulnerability_intelligence", "asset_inventory", "siem"])
+    for (const capability of [
+      "ticketing",
+      "notification",
+      "edr_xdr",
+      "scanner",
+      "application_security",
+      "source_code",
+      "easm",
+      "vulnerability_intelligence",
+      "asset_inventory",
+      "siem",
+    ])
       expect(CAPABILITY_ICONS[capability]).toBeTruthy();
     expect(new Set(Object.values(CAPABILITY_ICONS)).size).toBe(Object.keys(CAPABILITY_ICONS).length);
     expect(capabilityIcon("quantum_radar")).toBe(FALLBACK_CAPABILITY_ICON);
@@ -161,6 +172,8 @@ describe("capability types table (#1201)", () => {
     "Notification",
     "EDR / XDR",
     "Vulnerability scanner",
+    "Application security",
+    "Source code",
     "External attack surface",
     "Vulnerability intelligence",
     "Asset inventory",

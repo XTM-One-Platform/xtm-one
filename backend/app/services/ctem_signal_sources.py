@@ -72,6 +72,13 @@ PATH_DESCRIPTIONS: dict[str, str] = {
     "blind_spot": "An asset that supports a risk scenario with no evidence at all",
 }
 
+#: The fleet capabilities (``fleet_capability_slots.CAPABILITIES``) whose tools fire a
+#: path, so a fleet without them says why the path is silent (#1434).
+PATH_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "code_flaw": ("application_security", "source_code"),
+    "credential_leak": ("application_security",),
+}
+
 _ATTACK_SURFACE = tuple((p, "pass") for p in ATTACK_SURFACE_PROVIDERS)
 
 #: The sources of each path. Keep in step with ``ctem_signal_listeners.LISTENERS``

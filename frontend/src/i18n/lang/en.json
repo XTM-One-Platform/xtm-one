@@ -18207,6 +18207,7 @@
   "LLM firewall": "LLM firewall",
   "AI gateway": "AI gateway",
   "Vulnerability scanner": "Vulnerability scanner",
+  "Application security": "Application security",
   "Criticality unknown": "Criticality unknown",
   "Very high (criticality)": "Very high",
   "Groups the assets join, as OpenAEV asset groups. An asset picks its group on its row.": "Groups the assets join, as OpenAEV asset groups. An asset picks its group on its row.",
