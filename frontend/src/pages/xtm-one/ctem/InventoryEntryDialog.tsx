@@ -172,7 +172,7 @@ function EntryReadFailure({
         <DialogTitle>{t_i18n(dialogTitle(section, mode))}</DialogTitle>
       </DialogHeader>
       <DialogBody>
-        <p role="alert" className="content-compact text-feedback-error-primary" data-testid="ctem-entry-read-failure">
+        <p role="alert" className="content-compact text-feedback-error-tertiary" data-testid="ctem-entry-read-failure">
           {gone ? t_i18n("This entry no longer exists. The list is refreshed.") : t_i18n("This entry could not be loaded.")}
         </p>
       </DialogBody>
@@ -358,7 +358,7 @@ function EntryForm({
           </SettingsField>
         )}
         {error && (
-          <p className="whitespace-pre-line content-compact text-feedback-error-primary" role="alert">
+          <p className="whitespace-pre-line content-compact text-feedback-error-tertiary" role="alert">
             {error}
           </p>
         )}

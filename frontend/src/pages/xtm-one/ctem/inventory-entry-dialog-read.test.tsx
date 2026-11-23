@@ -5,6 +5,9 @@
 // section error boundary never replaces the list. Run against the app's client, where every failed query is thrown
 // to the nearest ErrorBoundary unless the hook says otherwise.
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
@@ -88,5 +91,13 @@ describe("InventoryEntryDialog on a failed row read", () => {
     // The hook retries a 5xx twice (with backoff) before the dialog shows the failure.
     expect(await screen.findByText("This entry could not be loaded.", undefined, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.queryByText("section replaced")).not.toBeInTheDocument();
+  });
+
+  it("draws its alert lines in the error tone that reads 4.5:1, never error-primary", () => {
+    // UX round 2 on #1551, B1: error-primary reads 4.26:1 on the dark dialog, error-tertiary 5.69:1 (dark) and
+    // 8.98:1 (light). The token is pinned in the source for the read-failure line and the inline refusal line.
+    const source = readFileSync(resolve(process.cwd(), "src/pages/xtm-one/ctem/InventoryEntryDialog.tsx"), "utf8");
+    expect(source.match(/text-feedback-error-tertiary/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(source).not.toMatch(/(^|[\s:"])text-feedback-error-primary/);
   });
 });
