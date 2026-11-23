@@ -275,7 +275,9 @@ Assignments (on the orchestrator):
 
 | Name | Trigger | Does |
 |---|---|---|
-| New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2) | Triage, then the loop below |
+| New relevant threat | `integration_event` OpenCTI create on Intrusion-Set, Campaign, Report (S2), listen-only (#1580) | Provisions the OpenCTI trigger; the webhook route records the `relevant_threat` signal, no run |
+| Threat activity flagged in a PIR | `integration_event` OpenCTI PIR playbook, listen-only (#1580) | Provisions the PIR playbook; the delivery records the `relevant_threat` signal, no run |
+| Threat signal recorded | `platform_event` `ctem_signal.recorded` and `ctem_signal.triaged`, filter `trigger_path` `relevant_threat`, `source_provider` `opencti`, verdict `to_validate` or none; `max_concurrent_runs` 5, ordered by `signal_id`; takes the switch of New relevant threat on upgrade | Triage of a signal the case loop does not own yet; a confirmed signal opens its case through the case loop |
 | Weekly threat sweep | `schedule` `0 7 * * 1` | Catches what events missed |
 | Re-test due | `work_item` prefix `ctem:f1:retest:` | Re-runs the validated scenario after a fix |
 
