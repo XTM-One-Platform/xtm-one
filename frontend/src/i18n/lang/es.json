@@ -21124,5 +21124,7 @@
   "On: forked repositories are imported too, tagged fork.": "Activado: los repositorios bifurcados también se importan, con la etiqueta fork.",
   "Off: each repository's dependencies are read.": "Desactivado: se leen las dependencias de cada repositorio.",
   "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster.": "GitHub: el SBOM del grafo de dependencias. GitLab: la lista de dependencias, solo en GitLab Ultimate. Activado: solo los repositorios, más rápido.",
-  "Resource ID": "ID de recurso"
+  "Resource ID": "ID de recurso",
+  "Hide from the command center. The setup stays on the CTEM loop fleet page.": "Ocultar del centro de mando. La configuración sigue en la página de la flota del bucle CTEM.",
+  "Hide the CTEM loop setup from the command center": "Ocultar la configuración del bucle CTEM del centro de mando"
 }
