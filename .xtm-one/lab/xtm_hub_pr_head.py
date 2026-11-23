@@ -16,7 +16,9 @@ as code (an XTM Hub UI round ended BLOCKED for want of a lab before this one):
 4. The backend (``apps/backend``, tsx) migrates PostgreSQL and Elasticsearch, runs the development seeds (labels,
    documents, the demo organizations Winterfell and Casterly Rock) and creates the platform administrator
    ``lab@filigran.io`` (``ADMIN_*``). The lab then signs it in through the ``login`` mutation and seeds personal API
-   tokens in every state (active, last used, expired, revoked) when the API serves them.
+   tokens in every state (active, last used, expired, revoked) when the API serves them, and registers three
+   platforms (OpenCTI EE, OpenAEV CE, XTM One EE) for its organization so the home page's registered-platform
+   cards render filled (logged, and read back with ``registeredPlatforms``).
 5. The front (``apps/frontend``) runs ``relay-compiler`` once, then ``next dev --turbopack``, the bundler XTM Hub's
    own ``dev`` script uses (webpack refuses the ``export *`` of the design system's client components).
    ``next/font/google`` cannot reach Google Fonts from a lab: ``NEXT_FONT_GOOGLE_MOCKED_RESPONSES`` (the Next.js hook
@@ -116,6 +118,14 @@ TOKENS = (
     ("Nightly export", "admin", 365, ""),
     ("Old laptop", "read", 7, "revoked"),
     ("Partner sync", "read", 7, "expired"),
+)
+#: Platforms registered for the administrator's organization, so the home page renders its registered-platform cards
+#: filled: (identifier, platform id, title, contract, version). Fixed ids: a restart refreshes them, never doubles them.
+#: The OpenAEV version is under 2.4.0, the first one XTM Hub registers per tenant (required-platform-version.ts).
+PLATFORMS = (
+    ("opencti", "5ab0c0de-0000-4000-8000-000000000001", "Lab OpenCTI", "EE", "6.9.0"),
+    ("openaev", "5ab0c0de-0000-4000-8000-000000000002", "Lab OpenAEV", "CE", "2.3.0"),
+    ("xtmone", "5ab0c0de-0000-4000-8000-000000000003", "Lab XTM One", "EE", "1.0.0"),
 )
 READY: dict[str, bool] = {}
 
@@ -504,6 +514,43 @@ def seed_tokens() -> list[str]:
     return seeded
 
 
+REGISTER = (
+    "mutation LabRegister($input: RegisterPlatformInput!) { registerPlatform(input: $input) { token } }"
+)
+
+
+def seed_platforms() -> list[str]:
+    """The registered platforms of the administrator's personal space, through the registerPlatform mutation.
+
+    The mutation mails the organization's administrators after it commits: a refused mail (no SMTP in the lab) answers
+    an error over a registration that exists, so the lab reads registeredPlatforms back instead of trusting the answer.
+    """
+    cookie = cookie_pairs(sign_in(LAB_ADMIN_EMAIL, LAB_ADMIN_PASSWORD))
+    body, _ = graphql("query { me { organizations { id name personal_space } } }", cookie=cookie)
+    # The personal space first: the administrator holds ManagePlatformRegistration there whatever the demo seeds say.
+    organizations = sorted(((body.get("data") or {}).get("me") or {}).get("organizations") or [],
+                           key=lambda org: not org["personal_space"])
+    if not organizations:
+        lab.log("xtm-hub: no platform registered (the administrator belongs to no organization)")
+        return []
+    organization = organizations[0]
+    for identifier, platform_id, title, contract, version in PLATFORMS:
+        answer, _ = graphql(REGISTER, {"input": {
+            "organizationId": organization["id"],
+            "identifier": identifier,
+            "platform": {"id": platform_id, "url": f"http://{identifier}.lab.invalid", "title": title,
+                         "contract": contract, "version": version},
+        }}, cookie=cookie)
+        if answer.get("errors"):
+            lab.log(f"xtm-hub: registration of {title} answered {json.dumps(answer['errors'])[:200]}")
+    listed, _ = graphql("query { registeredPlatforms(input: {onlyActive: true}) { title contract } }", cookie=cookie)
+    if listed.get("errors"):
+        lab.log(f"xtm-hub: registered platforms unreadable ({json.dumps(listed['errors'])[:200]})")
+        return []
+    return [f"{row['title']} ({row['contract']}, {organization['name']})"
+            for row in listed["data"]["registeredPlatforms"]]
+
+
 # endregion
 
 
@@ -670,6 +717,8 @@ def main() -> None:
     seed_empty_user()
     seeded = seed_tokens()
     lab.log(f"seeded API tokens for {LAB_ADMIN_EMAIL}: {', '.join(seeded) or 'none'}")
+    platforms = seed_platforms()
+    lab.log(f"seeded registered platforms for {LAB_ADMIN_EMAIL}: {', '.join(platforms) or 'none'}")
     lab.spawn("xtm-hub-next", [str(node), str(yarn), "next", "dev", "--turbopack", "-p", str(NEXT_PORT), "-H",
                                "127.0.0.1"], cwd=frontend, env={**env, **front_env(mock)})
     lab.wait_http(f"http://127.0.0.1:{NEXT_PORT}/", 900, "xtm-hub-next")

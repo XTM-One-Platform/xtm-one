@@ -26,6 +26,36 @@ vi.mock("@/hooks/api/useAssignmentApi", () => ({
   useDismissRun: () => ({ mutate: api.mutate, isError: false }),
 }));
 
+// The decisions read (#1493): off by default here, so the runs-feed suite below reads the fallback.
+const decisions = vi.hoisted(() => ({
+  data: { enabled: false, reason: "off", items: [] as unknown[] } as { enabled: boolean; reason: string | null; items: unknown[] },
+  calls: [] as unknown[][],
+  answer: vi.fn(async () => undefined),
+}));
+vi.mock("@/hooks/api/useDecisionApi", () => ({
+  useWaitingDecisions: (...args: unknown[]) => {
+    decisions.calls.push(args);
+    return { data: decisions.data, isLoading: false, isError: false, refetch: vi.fn() };
+  },
+  useAnswerDecision: () => ({ mutateAsync: decisions.answer, isPending: false }),
+}));
+
+const decision = (id: string, extra: Record<string, unknown>) => ({
+  id,
+  source_type: "work_item",
+  source_id: id,
+  kind: "work_item",
+  question: `Question ${id}?`,
+  ask: { question: `Question ${id}?`, options: [{ key: "A", label: "Go" }, { key: "B", label: "Stop" }] },
+  origin: `Item ${id}`,
+  agent: "Loop Orchestrator",
+  asked_at: "2026-11-23T10:00:00Z",
+  deadline: null,
+  link: `/tasks/work-items/${id}`,
+  can_answer: true,
+  ...extra,
+});
+
 const run = (id: string, extra: Partial<AssignmentRunDetail>): AssignmentRunDetail =>
   ({
     id,
@@ -56,6 +86,9 @@ beforeEach(() => {
   api.runs = [];
   api.calls = [];
   api.mutate.mockClear();
+  decisions.data = { enabled: false, reason: "off", items: [] };
+  decisions.calls = [];
+  decisions.answer.mockClear();
 });
 afterEach(cleanup);
 
@@ -76,6 +109,56 @@ describe("pending approvals helpers", () => {
     const labels = pendingActionLabels(actions, (id) => id);
     expect(labels).toEqual(["Sending email", "Jira create ticket"]);
     expect(labels.join(" ")).not.toMatch(/_/);
+  });
+});
+
+describe("FleetPendingApprovals with the decisions read on (#1493)", () => {
+  it("reads the fleet's decisions and lists runs and work items, one row each, counted in the summary", () => {
+    decisions.data = {
+      enabled: true,
+      reason: null,
+      items: [
+        decision("run:1", { source_type: "run", kind: "tool_approval", question: "1 action: Manage coverage", origin: "Gate answered" }),
+        decision("run:2", { source_type: "run", kind: "hitl", question: "Which feed?", origin: "Daily triage" }),
+        decision("work_item:3", {}),
+        decision("work_item:4", {}),
+        decision("work_item:5", {}),
+      ],
+    };
+    renderWithProviders(<MemoryRouter><FleetPendingApprovals fleetId="f1" /></MemoryRouter>);
+    expect(decisions.calls[0]).toEqual([true, "f1"]);
+    expect(api.calls).toHaveLength(0);
+    expect(screen.getAllByTestId("fleet-pending-row")).toHaveLength(5);
+    expect(screen.getByTestId("fleet-pending-summary").textContent).toContain("5 decisions wait for a person");
+    expect(screen.getByText("Work item: Item work_item:3")).toBeTruthy();
+  });
+
+  it("unfolds the shared decision card in place, with a link to the source", () => {
+    decisions.data = { enabled: true, reason: null, items: [decision("work_item:3", {})] };
+    renderWithProviders(<MemoryRouter><FleetPendingApprovals fleetId="f1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("fleet-pending-toggle"));
+    const panel = screen.getByTestId("fleet-pending-decision");
+    expect(panel).toBeTruthy();
+    expect(screen.getByTestId("fleet-pending-open-source").getAttribute("href")).toBe("/tasks/work-items/work_item:3");
+  });
+
+  it("marks a decision addressed to someone else read only, never hidden", () => {
+    decisions.data = { enabled: true, reason: null, items: [decision("work_item:9", { can_answer: false })] };
+    renderWithProviders(<MemoryRouter><FleetPendingApprovals fleetId="f1" /></MemoryRouter>);
+    expect(screen.getAllByTestId("fleet-pending-row")).toHaveLength(1);
+    expect(screen.getByTestId("fleet-pending-read-only").textContent).toBe("Read only");
+    fireEvent.click(screen.getByTestId("fleet-pending-toggle"));
+    expect(screen.getByText("Read only: this decision is addressed to someone else.")).toBeTruthy();
+    // A card shown read only never says "your decision" (UX r1 B2 of #1497).
+    expect(screen.queryByText("Waiting for your decision")).toBeNull();
+    expect(screen.getByText("Waiting for a decision")).toBeTruthy();
+  });
+
+  it("names the source with the inbox cell, never a native title (UX r1 B1 of #1497)", () => {
+    decisions.data = { enabled: true, reason: null, items: [decision("work_item:3", {})] };
+    renderWithProviders(<MemoryRouter><FleetPendingApprovals fleetId="f1" /></MemoryRouter>);
+    const source = screen.getByText("Work item: Item work_item:3");
+    expect(source.closest("[title]")).toBeNull();
   });
 });
 
