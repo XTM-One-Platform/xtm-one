@@ -21215,5 +21215,7 @@
   "About the inventory sources": "インベントリのソースについて",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。",
   "About the knowledge and sources": "ナレッジとソースについて",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そしてクラウンジュエルと PIR を供給するソース。"
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そしてクラウンジュエルと PIR を供給するソース。",
+  "This entry no longer exists. The list is refreshed.": "このエントリは存在しません。一覧を更新します。",
+  "This entry could not be loaded.": "このエントリを読み込めませんでした。"
 }
