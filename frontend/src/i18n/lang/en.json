@@ -20076,7 +20076,6 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.",
   "Opened by": "Opened by",
   "The signals of this case could not be read.": "The signals of this case could not be read.",
-  "No signal opened this case: it groups open issues read from the products.": "No signal opened this case: it groups open issues read from the products.",
   "See the loop trace": "See the loop trace",
   "A signal joined the case": "A signal joined the case",
   "Recorded a validation": "Recorded a validation",
@@ -20711,8 +20710,6 @@
   "Not computed yet": "Not computed yet",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}",
   "Open the {product} integration": "Open the {product} integration",
-  "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
-  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets",
   "Add a sync": "Add a sync",
   "Start with your sources": "Start with your sources",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.",
@@ -21219,5 +21216,8 @@
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}",
   "oldest asked {age}": "oldest asked {age}",
   "Read only: this decision is addressed to someone else.": "Read only: this decision is addressed to someone else.",
-  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota."
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.",
+  "A source read before signals (legacy)": "A source read before signals (legacy)",
+  "A signal you cannot see": "A signal you cannot see",
+  "Split into its own case by a person or an agent": "Split into its own case by a person or an agent"
 }

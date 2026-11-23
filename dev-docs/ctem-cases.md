@@ -299,6 +299,23 @@ assets. Nothing on the page asks the user to type a version in the tech stack.
   the list header shows "Updated 4 min ago" (exact time on hover) and, after an
   outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
   a link to the integrations.
+- A recompute never builds a case (#1529). The two ways into a case are a signal
+  the scope gate kept (`ctem_case_loop.open_from_signal`) and a split by a
+  person or an agent (`create_manual_case`, `create_ctem_case`);
+  `tests/test_ctem_case_creation_paths.py` holds it. Each source issue whose fix
+  no case holds is recorded as one signal (`services/ctem_source_signals.py`,
+  intake `listener`, recorder `system`), idempotent on source, external id and
+  fix key: an OpenCTI vulnerability on inventory software is `new_vulnerability`,
+  an OpenAEV CVE finding on an asset is `proven_exploitable`. The signal carries
+  the fix in `evidence.case_fix`, so `open_from_signal` opens or joins the case
+  of that remediation key (one fix, one case, as before). The issue is a member
+  of that case and so is its signal. An issue joining an existing case records
+  its signal too, joined to the case (`join_case`). A signal the gate keeps out
+  (watchlist, to validate, discarded) stays a signal on the Signals page and
+  opens no case. The recompute keeps member upkeep only: add, resolve and reopen
+  members, the inventory-fixed and not-affected rules. A source signal is as
+  visible as its issue (`ctem_cases_view.source_signal_members`). A merge moves
+  the merged case's signals to the survivor.
 - `POST /api/v1/ctem-cases/recompute` stays as an INTERNAL route for agents and
   administrators (no screen calls it): any user, one per minute per user
   (`services/ctem_cases_source.py`). Every path reads OpenCTI and OpenAEV with the
@@ -713,10 +730,14 @@ the Settings form carries it whole.
   exploitation reading and the treatment plan, OpenCTI for the analyst
   review, OpenAEV for validation) with its logo and connection state, and a
   "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
-  the source readers from the sources of its visible issues ("Opened from
-  OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
-  findings on your assets").
+  No section repeats who works the case. A case is opened only by a signal
+  or split into its own case by a person or an agent (#1529): "Opened by"
+  lists the signals, and on a case with none says "Split into its own case
+  by a person or an agent" (a `created` event to `manual`) or, for a case a
+  source read built before the readers recorded signals, "Opened by a source
+  read before signals (legacy)". Legacy cases are labelled, not backfilled:
+  their members carry no reference that maps one signal per case for every
+  viewer.
 - Assets and crown jewels (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or

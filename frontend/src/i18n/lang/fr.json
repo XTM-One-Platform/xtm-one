@@ -20076,7 +20076,6 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "Se déclenche quand le chemin d’attaque d’une simulation terminée a atteint un actif de criticité élevée ou très élevée dans OpenAEV.",
   "Opened by": "Ouvert par",
   "The signals of this case could not be read.": "Les signaux de ce dossier n'ont pas pu être lus.",
-  "No signal opened this case: it groups open issues read from the products.": "Aucun signal n'a ouvert ce dossier : il regroupe des problèmes ouverts lus dans les produits.",
   "See the loop trace": "Voir la trace de la boucle",
   "A signal joined the case": "Un signal a rejoint le dossier",
   "Recorded a validation": "A enregistré une validation",
@@ -20711,8 +20710,6 @@
   "Not computed yet": "Pas encore calculé",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} n'a pas répondu à {time}, cas inchangés.} other {{products} n'ont pas répondu à {time}, cas inchangés.}}",
   "Open the {product} integration": "Ouvrir l'intégration {product}",
-  "Opened from OpenCTI vulnerabilities matched to your inventory": "Ouvert à partir des vulnérabilités OpenCTI rapprochées de votre inventaire",
-  "Opened from OpenAEV findings on your assets": "Ouvert à partir des constats OpenAEV sur vos actifs",
   "Add a sync": "Ajouter une synchronisation",
   "Start with your sources": "Commencez par vos sources",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Choisissez une plateforme, les sections qu'elle remplit, prévisualisez les lignes, puis gardez-les synchronisées.",
@@ -21219,5 +21216,8 @@
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# décision attend une personne} other {# décisions attendent une personne}}",
   "oldest asked {age}": "la plus ancienne demandée {age}",
   "Read only: this decision is addressed to someone else.": "Lecture seule : cette décision est adressée à quelqu'un d'autre.",
-  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Décisions des membres de cette flotte en attente d'une personne : exécutions en pause et éléments de travail. Ouvrir cet onglet ne lance aucune exécution et ne consomme aucun quota."
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Décisions des membres de cette flotte en attente d'une personne : exécutions en pause et éléments de travail. Ouvrir cet onglet ne lance aucune exécution et ne consomme aucun quota.",
+  "A source read before signals (legacy)": "Une lecture de source antérieure aux signaux (hérité)",
+  "A signal you cannot see": "Un signal que vous ne pouvez pas voir",
+  "Split into its own case by a person or an agent": "Séparé dans son propre dossier par une personne ou un agent"
 }
