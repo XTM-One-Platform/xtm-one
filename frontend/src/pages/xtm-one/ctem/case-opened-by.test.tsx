@@ -13,17 +13,23 @@ vi.mock("@/hooks/api/useCtemSignalsApi", async (importOriginal) => ({
 
 const { CaseOpenedBy } = await import("./CaseOpenedBy");
 
-const created = (to: string | null) => ({ at: null, actor: "system", kind: "created", issue: null, from: null, to, reason: null, evidence: null });
+const created = (to: string | null, reason: string | null = null) => ({ at: null, actor: "system", kind: "created", issue: null, from: null, to, reason, evidence: null });
 
 describe("CaseOpenedBy", () => {
   it("labels a case a source read built before signals as legacy", () => {
     renderWithProviders(<CaseOpenedBy caseId="c1" history={[created("upgrade:fortios")]} />);
-    expect(screen.getByText("Opened by a source read before signals (legacy)")).toBeInTheDocument();
+    expect(screen.getByText("A source read before signals (legacy)")).toBeInTheDocument();
     expect(screen.queryByText(/matched to your inventory/)).toBeNull();
   });
 
   it("names the split of a case a person or an agent made", () => {
     renderWithProviders(<CaseOpenedBy caseId="c1" history={[created("manual")]} />);
     expect(screen.getByText("Split into its own case by a person or an agent")).toBeInTheDocument();
+  });
+
+  it("says a signal opened the case when the reader cannot see that signal, never legacy", () => {
+    renderWithProviders(<CaseOpenedBy caseId="c1" history={[created("upgrade:fortios", "signal 057f8fb5")]} />);
+    expect(screen.getByText("A signal you cannot see")).toBeInTheDocument();
+    expect(screen.queryByText(/legacy/)).toBeNull();
   });
 });

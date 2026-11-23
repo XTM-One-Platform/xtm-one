@@ -21213,6 +21213,7 @@
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
   "About the knowledge and sources": "About the knowledge and sources",
   "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.",
-  "Opened by a source read before signals (legacy)": "Opened by a source read before signals (legacy)",
+  "A source read before signals (legacy)": "A source read before signals (legacy)",
+  "A signal you cannot see": "A signal you cannot see",
   "Split into its own case by a person or an agent": "Split into its own case by a person or an agent"
 }

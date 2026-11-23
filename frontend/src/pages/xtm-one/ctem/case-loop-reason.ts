@@ -48,19 +48,31 @@ export function ownerFleetId(slug: string, fleets: readonly LoopFleet[] | undefi
 interface OriginEvent {
   kind: string;
   to: string | null;
+  reason?: string | null;
+}
+
+/** A history event that says a signal opened or joined the case. */
+function namesASignal(e: OriginEvent): boolean {
+  return e.kind === "signal" || (e.kind === "created" && (e.reason ?? "").startsWith("signal "));
 }
 
 /**
- * How a case no signal opened came to be (#1529): a case is opened only by a
- * signal or split into its own case by a person or an agent; a case with
- * neither was built by a source read before the readers recorded signals.
+ * How a case whose signals the reader does not see came to be (#1529): a case
+ * is opened only by a signal or split into its own case by a person or an
+ * agent. A history that names a signal the reader cannot read is
+ * `restricted`; a case with neither a signal nor a split was built by a source
+ * read before the readers recorded signals (`legacy`).
  */
-export function noSignalOrigin(history: readonly OriginEvent[] | undefined): "split" | "legacy" {
-  return (history ?? []).some((e) => e.kind === "created" && e.to === "manual") ? "split" : "legacy";
+export function noSignalOrigin(history: readonly OriginEvent[] | undefined): "split" | "restricted" | "legacy" {
+  const events = history ?? [];
+  if (events.some((e) => e.kind === "created" && e.to === "manual")) return "split";
+  if (events.some(namesASignal)) return "restricted";
+  return "legacy";
 }
 
 /** The sentence of each origin. @i18n-keys */
 export const NO_SIGNAL_ORIGIN_LABEL = {
   split: "Split into its own case by a person or an agent",
-  legacy: "Opened by a source read before signals (legacy)",
+  restricted: "A signal you cannot see",
+  legacy: "A source read before signals (legacy)",
 } as const;

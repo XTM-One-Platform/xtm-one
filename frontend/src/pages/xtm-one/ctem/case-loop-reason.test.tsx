@@ -142,6 +142,11 @@ describe("caseSources and noSignalOrigin", () => {
     expect(noSignalOrigin([{ kind: "created", to: "upgrade:fortios" }])).toBe("legacy");
     expect(noSignalOrigin(undefined)).toBe("legacy");
   });
+
+  it("reads a case a signal opened, whose signal the reader cannot see, as restricted", () => {
+    expect(noSignalOrigin([{ kind: "created", to: "upgrade:fortios", reason: "signal 057f8fb5" }])).toBe("restricted");
+    expect(noSignalOrigin([{ kind: "created", to: "upgrade:fortios", reason: null }, { kind: "signal", to: null }])).toBe("restricted");
+  });
 });
 
 describe("CaseSectionReason", () => {
