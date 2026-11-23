@@ -2845,7 +2845,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "case_id). Read the case with get_ctem_case and re-run the validation its "
             "validations list names (launching it needs the approval the work item "
             "carries). Write the result on the case with record_ctem_case_validation "
-            "(kind retest): passed resolves the case, failed reopens it. Record the "
+            "(kind retest, inject_class as assess_ctem_validation_inject answered): a negative "
+            "validation is inconclusive unless it proves the fixed version (conclusive true), so "
+            "the case stays open; failed reopens it. Record the "
             "OpenCRQ expected-loss delta in a case note."
         ),
     },
@@ -2942,7 +2944,9 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "and to the case naming the breach and the next step, and raise its priority. "
             "On ctem_case.validation_finished: an OpenAEV result the case waits on arrived "
             "(the openaev block names the simulation or finding); read it in OpenAEV, write it "
-            "on the case with record_ctem_case_validation (passed, not_exposed or failed) and "
+            "on the case with record_ctem_case_validation (passed, not_exposed or failed, with the "
+            "inject_class assess_ctem_validation_inject answered; a negative exploit attempt is "
+            "inconclusive unless it proves the fixed version) and "
             "move the case's work item to its next step. "
             "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
             "item and run the case's re-test; write it with record_ctem_case_validation (kind "
@@ -3182,8 +3186,9 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "followed by the case_id). Propose the re-run of its validated scenario as a "
             "needs_human work item with an ask card (approve or reject, your "
             "recommendation), read the result once it ran, write it on the case with "
-            "record_ctem_case_validation (kind retest): passed resolves the case, failed "
-            "reopens it. Ask the Risk Quantifier for the loss after and note the delta on "
+            "record_ctem_case_validation (kind retest, inject_class as assess_ctem_validation_inject "
+            "answered): a negative validation is inconclusive unless it proves the fixed version, "
+            "failed reopens it. Ask the Risk Quantifier for the loss after and note the delta on "
             "the case; bump the counters in ctem:f1:state."
         ),
     },
