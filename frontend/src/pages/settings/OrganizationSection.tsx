@@ -19,7 +19,7 @@ import { DetailTabs } from "@/components/ui/detail-tabs";
 import { cn } from "@/lib/utils";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, RotateCcw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
@@ -2115,7 +2115,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                       disabled={editing || cardOpen !== null}
                       onClick={() => setRestoreOpen(true)}
                     >
-                      <RotateCcw className="h-3.5 w-3.5" /> {t_i18n("Restore from a past version")}
+                      <Icon name="rotate-ccw" size={16} aria-hidden /> {t_i18n("Restore from a past version")}
                     </Button>
                   </Tip>
                 )}
@@ -2168,7 +2168,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     <p>
                       {t_i18n("{count, plural, =0 {No OpenCRQ supporting asset is rated {threshold} or above: no asset read.} one {No OpenCRQ supporting asset is rated {threshold} or above: # asset read.} other {No OpenCRQ supporting asset is rated {threshold} or above: # assets read.}}", {
                         count: plan.plan.assets_read ?? 0,
-                        threshold: criticalityLabel(plan.plan.min_criticality ?? "high"),
+                        threshold: t_i18n(MIN_CRITICALITY_LABELS[plan.plan.min_criticality ?? "high"]),
                       })}
                     </p>
                     {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}

@@ -9,8 +9,7 @@
  * they are, and a version saved meanwhile refuses the restore (409).
  */
 import { useState } from "react";
-import { Spinner } from "@filigran/design-system";
-import { RotateCcw } from "lucide-react";
+import { Icon, Spinner } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,7 @@ import {
   useRestoreOrganizationContextVersion,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /** The profile's criticality words. @i18n-keys */
 const CRITICALITY = { low: "Low", medium: "Medium", high: "High", critical: "Critical" } as const;
@@ -56,7 +55,7 @@ export function OrganizationCrownJewelsRestoreDialog({
   /** The version on screen: the restore starts from it, so one saved meanwhile is refused. */
   currentVersion: number | null;
 }) {
-  const { t_i18n, locale } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const versions = useOrganizationContextVersions(open);
   const restore = useRestoreOrganizationContextVersion();
@@ -115,9 +114,9 @@ export function OrganizationCrownJewelsRestoreDialog({
                   )}
                 >
                   <span className="content-compact font-medium text-default-primary">{t_i18n("Version {version}", { version: row.version })}</span>
-                  <span className="content-caption text-default-secondary">
+                  <span className="content-compact text-default-secondary">
                     {t_i18n("{count, plural, =0 {No crown jewel} one {# crown jewel} other {# crown jewels}}", { count: row.crown_jewels ?? 0 })}
-                    {row.created_at ? ` · ${timeAgo(row.created_at, locale)}` : ""}
+                    {row.created_at ? ` · ${intl.formatDate(new Date(row.created_at), { dateStyle: "medium", timeStyle: "short" })}` : ""}
                   </span>
                 </button>
               </li>
@@ -137,7 +136,8 @@ export function OrganizationCrownJewelsRestoreDialog({
             aria-busy={restore.isPending || undefined}
             onClick={() => selected !== null && restoreSelected(selected)}
           >
-            {restore.isPending ? <Spinner size="sm" tone="inherit" /> : <RotateCcw className="h-4 w-4" />}
+            {restore.isPending && <Spinner size="sm" tone="inherit" />}
+            {!restore.isPending && <Icon name="rotate-ccw" size={16} aria-hidden />}
             {selected !== null ? t_i18n("Restore version {version}", { version: selected }) : t_i18n("Restore")}
           </Button>
         </DialogFooter>

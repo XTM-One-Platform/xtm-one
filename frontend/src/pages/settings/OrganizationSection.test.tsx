@@ -1090,8 +1090,9 @@ describe("OrganizationSection", () => {
   });
 
   it("says no OpenCRQ asset reaches the threshold, with the counts, instead of already agree (#1558)", async () => {
+    const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
-      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [] } } : path.startsWith("/organization-context/syncs") ? [] : null,
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [] } } : base(path),
     );
     post.mockImplementation(async (_path: string, body: unknown) => {
       const level = (body as { min_criticality?: string }).min_criticality ?? "high";
@@ -1119,9 +1120,15 @@ describe("OrganizationSection", () => {
     expect(none.textContent).toContain("1,750 unrated, 1 medium");
     expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
     expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
+    // Picking medium re-runs the check at that threshold, and the plan proposes the medium asset.
+    fireEvent.click(screen.getByTestId("settings.organization.opencrq-threshold"));
+    fireEvent.click(await screen.findByRole("option", { name: "Medium or above" }));
+    await waitFor(() => expect(post).toHaveBeenLastCalledWith("/organization-context/opencrq-sync", { apply: false, min_criticality: "medium" }));
+    expect(await screen.findByText("Add CRM from OpenCRQ as a crown jewel")).toBeTruthy();
   });
 
   it("restores the crown jewels of a past version alone, from the version it starts from (#1558)", async () => {
+    const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
       if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
       if (path.startsWith("/organization-context/versions?"))
@@ -1141,8 +1148,7 @@ describe("OrganizationSection", () => {
             ],
           },
         };
-      if (path.startsWith("/organization-context/syncs")) return [];
-      return null;
+      return base(path);
     });
     post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
     renderPage("business");
