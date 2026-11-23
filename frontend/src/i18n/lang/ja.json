@@ -20991,8 +20991,6 @@
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "承認された修復が OpenCRQ に書き込む対応計画 (コストと見込まれる損失削減を含む)。",
   "Work CTEM cases": "CTEM ケースを処理",
   "No asset group yet. Add a source to the inventory to fill it.": "アセットグループはまだありません。インベントリにソースを追加すると表示されます。",
-  "Open the inventory": "インベントリを開く",
-  "The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.": "技術スタック、AI システム、資産、資産グループ、エクスポージャーは CTEM > インベントリに移動しました。",
   "Opens CTEM > Inventory": "CTEM > インベントリを開きます",
   "Cloud resource ID": "クラウドリソースID",
   "Device ID": "デバイスID",

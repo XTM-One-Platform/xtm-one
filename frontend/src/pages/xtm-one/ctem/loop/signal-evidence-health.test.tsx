@@ -52,7 +52,7 @@ const expired: CtemSignal = {
 function renderTrace(signal: CtemSignal) {
   get.mockResolvedValue(signal);
   renderWithProviders(
-    <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+    <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
       <SignalTraceBody id={ID} />
     </MemoryRouter>,
   );
