@@ -189,6 +189,31 @@ async def test_a_missing_token_pauses_the_sync_with_its_reason(monkeypatch, stub
 
 
 @pytest.mark.asyncio
+async def test_a_run_that_only_drops_superseded_rows_saves_the_profile(monkeypatch, stubs):
+    # #1591 review: an older build's supporting-asset crown jewel is dropped even when OpenCRQ
+    # has no primary asset yet; the run saves that cleanup and reports it as removed.
+    async def current(_db):
+        jewel = {"name": "Mail server", "source": "opencrq", "external_id": "s1"}
+        return SimpleNamespace(profile={"crown_jewels": [jewel]}, version=7)
+
+    async def read(_db, _user, _filters):
+        return imp.ReadResult(rows=[], total=0, superseded={"s1"})
+
+    async def no_links(*_a, **_k):
+        return {}
+
+    from app.services import organization_context_opencrq_links as opencrq_links
+
+    monkeypatch.setattr(oc, "current_version", current)
+    monkeypatch.setattr(imp, "_read_opencrq", read)
+    monkeypatch.setattr(opencrq_links, "sync_links_for", no_links)
+    sync = _sync(section="crown_jewels", source="opencrq", filters={})
+    result = await osync.run_sync(_Db(_admin()), sync, trigger="schedule")
+    assert (result["added"], result["updated"], result["removed"], result["version"]) == (0, 0, 1, 8)
+    assert len(stubs["saved"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_an_owner_no_longer_admin_pauses_without_reading(monkeypatch, stubs):
     async def never(*_a, **_k):
         raise AssertionError("read without an administrator")
