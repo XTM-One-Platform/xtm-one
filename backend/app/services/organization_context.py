@@ -616,17 +616,22 @@ class AttackSurfacePass(BaseModel):
 
 
 class EvidenceHealthPass(BaseModel):
-    """The opt-in evidence health pass of CTEM-28 (``dev-docs/ctem-evidence-health.md``).
+    """The evidence health pass of CTEM-28 (``dev-docs/ctem-evidence-health.md``).
 
-    Off by default. When on, a scheduled pass reads from ``integration`` (an
-    OpenCRQ integration) the evidence health of the supporting assets of every
-    risk scenario and records evidence decay (path 9) and blind spots (path 12)
-    as signals. A gap never reads as safe.
+    A scheduled pass reads from ``integration`` (an OpenCRQ integration) the
+    evidence health of the supporting assets of every risk scenario and records
+    evidence decay (path 9) and blind spots (path 12) as signals. A gap never
+    reads as safe.
+
+    ``enabled`` unset (``None``) means no administrator chose: the pass runs on
+    the declared integration, else on the single connected OpenCRQ integration
+    (#1344, ``ctem_evidence_health.resolve_pass``). ``False`` keeps it off,
+    except the legacy stored default (``False`` with no integration), read as unset.
     """
 
     model_config = _Strict
 
-    enabled: bool = False
+    enabled: bool | None = None
     #: The id of the OpenCRQ integration the pass reads with its owner's credential.
     integration: str = Field(default="", max_length=100)
     #: The re-test delay: evidence older than this many days has expired (path 9).
