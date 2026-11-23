@@ -801,13 +801,13 @@ async def seed_builtin_assignments(
     # built-in agents so we don't accumulate orphans across releases. Scoped to
     # agents we seed assignments for; built-in agents are read-only for
     # non-admins, so this won't touch user-authored automations elsewhere.
-    # A fleet orchestrator's weekly health check (#11700) is not a seed row:
+    # A fleet orchestrator's weekly health check (#11700) and its answer listener (#1406) are not seed rows:
     # the fleet service owns it, so it is never removed as stale here.
-    from app.services.fleets import FLEET_HEALTH_CHECK_NAME
+    from app.services.fleets import FLEET_HEALTH_ASSIGNMENT_NAMES
 
     removed = 0
     for slug, names in desired_by_slug.items():
-        names = names | {FLEET_HEALTH_CHECK_NAME}
+        names = names | FLEET_HEALTH_ASSIGNMENT_NAMES
         res = await db.execute(select(Agent).where(Agent.slug == slug))
         agent = res.scalar_one_or_none()
         if not agent:

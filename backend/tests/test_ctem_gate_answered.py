@@ -82,7 +82,10 @@ def test_the_run_claims_before_acting_and_stops_on_a_rejection(slug: str) -> Non
 #: assignment text that must name it.
 _DESKS = {
     opencti_pir_desk.ORCHESTRATOR: (opencti_pir_desk.APPROVAL_PREFIX,),
-    opencrq_risk_budget_desk.ORCHESTRATOR: (opencrq_risk_budget_desk.RECOMMENDATION_PREFIX,),
+    opencrq_risk_budget_desk.ORCHESTRATOR: (
+        opencrq_risk_budget_desk.RECOMMENDATION_PREFIX,
+        opencrq_risk_budget_desk.APPROVAL_PREFIX,
+    ),
     openaev_detection_desk.ORCHESTRATOR: (openaev_detection_desk.LAUNCH_PREFIX,),
 }
 
@@ -102,6 +105,14 @@ def test_every_desk_decision_resumes_its_orchestrator(slug: str) -> None:
     assert "stop there" in prompt and "runs nothing the decision covered" in prompt
     assert a["enabled"] is False and a["admin_opt_in"] is True
     assert any(b["agent_slug"] == slug and b["name"] == a[INHERIT_SWITCH_FROM_KEY] for b in BUILTIN_ASSIGNMENTS)
+
+
+def test_the_risk_desk_persona_keys_its_register_writes() -> None:
+    text = (_PERSONAS / f"{opencrq_risk_budget_desk.ORCHESTRATOR}.md").read_text(encoding="utf-8")
+    assert f"`{opencrq_risk_budget_desk.APPROVAL_PREFIX}`" in text
+    prompt = _gate_assignment(opencrq_risk_budget_desk.ORCHESTRATOR)["prompt"]
+    # An approved register write is made by a person: the run files their follow-up, never the write.
+    assert opencrq_risk_budget_desk.APPROVAL_PREFIX in prompt and "never by you" in prompt
 
 
 def test_the_detection_desk_persona_keys_its_launches() -> None:

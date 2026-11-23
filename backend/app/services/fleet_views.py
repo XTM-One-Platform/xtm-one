@@ -753,9 +753,10 @@ def is_fleet_automation(slug: str | None, agent_builtin: bool, name: str, *, bui
     of the orchestrator (#11700) counts on both.
     """
     from app.agents.builtin_agents import FLEET_OPT_IN_ASSIGNMENTS
-    from app.services.fleets import FLEET_HEALTH_CHECK_NAME
+    from app.services.fleets import FLEET_HEALTH_ASSIGNMENT_NAMES
 
-    if not builtin_fleet or name == FLEET_HEALTH_CHECK_NAME:
+    # The weekly health check (#11700) and its answer listener (#1406) count on both.
+    if not builtin_fleet or name in FLEET_HEALTH_ASSIGNMENT_NAMES:
         return True
     return agent_builtin and (slug, name) in FLEET_OPT_IN_ASSIGNMENTS
 

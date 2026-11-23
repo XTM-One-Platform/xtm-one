@@ -204,7 +204,7 @@ async def test_an_orchestrator_gets_the_tool_and_the_skill_once():
     agent = SimpleNamespace(builtin_tool_ids=["web"], builtin_allowed_tools=None, skill_ids=[])
     assert await grant_fleet_health_advisory(db, agent)
     assert "platform" in agent.builtin_tool_ids
-    assert agent.builtin_allowed_tools["platform"] == ["get_fleet_health"]
+    assert agent.builtin_allowed_tools["platform"] == ["get_fleet_health", "dismiss_fleet_health_findings"]
     assert agent.skill_ids == [str(skill_id)]
     # Idempotent.
     assert not await grant_fleet_health_advisory(db, agent)
@@ -344,6 +344,63 @@ async def test_an_existing_check_keeps_its_switch_and_follows_its_fleet():
     assert not await ensure_fleet_health_check(db, other, agent)
     assert db.rows[0].enabled is True
     assert db.rows[0].activation_check["arguments"] == {"fleet_id": str(other.id)}
+
+
+@pytest.mark.asyncio
+async def test_the_answer_listener_takes_the_health_decisions_with_the_check_switch():
+    """#1406: an owner's answer on a fleet-health item reaches one listener, on with the check."""
+    from app.services.assignment_pause import CREATED_DISABLED_REASON
+    from app.services.fleets import (
+        FLEET_HEALTH_KEY_PREFIX,
+        ensure_fleet_health_answered,
+        ensure_fleet_health_check,
+        fleet_health_check_prompt,
+        is_fleet_health_answered,
+    )
+
+    db, fleet, agent = _AssignmentDb(), _fleet(), _orchestrator()
+    # No seeded check (opted out): nothing files the items, so no listener.
+    assert not await ensure_fleet_health_answered(db, fleet, agent)
+    await ensure_fleet_health_check(db, fleet, agent)
+    (check,) = db.rows
+    assert await ensure_fleet_health_answered(db, fleet, agent, check)
+    listener = db.rows[1]
+    assert is_fleet_health_answered(listener)
+    flt = listener.trigger_config["filter"]
+    assert listener.trigger_config["scope"] == "own"
+    assert (flt["previous_status"], flt["status"]) == ("blocked", "open")
+    assert flt["correlation_key"] == {"starts_with": [FLEET_HEALTH_KEY_PREFIX]}
+    # The check names the key the listener takes; the listener claims first and dismisses once.
+    assert f"{FLEET_HEALTH_KEY_PREFIX}{fleet.id}" in fleet_health_check_prompt(fleet)
+    assert "claim_work_item" in listener.prompt and "dismiss_fleet_health_findings" in listener.prompt
+    # Born off with the check (not set up yet).
+    assert listener.enabled is False and listener.paused_reason == CREATED_DISABLED_REASON
+    # Idempotent.
+    assert not await ensure_fleet_health_answered(db, fleet, agent, check)
+    assert len(db.rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_answer_listener_of_a_running_check_is_born_on_as_its_run_as():
+    from app.services.fleets import ensure_fleet_health_answered, ensure_fleet_health_check
+
+    db, fleet, agent = _AssignmentDb(), _fleet(), _orchestrator()
+    await ensure_fleet_health_check(db, fleet, agent)
+    (check,) = db.rows
+    check.enabled, check.paused_reason, check.run_as_user_id = True, None, uuid.uuid4()
+    assert await ensure_fleet_health_answered(db, fleet, agent, check)
+    listener = db.rows[1]
+    assert listener.enabled is True and listener.run_as_user_id == check.run_as_user_id
+
+
+def test_the_skill_keys_the_owner_decisions_for_the_listener():
+    from app.agents.builtin_agents import BUILTIN_SKILLS
+    from app.agents.seed import _resolve_seed_content
+    from app.services.fleets import FLEET_HEALTH_ANSWERED_NAME, FLEET_HEALTH_KEY_PREFIX
+
+    entry = next(s for s in BUILTIN_SKILLS if s["slug"] == "fleet-health-advisory")
+    content = _resolve_seed_content("skill_content", entry["content"])
+    assert f"`{FLEET_HEALTH_KEY_PREFIX}`" in content and FLEET_HEALTH_ANSWERED_NAME in content
 
 
 @pytest.mark.asyncio

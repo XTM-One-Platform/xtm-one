@@ -168,6 +168,21 @@ def _suggestion(kind: str, agent: Agent, subject: str, finding: str, fix: str) -
     return item
 
 
+#: The platform event a decision listener hears: an answered item going from blocked back to open.
+WORK_ITEM_LISTENER_EVENTS: frozenset[str] = frozenset({"work_item.status_changed"})
+
+
+def takes_work_items(assignment: object) -> bool:
+    """Whether *assignment* takes its agent's work items: a work_item trigger, or a platform_event
+    listener on their status changes (the seeded "Gate answered" listener, #1388)."""
+    trigger = getattr(assignment, "trigger_type", None)
+    if trigger == "work_item":
+        return True
+    return trigger == "platform_event" and bool(
+        _event_names(getattr(assignment, "trigger_config", None)) & WORK_ITEM_LISTENER_EVENTS
+    )
+
+
 def _event_names(config: object) -> set[str]:
     raw = (config or {}).get("event") if isinstance(config, dict) else None
     if isinstance(raw, str):
@@ -203,7 +218,7 @@ async def practice_suggestions(db: AsyncSession, fleet: Fleet) -> list[dict[str,
         .scalars()
         .all()
     )
-    inbox = {a.agent_id for a in assignments if a.trigger_type == "work_item"}
+    inbox = {a.agent_id for a in assignments if takes_work_items(a)}
     counted = (
         await db.execute(
             select(WorkItem.owner_agent_id, func.count())
