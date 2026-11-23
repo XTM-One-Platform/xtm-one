@@ -14,6 +14,9 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(), postForm: vi.fn() },
 }));
 
+const auth = vi.hoisted(() => ({ isAdmin: true }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => auth }));
+
 const get = vi.mocked(api.get);
 const post = vi.mocked(api.post);
 const put = vi.mocked(api.put);
@@ -80,6 +83,7 @@ const rows = async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auth.isAdmin = true;
 });
 
 describe("OrganizationSourcesSyncs (#1276)", () => {
@@ -305,6 +309,64 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(headers.some((text) => text.startsWith("Filters"))).toBe(false);
     expect(screen.getByRole("button", { name: /Columns/ })).toBeTruthy();
     expect(screen.getAllByTestId("organization-sources.row")[0].textContent).not.toContain("dmz");
+  });
+
+  it.each(["inventory", "profile"] as const)("runs every enabled sync of the %s scope with Run all syncs, no Sync all created (#1548)", async (scope) => {
+    serve(
+      [
+        sync({ id: "s-1" }),
+        sync({ id: "s-2", source: "openaev", section: "tech_stack" }),
+        sync({ id: "s-3", source: "openaev", section: "ai_systems", enabled: false }),
+        sync({ id: "s-all", section: "all", source: "", filters: {} }),
+      ],
+      [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2", "s-3"] })],
+    );
+    post.mockImplementation(async (path: string) => sync({ id: path.split("/")[3], last_run_at: "2026-11-23T14:00:00Z" }));
+    render(scope);
+    await rows();
+    expect(get).toHaveBeenCalledWith(`/organization-context/syncs?scope=${scope}`);
+    const header = screen.getByTestId("organization-sources");
+    const runAll = within(header).getByRole("button", { name: /Run all syncs/ });
+    // "Run all syncs" (secondary) before "Add a source" (primary), and no button creates a Sync all.
+    const add = within(header).getByRole("button", { name: /Add a source/ });
+    expect(runAll.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/Add a Sync all schedule|Add Sync all/)).toBeNull();
+    fireEvent.click(runAll);
+    expect(await screen.findByText("2 syncs started")).toBeTruthy();
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post).toHaveBeenNthCalledWith(1, "/organization-context/syncs/s-1/run", {});
+    expect(post).toHaveBeenNthCalledWith(2, "/organization-context/syncs/s-2/run", {});
+    expect(post).not.toHaveBeenCalledWith("/organization-context/syncs", expect.anything());
+    // The list is read again after each run, so the Last run cells follow.
+    await waitFor(() => expect(get.mock.calls.filter(([path]) => path === `/organization-context/syncs?scope=${scope}`).length).toBeGreaterThanOrEqual(3));
+  });
+
+  it("reports the syncs that failed after Run all syncs", async () => {
+    serve([sync({ id: "s-1" }), sync({ id: "s-2", source: "openaev", section: "tech_stack" })], [source(), source({ key: "openaev", display_name: "OpenAEV", sync_ids: ["s-2"] })]);
+    post.mockResolvedValueOnce(sync({ id: "s-1" })).mockRejectedValueOnce(new Error("Timeout"));
+    render("inventory");
+    await rows();
+    fireEvent.click(screen.getByRole("button", { name: /Run all syncs/ }));
+    expect(await screen.findByText("1 sync failed")).toBeTruthy();
+  });
+
+  it("shows no Run all syncs to a reader", async () => {
+    auth.isAdmin = false;
+    serve([sync()], [source()]);
+    render("inventory");
+    await rows();
+    expect(screen.queryByRole("button", { name: /Run all syncs/ })).toBeNull();
+  });
+
+  it("keeps a saved Sync all row listed and editable, its dialog titled Edit the sync (#1548)", async () => {
+    serve([sync({ id: "s-all", section: "all", source: "", filters: {} }), sync()], [source()]);
+    render();
+    const all = await rows();
+    const syncAll = all.find((row) => row.textContent?.includes("Every section sync"));
+    if (!syncAll) throw new Error("Sync all row missing");
+    fireEvent.pointerDown(within(syncAll).getByRole("button", { name: /Actions on/ }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+    expect(await screen.findByRole("heading", { name: "Edit the sync" })).toBeTruthy();
   });
 
   it("shows a centred first-use state with Add a source when nothing feeds the sections", async () => {
