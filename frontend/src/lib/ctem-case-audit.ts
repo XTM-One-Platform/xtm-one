@@ -187,6 +187,33 @@ export function auditChange(e: Pick<CtemCaseEvent, "kind" | "from" | "to">, word
   return from !== null && to !== null ? { from, to } : null;
 }
 
+/** The stored reasons of non-note events the History says, in words (`ctem_case_audit.ANNOUNCED_HEADLINE`). @i18n-keys */
+const REASON_LABELS = {
+  "announced:catch-up": "Announced to the loop by the catch-up pass",
+  "announced:backfill": "Announced to the loop by the backfill",
+  announced: "Announced to the loop",
+  "state:accepted risk expired": "The accepted risk expired",
+} as const;
+const REASON_LABEL: Readonly<Record<string, string>> = REASON_LABELS;
+
+/**
+ * The reason of a non-note event as a catalog key, never the stored value: an `announced`
+ * event without a known reason reads the default sentence, any other unlabelled reason
+ * gives null and the History shows nothing (UX round 3 on #1520, B2). A reason a person
+ * typed (reopen, accept, split) is their own words, not a stored value: see `personReason`.
+ */
+export function reasonLabel(e: Pick<CtemCaseEvent, "kind" | "reason">): string | null {
+  const key = `${e.kind}:${(e.reason ?? "").trim().toLowerCase()}`;
+  if (Object.prototype.hasOwnProperty.call(REASON_LABEL, key)) return REASON_LABEL[key];
+  return e.kind === "announced" ? REASON_LABEL.announced : null;
+}
+
+/** The words a person typed as the reason of their own change, shown as written; null for anything the platform wrote. */
+export function personReason(e: Pick<CtemCaseEvent, "kind" | "reason" | "actor_type">): string | null {
+  if (e.kind === "note" || e.kind === "gate" || e.actor_type !== "person") return null;
+  return (e.reason ?? "").trim() || null;
+}
+
 export interface AuditFilter {
   phase?: AuditPhase | null;
 }

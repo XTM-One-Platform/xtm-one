@@ -43,7 +43,7 @@ import {
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
 import { CASE_RUN_LINE, caseRunLine } from "@/lib/ctem-case-activity";
-import { auditChange, auditRows, type AuditRow } from "@/lib/ctem-case-audit";
+import { auditChange, auditRows, personReason, reasonLabel, type AuditRow } from "@/lib/ctem-case-audit";
 import { CaseAuditTrail } from "./ctem/CaseAuditTrail";
 import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
@@ -347,7 +347,9 @@ export default function CtemCaseDetail() {
       const target = changeWord("state", e.to);
       return target ? `${eventLabel(e)} ${t_i18n(target)}` : eventLabel(e);
     }
-    const detail = e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : (e.headline ?? "");
+    const said = reasonLabel(e);
+    const detail =
+      e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : said ? t_i18n(said) : e.kind === "note" ? (e.headline ?? "") : "";
     return detail ? `${eventLabel(e)}: ${detail}` : eventLabel(e);
   };
   const renderRun = (run: CtemCaseRun) => {
@@ -405,7 +407,12 @@ export default function CtemCaseDetail() {
         {/* A note reads its headline, its body behind "Show more" (#1490); any other reason is short. */}
         {e.kind === "note"
           ? (e.headline ?? e.reason) && <span className="text-default-secondary" data-testid="ctem-audit-headline">{e.headline ?? e.reason}</span>
-          : e.reason && e.kind !== "gate" && <span className="text-default-secondary">{e.reason}</span>}
+          : e.kind !== "gate" &&
+            (reasonLabel(e) || personReason(e)) && (
+              <span className="text-default-secondary" data-testid="ctem-audit-reason">
+                {reasonLabel(e) ? t_i18n(reasonLabel(e) ?? "") : personReason(e)}
+              </span>
+            )}
         {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && (
           <span className="text-default-secondary">{e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}</span>
         )}

@@ -17891,6 +17891,7 @@
   "Case state": "Case state",
   "Case updated": "Case updated",
   "Cases": "Cases",
+  "Announced to the loop": "Announced to the loop",
   "Changed the case": "Changed the case",
   "Changed the due date": "Changed the due date",
   "Changed the owner": "Changed the owner",
@@ -21220,5 +21221,8 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
-  "A repository is not owner/name": "A repository is not owner/name"
+  "A repository is not owner/name": "A repository is not owner/name",
+  "Announced to the loop by the catch-up pass": "Announced to the loop by the catch-up pass",
+  "Announced to the loop by the backfill": "Announced to the loop by the backfill",
+  "The accepted risk expired": "The accepted risk expired"
 }

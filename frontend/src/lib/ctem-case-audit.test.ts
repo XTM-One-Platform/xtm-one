@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import type { CtemCaseEvent, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { auditChange, auditRows, filterRows, groupByPhase, phaseBand, runPhase, type ChangeWords } from "./ctem-case-audit";
+import { auditChange, auditRows, filterRows, groupByPhase, personReason, phaseBand, reasonLabel, runPhase, type ChangeWords } from "./ctem-case-audit";
+import en from "@/i18n/lang/en.json";
+import fr from "@/i18n/lang/fr.json";
+import ja from "@/i18n/lang/ja.json";
 
 const event = (at: string, kind: string, extra: Partial<CtemCaseEvent> = {}): CtemCaseEvent =>
   ({ at, actor: "system", kind, issue: null, from: null, to: null, reason: null, evidence: null, ...extra }) as CtemCaseEvent;
@@ -123,6 +126,35 @@ describe("groupByPhase and filterRows", () => {
     expect(picked.map((r) => r.key)).toEqual(["event-1"]);
     expect(groupByPhase(picked).flatMap((g) => g.rows)).toEqual(picked);
     expect(filterRows(rows, { phase: null })).toHaveLength(3);
+  });
+});
+
+describe("reasonLabel and personReason (UX round 3 on #1520, B2)", () => {
+  it("says a stored reason with a catalog key, never the raw value", () => {
+    expect(reasonLabel(event("t", "announced", { reason: "source read" }))).toBe("Announced to the loop");
+    expect(reasonLabel(event("t", "announced", { reason: "catch-up" }))).toBe("Announced to the loop by the catch-up pass");
+    expect(reasonLabel(event("t", "state", { reason: "accepted risk expired" }))).toBe("The accepted risk expired");
+    for (const key of ["Announced to the loop", "Announced to the loop by the catch-up pass", "Announced to the loop by the backfill", "The accepted risk expired"]) {
+      expect((en as Record<string, string>)[key]).toBe(key);
+    }
+  });
+
+  it("shows nothing for a platform reason without a label", () => {
+    expect(reasonLabel(event("t", "state", { reason: "source read" }))).toBeNull();
+    expect(reasonLabel(event("t", "created", { reason: "manual split" }))).toBeNull();
+    expect(personReason(event("t", "state", { reason: "source read", actor_type: "system" }))).toBeNull();
+  });
+
+  it("keeps the words a person typed for their own change", () => {
+    expect(personReason(event("t", "state", { reason: "Fixed in 7.2.7", actor_type: "person" }))).toBe("Fixed in 7.2.7");
+  });
+});
+
+describe("answer row copy in the past tense (UX round 3 on #1520, B1)", () => {
+  // "Waited for a person" is shared with case-gates.ts on main: its fr/ja fix ships in its own PR on main.
+  it("never reads Waited since as still waiting in fr and ja", () => {
+    expect((fr as Record<string, string>)["Waited since {date}"]).not.toMatch(/^En attente/);
+    expect((ja as Record<string, string>)["Waited since {date}"]).not.toMatch(/待機$/);
   });
 });
 

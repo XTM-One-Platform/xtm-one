@@ -17891,6 +17891,7 @@
   "Case state": "Estado del caso",
   "Case updated": "Caso actualizado",
   "Cases": "Casos",
+  "Announced to the loop": "Anunciado al ciclo",
   "Changed the case": "Modificó el caso",
   "Changed the due date": "Cambió la fecha límite",
   "Changed the owner": "Cambió el responsable",
@@ -21207,7 +21208,7 @@
   "Nothing happened on this case yet": "Aún no ha pasado nada en este caso",
   "Still waiting since {date}": "En espera desde el {date}",
   "Answered by {name} on {date}": "Respondido por {name} el {date}",
-  "Waited since {date}": "En espera desde el {date}",
+  "Waited since {date}": "Esperó desde el {date}",
   "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {ninguna validación en espera} one {# validación en espera} other {# validaciones en espera}}",
   "Package URL": "URL del paquete",
   "Dependencies": "Dependencias",
@@ -21220,5 +21221,8 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Los productos que distribuye su organización, con sus repositorios de código: una vulnerabilidad en uno de ellos se asocia a sus repositorios en CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aún no hay productos distribuidos: una vulnerabilidad en un producto que distribuye queda sin resolver.",
-  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre"
+  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre",
+  "Announced to the loop by the catch-up pass": "Anunciado al ciclo por la pasada de recuperación",
+  "Announced to the loop by the backfill": "Anunciado al ciclo por la carga retroactiva",
+  "The accepted risk expired": "El riesgo aceptado expiró"
 }
