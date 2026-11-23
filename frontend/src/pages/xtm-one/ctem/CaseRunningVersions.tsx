@@ -9,7 +9,10 @@
  * that report it as their logos (an SBOM, a CSV import or a hand entry has no
  * brand: it gets a glyph and its name). With no fixed version the card says so
  * and names what was checked; with no asset running the product it says that
- * too, never a blank card.
+ * too, never a blank card. Per platform (#1572): each row is one version on one
+ * platform (the asset's os_family), with the fixed version of that platform when
+ * the remediation names one; a row whose platform has no known fix says so, and
+ * an asset running several versions is said to be counted in each of its rows.
  */
 import { Icon } from "@filigran/design-system";
 import type { ComponentProps } from "react";
@@ -44,6 +47,9 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseRunningVersion["status"]>, string
 };
 
 const STATUS_RANK: Record<NonNullable<CtemCaseRunningVersion["status"]>, number> = { below_fixed: 0, not_comparable: 1, fixed: 2 };
+
+/** The backend's status_reason when no fixed version applies to the row's platform (ctem_case_versions.FIX_NOT_KNOWN_FOR_PLATFORM). */
+const FIX_NOT_KNOWN_FOR_PLATFORM = "fix not known for this platform";
 
 /** The name a source is read under: a CTEM product, an integration, a glyph source, an agent, else its key. */
 export function versionSourceName(raw: string): string {
@@ -96,6 +102,10 @@ export function CaseRunningVersions({
   const product = productLabel || t_i18n("this product");
   const fixed = versions?.fixed_version ?? fixedVersion;
   const rows = versions?.versions ?? [];
+  const byPlatform = Object.entries(versions?.fixed_versions ?? {});
+  // A per-platform map alone (no generic version) is a known fix too (#1572).
+  const hasFix = Boolean(fixed) || byPlatform.length > 0;
+  const withPlatform = rows.some((r) => r.platform);
 
   const columns: DataTableColumn<CtemCaseRunningVersion>[] = [
     {
@@ -105,6 +115,29 @@ export function CaseRunningVersions({
       sortValue: (r) => r.version,
       csv: (r) => r.version,
     },
+    ...(withPlatform
+      ? [
+          {
+            key: "platform",
+            header: "Platform",
+            cell: (r: CtemCaseRunningVersion) => r.platform ?? t_i18n("Unknown"),
+            sortValue: (r: CtemCaseRunningVersion) => r.platform ?? "",
+            csv: (r: CtemCaseRunningVersion) => r.platform ?? "",
+          } satisfies DataTableColumn<CtemCaseRunningVersion>,
+        ]
+      : []),
+    ...(byPlatform.length > 0
+      ? [
+          {
+            key: "fixed",
+            header: "Fixed version",
+            cell: (r: CtemCaseRunningVersion) => r.fixed_version ?? t_i18n("Unknown"),
+            sortValue: (r: CtemCaseRunningVersion) => r.fixed_version ?? "",
+            csv: (r: CtemCaseRunningVersion) => r.fixed_version ?? "",
+            hideable: true,
+          } satisfies DataTableColumn<CtemCaseRunningVersion>,
+        ]
+      : []),
     {
       key: "assets",
       // Its own key, translated with the word of the card's sentences (actifs, activos, 資産), never the shared "Assets" (UX r1 B2 on #1277).
@@ -115,12 +148,18 @@ export function CaseRunningVersions({
       csv: (r) => r.asset_count,
       firstSort: "desc",
     },
-    ...(fixed
+    ...(hasFix
       ? [
           {
             key: "status",
             header: "Status",
-            cell: (r: CtemCaseRunningVersion) => (r.status ? t_i18n(STATUS_LABEL[r.status]) : null),
+            // A platform with no known fix reads so, never "Cannot be compared" alone (#1572).
+            cell: (r: CtemCaseRunningVersion) =>
+              !r.status
+                ? null
+                : r.status_reason === FIX_NOT_KNOWN_FOR_PLATFORM
+                  ? t_i18n("Fix not known for this platform")
+                  : t_i18n(STATUS_LABEL[r.status]),
             sortValue: (r: CtemCaseRunningVersion) => (r.status ? STATUS_RANK[r.status] : 9),
             csv: (r: CtemCaseRunningVersion) => r.status ?? "",
             hideable: true,
@@ -150,7 +189,7 @@ export function CaseRunningVersions({
       values: (r) => r.sources,
       options: allSources.map((s) => ({ value: s, label: t_i18n(versionSourceName(s)) })),
     },
-    ...(fixed
+    ...(hasFix
       ? [
           {
             key: "status",
@@ -165,6 +204,8 @@ export function CaseRunningVersions({
   // The API lists the first versions only: the toolbar total reads "shown of all" and the rest is
   // said in the toolbar's tip, nothing is drawn under the table (UX r1 B1 on #1277).
   const moreVersions = versions?.more_versions ?? 0;
+  const multiVersion = versions?.assets_multi_version ?? 0;
+  const fixNotKnown = versions?.assets_fix_not_known_for_platform ?? 0;
 
   return (
     <Card data-testid="ctem-case-running-versions">
@@ -186,20 +227,57 @@ export function CaseRunningVersions({
           </p>
         )}
 
-        {fixed && versions ? (
+        {hasFix && versions ? (
           <ul className="space-y-0.5" data-testid="ctem-case-running-versions-against-fixed">
-            <li className="font-medium">
-              {t_i18n("{count, plural, =0 {No asset is below {version}} one {# asset still below {version}} other {# assets still below {version}}}", {
-                count: versions.assets_below_fixed ?? 0,
-                version: fixed,
-              })}
-            </li>
-            <li className="text-default-secondary">
-              {t_i18n("{count, plural, =0 {No asset runs {version} or later yet} one {# asset runs {version} or later} other {# assets run {version} or later}}", {
-                count: versions.assets_on_fixed ?? 0,
-                version: fixed,
-              })}
-            </li>
+            {byPlatform.length > 0 ? (
+              <>
+                <li className="font-medium">
+                  {t_i18n("{count, plural, =0 {No asset is below the fixed version of its platform} one {# asset still below the fixed version of its platform} other {# assets still below the fixed version of their platform}}", {
+                    count: versions.assets_below_fixed ?? 0,
+                  })}
+                </li>
+                <li className="text-default-secondary">
+                  {t_i18n("{count, plural, =0 {No asset runs the fixed version of its platform yet} one {# asset runs the fixed version of its platform or later} other {# assets run the fixed version of their platform or later}}", {
+                    count: versions.assets_on_fixed ?? 0,
+                  })}
+                </li>
+                <li className="text-default-secondary" data-testid="ctem-case-fixed-versions-by-platform">
+                  {t_i18n("Fixed version per platform: {list}", {
+                    list: intl.formatList(
+                      byPlatform.map(([platform, version]) => t_i18n("{label}: {value}", { label: platform, value: version })),
+                      { type: "conjunction" },
+                    ),
+                  })}
+                </li>
+              </>
+            ) : (
+              <>
+                <li className="font-medium">
+                  {t_i18n("{count, plural, =0 {No asset is below {version}} one {# asset still below {version}} other {# assets still below {version}}}", {
+                    count: versions.assets_below_fixed ?? 0,
+                    version: fixed ?? "",
+                  })}
+                </li>
+                <li className="text-default-secondary">
+                  {t_i18n("{count, plural, =0 {No asset runs {version} or later yet} one {# asset runs {version} or later} other {# assets run {version} or later}}", {
+                    count: versions.assets_on_fixed ?? 0,
+                    version: fixed ?? "",
+                  })}
+                </li>
+              </>
+            )}
+            {versions.platform_unverified && fixed ? (
+              <li className="text-default-secondary" data-testid="ctem-case-fix-platform-unverified">
+                {t_i18n("{version} names no platform while the assets run several: an asset not below it is not read as fixed.", { version: fixed })}
+              </li>
+            ) : null}
+            {fixNotKnown > 0 && (
+              <li className="text-default-secondary" data-testid="ctem-case-fix-not-known-for-platform">
+                {t_i18n("{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}", {
+                  count: fixNotKnown,
+                })}
+              </li>
+            )}
             {(versions.assets_not_comparable ?? 0) > 0 && (
               <li className="text-default-secondary">
                 {t_i18n("{count, plural, one {# asset runs a version that cannot be compared} other {# assets run a version that cannot be compared}}", {
@@ -208,19 +286,27 @@ export function CaseRunningVersions({
               </li>
             )}
           </ul>
-        ) : !fixed ? (
+        ) : !hasFix ? (
           <p className="text-default-secondary" data-testid="ctem-case-fixed-version-unknown">
             {t_i18n("Fixed version unknown: OpenCTI has no Software that remediates these issues and no course of action names a version.")}
           </p>
         ) : null}
+
+        {multiVersion > 0 && (
+          <p className="text-default-secondary" data-testid="ctem-case-running-versions-multi">
+            {t_i18n("{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}", {
+              count: multiVersion,
+            })}
+          </p>
+        )}
 
         {rows.length > 0 && (
           <DataTable
             framed={false}
             rows={rows}
             columns={columns}
-            rowKey={(r) => r.version}
-            searchFields={(r) => [r.version, ...r.sources.map((s) => t_i18n(versionSourceName(s)))]}
+            rowKey={(r) => `${r.version}|${r.platform ?? ""}`}
+            searchFields={(r) => [r.version, r.platform ?? "", ...r.sources.map((s) => t_i18n(versionSourceName(s)))]}
             filters={filters}
             defaultSort={{ key: "assets", direction: "desc" }}
             defaultPageSize={10}
