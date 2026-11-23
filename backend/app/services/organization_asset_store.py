@@ -230,6 +230,11 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
                 )
             )
     await db.flush()
+    # Software as an entity (#1495): what the installations install, kept across rebuilds.
+    from app.services import organization_software_store as software_store
+
+    edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
+    await software_store.sync_software(db, org, edges)
     return len(things)
 
 
@@ -439,6 +444,8 @@ def sbom_components(sbom: Any) -> list[dict[str, Any]]:
             "cpe": _cut(comp.cpe, 300),
             "purl": _cut(comp.purl, 500),
             "bundled_in": _cut(sbom.bundled_in(comp), 300),
+            # The components it depends on (#1495), ``product version`` labels.
+            "depends_on": [_cut(label, 300) for label in sbom.depends_on(comp)],
         }
     return list(out.values())
 
@@ -689,7 +696,23 @@ async def ensure_built(db: AsyncSession, organization_id: uuid.UUID | None = Non
     has_rows = bool((version.profile or {}).get("assets_exposure"))
     if (built or 0) != int(version.version) and (has_rows or built is not None):
         await rebuild_from_profile(db, org)
+    elif await _unlinked_installation(db, org):
+        # A store built before software was an entity (#1495): one rebuild links it.
+        await rebuild_from_profile(db, org)
     return org
+
+
+async def _unlinked_installation(db: AsyncSession, organization_id: uuid.UUID) -> bool:
+    """Whether an installation of *organization_id* names no software version yet (one indexed probe)."""
+    found = await db.execute(
+        select(OrganizationAssetSoftware.id)
+        .where(
+            OrganizationAssetSoftware.organization_id == organization_id,
+            OrganizationAssetSoftware.software_version_id.is_(None),
+        )
+        .limit(1)
+    )
+    return found.first() is not None
 
 
 @dataclass
@@ -866,6 +889,8 @@ def _software_dict(row: OrganizationAssetSoftware) -> dict[str, Any]:
         "first_seen": row.first_seen_at.isoformat() if row.first_seen_at else None,
         "last_seen": row.last_seen_at.isoformat() if row.last_seen_at else None,
         "sources": list(row.sources or []),
+        # The software version it installs (#1495): the software page links from here.
+        "software_version_id": str(row.software_version_id) if row.software_version_id else None,
     }
 
 
