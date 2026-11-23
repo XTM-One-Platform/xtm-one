@@ -1502,6 +1502,25 @@ def _artifact_status(*, generating: bool, artifact: Any, not_assessable: list[di
     return None
 
 
+def _artifact_stale(
+    *,
+    artifact: Any,
+    generated_at: datetime | None,
+    not_assessable: list[dict[str, Any]] | None,
+    is_stale: Callable[[datetime | None], bool],
+) -> bool:
+    """Whether the card marks its artifact stale, which makes the page
+    regenerate it on landing.
+
+    Never while the newest run read none of its integrations: a regeneration
+    would read nothing again and leave the older artifact in place, so every
+    landing would start another blind run (#1589).
+    """
+    if not artifact or not_assessable is not None:
+        return False
+    return is_stale(generated_at)
+
+
 async def _latest_vertical_artifact(
     db: AsyncSession, agent_id, user_id, vertical: str
 ) -> tuple[Any | None, dict | None]:
@@ -1627,7 +1646,10 @@ async def ctem_briefing(
         "not_assessable": not_assessable,
         # Past the daily window: the command center regenerates it on landing
         # and marks it stale meanwhile (#12183).
-        "stale": bool(briefing) and _briefing_is_stale(generated_at),
+        # Never while the newest run was unreadable (#1589).
+        "stale": _artifact_stale(
+            artifact=briefing, generated_at=generated_at, not_assessable=not_assessable, is_stale=_briefing_is_stale
+        ),
         "fresh_hours": BRIEFING_FRESH_HOURS,
         "agent_name": agent.name,
         "agent_slug": agent.slug,
@@ -1775,7 +1797,10 @@ async def ctem_stage_assessment(
         "not_assessable": not_assessable,
         # Past the weekly window: the stage page regenerates it on visit and
         # marks it stale meanwhile (#12002).
-        "stale": bool(assessment) and _assessment_is_stale(generated_at),
+        # Never while the newest run was unreadable (#1589).
+        "stale": _artifact_stale(
+            artifact=assessment, generated_at=generated_at, not_assessable=not_assessable, is_stale=_assessment_is_stale
+        ),
         "fresh_days": STAGE_ASSESSMENT_FRESH_DAYS,
         "agent_name": agent.name,
         "agent_slug": agent.slug,

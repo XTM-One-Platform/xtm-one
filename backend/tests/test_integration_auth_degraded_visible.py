@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api.v1.ctem_metrics import _artifact_status, _run_unreadable
+from app.api.v1.ctem_metrics import _artifact_stale, _artifact_status, _run_unreadable
 from app.services.builtin_tools.agent_builder import _run_degraded_lines
 from app.services.integration_auth_guard import (
     FORBIDDEN_FAIL_FAST,
@@ -156,3 +156,18 @@ def test_ctem_read_path_skips_unreadable_runs() -> None:
     assert _artifact_status(generating=False, artifact={"headline": "h"}, not_assessable=failures) == "ready"
     assert _artifact_status(generating=False, artifact=None, not_assessable=failures) == "not_assessable"
     assert _artifact_status(generating=False, artifact=None, not_assessable=None) is None
+
+
+def test_ctem_stale_suppressed_while_newest_run_unreadable() -> None:
+    """An older readable artifact past its window is not marked stale while the
+    newest run read nothing, so landing never starts another blind run."""
+
+    def always_stale(_generated_at: object) -> bool:
+        return True
+
+    failures = [{"integration": "opencti", "status": "401"}]
+    artifact = {"headline": "h"}
+    assert not _artifact_stale(artifact=artifact, generated_at=None, not_assessable=failures, is_stale=always_stale)
+    assert _artifact_stale(artifact=artifact, generated_at=None, not_assessable=None, is_stale=always_stale)
+    assert not _artifact_stale(artifact=None, generated_at=None, not_assessable=None, is_stale=always_stale)
+    assert not _artifact_stale(artifact=artifact, generated_at=None, not_assessable=None, is_stale=lambda _g: False)

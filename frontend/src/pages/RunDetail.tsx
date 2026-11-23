@@ -876,6 +876,8 @@ function unfinishedRunNotice(
       return t_i18n("The model did not answer in time, so this run stopped before the agent finished.");
     case "waiting_on_tasks":
       return t_i18n("This run stopped while tasks it delegated were still running: the result is partial.");
+    case "integrations_unreadable":
+      return t_i18n("The agent finished, but none of its integrations could be read: the result is not assessable.");
     default:
       return t_i18n("This run stopped before the agent finished: the result is partial.");
   }
@@ -1008,7 +1010,7 @@ export default function RunDetail() {
                 {unfinishedNotice && (
                   <Badge variant="outline" className="gap-1 text-feedback-warning-primary border-feedback-warning-primary/40">
                     <AlertTriangle className="h-3 w-3" />
-                    {t_i18n("Partial result")}
+                    {run.stop_reason === "integrations_unreadable" ? t_i18n("Not assessable") : t_i18n("Partial result")}
                   </Badge>
                 )}
                 {run.parent_run_id && !run.assignment_name && run.parent_agent_name && (

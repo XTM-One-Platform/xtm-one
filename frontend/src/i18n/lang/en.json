@@ -13926,6 +13926,8 @@
   "The model got stuck repeating the same text, so this run was stopped: the result is partial.": "The model got stuck repeating the same text, so this run was stopped: the result is partial.",
   "The model did not answer in time, so this run stopped before the agent finished.": "The model did not answer in time, so this run stopped before the agent finished.",
   "This run stopped while tasks it delegated were still running: the result is partial.": "This run stopped while tasks it delegated were still running: the result is partial.",
+  "The agent finished, but none of its integrations could be read: the result is not assessable.": "The agent finished, but none of its integrations could be read: the result is not assessable.",
+  "Not assessable": "Not assessable",
   "This run stopped before the agent finished: the result is partial.": "This run stopped before the agent finished: the result is partial.",
   "Takes": "Takes",
   "Live data from {platform}, read with your own access.": "Live data from {platform}, read with your own access.",

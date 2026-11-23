@@ -13926,6 +13926,8 @@
   "The model got stuck repeating the same text, so this run was stopped: the result is partial.": "El modelo se quedó repitiendo el mismo texto, por lo que se detuvo esta ejecución: el resultado es parcial.",
   "The model did not answer in time, so this run stopped before the agent finished.": "El modelo no respondió a tiempo, así que esta ejecución se detuvo antes de que el agente terminara.",
   "This run stopped while tasks it delegated were still running: the result is partial.": "Esta ejecución se detuvo mientras las tareas que delegó seguían en curso: el resultado es parcial.",
+  "The agent finished, but none of its integrations could be read: the result is not assessable.": "El agente terminó, pero no se pudo leer ninguna de sus integraciones: el resultado no es evaluable.",
+  "Not assessable": "No evaluable",
   "This run stopped before the agent finished: the result is partial.": "Esta ejecución se detuvo antes de que el agente terminara: el resultado es parcial.",
   "Takes": "Toma",
   "Live data from {platform}, read with your own access.": "Datos en directo de {platform}, leídos con tu propio acceso.",
