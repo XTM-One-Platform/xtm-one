@@ -19,7 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { waitsForAnswer } from "@/lib/work-item-context";
 import {
-  GATE_OUTCOME_LABEL,
+  GATE_CARD_STATUS_LABEL,
   GATE_REASON_LABEL,
   OPTION_FACT_LABEL,
   REMEDIATION_GATE,
@@ -69,7 +69,7 @@ export function CaseRemediationDecision({
             <span className="font-medium">
               {gate.to === "passed_automatically"
                 ? t_i18n("Decided by policy")
-                : t_i18n(GATE_OUTCOME_LABEL[gate.to as keyof typeof GATE_OUTCOME_LABEL])}
+                : t_i18n(GATE_CARD_STATUS_LABEL[gate.to as keyof typeof GATE_CARD_STATUS_LABEL])}
             </span>
             {gate.evidence && <span>{t_i18n("Option {option}", { option: gate.evidence })}</span>}
             {who && <span className="text-default-secondary">{t_i18n("by {name}", { name: who })}</span>}
