@@ -788,7 +788,14 @@ a case they see none of does not exist. A built-in CTEM agent that already
 carries a function keeps its own; the group adds only what it lacks.
 `get_ctem_case` there also answers `opened_by` (actor, time and how, from the
 oldest `created` event), `history_total` and `empty_sections` (the reason each
-empty section is empty). Tests: `tests/test_ctem_read_tools.py`.
+empty section is empty). `list_ctem_cases` and `get_ctem_case` answer the
+same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
+section 5, #1359) for the signal members of a case, read by the case view's
+rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
+`hidden_by_scope` counts the case-bound signals the person does not see:
+across the organization for `list_ctem_cases`, bound to that case alone for
+`get_ctem_case` (its note then says "on this case").
+Tests: `tests/test_ctem_read_tools.py`.
 
 ## 9. UX decisions (round 1, 13 Nov 2026)
 
