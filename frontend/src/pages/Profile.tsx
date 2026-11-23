@@ -325,7 +325,7 @@ export default function Profile() {
                         checked={pastelColours}
                         onCheckedChange={setPastelColours}
                       />
-                      <span className="content-caption text-default-secondary">
+                      <span className="content-base text-default-secondary">
                         {t_i18n("Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.")}
                       </span>
                     </div>
