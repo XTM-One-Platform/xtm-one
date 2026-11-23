@@ -21245,5 +21245,6 @@
   "Fixed version per platform: {list}": "プラットフォームごとの修正版: {list}",
   "{version} names no platform while the assets run several: an asset not below it is not read as fixed.": "{version} はプラットフォームを指定していませんが、資産は複数のプラットフォームで動作しています。これより古くない資産も修正済みとは見なされません。",
   "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}": "{count, plural, other {# 件の資産は修正が不明なプラットフォーム上にあります}}",
-  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, other {# 件の資産が複数のバージョンを実行しており、各行で数えられています}}"
+  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, other {# 件の資産が複数のバージョンを実行しており、各行で数えられています}}",
+  "Not known": "不明"
 }
