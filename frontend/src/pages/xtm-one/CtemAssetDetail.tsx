@@ -36,13 +36,14 @@ import type { AssetRow } from "@/lib/organization-profile";
 import { INVENTORY_PATH, isCodeRepository, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
-const SOFTWARE_PAGE = 100;
+/** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
+const SOFTWARE_PAGE_SIZE = 25;
 
 /* The library glyph handed to NotFoundState (no direct lucide-react import, src/no-direct-lucide-import.test.ts). */
 const AssetGlyph = ({ className }: { className?: string }) => <Icon name="server" size={16} className={className} />;
 
 /** The cases still to work: a resolved one is history, read from the Cases page. */
-const OPEN_STATES = new Set(["new", "analyzing", "waiting_decision", "remediating", "validating", "mitigated_watching", "accepted_risk"]);
+const OPEN_STATES = new Set(["needs_attention", "in_progress", "mitigated_watching", "accepted_risk"]);
 
 export default function CtemAssetDetail() {
   const { t_i18n, intl } = useFormatter();
@@ -50,10 +51,11 @@ export default function CtemAssetDetail() {
   const { isAdmin } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [softwarePage, setSoftwarePage] = useState(0);
+  // Page and page size both reach the API: a size picked in the table is the request's limit.
+  const [softwarePage, setSoftwarePage] = useState({ index: 0, size: SOFTWARE_PAGE_SIZE });
   const { data, isLoading, isError, refetch } = useCanonicalAsset(id, {
-    offset: softwarePage * SOFTWARE_PAGE,
-    limit: SOFTWARE_PAGE,
+    offset: softwarePage.index * softwarePage.size,
+    limit: softwarePage.size,
   });
   const cases = useCtemCasesForAsset(data?.name);
   const { data: context } = useOrganizationContext();
@@ -335,8 +337,8 @@ export default function CtemAssetDetail() {
           columns={softwareColumns}
           rowKey={(s) => `${s.vendor}|${s.product}|${s.version}`}
           server={{ total: software?.total ?? 0 }}
-          onStateChange={(state) => setSoftwarePage(state.page)}
-          defaultPageSize={SOFTWARE_PAGE}
+          onStateChange={(state) => setSoftwarePage({ index: state.page, size: state.pageSize })}
+          defaultPageSize={SOFTWARE_PAGE_SIZE}
           noFilters="One asset's software, paged on the server."
           exportName="ctem-asset-software"
           isLoading={isLoading && !data}
