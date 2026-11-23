@@ -370,6 +370,12 @@ class AssetEntry(BaseModel):
     external_id: str = Field(default="", max_length=200)
     #: The sync that last wrote the row (#1134; empty: typed, a one-off import or an agent).
     sync_id: str = Field(default="", max_length=64)
+    #: When the source last observed the asset, ISO 8601 UTC (#1134 S4, CTEM-27: OpenAEV's
+    #: ``asset_last_seen``); empty when the source does not say. Owned by the source.
+    last_seen: str = Field(default="", max_length=40)
+    #: The source's activity status (OpenAEV ``asset_status`` lower-cased: ``stale`` when unseen
+    #: past the tenant's threshold); empty when the source does not say.
+    status: Literal["", "active", "inactive", "agentless", "stale"] = ""
 
     @model_validator(mode="before")
     @classmethod
