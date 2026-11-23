@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 /**
  * The hot tones of a status or a priority: red, orange, yellow, green, blue,
  * and neutral (#1267). One meaning per colour, the hot hues Work items and
- * Tasks use, here drawn as an outlined pill (their page-local badges have no
+ * Tasks use, here drawn as an outlined chip on the design-system radius
+ * (`rounded-sm`, from Badge, #1333) (their page-local badges have no
  * visible edge yet and are not on this component): a light wash of the hue, an
  * edge in the hue and the text a step away from the surface in the same
  * family (the `-tertiary` feedback tokens), so the label reads at 4.5:1 and

@@ -24,10 +24,16 @@ import { useTriggerTabIndex } from "@/components/ui/row-target-context";
  * colour decisions, only a local vocabulary. Filed upstream in
  * fds-migration/LIBRARY-FEEDBACK.md: the library has no status chip, and every
  * product that shows a run outcome or a health state needs one.
+ *
+ * The SHAPE is the library's, though (#1333): `Chip` draws `rounded-sm` (the
+ * 4 px step of the design-system radius scale), a 1 px edge and `px-2`, so the
+ * badge does too, never a full pill. Height and type stay compact (a 20 px
+ * line in `content-compact`): the tables and chip strips are sized to it.
+ * Guard: chip-radius.test.ts.
  */
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 content-compact font-semibold transition-colors",
+  "inline-flex items-center rounded-sm border px-2 py-0.5 content-compact font-semibold transition-colors",
   {
     variants: {
       variant: {

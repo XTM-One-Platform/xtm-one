@@ -23,6 +23,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ChevronDown, ChevronRight, Hash, Inbox, ListFilter, MessagesSquare, Plug, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { useTick } from "@/hooks/useTick";
 import { useFormatter } from "@/i18n";
@@ -133,7 +134,7 @@ function SyncProblem({ problem, provider, integrationId, canManage, onEdit }: {
     <li className="space-y-1.5 rounded-sm border border-elevation-subtle bg-elevation-default p-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="content-base font-medium">{t_i18n(SYNC_PROBLEM_TITLES[copy.title], copy.values)}</span>
-        {problem.count > 1 && <Badge variant="secondary" className="content-caption">{problem.count}</Badge>}
+        {problem.count > 1 && <CountBadge variant="secondary">{problem.count}</CountBadge>}
       </div>
       <p className="content-compact leading-relaxed text-default-secondary">{t_i18n(SYNC_PROBLEM_HINTS[copy.hint], copy.values)}</p>
       {shown.length > 0 && (
