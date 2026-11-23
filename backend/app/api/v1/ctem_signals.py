@@ -177,8 +177,12 @@ async def evaluate_ctem_signals(
 ) -> dict[str, Any]:
     """Run the reconcile and scope gate again on every open signal (after a policy change); counts by state."""
     _require_xtm_one()
-    counts = await scope_gate.evaluate_open(db, organization_id=await _organization_id(db), user_id=admin.id)
+    pending = case_loop.PendingEvents()
+    counts = await scope_gate.evaluate_open(
+        db, organization_id=await _organization_id(db), user_id=admin.id, events=pending
+    )
     await db.commit()
+    await case_loop.publish_pending(pending)  # ctem_signal.triaged per changed verdict (#1409)
     return {"evaluated": sum(counts.values()), "counts": counts}
 
 
@@ -239,104 +243,13 @@ async def evaluate_ctem_signal(
     row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=None)
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
-    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id)
+    pending = case_loop.PendingEvents()
+    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id, events=pending)
     if decision is None:
         raise HTTPException(status_code=409, detail="This signal opened a case: the case step owns it now")
     await db.commit()
+    await case_loop.publish_pending(pending)  # ctem_signal.triaged when the verdict changed (#1409)
     return signals.to_dict(row)
-
-
-class TriageFilter(BaseModel):
-    """Every signal the caller sees in one state (and trigger path), as the Signals page filters them."""
-
-    state: SignalState | None = None
-    trigger_path: TriggerPath | None = None
-
-
-class SignalTriage(BaseModel):
-    """Dismiss, restore or re-check signals (#1505): by id, or every signal a filter matches."""
-
-    action: Literal[scope_gate.TRIAGE_ACTIONS]  # type: ignore[valid-type]
-    ids: list[uuid.UUID] = Field(default_factory=list, max_length=scope_gate.MAX_BULK)
-    filter: TriageFilter | None = None
-
-
-@router.post("/triage")
-async def triage_ctem_signals(
-    body: SignalTriage,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Dismiss, restore or re-check the signals the caller may read (#1505), at most 2000 per call.
-
-    Anyone who reads signals triages the ones they read (an administrator: the
-    organization's). A signal that opened a case is skipped. A confirmed signal
-    opens its case at the next sweep, so a bulk re-check never floods cases.
-    """
-    _require_xtm_one()
-    if bool(body.ids) == (body.filter is not None):
-        raise HTTPException(status_code=422, detail="Give either ids or a filter")
-    organization_id = await _organization_id(db)
-    rows = await signals.select_signals(
-        db,
-        organization_id=organization_id,
-        recorded_by=_reader(user),
-        ids=body.ids or None,
-        state=body.filter.state if body.filter else None,
-        trigger_path=body.filter.trigger_path if body.filter else None,
-        limit=scope_gate.MAX_BULK,
-    )
-    actor = (getattr(user, "name", None) or getattr(user, "email", None) or str(user.id))[:200]
-    counts = await scope_gate.triage(db, rows, action=body.action, actor=actor, evaluator_id=user.id)
-    await db.commit()
-    return {"matched": len(rows), "counts": counts}
-
-
-class SignalInventoryAdd(BaseModel):
-    """Add the subjects of unmatched signals to the inventory (#1505): by id, or every signal a filter matches."""
-
-    ids: list[uuid.UUID] = Field(default_factory=list, max_length=scope_gate.MAX_BULK)
-    filter: TriageFilter | None = None
-
-
-@router.post("/add-to-inventory")
-async def add_ctem_signals_to_inventory(
-    body: SignalInventoryAdd,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-) -> dict[str, Any]:
-    """Declare the subjects of the selected unmatched signals in the organization profile, then decide them again.
-
-    An administrator only: it writes one profile version (a host becomes an
-    asset, a software a tech stack product, an identity its email domain as an
-    owned domain). Only unmatched (``to_validate``) signals count; the others
-    are left as they are. A signal the gate confirms opens its case at the
-    next sweep, never one case per signal here. 422 when the profile would
-    not validate.
-    """
-    _require_xtm_one()
-    if bool(body.ids) == (body.filter is not None):
-        raise HTTPException(status_code=422, detail="Give either ids or a filter")
-    organization_id = await _organization_id(db)
-    rows = await signals.select_signals(
-        db,
-        organization_id=organization_id,
-        recorded_by=None,
-        ids=body.ids or None,
-        state=body.filter.state if body.filter else None,
-        trigger_path=body.filter.trigger_path if body.filter else None,
-        limit=scope_gate.MAX_BULK,
-    )
-    actor = (getattr(admin, "name", None) or getattr(admin, "email", None) or str(admin.id))[:200]
-    try:
-        result = await scope_gate.add_to_inventory(
-            db, rows, organization_id=organization_id, admin_id=admin.id, actor=actor
-        )
-    except ValueError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from None
-    await db.commit()
-    return {"matched": len(rows), **result}
 
 
 #: The scope gate outcomes a scope proposal answers: the subject's criticality was known and below the threshold.

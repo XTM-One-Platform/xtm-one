@@ -37,6 +37,14 @@ MAX_EVIDENCE_CHARS = 8000
 #: Who records a listener's signal.
 SYSTEM_ACTOR = "system"
 
+#: The platform events a signal raises (#1409; registered in ``platform_events.PLATFORM_EVENTS``):
+#: its first sighting, and a later change of the scope gate's verdict. A re-sighting raises nothing.
+SIGNAL_RECORDED = "ctem_signal.recorded"
+SIGNAL_TRIAGED = "ctem_signal.triaged"
+SIGNAL_EVENTS: tuple[str, ...] = (SIGNAL_RECORDED, SIGNAL_TRIAGED)
+#: The gate verdicts ``ctem_signal.triaged`` reports (``new`` and ``case_opened`` are no verdict).
+VERDICTS: tuple[str, ...] = ("confirmed", "to_validate", "watchlist", "discarded")
+
 #: Each path: its label and the lens that usually sees it (a caller may name another).
 PATH_CATALOG: dict[str, tuple[str, str]] = {
     "new_vulnerability": ("New vulnerability on a running version", "world"),
@@ -346,28 +354,6 @@ async def observed_by_case(
     return out
 
 
-async def select_signals(
-    db: AsyncSession,
-    *,
-    organization_id: uuid.UUID,
-    recorded_by: str | None,
-    ids: list[uuid.UUID] | None = None,
-    state: str | None = None,
-    trigger_path: str | None = None,
-    limit: int = 2000,
-) -> list[CtemSignal]:
-    """The signals the reader may see, by id or by filter, newest sighting first (#1505 triage)."""
-    statement = _visible(select(CtemSignal), organization_id=organization_id, recorded_by=recorded_by)
-    if ids is not None:
-        statement = statement.where(CtemSignal.id.in_(ids))
-    if state:
-        statement = statement.where(CtemSignal.state == state)
-    if trigger_path:
-        statement = statement.where(CtemSignal.trigger_path == trigger_path)
-    statement = statement.order_by(CtemSignal.last_seen_at.desc(), CtemSignal.id).limit(max(1, int(limit)))
-    return list((await db.execute(statement)).scalars())
-
-
 async def get_signal(
     db: AsyncSession, signal_id: uuid.UUID, *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> CtemSignal | None:
@@ -404,6 +390,67 @@ def to_dict(signal: CtemSignal) -> dict[str, Any]:
         "case_id": str(signal.case_id) if signal.case_id else None,
         "recorded_via": signal.recorded_via,
     }
+
+
+def verdict_of(state: str | None) -> str | None:
+    """The gate verdict a signal state is, ``None`` for ``new`` and ``case_opened``."""
+    return state if state in VERDICTS else None
+
+
+def signal_event_data(
+    signal: CtemSignal, *, verdict: str | None = None, triaged: bool = False, previous_verdict: str | None = None
+) -> dict[str, Any]:
+    """The payload of a signal event: the signal id and its routing, nothing else (#1409).
+
+    Subject, evidence and decision stay on the signal, read the signal with list_ctem_signals signal_id
+    under the run's own permissions. The event reaches only subscribers whose
+    run-as user reads the signal (``platform_events.can_read_object``).
+    *verdict* is the gate's verdict when the state already moved on (a case opened
+    from a confirmed signal); else the signal's own. A ``triaged`` payload always
+    carries ``previous_verdict`` (``null``: the signal had none yet).
+    """
+    data: dict[str, Any] = {
+        "signal_id": str(signal.id),
+        "trigger_path": signal.trigger_path,
+        "lens": signal.lens,
+        "source_provider": signal.source_provider,
+        "subject_kind": signal.subject_kind,
+        "verdict": verdict or verdict_of(signal.state),
+        "case_id": str(signal.case_id) if signal.case_id else None,
+        "object_type": "ctem_signal",
+        "object_id": str(signal.id),
+        "participant_agent_ids": [],
+    }
+    if triaged:
+        data["previous_verdict"] = previous_verdict
+    return data
+
+
+def signal_event_id(name: str, signal: CtemSignal, marker: str) -> str:
+    """A stable event id: one per signal for ``recorded``, one per verdict change for ``triaged``."""
+    digest = hashlib.sha256(f"{name}\n{signal.id}\n{marker}".encode()).hexdigest()[:32]
+    return f"ctem-signal-{digest}"
+
+
+async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> bool:
+    """Whether *user_id* reads the signal *signal_id*: an administrator, or the signal's own recorder.
+
+    The signal API's rule (:func:`_visible`): a listener's signal (``system``) is an administrator's read only.
+    """
+    from app.models.user import User
+
+    try:
+        uid = uuid.UUID(str(user_id))
+        sid = uuid.UUID(str(signal_id))
+    except (ValueError, TypeError):
+        return False
+    recorded_by = (await db.execute(select(CtemSignal.recorded_by).where(CtemSignal.id == sid))).scalar_one_or_none()
+    if recorded_by is None:
+        return False
+    if recorded_by == str(uid):
+        return True
+    user = await db.get(User, uid)
+    return bool(getattr(user, "is_admin", False))
 
 
 def path_catalog(
