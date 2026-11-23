@@ -106,14 +106,24 @@ export function fieldText(fields: Record<string, AssetFieldOrigin> | undefined, 
   return text.toLowerCase() === "unknown" ? "" : text;
 }
 
-/** The identifier kinds the overview shows, in reading order, each with its mark and label. @i18n-keys */
-const IDENTIFIER_FACTS: { kind: string; icon: IconName; label: string }[] = [
-  { kind: "hostname", icon: "server", label: "Hostname" },
-  { kind: "fqdn", icon: "earth", label: "FQDN" },
-  { kind: "ip", icon: "network", label: "IP addresses" },
-  { kind: "mac", icon: "router", label: "MAC addresses" },
-  { kind: "serial", icon: "tag", label: "Serial number" },
-  { kind: "device_id", icon: "key-round", label: "Device id" },
+/** The words of the identifier kinds the overview shows. @i18n-keys */
+const IDENTIFIER_LABELS = {
+  hostname: "Hostname",
+  fqdn: "FQDN",
+  ip: "IP addresses",
+  mac: "MAC addresses",
+  serial: "Serial number",
+  device_id: "Device id",
+} as const;
+
+/** The identifier kinds the overview shows, in reading order, each with its mark. */
+const IDENTIFIER_FACTS: { kind: keyof typeof IDENTIFIER_LABELS; icon: IconName }[] = [
+  { kind: "hostname", icon: "server" },
+  { kind: "fqdn", icon: "earth" },
+  { kind: "ip", icon: "network" },
+  { kind: "mac", icon: "router" },
+  { kind: "serial", icon: "tag" },
+  { kind: "device_id", icon: "key-round" },
 ];
 
 /** The overview card: what the asset is, then how it is identified, then who sees it and when. */
@@ -149,9 +159,9 @@ export function AssetOverviewCard({ asset }: { asset: CanonicalAssetDetail }) {
   if (owner) facts.push(<Fact key="owner" icon="user" label={t_i18n("Owner")} values={[owner]} hint={origin("owner")} />);
   const group = fieldText(fields, "group");
   if (group) facts.push(<Fact key="group" icon="custom/asset-groups" label={t_i18n("Asset group")} values={[group]} hint={origin("group")} />);
-  for (const { kind, icon, label } of IDENTIFIER_FACTS) {
+  for (const { kind, icon } of IDENTIFIER_FACTS) {
     const values = identifierValues(asset.records, kind);
-    if (values.length) facts.push(<Fact key={kind} icon={icon} label={t_i18n(label)} values={values} />);
+    if (values.length) facts.push(<Fact key={kind} icon={icon} label={t_i18n(IDENTIFIER_LABELS[kind])} values={values} />);
   }
   const seen = asset.records.filter((r) => r.last_seen);
   if (seen.length)

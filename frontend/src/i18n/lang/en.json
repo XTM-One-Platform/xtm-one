@@ -21074,5 +21074,9 @@
   "The products you declare by hand. The Tech stack list adds the software of your assets.": "The products you declare by hand. The Tech stack list adds the software of your assets.",
   "Installed software": "Installed software",
   "No AI system declared for the AI security fleet yet.": "No AI system declared for the AI security fleet yet.",
-  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}"
+  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}",
+  "No source says more about this asset yet.": "No source says more about this asset yet.",
+  "IP addresses": "IP addresses",
+  "MAC addresses": "MAC addresses",
+  "Device id": "Device id"
 }
