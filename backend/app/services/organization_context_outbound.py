@@ -40,7 +40,13 @@ SYNC_DIRECTIONS: tuple[str, ...] = (INBOUND, OUTBOUND)
 
 #: (section, source) -> the directions supported, and why outbound is not (empty when it is).
 DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
-    ("crown_jewels", "opencrq"): ((INBOUND, OUTBOUND), ""),
+    # #1591: the rows are OpenCRQ PRIMARY assets, whose security needs OpenCRQ owns; the old push wrote
+    # them as supporting assets (the wrong layer), so the pairing reads only until a primary-asset write
+    # is wired. A saved outbound sync of it answers this reason and writes nothing.
+    ("crown_jewels", "opencrq"): (
+        (INBOUND,),
+        "OpenCRQ owns its primary assets and their security needs: the sync reads them (#1591).",
+    ),
     # #1501: outbound pushes the AI target assets only; OpenAEV endpoints are owned by its agents.
     ("assets", "openaev"): ((INBOUND, OUTBOUND), ""),
     ("asset_groups", "openaev"): ((INBOUND,), "Planned: OpenAEV asset group writes are not wired for syncs yet."),
