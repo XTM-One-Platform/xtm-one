@@ -77,11 +77,6 @@ def window_seconds(trigger_config: Mapping[str, Any] | None, trigger_context: Ma
     return max(0, min(MAX_WINDOW_SECONDS, seconds))
 
 
-def is_batch(trigger_context: Mapping[str, Any] | None) -> bool:
-    """Whether a run's context marks it as a batch run."""
-    return isinstance(trigger_context, Mapping) and bool(trigger_context.get(WINDOW_CONTEXT))
-
-
 def events_of(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     """The events a batch payload lists (an unbatched payload is one event)."""
     if not isinstance(payload, Mapping):
