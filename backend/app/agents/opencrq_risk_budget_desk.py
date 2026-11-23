@@ -55,6 +55,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.fleet_opt_in import SEEDED_FLEET_OPT_IN
+from app.agents.gate_answered import gate_answered_assignment
 from app.services import opencrq_job_events
 
 ORCHESTRATOR = "opencrq-risk-desk-orchestrator"
@@ -352,6 +353,17 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "reviews, and the decisions to ask. Answer with the run JSON."
         ),
     },
+    gate_answered_assignment(
+        _COMMON,
+        prefixes=(RECOMMENDATION_PREFIX,),
+        inherit_switch_from="Weekly investment review",
+        description="A person answered a control investment recommendation: record the decision.",
+        apply=(
+            f"Record the decision on the control in shared state {STATE_KEY} (funded, refused or "
+            "deferred, with the reason), so the next review and the Board pack carry it; OpenCRQ "
+            "stays read only. Answer with the run JSON."
+        ),
+    ),
 ]
 
 RISK_BUDGET_DESK_FLEET: dict[str, Any] = {

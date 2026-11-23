@@ -290,7 +290,8 @@ OPENCTI_PIR_DESK_DOC: dict[str, str] = {
         "Vulnerability flagged in one of the organization's PIRs.\n"
         "- **Weekly PIR answer**: Mondays 07:00.\n"
         "- **Half-year threat landscape**: 1 January and 1 July, 08:00.\n"
-        "- **Stale indicator clean-up**: the 1st of each month, 06:00."
+        "- **Stale indicator clean-up**: the 1st of each month, 06:00.\n"
+        "- **Gate answered**: a person answers an indicator revocation; it is revoked or kept as decided."
     ),
     "flow": (
         "1. Triage: the PIR Triage Analyst scores the new entity against each PIR, with the evidence "
@@ -329,7 +330,8 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Simulation finished**: an OpenAEV simulation ends (provisioned OpenAEV trigger).\n"
         "- **Weekly validation plan**: Mondays 06:00.\n"
         "- **Weekly coverage report**: Fridays 08:00.\n"
-        "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done."
+        "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done.\n"
+        "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
     ),
     "flow": (
         "1. Plan: the orchestrator picks the techniques with no recent result against the crown jewels; the "
@@ -374,7 +376,8 @@ OPENCRQ_RISK_BUDGET_DESK_DOC: dict[str, str] = {
         "- **Finding re-scored**: an OpenCRQ finding score recompute job succeeded.\n"
         "- **Control validation ingested**: OpenCRQ ingested OpenAEV findings or recorded a proven posture.\n"
         "- **Weekly investment review**: Mondays 07:00.\n"
-        "- **Monthly Board pack**: the 1st of the month at 08:00."
+        "- **Monthly Board pack**: the 1st of the month at 08:00.\n"
+        "- **Gate answered**: a person answers an investment recommendation; the decision is recorded."
     ),
     "flow": (
         "1. Refresh: on an OpenCRQ event, the orchestrator compares the register with its last snapshot.\n"
@@ -940,6 +943,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Weekly PIR answer", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Half-year threat landscape", "filter": "1 January and 1 July at 08:00"},
         {"module": "schedule", "name": "Stale indicator clean-up", "filter": "The 1st of each month at 06:00"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers an indicator revocation"},
     ],
     "steps": [
         {"title": "Triage", "detail": "Scored against each PIR and the organization profile."},
@@ -980,6 +984,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly PIR answer", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Half-year threat landscape", "basis": "Two runs a year", "runs_min": 0, "runs_max": 1},
         {"trigger": "Stale indicator clean-up", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+        {"trigger": "Gate answered", "basis": "One run per revocation answered", "runs_min": 0, "runs_max": 20},
     ],
 }
 
@@ -991,6 +996,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Weekly validation plan", "filter": "Mondays at 06:00"},
         {"module": "schedule", "name": "Weekly coverage report", "filter": "Fridays at 08:00"},
         {"module": "platform", "name": "Re-test due", "filter": "A re-test work item of the desk"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers a launch approval"},
     ],
     "steps": [
         {"title": "Plan", "detail": "Simulations from the threat arsenal against the crown jewels.", "gate": True},
@@ -1033,6 +1039,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly validation plan", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Weekly coverage report", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per remediated gap", "runs_min": 0, "runs_max": 60},
+        {"trigger": "Gate answered", "basis": "One run per launch answered", "runs_min": 0, "runs_max": 60},
     ],
 }
 
@@ -1059,6 +1066,7 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
         },
         {"module": "schedule", "name": "Weekly investment review", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Monthly Board pack", "filter": "The 1st of the month at 08:00"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers an investment recommendation"},
     ],
     "steps": [
         {"title": "Refresh", "detail": "The register compared with the last snapshot."},
@@ -1103,6 +1111,7 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
         },
         {"trigger": "Weekly investment review", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Monthly Board pack", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+        {"trigger": "Gate answered", "basis": "One run per recommendation answered", "runs_min": 0, "runs_max": 10},
     ],
 }
 

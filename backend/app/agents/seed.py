@@ -51,6 +51,7 @@ from app.agents.builtin_agents import (
 )
 from app.agents.builtin_roi_units import with_builtin_roi_unit
 from app.agents.fleet_opt_in import PROVISIONING_STATE_KEYS
+from app.agents.gate_answered import INHERIT_SWITCH_FROM_KEY
 from app.agents.templates import BUILTIN_TEMPLATES
 from app.core.config import settings
 from app.core.feature_flags import is_feature_enabled
@@ -978,7 +979,7 @@ async def seed_builtin_assignments(
             hide_runs=data.get("hide_runs"),
         )
         _sync_seeded_gates(seeded, data)
-        sibling_name = data.get("inherit_switch_from")
+        sibling_name = data.get(INHERIT_SWITCH_FROM_KEY)
         if sibling_name and data.get("admin_opt_in"):
             # A listener added to a fleet an administrator already switched on
             # (#1388): born with its sibling's switch and run-as, or the fleet

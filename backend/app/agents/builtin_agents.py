@@ -31,6 +31,7 @@ from app.agents.ctem_third_party_risk import THIRD_PARTY_RISK_AGENTS, THIRD_PART
 from app.agents.cti_skills import CTI_SKILLS
 from app.agents.fimi_skills import FIMI_SKILLS
 from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST, SEEDED_FLEET_OPT_IN
+from app.agents.gate_answered import GATE_ANSWERED, gate_answered_assignment
 from app.agents.openaev_detection_desk import DETECTION_DESK_AGENTS, DETECTION_DESK_ASSIGNMENTS
 from app.agents.opencrq_risk_budget_desk import RISK_BUDGET_DESK_AGENTS, RISK_BUDGET_DESK_ASSIGNMENTS
 from app.agents.opencti_pir_desk import PIR_DESK_AGENTS, PIR_DESK_ASSIGNMENTS
@@ -2881,11 +2882,7 @@ CTEM_F2_GATE_PREFIXES: tuple[str, ...] = (
     "ctem:f2:validate:",
     "ctem:f2:mobilize:",
 )
-CTEM_GATE_ANSWERED = "Gate answered"
-#: The assignment of the same orchestrator whose switch and run-as a new
-#: "Gate answered" row takes when the seed creates it (``seed.seed_builtin_assignments``):
-#: a fleet already switched on gets its gates resumed on upgrade.
-INHERIT_SWITCH_FROM_KEY = "inherit_switch_from"
+CTEM_GATE_ANSWERED = GATE_ANSWERED
 
 
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
@@ -2927,40 +2924,25 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
 
 def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str, prefixes: tuple[str, ...]) -> dict[str, Any]:
     """The listener that resumes a case once a person answered one of its waiting gates (#1388)."""
-    return {
-        **common,
-        "name": CTEM_GATE_ANSWERED,
-        "description": (
+    return gate_answered_assignment(
+        common,
+        prefixes=prefixes,
+        inherit_switch_from="Case opened or reopened",
+        description=(
             "Resumes a CTEM case when a person answers one of its waiting gates: records the "
             "decision on the case and runs the next step, or stops on a rejection."
         ),
-        "trigger_type": "platform_event",
-        "trigger_config": {
-            "event": "work_item.status_changed",
-            "filter": {
-                "previous_status": "blocked",
-                "status": "open",
-                "correlation_key": {"starts_with": list(prefixes)},
-            },
-            "scope": "own",
-        },
-        INHERIT_SWITCH_FROM_KEY: "Case opened or reopened",
-        "prompt": (
-            "A person answered a gate this fleet waits on: the work item in the trigger below "
-            "went from blocked to open. Claim it first with claim_work_item; when the claim is "
-            "refused another run already resumes it: stop there. Read it with get_work_item: "
-            "payload.answer holds the option and label chosen (or a free text). Read the case "
-            "its key names (the case id, else the case of the subject id, found with "
+        apply=(
+            "Read the case its key names (the case id, else the case of the subject id, found with "
             "list_ctem_cases) with get_ctem_case, and write the decision on it with "
             "update_ctem_case gate (outcome answered, the gate, the option chosen, who answered). "
             "Approved: run exactly what the ask covered and continue the loop from that step, "
             "writing every result on the case; the case's own work item keyed "
             f"`{fleet_key}:case:` followed by the case id gets a note. Rejected or deferred: "
-            "record it on the case with the reason, run nothing the gate covered, and stop or "
-            "re-plan as the answer says. Complete the gate item with the outcome. End with the "
-            "case id, the gate, the decision and the next step."
+            "record it on the case with the reason and stop or re-plan as the answer says. End with "
+            "the case id, the gate, the decision and the next step."
         ),
-    }
+    )
 
 
 CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(

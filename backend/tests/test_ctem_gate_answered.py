@@ -8,13 +8,14 @@ from typing import Any
 
 import pytest
 
+from app.agents import openaev_detection_desk, opencrq_risk_budget_desk, opencti_pir_desk
 from app.agents.builtin_agents import (
     BUILTIN_ASSIGNMENTS,
     CTEM_F1_GATE_PREFIXES,
     CTEM_F2_GATE_PREFIXES,
     CTEM_GATE_ANSWERED,
-    INHERIT_SWITCH_FROM_KEY,
 )
+from app.agents.gate_answered import INHERIT_SWITCH_FROM_KEY
 from app.services.integration_event_filters import payload_filter_reason
 
 _PERSONAS = pathlib.Path(__file__).resolve().parents[1] / "app" / "agents" / "seed_data" / "agent_persona"
@@ -71,10 +72,41 @@ def test_the_run_claims_before_acting_and_stops_on_a_rejection(slug: str) -> Non
     prompt = a["prompt"]
     assert prompt.index("claim_work_item") < prompt.index("update_ctem_case")
     assert "refused" in prompt and "stop there" in prompt
-    assert "Rejected" in prompt and "run nothing the gate covered" in prompt
+    assert "Rejected" in prompt and "runs nothing the decision covered" in prompt
     assert a["enabled"] is False and a["admin_opt_in"] is True
     assert a[INHERIT_SWITCH_FROM_KEY] == "Case opened or reopened"
     assert any(b["agent_slug"] == slug and b["name"] == a[INHERIT_SWITCH_FROM_KEY] for b in BUILTIN_ASSIGNMENTS)
+
+
+#: The product desks: each decision key prefix it files for a person, and the persona or
+#: assignment text that must name it.
+_DESKS = {
+    opencti_pir_desk.ORCHESTRATOR: (opencti_pir_desk.APPROVAL_PREFIX,),
+    opencrq_risk_budget_desk.ORCHESTRATOR: (opencrq_risk_budget_desk.RECOMMENDATION_PREFIX,),
+    openaev_detection_desk.ORCHESTRATOR: (openaev_detection_desk.LAUNCH_PREFIX,),
+}
+
+
+@pytest.mark.parametrize("slug", sorted(_DESKS))
+def test_every_desk_decision_resumes_its_orchestrator(slug: str) -> None:
+    a = _gate_assignment(slug)
+    config = a["trigger_config"]
+    assert config["event"] == "work_item.status_changed" and config["scope"] == "own"
+    assert tuple(config["filter"]["correlation_key"]["starts_with"]) == _DESKS[slug]
+    # The key the desk files is the key the trigger takes: named in its assignments' prompts.
+    filed = " ".join(b["prompt"] for b in BUILTIN_ASSIGNMENTS if b["agent_slug"] == slug and b is not a)
+    for prefix in _DESKS[slug]:
+        assert prefix in filed, (slug, prefix)
+    prompt = a["prompt"]
+    assert prompt.index("claim_work_item") < prompt.index("payload.answer")
+    assert "stop there" in prompt and "runs nothing the decision covered" in prompt
+    assert a["enabled"] is False and a["admin_opt_in"] is True
+    assert any(b["agent_slug"] == slug and b["name"] == a[INHERIT_SWITCH_FROM_KEY] for b in BUILTIN_ASSIGNMENTS)
+
+
+def test_the_detection_desk_persona_keys_its_launches() -> None:
+    text = (_PERSONAS / f"{openaev_detection_desk.ORCHESTRATOR}.md").read_text(encoding="utf-8")
+    assert f"`{openaev_detection_desk.LAUNCH_PREFIX}`" in text
 
 
 def test_the_re_test_keeps_its_single_path() -> None:
@@ -94,6 +126,6 @@ def test_the_seed_gives_a_new_listener_its_siblings_switch() -> None:
     from app.agents import seed
 
     src = inspect.getsource(seed.seed_builtin_assignments)
-    assert 'data.get("inherit_switch_from")' in src
+    assert "data.get(INHERIT_SWITCH_FROM_KEY)" in src
     assert "seeded.run_as_user_id = sibling.run_as_user_id" in src
     assert "is_emergency_stopped(sibling)" in src

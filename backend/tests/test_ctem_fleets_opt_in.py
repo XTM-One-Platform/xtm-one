@@ -54,12 +54,19 @@ _FLEET_ASSIGNMENTS = {
             "Weekly PIR answer",
             "Half-year threat landscape",
             "Stale indicator clean-up",
+            "Gate answered",
         )
     ),
     # M2 OpenAEV detection validation desk (#10575): seeded off, after migration c9160fleetoptin1.
     *(
         ("openaev-detection-desk-orchestrator", name)
-        for name in ("Simulation finished", "Weekly validation plan", "Weekly coverage report", "Re-test due")
+        for name in (
+            "Simulation finished",
+            "Weekly validation plan",
+            "Weekly coverage report",
+            "Re-test due",
+            "Gate answered",
+        )
     ),
     # M3 OpenCRQ risk budget desk (#10593): seeded off, after migration c9160fleetoptin1.
     *(
@@ -70,6 +77,7 @@ _FLEET_ASSIGNMENTS = {
             "Control validation ingested",
             "Weekly investment review",
             "Monthly Board pack",
+            "Gate answered",
         )
     ),
 }
