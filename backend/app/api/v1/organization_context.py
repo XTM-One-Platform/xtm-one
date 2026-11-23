@@ -402,39 +402,17 @@ async def list_canonical_assets(
     q: str = Query("", max_length=200),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    category: list[str] = Query(default_factory=list, max_length=50),
-    criticality: list[str] = Query(default_factory=list, max_length=50),
-    internet_facing: list[str] = Query(default_factory=list, max_length=50),
-    source: list[str] = Query(default_factory=list, max_length=50),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> CanonicalAssetsPage:
-    """The canonical assets (one per real thing, its sources and software count), paginated by name.
-
-    Each filter (repeated for several values) keeps the assets holding one of its values.
-    """
+    """The canonical assets (one per real thing, its sources and software count), paginated by name."""
     from app.services.organization_asset_store import list_assets
 
     org = await _built_store(db)
     if org is None:
         return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
-    filters = {"category": category, "criticality": criticality, "internet_facing": internet_facing, "source": source}
-    page = await list_assets(db, org, q=q, offset=offset, limit=limit, filters=filters)
+    page = await list_assets(db, org, q=q, offset=offset, limit=limit)
     return CanonicalAssetsPage(**vars(page))
-
-
-@router.get("/assets/facets")
-async def read_asset_facets(
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-) -> dict[str, list[str]]:
-    """The values the asset list filters on: category, criticality, internet facing and source."""
-    from app.services.organization_asset_store import FILTER_FIELDS, asset_facets
-
-    org = await _built_store(db)
-    if org is None:
-        return {name: [] for name in (*FILTER_FIELDS, "source")}
-    return await asset_facets(db, org)
 
 
 @router.get("/assets/identity")
@@ -467,6 +445,56 @@ async def read_asset_identity(
             "precedence": {k: list(v) for k, v in {**identity.DEFAULT_PRECEDENCE, **precedence}.items()},
         },
     }
+
+
+class AssetLookupRequest(BaseModel):
+    #: The identifiers a platform holds for its own objects: hostnames, FQDNs, IP or MAC addresses.
+    keys: list[str] = Field(min_length=1, max_length=200)
+
+
+class AssetLookupMatch(BaseModel):
+    key: str
+    id: str
+    name: str
+    category: Any = None
+    criticality: Any = None
+    internet_facing: Any = None
+    owner: Any = None
+    #: How many assets hold the key (a shared IP): the first by name answers.
+    matches: int
+    #: The asset's page in the CTEM inventory.
+    url: str
+
+
+class AssetLookupResponse(BaseModel):
+    items: list[AssetLookupMatch]
+
+
+@router.post("/assets/lookup", response_model=AssetLookupResponse)
+async def lookup_canonical_assets(
+    body: AssetLookupRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> AssetLookupResponse:
+    """The inventory assets the given identifiers name, for a platform's cross-product pivot.
+
+    OpenCTI, OpenAEV and OpenCRQ call it with the user's own token (the user
+    reads what the inventory list answers him); a key no asset holds is absent.
+    """
+    from app.services.email import platform_url
+    from app.services.organization_asset_store import find_assets_by_identifier
+
+    org = await _built_store(db)
+    if org is None:
+        return AssetLookupResponse(items=[])
+    found = await find_assets_by_identifier(db, org, body.keys)
+    base = platform_url()
+    return AssetLookupResponse(
+        items=[
+            AssetLookupMatch(key=key, url=f"{base}/ctem/inventory/assets/{match['id']}", **match)
+            for key, match in found.items()
+        ]
+    )
 
 
 @router.get("/assets/by-software", response_model=CanonicalAssetsPage)

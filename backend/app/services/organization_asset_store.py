@@ -704,12 +704,7 @@ def _limit(limit: int) -> int:
     return max(1, min(int(limit or 50), MAX_PAGE))
 
 
-def _summary(
-    asset: OrganizationAsset,
-    sources: list[str],
-    software_count: int,
-    records: list[dict[str, str]] | None = None,
-) -> dict[str, Any]:
+def _summary(asset: OrganizationAsset, sources: list[str], software_count: int) -> dict[str, Any]:
     fields = asset.fields or {}
 
     def value(name: str) -> Any:
@@ -729,45 +724,7 @@ def _summary(
         "sources": sources,
         "software_count": software_count,
         "merged_on": asset.merged_on or [],
-        # The source records merged into it, by address: what a merge of assets names (#1178).
-        "records": records or [],
     }
-
-
-#: The asset fields the list filters on (``fields.<name>.value``), in the order the facets answer them.
-FILTER_FIELDS: tuple[str, ...] = ("category", "criticality", "internet_facing")
-
-
-def _field_value(name: str) -> Any:
-    return OrganizationAsset.fields[name]["value"].astext
-
-
-async def asset_facets(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, list[str]]:
-    """The values the list can be filtered on: each filter field's distinct values, and the sources."""
-    facets: dict[str, list[str]] = {}
-    for name in FILTER_FIELDS:
-        column = _field_value(name)
-        rows = (
-            await db.execute(
-                select(column)
-                .where(OrganizationAsset.organization_id == organization_id, column.is_not(None), column != "")
-                .distinct()
-                .order_by(column)
-                .limit(MAX_PAGE)
-            )
-        ).all()
-        facets[name] = [str(value) for (value,) in rows]
-    sources = (
-        await db.execute(
-            select(OrganizationAssetSource.source)
-            .where(OrganizationAssetSource.organization_id == organization_id)
-            .distinct()
-            .order_by(OrganizationAssetSource.source)
-            .limit(MAX_PAGE)
-        )
-    ).all()
-    facets["source"] = [str(value) for (value,) in sources]
-    return facets
 
 
 async def list_assets(
@@ -777,33 +734,12 @@ async def list_assets(
     q: str = "",
     offset: int = 0,
     limit: int = 50,
-    filters: Mapping[str, Sequence[str]] | None = None,
 ) -> Page:
-    """The canonical assets of *organization_id*, by name, filtered on a name substring *q*.
-
-    *filters* keeps the assets whose field (``FILTER_FIELDS``) holds one of the
-    values given, and with ``source`` the assets one of whose records comes from
-    one of the sources given; an empty list filters nothing.
-    """
+    """The canonical assets of *organization_id*, by name, filtered on a name substring *q*."""
     limit, offset = _limit(limit), max(0, int(offset or 0))
-    where: list[Any] = [OrganizationAsset.organization_id == organization_id]
+    where = [OrganizationAsset.organization_id == organization_id]
     if q.strip():
         where.append(OrganizationAsset.name_key.contains(_key(q)))
-    for name, values in (filters or {}).items():
-        wanted = [str(v) for v in values if str(v).strip()]
-        if not wanted:
-            continue
-        if name == "source":
-            where.append(
-                OrganizationAsset.id.in_(
-                    select(OrganizationAssetSource.asset_id).where(
-                        OrganizationAssetSource.organization_id == organization_id,
-                        OrganizationAssetSource.source.in_(wanted),
-                    )
-                )
-            )
-        elif name in FILTER_FIELDS:
-            where.append(_field_value(name).in_(wanted))
     total = (await db.execute(select(func.count()).select_from(OrganizationAsset).where(*where))).scalar() or 0
     assets = (
         (
@@ -820,24 +756,18 @@ async def list_assets(
     )
     ids = [a.id for a in assets]
     sources: dict[uuid.UUID, list[str]] = {}
-    refs: dict[uuid.UUID, list[dict[str, str]]] = {}
     counts: dict[uuid.UUID, int] = {}
     if ids:
-        for asset_id, source, external_id in (
+        for asset_id, source in (
             await db.execute(
-                select(
-                    OrganizationAssetSource.asset_id,
-                    OrganizationAssetSource.source,
-                    OrganizationAssetSource.external_id,
-                )
+                select(OrganizationAssetSource.asset_id, OrganizationAssetSource.source)
                 .where(OrganizationAssetSource.asset_id.in_(ids))
-                .order_by(OrganizationAssetSource.source, OrganizationAssetSource.external_id)
+                .order_by(OrganizationAssetSource.source)
             )
         ).all():
             names = sources.setdefault(asset_id, [])
             if source not in names:
                 names.append(source)
-            refs.setdefault(asset_id, []).append({"source": source, "external_id": external_id})
         for asset_id, count in (
             await db.execute(
                 select(OrganizationAssetSoftware.asset_id, func.count())
@@ -847,7 +777,7 @@ async def list_assets(
         ).all():
             counts[asset_id] = int(count)
     return Page(
-        items=[_summary(a, sources.get(a.id, []), int(counts.get(a.id, 0)), refs.get(a.id, [])) for a in assets],
+        items=[_summary(a, sources.get(a.id, []), int(counts.get(a.id, 0))) for a in assets],
         total=int(total),
         offset=offset,
         limit=limit,
@@ -945,6 +875,95 @@ async def get_asset(
             "limit": limit,
         },
     }
+
+
+#: The most identifiers one lookup reads (a page of a platform's list, its hero).
+MAX_LOOKUP_KEYS = 200
+#: The identifier kinds another platform names an asset by: what it holds itself. A serial or a
+#: cloud id is never guessed from a free value (``web-02`` would read as the serial ``WEB02``).
+LOOKUP_KINDS: tuple[str, ...] = ("fqdn", "hostname", "mac", "ip")
+
+
+def _lookup_keys(value: str) -> set[tuple[str, str]]:
+    """The (kind, normalised value) pairs *value* may be: an FQDN and its hostname, a MAC, an IP."""
+    return {(kind, key) for kind in LOOKUP_KINDS if (key := identity.normalize_identifier(kind, value))}
+
+
+async def find_assets_by_identifier(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    values: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """The canonical asset each of *values* names, by the value as asked.
+
+    A value is read as every :data:`LOOKUP_KINDS` kind it can be (``web-02`` a
+    hostname, ``10.0.0.5`` an IP, ``aa:bb:...`` a MAC, ``web-02.corp.example``
+    an FQDN and the hostname ``web-02``) and matched against the identifiers of every
+    source record, normalised as the identity engine compares them, then
+    against the asset's name. A value no asset holds is absent; when several
+    assets hold it (a weak key such as a shared IP), the first by name answers.
+    The profile caps its rows at 5,000, so one scan of the records is bounded.
+    """
+    asked: dict[str, set[tuple[str, str]]] = {}
+    for value in values[:MAX_LOOKUP_KEYS]:
+        text_value = str(value or "").strip()
+        if text_value and text_value not in asked:
+            asked[text_value] = _lookup_keys(text_value)
+    if not asked:
+        return {}
+    held: dict[tuple[str, str], set[uuid.UUID]] = {}
+    for asset_id, identifiers in (
+        await db.execute(
+            select(OrganizationAssetSource.asset_id, OrganizationAssetSource.identifiers).where(
+                OrganizationAssetSource.organization_id == organization_id
+            )
+        )
+    ).all():
+        record = identity.SourceRecord(source="lookup", external_id="", identifiers=dict(identifiers or {}))
+        for kind in LOOKUP_KINDS:
+            for key in record.keys(kind):
+                held.setdefault((kind, key), set()).add(asset_id)
+    by_name: dict[str, set[uuid.UUID]] = {}
+    names = {_key(v) for v in asked}
+    for asset_id, name_key in (
+        await db.execute(
+            select(OrganizationAsset.id, OrganizationAsset.name_key).where(
+                OrganizationAsset.organization_id == organization_id, OrganizationAsset.name_key.in_(names)
+            )
+        )
+    ).all():
+        by_name.setdefault(name_key, set()).add(asset_id)
+    matched: dict[str, set[uuid.UUID]] = {}
+    for value, keys in asked.items():
+        ids: set[uuid.UUID] = set()
+        for pair in keys:
+            ids |= held.get(pair, set())
+        ids |= by_name.get(_key(value), set())
+        if ids:
+            matched[value] = ids
+    if not matched:
+        return {}
+    every = {i for ids in matched.values() for i in ids}
+    assets = {
+        a.id: a
+        for a in (await db.execute(select(OrganizationAsset).where(OrganizationAsset.id.in_(every)))).scalars().all()
+    }
+    out: dict[str, dict[str, Any]] = {}
+    for value, ids in matched.items():
+        found = sorted((assets[i] for i in ids if i in assets), key=lambda a: (a.name_key, a.canonical_key))
+        if found:
+            asset = found[0]
+            summary = _summary(asset, [], 0)
+            out[value] = {
+                "id": summary["id"],
+                "name": summary["name"],
+                "category": summary["category"],
+                "criticality": summary["criticality"],
+                "internet_facing": summary["internet_facing"],
+                "owner": summary["owner"],
+                "matches": len(found),
+            }
+    return out
 
 
 async def assets_of_software(
