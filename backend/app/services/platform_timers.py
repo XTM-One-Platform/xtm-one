@@ -420,12 +420,48 @@ async def other_listeners(data: Mapping[str, Any]) -> list[str]:
     return [f"task watch {w.id}" for w in watches] + [f"flow {f}" for f in flows]
 
 
-async def _taken(data: Mapping[str, Any]) -> tuple[list[Subscription], bool]:
-    """The assignments in scope of *data*, and whether any listener (assignment, task watch, flow) takes it."""
+async def _taken(data: Mapping[str, Any]) -> tuple[list[Subscription], bool, list[str]]:
+    """Who hears the timer *data* is about, judged for the ARMING agent (#1574).
+
+    Returns the arming agent's own assignments in scope, whether a listener of
+    its own takes the key (its assignments, or a task watch or flow, which run
+    on its behalf), and the ids of the OTHER agents whose assignments take it
+    (a fleet-scoped listener of a sibling hears the event, but nothing of the
+    arming agent runs).
+    """
+    agent_id = str(data.get("agent_id") or "")
     in_scope, taking = await timer_listeners(data)
-    if taking:
-        return in_scope, True
-    return in_scope, bool(await other_listeners(data))
+    own_scope = [sub for sub in in_scope if str(sub.agent_id) == agent_id]
+    own = any(str(sub.agent_id) == agent_id for sub in taking)
+    foreign = list(dict.fromkeys(str(sub.agent_id) for sub in taking if str(sub.agent_id) != agent_id))
+    if not own:
+        own = bool(await other_listeners(data))
+    return own_scope, own, foreign
+
+
+async def agent_names(agent_ids: list[str]) -> list[str]:
+    """The names of *agent_ids*, in order; an id stays as is when its name cannot be read."""
+    if not agent_ids:
+        return []
+    from app.core.database import async_session
+    from app.models.agent import Agent
+
+    try:
+        async with async_session() as db:
+            rows = (
+                await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_([uuid.UUID(a) for a in agent_ids])))
+            ).all()
+    except Exception as exc:
+        logger.warning("Timer listeners: agent names unreadable: %s", format_exception_message(exc))
+        return list(agent_ids)
+    names = {str(row[0]): row[1] for row in rows}
+    return [names.get(a) or a for a in agent_ids]
+
+
+def _names_text(names: list[str]) -> str:
+    shown = ", ".join(names[:MAX_HEARD_FILTERS])
+    more = f" and {len(names) - MAX_HEARD_FILTERS} more" if len(names) > MAX_HEARD_FILTERS else ""
+    return f"{shown}{more}"
 
 
 def _filter_text(flt: Mapping[str, Any]) -> str:
@@ -451,13 +487,20 @@ async def unheard_warning(timer: Mapping[str, Any], *, user_id: str) -> str | No
         user_id=str(user_id),
     )
     try:
-        in_scope, taken = await _taken(data)
+        in_scope, taken, foreign = await _taken(data)
     except Exception as exc:
         logger.warning("Timer listeners of %s unreadable: %s", data["correlation_key"], format_exception_message(exc))
         return None
     if taken:
         return None
     key = data["correlation_key"]
+    if foreign:
+        names = _names_text(await agent_names(foreign))
+        return (
+            f"Warning: only another agent hears `{key}` ({names}): nothing of yours runs at due time, and "
+            f"each fire starts a run of theirs. Re-arm it under a prefix one of your own {TIMER_DUE_EVENT} "
+            "assignments takes, never under another agent's prefix."
+        )
     if not in_scope:
         heard = (
             f"this agent has no enabled platform_event assignment on {TIMER_DUE_EVENT} for this person, so no "
@@ -476,17 +519,17 @@ async def unheard_warning(timer: Mapping[str, Any], *, user_id: str) -> str | No
     )
 
 
-async def _heard(timer: PlatformTimer, data: Mapping[str, Any]) -> bool:
-    """Whether a listener (assignment, task watch, flow) takes *timer*'s ``timer.due``.
+async def _heard(timer: PlatformTimer, data: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    """Whether a listener of the arming agent takes *timer*'s ``timer.due``, and the other agents that do.
 
-    ``True`` when that cannot be read: never record a fire as unheard on a guess.
+    ``(True, [])`` when that cannot be read: never record a fire as unheard on a guess.
     """
     try:
-        _in_scope, taken = await _taken(data)
+        _in_scope, taken, foreign = await _taken(data)
     except Exception as exc:
         logger.warning("Timer %s: listeners unreadable: %s", timer.id, format_exception_message(exc))
-        return True
-    return taken
+        return True, []
+    return taken, foreign
 
 
 async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> int:
@@ -530,11 +573,18 @@ async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> i
                     await db.commit()
                     continue
                 data = timer_due_data(timer)
-                heard = await _heard(timer, data)
+                heard, foreign = await _heard(timer, data)
                 timer.event_id = str(timer.id)
                 if heard:
                     timer.state = TIMER_FIRED
                     timer.outcome = f"{TIMER_DUE_EVENT} raised"
+                elif foreign:
+                    # Delivered to the other agents as before; the arming agent ran nothing.
+                    timer.state = TIMER_FIRED
+                    timer.outcome = (
+                        f"{TIMER_DUE_EVENT} raised, heard only by other agents "
+                        f"({_names_text(await agent_names(foreign))}): nothing of the arming agent ran"
+                    )
                 else:
                     timer.state = TIMER_FIRED_UNHEARD
                     timer.outcome = (
@@ -542,7 +592,7 @@ async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> i
                         "takes it: nothing hears this correlation_key, so no run started"
                     )
                 await db.commit()
-                if not heard:
+                if not heard and not foreign:
                     logger.warning(
                         "Timer %s of agent %s fired unheard: no %s assignment, task watch or flow takes "
                         "correlation_key %r",
@@ -569,6 +619,7 @@ __all__ = [
     "TIMER_DUE_EVENT",
     "TIMER_STATES",
     "TimerError",
+    "agent_names",
     "arm_timer",
     "cancel_timer",
     "check_payload",
