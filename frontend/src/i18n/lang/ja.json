@@ -21297,5 +21297,6 @@
   "The signals could not be updated": "シグナルを更新できませんでした",
   "This signal opened a case: the case owns it now": "このシグナルはケースを開きました。現在はケースが管理しています",
   "Add to inventory": "インベントリに追加",
-  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, other {#件をインベントリに追加しました}}"
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, other {#件をインベントリに追加しました}}",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }

@@ -6,7 +6,7 @@
  */
 import type { ProfileCard } from "@/lib/organization-profile-tabs";
 
-export type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "exposure" | "sources";
+export type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "exposure" | "sources";
 
 /**
  * The profile cards that are settings, not rows (#1178 slice 2b): owned domains, address ranges and the outside lens
@@ -16,10 +16,10 @@ export type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-system
 export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "evidence_health"] as const satisfies readonly ProfileCard[];
 
 /** The tabs the page draws, in order (English labels, translated by DetailTabs). */
+// No AI systems tab since #1501: an AI system is an asset of category AI target, on the Assets tab.
 export const INVENTORY_TABS = [
   { key: "assets", label: "Assets" },
   { key: "asset-groups", label: "Asset groups" },
   { key: "tech-stack", label: "Tech stack" },
-  { key: "ai-systems", label: "AI systems" },
   { key: "exposure", label: "Exposure policy" },
 ] as const satisfies readonly { key: InventoryTab; label: string }[];
