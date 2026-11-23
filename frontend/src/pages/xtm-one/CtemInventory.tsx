@@ -7,7 +7,8 @@
  * ten.
  */
 import { useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
@@ -35,23 +36,16 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
+import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { useInventoryEditView } from "./ctem/inventory-edit-view";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 
-type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "sources";
-
-/**
- * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
- * Assets tab filtered on that category, so a bookmark or a fleet link keeps working.
- */
-const RETIRED_AI_SYSTEMS_TAB = "ai-systems";
+type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
 
 const ASSETS_URL_KEY = "a_";
-const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?${ASSETS_URL_KEY}f_category=ai_target`;
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
 const TECH_URL_KEY = "t_";
 const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
@@ -439,17 +433,11 @@ const EDIT_CARDS = {
   assets: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 export default function CtemInventory() {
-  const [tab] = useTabParam<InventoryTab>("assets");
-  if ((tab as string) === RETIRED_AI_SYSTEMS_TAB) return <Navigate to={AI_TARGET_ASSETS_HREF} replace />;
-  return <InventoryPage />;
-}
-
-function InventoryPage() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [adding, setAdding] = useState(false);
   const add: AddRequest = { open: adding, onClose: () => setAdding(false) };
   const editCards = tab === "assets" ? EDIT_CARDS.assets : null;
@@ -458,6 +446,7 @@ function InventoryPage() {
   const [editing, setEditing] = useInventoryEditView(editCards, isAdmin);
   // Asset matching is read by everyone, edited by administrators inside its own card.
   const matching = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
+  const navigate = useNavigate();
   const setMatching = (on: boolean) =>
     setSearchParams(
       (prev) => {
@@ -468,15 +457,22 @@ function InventoryPage() {
       },
       { replace: true },
     );
-  return (
-    <div className="space-y-4">
-      {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border). */}
-      <ListPageHeader
-        title={t_i18n(INVENTORY_LABEL)}
-        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
-        infoLabel={t_i18n("About the inventory")}
-        actions={
-          tab === "sources" ? (
+  // Sources is a page of its own, not a tab (#1367, point 4): the standard back link to the inventory, its title, and
+  // Asset matching as the header action.
+  // The sources and syncs are read and written by administrators only (the API answers 403 to a reader): a reader
+  // who opens the URL lands on the inventory (UX round 1 on #1476, B2).
+  if (tab === "sources" && !isAdmin) {
+    return authLoading ? null : <Navigate to={INVENTORY_PATH} replace />;
+  }
+  if (tab === "sources") {
+    return (
+      <div className="space-y-4" data-testid="ctem-inventory-sources-page">
+        <BackButton to={INVENTORY_PATH} label="Back to Inventory" />
+        <ListPageHeader
+          title={t_i18n("Inventory sources")}
+          info={t_i18n("The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.")}
+          infoLabel={t_i18n("About the inventory sources")}
+          actions={
             matching ? (
               <Button variant="secondary" className="gap-1.5" onClick={() => setMatching(false)} data-testid="ctem-inventory-matching-done">
                 <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
@@ -486,21 +482,46 @@ function InventoryPage() {
                 <Icon name="settings" size={16} aria-hidden /> {t_i18n("Asset matching")}
               </Button>
             )
-          ) : editing ? (
+          }
+        />
+        {matching ? <AssetMatchingCard /> : <InventorySourcesCard />}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border). */}
+      <ListPageHeader
+        title={t_i18n(INVENTORY_LABEL)}
+        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
+        infoLabel={t_i18n("About the inventory")}
+        actions={
+          editing ? (
             <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
               <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
             </Button>
-          ) : isAdmin && (tab === "assets" || tab === "asset-groups") ? (
-            // The page's primary action, outside the table toolbar (UX round 1 on #1375, B1).
-            <Button
-              variant="secondary"
-              className="gap-1.5"
-              onClick={() => setAdding(true)}
-              data-testid={tab === "assets" ? "ctem-inventory-asset-add" : "ctem-inventory-group-add"}
-            >
-              <Icon name="plus" size={16} aria-hidden /> {t_i18n(tab === "assets" ? "Add an asset" : "Add an asset group")}
-            </Button>
-          ) : undefined
+          ) : (
+            <span className="flex flex-wrap items-center gap-2">
+              {isAdmin && (tab === "assets" || tab === "asset-groups") && (
+                // The tab's add action, outside the table toolbar (UX round 1 on #1375, B1).
+                <Button
+                  variant="secondary"
+                  className="gap-1.5"
+                  onClick={() => setAdding(true)}
+                  data-testid={tab === "assets" ? "ctem-inventory-asset-add" : "ctem-inventory-group-add"}
+                >
+                  <Icon name="plus" size={16} aria-hidden /> {t_i18n(tab === "assets" ? "Add an asset" : "Add an asset group")}
+                </Button>
+              )}
+              {/* Sources, the page's primary action top right (#1367, point 4: a button, not a tab), for administrators
+                  only: the sources API is admin-only (UX round 1 on #1476, B2). */}
+              {isAdmin && (
+                <Button className="gap-1.5" onClick={() => navigate(`${INVENTORY_PATH}/sources`)} data-testid="ctem-inventory-sources">
+                  <Icon name="database" size={16} aria-hidden /> {t_i18n("Sources")}
+                </Button>
+              )}
+            </span>
+          )
         }
       />
       <DetailTabs<InventoryTab>
@@ -510,17 +531,17 @@ function InventoryPage() {
           { key: "assets", label: "Assets" },
           { key: "asset-groups", label: "Asset groups" },
           { key: "tech-stack", label: "Tech stack" },
-          { key: "sources", label: "Sources" },
+          { key: "ai-systems", label: "AI systems" },
         ]}
       />
       {editing && editCards ? (
         <OrganizationSection key={tab} embed={{ cards: editCards }} />
-      ) : tab === "sources" ? (
-        matching ? <AssetMatchingCard /> : <InventorySourcesCard />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
+      ) : tab === "ai-systems" ? (
+        <AiSystemsTab />
       ) : (
         <AssetsTab add={add} />
       )}

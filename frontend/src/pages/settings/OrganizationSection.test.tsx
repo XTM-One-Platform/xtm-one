@@ -39,7 +39,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
 const INVENTORY_CARDS = {
-  technology: ["tech_stack"],
+  technology: ["tech_stack", "ai_systems"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -77,6 +77,7 @@ const CONTEXT: OrganizationContextResponse = {
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     tech_stack: [],
+    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -247,10 +248,10 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 });
 
 describe("OrganizationSection tabs (#12329)", () => {
-  it("renders the three Settings tabs, only the active panel, and opens the tab the URL names (#1178)", async () => {
+  it("renders the two Settings tabs, only the active panel, and opens the tab the URL names (#1178, #1367 point 7)", async () => {
     renderPage("business");
     const tabs = await screen.findAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business", "Knowledge and sources"]);
+    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business"]);
     expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
@@ -274,7 +275,9 @@ describe("OrganizationSection tabs (#12329)", () => {
     const identity = await screen.findByRole("tab", { name: /^Identity and risk/ });
     expect(identity.tagName).toBe("A");
     expect(identity.getAttribute("href")).toBe("/settings/organization");
-    expect(screen.getByRole("tab", { name: /^Knowledge and sources/ }).getAttribute("href")).toBe("/settings/organization/profile/knowledge");
+    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
+    expect(screen.queryByRole("tab", { name: /^Knowledge and sources/ })).toBeNull();
+    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
     const business = screen.getByRole("tab", { name: /^Business/ });
     expect(business.getAttribute("aria-current")).toBe("page");
     expect(identity.getAttribute("aria-current")).toBeNull();
@@ -483,6 +486,8 @@ describe("OrganizationSection", () => {
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
+    // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
+    expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
@@ -539,7 +544,8 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Link a knowledge base" }));
     fireEvent.click(within(within(card).getByTestId("settings.save-bar")).getByRole("button", { name: "Cancel" }));
     expect(within(card).queryByTestId("settings.save-bar")).toBeNull();
-    expect((screen.getByTestId("settings.organization.edit") as HTMLButtonElement).disabled).toBe(false);
+    // The Knowledge and sources page has no profile Edit of its own (UX round 1 on #1476, B1).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(put).not.toHaveBeenCalled();
     // The focus goes back to the card's Edit, never to the page body (#12271 UX r1 B3).
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Enterprise knowledge/ })));
@@ -999,6 +1005,18 @@ describe("OrganizationSection", () => {
     );
     renderPage("knowledge");
     const panel = await screen.findByTestId("organization-sources");
+    // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
+    expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
+    // Its own header (UX round 1 on #1476, B1): the back link first, then its title; the profile's header and
+    // fields banner stay on the profile.
+    const header = screen.getByTestId("settings.organization.knowledge-header");
+    expect(header.firstElementChild?.textContent).toContain("Back to Organization Profile");
+    expect(header.textContent).toContain("Knowledge and sources");
+    expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
     // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
     expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
     const rows = await within(panel).findAllByTestId("organization-sources.row");

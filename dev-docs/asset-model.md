@@ -149,24 +149,11 @@ as resolved at sync time.
 
 ## 7. AI systems
 
-Since #1501 an AI system is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
-`ai_agent`, `mcp_server` or `rag_pipeline`, with the `ai_target_provider`, `ai_target_endpoint`,
-`ai_target_model` and `ai_target_modality` fields on `AssetEntry`. It lives in `assets_exposure`, merged and
-identified like any asset; there is no `AiSystem` list in the profile any more.
-
-- **Profiles saved before #1501**: their `ai_systems` rows become `ai_target` assets at parse
-  (`OrganizationProfile._ai_systems_into_assets`): kind `agent` -> `ai_agent`, `model_api` -> `llm_model`,
-  `assistant` and `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` ->
-  internet facing, every exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source
-  `openaev` with that `external_id`, so the OpenAEV record merges instead of duplicating.
-- **Sync with OpenAEV**: the assets import reads `/api/ai_targets/search` beside the endpoints; the outbound
-  assets sync creates and updates XTM One-owned AI target assets through `/api/ai_targets`, deletes only what it
-  created, and never writes a row an OpenAEV inbound sync owns.
-- **Deprecated alias** (one release): `ai_systems` in `get_organization_context`, `upsert_organization_rows`,
-  `run_organization_import` and the syncs reads and writes the assets of category `ai_target`;
-  `OrganizationProfile.ai_systems` is a derived property and `legacy_dump` still emits the list for old readers.
-- **CTEM > Inventory**: no AI systems tab; `/ctem/inventory/ai-systems` opens the Assets tab filtered on
-  category `ai_target`.
+`AiSystem` (`name`, `kind`, `owner`, `exposure` internal / partner / public, `openaev_asset_id`) is the inventory of
+AI systems the organization runs. In OpenAEV the same object is an asset of category `ai_target`
+(`llm_model`, `ai_agent`, `mcp_server`, `rag_pipeline`) with its `ai_target_*` fields; `openaev_asset_id` links
+the two. It stays a list of its own in the profile (it carries the AI governance fields), and an AI system that
+is also part of the attack surface is an asset of category `ai_target` too.
 
 ## 8. OpenCTI Systems
 
@@ -381,8 +368,31 @@ Reads (any signed-in user):
   version is present, directly (`via` empty) or through an installed version that depends on it, transitively
   (`via` names it; the walk stops at 5,000 versions).
 
-Next slices: hand-typed software writes, CPE override, attach to an asset and events (1b); the Software tab and
-software page (2); the `tech_stack` profile rows migrated to manual software and the concept retired (3).
+- `GET /api/v1/organization-context/software/export.csv` (same filters): the list as CSV, at most 50,000 rows,
+  a cell starting with `=`, `+`, `-`, `@`, tab or CR prefixed with `'` so a spreadsheet never runs it.
+
+Writes (administrators, audited `entity_type organization_context`, `entity_name software`; 404 unknown,
+409 a vendor and product that exist, 422 refused):
+
+- `POST /api/v1/organization-context/software` `{vendor, product, name, type, description, cpe, purl}`: a
+  hand-typed software (`origin manual`); `cpe` is a CPE 2.3 string kept as its override (`cpe_state override`).
+- `PATCH /api/v1/organization-context/software/{id}` `{name, type, description, purl, cpe_override}`: a synced
+  software takes `cpe_override` only (any other field is 422: its name, type and versions come from its
+  sources); the override is kept across syncs and an empty one lets the sources decide again.
+- `DELETE /api/v1/organization-context/software/{id}`: 204; a hand-typed software and its hand attachments
+  (422 for a synced one, which goes when no source reports it).
+- `POST /api/v1/organization-context/software/{id}/installations` `{asset_id, version}`: attach a hand-typed
+  software to an asset (`unknown` when no version). The attachment is a component of the asset's hand
+  document, `organization_asset_sboms` format `manual` anchored on the asset's first source record like an
+  SBOM, so it follows the asset through every rebuild and merge and shows as source `manual`. The same
+  version again changes nothing. A synced software is attached by its sources only (422).
+- `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
+  attachment (every version when `version` is empty); 404 when the asset holds none.
+
+Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
+and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
+(`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
+events for software writes are not raised yet: no subscriber needs them before slice 3.
 
 ## 10. OpenCRQ alignment
 

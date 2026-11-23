@@ -23,7 +23,8 @@ call; the store of later slices persists what it answers.
 2. **Fields** (:func:`resolve_fields`): each field keeps its value per
    source; the value shown follows a per-field precedence of source classes
    (:data:`DEFAULT_PRECEDENCE`, customisable). A local field (an enrichment a
-   person sets) is taken from hand sources only, so no sync overwrites it.
+   person sets) is taken from hand sources first, then from the synced record
+   the person enriched (a sync never sends it), so no sync overwrites it.
 3. **Software** (:func:`merge_software`): one entry per vendor, product and
    version across sources, with its sources and first and last seen; an
    unknown version is ``unknown``, never empty.
@@ -424,7 +425,8 @@ DEFAULT_PRECEDENCE: dict[str, tuple[str, ...]] = {
 BUILTIN_SOURCE_CLASSES: dict[str, str] = {"intune": "mdm", "defender": "edr", "github": "scm", "gitlab": "scm"}
 #: Precedence of a field not listed above: a person first, then the suite, then anything.
 FALLBACK_PRECEDENCE: tuple[str, ...] = (HAND_CLASS, "openaev", "opencrq", "opencti", "*")
-#: Fields only a person sets on a synced thing (local enrichment, #1134): never taken from a sync.
+#: Fields a person sets on a synced thing (local enrichment, #1134): a hand record's value wins; without one, the
+#: value kept on the synced record is shown (#1367: the person's edit of a synced asset lives there).
 DEFAULT_LOCAL_FIELDS: frozenset[str] = frozenset({"environment", "group", "description", "business_service"})
 #: Values that say nothing: never shown over a value another source knows.
 _EMPTY: tuple[Any, ...] = (None, "", "unknown", [], {})
@@ -483,7 +485,9 @@ def resolve_fields(
 
     *precedence* overrides :data:`DEFAULT_PRECEDENCE` field by field. A value
     that says nothing (empty, ``unknown``) never wins over one that does; a
-    field of *local_fields* is taken from hand sources only. Ties go to the
+    field of *local_fields* is taken from hand sources first; when no hand
+    record carries a value, from the other records, where a person's local
+    enrichment of a synced row is kept (#1134, #1367). Ties go to the
     most recently seen record, then to the source name, so the answer never
     depends on the records' order.
     """
@@ -495,7 +499,9 @@ def resolve_fields(
         order = tuple(table.get(name, FALLBACK_PRECEDENCE))
         offers = [r for r in records if name in r.fields]
         if name in local:
-            offers = [r for r in offers if source_class(r.source, source_classes) == HAND_CLASS]
+            hand = [r for r in offers if source_class(r.source, source_classes) == HAND_CLASS]
+            if any(r.fields[name] not in _EMPTY for r in hand):
+                offers = hand
         candidates = [
             {"source": r.source, "external_id": r.external_id, "value": r.fields[name]}
             for r in sorted(offers, key=lambda r: (r.source, r.external_id))
@@ -796,6 +802,7 @@ SECTION_IDENTITY: dict[
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
     "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
     "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
+    "ai_systems": (("platform_id", "name"), _platform_ids("openaev_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),
 }
