@@ -56,8 +56,15 @@ export interface ProfileLike {
   /** Parts edited outside this form (CTEM-28, #1216); kept whole through the form so a save never resets them. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
+  /** The sources taken off one CTEM trigger path (#1445), set from CTEM > Signals, Sources; kept whole through the form. */
+  signal_sources?: SignalSourcesSettings;
   /** How one asset is matched across sources and which source a field shows (#1178), set in CTEM > Inventory; kept whole through the form. */
   asset_identity?: AssetIdentitySettings;
+}
+
+/** Per CTEM trigger path, the sources (`provider:kind`) an administrator took off it (#1445). */
+export interface SignalSourcesSettings {
+  excluded?: Record<string, string[]>;
 }
 
 /** The saved asset identity settings; empty lists and maps keep the engine's defaults. */
@@ -622,6 +629,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.case_attention ? { case_attention: { ...profile.case_attention } } : {}),
     ...(profile.evidence_health ? { evidence_health: profile.evidence_health } : {}),
     ...(profile.cases_recompute ? { cases_recompute: profile.cases_recompute } : {}),
+    ...(profile.signal_sources ? { signal_sources: { excluded: { ...(profile.signal_sources.excluded ?? {}) } } } : {}),
     ...(profile.asset_identity ? { asset_identity: { key_order: [...profile.asset_identity.key_order], precedence: { ...profile.asset_identity.precedence } } } : {}),
   };
 }
@@ -714,6 +722,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         ...(form.case_attention ? { case_attention: form.case_attention } : {}),
         ...(form.evidence_health ? { evidence_health: form.evidence_health } : {}),
         ...(form.cases_recompute ? { cases_recompute: form.cases_recompute } : {}),
+        ...(form.signal_sources ? { signal_sources: form.signal_sources } : {}),
         ...(form.asset_identity ? { asset_identity: form.asset_identity } : {}),
       },
     };

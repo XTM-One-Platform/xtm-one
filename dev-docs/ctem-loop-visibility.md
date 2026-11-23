@@ -140,6 +140,35 @@ loop, and why".
   dialog ("This item is not available to you"), never another user's data
   (`ctem-signals.md` section 5, `ctem-cases.md` principle 8).
 
+### 4.1 The case audit trail (#1490)
+
+`GET /ctem-cases/{id}` serves every `history` event with the audit fields
+`services/ctem_case_audit.py` derives at read time (no stored row rewritten,
+so an event written before #1490 renders the same way), on top of the
+viewer-filtered event:
+
+- `phase`: the CTEM phase (`scoping`, `discovery`, `prioritization`,
+  `validation`, `remediation`, the last one worded Mobilization on the case
+  page). A kind with its own phase (`KIND_PHASE`, a gate by `GATE_PHASE`, a
+  note by its opening words) sets it; a carry kind (state, owner, due, note,
+  SLA) takes the phase the case was in.
+- `autonomy`: `autonomous` (an agent acted, no gate), `validated_by_person`
+  (gate answered), `validated_by_policy` (gate passed automatically),
+  `waiting` (gate waited), `changed` (state, owner, due, ticket, validation,
+  plan: from -> to), `by_person`, `system`.
+- `actor_type` (person, agent, system) and `actor_name` (an agent the viewer
+  may see, else `null`).
+- `headline` (a note's first sentence; the announced catch-up and backfill
+  worded) and `refs` (task, run and decision item ids a note names).
+- On a gate: `answer` on the waiting row (at, outcome, by, option) and
+  `waited_since` on the answer, so the two read as one story.
+
+The case also carries `phases` (per phase, in CTEM order: entered_at,
+exited_at, seconds, events, runs, autonomy counts, waiting, current) and
+`current_phase`. A new event kind joins the trail by adding its phase to
+`KIND_PHASE` (or `CARRY_KINDS`) and, when it records a change, to
+`CHANGE_KINDS`.
+
 ## 5. Real time
 
 No polling page and no new channel: the loop rides the activity stream

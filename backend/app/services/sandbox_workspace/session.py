@@ -46,6 +46,7 @@ from app.services.sandbox_workspace.manifest import (
 )
 from app.services.sandbox_workspace.paths import is_under, normalize
 from app.services.sandbox_workspace.store import (
+    BlobReleasedError,
     MemoryWorkspaceStore,
     WorkspaceAccessError,
     WorkspaceRecord,
@@ -310,9 +311,16 @@ class WorkspaceSession:
             # sequence, ran past the tool's time limit. What was
             # uploaded before a failure is dropped as it is after a refusal.
             to_upload: list[PendingFile] = []
+            # Contents skipped because the workspace held them: the commit
+            # checks under its row lock that they are still held (#1496).
+            reused: dict[str, PendingFile] = {}
             for pending in files:
                 sha = pending.entry.sha256
-                if sha in held or sha in uploaded:
+                if sha in uploaded:
+                    continue
+                if sha in held:
+                    if sha not in reused or (reused[sha].data is None and not reused[sha].local_path):
+                        reused[sha] = pending
                     continue
                 if pending.data is None and not pending.local_path:
                     # A re-pointed entry (a move) whose blob a concurrent
@@ -328,21 +336,52 @@ class WorkspaceSession:
                     await self.store.upload_blob(record.id, pending.entry.sha256, pending.data, path=pending.local_path)
                 written += pending.entry.size
 
-            try:
-                if to_upload:
+            if record is None:  # a write creates the row (create=True): never None in practice
+                raise WorkspaceUnavailableError(self.unavailable_reason or "The sandbox workspace could not be opened.")
+            workspace_id = record.id
+
+            async def upload_all(batch: list[PendingFile]) -> None:
+                if batch:
                     # A task group: one upload failing cancels the others
                     # before the failure is raised.
                     async with asyncio.TaskGroup() as uploads:
-                        for pending in to_upload:
+                        for pending in batch:
                             uploads.create_task(upload(pending))
-                plan = await self.store.commit(
-                    record.id,
-                    [f.entry for f in files],
-                    removals,
-                    self.limits,
-                    bytes_read=bytes_read,
-                    bytes_written=written,
-                )
+
+            try:
+                await upload_all(to_upload)
+                try:
+                    plan = await self.store.commit(
+                        workspace_id,
+                        [f.entry for f in files],
+                        removals,
+                        self.limits,
+                        bytes_read=bytes_read,
+                        bytes_written=written,
+                        reused=list(reused),
+                    )
+                except BlobReleasedError as released:
+                    # A concurrent commit released a content this change set
+                    # reused and deleted its blob: upload it from the bytes we
+                    # have and commit once more, never a path without content.
+                    metrics.operation(operation, "reused_blob_released")
+                    again: list[PendingFile] = []
+                    for sha in sorted(released.shas):
+                        pending = reused[sha]
+                        if pending.data is None and not pending.local_path:
+                            raise FileNotFoundError(pending.entry.path) from released
+                        uploaded.add(sha)
+                        again.append(pending)
+                    await upload_all(again)
+                    plan = await self.store.commit(
+                        workspace_id,
+                        [f.entry for f in files],
+                        removals,
+                        self.limits,
+                        bytes_read=bytes_read,
+                        bytes_written=written,
+                        reused=[sha for sha in reused if sha not in released.shas],
+                    )
             except QuotaExceededError:
                 metrics.quota_refused(operation)
                 await self.store.drop_blobs(record.id, uploaded - held)

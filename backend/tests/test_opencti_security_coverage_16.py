@@ -243,7 +243,8 @@ def _review_gate(slug: str) -> dict[str, Any]:
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
 def test_the_review_gate_maps_onto_the_coverage_request(slug: str) -> None:
     gate = _review_gate(slug)
-    assert gate["tools"] == [{"name": TOOL, "when": {"action": ["create"]}}]
+    # The draft holding the package is validated under the same decision (#1480).
+    assert gate["tools"] == [{"name": TOOL, "when": {"action": ["create"]}}, {"name": "apply_opencti_draft"}]
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
@@ -265,6 +266,6 @@ def test_the_coverage_request_waits_when_pinned_or_at_full_gates(slug: str) -> N
     gates = BUILTIN_FLEET_STRUCTURED[slug]["gates"]
     pinned = effective_gates(gates, None, pins={_GATE: "wait"})
     for rules in (gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, pinned), gated_tool_rules("full_gates", gates)):
-        (rule,) = [r for r in rules if r["key"] == _GATE]
+        (rule,) = [r for r in rules if r["key"] == _GATE and r["name"] == TOOL]
         assert rule_matches(rule, TOOL, {"action": "create", "covered_id": "g1", "name": "n"})
         assert not rule_matches(rule, TOOL, {"action": "get", "coverage_id": "sc1"})
