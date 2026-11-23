@@ -91,7 +91,7 @@ test("a case page lights Cases, the other CTEM pages still light Home (#1135)", 
   }
 });
 
-test("the Signals page and its Sources tab light CTEM > Signals (#1401)", () => {
+test("the Signals page and its Sources page light CTEM > Signals (#1401)", () => {
   const sections = resolveNav(XTM_ONE, true);
   for (const pathname of ["/ctem/signals", "/ctem/signals/sources"]) {
     assert.equal(activeNavPath(sections, pathname), "/ctem/signals", pathname);
