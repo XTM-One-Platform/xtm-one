@@ -190,13 +190,19 @@ is reported as gone, kept unless the administrator removes it. A truncated or fa
 `backend/app/services/organization_asset_identity.py` is the pure rule (no I/O, no model call) that turns the
 records several sources hold on one thing into one canonical thing; the store of the next slices persists it.
 
-- Identity: strong keys in a configurable order (`DEFAULT_KEY_ORDER`: serial, cloud resource id, device id, MAC,
-  FQDN, hostname), each normalised (placeholder serials and null MACs dropped; a hostname drops apostrophes of
+- Identity: strong keys in a configurable order (`DEFAULT_KEY_ORDER`: serial, cloud resource id, repository,
+  device id, MAC, FQDN, hostname), each normalised (placeholder serials and null MACs dropped; a hostname drops apostrophes of
   every kind and spells blanks and underscores as hyphens, so the device name `Amani’s MacBook Pro` an endpoint
   manager sends and the hostname `Amanis-MacBook-Pro` macOS derives from it are one key). An IP address is weak: it never
   merges, it is answered as a possible match. No merge when one source holds two ids, when a higher-ranked key
   differs on both sides, or when an administrator split the pair; an administrator's merge wins over the keys.
   The answer does not depend on the order of the records and says why (`merged on serial`).
+- Code repositories (#1554): a row of category `source_code` and subcategory `code_repository` is keyed
+  `repository`, `host/owner/repo` (GitLab `host/group/subgroup/project`) read from its URL, else from a name shaped
+  `owner/repo` (read on github.com, the only host guessed, and only for two segments), lower-cased with `.git`,
+  scheme, `www.` and web sub-pages dropped. OpenAEV's `OpenCTI-Platform/opencti` and GitHub's repository are one
+  asset (`merged on repository`); a row of any other category never carries the key, and two repositories with
+  different numeric ids (`cloud_resource_id`, ranked above) never merge on the path.
 - Fields: each field keeps every source's value; the value shown follows a per-field precedence of source classes
   (`DEFAULT_PRECEDENCE`: endpoint manager and EDR for OS and software, OpenCRQ for criticality, OpenAEV for
   exposure), customisable; `unknown` never wins over a known value; local fields come from hand sources only.
@@ -362,7 +368,6 @@ Reads (any signed-in user):
 
 - `GET /api/v1/organization-context/software?q=&type=&vendor=&source=&origin=&cpe_state=&unknown_version=&offset=&limit=`:
   one item per software with `version_count`, `asset_count` (distinct assets), `has_unknown_version`, `editable`.
-  `type`, `origin` and `cpe_state` repeat for several values (any of them), as the Software tab's filters send them.
 - `GET /api/v1/organization-context/software/{id}`: the software, its versions with asset counts, its
   installations (paginated), `depends_on` and `used_by` (one level, each edge with its version and kind).
 - `GET /api/v1/organization-context/software/versions/{id}/assets?through_dependencies=`: the assets where a
@@ -390,13 +395,7 @@ Writes (administrators, audited `entity_type organization_context`, `entity_name
 - `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
   attachment (every version when `version` is empty); 404 when the asset holds none.
 
-UI (slice 2): CTEM > Inventory has a Software tab (`/ctem/inventory/software`, the old `tech-stack` tab redirects
-there) listing every software with its type, asset and version counts, CPE or its state, and sources, filtered on
-type, origin and CPE state; each row opens `/ctem/inventory/software/{id}`: the identity and CPE card, versions with
-asset counts (`unknown` named), the assets it is installed on (server paged), depends on and used by. Each row of
-an asset page's Software section carries `software_id` and opens that page.
-
-Next slice: the `tech_stack` profile rows migrated to manual software
+Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
 and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
 (`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
 events for software writes are not raised yet: no subscriber needs them before slice 3.

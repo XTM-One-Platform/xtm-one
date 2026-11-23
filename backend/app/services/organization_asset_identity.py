@@ -11,8 +11,8 @@ call; the store of later slices persists what it answers.
 
 1. **Identity** (:func:`match_records`): each record carries identifiers by
    kind. Strong kinds merge, in the order of :data:`DEFAULT_KEY_ORDER`
-   (hardware serial, cloud resource id, managed device id, MAC address, FQDN,
-   normalised hostname), each normalised by :func:`normalize_identifier`
+   (hardware serial, cloud resource id, code repository path, managed device
+   id, MAC address, FQDN, normalised hostname), each normalised by :func:`normalize_identifier`
    (placeholder serials and null MAC addresses are dropped). A weak kind (an
    IP address) never merges by itself: it is answered as a possible match.
    Two records are never merged when they come from the same source with
@@ -49,7 +49,15 @@ from app.services.organization_context import HAND_SOURCES, PLATFORM_SOURCES
 
 #: Strong identifier kinds, the most reliable first: a key earlier in the list
 #: overrules a later one (two records with different serials never merge on a hostname).
-DEFAULT_KEY_ORDER: tuple[str, ...] = ("serial", "cloud_resource_id", "device_id", "mac", "fqdn", "hostname")
+DEFAULT_KEY_ORDER: tuple[str, ...] = (
+    "serial",
+    "cloud_resource_id",
+    "repository",
+    "device_id",
+    "mac",
+    "fqdn",
+    "hostname",
+)
 #: Identifier kinds that never merge by themselves (shared, recycled, translated).
 WEAK_KINDS: frozenset[str] = frozenset({"ip"})
 IDENTIFIER_KINDS: tuple[str, ...] = (*DEFAULT_KEY_ORDER, *sorted(WEAK_KINDS))
@@ -57,6 +65,7 @@ IDENTIFIER_KINDS: tuple[str, ...] = (*DEFAULT_KEY_ORDER, *sorted(WEAK_KINDS))
 KIND_LABELS: dict[str, str] = {
     "serial": "serial",
     "cloud_resource_id": "cloud resource id",
+    "repository": "repository",
     "device_id": "device id",
     "mac": "MAC address",
     "fqdn": "FQDN",
@@ -164,6 +173,51 @@ def _hostname(value: str) -> str:
     return name if _HOST_LABEL.match(name) and name not in ("localhost", "unknown") else ""
 
 
+#: The host a bare ``owner/repo`` path names: the only one guessed, and only for two segments.
+DEFAULT_REPOSITORY_HOST = "github.com"
+_REPO_SEGMENT = re.compile(r"^[a-z0-9_.][a-z0-9_.-]{0,254}$")
+_SSH_REMOTE = re.compile(r"^[a-z0-9_.-]+@([a-z0-9.-]+):(.+)$")
+
+
+def _repository(value: str) -> str:
+    """A code repository as ``host/owner/repo`` (GitLab ``host/group/subgroup/project``), or ``""``.
+
+    Reads a web URL, a clone URL (``https``, ``ssh://``, ``git@host:path``) or a bare
+    ``owner/repo``: lower-case, scheme, credentials, port, ``www.``, ``.git`` and the trailing
+    ``/`` dropped, and a web sub-page (``/tree/main``, GitLab's ``/-/...``) cut. A bare path is
+    read on :data:`DEFAULT_REPOSITORY_HOST` only with exactly two segments, so a GitLab
+    ``group/subgroup/project`` without its host never takes a guessed one.
+    """
+    text = value.strip().lower()
+    host = ""
+    if ssh := _SSH_REMOTE.match(text):
+        host, text = ssh.group(1), ssh.group(2)
+    elif "://" in text:
+        text = text.split("://", 1)[1]
+        authority, _, text = text.partition("/")
+        host = authority.rsplit("@", 1)[-1].split(":", 1)[0]
+    text = text.split("?", 1)[0].split("#", 1)[0].strip("/")
+    parts = [p for p in text.split("/") if p]
+    if not host and parts and "." in parts[0] and len(parts) >= 3:
+        host, parts = parts[0], parts[1:]  # github.com/owner/repo without a scheme
+    if "-" in parts:  # GitLab web sub-page: /group/project/-/tree/main
+        parts = parts[: parts.index("-")]
+    host = host.removeprefix("www.")
+    if not host:
+        if len(parts) != 2:
+            return ""
+        host = DEFAULT_REPOSITORY_HOST
+    elif host == DEFAULT_REPOSITORY_HOST:
+        parts = parts[:2]  # github.com/owner/repo/tree/main, /pulls, ...
+    if parts:
+        parts[-1] = parts[-1].removesuffix(".git")
+    if len(parts) < 2 or not all(_REPO_SEGMENT.match(p) and p not in (".", "..") for p in parts):
+        return ""
+    if not _fqdn(host) and host != "localhost":
+        return ""
+    return "/".join([host, *parts])
+
+
 def _ip(value: str) -> str:
     try:
         address = ipaddress.ip_address(value.strip())
@@ -182,6 +236,7 @@ _NORMALIZERS: dict[str, Callable[[str], str]] = {
     "fqdn": _fqdn,
     "hostname": _hostname,
     "ip": _ip,
+    "repository": _repository,
 }
 
 
@@ -571,7 +626,6 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                     "purl": "",
                     "install_date": None,
                     "bundled_in": "",
-                    "type": "",
                     "depends_on": [],
                     "first_seen": None,
                     "last_seen": None,
@@ -586,9 +640,6 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                 entry["install_date"] = raw["install_date"]
             if not entry["bundled_in"] and raw.get("bundled_in"):
                 entry["bundled_in"] = str(raw["bundled_in"]).strip()
-            # A declared type (an SBOM's component type) other than the default wins over none.
-            if raw.get("type") and entry["type"] in ("", "application"):
-                entry["type"] = str(raw["type"]).strip()
             for target in raw.get("depends_on") or ():
                 label = str(target or "").strip()
                 if label and label not in entry["depends_on"]:
@@ -781,10 +832,35 @@ def _group_ids(row: Mapping[str, Any]) -> dict[str, list[str]]:
     return {"external_reference": [str(row.get("external_reference") or "")], "name": [str(row.get("name") or "")]}
 
 
+def is_code_repository(row: Mapping[str, Any]) -> bool:
+    """Whether an asset row is a code repository (category ``source_code``, subcategory ``code_repository``)."""
+    return (
+        str(row.get("category") or "").strip().lower() == "source_code"
+        and str(row.get("subcategory") or "").strip().lower() == "code_repository"
+    )
+
+
+def _repository_ids(row: Mapping[str, Any]) -> list[str]:
+    """The repository a code repository row names: its URL, else its name.
+
+    GitHub, GitLab, OpenAEV, a CSV and a hand row spell the same repository differently
+    (``https://github.com/Owner/Repo``, ``Owner/Repo``): each reads as one ``repository`` key.
+    A row of any other category never carries one, so a host named ``a/b`` stays a host.
+    """
+    if not is_code_repository(row):
+        return []
+    for field_name in ("url", "name"):
+        values = [v for v in _as_list(row.get(field_name)) if _repository(v)]
+        if values:
+            return values
+    return []
+
+
 def _asset_ids(row: Mapping[str, Any]) -> dict[str, list[str]]:
     # An empty value names nothing: a row stored with ``hostname=""`` still takes its name as hostname,
     # else its record carries no key and never merges with the same machine of another source.
     ids = {kind: [v for v in _as_list(row.get(kind)) if v.strip()] for kind in IDENTIFIER_KINDS}
+    ids["repository"] = _repository_ids(row)
     if not ids["hostname"] and row.get("name"):
         ids["hostname"] = [str(row["name"])]
     return ids
