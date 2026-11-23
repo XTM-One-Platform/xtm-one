@@ -20993,5 +20993,13 @@
   "OS, compliance and ownership, each as a prefixed tag": "SO, cumplimiento y propiedad, cada uno como etiqueta con prefijo",
   "OS, exposure level, health and risk, each as a prefixed tag": "SO, nivel de exposición, estado y riesgo, cada uno como etiqueta con prefijo",
   "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "No disponible: no hay ninguna integración de {source} conectada. Conéctela en Configuración > Integraciones.",
-  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "No disponible: la integración de {source} no tiene token. Vuelva a autorizarla en Configuración > Integraciones."
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "No disponible: la integración de {source} no tiene token. Vuelva a autorizarla en Configuración > Integraciones.",
+  "Affected assets": "Activos afectados",
+  "Version source: none yet": "Origen de la versión: ninguno por ahora",
+  "Not in the inventory": "No está en el inventario",
+  "Running version": "Versión en uso",
+  "Search asset": "Buscar activo",
+  "Assets not listed": "Activos no listados",
+  "No asset": "Ningún activo",
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# activo más no listado} other {# activos más no listados}}"
 }

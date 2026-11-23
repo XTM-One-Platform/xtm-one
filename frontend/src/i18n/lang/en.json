@@ -20993,5 +20993,13 @@
   "OS, compliance and ownership, each as a prefixed tag": "OS, compliance and ownership, each as a prefixed tag",
   "OS, exposure level, health and risk, each as a prefixed tag": "OS, exposure level, health and risk, each as a prefixed tag",
   "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "Not available: no {source} integration is connected. Connect it in Settings > Integrations.",
-  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations."
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.",
+  "Affected assets": "Affected assets",
+  "Version source: none yet": "Version source: none yet",
+  "Not in the inventory": "Not in the inventory",
+  "Running version": "Running version",
+  "Search asset": "Search asset",
+  "Assets not listed": "Assets not listed",
+  "No asset": "No asset",
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# more asset not listed} other {# more assets not listed}}"
 }
