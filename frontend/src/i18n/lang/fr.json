@@ -21237,5 +21237,6 @@
   "Split into its own case by a person or an agent": "Séparé dans son propre dossier par une personne ou un agent",
   "Announced to the loop by the catch-up pass": "Annoncé à la boucle par la passe de rattrapage",
   "Announced to the loop by the backfill": "Annoncé à la boucle par la reprise de l’historique",
-  "The accepted risk expired": "Le risque accepté a expiré"
+  "The accepted risk expired": "Le risque accepté a expiré",
+  "Date and time": "Date et heure"
 }

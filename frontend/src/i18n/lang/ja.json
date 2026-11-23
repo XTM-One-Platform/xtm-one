@@ -21237,5 +21237,6 @@
   "Split into its own case by a person or an agent": "ユーザーまたはエージェントにより個別のケースに分割",
   "Announced to the loop by the catch-up pass": "キャッチアップ処理でループに通知しました",
   "Announced to the loop by the backfill": "バックフィルでループに通知しました",
-  "The accepted risk expired": "受容したリスクの期限が切れました"
+  "The accepted risk expired": "受容したリスクの期限が切れました",
+  "Date and time": "日時"
 }
