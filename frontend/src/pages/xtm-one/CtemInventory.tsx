@@ -42,7 +42,7 @@ import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entri
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { useInventoryEditView } from "./ctem/inventory-edit-view";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
 
 type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "sources";
 
@@ -158,7 +158,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
     {
       key: "criticality",
       header: "Criticality",
-      cell: (a) => assetFieldLabel(t_i18n, "criticality", a.criticality),
+      // One line at every width: the short "Unknown" under the heading, never wrapped (#1501 UX r1 B2).
+      cell: (a) => <span className="whitespace-nowrap">{criticalityShortLabel(t_i18n, a.criticality)}</span>,
       csv: (a) => a.criticality,
       hideable: true,
     },
@@ -222,7 +223,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
   return (
     <>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} />
+      <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} fitBeside />
       <div className="min-w-0 flex-1">
       <DataTable<CanonicalAssetSummary>
         rows={rows}

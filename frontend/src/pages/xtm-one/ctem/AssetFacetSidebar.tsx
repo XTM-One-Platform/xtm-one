@@ -12,7 +12,7 @@ import { FacetBranch, FacetCheckbox, FacetGroup, FacetSidebar } from "@/componen
 import type { AssetFacetValue, AssetFacets, AssetFilterKey } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import { CategoryMark, SourceLogo } from "./inventory-icons";
-import { assetFieldLabel, sourceLabel } from "./inventory";
+import { assetFieldLabel, criticalityShortLabel, orderFacetValues, sourceLabel } from "./inventory";
 
 /** The facets of the sidebar, in the order it shows them; a subcategory is drawn under its category. */
 export const SIDEBAR_FACETS: readonly AssetFilterKey[] = ["category", "subcategory", "criticality", "internet_facing", "source"];
@@ -56,11 +56,13 @@ const GROUP_LABELS: Record<Exclude<AssetFilterKey, "subcategory">, string> = {
 };
 
 export function AssetFacetSidebar({
-  facets, picked, prefix,
+  facets, picked, prefix, fitBeside = false,
 }: {
   facets: AssetFacets | undefined;
   picked: Record<AssetFilterKey, string[]>;
   prefix: string;
+  /** Beside a table that fits the window: the aside ends with it and scrolls alone (UX r1 B1). */
+  fitBeside?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const [, setSearchParams] = useSearchParams();
@@ -68,10 +70,14 @@ export function AssetFacetSidebar({
   const clear = (keys: readonly AssetFilterKey[]) => setSearchParams((prev) => clearFacetParams(prev, prefix, keys), { replace: true });
   const hasFilters = SIDEBAR_FACETS.some((facet) => picked[facet].length > 0);
   const subcategories = withPicked(facets?.subcategory ?? [], picked.subcategory);
-  const categories = withPicked(facets?.category ?? [], picked.category);
+  const categoryLabel = (value: string) => assetFieldLabel(t_i18n, "category", value);
+  const categories = orderFacetValues("category", withPicked(facets?.category ?? [], picked.category), categoryLabel);
+  const valueLabel = (facet: "criticality" | "internet_facing" | "source", value: string) =>
+    facet === "source" ? sourceLabel(t_i18n, value) : facet === "criticality" ? criticalityShortLabel(t_i18n, value) : assetFieldLabel(t_i18n, facet, value);
 
   const simple = (facet: "criticality" | "internet_facing" | "source", divided: boolean) => {
-    const values = withPicked(facets?.[facet] ?? [], picked[facet]);
+    // Enum facets in their own order (severity), never by key (UX r1 B3).
+    const values = orderFacetValues(facet, withPicked(facets?.[facet] ?? [], picked[facet]), (value) => valueLabel(facet, value));
     if (values.length === 0) return null;
     return (
       <FacetGroup
@@ -86,7 +92,7 @@ export function AssetFacetSidebar({
             key={value}
             checked={picked[facet].includes(value)}
             count={count}
-            label={facet === "source" ? sourceLabel(t_i18n, value) : assetFieldLabel(t_i18n, facet, value)}
+            label={valueLabel(facet, value)}
             leading={facet === "source" ? <SourceLogo source={value} /> : undefined}
             onToggle={() => toggle(facet, value)}
           />
@@ -96,7 +102,7 @@ export function AssetFacetSidebar({
   };
 
   return (
-    <FacetSidebar hasFilters={hasFilters} onClearAll={() => clear(SIDEBAR_FACETS)} testId="ctem-inventory-asset-facets">
+    <FacetSidebar hasFilters={hasFilters} onClearAll={() => clear(SIDEBAR_FACETS)} testId="ctem-inventory-asset-facets" fitBeside={fitBeside}>
       {categories.length > 0 && (
         <FacetGroup
           label={t_i18n(GROUP_LABELS.category)}
@@ -104,7 +110,7 @@ export function AssetFacetSidebar({
           onClear={picked.category.length + picked.subcategory.length > 0 ? () => clear(["category", "subcategory"]) : undefined}
         >
           {categories.map(({ value, count }) => {
-            const label = assetFieldLabel(t_i18n, "category", value);
+            const label = categoryLabel(value);
             const row = (
               <FacetCheckbox
                 checked={picked.category.includes(value)}

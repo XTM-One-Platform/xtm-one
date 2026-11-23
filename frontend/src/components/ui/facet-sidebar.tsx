@@ -6,11 +6,12 @@
  * integration catalog and the CTEM asset list both draw it. Multi-select within a group is OR, across groups AND;
  * the caller owns the selection and the counts.
  */
-import { useState, type ElementType, type ReactNode } from "react";
+import { useState, type CSSProperties, type ElementType, type ReactNode } from "react";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { SelectionBox } from "@/components/ui/list-control-bar";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { FIT_BESIDE_ATTRIBUTE, useFitBeside } from "@/hooks/useFitToViewport";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -146,20 +147,36 @@ export function FacetBranch({
   );
 }
 
-/** The sticky aside: a "Filters" heading, "Clear all" while anything is picked, then the groups. */
+/**
+ * The sticky aside: a "Filters" heading, "Clear all" while anything is picked, then the groups.
+ * With `fitBeside` (beside a records table that fits the window), the aside ends at the window's
+ * bottom, as the table does, and is the only scroller of the facets: the page never scrolls (#1501
+ * UX r1 B1). Without it (a long-form page, the integration catalog), it sticks while the page scrolls.
+ */
 export function FacetSidebar({
-  children, hasFilters, onClearAll, className, testId,
+  children, hasFilters, onClearAll, className, testId, fitBeside = false,
 }: {
   children: ReactNode;
   hasFilters: boolean;
   onClearAll: () => void;
   className?: string;
   testId?: string;
+  fitBeside?: boolean;
 }) {
   const { t_i18n } = useFormatter();
+  const [aside, setAside] = useState<HTMLElement | null>(null);
+  const room = useFitBeside(fitBeside ? aside : null);
+  const fitted = fitBeside && room !== undefined;
   return (
     <aside
-      className={cn("w-full shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-64 lg:overflow-y-auto lg:pr-1", className)}
+      ref={setAside}
+      {...(fitBeside ? { [FIT_BESIDE_ATTRIBUTE]: "" } : {})}
+      style={fitted ? ({ "--facet-fit": `${room}px` } as CSSProperties) : undefined}
+      className={cn(
+        "w-full shrink-0 lg:w-64 lg:overflow-y-auto lg:pr-1",
+        fitted ? "lg:max-h-[var(--facet-fit)]" : "lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)]",
+        className,
+      )}
       data-testid={testId}
     >
       <div className="space-y-5 rounded-sm border border-elevation-subtle-soft layer-1 bg-elevation-default p-4 backdrop-blur-sm">

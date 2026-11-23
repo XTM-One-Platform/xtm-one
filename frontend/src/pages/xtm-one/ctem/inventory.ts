@@ -97,6 +97,44 @@ export function assetFieldLabel(t: Translate, field: string, value: string | nul
   return label ? t(label) : value;
 }
 
+/**
+ * The criticality of an asset in a column or a facet whose heading already says "Criticality": "Unknown" instead of
+ * "Criticality unknown", so the cell keeps one line at 1080 and reads like the Internet facing column (#1501 UX r1 B2).
+ */
+export function criticalityShortLabel(t: Translate, value: string | null | undefined): string {
+  return (value ?? "").toLowerCase() === "unknown" ? t("Unknown") : assetFieldLabel(t, "criticality", value);
+}
+
+/** OpenAEV's criticality scale, most severe first: the order a reader expects (#1501 UX r1 B3). */
+const CRITICALITY_ORDER: readonly string[] = ["very_high", "high", "medium", "low", "unknown"];
+
+/** The category a facet lists last, whatever its translated label: the assets still to classify. */
+const UNCLASSIFIED_CATEGORY = "generic_asset";
+
+/**
+ * Facet values in the order a first-time reader expects, never by key (#1501 UX r1 B3): criticality on its scale,
+ * most severe first; categories by their translated label with "Other asset" last; a value outside the scale
+ * after the known ones. Every other facet keeps the order it came in.
+ */
+export function orderFacetValues<T extends { value: string }>(facet: string, values: readonly T[], label: (value: string) => string): T[] {
+  const out = [...values];
+  if (facet === "criticality") {
+    const rank = (v: string) => {
+      const i = CRITICALITY_ORDER.indexOf(v.toLowerCase());
+      return i === -1 ? CRITICALITY_ORDER.length : i;
+    };
+    return out.sort((a, b) => rank(a.value) - rank(b.value));
+  }
+  if (facet === "category") {
+    return out.sort((a, b) => {
+      const lastA = a.value === UNCLASSIFIED_CATEGORY ? 1 : 0;
+      const lastB = b.value === UNCLASSIFIED_CATEGORY ? 1 : 0;
+      return lastA - lastB || label(a.value).localeCompare(label(b.value));
+    });
+  }
+  return out;
+}
+
 /** An asset's category in words: "Category > Subcategory", or the category alone. */
 export function assetCategoryLabel(t: Translate, asset: { category?: string | null; subcategory?: string | null }): string {
   if (!asset.category) return asset.subcategory ? taxonomyValueLabel(t, asset.subcategory) : "";
