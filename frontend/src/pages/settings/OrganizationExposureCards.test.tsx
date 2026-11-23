@@ -18,6 +18,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const get = vi.mocked(api.get);
 
 const BASE: ProfileForm = {
+  shipped_products: [],
   name: "Acme",
   sector: "Finance",
   sub_sector: "",
@@ -25,6 +26,7 @@ const BASE: ProfileForm = {
   size: "",
   crown_jewels: [],
   tech_stack: [],
+  ai_systems: [],
   pir_ids: [],
   annual_loss_threshold: "",
   approval_threshold: "",

@@ -5,7 +5,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
-import type { AssetIdentitySettings, AttackSurfacePass, CaseAttentionProfile, PrioritizationPolicy, TicketingSync } from "@/lib/organization-profile";
+import type {
+  AssetIdentitySettings,
+  AttackSurfacePass,
+  CaseAttentionProfile,
+  PrioritizationPolicy,
+  SignalSourcesSettings,
+  TicketingSync,
+} from "@/lib/organization-profile";
 
 interface CrownJewel {
   name: string;
@@ -32,6 +39,17 @@ interface TechStackEntry {
   sync_id?: string;
 }
 
+interface AiSystem {
+  name: string;
+  kind: "assistant" | "agent" | "model_api" | "embedded";
+  owner: string;
+  exposure: "internal" | "partner" | "public";
+  openaev_asset_id: string;
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
+}
+
 export interface OrganizationProfile {
   name: string;
   sector: string;
@@ -40,7 +58,9 @@ export interface OrganizationProfile {
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
-  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
+  ai_systems: AiSystem[];
+  /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
+  shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615). */
   pir_names?: Record<string, string>;
@@ -62,6 +82,8 @@ export interface OrganizationProfile {
   /** Parts edited elsewhere (CTEM-28, #1216), carried whole by every profile save. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
+  /** The sources taken off one CTEM trigger path (#1445), edited in CTEM > Signals, Sources. */
+  signal_sources?: SignalSourcesSettings;
   /** Asset matching and field precedence (#1178), edited in CTEM > Inventory, Sources. */
   asset_identity?: AssetIdentitySettings;
 }

@@ -1,7 +1,7 @@
 // Settings > Organization (#8987): the profile every agent reads, its missing fields, the save and the OpenCRQ check.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { api } from "@/lib/api";
@@ -39,7 +39,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
 const INVENTORY_CARDS = {
-  technology: ["tech_stack"],
+  technology: ["tech_stack", "ai_systems"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -77,6 +77,7 @@ const CONTEXT: OrganizationContextResponse = {
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     tech_stack: [],
+    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -347,6 +348,45 @@ describe("OrganizationSection", () => {
     expect(screen.getByTestId("settings.save-bar")).toBeTruthy();
   });
 
+  it("lists the shipped products on the Business tab, empty and filled, and marks a repository that is not owner/name (#1432)", async () => {
+    renderPage("business");
+    const card = await screen.findByTestId("settings.organization.shipped-products");
+    expect(card.textContent).toContain("No shipped product yet");
+    cleanup();
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context"
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, shipped_products: [{ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }] } }
+        : base(path),
+    );
+    renderPage("business");
+    expect(await screen.findByText("acme/server")).toBeTruthy();
+    expect(screen.getAllByTestId("settings.organization.shipped-row")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "agent" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    // Not owner/name: the field is marked and the row counts as needing attention.
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true"));
+  });
+
+  it("refuses a shipped product with a repository that is not owner/name inline: nothing sent, no toast, the field focused (#1483 UX r1 B1)", async () => {
+    renderPage("business");
+    fireEvent.click(await screen.findByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "not a repo" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    fireEvent.click(within(await screen.findByTestId("settings.organization.list-save-bar")).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Source repositories" })));
+    expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true");
+    expect(put).not.toHaveBeenCalled();
+    expect(screen.queryByText("The organization profile was not saved")).toBeNull();
+  });
+
   it("lists the crown jewels in a table with column headers", async () => {
     renderPage("business");
     await screen.findByText("Payments");
@@ -444,6 +484,8 @@ describe("OrganizationSection", () => {
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
+    // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
+    expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;

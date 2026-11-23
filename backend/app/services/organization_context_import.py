@@ -47,6 +47,7 @@ from app.services.organization_context import (
     ASSET_TAXONOMY,
     INTERNET_FACING,
     LEGACY_ASSET_TYPES,
+    AiSystem,
     AssetEntry,
     AssetGroupEntry,
     CrownJewel,
@@ -69,14 +70,11 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     "crown_jewels": ("opencrq",),
     "pirs": ("opencti",),
 }
-#: Deprecated since #1501 (kept one release): ``ai_systems`` reads and writes the assets of category
-#: ``ai_target``; an import of it touches no other asset.
-AI_SYSTEMS_ALIAS = "ai_systems"
 #: section -> the profile field it writes.
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "ai_systems": "assets_exposure",
+    "ai_systems": "ai_systems",
     "tech_stack": "tech_stack",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
@@ -213,6 +211,8 @@ class ImportPlan:
     gone: list[str] = field(default_factory=list)
     #: True when the administrator chose to remove the ``gone`` rows (default: they are kept).
     remove_gone: bool = False
+    #: ``gone`` rows a sync kept because another writer wrote them (#1473): only its own rows go.
+    gone_kept: list[str] = field(default_factory=list)
     #: Rows the source returned that the sync excludes (its ``excluded_external_ids``, #1134).
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
@@ -255,6 +255,7 @@ class ImportPlan:
             "updated": self.updated[:SAMPLE_SIZE],
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
+            "gone_kept": self.gone_kept[:SAMPLE_SIZE],
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
@@ -355,30 +356,7 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         os_family=openaev_os_family(asset.get("endpoint_platform")),
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
-        **openaev_ai_target_fields(asset) if category == "ai_target" else {},
     )
-
-
-#: OpenAEV ``ai_target_modality`` values an asset keeps, lower-cased.
-_AI_MODALITIES: frozenset[str] = frozenset({"text", "vision", "audio", "multimodal"})
-
-
-def openaev_ai_target_fields(asset: dict[str, Any]) -> dict[str, Any]:
-    """The ``ai_target_*`` fields of an OpenAEV AI target an asset row keeps (#1501).
-
-    Provider, endpoint, model and modality; the token, the configuration and the system
-    prompt are never read (they may carry a credential).
-    """
-    from app.services.organization_context import AI_TARGET_PROVIDERS
-
-    provider = _lower(asset.get("ai_target_provider"))
-    modality = _lower(asset.get("ai_target_modality"))
-    return {
-        "ai_target_provider": provider if provider in AI_TARGET_PROVIDERS else "",
-        "ai_target_endpoint": str(asset.get("ai_target_endpoint") or "").strip()[:500],
-        "ai_target_model": str(asset.get("ai_target_model") or "").strip()[:200],
-        "ai_target_modality": modality if modality in _AI_MODALITIES else "",
-    }
 
 
 #: OpenAEV ``endpoint_platform`` values that name no operating system.
@@ -428,14 +406,14 @@ def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
     )
 
 
-def openaev_ai_system(asset: dict[str, Any]) -> AssetEntry | None:
-    """An OpenAEV AI target as an asset of category ``ai_target``, every field kept (#1501; no forced kind)."""
-    if not _lower(asset.get("asset_category")):
-        asset = {**asset, "asset_category": "ai_target"}
-    row = openaev_asset(asset)
-    if row is None or row.category != "ai_target":
+def openaev_ai_system(asset: dict[str, Any]) -> AiSystem | None:
+    """An OpenAEV AI target asset as an AI system linked to it by ``openaev_asset_id``."""
+    name = str(asset.get("asset_name") or "").strip()
+    asset_id = str(asset.get("asset_id") or "").strip()
+    if not name or not asset_id:
         return None
-    return row
+    exposure = "public" if asset.get("asset_internet_facing") is True else "internal"
+    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, source="openaev", external_id=asset_id[:200])  # type: ignore[arg-type]
 
 
 def _lower(value: Any) -> str:
@@ -523,14 +501,13 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
-    # #1501: the AI target assets, read and written like assets (the alias touches no other asset).
-    "ai_systems": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
+    "ai_systems": ("ai_systems", "name", 200, ("owner",)),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
     "tech_stack": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
-MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets", "ai_systems"})
+MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets"})
 #: Fields kept from the stored row whatever the source sends: the source never owns them.
 _ALWAYS_LOCAL: frozenset[str] = frozenset({"business_service", "asset_names"})
 
@@ -598,12 +575,6 @@ def _merge_sourced(
     """
     attr, name_key, cap, local = SOURCED_FIELDS[section]
     current: list[Any] = list(getattr(draft, attr))
-    if section == AI_SYSTEMS_ALIAS:
-        # The alias merges into the assets and must never treat the other assets of the source as gone.
-        others = [r for r in current if r.category != "ai_target"]
-        current = [r for r in current if r.category == "ai_target"]
-    else:
-        others = []
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if r.external_id}
     multi = section in MULTI_SOURCE_SECTIONS
     names = {getattr(r, name_key).casefold() for r in current if not multi or r.source == source}
@@ -649,10 +620,15 @@ def _merge_sourced(
         ]
         plan.gone = [getattr(r, name_key) for r in gone]
         if plan.remove_gone:
-            dropped |= {id(r) for r in gone}
+            # A sync removes only the rows it wrote itself (#1473): a row another
+            # writer keyed on this source (a reconcile pull, a one-off import, a
+            # row read as a platform row) is reported gone and kept.
+            owned = [r for r in gone if not plan.sync_id or r.sync_id == plan.sync_id]
+            plan.gone_kept = [getattr(r, name_key) for r in gone if id(r) not in {id(o) for o in owned}]
+            dropped |= {id(r) for r in owned}
     if dropped:
         current = [r for r in current if id(r) not in dropped]
-    setattr(draft, attr, (others + current)[:cap])
+    setattr(draft, attr, current[:cap])
 
 
 def _merge_pirs(draft: OrganizationProfile, rows: list[dict[str, str]], plan: ImportPlan) -> None:
@@ -817,15 +793,40 @@ async def _openaev_search(
     return result
 
 
-def _reads_ai_targets(filters: dict[str, Any], batch_type: str) -> bool:
-    """Whether an OpenAEV assets read includes the AI targets: no endpoint-only filter, no other batch type."""
-    picked = batch_taxonomy(batch_type) if batch_type else None
-    if picked and picked[0] != "ai_target":
-        return False
-    if _values(filters, "platform"):
-        return False
-    categories = [c.lower() for c in _values(filters, "category")]
-    return not categories or "ai_target" in categories
+#: OpenAEV ``asset_type`` values another read already serves whole: the endpoints (``/api/endpoints/search``,
+#: hostname, IPs and MACs included) and the AI targets (their own section).
+_OPENAEV_TYPES_READ_ELSEWHERE: frozenset[str] = frozenset({"endpoint", "ai_target"})
+
+
+async def _openaev_inventory(
+    base_url: str, headers: dict[str, Any], filter_group: dict[str, Any] | None, *, endpoints_only: bool = False
+) -> ReadResult:
+    """Every OpenAEV asset of an assets import: the endpoints whole, then the rest of the inventory.
+
+    ``/api/endpoints/search`` answers the endpoints only; a web application, a cloud resource, a SaaS
+    application or a network device created as a generic asset lives in the unified inventory
+    (``/api/assets/search``), thin (no hostname) but named and categorised. Without this second read
+    those assets never reached the XTM One inventory, so no other product could find them there.
+    A platform filter names endpoints alone: the second read is skipped.
+    """
+    read = await _openaev_search(base_url, headers, "/api/endpoints/search", filter_group)
+    if read.error or endpoints_only:
+        return read
+    rest = await _openaev_search(base_url, headers, "/api/assets/search", filter_group)
+    if rest.error:
+        return ReadResult(error=rest.error)
+    seen = {str(r.get("asset_id") or "") for r in read.rows}
+    others = [
+        r
+        for r in rest.rows
+        if str(r.get("asset_type") or "").strip().lower() not in _OPENAEV_TYPES_READ_ELSEWHERE
+        and str(r.get("asset_id") or "") not in seen
+    ]
+    read.rows = (read.rows + others)[:MAX_ROWS]
+    read.truncated = read.truncated or rest.truncated or (bool(others) and len(read.rows) >= MAX_ROWS)
+    if read.total is not None:
+        read.total += len(others)
+    return read
 
 
 async def _openaev_group_members(
@@ -866,22 +867,13 @@ async def _read_openaev(
                 return ReadResult(error=err)
             if not asset_ids:
                 return ReadResult(total=0)
-        read = await _openaev_search(
-            base_url, headers, "/api/endpoints/search", openaev_filter_group(filters, asset_ids=asset_ids)
+        read = await _openaev_inventory(
+            base_url,
+            headers,
+            openaev_filter_group(filters, asset_ids=asset_ids),
+            endpoints_only=bool(_values(filters, "platform")),
         )
         read.rows = [r for r in (openaev_asset(a, batch_type) for a in read.rows) if r]
-        if read.error or not _reads_ai_targets(filters, batch_type):
-            return read
-        # #1501: OpenAEV's AI targets are assets too; an assets sync keeps them (and never drops them as gone).
-        targets = await _openaev_search(
-            base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters, asset_ids=asset_ids)
-        )
-        if targets.error:
-            return ReadResult(error=targets.error)
-        read.rows += [r for r in (openaev_ai_system(a) for a in targets.rows) if r]
-        read.truncated = read.truncated or targets.truncated
-        if read.total is not None and targets.total is not None:
-            read.total += targets.total
         return read
     if section == "asset_groups":
         tags = _values(filters, "tags")
@@ -896,10 +888,9 @@ async def _read_openaev(
         read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
         read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
         return read
-    if section == AI_SYSTEMS_ALIAS:
-        # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
-        read = await _openaev_search(base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters), text)
-        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows) if r]
+    if section == "ai_systems":
+        read = await _openaev_search(base_url, headers, "/api/endpoints/search", openaev_filter_group(filters), text)
+        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows if a.get("ai_target_provider")) if r]
         return read
     if section == "tech_stack":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
@@ -1426,7 +1417,8 @@ def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str,
     used = ", ".join(f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "", [], {}))
     basis = f"import of {plan.section}: {len(plan.new)} new, {len(plan.updated)} updated"
     if plan.gone:
-        basis += f", {len(plan.gone)} no longer in the source ({'removed' if plan.remove_gone else 'kept'})"
+        removed = len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0
+        basis += f", {len(plan.gone)} no longer in the source ({removed} removed, {len(plan.gone) - removed} kept)"
     if plan.excluded:
         basis += f", {len(plan.excluded)} excluded by the sync"
     basis += f"; read {datetime.now(UTC).strftime('%Y-%m-%dT%H:%MZ')}"

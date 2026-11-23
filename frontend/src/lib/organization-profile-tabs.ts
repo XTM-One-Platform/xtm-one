@@ -41,8 +41,10 @@ export const PROFILE_CARD_TAB = {
   risk_appetite: "identity",
   ticketing: "identity",
   crown_jewels: "business",
+  shipped_products: "business",
   tracked_organizations: "business",
   tech_stack: "technology",
+  ai_systems: "technology",
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
@@ -60,6 +62,7 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  */
 const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   tech_stack: "/ctem/inventory/tech-stack",
+  ai_systems: "/ctem/inventory/ai-systems",
   assets_exposure: "/ctem/inventory",
   prioritization_policy: "/ctem/inventory",
   outside_lens: "/ctem/inventory",
@@ -95,9 +98,9 @@ export const PROFILE_FIELD_CARD = {
   pir_ids: "ticketing",
   pir_names: "ticketing",
   crown_jewels: "crown_jewels",
+  shipped_products: "shipped_products",
   tech_stack: "tech_stack",
-  // #1501: the AI systems are the assets of category ai_target, edited on the asset list.
-  ai_systems: "assets_exposure",
+  ai_systems: "ai_systems",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
   prioritization_policy: "prioritization_policy",

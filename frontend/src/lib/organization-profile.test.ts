@@ -25,6 +25,7 @@ const PROFILE: ProfileLike = {
   size: "251-1000",
   crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "a-1" }],
   tech_stack: [],
+  ai_systems: [],
   pir_ids: ["pir-1"],
   pir_names: { "pir-1": "Ransomware on energy" },
   risk_appetite: { annual_loss_threshold: 1000000, approval_threshold: null },
@@ -37,7 +38,26 @@ describe("organization profile form", () => {
   it("round-trips a stored profile unchanged", () => {
     const result = fromForm(toForm(PROFILE));
     assert.ok("profile" in result);
-    assert.deepEqual(result.profile, PROFILE);
+    // The shipped products are always sent (#1432): an empty list is what clears them.
+    assert.deepEqual(result.profile, { ...PROFILE, shipped_products: [] });
+  });
+
+  it("carries the shipped products through a save, drops rows without a product and repeats of a repository (#1432)", () => {
+    const shipped: ProfileLike = {
+      ...PROFILE,
+      shipped_products: [{ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }],
+    };
+    const kept = fromForm(toForm(shipped));
+    assert.ok("profile" in kept);
+    assert.deepEqual(kept.profile, shipped);
+    const form = toForm(shipped);
+    form.shipped_products = [
+      { product: " ", vendor: "", cpe: "", repositories: [] },
+      { product: "Acme Agent", vendor: "Acme", cpe: "", repositories: [" acme/agent ", "acme/agent", ""] },
+    ];
+    const cleaned = fromForm(form);
+    assert.ok("profile" in cleaned);
+    assert.deepEqual(cleaned.profile.shipped_products, [{ product: "Acme Agent", vendor: "Acme", cpe: "", repositories: ["acme/agent"] }]);
   });
 
   it("keeps the assets, the policy, the knowledge links and the crown jewel links through a save (#11543)", () => {
@@ -60,7 +80,7 @@ describe("organization profile form", () => {
     };
     const result = fromForm(toForm(filled));
     assert.ok("profile" in result);
-    assert.deepEqual(result.profile, filled);
+    assert.deepEqual(result.profile, { ...filled, shipped_products: [] });
   });
 
   it("keeps the posture target through a save, and adds none to a profile without one (#11547 S2e)", () => {

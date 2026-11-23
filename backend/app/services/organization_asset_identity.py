@@ -545,7 +545,8 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
 
     The first source (by name) supplies the display spelling; CPE, PURL,
     install date and the bundling component (``bundled_in``, an SBOM's nesting)
-    are filled from the first source that knows them; ``first_seen``
+    are filled from the first source that knows them; ``depends_on`` (``product
+    version`` labels, an SBOM's dependencies) is the union of the sources; ``first_seen``
     is the earliest and ``last_seen`` the latest any source reported.
     """
     merged: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -564,6 +565,7 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                     "purl": "",
                     "install_date": None,
                     "bundled_in": "",
+                    "depends_on": [],
                     "first_seen": None,
                     "last_seen": None,
                     "sources": [],
@@ -577,6 +579,10 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                 entry["install_date"] = raw["install_date"]
             if not entry["bundled_in"] and raw.get("bundled_in"):
                 entry["bundled_in"] = str(raw["bundled_in"]).strip()
+            for target in raw.get("depends_on") or ():
+                label = str(target or "").strip()
+                if label and label not in entry["depends_on"]:
+                    entry["depends_on"].append(label)
             for attr, pick in (("first_seen", min), ("last_seen", max)):
                 seen = raw.get(attr) or record.last_seen
                 if seen is not None:
@@ -790,6 +796,7 @@ SECTION_IDENTITY: dict[
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
     "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
     "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
+    "ai_systems": (("platform_id", "name"), _platform_ids("openaev_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),
 }
