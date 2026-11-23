@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ProviderLogo } from "@/components/ui/provider-logo";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import type { CtemCaseRunningVersion, CtemCaseRunningVersions } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -54,12 +55,14 @@ export function SourceMark({ source }: { source: string }) {
   const { t_i18n } = useFormatter();
   const name = t_i18n(versionSourceName(source));
   const glyph: { icon: IconName } | undefined = source.startsWith("agent:") ? { icon: "bot" } : SOURCE_GLYPHS[source];
+  // Inside a routed row the row link is the single tab stop (#12070); elsewhere the mark keeps its own (UX r1 B1 on #1361).
+  const tabIndex = useTriggerTabIndex();
   // The product tooltip, shown on hover and on keyboard focus, never the native title (UX r1 B3 on #1277).
   return (
     <Tip content={name}>
       <span
         className={`inline-flex shrink-0 items-center ${TIP_WRAP_FOCUS_RING}`}
-        tabIndex={0}
+        tabIndex={tabIndex}
         data-testid="ctem-case-version-source"
       >
         {PROVIDER_LOGOS[source] ? (
