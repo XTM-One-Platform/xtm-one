@@ -18,11 +18,13 @@
  * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
  * from the CTEM menu, the page's tabs and its summary strip.
  */
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ProviderLogo } from "@/components/ui/provider-logo";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { Tip } from "@/components/ui/tooltip";
 import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,6 +34,7 @@ import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
 import { signalsHref } from "./signals-route";
 import {
   connectHref,
@@ -72,6 +75,8 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
   const { t_i18n } = useFormatter();
   // The loop trace's naming (signalProviderName), read here without importing that module: it imports this one.
   const name = sourceName(source);
+  // The row opens the path's sources (#1445): it is the one tab stop, the tooltip triggers add none.
+  const tabIndex = useTriggerTabIndex();
   const state = sourceState(source, connected);
   const possible = state === "not_connected";
   const event = source.event ? t_i18n(source.event) : null;
@@ -80,7 +85,7 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
   return (
     <Tip content={tip}>
       <span
-        tabIndex={0}
+        tabIndex={tabIndex}
         className="inline-flex min-w-0 items-center gap-1.5 rounded-sm"
         data-testid="ctem-signal-source"
         data-provider={source.provider}
@@ -94,6 +99,7 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
         <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
         <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
         {source.off && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
+        {state === "excluded" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
         {state === "not_set_up" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
       </span>
     </Tip>
@@ -103,6 +109,7 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
 /** The sources a path could have but this platform has no integration for: one muted item, the list in its tooltip. */
 function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
   const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
   const tip = (
     <span className="flex flex-col gap-0.5">
       {sources.map((s) => (
@@ -114,12 +121,24 @@ function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
   return (
     <Tip content={tip}>
       <span
-        tabIndex={0}
+        tabIndex={tabIndex}
         className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
         data-testid="ctem-signal-sources-possible"
         data-providers={sources.map((s) => s.provider).join(" ")}
       >
         {t_i18n("{count, plural, other {+# possible}}", { count: sources.length })}
+      </span>
+    </Tip>
+  );
+}
+
+/** The 30-day count with its per-state tooltip; no tab stop of its own inside a row that opens (#1445). */
+function CountCell({ tip, title, label }: { tip: string; title: string; label: string }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <Tip content={tip}>
+      <span className="tabular-nums" tabIndex={tabIndex} title={title} data-testid="ctem-signal-sources-30d">
+        {label}
       </span>
     </Tip>
   );
@@ -146,6 +165,7 @@ function SourceList({
   compact?: boolean;
 }) {
   const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
   const sources = path.sources ?? [];
   if (sources.length === 0) {
     return <span className={className ? `${className} text-default-secondary` : "text-default-secondary"}>{t_i18n("None")}</span>;
@@ -160,7 +180,13 @@ function SourceList({
   if (compact) {
     const stateWord = (s: CtemSignalPathSource) => {
       const state = sourceState(s, connected);
-      return state === "off" ? `, ${t_i18n("Off")}` : state === "not_set_up" ? `, ${t_i18n("Not set up")}` : "";
+      return state === "off"
+        ? `, ${t_i18n("Off")}`
+        : state === "not_set_up"
+          ? `, ${t_i18n("Not set up")}`
+          : state === "excluded"
+            ? `, ${t_i18n("Not used here")}`
+            : "";
     };
     const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])}${stateWord(s)})`;
     const names = shown.map(label).join(", ");
@@ -170,7 +196,7 @@ function SourceList({
     ].filter(Boolean).join(". ");
     return (
       <Tip content={tip}>
-        <span tabIndex={0} className="flex min-w-0 flex-1 items-center gap-2 rounded-sm" data-testid="ctem-signal-sources-compact">
+        <span tabIndex={tabIndex} className="flex min-w-0 flex-1 items-center gap-2 rounded-sm" data-testid="ctem-signal-sources-compact">
           <span className={cn("min-w-0 truncate", !live.some((s) => s.bound) && "text-default-secondary")}>{names}</span>
           {folded.length > 0 && (
             <span className="shrink-0" data-testid="ctem-signal-sources-compact-possible">
@@ -194,7 +220,8 @@ function SourceList({
 /**
  * The Sources tab of the Signals page (#1263): every trigger path by lens,
  * its status, sources, signals in 30 days and Connect. A path's "Open signals"
- * opens the Signals tab filtered on it.
+ * opens the Signals tab filtered on it; a row opens its sources in the side
+ * panel, where an administrator manages them (#1445).
  */
 export function SignalSourcesPanel() {
   const { t_i18n, intl } = useFormatter();
@@ -203,6 +230,9 @@ export function SignalSourcesPanel() {
   const { isAdmin } = useAuth();
   const { data, isLoading, isError, refetch } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
+  // The path whose sources the side panel shows (#1445): read from the live list so a save refreshes it.
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const opened = paths.find((p) => p.id === openPath) ?? null;
   // Read once over every path: a provider connected on one path is connected on all of them.
   const connected = connectedProviders(paths);
   const lastSignal = (path: CtemSignalPath) =>
@@ -263,13 +293,7 @@ export function SignalSourcesPanel() {
           .map((s) => `${t_i18n(SIGNAL_STATE_LABEL[s])} ${exactCount(path.counts?.[s] ?? 0)}`)
           .join(", ");
         const n30 = path.count_30d ?? 0;
-        return (
-          <Tip content={byState}>
-            <span className="tabular-nums" tabIndex={0} title={exactCount(n30)} data-testid="ctem-signal-sources-30d">
-              {count(n30)}
-            </span>
-          </Tip>
-        );
+        return <CountCell tip={byState} title={exactCount(n30)} label={count(n30)} />;
       },
     },
     {
@@ -368,12 +392,15 @@ export function SignalSourcesPanel() {
           ),
         }}
         rowDataAttributes={(path) => ({ "data-path": path.id, "data-status": pathStatus(path) })}
+        // A row opens the path's sources, managed in place (#1445).
+        onRowClick={(path) => setOpenPath(path.id)}
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
         emptyLabel={t_i18n("No trigger path is known yet.")}
         rowTestId="ctem-signal-sources-path"
       />
+      <SignalPathSourcesSheet path={opened} paths={paths} connected={connected} onClose={() => setOpenPath(null)} />
     </div>
   );
 }
