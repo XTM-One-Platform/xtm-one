@@ -3,7 +3,7 @@
 /**
  * The edit dialog of one organization sync (#11913, #1276): its direction (#1134 S3: Inbound,
  * the platform is the master, or Outbound, the XTM One list is, offered only where the platform
- * can be written), its schedule and its switch; for a new "Sync all" its schedule alone. Saving a
+ * can be written), its schedule and its switch; a Sync all saved before #1548 its schedule alone (none is created). Saving a
  * paused sync resumes it with the token of the administrator who saves it. Mounted by the one
  * Sources and syncs table (OrganizationSourcesSyncs), with the labels the table shares.
  */
@@ -52,9 +52,11 @@ export const DIRECTION_LABELS = {
  * @i18n-keys
  */
 const OUTBOUND_REASONS = {
+  openaev_assets: "Planned: OpenAEV endpoint writes are not wired for syncs yet.",
   openaev_asset_groups: "Planned: OpenAEV asset group writes are not wired for syncs yet.",
   opencti_pirs: "Planned: OpenCTI PIR writes are not wired for syncs yet.",
   opencti_assets: "OpenCTI Systems are owned by its connectors.",
+  openaev_ai_systems: "OpenAEV has no AI system object to write.",
   openaev_tech_stack: "OpenAEV software inventory is read from its agents.",
   other: "This pairing reads only.",
 } as const;
@@ -83,7 +85,7 @@ export const bodyOf = (sync: OrganizationSync, patch: Partial<OrganizationSyncBo
 });
 
 interface EditProps {
-  /** null: a new Sync all. */
+  /** The sync edited; null while the dialog is closed (no Sync all is created from the UI, #1548). */
   sync: OrganizationSync | null;
   open: boolean;
   saving: boolean;
@@ -117,7 +119,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
       setDirection(sync ? directionOf(sync) : "inbound");
     }
   }
-  const title = sync ? t_i18n("Edit the sync") : t_i18n("Add Sync all");
+  const title = t_i18n("Edit the sync");
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="md">
@@ -126,9 +128,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
           <DialogDescription>
             {sync?.paused_reason
               ? t_i18n("Paused: {reason} Saving resumes it with your own platform token.", { reason: sync.paused_reason })
-              : sync
-                ? t_i18n("Saving it makes your own platform token the one its runs read with.")
-                : t_i18n("Runs every enabled section sync, in the order they were saved, on this schedule.")}
+              : t_i18n("Saving it makes your own platform token the one its runs read with.")}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4">

@@ -39,6 +39,17 @@ interface TechStackEntry {
   sync_id?: string;
 }
 
+interface AiSystem {
+  name: string;
+  kind: "assistant" | "agent" | "model_api" | "embedded";
+  owner: string;
+  exposure: "internal" | "partner" | "public";
+  openaev_asset_id: string;
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
+}
+
 export interface OrganizationProfile {
   name: string;
   sector: string;
@@ -47,7 +58,7 @@ export interface OrganizationProfile {
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
-  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
+  ai_systems: AiSystem[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
@@ -733,6 +744,39 @@ export function useRunOrganizationSync() {
   return useMutation<OrganizationSync, Error, string>({
     mutationFn: (id) => api.post(`/organization-context/syncs/${id}/run`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What Run all syncs did: the syncs that ran and those whose run was refused or failed (#1548). */
+export interface RunAllSyncsResult {
+  ran: number;
+  failed: number;
+}
+
+/**
+ * Run all syncs (#1548): every given sync runs now, one after the other (two runs never write the profile at once),
+ * through the per-sync Run now endpoint; the list is read again after each so its Last run cell follows. No "Sync all"
+ * row is created.
+ */
+export function useRunOrganizationSyncs() {
+  const qc = useQueryClient();
+  return useMutation<RunAllSyncsResult, Error, string[]>({
+    mutationFn: async (ids) => {
+      let ran = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          const done: OrganizationSync = await api.post(`/organization-context/syncs/${id}/run`, {});
+          if (done?.last_result?.error) failed += 1;
+          else ran += 1;
+        } catch {
+          failed += 1;
+        }
+        await qc.invalidateQueries({ queryKey: KEY });
+      }
+      return { ran, failed };
+    },
     meta: { suppressGlobalErrorToast: true },
   });
 }
