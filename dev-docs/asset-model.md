@@ -294,6 +294,34 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
     the address moves when a row above it is removed, so the row gets an `external_id` first).
   - `DELETE /api/v1/organization-context/assets/decisions/{id}`: 204; the keys decide again.
 
+### 9.2bis Asset records as the source of truth (#1543)
+
+`organization_asset_records` (one row per record per source, unique `(organization, source, external_id)`),
+`organization_asset_identifiers`, `organization_asset_groups`, `organization_asset_group_members`,
+`organization_crown_jewel_assets` and `organization_asset_changes` (migration `r1543assetrecords01`) hold
+the assets and groups; `services/organization_asset_records.py` is their only writer. A write re-matches the
+identity cluster of the rows it touches (`identity_closure`, `refresh_clusters`), never the whole store, and
+appends one row per changed record to the change log. `save_version` turns an old client's `assets_exposure`
+and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrators, audited
+(`entity_type organization_context`):
+
+- `POST /api/v1/organization-context/assets` (an `AssetEntry` row): 201 with the record (`id`, `asset_id`,
+  `row_version`, audit columns); 422 names the bad field or a group that does not exist.
+- `GET /api/v1/organization-context/assets/records/{id}` (any signed-in user): the record and its `row_version`.
+- `PATCH /api/v1/organization-context/assets/records/{id}` (the fields to change; `If-Match: <row_version>`
+  optional): the record; 409 on a stale `If-Match`, 422 when a hand write changes a field a sync owns (#1367).
+- `DELETE /api/v1/organization-context/assets/records/{id}` (`If-Match` optional): 204.
+- `POST /api/v1/organization-context/assets/bulk-delete` `{ids}` (at most 1,000): `{removed}`.
+- `POST /api/v1/organization-context/assets/records/batch` `{rows}` (at most 10,000, matched on
+  `(source, external_id)`): `{created, updated, removed, unchanged}`; a row equal to its record is not written.
+- `POST`, `PATCH /{id}`, `DELETE /{id}` on `/api/v1/organization-context/asset-groups`: the same for groups; a
+  deleted group's records stay and lose the group.
+- `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
+  covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
+- `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
+  `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
+  `before` fields, a create goes.
+
 ### 9.3 Tech stack from asset software (S4)
 
 `organization_asset_store.tech_stack_inventory` builds the tech stack from `organization_asset_software`: one
