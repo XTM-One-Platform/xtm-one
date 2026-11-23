@@ -2412,7 +2412,7 @@ up" with two actions. "Send a test signal" records one signal through the real
 intake (`POST /api/v1/ctem-signals`, path `new_vulnerability`, provider
 `manual`, evidence `{test: true, origin: "ctem-loop-setup"}`, a dedupe key per
 send: `testSignal` in `ctem-loop-setup.ts`), so reconcile and the scope gate run
-on it, then opens the command center on its loop trace (`/?loop=signal:<id>`).
+on it, then opens the Signals page on its loop trace (`/ctem/signals?signal=<id>`).
 "Open the command center" goes there without a signal. The setup is always
 reachable again through `CtemLoopSetupEntry` ("Set up the CTEM loop") in the
 command center hero, and on the CTEM loop fleet page (slug `ctem-loop`) through

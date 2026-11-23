@@ -215,11 +215,15 @@ export interface CtemCaseTreatmentPlan {
  * are served. `state` is `drafted` while the package sits in an OpenCTI draft
  * (its link is the draft page, nothing reached OpenAEV) and `validated` once it
  * is in the live graph; `coverage_requested` is true only for a validated
- * package (#1480).
+ * package (#1480). From the analyst review gate (#1573): `awaiting_review`
+ * while it waits, `replan` once answered with free text or another option,
+ * `rejected` once refused; `validated` needs the review approved.
  */
+export type CtemThreatPackageState = "drafted" | "awaiting_review" | "replan" | "rejected" | "validated";
+
 export interface CtemCaseThreatPackage {
   restricted: boolean;
-  state?: "drafted" | "validated";
+  state?: CtemThreatPackageState;
   coverage_requested: boolean;
   /** The coverage is written in the draft: not sent to OpenAEV until the draft is validated. */
   coverage_drafted?: boolean;

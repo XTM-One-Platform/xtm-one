@@ -225,8 +225,28 @@ same way.
   up to `asset_count`;
 - with no fixed version: `fixed_version_checked` names the sources looked in
   (section 4.2bis, steps 1 and 2); nothing asks the user to type a version.
+- per platform (#1572): a row is one (version, `platform`), the platform
+  being the asset's `fields.os_family` (Intune, Defender, OpenAEV fill it;
+  `null` when unknown; read by a join on the software rows of the case's
+  product keys, never an IN list of asset ids, so no estate size reaches the
+  driver's bind cap), with its `asset_ids` (at most 20, `more_asset_ids`
+  counts the rest). Each asset is compared with the fixed version of its own
+  platform: `fixed_versions` `{platform: version}` when the remediation names
+  one (the row then carries its `fixed_version`), else the case's generic
+  `fixed_version`. A platform the per-platform map does not name, or a generic
+  fix over assets of several platforms (`platform_unverified` true), is never
+  read as fixed: an asset not below it is `not_comparable` with
+  `status_reason` "fix not known for this platform" (counted in
+  `assets_fix_not_known_for_platform`), so the case never leaves the scope on
+  the inventory. One platform with a generic fix behaves as before. The answer
+  also gives `platforms`, `assets_multi_version` (distinct assets running more
+  than one version), `version_row_asset_sum` and `version_rows_note`: the rows
+  may sum above `asset_count` because an asset running two versions is in each
+  row, while the three status totals still add up to `asset_count`. The
+  per-platform map is not yet sourced from OpenCTI (slice 2 of #1572); the
+  version match line names the platform (`36.0 (macOS) on 2 asset(s)`).
 
-Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
+Two grouped reads and one platform read, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
 
 ### 4.2quater Affected assets on the case read
@@ -254,8 +274,9 @@ outside the inventory is no link (CTEM-20-UI).
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
 against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
-asset running the product runs the fixed version or later (`all_on_fixed`: at
-least one asset on it, none below, none `unknown` or unreadable), the case
+asset running the product runs the fixed version of its platform or later
+(`all_on_fixed`: at least one asset on it, none below, none `unknown` or
+unreadable, not `platform_unverified`), the case
 leaves the scope. An open case resolves with the evidence "every asset running
 the product runs the fixed version or later (asset inventory)" and resolution
 kind `fixed`; a resolved case is not reopened by member issues that stay open
@@ -299,6 +320,23 @@ assets. Nothing on the page asks the user to type a version in the tech stack.
   the list header shows "Updated 4 min ago" (exact time on hover) and, after an
   outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
   a link to the integrations.
+- A recompute never builds a case (#1529). The two ways into a case are a signal
+  the scope gate kept (`ctem_case_loop.open_from_signal`) and a split by a
+  person or an agent (`create_manual_case`, `create_ctem_case`);
+  `tests/test_ctem_case_creation_paths.py` holds it. Each source issue whose fix
+  no case holds is recorded as one signal (`services/ctem_source_signals.py`,
+  intake `listener`, recorder `system`), idempotent on source, external id and
+  fix key: an OpenCTI vulnerability on inventory software is `new_vulnerability`,
+  an OpenAEV CVE finding on an asset is `proven_exploitable`. The signal carries
+  the fix in `evidence.case_fix`, so `open_from_signal` opens or joins the case
+  of that remediation key (one fix, one case, as before). The issue is a member
+  of that case and so is its signal. An issue joining an existing case records
+  its signal too, joined to the case (`join_case`). A signal the gate keeps out
+  (watchlist, to validate, discarded) stays a signal on the Signals page and
+  opens no case. The recompute keeps member upkeep only: add, resolve and reopen
+  members, the inventory-fixed and not-affected rules. A source signal is as
+  visible as its issue (`ctem_cases_view.source_signal_members`). A merge moves
+  the merged case's signals to the survivor.
 - `POST /api/v1/ctem-cases/recompute` stays as an INTERNAL route for agents and
   administrators (no screen calls it): any user, one per minute per user
   (`services/ctem_cases_source.py`). Every path reads OpenCTI and OpenAEV with the
@@ -713,10 +751,14 @@ the Settings form carries it whole.
   exploitation reading and the treatment plan, OpenCTI for the analyst
   review, OpenAEV for validation) with its logo and connection state, and a
   "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
-  the source readers from the sources of its visible issues ("Opened from
-  OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
-  findings on your assets").
+  No section repeats who works the case. A case is opened only by a signal
+  or split into its own case by a person or an agent (#1529): "Opened by"
+  lists the signals, and on a case with none says "Split into its own case
+  by a person or an agent" (a `created` event to `manual`) or, for a case a
+  source read built before the readers recorded signals, "Opened by a source
+  read before signals (legacy)". Legacy cases are labelled, not backfilled:
+  their members carry no reference that maps one signal per case for every
+  viewer.
 - Assets and crown jewels (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or
@@ -786,6 +828,10 @@ No decision structure is stored on the case: the decision is the gate `ctem.reme
 A decision is recorded in OpenCRQ as a treatment plan through four OpenCRQ provider tools on the procedures OpenCRQ already serves (`providers/opencrq/treatment.py`): `create_opencrq_treatment_plan` (`treatmentPlans.createTreatmentPlan`: name, owner, period, one-off and annual cost, rationale, first control moves), `update_opencrq_treatment_plan` (`updateTreatmentPlan`, partial: an empty value clears a nullable field), `set_opencrq_treatment_plan_moves` (`setTreatmentPlanScope`, replaces the moves) and `add_opencrq_treatment_plan_moves` (`addTreatmentPlanMoves`). A move is a control capability with its target strength rung and coverage bucket (L0 to L3, a target left out keeps that axis); OpenCRQ re-prices the plan after a change of its moves. No new OpenCRQ entity: the accepted residual risk is the evidence dismissal `risk_accepted` with a reason code (`update_opencrq_evidence_state`), its expiry the profile policy `accepted_risks`. Every call carries the acting user's own OpenCRQ token (per-user JWT): a user OpenCRQ refuses gets that refusal and nothing is written for them. Gates: on a CTEM loop fleet the four tools are rules of `ctem.remediation.decision` (runs out of the box, a pin or Full human gates makes it wait, so the plan follows the decision without a second approval); on the risk budget desk they are rules of `opencrq.register.write`. Tests: `tests/test_opencrq_tool_contracts.py`, `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
 On the case (CTEM-18-UI, #1068): `create_opencrq_treatment_plan` answers the plan's OpenCRQ link (`Link:` line, `/treatment-plans/<id>`), and the fleet attaches the plan to the case with `update_ctem_case` `treatment_plan` {id, name, url} (`ctem_case_loop.record_treatment_plan`: the id a UUID, the url the OpenCRQ page of that id, else refused; the same plan again writes nothing). No migration: one `treatment_plan` case event (`to` the id, `reason` the name, `evidence` the url). The case detail serves `treatment_plan`, the newest such event, as the exploitation reading (#936): id, name and link only to a viewer whose own OpenCRQ read is available, `{restricted: true, at}` to anyone else, and the history row of that kind carries no value for them. The case page shows it in a "Treatment plan" card (name linked to OpenCRQ, attach date; never blank) and the history line "Attached the treatment plan". The accepted residual risk and its expiry stay where they were: the accepted-risk card of the case and Governance & Risk > Accepted risks. Tests: `tests/test_ctem_case_treatment_plan.py`, `frontend/src/pages/xtm-one/ctem/case-treatment-plan.test.tsx`.
+
+Threat package state from the live graph (#1547): a threat package reads `validated` only when its stored page is the Grouping page, and that page is stored only once the Grouping resolves in OpenCTI's live graph. `update_ctem_case` `threat_package` runs `ctem_threat_package_live.verify_package` with the acting user's own OpenCTI access (`_user_creds`, never a system token): a live Grouping keeps its page, a Grouping found inside an open draft is recorded with that draft's page (`drafted`), one found nowhere or unreadable is refused and nothing is written. A package with no page reads `drafted` too. Packages stored before the check: `POST /api/v1/ctem-cases/threat-packages/repair` (administrators, `{"dry_run": true}` by default answers the count and the cases) re-reads each case's newest package stored with a Grouping page with the caller's access and writes a new `threat_package` event with the draft page (Grouping in an open draft) or no page (Grouping absent); a live or unreadable one is left (`unreadable` counts the latter).
+
+Threat package state from the review gate (#1573): the page alone never makes a package `validated`. `ctem_cases_view.review_outcome` reads the case's newest `ctem.analyst_review` gate event: `passed_automatically`, an answer by the analyst's mark, or an answered option whose WHOLE text is an approval (approve / accept / validate / publish, optionally followed by "and request coverage", "it" or "the package") is `approved`; an answered option whose whole text is a refusal (reject / refuse / deny / decline, optionally followed by "it" or "the package") is `rejected`; a leading word is never enough, so "Yes, but split the package first" or "No problem, publish it" stays `replan`; any other answered text (free text, another option) is `replan`; `waited` is `waiting`; an answer with no option recorded is `unread` and leaves the page rule alone. `threat_package_state(package, review)` answers `awaiting_review`, `replan` or `rejected` for those three whatever the stored page, else the #1547 page rule (`validated` or `drafted`); a case with no review gate keeps the page rule. `coverage_requested` stays true for `validated` only; `coverage_drafted` and `draft_overdue` cover `drafted` and `awaiting_review`. `verify_package(..., review)` reads an open draft first while the review is not approved: the draft page is recorded, a Grouping found only live is refused (its page was never approved). The repair route reads the case's gate events too: a non-approved case's Grouping page becomes its draft page, or no page when the Grouping sits in no open draft; each corrected case names its `review`. The case page's Analyst review card shows `replan` and `rejected` as their own stages.
 
 Attack path and blast radius (CTEM-23-UI, #1289): `get_opencrq_attack_path_reach` (`providers/opencrq/risk.py`) reads OpenCRQ's `supportingAssets.getAttackPathReach` for one supporting asset: the hops nearest first (each proven by an OpenAEV execution or inferred, with its simulation), the assets reached with their depth and criticality, and the primary assets behind them; hops unconfirmed past OpenCRQ's stale delay are left out. The triage analyst calls it on the matched asset with the highest impact and the orchestrator writes it with `update_ctem_case` `attack_path` (`ctem_case_loop.record_attack_path`: origin required, a hop with no end dropped, a nature other than proven read as inferred, capped at 40 hops and reached assets and 20 primary assets, replaced whole). Column `ctem_cases.attack_path` (JSON, `{}` until the first read; migration `c1289ctemattackpath1`). One `attack_path` case event per change, its evidence the counts alone. A hop also keeps `simulation_name`, `simulation_url` (an absolute http(s) page, else dropped) and `seen_at` (the ISO date of the execution, from OpenCRQ's last reported date). The case detail serves `attack_path` like the exploitation reading: asset names and the simulation name and page only to a viewer who reads OpenCRQ, else `Restricted`; the raw simulation id is never served; `null` before the first read. The case page shows the card "Attack path and blast radius" under "How it would be exploited" (`ctem/CaseAttackPath.tsx`): the origin as "Attack starts from", each hop with a Proven chip (high tone) or an Inferred chip (info tone), and for a proven hop "Proven by <simulation name>, <date>" (or "Proven by an OpenAEV simulation, <date>"), linked to the simulation page when there is one (UX round 1 on #1296).
 

@@ -67,6 +67,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
 import { useRoutingModelLabel } from "@/hooks/useRoutingModelLabel";
 import type { Agent, Assignment } from "@/types";
+import { triggerTile } from "@/lib/ctem-signal-trigger";
 
 // ---------------------------------------------------------------------------
 // Overview: Integration row with tool count
@@ -436,7 +437,8 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
           {assignments && assignments.length > 0 ? (
             <div className="space-y-2">
               {[...assignments].sort((a, b) => a.name.localeCompare(b.name)).map((wf) => {
-                const TriggerIcon = TRIGGER_ICONS[wf.trigger_type] ?? Zap;
+                const tile = triggerTile(wf.trigger_type, wf.trigger_config);
+                const TriggerIcon = TRIGGER_ICONS[tile] ?? Zap;
                 const cronExpr = wf.trigger_type === "schedule" ? wf.trigger_config.cron : null;
                 const isWfRunning = runningAssignmentIds.has(wf.id);
                 const status = assignmentDisplayStatus(wf);
@@ -459,7 +461,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
                         <p className="content-base font-medium truncate">{wf.name}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <AssignmentRowBadge assignment={wf} running={isWfRunning} ownerPausedRemedy={ownerPausedRemedy} />
-                          <span className="content-caption text-default-secondary">{t_i18n(TRIGGER_LABELS[wf.trigger_type] ?? wf.trigger_type)}</span>
+                          <span className="content-caption text-default-secondary">{t_i18n(TRIGGER_LABELS[tile] ?? wf.trigger_type)}</span>
                           {cronExpr && <span className="content-caption text-default-secondary">· {describeCron(cronExpr)}</span>}
                           <span className="content-caption text-default-secondary">· {t_i18n("{count, plural, one {{shown} run} other {{shown} runs}}", { count: wf.execution_count, shown: formatCompactNumber(wf.execution_count) })}</span>
                         </div>

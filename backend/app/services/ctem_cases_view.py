@@ -193,7 +193,33 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
     are found by id. The signal members are read fresh on every call.
     """
     view = await _product_view(db, user_id, vertical, fresh=fresh)
-    return replace(view, signals=await signal_members(db, user_id))
+    seen = set(view.issues) | set(view.unavailable)
+    return replace(view, signals=await signal_members(db, user_id) | await source_signal_members(db, seen))
+
+
+async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
+    """The ``signal:<id>`` members a source reader recorded for issues this viewer sees (#1529).
+
+    A signal of an OpenCTI or OpenAEV issue is recorded by the system; it is
+    as visible as its issue (``evidence.source_issue``), never more.
+    """
+    if not seen:
+        return set()
+    from app.services.ctem_source_signals import SOURCE_PATHS
+
+    query = select(CtemSignal.id, CtemSignal.evidence).where(
+        CtemSignal.case_id.is_not(None), CtemSignal.source_provider.in_(tuple(SOURCE_PATHS))
+    )
+    try:
+        rows = (await db.execute(query)).all()
+    except Exception:
+        logger.info("CTEM cases: source signal members unreadable", exc_info=True)
+        return set()
+    return {
+        f"{SIGNAL_SOURCE}:{signal_id}"
+        for signal_id, evidence in rows
+        if isinstance(evidence, dict) and evidence.get("source_issue") in seen
+    }
 
 
 async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
@@ -435,15 +461,77 @@ _DRAFT_PAGE = re.compile(
 )
 
 
-def threat_package_state(package: dict[str, Any]) -> str:
-    """``drafted`` while the package's page is its OpenCTI draft, else ``validated`` (#1480).
+#: The review gate of the CTEM loop: its answer decides whether the package may be published (#1573).
+REVIEW_GATE = "ctem.analyst_review"
 
-    A drafted package and its coverage are not in OpenCTI's live graph: the
-    coverage has not reached OpenAEV. The Grouping page is written on the case
-    once the draft is validated.
+#: Outcomes of the newest review gate of a case (:func:`review_outcome`).
+REVIEW_APPROVED = "approved"
+REVIEW_WAITING = "waiting"
+REVIEW_REJECTED = "rejected"
+REVIEW_REPLAN = "replan"
+#: Answered with no option recorded: the answer cannot be read, the page rule alone decides.
+REVIEW_UNREAD = "unread"
+
+#: An answered option that approves the package, or refuses it, matched on the WHOLE answer:
+#: ``record_gate`` stores free text as typed, so "Yes, but split the package first" or
+#: "No problem, publish it" must stay a re-plan, never a leading-word match (#1576 review).
+_APPROVE_OPTION = re.compile(
+    r"^\s*(approve|approved|accept|accepted|validate|validated|publish)"
+    r"(\s+(and\s+)?(request\s+(the\s+)?coverage|publish(\s+it)?|it|the\s+package))?\s*\.?\s*$",
+    re.I,
+)
+_REJECT_OPTION = re.compile(
+    r"^\s*(reject|rejected|refuse|refused|deny|denied|decline|declined)(\s+(it|the\s+package))?\s*\.?\s*$",
+    re.I,
+)
+#: The analyst's mark in OpenCTI answers by approving (``ctem_analyst_mark``).
+_MARK_ANSWER = re.compile(r"analyst'?s? mark", re.I)
+
+
+def review_outcome(events: list[CtemCaseEvent]) -> str | None:
+    """How the newest ``ctem.analyst_review`` gate of the case ended (#1573), ``None`` when none was written.
+
+    ``approved``: passed automatically, answered by the analyst's mark, or
+    answered with an approving option; ``rejected``: answered with a refusal;
+    ``replan``: answered with free text or any other option; ``waiting``: the
+    newest gate waits; ``unread``: answered with no option recorded.
     """
-    url = str(package.get("url") or "")
-    return "drafted" if _DRAFT_PAGE.match(url) else "validated"
+    gates = [row for row in events if row.kind == "gate" and row.from_value == REVIEW_GATE and row.at is not None]
+    newest = max(gates, key=lambda row: row.at) if gates else None
+    if newest is None:
+        return None
+    if newest.to_value == "passed_automatically":
+        return REVIEW_APPROVED
+    if newest.to_value != "answered":
+        return REVIEW_WAITING
+    option = (newest.evidence or "").strip()
+    if _APPROVE_OPTION.fullmatch(option) or (not option and _MARK_ANSWER.search(newest.reason or "")):
+        return REVIEW_APPROVED
+    if _REJECT_OPTION.fullmatch(option):
+        return REVIEW_REJECTED
+    return REVIEW_REPLAN if option else REVIEW_UNREAD
+
+
+#: The package state of a review that stops it, whatever its page says (#1573).
+_STOPPED_BY_REVIEW = {REVIEW_WAITING: "awaiting_review", REVIEW_REJECTED: "rejected", REVIEW_REPLAN: "replan"}
+
+
+def threat_package_state(package: dict[str, Any], review: str | None = None) -> str:
+    """The package's state from its page and the case's review gate (#1480, #1547, #1573).
+
+    ``validated`` only when the page is the live Grouping page AND the review
+    approved it (or no review gate was ever written on the case, the cases of
+    before the gate). A review that waits reads ``awaiting_review``, a refusal
+    ``rejected``, an answer with free text or another option ``replan``: the
+    draft was not applied, so the package is not published whatever page was
+    recorded. Else a package with no page, or the draft page, reads ``drafted``.
+    *review* is :func:`review_outcome` of the case's events.
+    """
+    stopped = _STOPPED_BY_REVIEW.get(review or "")
+    if stopped:
+        return stopped
+    url = str(package.get("url") or "").strip()
+    return "validated" if url and not _DRAFT_PAGE.match(url) else "drafted"
 
 
 def threat_package_for(
@@ -456,19 +544,22 @@ def threat_package_for(
     ids and OpenCTI link only to a viewer whose own OpenCTI read is available,
     else ``restricted``. ``coverage_requested`` is true only once the draft is
     validated (#1480): a coverage written in a draft never reached OpenAEV, and
-    reads ``coverage_drafted``. ``draft_overdue``: still drafted past the case SLA.
+    reads ``coverage_drafted``. ``draft_overdue``: still drafted (or waiting for
+    its review) past the case SLA. A refused or re-planned review (#1573) reads
+    neither: the package and its coverage stop there.
     """
     package = threat_package_of(events)
     if package is None:
         return None
-    state = threat_package_state(package)
+    state = threat_package_state(package, review_outcome(events))
     has_coverage = bool(package["coverage_id"])
+    pending = state in ("drafted", "awaiting_review")
     at = now or datetime.now(UTC)
     status = {
         "state": state,
         "coverage_requested": has_coverage and state == "validated",
-        "coverage_drafted": has_coverage and state == "drafted",
-        "draft_overdue": state == "drafted" and sla_due_at is not None and _aware(sla_due_at) < at,
+        "coverage_drafted": has_coverage and pending,
+        "draft_overdue": pending and sla_due_at is not None and _aware(sla_due_at) < at,
     }
     if not view.opencti:
         return {"restricted": True, **status, "at": package["at"]}

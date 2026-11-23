@@ -45,6 +45,25 @@ def test_versions_known_from_the_inventory_and_an_affected_range_is_not_blind() 
     ]
 
 
+def test_the_running_line_names_the_platform_and_the_unverified_fix() -> None:
+    """#1572: a row with a platform reads 'version (platform)'; a fix not verified per platform is carried."""
+    running = {
+        "versions": [
+            {"version": "36.0", "platform": "Windows", "asset_count": 4},
+            {"version": "36.0", "platform": "macOS", "asset_count": 2},
+        ],
+        "asset_count": 6,
+        "assets_below_fixed": 0,
+        "assets_on_fixed": 4,
+        "assets_not_comparable": 2,
+        "platform_unverified": True,
+    }
+    match = matching.version_match(running, product_label="Acme Browser", fixed_version="36.0", affected="< 36.0")
+    assert match["running"] == "36.0 (Windows) on 4 asset(s), 36.0 (macOS) on 2 asset(s)"
+    assert match["platform_unverified"] is True
+    assert match["assets_not_comparable"] == 2
+
+
 def test_no_asset_reports_the_product_and_no_affected_range_is_blind() -> None:
     match = matching.version_match(None, product_label="Example BI", fixed_version=None)
     assert match == {

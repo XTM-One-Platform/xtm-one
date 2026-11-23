@@ -63,7 +63,12 @@ def _running_text(running: Mapping[str, Any] | None, product_label: str | None) 
         return f"unknown: no asset reports {product}", False
     rows = [v for v in running.get("versions") or () if isinstance(v, Mapping)]
     known = [v for v in rows if _clean(v.get("version")) and _clean(v.get("version")) != UNKNOWN]
-    parts = [f"{_clean(v.get('version'))} on {int(v.get('asset_count') or 0)} asset(s)" for v in rows]
+    parts = [
+        f"{_clean(v.get('version'))}"
+        + (f" ({_clean(v.get('platform'))})" if _clean(v.get("platform")) else "")
+        + f" on {int(v.get('asset_count') or 0)} asset(s)"
+        for v in rows
+    ]
     more = len(parts) - MAX_LINE_VERSIONS + int(running.get("more_versions") or 0)
     text = ", ".join(parts[:MAX_LINE_VERSIONS]) + (f", {more} more version(s)" if more > 0 else "")
     if not known:
@@ -99,6 +104,8 @@ def version_match(
         for key in ("assets_below_fixed", "assets_on_fixed", "assets_not_comparable"):
             if key in running:
                 match[key] = int(running.get(key) or 0)
+        if running.get("platform_unverified"):
+            match["platform_unverified"] = True
     return match
 
 

@@ -905,7 +905,7 @@ async def test_a_person_with_no_own_signal_is_told_how_many_the_scope_hides(tool
     assert body["scope"]["hidden_by_scope"] == 2
     assert body["scope"]["note"].startswith("2 signals exist that this run's person did not record")
     listing = next(d for d in defs if d.name == "list_ctem_signals")
-    assert "acting person's" in listing.description and "admin" in listing.description
+    assert listing.description.startswith("Your CTEM signals") and "admin" in listing.description
     # The same filters count the hidden ones: another path hides nothing.
     other_path = json.loads(await bob("list_ctem_signals", trigger_path="credential_leak"))
     assert "hidden_by_scope" not in other_path["scope"] and "note" not in other_path["scope"]

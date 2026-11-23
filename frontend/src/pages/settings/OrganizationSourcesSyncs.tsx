@@ -31,13 +31,13 @@ import { Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
   useApplyOrganizationSourceRows,
-  useCreateOrganizationSync,
   useDeleteOrganizationSync,
   useOrganizationRowsPreview,
   useOrganizationSources,
   useOrganizationSyncHistory,
   useOrganizationSyncs,
   useRunOrganizationSync,
+  useRunOrganizationSyncs,
   useUpdateOrganizationSync,
   type OrganizationSource,
   type OrganizationSync,
@@ -45,6 +45,7 @@ import {
   type RowsPlan,
   type SyncRowsMode,
 } from "@/hooks/api/useOrganizationContextApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { filtersSummary } from "@/lib/organization-import-filters";
 import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
@@ -150,7 +151,7 @@ const canPurgeSource = (source: OrganizationSource) => source.kind === "agent" |
 interface Props {
   /**
    * The sections listed: "profile" (crown jewels) in Settings, "inventory" (assets, asset groups,
-   * tech stack, AI systems) on the CTEM Inventory, "" every section. The Sync all schedule shows in each.
+   * tech stack, AI systems) on the CTEM Inventory, "" every section. A Sync all schedule saved before #1548 shows in each.
    */
   scope?: OrganizationSyncScope;
   /** Opens the step-by-step import (platform, section, filters with a live preview, schedule, review). */
@@ -170,13 +171,13 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   const sourcesQuery = useOrganizationSources(scope);
   const syncs = Array.isArray(syncsQuery.data) ? syncsQuery.data : [];
   const sources = Array.isArray(sourcesQuery.data) ? sourcesQuery.data : [];
-  const create = useCreateOrganizationSync();
+  const { isAdmin } = useAuth();
   const update = useUpdateOrganizationSync();
   const run = useRunOrganizationSync();
-  const [editing, setEditing] = useState<OrganizationSync | "all" | null>(null);
+  const runAll = useRunOrganizationSyncs();
+  const [editing, setEditing] = useState<OrganizationSync | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [history, setHistory] = useState<OrganizationSync | null>(null);
-  const hasSyncAll = syncs.some((sync) => sync.section === "all");
 
   const sourceOf = (key: string) => sources.find((source) => source.key === key);
   const rows: Row[] = [
@@ -256,6 +257,23 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       onError: reportFailure(t_i18n("The sync could not run")),
     });
 
+  /**
+   * Run all syncs (#1548): every enabled section sync of the card's scope runs now, one after the other, through Run
+   * now; a saved Sync all row is left out, its section syncs run here already. One toast gives the count started.
+   */
+  const runnable = syncs.filter((sync) => sync.section !== "all" && sync.enabled && !sync.paused_reason);
+  const runAllNow = () => {
+    const ids = runnable.map((sync) => sync.id);
+    if (ids.length === 0) return;
+    toast({ title: t_i18n("{count, plural, one {# sync started} other {# syncs started}}", { count: ids.length }), variant: "success" });
+    runAll.mutate(ids, {
+      onSuccess: ({ failed }) => {
+        if (failed > 0) toast({ title: t_i18n("{count, plural, one {# sync failed} other {# syncs failed}}", { count: failed }), variant: "error" });
+      },
+      onError: reportFailure(t_i18n("The syncs could not run")),
+    });
+  };
+
   const setEnabled = (sync: OrganizationSync, enabled: boolean) =>
     update.mutate({ id: sync.id, body: bodyOf(sync, { enabled }) }, { onError: reportFailure(t_i18n("The sync could not be saved")) });
 
@@ -264,7 +282,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
     if (row.sync) {
       const sync = row.sync;
       return [
-        { id: "run", label: t_i18n("Run now"), icon: PlayIcon, onSelect: () => runNow(sync), disabled: disabled || run.isPending },
+        { id: "run", label: t_i18n("Run now"), icon: PlayIcon, onSelect: () => runNow(sync), disabled: disabled || run.isPending || runAll.isPending },
         { id: "edit", label: t_i18n("Edit"), icon: PencilIcon, onSelect: () => setEditing(sync), disabled },
         sync.enabled
           ? { id: "disable", label: t_i18n("Disable"), icon: PauseIcon, onSelect: () => setEnabled(sync, false), disabled: disabled || update.isPending }
@@ -458,7 +476,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       <span className="inline-flex items-center gap-1">
         {row.sync && (
           <Tip content={t_i18n("Run now")}>
-            <Button variant="ghost" size="icon" aria-label={t_i18n("Run {name} now", { name })} onClick={() => row.sync && runNow(row.sync)} disabled={disabled || run.isPending}>
+            <Button variant="ghost" size="icon" aria-label={t_i18n("Run {name} now", { name })} onClick={() => row.sync && runNow(row.sync)} disabled={disabled || run.isPending || runAll.isPending}>
               {run.isPending && run.variables === row.sync.id ? <Spinner size="sm" tone="inherit" label={t_i18n("Running...")} /> : <Icon name="play" size={16} aria-hidden />}
             </Button>
           </Tip>
@@ -500,9 +518,16 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         )}
         action={
           <span className="flex flex-wrap items-center gap-2">
-            {!hasSyncAll && sectionSyncs.length > 0 && (
-              <Button variant="secondary" className="gap-1.5" onClick={() => setEditing("all")} disabled={disabled}>
-                <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a Sync all schedule")}
+            {isAdmin && runnable.length > 0 && (
+              <Button
+                variant="secondary"
+                className="gap-1.5"
+                onClick={runAllNow}
+                disabled={disabled || runAll.isPending || run.isPending}
+                aria-busy={runAll.isPending || undefined}
+                data-testid="organization-sources.run-all"
+              >
+                {runAll.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Running...")} /> : <Icon name="refresh-cw" size={16} aria-hidden />} {t_i18n("Run all syncs")}
               </Button>
             )}
             {rows.length > 0 && addSource}
@@ -557,14 +582,13 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       </SettingsCard>
 
       <SyncEditDialog
-        sync={editing === "all" || editing === null ? null : editing}
+        sync={editing}
         open={editing !== null}
-        saving={create.isPending || update.isPending}
+        saving={update.isPending}
         onClose={() => setEditing(null)}
         onSave={(schedule, enabled, direction) => {
           const done = { onSuccess: () => setEditing(null), onError: reportFailure(t_i18n("The sync could not be saved")) };
-          if (editing === "all") create.mutate({ section: "all", source: "", filters: {}, batch_type: "", remove_gone: false, ...schedule, enabled }, done);
-          else if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction }) }, done);
+          if (editing) update.mutate({ id: editing.id, body: bodyOf(editing, { ...schedule, enabled, direction }) }, done);
         }}
       />
       <DeleteRowsDialog row={deleting} name={deleting ? nameOf(deleting) : ""} onClose={() => setDeleting(null)} />

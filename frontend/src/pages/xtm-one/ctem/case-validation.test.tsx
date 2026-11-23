@@ -93,7 +93,7 @@ describe("CaseValidation", () => {
     state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Run it?", options: [] }, is_company_managed: false }];
     const history = [ev({ from: "ctem.validation.non_readonly", to: "waited" })];
     renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, safe_mode: false, result: "pending" }]} history={history} />);
-    expect(screen.getByText("Waited for a person")).toBeTruthy();
+    expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
     expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Not read-only: a test that changes the target ran");
   });

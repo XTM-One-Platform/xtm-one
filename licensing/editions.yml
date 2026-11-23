@@ -469,6 +469,7 @@ ee:
   - backend/app/api/v1/evaluation*.py
   - backend/app/api/v1/schemas/extension.py
   - backend/app/llm/agent_model.py
+  - backend/app/llm/gateway_embedding_default.py
   - backend/app/integrations/node_registry.py
   # Frontend: fleets, work items, concierge, agent graph
   - frontend/src/hooks/api/useFleetApi.ts

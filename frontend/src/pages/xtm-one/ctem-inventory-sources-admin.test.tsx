@@ -52,11 +52,24 @@ describe("CtemInventory sources for administrators only", () => {
     expect(screen.getByTestId("ctem-inventory-sources")).toBeTruthy();
   });
 
-  it("opens the Sources page for an administrator", () => {
+  it("opens the Sources page for an administrator, Asset matching under the syncs table with no header button", () => {
     auth.isAdmin = true;
     page("/ctem/inventory/sources");
-    expect(screen.getByTestId("ctem-inventory-sources-page")).toBeTruthy();
+    const sourcesPage = screen.getByTestId("ctem-inventory-sources-page");
+    const sources = screen.getByTestId("sources-card");
+    const matching = screen.getByTestId("matching-card");
+    // The syncs table first, Asset matching below it (Sam, 23 Nov 2026).
+    expect(sources.compareDocumentPosition(matching) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sourcesPage.contains(matching)).toBe(true);
+    expect(screen.queryByTestId("ctem-inventory-matching")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Asset matching/ })).toBeNull();
+  });
+
+  it("lands an old Asset matching link on the Sources page with both cards", () => {
+    auth.isAdmin = true;
+    page("/ctem/inventory/sources?matching=1");
     expect(screen.getByTestId("sources-card")).toBeTruthy();
+    expect(screen.getByTestId("matching-card")).toBeTruthy();
   });
 
   it("shows no Sources button to a reader", () => {

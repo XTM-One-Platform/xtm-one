@@ -4,10 +4,11 @@
  * "Opened by" on a case page (CTEM-03-UI, #892; dev-docs/ctem-loop-visibility.md
  * sections 3 and 4): the signals that opened or joined the case, each with its
  * lens, its trigger path, its source (CTEM-29-UI), the scope gate's reason in one sentence, and a
- * link to its loop trace (`?loop=signal:<id>`). Read through
- * `GET /ctem-signals?case_id=`, which applies the reader's visibility; a case
- * opened by no signal (one the recompute built from source issues) names the
- * source readers that opened it, from the sources of its issues (#1206).
+ * link to its loop trace (`/ctem/signals?signal=<id>`). Read through
+ * `GET /ctem-signals?case_id=`, which applies the reader's visibility. A case
+ * is opened only by a signal or split by a person or an agent (#1529): a case
+ * with no signal says which, and one a source read built before the readers
+ * recorded signals is labelled legacy.
  */
 import { Link as RouterLink } from "react-router-dom";
 import { Link } from "@filigran/design-system";
@@ -16,18 +17,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCtemCaseSignals } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import { formatDayIntl } from "@/lib/relative-time";
-import { READER_OPENED_LABEL, readerOpenedLines } from "./case-loop-reason";
+import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
+import { NO_SIGNAL_ORIGIN_LABEL, noSignalOrigin } from "./case-loop-reason";
 import { decisionSentence } from "./loop/DecisionReason";
 import { signalProviderName } from "./loop/SignalLoopTrace";
 import { signalsHref } from "./loop/signals-route";
 
 const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside", world: "World" };
 
-export function CaseOpenedBy({ caseId, sources = [] }: { caseId: string; sources?: readonly string[] }) {
+export function CaseOpenedBy({ caseId, history }: { caseId: string; history?: readonly CtemCaseEvent[] }) {
   const { t_i18n, intl } = useFormatter();
   const { data, isLoading, isError } = useCtemCaseSignals(caseId);
   const signals = data?.signals ?? [];
-  const readers = readerOpenedLines(sources);
 
   return (
     <Card data-testid="ctem-case-opened-by">
@@ -39,14 +40,10 @@ export function CaseOpenedBy({ caseId, sources = [] }: { caseId: string; sources
           <Skeleton className="h-10 w-full" />
         ) : isError && !data ? (
           <p className="content-base text-default-secondary">{t_i18n("The signals of this case could not be read.")}</p>
-        ) : signals.length === 0 && readers.length > 0 ? (
-          <ul className="space-y-1 content-base" data-testid="ctem-case-opened-by-reader">
-            {readers.map((r) => (
-              <li key={r}>{t_i18n(READER_OPENED_LABEL[r])}</li>
-            ))}
-          </ul>
         ) : signals.length === 0 ? (
-          <p className="content-base text-default-secondary">{t_i18n("No signal opened this case: it groups open issues read from the products.")}</p>
+          <p className="content-base text-default-secondary" data-testid="ctem-case-opened-by-origin">
+            {t_i18n(NO_SIGNAL_ORIGIN_LABEL[noSignalOrigin(history)])}
+          </p>
         ) : (
           <ul className="space-y-3">
             {signals.map((s) => (
