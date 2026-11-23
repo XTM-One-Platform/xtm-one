@@ -77,7 +77,7 @@ describe("CaseRemediationDecision", () => {
     ];
     const history = [NOTE, ev({ kind: "gate", from: "ctem.remediation.decision", to: "waited", reason: "pinned to wait" })];
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={history} />);
-    expect(screen.getByText("Waited for a person")).toBeTruthy();
+    expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(screen.getByTestId("unified-decision-card")).toBeTruthy();
     expect(screen.getByText(/expected loss 120,000 before/)).toBeTruthy();
     expect(state.calls).toContainEqual({ filters: { correlation_key: "ctem:remediation:c1", open_only: true, limit: 1 }, enabled: true });

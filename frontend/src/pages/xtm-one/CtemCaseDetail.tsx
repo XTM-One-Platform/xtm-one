@@ -621,7 +621,7 @@ export default function CtemCaseDetail() {
       )}
 
       <CaseLoopProvider value={loopState}>
-        <CaseOpenedBy caseId={kase.id} sources={kase.issues.flatMap((i) => (i.restricted ? [] : [i.source]))} />
+        <CaseOpenedBy caseId={kase.id} history={kase.history} />
 
         <CaseExploitation entries={kase.exploitation} />
 
