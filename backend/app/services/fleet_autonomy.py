@@ -36,6 +36,7 @@ raising it is reserved to a human administrator.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
@@ -334,19 +335,97 @@ def gated_tool_rules(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> l
     for gate in gates or ():
         if not gate_waits(level, gate):
             continue
+        grant = _grant_of(gate)
         for tool in gate.get("tools") or ():
             if not isinstance(tool, Mapping) or not tool.get("name"):
                 continue
-            when = tool.get("when") if isinstance(tool.get("when"), Mapping) else {}
-            rules.append(
-                {
-                    "name": str(tool["name"]),
-                    "when": {str(k): [str(v) for v in (vals or ())] for k, vals in when.items()},
-                    "key": gate.get("key") or "",
-                    "action": gate.get("action") or "",
-                }
-            )
+            raw_when = tool.get("when")
+            when: Mapping[str, Any] = raw_when if isinstance(raw_when, Mapping) else {}
+            rule: dict[str, Any] = {
+                "name": str(tool["name"]),
+                "when": {str(k): [str(v) for v in (vals or ())] for k, vals in when.items()},
+                "key": gate.get("key") or "",
+                "action": gate.get("action") or "",
+            }
+            if grant is not None:
+                rule["grant"] = grant
+            rules.append(rule)
     return rules
+
+
+def _grant_of(gate: Mapping[str, Any]) -> dict[str, list[str]] | None:
+    """The gate's grant (``DocGate.grant``, #1339) as ``{objects, fresh}``, or ``None`` without one."""
+    grant = gate.get("grant")
+    if not isinstance(grant, Mapping):
+        return None
+    objects = [str(a) for a in grant.get("objects") or () if a]
+    if not objects:
+        return None
+    return {"objects": objects, "fresh": [str(a) for a in grant.get("fresh") or () if a]}
+
+
+#: The object ids an approved call's answer names (an OpenAEV id is a UUID).
+_OBJECT_ID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
+
+
+def _given(value: Any) -> bool:
+    """Whether an argument holds a value (an empty string, list or ``None`` does not)."""
+    if value is None:
+        return False
+    if isinstance(value, str | list | tuple | dict | set):
+        return bool(value)
+    return True
+
+
+class _ValidationGrants:
+    """One decision per validation (#1339): what a person's approval of a gated call covers.
+
+    A call a person approved (or a call this grant let through) adds, per gate
+    key, the object ids it named in the gate's ``grant.objects`` arguments and
+    the ids its answer returned (the object it created). A later call of the same
+    gate runs without a second pause when it names one of those objects and gives
+    none of the gate's ``grant.fresh`` arguments: a new target, a new schedule or
+    another object asks again. Held for the turn, never stored.
+    """
+
+    def __init__(self) -> None:
+        self._objects: dict[str, set[str]] = {}
+        self._passed: dict[str, str] = {}
+
+    def covers(self, rule: Mapping[str, Any], arguments: Any) -> bool:
+        grant = rule.get("grant")
+        granted = self._objects.get(rule.get("key") or "")
+        if not grant or not granted or not isinstance(arguments, Mapping):
+            return False
+        if any(_given(arguments.get(a)) for a in grant["fresh"]):
+            return False
+        named = {str(arguments.get(a)).lower() for a in grant["objects"] if _given(arguments.get(a))}
+        return bool(named) and named <= granted
+
+    def passed(self, call_id: str, key: str) -> None:
+        self._passed[call_id] = key
+
+    def observe(self, rules: list[dict[str, Any]], call: Any, result: Any, approved: set[str]) -> None:
+        """Record what an approved (or granted) gated call named and created."""
+        key = self._passed.get(call.id)
+        rule = next(
+            (r for r in rules if r.get("grant") and rule_matches(r, call.name, call.arguments)),
+            None,
+        )
+        if rule is None:
+            return
+        if key is None and call.id in approved:
+            key = rule.get("key") or ""
+        if key is None or getattr(result, "is_error", False):
+            return
+        ids = self._objects.setdefault(key, set())
+        arguments = call.arguments if isinstance(call.arguments, Mapping) else {}
+        for argument in rule["grant"]["objects"]:
+            if _given(arguments.get(argument)):
+                ids.add(str(arguments[argument]).lower())
+        content = getattr(result, "content", "")
+        if isinstance(content, str):
+            ids.update(m.lower() for m in _OBJECT_ID.findall(content))
 
 
 def rule_matches(rule: Mapping[str, Any], name: str, arguments: Any) -> bool:
@@ -378,6 +457,7 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
     approved this very call (*approved_call_ids*, the resume decisions).
     """
     approved = approved_call_ids or set()
+    grants = _ValidationGrants()
 
     def _gate(call) -> None:
         from app.tools.base import HumanInputRequestedError
@@ -385,6 +465,10 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
         if call.id not in approved:
             for rule in rules:
                 if rule_matches(rule, call.name, call.arguments):
+                    if grants.covers(rule, call.arguments):
+                        # The validation a person approved: no second pause (#1339).
+                        grants.passed(call.id, rule.get("key") or "")
+                        continue
                     raise HumanInputRequestedError(
                         question=(
                             f"Approval required to run {call.name}: the fleet gates '{rule['action'] or rule['key']}' "
@@ -396,6 +480,12 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
         if inner is not None:
             inner(call)
 
+    def _observe(call: Any, result: Any) -> None:
+        grants.observe(rules, call, result, approved)
+
+    # Read by the composite after each dispatch (``CompositeToolExecutor``): the
+    # answer of an approved call names the validation it created (#1339).
+    _gate.observe = _observe  # type: ignore[attr-defined]
     return _gate
 
 

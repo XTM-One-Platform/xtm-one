@@ -470,6 +470,44 @@ _OPENAEV_LAUNCH_TOOLS = [
 _COVERAGE_REQUEST_TOOLS = [
     {"name": "manage_opencti_security_coverage", "when": {"action": ["create"]}},
 ]
+#: Every call that creates or starts an OpenAEV validation (Sam, 23 Nov 2026, #1339): the
+#: gate ``ctem.validation.non_readonly`` of a fleet that has the OpenAEV validation step.
+#: Reads (list, get, results, healthcheck, status reads) are not listed and stay free.
+#: The coverage request is one of them: OpenAEV builds and schedules a scenario from it.
+_OPENAEV_VALIDATION_TOOLS = [
+    {"name": "create_openaev_scenario"},
+    {"name": "import_openaev_scenario"},
+    {"name": "manage_openaev_scenario", "when": {"action": ["launch", "schedule_recurrence", "duplicate"]}},
+    {"name": "manage_openaev_simulation", "when": {"action": ["create", "duplicate"]}},
+    *_OPENAEV_LAUNCH_TOOLS,
+    {"name": "add_openaev_inject_to_scenario"},
+    {"name": "manage_openaev_inject", "when": {"action": ["create", "duplicate", "trigger"]}},
+    {"name": "create_openaev_atomic_testing"},
+    {
+        "name": "manage_openaev_atomic_testing",
+        "when": {"action": ["create", "duplicate", "recurrence"]},
+    },
+    *_COVERAGE_REQUEST_TOOLS,
+]
+#: One decision per validation (#1339): an approved call of the gate covers the later
+#: calls of the same gate on the objects it named or created (a scenario, a simulation,
+#: an atomic test, an inject). A call that names a new target or a new schedule asks again.
+_OPENAEV_VALIDATION_GRANT = {
+    "objects": ["scenario_id", "exercise_id", "inject_id", "parent_id"],
+    "fresh": [
+        "asset_ids",
+        "asset_group_ids",
+        "team_ids",
+        "recurrence",
+        "recurrence_cron",
+        "recurrence_start",
+        "recurrence_end",
+        "start_date",
+    ],
+}
+#: The action of the validation gate, in plain words (#1339).
+CTEM_VALIDATION_ACTION = "Validate: create or launch an OpenAEV scenario or atomic test"
+CTEM_VALIDATION_GATE = "ctem.validation.non_readonly"
 _TICKET_TOOLS = [
     {"name": "create_jira_issue"},
     {"name": "create_servicenow_incident"},
@@ -480,8 +518,10 @@ _TICKET_TOOLS = [
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
 #: once and seeded on every CTEM loop fleet. Out of the box (the seeded Low
-#: level) exactly one gate waits: ``ctem.mobilize``, the only ``destructive``
-#: one; every other gate runs and the case records it as passed automatically.
+#: level) two gates wait per case (Sam, 23 Nov 2026, #1339): the OpenAEV
+#: validation (``ctem.validation.non_readonly``, on a fleet that has the OpenAEV
+#: validation step) and ``ctem.mobilize``, the ``destructive`` ones; every other
+#: gate runs and the case records it as passed automatically.
 #: Full human gates makes each of them wait, Full autonomous none, and a pin
 #: (``Fleet.approval_pins``, writable on a built-in fleet, never written by the
 #: seed) moves one gate either way and survives a seed upgrade. The former
@@ -513,23 +553,33 @@ OPENCRQ_TREATMENT_PLAN_WRITE_TOOLS: list[dict[str, str]] = [
 
 
 def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: str) -> list[dict[str, Any]]:
-    """The CTEM loop gate catalog of one fleet, in loop order (:data:`CTEM_GATE_KEYS`)."""
+    """The CTEM loop gate catalog of one fleet, in loop order (:data:`CTEM_GATE_KEYS`).
+
+    *launch_tools*: the fleet has the OpenAEV validation step; its validation gate
+    then covers every creating or starting call and waits out of the box
+    (``destructive``, #1339). Without it the gate is stated to the agent only.
+    """
 
     def gate(key: str, action: str, module: str, impact: str, tools: list | None = None) -> dict[str, Any]:
         out: dict[str, Any] = {"key": key, "action": action, "module": module, "approver": "Fleet manager"}
         out["impact"] = impact
         if tools:
-            out["tools"] = [dict(t) for t in tools]
+            out["tools"] = [
+                {**t, "when": {k: list(v) for k, v in t["when"].items()}} if "when" in t else dict(t) for t in tools
+            ]
         return out
 
+    validation = gate(
+        CTEM_VALIDATION_GATE,
+        CTEM_VALIDATION_ACTION,
+        "openaev",
+        _LAUNCH_IMPACT if launch_tools else "high",
+        _OPENAEV_VALIDATION_TOOLS if launch_tools else None,
+    )
+    if launch_tools:
+        validation["grant"] = {k: list(v) for k, v in _OPENAEV_VALIDATION_GRANT.items()}
     return [
-        gate(
-            "ctem.validation.non_readonly",
-            "Validate: run an OpenAEV test that is not read-only",
-            "openaev",
-            "high",
-            _OPENAEV_LAUNCH_TOOLS if launch_tools else None,
-        ),
+        validation,
         gate(
             "ctem.analyst_review",
             "Review: an analyst checks the threat package before its security coverage is requested",
@@ -683,7 +733,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
         # Each step names the gate it stands for (#1074): the About response badges it when that gate
         # waits at the fleet's live level and pins; the static flag is the seeded level's (Low).
-        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate_key": "ctem.validation.non_readonly"},
+        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True, "gate_key": CTEM_VALIDATION_GATE},
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
         {
             "title": "Ticket",
@@ -750,7 +800,8 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
         {
             "title": "AI tests",
             "detail": "Prompt injection, jailbreak, excessive agency, tool misuse, MCP tool poisoning.",
-            "gate_key": "ctem.validation.non_readonly",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
         },
         {
             "title": "Exposure",
@@ -1151,11 +1202,12 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
         {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
         # Each step names its gate (#1074): the About response badges it when that gate waits at the
-        # live level and pins. The static flag is the seeded level's (Low): ctem.mobilize alone waits.
+        # live level and pins. The static flag is the seeded level's (Low): the validation and ctem.mobilize wait.
         {
             "title": "Validate",
-            "detail": "An OpenAEV check, read-only by default.",
-            "gate_key": "ctem.validation.non_readonly",
+            "detail": "An OpenAEV scenario or atomic test, after your approval.",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
         },
         {
             "title": "Decide",

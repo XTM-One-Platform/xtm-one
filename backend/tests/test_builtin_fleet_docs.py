@@ -116,22 +116,23 @@ def test_the_steps_flagged_at_the_seeded_level_are_the_steps_whose_gate_waits(sl
 def test_a_step_badge_follows_the_level_and_the_pins_of_the_fleet():
     """#1074: a level or a pin that moves a gate moves the badge of the step that names it."""
     from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED
-    from app.services.fleet_autonomy import PIN_RUN, PIN_WAIT, gate_catalog, with_live_step_gates
+    from app.services.fleet_autonomy import PIN_RUN, gate_catalog, with_live_step_gates
 
     parts = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]
 
-    def badged(level, pins=None):
+    def badged(level: str, pins: dict[str, str] | None = None) -> list[str]:
         gates = [dict(g, pin=(pins or {}).get(g["key"])) for g in parts["gates"]]
         derived = with_live_step_gates(parts, gate_catalog(level, gates))
         return [s["title"] for s in derived["steps"] if s.get("gate")]
 
-    assert badged("low") == ["Ticket"]
+    # #1339: the OpenAEV validation waits out of the box with Mobilize.
+    assert badged("low") == ["Exploitability", "Ticket"]
     assert badged("medium") == ["Exploitability", "Ticket"]
     assert badged("autonomous") == []
-    assert badged("low", {"ctem.validation.non_readonly": PIN_WAIT}) == ["Exploitability", "Ticket"]
+    assert badged("low", {"ctem.validation.non_readonly": PIN_RUN}) == ["Ticket"]
     assert badged("medium", {"ctem.mobilize": PIN_RUN}) == ["Exploitability"]
     # The stored structure is never written by the derivation.
-    assert [s["title"] for s in parts["steps"] if s.get("gate")] == ["Ticket"]
+    assert [s["title"] for s in parts["steps"] if s.get("gate")] == ["Exploitability", "Ticket"]
 
 
 def test_a_step_without_a_known_gate_key_keeps_its_stored_flag():
