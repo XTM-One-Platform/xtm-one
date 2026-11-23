@@ -607,6 +607,10 @@ async def sync_group_members(
     return result
 
 
+GROUP_MEMBERS_PAGE_MAX = 1000
+"""Largest member page a caller shows; it may ask for one row more to tell a last page."""
+
+
 async def group_members(
     db: AsyncSession,
     organization_id: uuid.UUID,
@@ -618,7 +622,9 @@ async def group_members(
     """One keyset page of a group's member records with who put each there, by name then id.
 
     Pass the last ``(name_key, id)`` as *after*; served by the members' primary
-    key and the records' ``(organization_id, name_key)`` order.
+    key and the records' ``(organization_id, name_key)`` order. *limit* is capped
+    at ``GROUP_MEMBERS_PAGE_MAX + 1`` so a caller showing the largest page can
+    still read the one extra row that says another page exists.
     """
     member, rec = OrganizationAssetGroupMember, OrganizationAssetRecord
     query = (
@@ -628,7 +634,7 @@ async def group_members(
     )
     if after is not None:
         query = query.where(or_(rec.name_key > after[0], and_(rec.name_key == after[0], rec.id > after[1])))
-    query = query.order_by(rec.name_key, rec.id).limit(max(1, min(limit, 1000)))
+    query = query.order_by(rec.name_key, rec.id).limit(max(1, min(limit, GROUP_MEMBERS_PAGE_MAX + 1)))
     return [(r, str(s)) for r, s in (await db.execute(query)).all()]
 
 

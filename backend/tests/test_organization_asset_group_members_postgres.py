@@ -180,3 +180,18 @@ async def test_the_member_page_is_a_keyset_by_name_and_a_record_lists_its_groups
     assert [r.name for r, _v in first] == ["srv-00", "srv-01"]
     assert [r.name for r, _v in second] == ["srv-02", "srv-03"]
     assert groups == [{"id": str(group), "name": "All", "source": "openaev", "via": "openaev"}]
+
+
+async def test_the_largest_page_still_reads_the_extra_row_that_says_more_exist(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(records, "GROUP_MEMBERS_PAGE_MAX", 2)
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [_asset(f"srv-{i:02d}", f"a{i}") for i in range(5)])
+        group = await _group(session, org, "Many", "g5")
+        await records.sync_group_members(
+            session, org, "openaev", {"g5": [f"a{i}" for i in range(5)]}, member_source="openaev"
+        )
+        await session.commit()
+        probe = await records.group_members(session, org, group, limit=records.GROUP_MEMBERS_PAGE_MAX + 1)
+        capped = await records.group_members(session, org, group, limit=100)
+    assert len(probe) == 3
+    assert len(capped) == 3
