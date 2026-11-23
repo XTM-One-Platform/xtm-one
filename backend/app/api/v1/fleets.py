@@ -3107,8 +3107,9 @@ async def reset_fleet_to_factory(
     run-as cleared, seeded level, no pins or added gates, every member's customer layer
     (bindings, scoping, MCP, knowledge bases, skills, tools, notes, model) cleared and its
     definition rewritten from the seed. Ids, runs, cases, the audit trail and the workspace
-    are kept. Administrators only; ``dry_run`` answers the counts; refused during an
-    emergency stop and on a custom fleet."""
+    are kept. Administrators only; ``dry_run`` answers the counts and the automations an
+    emergency stop holds; refused during an emergency stop, while a stop holds any of
+    the fleet's automations, and on a custom fleet."""
     fleet = await _controllable_fleet(db, user, fleet_id, "reset")
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Only an administrator can reset a fleet.")

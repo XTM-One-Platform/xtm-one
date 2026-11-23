@@ -21227,5 +21227,7 @@
   "Reset fleet": "Restablecer flota",
   "Reset to factory state": "Restablecer al estado de fábrica",
   "What is kept": "Lo que se conserva",
-  "What is reset": "Lo que se restablece"
+  "What is reset": "Lo que se restablece",
+  "{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}": "{count, plural, one {Una parada de emergencia retiene # automatización de esta flota} other {Una parada de emergencia retiene # automatizaciones de esta flota}}",
+  "Resume them from the emergency stop before resetting the fleet.": "Reanúdelas desde la parada de emergencia antes de restablecer la flota."
 }

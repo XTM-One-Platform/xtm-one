@@ -38,3 +38,12 @@ export function resetPlanLines(plan: FleetResetResult, t_i18n: Translate): strin
   if (plan.documentation) lines.push(t_i18n("Documentation back to the shipped version"));
   return lines;
 }
+
+/**
+ * The automations an emergency stop holds on the fleet (UX round 2 B1 on #1523): while any
+ * is held the reset is refused by the server, so the dialog names them and never reads
+ * "already in its factory state".
+ */
+export function resetHeldByStop(plan: FleetResetResult | undefined): string[] {
+  return plan?.held_by_stop ?? [];
+}

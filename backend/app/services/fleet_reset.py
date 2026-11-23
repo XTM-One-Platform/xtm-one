@@ -34,8 +34,9 @@ notes, model pin, approval switches).
   definition rewritten from the seed spec now (``_sync_agent_fields``).
 
 Kept: ids, run history, cases and findings, the audit trail, the workspace.
-A dry run answers the counts the confirmation dialog shows. Refused during a
-platform emergency stop and on a custom fleet. Idempotent: a second call
+A dry run answers the counts the confirmation dialog shows, and the automations
+an emergency stop holds. Refused during a platform emergency stop, while a stop
+holds any automation of the fleet, and on a custom fleet. Idempotent: a second call
 changes nothing and the next boot changes nothing. The caller owns the commit.
 """
 
@@ -55,6 +56,9 @@ from app.services.fleets import FleetActionRefusedError, fleet_members
 
 RESET_REFUSED_CUSTOM = "Only a built-in fleet can be reset to its factory state; a custom fleet has no factory state."
 RESET_REFUSED_DURING_STOP = "An emergency stop is in effect. Lift it (profile menu or banner) before resetting a fleet."
+RESET_REFUSED_HELD_BY_STOP = (
+    "An emergency stop holds automations of this fleet ({names}). Resume them before resetting the fleet."
+)
 
 #: Fleet columns a person may set on a built-in fleet, with the value a fresh seed leaves.
 _FLEET_FACTORY_VALUES: dict[str, Any] = {
@@ -296,6 +300,11 @@ async def reset_builtin_fleet(
     outcome = FleetResetOutcome()
     unsettable, held = await unsettable_count(db, fleet)
     outcome.held_by_stop = held
+    # A stop of one person's or one fleet's scope holds automations a reset cannot touch (only
+    # the stop's own resume lifts them), so the fleet would not end in its factory state: the
+    # dry run names them for the dialog, the reset itself is refused (#1523 UX round 2 B1).
+    if held and not dry_run:
+        raise FleetActionRefusedError(409, RESET_REFUSED_HELD_BY_STOP.format(names=", ".join(held)))
     automations = await _fleet_automations(db, fleet, lock=not dry_run)
     outcome.run_as_cleared = sum(1 for a in automations if a.run_as_user_id is not None)
     outcome.automations = unsettable

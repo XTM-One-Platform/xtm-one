@@ -96,7 +96,7 @@ def _actor():
     return SimpleNamespace(id=uuid.uuid4(), email="admin@example.com", full_name="Ada Admin", is_admin=True)
 
 
-def _patches(fleet, agent, automations, *, stop=False):
+def _patches(fleet, agent, automations, *, stop=False, held=()):
     member = SimpleNamespace(
         role=FLEET_ROLE_MEMBER, agent_id=agent.id, context_inclusion="full", organization_scope=None
     )
@@ -110,7 +110,7 @@ def _patches(fleet, agent, automations, *, stop=False):
         member,
         [
             patch("app.services.panic.platform_stop_open", AsyncMock(return_value=stop)),
-            patch.object(fleet_control, "unsettable_count", AsyncMock(return_value=(1, ()))),
+            patch.object(fleet_control, "unsettable_count", AsyncMock(return_value=(1, held))),
             patch.object(fleet_control, "_fleet_automations", AsyncMock(return_value=automations)),
             patch.object(fleet_control, "unset_fleet", AsyncMock()),
             patch.object(fleet_reset, "fleet_members", AsyncMock(return_value=[member])),
@@ -128,8 +128,8 @@ def _patches(fleet, agent, automations, *, stop=False):
     )
 
 
-async def _run(fleet, agent, automations, *, dry_run, stop=False):
-    db, member, patches = _patches(fleet, agent, automations, stop=stop)
+async def _run(fleet, agent, automations, *, dry_run, stop=False, held=()):
+    db, member, patches = _patches(fleet, agent, automations, stop=stop, held=held)
     for p in patches:
         p.start()
     try:
@@ -152,6 +152,28 @@ async def test_refused_during_an_emergency_stop():
     with pytest.raises(FleetActionRefusedError) as exc:
         await _run(_fleet(), _agent(), [], dry_run=True, stop=True)
     assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_dry_run_names_the_automations_a_scoped_stop_holds():
+    fleet, agent = _fleet(), _agent()
+    outcome, _member = await _run(fleet, agent, [], dry_run=True, held=("Daily", "Weekly"))
+    assert outcome.held_by_stop == ("Daily", "Weekly")
+    assert fleet.approval_pins  # a dry run writes nothing
+
+
+@pytest.mark.asyncio
+async def test_reset_is_refused_while_a_scoped_stop_holds_automations():
+    # UX round 2 B1 on #1523: a stop of one person's or one fleet's scope holds automations the
+    # reset cannot touch; the reset must not run and report success over them.
+    fleet, agent = _fleet(), _agent()
+    automation = _automation(enabled=False, run_as=uuid.uuid4())
+    with pytest.raises(FleetActionRefusedError) as exc:
+        await _run(fleet, agent, [automation], dry_run=False, held=("Daily",))
+    assert exc.value.status_code == 409
+    assert "Daily" in str(exc.value)
+    assert fleet.approval_pins and fleet.autonomy_level == "full_gates"
+    assert automation.run_as_user_id is not None
 
 
 @pytest.mark.asyncio

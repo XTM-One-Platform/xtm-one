@@ -21227,5 +21227,7 @@
   "Reset fleet": "Reset fleet",
   "Reset to factory state": "Reset to factory state",
   "What is kept": "What is kept",
-  "What is reset": "What is reset"
+  "What is reset": "What is reset",
+  "{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}": "{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}",
+  "Resume them from the emergency stop before resetting the fleet.": "Resume them from the emergency stop before resetting the fleet."
 }

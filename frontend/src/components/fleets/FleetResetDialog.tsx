@@ -31,7 +31,7 @@ import { useFleetReset, useFleetResetPlan } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
 
 import { fleetRefusalMessage } from "./fleet-refusals";
-import { resetPlanLines } from "./fleet-reset";
+import { resetHeldByStop, resetPlanLines } from "./fleet-reset";
 
 export function FleetResetDialog({
   fleetId,
@@ -50,7 +50,10 @@ export function FleetResetDialog({
   const plan = useFleetResetPlan(fleetId, open);
   const reset = useFleetReset(fleetId);
   const lines = plan.data ? resetPlanLines(plan.data, t_i18n) : [];
-  const nothing = !!plan.data && lines.length === 0;
+  // An emergency stop holding automations of the fleet refuses the reset (UX round 2 B1):
+  // the fleet is then never "already in its factory state", whatever the other counts say.
+  const held = resetHeldByStop(plan.data);
+  const nothing = !!plan.data && lines.length === 0 && held.length === 0;
 
   const close = (next: boolean) => {
     if (!next) setError(null);
@@ -80,7 +83,7 @@ export function FleetResetDialog({
       inputAriaLabel={t_i18n("Type {name} to confirm", { name: fleetName })}
       confirmLabel={t_i18n("Reset fleet")}
       cancelLabel={t_i18n("Cancel")}
-      confirmDisabled={plan.isLoading || plan.isError || nothing}
+      confirmDisabled={plan.isLoading || plan.isError || nothing || held.length > 0}
       pending={reset.isPending}
       error={error}
       closeOnConfirm={false}
@@ -93,6 +96,20 @@ export function FleetResetDialog({
           <p role="alert" className="content-compact text-feedback-error-primary">
             {fleetRefusalMessage(plan.error, t_i18n)}
           </p>
+        ) : held.length > 0 ? (
+          <div role="alert" data-testid="fleet-reset-held">
+            <p className="content-compact font-medium text-feedback-error-primary">
+              {t_i18n("{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}", { count: held.length })}
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 content-compact text-default-secondary">
+              {held.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+            <p className="mt-1 content-compact text-default-secondary">
+              {t_i18n("Resume them from the emergency stop before resetting the fleet.")}
+            </p>
+          </div>
         ) : nothing ? (
           <p className="content-compact text-default-secondary">{t_i18n("The fleet is already in its factory state.")}</p>
         ) : (

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { FleetResetResult } from "@/hooks/api/useFleetApi";
 
-import { resetPlanLines } from "./fleet-reset";
+import { resetHeldByStop, resetPlanLines } from "./fleet-reset";
 
 const t = (key: string, values?: Record<string, unknown>) => (values ? `${key}|${JSON.stringify(values)}` : key);
 
@@ -41,5 +41,19 @@ describe("resetPlanLines", () => {
     expect(lines[0]).toContain('"count":3');
     expect(lines.some((l) => l.startsWith("Autonomy level back"))).toBe(true);
     expect(lines.some((l) => l.startsWith("Documentation back"))).toBe(true);
+  });
+});
+
+describe("resetHeldByStop", () => {
+  // UX round 2 B1 on #1523: a fleet whose automations a stop holds is not in its factory state.
+  it("names the automations an emergency stop holds, even when nothing else would change", () => {
+    const held = plan({ held_by_stop: ["Daily triage", "Weekly digest"] });
+    expect(resetPlanLines(held, t as never)).toEqual([]);
+    expect(resetHeldByStop(held)).toEqual(["Daily triage", "Weekly digest"]);
+  });
+
+  it("is empty without a plan or without a stop", () => {
+    expect(resetHeldByStop(undefined)).toEqual([]);
+    expect(resetHeldByStop(plan())).toEqual([]);
   });
 });
