@@ -140,7 +140,10 @@ def test_view_serves_the_newest_package_whatever_the_order() -> None:
             "name": "Final",
             "url": URL,
             "coverage_id": COVERAGE,
+            "state": "validated",
             "coverage_requested": True,
+            "coverage_drafted": False,
+            "draft_overdue": False,
             "at": NOW.isoformat(),
             "restricted": False,
         }
@@ -149,7 +152,14 @@ def test_view_serves_the_newest_package_whatever_the_order() -> None:
 def test_viewer_without_opencti_sees_only_that_a_package_exists() -> None:
     events = [_event(NOW, GROUPING, "Final", COVERAGE)]
     shown = view_of.threat_package_for(events, view_of.ViewerView(opencti=False))
-    assert shown == {"restricted": True, "coverage_requested": True, "at": NOW.isoformat()}
+    assert shown == {
+        "restricted": True,
+        "state": "validated",
+        "coverage_requested": True,
+        "coverage_drafted": False,
+        "draft_overdue": False,
+        "at": NOW.isoformat(),
+    }
     row = view_of._event(events[0], view_of.ViewerView(opencti=False))
     assert (row["from"], row["to"], row["reason"], row["evidence"]) == (None, None, None, None)
     assert row["kind"] == "threat_package"

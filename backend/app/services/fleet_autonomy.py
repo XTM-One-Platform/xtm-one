@@ -325,6 +325,26 @@ def effective_gates(
     return out
 
 
+#: The integration context key holding :func:`gate_tool_names` of the run's fleet (#1480).
+FLEET_GATED_TOOLS_CONTEXT_KEY = "fleet_gated_tools"
+
+
+def gate_tool_names(gates: Iterable[Mapping[str, Any]] | None) -> frozenset[str]:
+    """Every tool a gate of the fleet names, whether it waits at the level or runs (#1480).
+
+    A tool offered only because a gate decides it (``apply_opencti_draft`` under
+    the CTEM analyst review) is offered whenever its gate exists: at a level
+    where the gate waits, :func:`gated_tool_rules` pauses the call; where it
+    runs, the fleet's policy lets it run.
+    """
+    names: set[str] = set()
+    for gate in gates or ():
+        for tool in gate.get("tools") or ():
+            if isinstance(tool, Mapping) and tool.get("name"):
+                names.add(str(tool["name"]))
+    return frozenset(names)
+
+
 def gated_tool_rules(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
     """The tool rules the run enforces at *level*: one per tool of each gate that still waits.
 
