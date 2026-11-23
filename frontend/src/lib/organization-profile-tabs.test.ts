@@ -75,7 +75,8 @@ describe("organization profile tabs", () => {
     expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("assets_exposure")).toBe("/ctem/inventory?card=assets_exposure");
     expect(profileFieldHref("tech_stack")).toBe("/ctem/inventory/tech-stack?card=tech_stack");
-    expect(profileFieldHref("ai_systems")).toBe("/ctem/inventory/ai-systems?card=ai_systems");
+    // #1501: the AI systems are AI target assets, edited on the asset list.
+    expect(profileFieldHref("ai_systems")).toBe("/ctem/inventory?card=assets_exposure");
     expect(profileFieldHref("tracked_organizations")).toBe("/settings/organization/profile/business?card=tracked_organizations");
     expect(profileFieldHref("sector")).toBe("/settings/organization?card=identity");
     expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization?card=risk_appetite");
