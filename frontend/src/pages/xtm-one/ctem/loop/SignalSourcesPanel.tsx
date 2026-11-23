@@ -18,6 +18,7 @@
  * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
  * from the CTEM menu, the page's tabs and its summary strip.
  */
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
 import { signalsHref } from "./signals-route";
 import {
   connectHref,
@@ -94,6 +96,7 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
         <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
         <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
         {source.off && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
+        {state === "excluded" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
         {state === "not_set_up" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
       </span>
     </Tip>
@@ -160,7 +163,13 @@ function SourceList({
   if (compact) {
     const stateWord = (s: CtemSignalPathSource) => {
       const state = sourceState(s, connected);
-      return state === "off" ? `, ${t_i18n("Off")}` : state === "not_set_up" ? `, ${t_i18n("Not set up")}` : "";
+      return state === "off"
+        ? `, ${t_i18n("Off")}`
+        : state === "not_set_up"
+          ? `, ${t_i18n("Not set up")}`
+          : state === "excluded"
+            ? `, ${t_i18n("Not used here")}`
+            : "";
     };
     const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])}${stateWord(s)})`;
     const names = shown.map(label).join(", ");
@@ -194,7 +203,8 @@ function SourceList({
 /**
  * The Sources tab of the Signals page (#1263): every trigger path by lens,
  * its status, sources, signals in 30 days and Connect. A path's "Open signals"
- * opens the Signals tab filtered on it.
+ * opens the Signals tab filtered on it; a row opens its sources in the side
+ * panel, where an administrator manages them (#1445).
  */
 export function SignalSourcesPanel() {
   const { t_i18n, intl } = useFormatter();
@@ -203,6 +213,9 @@ export function SignalSourcesPanel() {
   const { isAdmin } = useAuth();
   const { data, isLoading, isError, refetch } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
+  // The path whose sources the side panel shows (#1445): read from the live list so a save refreshes it.
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const opened = paths.find((p) => p.id === openPath) ?? null;
   // Read once over every path: a provider connected on one path is connected on all of them.
   const connected = connectedProviders(paths);
   const lastSignal = (path: CtemSignalPath) =>
@@ -368,12 +381,15 @@ export function SignalSourcesPanel() {
           ),
         }}
         rowDataAttributes={(path) => ({ "data-path": path.id, "data-status": pathStatus(path) })}
+        // A row opens the path's sources, managed in place (#1445).
+        onRowClick={(path) => setOpenPath(path.id)}
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
         emptyLabel={t_i18n("No trigger path is known yet.")}
         rowTestId="ctem-signal-sources-path"
       />
+      <SignalPathSourcesSheet path={opened} paths={paths} connected={connected} onClose={() => setOpenPath(null)} />
     </div>
   );
 }

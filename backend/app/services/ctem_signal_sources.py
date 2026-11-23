@@ -168,6 +168,8 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
                 "bound": pair in known and pair not in excluded,
                 "off": pair not in known and pair in off,
                 "excluded": pair in excluded,
+                # Bound before the exclusion: an excluded source of a connected provider still reads connected.
+                "available": pair in known,
                 # The paths this source also feeds (a pass is organization-wide: one switch feeds them all).
                 "also_feeds": [
                     other

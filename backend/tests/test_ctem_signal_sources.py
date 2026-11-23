@@ -57,6 +57,7 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
         "bound": False,
         "off": False,
         "excluded": False,
+        "available": False,
         "also_feeds": ["credential_leak"],
     }
     assert rows["new_exposure"]["last_signal_at"] is None

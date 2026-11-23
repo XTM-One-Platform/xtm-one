@@ -21144,5 +21144,22 @@
   "{name} · {reason}": "{name} · {reason}",
   "Not connected on this platform": "Not connected on this platform",
   "{count, plural, other {+# possible}}": "{count, plural, other {+# possible}}",
-  "Trigger paths": "Trigger paths"
+  "Trigger paths": "Trigger paths",
+  "Feeds this path": "Feeds this path",
+  "Not used on this path": "Not used on this path",
+  "Not used here": "Not used here",
+  "Scheduled pass on": "Scheduled pass on",
+  "Runs on: {names}": "Runs on: {names}",
+  "Choose the integration it runs on in its settings card.": "Choose the integration it runs on in its settings card.",
+  "Open its settings": "Open its settings",
+  "Use on this path": "Use on this path",
+  "Sources of this trigger path": "Sources of this trigger path",
+  "Scheduled pass saved": "Scheduled pass saved",
+  "Source used on this path": "Source used on this path",
+  "Source taken off this path": "Source taken off this path",
+  "No owned domain or address range is set: the pass has nothing to look up.": "No owned domain or address range is set: the pass has nothing to look up.",
+  "The switch is organization-wide. Also feeds: {paths}": "The switch is organization-wide. Also feeds: {paths}",
+  "A live listener runs while its integration is connected.": "A live listener runs while its integration is connected.",
+  "Only an administrator can change the sources of a trigger path.": "Only an administrator can change the sources of a trigger path.",
+  "Agents and the API record this path: it has no integration source.": "Agents and the API record this path: it has no integration source."
 }
