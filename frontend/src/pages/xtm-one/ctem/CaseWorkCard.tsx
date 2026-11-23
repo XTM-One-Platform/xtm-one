@@ -16,6 +16,7 @@
 import { useState, type ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
+import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,6 +26,7 @@ import { CtemLoopSetupDialog } from "@/components/fleets/CtemLoopSetupDialog";
 import { showsCtemLoopSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import { useUpdateAssignment } from "@/hooks/api/useAssignmentApi";
+import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
@@ -209,6 +211,8 @@ function AutomationsOff({ automations, loopFleetId, onStart }: { automations: Ca
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const update = useUpdateAssignment();
+  // Switching an automation on is a gated assignment write: disabled with AI off.
+  const aiOff = useAiActionDisabled();
   const unknownAgent = t_i18n("An agent you cannot see");
   return (
     <Card data-testid="ctem-case-work" data-state="off">
@@ -231,22 +235,24 @@ function AutomationsOff({ automations, loopFleetId, onStart }: { automations: Ca
                 <span className="truncate font-medium content-base">{a.name}</span>
                 <span className="truncate content-compact text-default-secondary">{workerLabel(a, unknownAgent)}</span>
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={update.isPending}
-                onClick={() =>
-                  update.mutate(
-                    { id: a.id, enabled: true },
-                    {
-                      onSuccess: () => toast({ title: t_i18n("Automation switched on"), variant: "success" }),
-                      onError: (err) => toast({ title: err.message, variant: "error" }),
-                    },
-                  )
-                }
-              >
-                {t_i18n("Switch on")}
-              </Button>
+              <AiDisabledTip>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={update.isPending || aiOff}
+                  onClick={() =>
+                    update.mutate(
+                      { id: a.id, enabled: true },
+                      {
+                        onSuccess: () => toast({ title: t_i18n("Automation switched on"), variant: "success" }),
+                        onError: (err) => toast({ title: err.message, variant: "error" }),
+                      },
+                    )
+                  }
+                >
+                  {t_i18n("Switch on")}
+                </Button>
+              </AiDisabledTip>
             </li>
           ))}
         </ul>
