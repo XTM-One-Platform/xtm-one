@@ -21167,5 +21167,14 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, other {# 件の同期された行はソースが送信する値を保持しました}}",
   "Keep as is": "変更しない",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, other {# 行に適用されます。同期された行はソースが送信する値を保持します。}}",
-  "Left empty, each row keeps its owner.": "空欄の場合、各行は現在の所有者を保持します。"
+  "Left empty, each row keeps its owner.": "空欄の場合、各行は現在の所有者を保持します。",
+  "Shipped products": "出荷製品",
+  "Source repositories": "ソースリポジトリ",
+  "owner/name, Enter to add": "owner/name、Enterで追加",
+  "Add a shipped product": "出荷製品を追加",
+  "Paste shipped products": "出荷製品を貼り付け",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "組織が出荷する製品とそのソースリポジトリ。製品の脆弱性はCTEMでそのリポジトリに紐付けられます。",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "出荷製品はまだありません。出荷製品の脆弱性は未解決のままです。",
+  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります"
 }
