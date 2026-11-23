@@ -17891,6 +17891,7 @@
   "Case state": "ケースの状態",
   "Case updated": "ケースを更新しました",
   "Cases": "ケース",
+  "Announced to the loop": "ループに通知しました",
   "Changed the case": "ケースを変更",
   "Changed the due date": "期限を変更",
   "Changed the owner": "担当者を変更",
@@ -21207,7 +21208,7 @@
   "Nothing happened on this case yet": "このケースではまだ何も起きていません",
   "Still waiting since {date}": "{date} から待機中",
   "Answered by {name} on {date}": "{name} が {date} に回答",
-  "Waited since {date}": "{date} から待機",
+  "Waited since {date}": "{date} から待っていた",
   "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, other {# 件の承認待ち}}",
   "Package URL": "パッケージ URL",
   "Dependencies": "依存関係",
@@ -21220,5 +21221,8 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "組織が出荷する製品とそのソースリポジトリ。製品の脆弱性はCTEMでそのリポジトリに紐付けられます。",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "出荷製品はまだありません。出荷製品の脆弱性は未解決のままです。",
-  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります"
+  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります",
+  "Announced to the loop by the catch-up pass": "キャッチアップ処理でループに通知しました",
+  "Announced to the loop by the backfill": "バックフィルでループに通知しました",
+  "The accepted risk expired": "受容したリスクの期限が切れました"
 }

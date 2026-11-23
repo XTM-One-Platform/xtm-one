@@ -17891,6 +17891,7 @@
   "Case state": "État du cas",
   "Case updated": "Cas mis à jour",
   "Cases": "Cas",
+  "Announced to the loop": "Annoncé à la boucle",
   "Changed the case": "A modifié le cas",
   "Changed the due date": "A modifié l'échéance",
   "Changed the owner": "A modifié le responsable",
@@ -21207,7 +21208,7 @@
   "Nothing happened on this case yet": "Rien ne s'est encore passé sur ce cas",
   "Still waiting since {date}": "En attente depuis le {date}",
   "Answered by {name} on {date}": "Répondu par {name} le {date}",
-  "Waited since {date}": "En attente depuis le {date}",
+  "Waited since {date}": "A attendu depuis le {date}",
   "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {aucune validation en attente} one {# validation en attente} other {# validations en attente}}",
   "Package URL": "URL du paquet",
   "Dependencies": "Dépendances",
@@ -21220,5 +21221,8 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Les produits que votre organisation livre, avec leurs dépôts de code : une vulnérabilité sur l'un d'eux est rattachée à ses dépôts dans CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aucun produit livré : une vulnérabilité sur un produit que vous livrez reste non résolue.",
-  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom"
+  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom",
+  "Announced to the loop by the catch-up pass": "Annoncé à la boucle par la passe de rattrapage",
+  "Announced to the loop by the backfill": "Annoncé à la boucle par la reprise de l’historique",
+  "The accepted risk expired": "Le risque accepté a expiré"
 }
