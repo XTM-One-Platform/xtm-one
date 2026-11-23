@@ -81,13 +81,12 @@ const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership"
 const ID_FILTERS: ReadonlySet<string> = new Set(["labels", "markings", "created_by", "creator", "asset_groups", "tags", "pir_ids", "tenant_id"]);
 
 /** The on/off filters: a switch row of their own, "true" when on. @i18n-keys */
-export const SWITCH_VALUE_LABELS = {
+const SWITCH_VALUE_LABELS = {
   include_owner: "Kept as the asset owner",
   include_archived: "Included",
   include_forks: "Included",
   skip_dependencies: "Not read",
 } as const;
-export const SWITCH_FILTERS: ReadonlySet<string> = new Set(Object.keys(SWITCH_VALUE_LABELS));
 
 type Translate = (text: string, values?: Record<string, string | number>) => string;
 
