@@ -432,7 +432,17 @@ export function useDraftOrganizationContext() {
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
-export type ImportSourceKey = "openaev" | "opencti" | "opencrq" | "intune" | "defender" | "github" | "gitlab";
+export type ImportSourceKey =
+  | "openaev"
+  | "opencti"
+  | "opencrq"
+  | "intune"
+  | "defender"
+  | "tanium"
+  | "crowdstrike"
+  | "servicenow"
+  | "github"
+  | "gitlab";
 
 export interface ImportSourcesResponse {
   sections: {
