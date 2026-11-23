@@ -43,12 +43,33 @@ def test_a_playwright_report_counts_each_spec_s_first_attempts(tmp_path):
     nested = {"specs": [{"file": "a2a/01-oauth.spec.ts", "tests": [{"results": [{"duration": 2500}]}]}]}
     report.write_text(json.dumps({"suites": [{"specs": [spec], "suites": [nested]}]}), encoding="utf-8")
     # The retry measures the flake, not the spec: 3 + 1.5 s, not 12 + 1.5.
-    assert measure("e2e", [report]) == {"a2a/01-oauth.spec.ts": 2, "agents.spec.ts": 4}
+    assert measure("e2e", [report]) == {"a2a/01-oauth.spec.ts": 2.5, "agents.spec.ts": 4.5}
+
+
+def test_every_spec_keeps_its_line_however_short(tmp_path):
+    # An unnamed spec weighs the median of the others (tests_e2e/shards.ts), not the 1 s an unnamed test file does.
+    report = tmp_path / "timings.json"
+    specs = [
+        {"file": "short.spec.ts", "tests": [{"results": [{"duration": 140}]}]},
+        {"file": "skipped.spec.ts", "tests": [{"results": [{"duration": 0}]}]},
+    ]
+    report.write_text(json.dumps({"suites": [{"specs": specs}]}), encoding="utf-8")
+    assert measure("e2e", [report]) == {"short.spec.ts": 0.1, "skipped.spec.ts": 0}
 
 
 def test_the_median_takes_each_file_over_the_runs_that_measured_it():
     runs = [{"tests/test_a.py": 10, "tests/test_b.py": 4}, {"tests/test_a.py": 30}, {"tests/test_a.py": 12}]
-    assert median(runs) == {"tests/test_a.py": 12, "tests/test_b.py": 4}
+    assert median("unit", runs) == {"tests/test_a.py": 12, "tests/test_b.py": 4}
+
+
+def test_a_file_the_newest_measure_leaves_out_leaves_the_table_at_once():
+    # Split down below the threshold, or deleted: its old weight must not outlive four earlier measures.
+    runs = [{"tests/test_a.py": 10}, {"tests/test_a.py": 10, "tests/test_split.py": 120}, {"tests/test_split.py": 120}]
+    assert median("unit", runs) == {"tests/test_a.py": 10}
+
+
+def test_the_e2e_median_keeps_the_tenths():
+    assert median("e2e", [{"a.spec.ts": 0.4}, {"a.spec.ts": 0.6}, {"a.spec.ts": 0.5}]) == {"a.spec.ts": 0.5}
 
 
 @pytest.mark.parametrize(
@@ -90,7 +111,11 @@ def test_a_nightly_table_that_passes_is_the_run_s(tmp_path):
 
 @pytest.mark.parametrize(
     ("content", "why"),
-    [(None, "no nightly table was fetched"), ("{not json", "does not read"), (json.dumps(_table("unit", 3)), "refused")],
+    [
+        (None, "no nightly table was fetched"),
+        ("{not json", "does not read"),
+        (json.dumps(_table("unit", 3)), "refused"),
+    ],
 )
 def test_without_a_sound_nightly_table_the_committed_one_deals(tmp_path, content, why):
     candidate = tmp_path / "unit.json"
@@ -107,6 +132,31 @@ def test_a_run_that_lost_shards_publishes_nothing(tmp_path):
     report = _junit(tmp_path / "a.xml", [("tests/test_a.py", 30)])
     out = tmp_path / "unit.json"
     assert shard_weights.main(["measure", "--kind", "unit", "--out", str(out), str(report)]) == 1
+    assert not out.exists()
+
+
+def test_refresh_rebuilds_a_table_from_runs_downloaded_by_hand(tmp_path):
+    newest, older = tmp_path / "2", tmp_path / "1"
+    for run, seconds in ((newest, 12), (older, 30)):
+        (run / "unit-junit-1").mkdir(parents=True)
+        _junit(run / "unit-junit-1" / "report.xml", [(name, seconds) for name in _table("unit", 100)])
+    (older / "unit-junit-1" / "report.xml").write_text(
+        (older / "unit-junit-1" / "report.xml")
+        .read_text()
+        .replace("</testsuite>", '<testcase file="tests/test_gone.py" name="x" time="9"/></testsuite>'),
+        encoding="utf-8",
+    )
+    out = tmp_path / "unit.json"
+    assert shard_weights.main(["refresh", "--kind", "unit", "--out", str(out), str(newest), str(older)]) == 0
+    assert json.loads(out.read_text(encoding="utf-8")) == _table("unit", 100, 21)
+
+
+def test_refresh_refuses_a_run_that_is_not_whole(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    _junit(run / "report.xml", [("tests/test_a.py", 30)])
+    out = tmp_path / "unit.json"
+    assert shard_weights.main(["refresh", "--kind", "unit", "--out", str(out), str(run)]) == 1
     assert not out.exists()
 
 

@@ -13,11 +13,15 @@ import logging
 import os
 import shutil
 import sys
+from pathlib import Path
 
 import pytest
 
 #: The test files this job collects under ``PYTEST_SHARD_SPLIT=files``, as paths from the backend root (``tests/sharding.py``).
 _SHARD_FILES: pytest.StashKey[frozenset[str] | None] = pytest.StashKey()
+
+#: The table the shards and the ``app_sources`` groups deal by (``PYTEST_SHARD_DURATIONS``, ``tests/sharding.py``).
+_SHARD_DURATIONS: pytest.StashKey[Path] = pytest.StashKey()
 
 #: The test files the merge queue's change reaches (``PYTEST_SELECTED_FILES``, ``tests/selection.py``); None: all.
 _SELECTED_FILES: pytest.StashKey[frozenset[str] | None] = pytest.StashKey()
@@ -31,14 +35,14 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Read ``PYTEST_MARKED_FILES``, ``PYTEST_SELECTED_FILES`` and ``PYTEST_SHARD_SPLIT`` once: a wrong value stops the run before xdist starts its workers.
+    """Read ``PYTEST_MARKED_FILES``, ``PYTEST_SELECTED_FILES``, ``PYTEST_SHARD_SPLIT`` and ``PYTEST_SHARD_DURATIONS`` once: a wrong value stops the run before xdist starts its workers.
 
     Then register ``tests/repeat.py``, the ``--repeat`` plugin.
     """
     from tests import repeat
-    from tests.marked_files import MARKED_FILES, parse_marker, skips_file
+    from tests.marked_files import MARKED_FILES, parse_marker
     from tests.selection import read_selected_files
-    from tests.sharding import durations_path, load_durations, parse_shard, parse_split, shard_files
+    from tests.sharding import dealt_files, durations_path, load_durations, parse_shard, parse_split, shard_files
 
     repeat.register(config)
 
@@ -52,19 +56,12 @@ def pytest_configure(config):
         if missing:
             raise ValueError(f"PYTEST_SELECTED_FILES lists files that do not exist: {', '.join(missing[:5])}")
         split = parse_split(os.environ.get("PYTEST_SHARD_SPLIT"))
+        # Read here, for every run: the app_sources groups deal by it too, with or without shards.
+        durations = config.stash[_SHARD_DURATIONS] = durations_path(os.environ.get("PYTEST_SHARD_DURATIONS"))
         files = None
         if shard and split == "files":
-            root = config.rootpath
-            names = (path.relative_to(root).as_posix() for path in (root / "tests").rglob("test_*.py"))
-            # Only the files the job runs are dealt out - the selected ones, and under PYTEST_MARKED_FILES
-            # those that spell the marker - so the shards share them evenly, not the files they leave out.
-            dealt = (
-                name
-                for name in names
-                if (selected is None or name in selected) and (marker is None or not skips_file(root / name, marker))
-            )
-            durations = load_durations(durations_path(os.environ.get("PYTEST_SHARD_DURATIONS")))
-            files = shard_files(dealt, durations, *parse_shard(shard))
+            dealt = dealt_files(config.rootpath, selected, marker)
+            files = shard_files(dealt, load_durations(durations), *parse_shard(shard))
         config.stash[_SHARD_FILES] = files
     except ValueError as exc:
         raise pytest.UsageError(str(exc)) from None
@@ -117,7 +114,7 @@ def pytest_collection_modifyitems_group_source_readers(config, items):
     loadgroup`` sees the group; a test already in a group keeps its own.
     """
     from tests import app_sources
-    from tests.sharding import durations_path, load_durations
+    from tests.sharding import DURATIONS_PATH, load_durations
 
     readers = [
         item
@@ -131,7 +128,7 @@ def pytest_collection_modifyitems_group_source_readers(config, items):
         item: item.path.relative_to(root).as_posix() if item.path.is_relative_to(root) else str(item.path)
         for item in readers
     }
-    durations = load_durations(durations_path(os.environ.get("PYTEST_SHARD_DURATIONS")))
+    durations = load_durations(config.stash.get(_SHARD_DURATIONS, DURATIONS_PATH))
     groups = app_sources.xdist_groups(names.values(), durations)
     for item in readers:
         item.add_marker(pytest.mark.xdist_group(groups[names[item]]))

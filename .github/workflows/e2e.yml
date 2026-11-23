@@ -552,8 +552,8 @@ jobs:
           # Nightly only: a run whose weights failed to publish is red, not silently stale.
           PUBLISH: ${{ needs.shard-weights.result }}
         run: |
-          if [ "$PUBLISH" = failure ]; then
-            echo "::error::Publishing the shard weights failed - its job above has the cause."
+          if [ "$PUBLISH" = failure ] || [ "$PUBLISH" = cancelled ]; then
+            echo "::error::Publishing the shard weights ended $PUBLISH - its job above has the cause."
             exit 1
           fi
           if [ "$SELECT" != success ]; then

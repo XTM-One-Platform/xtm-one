@@ -38,7 +38,9 @@ runs:
         set -uo pipefail
         mkdir -p "$DEST"
         since=$(date -u -d "$MAX_AGE_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
-        if ! runs=$(gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?branch=main&event=schedule&status=completed&per_page=20" \
+        # Bounded: a fetch that stalls gives way to the committed weights, never
+        # cancels the job, whose timeout would fail the run over its weights.
+        if ! runs=$(timeout 60 gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?branch=main&event=schedule&status=completed&per_page=20" \
               --jq ".workflow_runs[] | select(.created_at >= \"$since\") | .id"); then
           echo "::notice::The nightly runs of $WORKFLOW could not be listed: the committed shard weights deal this run."
           exit 0
@@ -46,7 +48,7 @@ runs:
         found=0
         for run in $runs; do
           [ "$found" -ge "$WANTED" ] && break
-          if gh run download "$run" --repo "$REPO" --name "$ARTIFACT" --dir "$DEST/$run" >/dev/null 2>&1; then
+          if timeout 120 gh run download "$run" --repo "$REPO" --name "$ARTIFACT" --dir "$DEST/$run" >/dev/null 2>&1; then
             found=$((found + 1))
             echo "$ARTIFACT from nightly run $run"
           else

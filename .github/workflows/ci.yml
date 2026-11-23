@@ -1073,14 +1073,6 @@ jobs:
           python -m alembic -c alembic/alembic.ini upgrade head
           echo "Downgrade round-trip complete"
 
-  # One failed check naming every job that ended failure or cancelled.
-  # It cannot turn a cancelled run into a failed one: GitHub concludes a run
-  # `cancelled` as soon as one job ended cancelled, whatever else failed
-  # (runs 42048638725 and 42042438531, 5 Nov 2026), which is why the long
-  # jobs cap their test step rather than the job. The required check, so it
-  # runs even when the run is cancelled (`always()`): skipped, it would count
-  # as passed and let a pull request merge with no suite run. A job its event
-  # skips counts as passed.
   # Every nightly run measures the unit and Browser tool files on its own
   # reports and publishes the median of the last five nightly measures: every
   # later run's select job deals its shards by it, so the shards follow the
@@ -1146,6 +1138,14 @@ jobs:
           path: ${{ runner.temp }}/weights/
           retention-days: 30
 
+  # One failed check naming every job that ended failure or cancelled.
+  # It cannot turn a cancelled run into a failed one: GitHub concludes a run
+  # `cancelled` as soon as one job ended cancelled, whatever else failed
+  # (runs 42048638725 and 42042438531, 5 Nov 2026), which is why the long
+  # jobs cap their test step rather than the job. The required check, so it
+  # runs even when the run is cancelled (`always()`): skipped, it would count
+  # as passed and let a pull request merge with no suite run. A job its event
+  # skips counts as passed.
   verdict:
     name: CI verdict
     if: always()

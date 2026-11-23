@@ -8,6 +8,7 @@ from tests.sharding import (
     DURATIONS_PATH,
     EVERY_SHARD,
     UNTIMED_SECONDS,
+    dealt_files,
     load_durations,
     parse_shard,
     parse_split,
@@ -140,3 +141,23 @@ def test_the_table_a_job_deals_by_is_the_one_its_run_handed_out(tmp_path):
     # A job that fell back alone would deal the files unlike its siblings: one would run twice or never.
     with pytest.raises(ValueError, match="PYTEST_SHARD_DURATIONS"):
         durations_path(str(tmp_path / "missing.json"))
+
+
+def test_a_marked_job_deals_only_the_files_that_spell_its_marker(tmp_path):
+    # The Browser tool job runs the chromium files only: the others must not weigh in its deal.
+    (tmp_path / "tests" / "sub").mkdir(parents=True)
+    (tmp_path / "tests" / "test_browser.py").write_text("pytestmark = pytest.mark.chromium\n", encoding="utf-8")
+    (tmp_path / "tests" / "sub" / "test_page.py").write_text(
+        "@pytest.mark.chromium\ndef test_x(): ...\n", encoding="utf-8"
+    )
+    (tmp_path / "tests" / "test_unit.py").write_text("def test_x(): ...\n", encoding="utf-8")
+
+    assert list(dealt_files(tmp_path, None, "chromium")) == ["tests/sub/test_page.py", "tests/test_browser.py"]
+    assert list(dealt_files(tmp_path, {"tests/test_browser.py", "tests/test_unit.py"}, "chromium")) == [
+        "tests/test_browser.py"
+    ]
+    assert list(dealt_files(tmp_path, None, None)) == [
+        "tests/sub/test_page.py",
+        "tests/test_browser.py",
+        "tests/test_unit.py",
+    ]
