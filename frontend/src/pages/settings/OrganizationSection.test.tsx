@@ -1,7 +1,7 @@
 // Settings > Organization (#8987): the profile every agent reads, its missing fields, the save and the OpenCRQ check.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { api } from "@/lib/api";
@@ -248,10 +248,10 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 });
 
 describe("OrganizationSection tabs (#12329)", () => {
-  it("renders the two Settings tabs, only the active panel, and opens the tab the URL names (#1178, #1367 point 7)", async () => {
+  it("renders the three Settings tabs, only the active panel, and opens the tab the URL names (#1178)", async () => {
     renderPage("business");
     const tabs = await screen.findAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business"]);
+    expect(tabs.map((tab) => tab.textContent?.replace(/\d+\/\d+.*$/, ""))).toEqual(["Identity and risk", "Business", "Knowledge and sources"]);
     expect(screen.getByRole("tab", { name: /^Business/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
@@ -275,9 +275,7 @@ describe("OrganizationSection tabs (#12329)", () => {
     const identity = await screen.findByRole("tab", { name: /^Identity and risk/ });
     expect(identity.tagName).toBe("A");
     expect(identity.getAttribute("href")).toBe("/settings/organization");
-    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
-    expect(screen.queryByRole("tab", { name: /^Knowledge and sources/ })).toBeNull();
-    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
+    expect(screen.getByRole("tab", { name: /^Knowledge and sources/ }).getAttribute("href")).toBe("/settings/organization/profile/knowledge");
     const business = screen.getByRole("tab", { name: /^Business/ });
     expect(business.getAttribute("aria-current")).toBe("page");
     expect(identity.getAttribute("aria-current")).toBeNull();
@@ -348,6 +346,45 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect(document.activeElement).toBe(rate));
     expect(rate).not.toBeDisabled();
     expect(screen.getByTestId("settings.save-bar")).toBeTruthy();
+  });
+
+  it("lists the shipped products on the Business tab, empty and filled, and marks a repository that is not owner/name (#1432)", async () => {
+    renderPage("business");
+    const card = await screen.findByTestId("settings.organization.shipped-products");
+    expect(card.textContent).toContain("No shipped product yet");
+    cleanup();
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context"
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, shipped_products: [{ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }] } }
+        : base(path),
+    );
+    renderPage("business");
+    expect(await screen.findByText("acme/server")).toBeTruthy();
+    expect(screen.getAllByTestId("settings.organization.shipped-row")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "agent" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    // Not owner/name: the field is marked and the row counts as needing attention.
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true"));
+  });
+
+  it("refuses a shipped product with a repository that is not owner/name inline: nothing sent, no toast, the field focused (#1483 UX r1 B1)", async () => {
+    renderPage("business");
+    fireEvent.click(await screen.findByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "not a repo" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    fireEvent.click(within(await screen.findByTestId("settings.organization.list-save-bar")).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Source repositories" })));
+    expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true");
+    expect(put).not.toHaveBeenCalled();
+    expect(screen.queryByText("The organization profile was not saved")).toBeNull();
   });
 
   it("lists the crown jewels in a table with column headers", async () => {
@@ -505,8 +542,7 @@ describe("OrganizationSection", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Link a knowledge base" }));
     fireEvent.click(within(within(card).getByTestId("settings.save-bar")).getByRole("button", { name: "Cancel" }));
     expect(within(card).queryByTestId("settings.save-bar")).toBeNull();
-    // The Knowledge and sources page has no profile Edit of its own (UX round 1 on #1476, B1).
-    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
+    expect((screen.getByTestId("settings.organization.edit") as HTMLButtonElement).disabled).toBe(false);
     expect(put).not.toHaveBeenCalled();
     // The focus goes back to the card's Edit, never to the page body (#12271 UX r1 B3).
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Enterprise knowledge/ })));
@@ -966,18 +1002,6 @@ describe("OrganizationSection", () => {
     );
     renderPage("knowledge");
     const panel = await screen.findByTestId("organization-sources");
-    // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
-    expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
-    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
-    // Its own header (UX round 1 on #1476, B1): the back link first, then its title; the profile's header and
-    // fields banner stay on the profile.
-    const header = screen.getByTestId("settings.organization.knowledge-header");
-    expect(header.firstElementChild?.textContent).toContain("Back to Organization Profile");
-    expect(header.textContent).toContain("Knowledge and sources");
-    expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
-    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
     // The table's last block of its tab (UX r1 B1, B2 on #1294): no tab bar, no card below it.
     expect(within(screen.getByTestId("settings.organization.panel-knowledge")).getByTestId("organization-sources")).toBe(panel);
     const rows = await within(panel).findAllByTestId("organization-sources.row");

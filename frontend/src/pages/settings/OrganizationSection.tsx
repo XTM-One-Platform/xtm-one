@@ -19,7 +19,8 @@ import { DetailTabs } from "@/components/ui/detail-tabs";
 import { cn } from "@/lib/utils";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles, Ticket } from "lucide-react";
+import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,7 @@ import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
 import { OrganizationFillAgentDialog } from "./OrganizationFillAgentDialog";
-import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
+import { OrganizationImportDialog } from "./OrganizationImportDialog";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
@@ -99,7 +100,7 @@ import { OrganizationUsedBy } from "./OrganizationUsedBy";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
-import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
+import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, isRepository, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
 import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
@@ -131,7 +132,6 @@ import {
   tabsOfFields,
 } from "@/lib/organization-profile-tabs";
 import { Icon, Spinner } from "@filigran/design-system";
-import { BackButton } from "@/components/ui/back-button";
 
 /** @i18n-keys */
 const AI_KIND_LABELS = { assistant: "Assistant", agent: "Agent", model_api: "Model API", embedded: "Embedded" } as const;
@@ -145,9 +145,14 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "tech_stack", "ai_systems"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack", "ai_systems"] as const;
 /** @i18n-keys */
-const LIST_TITLES = { crown_jewels: "Crown jewels and business services", tech_stack: "Tech stack", ai_systems: "AI systems inventory" } as const;
+const LIST_TITLES = {
+  crown_jewels: "Crown jewels and business services",
+  shipped_products: "Shipped products",
+  tech_stack: "Tech stack",
+  ai_systems: "AI systems inventory",
+} as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
 const EXPOSURE_TITLES = {
@@ -315,6 +320,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       if (open) for (const other of LIST_KEYS) if (other !== key && next[other]?.open) next[other] = { ...next[other]!, open: null } as never;
       return next;
     });
+  // A shipped product kept with a repository that is not owner/name: the API refuses it, so nothing is sent;
+  // the row opens with its field marked and focused, the card in view, never a toast (UX r1 B1 on #1483).
+  const refuseBadRepositories = (): boolean => {
+    const bad = listRows("shipped_products").find((row) => !row.removed && row.value.product.trim() && !row.value.repositories.every(isRepository));
+    if (!bad) return false;
+    goToTab(tabOfField("shipped_products"));
+    setListOpen("shipped_products", bad.key);
+    setFocusTarget(`${fieldId}-shipped_products-repositories`);
+    return true;
+  };
   /** The open form with each list as its editor holds it. */
   const withLists = (base: ProfileForm): ProfileForm =>
     LIST_KEYS.reduce((next, key) => (listEdits[key] ? { ...next, [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) } : next), base);
@@ -501,6 +516,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // A list card's Save writes the saved profile with that list alone changed (whole-profile PUT).
   const saveList = (key: ListKey) => {
     if (!data || !listEdits[key]) return;
+    if (key === "shipped_products" && refuseBadRepositories()) return;
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
@@ -548,7 +564,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setDraftedTabs(new Set());
   };
   // Leaving the page with an unsaved edit asks first (#12329); a tab switch never loses it.
-  const leaveGuard = editing || listEdits.crown_jewels !== undefined || listEdits.tech_stack !== undefined || listEdits.ai_systems !== undefined || exposureEdit !== null;
+  const leaveGuard = editing || LIST_KEYS.some((key) => listEdits[key] !== undefined) || exposureEdit !== null;
   useEffect(() => {
     if (!leaveGuard) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -681,6 +697,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
     setInvalidField(null);
     if (scoreInvalid) return;
+    if (refuseBadRepositories()) return;
     // A ServiceNow table the CTEM case sync cannot write to is shown inline on the Record type
     // field (#923 UX round 3 B1): nothing is sent, the field is focused, never a toast.
     if (form.ticketing.sync && !isSupportedRecordType(ticketingIntegration?.provider ?? "", form.ticketing.sync.record_type)) {
@@ -1013,6 +1030,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     },
     sourceColumn<TechRow>(),
   ];
+  type ShippedRow = { index: number; value: ProfileForm["shipped_products"][number] };
+  const shippedColumns: DataTableColumn<ShippedRow>[] = [
+    { key: "product", header: "Product", width: readWidth(240), cell: ({ value }) => readCell(value.product), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.product.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.product },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(200), cell: ({ value }) => readCell(value.vendor), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.vendor.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.vendor },
+    { key: "cpe", header: "CPE (optional)", hideable: true, width: readWidth(240), cell: ({ value }) => readCell(value.cpe), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.cpe.toLowerCase()), firstSort: "asc", csv: ({ value }) => value.cpe },
+    { key: "repositories", header: "Source repositories", hideable: true, cell: ({ value }) => readCell(value.repositories.join(", ")), interactive: true, sortValue: sortable<ShippedRow>(({ value }) => value.repositories.join(",").toLowerCase()), firstSort: "asc", csv: ({ value }) => value.repositories.join(" ") },
+  ];
   const techFilters: DataTableFilter<TechRow>[] = [
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
     sourceFilter<TechRow>(),
@@ -1072,6 +1096,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   type Jewel = ProfileForm["crown_jewels"][number];
   type Tech = ProfileForm["tech_stack"][number];
   type AiSystem = ProfileForm["ai_systems"][number];
+  type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-full min-w-0" aria-label={t_i18n(label)}>
@@ -1143,6 +1168,37 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("ai_systems", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     sourceEdit<AiSystem>(),
   ];
+  // What the organization ships (#1432): a vulnerability on one of these resolves to its repositories in CTEM.
+  const shippedEdit: ListEditColumn<Shipped>[] = [
+    { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), false, "Vendor", suggestId("shipped_products", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc" },
+    // Below 72rem CPE steps aside to the Columns pill with Source, so the repositories column keeps at least
+    // 240 px for its tag input (UX r1 B2 on #1483: at 1080 it had 58 px, header and chips cut).
+    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: JEWEL_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    {
+      key: "repositories",
+      header: "Source repositories",
+      hideable: true,
+      // No fixed width: the column takes what Product, Vendor and the stepped-aside columns leave.
+      read: (v) => readCell(v.repositories.join(", ")),
+      edit: (v, set, bad) => (
+        <TagInput
+          id={`${fieldId}-shipped_products-repositories`}
+          value={v.repositories}
+          onChange={(repositories) => set({ repositories })}
+          preserveCase
+          suggestFromPlatformTags={false}
+          placeholder={t_i18n("owner/name, Enter to add")}
+          aria-label={t_i18n("Source repositories")}
+          aria-invalid={bad || undefined}
+          invalidTags={v.repositories.filter((repo) => !isRepository(repo))}
+        />
+      ),
+      sortValue: (v) => v.repositories.join(",").toLowerCase(),
+      firstSort: "asc",
+      issues: [LIST_ISSUES.repository],
+    },
+  ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
     crown_jewels: [
@@ -1151,13 +1207,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       { key: "business_service", label: "Business service" },
     ],
     tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
+    shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
     ai_systems: [
       { key: "owner", label: "Owner", suggestions: suggestId("ai_systems", "owner") },
       { key: "kind", label: "Kind", options: AI_KIND_LABELS },
       { key: "exposure", label: "Exposure", options: EXPOSURE_LABELS },
     ],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], tech_stack: ["vendor"], ai_systems: ["owner"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"], ai_systems: ["owner"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
@@ -1185,6 +1242,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
         identity: LIST_RULES.tech_stack.identity,
       } as PasteSpec<Tech>,
+    },
+    // The repositories are added on the row once pasted: a line holds one value per field.
+    shipped_products: {
+      title: "Paste shipped products",
+      example: "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+      fieldLabels: { product: "Product", vendor: "Vendor", cpe: "CPE (optional)" },
+      spec: {
+        fields: ["product", "vendor", "cpe"],
+        empty: { product: "", vendor: "", cpe: "", repositories: [] },
+        name: "product",
+        headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
+        identity: LIST_RULES.shipped_products.identity,
+      } as PasteSpec<Shipped>,
     },
     ai_systems: {
       title: "Paste AI systems",
@@ -1228,7 +1298,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <OrganizationListEditor
           {...props}
           bulkFields={LIST_BULK[key] as unknown as BulkField<ProfileForm[K][number]>[]}
-          locked={lockedFor(key)}
+          locked={key in LOCAL_FIELDS ? lockedFor(key as keyof typeof LOCAL_FIELDS) : undefined}
           confirmRemove={synced.confirmRemove}
           rows={rows}
           onRows={(next) => setListRows(key, next)}
@@ -1500,23 +1570,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
   return (
     <div data-testid="settings.organization" className="space-y-4">
-      {/* The Knowledge and sources page draws its own header, like its siblings (Inventory sources, the asset page):
-          the back link first, then its title; the profile's Draft, Edit and fields banner stay on the profile
-          (UX round 1 on #1476, B1). */}
-      {full && tab === "knowledge" && (
-        <div className="space-y-2" data-testid="settings.organization.knowledge-header">
-          <BackButton to={profileTabPath("identity")} label="Back to Organization Profile" />
-          <h3 className="flex items-center gap-2 title-xs">
-            {t_i18n(PROFILE_TAB_LABELS.knowledge)}
-            <InfoTip
-              label={t_i18n("About the knowledge and sources")}
-              content={t_i18n("The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.")}
-            />
-          </h3>
-        </div>
-      )}
       {/* A short header (#12329): the title with its explanation in a bubble, the version line, Draft and Edit. */}
-      {full && tab !== "knowledge" && (
+      {full && (
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-3xl space-y-1">
           <h3 className="flex items-center gap-2 title-xs">
@@ -1548,12 +1603,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
         {(!editing || setupGuide) && (
           <div className="flex shrink-0 items-center gap-2">
-            {/* Knowledge and sources is a page of its own, opened from here (#1367, point 7: a button, not a tab). */}
-            {full && (
-              <Button variant="secondary" className="gap-1.5" onClick={() => goToTab("knowledge")} data-testid="settings.organization.knowledge">
-                <Icon name="database" size={16} aria-hidden /> {t_i18n(PROFILE_TAB_LABELS.knowledge)}
-              </Button>
-            )}
             {/* One "Draft" menu (section 6.1): the free deterministic draft and the metered AI draft. */}
             <OverflowMenu
               label={t_i18n("Draft")}
@@ -1590,7 +1639,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
       {/* One compact row instead of the four figure cards (#12329): the completeness is per tab on the tab
           bar, the fields not filled sit at the top of their tab, and onboarding stays one click away. */}
-      {full && missing.length > 0 && !editing && tab !== "knowledge" && (
+      {full && missing.length > 0 && !editing && (
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
             {t_i18n("{count, plural, one {# field not filled, reported by every agent that needs it} other {# fields not filled, reported by every agent that needs them}}", {
@@ -1672,18 +1721,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
               (UX r1 B2). The sentinel above it tells when it is stuck. */}
-          {full && tab !== "knowledge" && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
-          {full && tab !== "knowledge" && (
+          {full && <div ref={tabBarSentinel} aria-hidden className="h-px" />}
+          {full && (
           <div
             {...{ [PAGE_STICKY_BAR_ATTRIBUTE]: "" }}
             data-stuck={tabBarStuck || undefined}
             className={cn("sticky top-[var(--fds-header-height,68px)] z-20 flex py-1", tabBarStuck && "border-b border-elevation-subtle bg-elevation-default")}
           >
-            <DetailTabs tabs={SETTINGS_PROFILE_TABS.filter((key) => key !== "knowledge").map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
+            <DetailTabs tabs={SETTINGS_PROFILE_TABS.map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
           </div>
           )}
           {/* The Technology and Exposure cards moved to CTEM > Inventory (#1178, Sam 22 Nov 2026): one line points there. */}
-          {full && tab !== "knowledge" && (
+          {full && (
             <div data-testid="settings.organization.inventory-pointer" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
               <p>{t_i18n("The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.")}</p>
               <Button variant="secondary" onClick={() => navigate(INVENTORY_HOME)}>
@@ -2096,6 +2145,59 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             )}
           </SettingsCard>
 
+          {/* What the organization ships (#1432), apart from the tech stack it runs: CTEM resolves a vulnerability on one to its repositories. */}
+          <SettingsCard
+            id={`${fieldId}-shipped_products`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            {...cardFold("shipped_products", current.shipped_products.length)}
+            tabIndex={-1}
+            data-testid="settings.organization.shipped-products"
+            icon={Package}
+            title={t_i18n("Shipped products")}
+            description={t_i18n("The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.")}
+            action={
+              <>
+                {attention("shipped_products")}
+                {listEditAction("shipped_products")}
+                {pasteAction("shipped_products")}
+                {listOpen("shipped_products") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("shipped_products", { product: "", vendor: "", cpe: "", repositories: [] })}>
+                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add a shipped product")}
+                  </Button>
+                )}
+              </>
+            }
+          >
+            {listEditor("shipped_products", {
+              columns: shippedEdit,
+              filters: [{ key: "vendor", label: "Vendor", values: (v: Shipped) => [v.vendor.trim()] }],
+              searchFields: (v) => [v.product, v.vendor, v.cpe, ...v.repositories],
+              rowLabel: (v) => v.product,
+              storageKey: "settings-organization-shipped-products",
+              rowTestId: "settings.organization.shipped-row",
+              emptyLabel: t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved."),
+            }) ??
+              (current.shipped_products.length === 0 ? (
+                <p className="text-default-secondary">{t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved.")}</p>
+              ) : (
+                <DataTable
+                  rows={current.shipped_products.map((value, index) => ({ index, value }))}
+                  columns={shippedColumns}
+                  layout={tableLayout}
+                  rowKey={(row) => String(row.index)}
+                  searchFields={(row) => [row.value.product, row.value.vendor, row.value.cpe, ...row.value.repositories]}
+                  searchPlaceholder={t_i18n("Search...")}
+                  filters={[{ key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] }]}
+                  exportName="shipped-products"
+                  urlKey="osp_"
+                  storageKey="settings-organization-shipped-products"
+                  emptyLabel={t_i18n("No shipped product yet: a vulnerability on a product you ship stays unresolved.")}
+                  rowTestId="settings.organization.shipped-row"
+                />
+              ))}
+          </SettingsCard>
+
           {/* The tracked organizations (#9157, M2): added from this page; the first-login setup sets up the primary only. */}
           {/* The landing anchor sits on the card root, so its focus ring keeps the card's radius (UX r1 B2 on #108). */}
           <TrackedOrganizations id={`${fieldId}-tracked_organizations`} className={SECTION_BAR_ANCHOR_CLASS} data-anchor="card" tabIndex={-1} />
@@ -2286,8 +2388,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <OrganizationImportDialog
           open={platformImportOpen}
           onOpenChange={setPlatformImportOpen}
-          // The inventory sections are imported from CTEM > Inventory > Sources only (#1367, point 5).
-          sections={PROFILE_IMPORT_SECTIONS}
           quickSetupPending={drafting.isPending}
           onQuickSetup={() => {
             setPlatformImportOpen(false);
