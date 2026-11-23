@@ -33,8 +33,6 @@ _FLEET_ASSIGNMENTS = {
     # A gate answer resumes the case (#1388): seeded off, takes the case listener's switch.
     ("ctem-threat-response-orchestrator", "Gate answered"),
     ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
-    # The loop's own timer.due listener (#1574): seeded off, takes the case listener's switch.
-    ("ctem-threat-response-orchestrator", "Loop reminder due"),
     # CTEM-08 (#919): the trigger rule on software we run, seeded off, after migration c9160fleetoptin1.
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
     # CTEM-08 (#919): the PIR score thresholds of the policy, seeded off, after migration c9160fleetoptin1.
@@ -92,7 +90,6 @@ _SEEDED_AFTER_C9160 = {
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
     ("ctem-threat-response-orchestrator", "Gate answered"),
     ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
-    ("ctem-threat-response-orchestrator", "Loop reminder due"),
     ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
     ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
@@ -170,6 +167,7 @@ def test_golden_dashboard_and_decay_automations_unchanged():
         assert "admin_opt_in" not in weekly and "admin_opt_in" not in manual
     monthly = seeded[("exposure-briefing-analyst", "Monthly exposure briefing")]
     assert (monthly["trigger_type"], monthly["enabled"]) == ("schedule", True)
+    assert monthly["trigger_config"] == {"cron": "0 8 1 * *", "fanout_audience": "ctem_users"}
     assert seeded[("exposure-briefing-analyst", "Generate my exposure briefing")]["enabled"] is True
     assert seeded[("indicator-decay-guardian", "Re-check indicators about to decay")]["enabled"] is True
     hourly = seeded[("indicator-decay-guardian", "Hourly indicator decay re-check")]

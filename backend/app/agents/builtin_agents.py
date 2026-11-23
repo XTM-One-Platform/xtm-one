@@ -31,7 +31,7 @@ from app.agents.ctem_third_party_risk import THIRD_PARTY_RISK_AGENTS, THIRD_PART
 from app.agents.cti_skills import CTI_SKILLS
 from app.agents.fimi_skills import FIMI_SKILLS
 from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST, SEEDED_FLEET_OPT_IN
-from app.agents.gate_answered import GATE_ANSWERED, INHERIT_SWITCH_FROM_KEY, gate_answered_assignment
+from app.agents.gate_answered import GATE_ANSWERED, gate_answered_assignment
 from app.agents.openaev_detection_desk import DETECTION_DESK_AGENTS, DETECTION_DESK_ASSIGNMENTS
 from app.agents.opencrq_risk_budget_desk import RISK_BUDGET_DESK_AGENTS, RISK_BUDGET_DESK_ASSIGNMENTS
 from app.agents.opencti_pir_desk import PIR_DESK_AGENTS, PIR_DESK_ASSIGNMENTS
@@ -2598,9 +2598,10 @@ _INDICATOR_DECAY_WINDOW_CHECK: dict = {
 BUILTIN_ASSIGNMENTS: list[dict] = [
     {
         # Automatic, monthly, PER USER. run_as_all_users makes the scheduler fan
-        # out one run per active user (each as themselves -> their OpenCTI/OpenAEV
-        # scope). hide_runs is inherited from the agent, so each run is private to
-        # its user. EE-gated in the scheduler (skipped on CE-only).
+        # out one run per user of the CTEM command center (each as themselves ->
+        # their OpenCTI/OpenAEV scope). hide_runs is inherited from the agent, so
+        # each run is private to its user. EE-gated in the scheduler (skipped on
+        # CE-only).
         "agent_slug": "exposure-briefing-analyst",
         "name": "Monthly exposure briefing",
         "description": (
@@ -2610,8 +2611,12 @@ BUILTIN_ASSIGNMENTS: list[dict] = [
         ),
         "trigger_type": "schedule",
         # 1st of every month, 08:00 (a never-run schedule also fires on the first
-        # tick after seeding, so briefings populate shortly after deploy).
-        "trigger_config": {"cron": "0 8 1 * *"},
+        # tick after seeding, so briefings populate shortly after deploy), for
+        # the users of the CTEM command center only (a posture built for them
+        # within 30 days): a user who never opens it gets no monthly run. The
+        # seed sync rewrites the trigger config on every boot, so seeded
+        # instances get it too.
+        "trigger_config": {"cron": "0 8 1 * *", "fanout_audience": "ctem_users"},
         "run_as_all_users": True,
         "prompt": _EXPOSURE_BRIEFING_PROMPT,
         "enabled": True,
@@ -3202,46 +3207,6 @@ CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
 CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1", prefixes=CTEM_F1_GATE_PREFIXES))
-
-#: The one timer prefix the loop arms (#1574): its reminders reach its own listener, never another agent's.
-CTEM_LOOP_REMINDER_PREFIX = "ctem-loop-reminder:"
-#: Prefixes the loop armed before #1574: still heard, so a timer armed before the upgrade is not lost.
-CTEM_LOOP_LEGACY_TIMER_PREFIXES: tuple[str, ...] = ("ctem-gate-watch:", "ctem-loop-watch:")
-CTEM_LOOP_REMINDER = "Loop reminder due"
-CTEM_F1_ASSIGNMENTS.append(
-    {
-        **_F1_RUN,
-        "name": CTEM_LOOP_REMINDER,
-        "description": (
-            "A reminder the loop armed with arm_timer (key `ctem-loop-reminder:CASE_ID`) "
-            "reached its due time: the case and its open gates are re-read and the deciding person is "
-            "reminded once when a gate is still unanswered."
-        ),
-        "trigger_type": "platform_event",
-        "trigger_config": {
-            "event": "timer.due",
-            "scope": "own",
-            "filter": {
-                "correlation_key": {
-                    "starts_with": [CTEM_LOOP_REMINDER_PREFIX, *CTEM_LOOP_LEGACY_TIMER_PREFIXES],
-                }
-            },
-        },
-        # Takes the case listener's switch and run-as: a fleet already on gets it on upgrade.
-        INHERIT_SWITCH_FROM_KEY: CTEM_F1_CASE_ASSIGNMENT["name"],
-        "max_iterations": 40,
-        "timeout_seconds": 600,
-        "prompt": (
-            "A reminder you armed is due: the timer.due event below carries its correlation_key "
-            "(`ctem-loop-reminder:CASE_ID`) and its payload. Read the case with "
-            "get_ctem_case and its open gates. When a gate still waits on a person, remind that person "
-            "once on the gate's decision item (one note naming the decision and the SLA), and arm the "
-            "next reminder only if the case's SLA has not passed, always as `ctem-loop-reminder:CASE_ID`. When "
-            "nothing waits any more (the gate is answered, the case closed or moved on), do nothing and "
-            "end with one line saying so. Never remind twice for the same gate in one run."
-        ),
-    }
-)
 
 BUILTIN_ASSIGNMENTS.extend(CTEM_F1_ASSIGNMENTS)
 
