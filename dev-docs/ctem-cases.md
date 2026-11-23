@@ -243,8 +243,24 @@ same way.
   than one version), `version_row_asset_sum` and `version_rows_note`: the rows
   may sum above `asset_count` because an asset running two versions is in each
   row, while the three status totals still add up to `asset_count`. The
-  per-platform map is not yet sourced from OpenCTI (slice 2 of #1572); the
   version match line names the platform (`36.0 (macOS) on 2 asset(s)`).
+- where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
+  reads each Software that `remediates` the vulnerability with its `cpe`;
+  `ctem_fixed_version.platform_of_software` takes the platform from the CPE
+  `target_sw` (then `target_hw`), else from one operating system the name or
+  the version names (two named: none; the bare word `ios` counts only in the
+  CPE target fields, since `Cisco IOS` / `ios_xe` are not Apple's iOS). `fixes_by_platform` keeps the smallest
+  fix above the declared version per platform; one remediating version above
+  it with no platform keeps the fix generic (`{}`), since its reach is not
+  known. The members of one product fold per platform like the generic target
+  (`fold_by_platform`: greatest fix per platform; one member without a map
+  makes it generic). The map travels on the remediation, the signal's
+  `case_fix.fixed_versions` (bounded to 12 platforms) and is kept on
+  `ctem_cases.fixed_versions` (JSON, `{}` by default, migration
+  `c1572ctemfixplat1`): set at opening, at a retarget, and refreshed at each
+  recompute from what the members' source names now. The case read and the
+  affected assets pass it to the running versions; the case summary carries
+  `fixed_versions`.
 
 Two grouped reads and one platform read, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.

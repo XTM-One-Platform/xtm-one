@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_case_versions
 from app.services import ctem_cases as rules
+from app.services.ctem_fixed_version import fold_by_platform
 
 if TYPE_CHECKING:
     from app.services.ctem_case_loop import PendingEvents
@@ -226,6 +227,7 @@ async def apply_recompute(
             if plan.remediation is not None:
                 case.title = plan.remediation.title
                 case.fixed_version = plan.remediation.fixed_version
+                case.fixed_versions = dict(plan.remediation.fixed_versions)
             for key in plan.add_keys:
                 db.add(_event(case.id, actor, "retargeted", to_value=key, at=now))
         for member_id in plan.add:
@@ -234,16 +236,24 @@ async def apply_recompute(
             db.add(_event(case.id, actor, "issue_added", issue=member_id, at=now))
         # Every issue of the case this read sees is a signal too, joined to the case that holds its fix
         # (#1529); a re-read moves the signal's last sighting, never adds one.
+        platform_maps: list[dict[str, str]] = []
         for member_id in sorted({*plan.add, *plan.reopen, *(m for m, r in rows.items() if r.open)}):
             fix = rules.remediation_of(seen[member_id]) if member_id in seen else None
             if fix is None:
                 continue
+            if fix.key in (case.keys or []) and fix.fixed_version == case.fixed_version:
+                platform_maps.append(dict(fix.fixed_versions))
             signal, created = await _source_signal(db, organization_id, seen[member_id], fix, now)
             counts["signals"] += int(created)
             if signal is not None:
                 from app.services import ctem_case_loop as loop
 
                 loop.join_case(db, signal, case, events=events, now=now)
+        if platform_maps:
+            # The fix of each platform follows what the members' source names now (#1572).
+            platforms = fold_by_platform(platform_maps)
+            if platforms != dict(case.fixed_versions or {}):
+                case.fixed_versions = platforms
         for member_id in plan.reopen:
             rows[member_id].open = True
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))

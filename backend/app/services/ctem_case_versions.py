@@ -346,7 +346,14 @@ async def for_case(db: AsyncSession, case: Any) -> dict[str, Any] | None:
         case.organization_id,
         product_label=case.product_label,
         fixed_version=case.fixed_version,
+        fixed_versions_by_platform=_case_platform_fixes(case),
     )
+
+
+def _case_platform_fixes(case: Any) -> dict[str, str]:
+    """The ``{platform: version}`` fixes a case keeps (#1572), ``{}`` when none."""
+    raw = getattr(case, "fixed_versions", None)
+    return {str(p): str(v) for p, v in raw.items() if p and v} if isinstance(raw, dict) else {}
 
 
 async def read_running_versions(
@@ -355,6 +362,7 @@ async def read_running_versions(
     *,
     product_label: str | None,
     fixed_version: str | None,
+    fixed_versions_by_platform: Mapping[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """:func:`running_versions` over the organization's asset software (one grouped read).
 
@@ -390,7 +398,13 @@ async def read_running_versions(
         a for row in rows if matches_case(product_label, row["vendor"], row["product"]) for a in row["asset_ids"]
     }
     rows += os_rows(os_assets, product_label=product_label, skip=counted_assets)
-    return running_versions(rows, product_label=product_label, fixed_version=fixed_version, asset_platforms=platforms)
+    return running_versions(
+        rows,
+        product_label=product_label,
+        fixed_version=fixed_version,
+        fixed_versions_by_platform=fixed_versions_by_platform,
+        asset_platforms=platforms,
+    )
 
 
 def affected_assets(issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -517,7 +531,12 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
         str(r["asset_id"]) for r in found if matches_case(case.product_label, r.get("vendor"), r.get("product"))
     }
     found = [*found, *os_rows(os_assets, product_label=case.product_label, skip=counted_assets)]
-    by_asset = versions_on_assets(found, product_label=case.product_label, fixed_version=case.fixed_version)
+    by_asset = versions_on_assets(
+        found,
+        product_label=case.product_label,
+        fixed_version=case.fixed_version,
+        fixed_versions_by_platform=_case_platform_fixes(case),
+    )
     answer["platform_unverified"] = any(s.get("status_reason") == FIX_NOT_KNOWN_FOR_PLATFORM for s in by_asset.values())
     answer["version_source"] = "inventory"
     for row in answer["assets"]:

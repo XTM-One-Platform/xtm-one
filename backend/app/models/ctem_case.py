@@ -109,6 +109,9 @@ class CtemCase(Base):
     product_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     #: ``None`` when the data names the product but no fixed version.
     fixed_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    #: ``{platform: version}`` when the remediation names the fix of each platform (#1572), else ``{}``:
+    #: each asset is then compared with the fix of its own platform (``ctem_case_versions``).
+    fixed_versions: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
     #: Every remediation key mapped to this case (several after a manual merge).
     keys: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     #: ``source:external_id`` of the issues a manual split or a manual case owns.
