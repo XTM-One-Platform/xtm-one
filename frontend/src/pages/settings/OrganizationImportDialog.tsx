@@ -77,6 +77,9 @@ const SOURCE_LOGOS: Record<ImportSourceKey, ElementType> = {
   opencrq: logo("opencrq"),
   intune: logo("intune"),
   defender: logo("defender"),
+  tanium: logo("tanium"),
+  crowdstrike: logo("crowdstrike"),
+  servicenow: logo("servicenow"),
   github: logo("github"),
   gitlab: logo("gitlab"),
 };
@@ -164,6 +167,11 @@ const FILTER_HELP = {
   groups: { helper: "Only projects of these groups, subgroups included. Empty: every project the token is a member of.", info: "The GitLab groups the connected token can read." },
   include_archived: { helper: "Off: archived repositories are left out.", info: "On: archived repositories are imported too, marked inactive." },
   include_forks: { helper: "Off: forks are left out.", info: "On: forked repositories are imported too, tagged fork." },
+  skip_software: { helper: "Off: each endpoint's installed applications are read.", info: "Tanium's installed applications with their versions. On: endpoints only, faster." },
+  filter_query: { helper: "Only hosts this FQL expression matches. Empty: every host.", info: "A Falcon Query Language filter on the host fields, such as tags:'SensorGroupingTags/Finance'." },
+  ci_class: { helper: "The CMDB class to read. Default: Computers.", info: "The ServiceNow hardware class whose configuration items become assets." },
+  operational_status: { helper: "Only CIs in these states. Empty: every state but retired.", info: "The operational status ServiceNow gives the configuration item." },
+  query: { helper: "Only CIs this encoded query matches. Empty: every CI of the class.", info: "A ServiceNow encoded query, as the list view's Copy query gives it, such as location.name=Paris." },
   skip_dependencies: { helper: "Off: each repository's dependencies are read.", info: "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster." },
 } as const;
 
@@ -188,6 +196,7 @@ const PICKED: FilterKey[] = [
   "os_platform",
   "health_status",
   "exposure_level",
+  "operational_status",
   "organizations",
   "groups",
 ];
@@ -234,6 +243,9 @@ const MAPPING_NOTES = {
   osTaxonomy: "From the operating system, and the device model when the source gives it",
   deviceTags: "OS, compliance and ownership, each as a prefixed tag",
   machineTags: "OS, exposure level, health and risk, each as a prefixed tag",
+  hostDomain: "The host name with the machine domain, when the source gives one",
+  ciDisplay: "The display value ServiceNow shows for the reference",
+  ciClassTag: "The CI class as a ci_class: tag",
   codeRepository: "Always Source code, Code repository",
   repoExposure: "Internet-facing when public, else not internet-facing",
   repoTags: "Owner, visibility, language, topics and default branch as prefixed tags, plus archived and fork when they apply",
@@ -313,6 +325,54 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "os_version", from: ["version"] },
       { to: "os_build", from: ["osBuild"] },
       { to: "last_seen", from: ["lastSeen"] },
+    ],
+  },
+  "assets:tanium": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "type", from: ["os.name", "os.platform"], note: "osTaxonomy" },
+      { to: "tags", from: ["os.platform"] },
+      { to: "external_id", from: ["id"] },
+      { to: "hostname", from: ["name"] },
+      { to: "fqdn", from: ["name", "domainName"], note: "hostDomain" },
+      { to: "serial", from: ["serialNumber"] },
+      { to: "os_family", from: ["os.platform"] },
+      { to: "os_version", from: ["os.generation"] },
+      { to: "last_seen", from: ["eidLastSeen"] },
+    ],
+  },
+  "assets:crowdstrike": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["hostname"] },
+      { to: "type", from: ["os_product_name", "product_type_desc"], note: "osTaxonomy" },
+      { to: "tags", from: ["platform_name", "tags"] },
+      { to: "external_id", from: ["device_id"] },
+      { to: "hostname", from: ["hostname"] },
+      { to: "fqdn", from: ["hostname", "machine_domain"], note: "hostDomain" },
+      { to: "serial", from: ["serial_number"] },
+      { to: "os_family", from: ["platform_name"] },
+      { to: "os_version", from: ["os_version"] },
+      { to: "os_build", from: ["os_build"] },
+      { to: "last_seen", from: ["last_seen"] },
+    ],
+  },
+  "assets:servicenow": {
+    fields: DEVICE_FIELDS,
+    rows: [
+      { to: "name", from: ["name"] },
+      { to: "type", from: ["os", "sys_class_name"], note: "osTaxonomy" },
+      { to: "environment", from: ["environment"] },
+      { to: "owner", from: ["owned_by", "managed_by"], note: "ciDisplay" },
+      { to: "tags", from: ["sys_class_name"], note: "ciClassTag" },
+      { to: "external_id", from: ["sys_id"] },
+      { to: "hostname", from: ["host_name"] },
+      { to: "fqdn", from: ["fqdn"] },
+      { to: "serial", from: ["serial_number"] },
+      { to: "os_family", from: ["os"] },
+      { to: "os_version", from: ["os_version"] },
+      { to: "last_seen", from: ["last_discovered"] },
     ],
   },
   "assets:github": {
@@ -556,7 +616,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     const id = `org-import-filter-${key}`;
     const reason = reasonOf(key);
     // An on/off choice is a switch row of its own, never a control inside a labelled field.
-    if (key === "include_owner" || key === "include_archived" || key === "include_forks" || key === "skip_dependencies")
+    if (key === "include_owner" || key === "include_archived" || key === "include_forks" || key === "skip_dependencies" || key === "skip_software")
       return (
         <SettingsSwitchField
           key={key}
@@ -586,13 +646,15 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             noMatchLabel={t_i18n("No matching value")}
           />
         );
-      if (key === "min_criticality" || key === "tenant_id" || key === "last_seen_days") {
+      if (key === "min_criticality" || key === "tenant_id" || key === "last_seen_days" || key === "ci_class") {
         const choices =
           key === "min_criticality"
             ? (Object.keys(MIN_CRITICALITY_LABELS) as (keyof typeof MIN_CRITICALITY_LABELS)[]).map((level) => ({ value: level, label: t_i18n(MIN_CRITICALITY_LABELS[level]) }))
             : key === "last_seen_days"
               ? [{ value: "", label: t_i18n("Any time") }, ...(options.data?.options.last_seen_days ?? []).map((o) => ({ value: o.value, label: filterValueLabel(t_i18n, key, o.value) }))]
-              : (options.data?.options.tenant_id ?? []).map((o) => ({ value: o.value, label: o.label }));
+              : key === "ci_class"
+                ? (options.data?.options.ci_class ?? []).map((o) => ({ value: o.value, label: filterValueLabel(t_i18n, key, o.value) }))
+                : (options.data?.options.tenant_id ?? []).map((o) => ({ value: o.value, label: o.label }));
         const current = typeof filters[key] === "string" ? (filters[key] as string) : "";
         return (
           <SearchableSelect
@@ -602,7 +664,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             sort={false}
             disabled={Boolean(reason)}
             options={choices}
-            value={current || (key === "min_criticality" ? "high" : "")}
+            value={current || (key === "min_criticality" ? "high" : key === "ci_class" ? "cmdb_ci_computer" : "")}
             onValueChange={(value) => setFilter(key, value)}
             placeholder={key === "tenant_id" ? t_i18n("Default tenant") : undefined}
             className="w-full"

@@ -13,7 +13,7 @@ from app.services.organization_context import AssetEntry
 from app.services.organization_context_import import SECTION_SOURCES, SOURCE_FILTERS
 
 # Recorded answers, trimmed to the fields the readers ask for.
-TANIUM_NODE = {
+TANIUM_NODE: dict[str, Any] = {
     "id": "1042",
     "name": "LAPTOP-042",
     "serialNumber": "PF3ABCD1",
@@ -29,7 +29,7 @@ TANIUM_NODE = {
         {"name": "7-Zip", "version": ""},
     ],
 }
-FALCON_HOST = {
+FALCON_HOST: dict[str, Any] = {
     "device_id": "5f4c0aid",
     "hostname": "LAPTOP-042",
     "machine_domain": "corp.example",
@@ -45,7 +45,7 @@ FALCON_HOST = {
     "last_seen": "2026-11-22T11:00:00Z",
     "tags": ["SensorGroupingTags/Finance"],
 }
-SN_CI = {
+SN_CI: dict[str, Any] = {
     "sys_id": {"value": "9a8b7c6d5e4f", "display_value": "9a8b7c6d5e4f"},
     "name": {"value": "LAPTOP-042", "display_value": "LAPTOP-042"},
     "sys_class_name": {"value": "cmdb_ci_computer", "display_value": "Computer"},
@@ -153,8 +153,17 @@ def _fake_safe_request(monkeypatch: pytest.MonkeyPatch, answers: list[_Resp], se
 def test_tanium_reader_pages_with_the_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
     second = dict(TANIUM_NODE, id="1043", name="SRV-01", serialNumber="S2")
     answers = [
-        _Resp({"data": {"endpoints": {"totalRecords": 2, "pageInfo": {"hasNextPage": True, "endCursor": "c1"},
-                                       "edges": [{"node": TANIUM_NODE}]}}}),
+        _Resp(
+            {
+                "data": {
+                    "endpoints": {
+                        "totalRecords": 2,
+                        "pageInfo": {"hasNextPage": True, "endCursor": "c1"},
+                        "edges": [{"node": TANIUM_NODE}],
+                    }
+                }
+            }
+        ),
         _Resp({"data": {"endpoints": {"pageInfo": {"hasNextPage": False}, "edges": [{"node": second}]}}}),
     ]
     seen: list[dict[str, Any]] = []
@@ -179,8 +188,9 @@ def test_crowdstrike_reader_scrolls_then_reads_details(monkeypatch: pytest.Monke
     seen: list[dict[str, Any]] = []
     _fake_safe_request(monkeypatch, answers, seen)
     read = asyncio.run(
-        endpoints.read_crowdstrike("https://api.crowdstrike.com||id||secret", {"platform": "Windows"}, limit=10,
-                                   client=object())
+        endpoints.read_crowdstrike(
+            "https://api.crowdstrike.com||id||secret", {"platform": "Windows"}, limit=10, client=object()
+        )
     )
     assert read.error is None and read.total == 1
     assert read.rows[0]["external_id"] == "5f4c0aid"

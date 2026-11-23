@@ -553,6 +553,9 @@ export const IMPORT_SOURCE_NAMES: Record<string, string> = {
   ...PLATFORM_NAMES,
   intune: "Microsoft Intune",
   defender: "Microsoft Defender for Endpoint",
+  tanium: "Tanium",
+  crowdstrike: "CrowdStrike Falcon",
+  servicenow: "ServiceNow",
   github: "GitHub",
   gitlab: "GitLab",
 };
@@ -562,7 +565,15 @@ export const IMPORT_SOURCE_NAMES: Record<string, string> = {
  * reads with): Intune through an `intune` integration, Defender for Endpoint through a `defender` one,
  * never the `microsoft` (Outlook, Teams) integration, whose token carries no device permission.
  */
-export const IMPORT_SOURCE_PROVIDER: Record<string, string> = { intune: "intune", defender: "defender", github: "github", gitlab: "gitlab" };
+export const IMPORT_SOURCE_PROVIDER: Record<string, string> = {
+  intune: "intune",
+  defender: "defender",
+  tanium: "tanium",
+  crowdstrike: "crowdstrike",
+  servicenow: "servicenow",
+  github: "github",
+  gitlab: "gitlab",
+};
 
 /** The import sources a connected integration provider opens (an Intune integration opens Intune, a Defender one Defender). */
 export function importSourcesOfProvider(provider: string): string[] {

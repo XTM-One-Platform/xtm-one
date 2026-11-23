@@ -42,6 +42,12 @@ export const FILTER_LABELS = {
   include_archived: "Archived repositories",
   include_forks: "Forks",
   skip_dependencies: "Skip dependencies",
+  // Tanium, CrowdStrike Falcon and ServiceNow CMDB.
+  skip_software: "Skip software",
+  filter_query: "FQL filter",
+  ci_class: "CI class",
+  operational_status: "Operational status",
+  query: "Encoded query",
 } as const;
 export type FilterKey = keyof typeof FILTER_LABELS;
 
@@ -77,6 +83,12 @@ const MICROSOFT_VALUE_LABELS = {
 /** The Microsoft filters whose values are enumerations worded above. */
 const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership", "health_status", "exposure_level"]);
 
+/** ServiceNow's operational status choice values. @i18n-keys */
+const OPERATIONAL_STATUS_LABELS = { "1": "Operational", "2": "Non-operational", "3": "Repair in progress", "4": "DR standby", "5": "Ready", "6": "Retired" } as const;
+
+/** ServiceNow's CMDB hardware classes a sync may read. @i18n-keys */
+const CI_CLASS_LABELS = { cmdb_ci_computer: "Computers", cmdb_ci_server: "Servers", cmdb_ci_hardware: "All hardware", cmdb_ci_netgear: "Network gear" } as const;
+
 /** The filters whose values are ids of the source (labels, markings, authors, groups, tags, PIRs, tenant): counted, never printed. */
 const ID_FILTERS: ReadonlySet<string> = new Set(["labels", "markings", "created_by", "creator", "asset_groups", "tags", "pir_ids", "tenant_id"]);
 
@@ -86,6 +98,7 @@ const SWITCH_VALUE_LABELS = {
   include_archived: "Included",
   include_forks: "Included",
   skip_dependencies: "Not read",
+  skip_software: "Not read",
 } as const;
 
 type Translate = (text: string, values?: Record<string, string | number>) => string;
@@ -99,6 +112,8 @@ export function filterValueLabel(t: Translate, key: string, value: string): stri
   if (key === "internet_facing" && lower in EXPOSURE_LABELS) return t(EXPOSURE_LABELS[lower as keyof typeof EXPOSURE_LABELS]);
   if (key === "environment" && lower in ENVIRONMENT_LABELS) return t(ENVIRONMENT_LABELS[lower as keyof typeof ENVIRONMENT_LABELS]);
   if (MICROSOFT_WORDED.has(key) && lower in MICROSOFT_VALUE_LABELS) return t(MICROSOFT_VALUE_LABELS[lower as keyof typeof MICROSOFT_VALUE_LABELS]);
+  if (key === "operational_status" && value in OPERATIONAL_STATUS_LABELS) return t(OPERATIONAL_STATUS_LABELS[value as keyof typeof OPERATIONAL_STATUS_LABELS]);
+  if (key === "ci_class" && value in CI_CLASS_LABELS) return t(CI_CLASS_LABELS[value as keyof typeof CI_CLASS_LABELS]);
   if (key === "last_seen_days" && /^\d+$/.test(value)) return t("{count, plural, one {Within # day} other {Within # days}}", { count: Number(value) });
   if (key in SWITCH_VALUE_LABELS) return t(SWITCH_VALUE_LABELS[key as keyof typeof SWITCH_VALUE_LABELS]);
   return value;

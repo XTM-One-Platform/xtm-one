@@ -127,7 +127,8 @@ def _display(value: Any) -> str:
 
 def tanium_endpoint_row(node: dict[str, Any]) -> dict[str, Any]:
     """A Tanium Gateway endpoint as an asset row with its identity keys and OS (source ``tanium``)."""
-    os_info = node.get("os") if isinstance(node.get("os"), dict) else {}
+    raw_os = node.get("os")
+    os_info: dict[str, Any] = raw_os if isinstance(raw_os, dict) else {}
     os_name = _text(os_info.get("name"), 80) or _text(os_info.get("platform"), 80)
     category, subcategory = taxonomy(os_name or _text(os_info.get("platform"), 80))
     name = _text(node.get("name")) or _text(node.get("id"))
