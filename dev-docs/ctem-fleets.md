@@ -161,13 +161,21 @@ Common rules:
   work item with `needs_human: true` (approval). Read and draft actions do not.
 - Work-item keys `ctem:<fleet>:<object id>`; shared-state key per fleet
   `ctem:<fleet>:state` (open cases, last refresh, counters for ROI).
-- **The loop fleets run on cases (#891).** F1 (threat response) and F2
-  (vulnerability prioritization) start a loop from a CTEM case: their "Case
-  opened or reopened" automation (platform_event, scope all, seeded off) hears
-  `ctem_case.opened`, `ctem_case.reopened` and `ctem_case.sla_breached`,
-  routed by the case's `trigger_path` so exactly one fleet runs a case: F1
-  takes `relevant_threat`, `credential_leak` and `third_party_event`, F2 every
-  other path. The run owns one work item `ctem:<fleet>:case:<case id>` (an open
+- **The loop fleets run on cases (#891, ownership #1390).** The CTEM loop
+  owns every case on every trigger path (section 14). Its "Case opened or
+  reopened" automation (platform_event, scope all, seeded off) hears
+  `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.sla_breached`,
+  `ctem_case.validation_finished` and `ctem_case.retest_requested`. A use-case
+  fleet takes the cases of its own paths only while its case automation is
+  enabled (Vulnerability management: `new_vulnerability`). The owner is
+  computed when the event is published (`services/ctem_case_routing.py`
+  stamps `owner_fleet`) and each automation filters on it, so exactly one
+  fleet runs a case. Case events fire once: on fleet enable and on the
+  hourly case sweep, `catch_up` hands every open case its owner never ran
+  (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
+  that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
+  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active}.
+  The run owns one work item `ctem:<fleet>:case:<case id>` (an open
   one gets a note, never a second loop), writes owner, state, validation
   (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the
   case, and closes on proof: a passing re-test resolves the case. Re-test items

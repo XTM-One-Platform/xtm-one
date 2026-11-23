@@ -3118,6 +3118,11 @@ async def enable_fleet_automations(
         )
     # Before the answer, every call (a dry run wrote nothing, so it commits nothing).
     await db.commit()
+    if not body.dry_run and changed:
+        # A CTEM case fleet takes the open cases it owns that nobody ran (#1390).
+        from app.services.ctem_case_routing import catch_up_after_enable
+
+        await catch_up_after_enable(fleet.slug)
     counts = await fleet_automation_counts(db, fleet)
     return FleetEnableResponse(
         fleet_id=str(fleet.id),

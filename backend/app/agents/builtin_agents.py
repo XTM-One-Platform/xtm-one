@@ -2841,14 +2841,33 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
 ]
 BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 
-# ── CTEM loop fleets run on cases (#891, dev-docs/ctem-fleets.md s.4.0) ──
+# ── CTEM loop fleets run on cases (#891, #1390, dev-docs/ctem-fleets.md s.4.0 and s.14) ──
 # The case is the record: ``ctem_case.opened`` starts one run per case (the event
 # is raised once, at creation; a later signal joins the case without a new
 # event), ``ctem_case.reopened`` restarts the same case's loop, and
-# ``ctem_case.sla_breached`` escalates it. Path routing: the vulnerability
-# fleet takes the vulnerability and exposure paths, the threat fleet the
-# threat and supply-chain ones, so a case starts exactly one fleet run.
-CTEM_THREAT_CASE_PATHS: tuple[str, ...] = ("relevant_threat", "credential_leak", "third_party_event")
+# ``ctem_case.sla_breached`` escalates it. Ownership (#1390, CTEM-31): the CTEM
+# loop owns every case on every trigger path; a use-case fleet takes the cases of
+# its own paths only while its case automation is enabled. The owner is computed
+# when the event is published (``services/ctem_case_routing.py`` stamps
+# ``owner_fleet`` on the payload) and each case automation filters on it, so
+# exactly one fleet hears a case event.
+CTEM_CASE_ASSIGNMENT_NAME = "Case opened or reopened"
+CTEM_LOOP_CASE_FLEET = "ctem-loop"
+CTEM_VULN_CASE_FLEET = "ctem-vuln-prioritization"
+#: The fleets that run cases: fleet slug -> the orchestrator holding the case
+#: automation, the work item key prefix of its case items, and the trigger paths
+#: it takes over while that automation is enabled (``None``: every path, the
+#: default owner).
+CTEM_CASE_FLEETS: dict[str, dict[str, Any]] = {
+    CTEM_LOOP_CASE_FLEET: {"agent": "ctem-threat-response-orchestrator", "key": "ctem:f1", "paths": None},
+    CTEM_VULN_CASE_FLEET: {
+        "agent": "ctem-vuln-prioritization-orchestrator",
+        "key": "ctem:f2",
+        "paths": ("new_vulnerability",),
+    },
+}
+#: The use-case fleets that take a case over from the loop while active.
+CTEM_USE_CASE_FLEETS: tuple[str, ...] = tuple(s for s, f in CTEM_CASE_FLEETS.items() if f["paths"] is not None)
 _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.opened",
     "ctem_case.reopened",
@@ -2859,10 +2878,10 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
 )
 
 
-def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
+def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
     return {
         **common,
-        "name": "Case opened or reopened",
+        "name": CTEM_CASE_ASSIGNMENT_NAME,
         "description": (
             "Runs the fleet loop on a CTEM case: opened from an in-scope signal, "
             "reopened by a failed re-test, or past its SLA."
@@ -2870,12 +2889,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
         "trigger_type": "platform_event",
         "trigger_config": {
             "event": list(_CASE_EVENT_NAMES),
-            "filter": {"trigger_path": paths_filter},
+            "filter": {"owner_fleet": owner_filter},
             "scope": "all",
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state). The case is the record of this loop: read it first with "
+            "state, owner_fleet: the fleet the platform routed this case to, yours). The case "
+            "is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
             "it owned by you when no open item has that key; when one is open, add a note "
@@ -2897,7 +2917,9 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: di
 
 
 CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
-    _CTEM_F2_COMMON, fleet_key="ctem:f2", paths_filter={"not_in": list(CTEM_THREAT_CASE_PATHS)}
+    _CTEM_F2_COMMON,
+    fleet_key=CTEM_CASE_FLEETS[CTEM_VULN_CASE_FLEET]["key"],
+    owner_filter={"eq": CTEM_VULN_CASE_FLEET},
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
@@ -3104,7 +3126,10 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
 ]
 
 CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
-    _F1_RUN, fleet_key="ctem:f1", paths_filter={"in": list(CTEM_THREAT_CASE_PATHS)}
+    _F1_RUN,
+    fleet_key=CTEM_CASE_FLEETS[CTEM_LOOP_CASE_FLEET]["key"],
+    # Every case no use-case fleet holds, an event with no owner stamped included.
+    owner_filter={"not_in": list(CTEM_USE_CASE_FLEETS)},
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
 
