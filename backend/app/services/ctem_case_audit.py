@@ -371,7 +371,24 @@ def current_phase(events: list[dict[str, Any]]) -> str | None:
     """
     if not events:
         return None
-    return phases(annotate(events))["current"]
+    current = phases(annotate(events))["current"]
+    return str(current) if current else None
+
+
+def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """What a case waits on now: its newest gate that waited and was not answered, ``None`` when none.
+
+    ``{gate, by, since}``: the gate key, who it waits on (the gate's ``reason``:
+    a user id, a role or a policy name, as the loop wrote it) and since when. The
+    Cases list shows it on a case Waiting for decision (#1503).
+    """
+    waiting = [
+        e for e in annotate(events) if e.get("kind") == "gate" and e.get("to") == "waited" and not e.get("answer")
+    ]
+    if not waiting:
+        return None
+    newest = max(waiting, key=lambda e: _parse(e.get("at")) or datetime.min.replace(tzinfo=UTC))
+    return {"gate": newest.get("from"), "by": newest.get("reason"), "since": newest.get("at")}
 
 
 def run_phase(created_at: Any, annotated: list[dict[str, Any]]) -> str:

@@ -385,9 +385,14 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     }
 
 
-def case_phase(events: list[CtemCaseEvent], view: ViewerView) -> str | None:
-    """The CTEM phase of one case as this viewer is served its history (#1503): the list's phase column and grouping."""
-    return audit.current_phase([_event(row, view) for row in events])
+def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
+    """Where one case stands, from the history this viewer is served (#1503).
+
+    ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
+    """
+    served = [_event(row, view) for row in events]
+    return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:

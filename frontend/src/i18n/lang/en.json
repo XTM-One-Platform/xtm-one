@@ -21217,5 +21217,21 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
-  "A repository is not owner/name": "A repository is not owner/name"
+  "A repository is not owner/name": "A repository is not owner/name",
+  "Kanban view": "Kanban view",
+  "CTEM phase": "CTEM phase",
+  "Phase not known yet": "Phase not known yet",
+  "No case": "No case",
+  "Move refused": "Move refused",
+  "Due {date}": "Due {date}",
+  "A decision": "A decision",
+  "{who}, since {date}": "{who}, since {date}",
+  "Waits on {who} since {date}": "Waits on {who} since {date}",
+  "Waits on a decision since {date}": "Waits on a decision since {date}",
+  "Waits on a decision": "Waits on a decision",
+  "Waiting for decision needs what the case waits on: set it from the case page.": "Waiting for decision needs what the case waits on: set it from the case page.",
+  "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.",
+  "Resolving a case needs evidence: set it from the case page.": "Resolving a case needs evidence: set it from the case page.",
+  "Accepting risk needs a reason and an expiry date: set it from the case page.": "Accepting risk needs a reason and an expiry date: set it from the case page.",
+  "Remediating needs an owner: assign the case first.": "Remediating needs an owner: assign the case first."
 }

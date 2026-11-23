@@ -16,8 +16,11 @@
 
 import { useCallback, useState } from "react";
 
-/** `graph`: a page that also draws its records as a graph (Tasks > Work Items) offers it. */
-export type ViewMode = "grid" | "list" | "graph";
+/**
+ * `graph`: a page that also draws its records as a graph (Tasks > Work Items) offers it;
+ * `kanban`: a page that also draws its records as status columns (CTEM Cases, #1503).
+ */
+export type ViewMode = "grid" | "list" | "graph" | "kanban";
 
 const STORAGE_PREFIX = "copilot-view:";
 

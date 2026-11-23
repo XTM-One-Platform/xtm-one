@@ -8,7 +8,7 @@
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, notFoundIsOrdinary } from "@/lib/api";
-import { REFETCH_INTERVAL_SLOW } from "@/lib/constants";
+import { REFETCH_INTERVAL_SLOW, type CtemStageKey } from "@/lib/constants";
 import { isNetworkError, retryQuery } from "@/lib/query-outage-policy";
 
 /**
@@ -75,6 +75,10 @@ export interface CtemCaseSummary {
   resolution_kind?: string | null;
   /** Ticket references (#891); the one with `sync` is the ticket the sync manages (#917). */
   tickets?: CtemCaseTicket[];
+  /** The CTEM phase the case is in, from its history (#1490, #1503); null with no event, absent on an older API. */
+  phase?: CtemStageKey | null;
+  /** The gate the case waits on now: its key, who (a user id, a role or a policy, as the loop wrote it) and since when (#1503). */
+  waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
@@ -481,6 +485,18 @@ export function useUpdateCtemCase(id: string) {
   return useMutation<CtemCaseDetail, Error, CtemCaseUpdate>({
     mutationFn: (body) => api.patch(`/ctem-cases/${id}`, body),
     onSuccess: (data) => {
+      qc.setQueryData(["ctem-cases", "case", id], data);
+      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+    },
+  });
+}
+
+/** One case's status changed from the list (the Kanban's drop, #1503): the case id goes with the change. */
+export function useMoveCtemCase() {
+  const qc = useQueryClient();
+  return useMutation<CtemCaseDetail, Error, CtemCaseUpdate & { id: string }>({
+    mutationFn: ({ id, ...body }) => api.patch(`/ctem-cases/${id}`, body),
+    onSuccess: (data, { id }) => {
       qc.setQueryData(["ctem-cases", "case", id], data);
       void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
     },

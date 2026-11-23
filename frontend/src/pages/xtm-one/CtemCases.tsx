@@ -8,9 +8,11 @@
  * cannot open. One full list (#1503): no state tabs and no "Act on this first"
  * band; quick filter chips above the table (`?state=` scope, `?c_q=` toggles),
  * open cases by default, so a case paused on a person shows on landing.
+ * A List / Kanban switch (`/ctem/cases/kanban`) draws the same rows as status
+ * columns, or CTEM phase columns when grouped by phase (CasesKanban).
  */
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useNow } from "@/hooks/useTick";
 import { caseDueFlags } from "./ctem/cases-due";
 import { CASE_CREATED_RANGES, CASE_CREATED_RANGE_LABEL, caseCreatedRanges } from "./ctem/cases-created-range";
@@ -32,6 +34,8 @@ import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTable, type DataTableColumn, type DataTableGroupBy } from "@/components/ui/data-table";
 import { caseGroupLabel, caseGroupRank, caseGroupValue, readCaseGroupBy, type CaseGroupBy } from "./ctem/cases-grouping";
 import { CasesGroupByPill } from "./ctem/CasesGroupByPill";
+import { CasesKanban } from "./ctem/CasesKanban";
+import { caseViewPath, readCaseView, type CaseView } from "./ctem/cases-kanban";
 import { CasesViewsPill } from "./ctem/CasesViewsPill";
 import { QuickFilterChips } from "@/components/ui/quick-filter-chips";
 import { TruncatedText } from "@/components/ui/truncated-text";
@@ -51,6 +55,8 @@ import {
   CaseStateChip,
   useCasesEmptyLabel,
 } from "./ctem/cases-shared";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function CtemCases() {
   const { t_i18n, intl } = useFormatter();
@@ -84,11 +90,22 @@ export default function CtemCases() {
   // The grouping is in the URL too (`?c_group=`), so a link keeps it.
   const groupKey = readCaseGroupBy(searchParams.get("c_group"));
   const setGroupKey = (next: CaseGroupBy) => setParam("c_group", next === "none" ? null : next);
+  // The view is the path (`/ctem/cases/kanban`, #10203), the query kept; the Kanban lays its
+  // columns out by phase when grouped by phase.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const view = readCaseView(location.pathname);
+  const setView = (next: CaseView) => navigate({ pathname: caseViewPath(next), search: location.search });
+  const kanbanBy = groupKey === "phase" ? "phase" : "state";
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const now = useNow();
   const meId = me?.id ?? null;
-  const ownerIds = useMemo(() => [...new Set(cases.map((c) => c.owner_user_id).filter((id): id is string => Boolean(id)))], [cases]);
+  // Owners, and the people a case waiting for decision waits on (a user id the loop wrote on its gate).
+  const ownerIds = useMemo(
+    () => [...new Set(cases.flatMap((c) => [c.owner_user_id, c.waiting_on?.by ?? null]).filter((id): id is string => Boolean(id) && UUID.test(id ?? "")))],
+    [cases],
+  );
   const { data: owners } = useUserDirectoryByIds(ownerIds);
   const ownerName = (id: string | null) => (id ? (owners?.find((o) => o.id === id)?.full_name ?? null) : null);
 
@@ -97,7 +114,7 @@ export default function CtemCases() {
   const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
   const countOf = (chip: CaseScopeChip | CaseToggle) => (data ? caseQuickFilterCount(chip, cases, scope, toggles, now, meId) : undefined);
   const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
-    if (groupKey === "none") return undefined;
+    if (groupKey === "none" || view === "kanban") return undefined;
     return {
       value: (c) => caseGroupValue(groupKey, c),
       rank: caseGroupRank(groupKey),
@@ -108,7 +125,7 @@ export default function CtemCases() {
             : t_i18n("Unassigned")
           : t_i18n(caseGroupLabel(groupKey, value)),
     };
-  }, [groupKey, owners, t_i18n]);
+  }, [groupKey, owners, t_i18n, view]);
 
   const DAY_MS = 24 * 3600 * 1000;
   const ageDays = (c: CtemCaseSummary) => {
@@ -277,6 +294,27 @@ export default function CtemCases() {
       sortValue: (c) => CTEM_CASE_STATES.indexOf(c.state),
       csv: (c) => c.state,
     },
+    {
+      // Who a case waiting for decision waits on, and since when (#1503): the gate the loop parked it on.
+      key: "waits_on",
+      header: "Waits on",
+      cell: (c) => {
+        const wait = c.state === "waiting_decision" ? c.waiting_on : null;
+        if (!wait) return <span className="text-default-secondary">-</span>;
+        const who = wait.by ? (ownerName(wait.by) ?? wait.by) : t_i18n("A decision");
+        return (
+          <span className="block max-w-[14rem]">
+            <TruncatedText
+              text={wait.since ? t_i18n("{who}, since {date}", { who, date: intl.formatDate(wait.since, { day: "numeric", month: "short" }) }) : who}
+            />
+          </span>
+        );
+      },
+      sortValue: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.since ?? "") : ""),
+      csv: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.by ?? "") : ""),
+      hideBelow: "6xl",
+      hideable: true,
+    },
   ];
 
   return (
@@ -319,6 +357,14 @@ export default function CtemCases() {
           ),
         }}
         groupBy={groupBy}
+        view={{ value: view, onChange: (mode) => setView(mode === "kanban" ? "kanban" : "list"), modes: ["list", "kanban"] }}
+        // The Kanban draws every row the filters keep, never one page of them.
+        paginate={view !== "kanban"}
+        renderGrid={
+          view === "kanban"
+            ? (shown) => <CasesKanban cases={shown} by={kanbanBy} now={now} meId={meId} ownerName={ownerName} />
+            : undefined
+        }
         toolbar={
           <>
             <CasesGroupByPill value={groupKey} onChange={setGroupKey} />

@@ -120,11 +120,21 @@ def test_events_without_a_date_still_get_a_phase():
     assert audit.phases(out)["current"] is None
 
 
-def test_current_phase_is_the_phase_of_the_newest_event():
+def test_current_phase_is_the_phase_of_the_newest_event() -> None:
     # The Cases list groups and lays out its Kanban by it (#1503).
-    assert audit.current_phase(_history()) == "prioritization"
+    assert audit.current_phase(_history()) == "prioritization"  # type: ignore[no-untyped-call]
     assert audit.current_phase([]) is None
     assert audit.current_phase([_e("09:00", "ticket", to="open")]) == "remediation"
+
+
+def test_open_wait_is_the_newest_unanswered_waiting_gate() -> None:
+    # analyst_review waited 11:09 and was answered 12:10; validation.non_readonly waits since 11:56.
+    assert audit.open_wait(_history()) == {  # type: ignore[no-untyped-call]
+        "gate": "ctem.validation.non_readonly",
+        "by": None,
+        "since": "2026-11-23T11:56:00+00:00",
+    }
+    assert audit.open_wait([_e("09:00", "ticket", to="open")]) is None
 
 
 def test_run_phase():
