@@ -20994,7 +20994,12 @@
   "OS, exposure level, health and risk, each as a prefixed tag": "SO, nivel de exposición, estado y riesgo, cada uno como etiqueta con prefijo",
   "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "No disponible: no hay ninguna integración de {source} conectada. Conéctela en Configuración > Integraciones.",
   "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "No disponible: la integración de {source} no tiene token. Vuelva a autorizarla en Configuración > Integraciones.",
-  "CTEM Read": "Lectura CTEM",
-  "Read the CTEM signals and cases the person you act for can see, read-only": "Leer las señales y los casos CTEM que ve la persona para la que actúa, solo lectura",
-  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "Permite al agente listar las señales CTEM con sus evidencias, listar los casos CTEM con sus totales por estado y leer un caso con sus problemas, su historial, quién lo abrió y por qué cada sección vacía está vacía. Actúa para la persona del turno o de la ejecución, con las mismas reglas que las páginas CTEM: un caso que no ve no existe para el agente, un problema que no ve es una fila Restringida. No escribe nada. Solo en modo XTM One."
+  "Affected assets": "Activos afectados",
+  "Version source: none yet": "Origen de la versión: ninguno por ahora",
+  "Not in the inventory": "No está en el inventario",
+  "Running version": "Versión en uso",
+  "Search asset": "Buscar activo",
+  "Assets not listed": "Activos no listados",
+  "No asset": "Ningún activo",
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# activo más no listado} other {# activos más no listados}}"
 }
