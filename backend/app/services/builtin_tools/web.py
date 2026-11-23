@@ -1039,6 +1039,7 @@ def build_browser_tool(
         reset: bool | None = None,
         seconds: float | None = None,
         offline: bool | None = None,
+        scale: float | None = None,
         file_context: FileContext | None = None,
     ) -> str | ToolResult:
         from app.services.browser_tool import action_order, take_notice
@@ -1070,6 +1071,7 @@ def build_browser_tool(
                 reset,
                 seconds,
                 offline,
+                scale=scale,
             )
         # A session re-created since the last action says so first: never a blank page taken for the old one.
         notice = take_notice(session_key)
@@ -1105,6 +1107,7 @@ def build_browser_tool(
         reset: bool | None = None,
         seconds: float | None = None,
         offline: bool | None = None,
+        scale: float | None = None,
     ) -> str | ToolResult:
         from app.services.browser_tool import (
             EvaluateTimeoutError,
@@ -1202,7 +1205,7 @@ def build_browser_tool(
                 if width is None or height is None:
                     return "Error: 'width' and 'height' are required for the viewport action."
                 try:
-                    return await browser_set_viewport(session_key, width, height)
+                    return await browser_set_viewport(session_key, width, height, scale)
                 except ValueError as exc:
                     return _failed_action(f"Browser action 'viewport' refused: {exc}")
 
@@ -1427,6 +1430,7 @@ def build_browser_tool(
                     "type": "integer",
                     "description": f"viewport only: page height in CSS px ({h_min} to {h_max}).",
                 },
+                "scale": {"type": "number", "description": "viewport: device pixel ratio, 1-3."},
                 "dx": {"type": "number", "description": "drag: px right (negative: left)."},
                 "dy": {"type": "number", "description": "drag: px down (negative: up)."},
                 "steps": {"type": "integer", "description": "drag: moves, 1-100 (10)."},
@@ -1447,8 +1451,8 @@ def build_browser_tool(
                     "type": "string",
                     "enum": list(CONSOLE_LEVELS),
                     "description": (
-                        "console only: 'error' shows the errors and page errors alone, 'warning' the warnings too "
-                        "(default: every message); what it leaves out is counted."
+                        "console only: 'error' the errors and page errors alone, 'warning' the warnings too "
+                        "(default: every message)."
                     ),
                 },
                 "full_page": {
@@ -1467,8 +1471,7 @@ def build_browser_tool(
                 "body": {
                     "type": "string",
                     "description": (
-                        "download only, with method POST: the request body, a JSON text (sent as "
-                        "application/json unless the headers set a Content-Type)."
+                        "download only, with method POST: the request body, a JSON text (application/json by default)."
                     ),
                 },
                 "show_to_user": {
