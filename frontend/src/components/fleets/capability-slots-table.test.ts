@@ -79,7 +79,8 @@ describe("capability types table (#1201)", () => {
     expect(firstBlocked(type("ticketing", "none_connected"))).toBeNull();
     expect(blockedFixPath(blocked)).toBe("/integrations/i1");
     for (const catalog of [en, fr, es, ja] as Record<string, string>[])
-      for (const key of [...Object.values(BLOCKED_REASON_LINES), ...Object.values(BLOCKED_REASON_SHORT)])
+      // The row names the integration in words, "YouTrack · Not company-managed", +N for the rest (UX r1 B2 of #1376).
+      for (const key of [...Object.values(BLOCKED_REASON_LINES), ...Object.values(BLOCKED_REASON_SHORT), "{name} · {reason}", "+{count}"])
         expect(catalog[key], `${key} is in every catalog`).toBeTruthy();
   });
 

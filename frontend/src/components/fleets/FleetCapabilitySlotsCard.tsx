@@ -321,6 +321,18 @@ export function FleetCapabilitySlotsCard({
         <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid={`type-choice-${type.capability}`}>
           {builtinChip(type)}
           {integrationChips(type.choice, `type-bound-${type.capability}`)}
+          {/* A Not usable type names its blocked integrations here too, muted (UX r1 B2 of #1376). */}
+          {type.state === "not_usable" &&
+            (type.blocked ?? []).map((item) => (
+              <span
+                key={item.integration_id}
+                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-default-secondary"
+                data-testid={`type-blocked-chip-${type.capability}`}
+              >
+                <ProviderLogo provider={item.provider} className="h-4 w-4 shrink-0" decorative />
+                <TruncatedText text={blockedLabel(item)} />
+              </span>
+            ))}
           {unsetMembers(type).length > 0 && type.choice.length > 0 && (
             <Badge variant="warning" className="whitespace-nowrap" data-testid={`type-unset-${type.capability}`}>
               {t_i18n("{count, plural, one {# member not set} other {# members not set}}", { count: unsetMembers(type).length })}
@@ -367,9 +379,18 @@ export function FleetCapabilitySlotsCard({
     );
   };
 
+  // "YouTrack · Not company-managed": the integration and why the members cannot take it (UX r1 B2 of #1376).
+  const blockedLabel = (blocked: NonNullable<ReturnType<typeof firstBlocked>>) =>
+    t_i18n("{name} · {reason}", { name: integrationName(blocked), reason: t_i18n(BLOCKED_REASON_SHORT[blocked.reason]) });
+
   // A Not usable row (#1373): the integration, why the members cannot take it, and a button to its page.
   const blockedAction = (type: FleetCapabilityType, blocked: NonNullable<ReturnType<typeof firstBlocked>>) => {
-    const why = t_i18n(BLOCKED_REASON_LINES[blocked.reason], { name: integrationName(blocked) });
+    const others = (type.blocked ?? []).slice(1);
+    // Every blocked integration, one line each, in the tip: the row names the first (UX r1 B2 of #1376).
+    const why = [blocked, ...others]
+      .map((item) => t_i18n(BLOCKED_REASON_LINES[item.reason], { name: integrationName(item) }))
+      .join("\n");
+    const label = blockedLabel(blocked);
     const open = () => {
       const path = blockedFixPath(blocked);
       if (!inSetup) {
@@ -390,10 +411,16 @@ export function FleetCapabilitySlotsCard({
           data-testid={`type-blocked-open-${type.capability}`}
         >
           <ProviderLogo provider={blocked.provider} className="h-4 w-4 shrink-0" decorative />
-          <TruncatedText text={t_i18n(BLOCKED_REASON_SHORT[blocked.reason])} />
+          {/* The integration named in words, never by its 16 px logo alone (UX r1 B2 of #1376). */}
+          <TruncatedText text={label} />
+          {others.length > 0 && (
+            <span className="shrink-0 text-default-secondary" data-testid={`type-blocked-more-${type.capability}`}>
+              {t_i18n("+{count}", { count: others.length })}
+            </span>
+          )}
           {inSetup && <Icon name="external-link" size={16} className="shrink-0" aria-hidden />}
         </Button>
-        <InfoTip label={why} content={why} />
+        <InfoTip label={why} content={<span className="whitespace-pre-line">{why}</span>} />
       </span>
     );
   };

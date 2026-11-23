@@ -1069,6 +1069,7 @@
   "+ {count} persistent {word} in long-term storage": "+ {count} persistent {word} in long-term storage",
   "+{count} more": "+{count} more",
   "+{count} more: {labels}": "+{count} more: {labels}",
+  "+{count}": "+{count}",
   ", what do you want to build today?": ", what do you want to build today?",
   "-- none --": "-- none --",
   "-- write manually below --": "-- write manually below --",
@@ -20498,7 +20499,7 @@
   "The loop ranks every signal against your crown jewels and tech stack, and opens tickets in your ticketing project.": "The loop ranks every signal against your crown jewels and tech stack, and opens tickets in your ticketing project.",
   "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.": "The loop works with the modules connected to this platform. It runs with any of them and says what it cannot do without the others.",
   "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.": "Bind the tools the loop's agents act through. A slot left empty only limits what they can do, nothing breaks.",
-  "Choose how much the fleet does without asking a person. The line under the levels says what waits at the level picked; you can change it later on the fleet page.": "Choose how much the fleet does without asking a person. The line under the levels says what waits at the level picked; you can change it later on the fleet page.",
+  "Choose how much the fleet does without asking a person. The table under the levels shows, action by action, what waits at the level picked; you can change it later on the fleet page.": "Choose how much the fleet does without asking a person. The table under the levels shows, action by action, what waits at the level picked; you can change it later on the fleet page.",
   "Before anything runs: what the CTEM loop fleet switches on and how many runs a month to expect.": "Before anything runs: what the CTEM loop fleet switches on and how many runs a month to expect.",
   "One switch turns on the CTEM loop fleet's automations. They run as you. Nothing ran before this step.": "One switch turns on the CTEM loop fleet's automations. They run as you. Nothing ran before this step.",
   "Without OpenCTI: no threat or vulnerability signals from intelligence; cases start only from other sources.": "Without OpenCTI: no threat or vulnerability signals from intelligence; cases start only from other sources.",
@@ -21098,5 +21099,6 @@
   "Creates or changes content outside XTM One that other people and systems act on.": "Creates or changes content outside XTM One that other people and systems act on.",
   "A reversible mark, label or draft outside XTM One.": "A reversible mark, label or draft outside XTM One.",
   "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.",
-  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} is not connected yet: finish its sign-in on the integration page."
+  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} is not connected yet: finish its sign-in on the integration page.",
+  "{name} · {reason}": "{name} · {reason}"
 }
