@@ -20076,7 +20076,6 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "OpenAEVで完了したシミュレーションの攻撃パスが、重要度が高いまたは非常に高い資産に到達したときに発火します。",
   "Opened by": "起点",
   "The signals of this case could not be read.": "このケースのシグナルを読み取れませんでした。",
-  "No signal opened this case: it groups open issues read from the products.": "このケースはシグナルから開かれていません。製品から読み取った未解決の課題をまとめたものです。",
   "See the loop trace": "ループのトレースを見る",
   "A signal joined the case": "シグナルがケースに追加されました",
   "Recorded a validation": "検証を記録しました",
@@ -20621,7 +20620,6 @@
   "Left for later: Members screen": "後で設定: メンバー画面",
   "Complete on the Members screen": "メンバー画面で設定",
   "Run estimate": "実行見積もり",
-  "Expected load": "想定される負荷",
   "I will do it later": "後で設定する",
   "Autonomy": "自律性",
   "Run as and automations": "実行ユーザーと自動化",
@@ -20712,8 +20710,6 @@
   "Not computed yet": "未計算",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, other {{products} は {time} に応答しませんでした。ケースは変更されていません。}}",
   "Open the {product} integration": "{product} の連携を開く",
-  "Opened from OpenCTI vulnerabilities matched to your inventory": "インベントリと照合された OpenCTI の脆弱性から作成",
-  "Opened from OpenAEV findings on your assets": "資産に対する OpenAEV の検出結果から作成",
   "Add a sync": "同期を追加",
   "Start with your sources": "ソースから始める",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "プラットフォームと埋めるセクションを選び、行をプレビューしてから同期を維持します。",
@@ -21221,10 +21217,7 @@
   "oldest asked {age}": "最も古い依頼 {age}",
   "Read only: this decision is addressed to someone else.": "読み取り専用: この判断は他の担当者宛てです。",
   "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "担当者を待っているこのフリートのメンバーの判断: 一時停止中の実行と作業項目。このタブを開いても実行は開始されず、クォータも消費されません。",
-  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {1 日あたりのスケジュール実行はありません。} other {1 日あたり約 # 回のスケジュール実行。}}",
-  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, other {1 か月あたり約 # 回のスケジュール実行。}}",
-  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, other {# 件のオートメーションはイベントごとに 1 回実行され、イベントが届くたびに実行されます。}}",
-  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "コストはまだありません: これらのオートメーションは過去 {days, plural, other {# 日間}}に実行されていません。",
-  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "スケジュール実行で 1 日あたり約 {cost}(過去 {days, plural, other {# 日間}}の実行の平均コストから算出)。",
-  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "スケジュール実行で 1 か月あたり約 {cost}(過去 {days, plural, other {# 日間}}の実行の平均コストから算出)。"
+  "A source read before signals (legacy)": "シグナル導入前のソース読み取り (レガシー)",
+  "A signal you cannot see": "閲覧権限のないシグナル",
+  "Split into its own case by a person or an agent": "ユーザーまたはエージェントにより個別のケースに分割"
 }
