@@ -33,14 +33,21 @@ class _Resp:
 class _FakeApi:
     """Answers by path; records every (method, path) the reads send."""
 
-    def __init__(self, answers: dict[str, tuple[Any, str | None]]) -> None:
+    #: ``GET /api/me``: an admin by default, so the reads keep their full-scope answer.
+    ME: tuple[Any, str | None] = ({"user_admin": True}, None)
+
+    def __init__(self, answers: dict[str, tuple[Any, str | None]], me: tuple[Any, str | None] | None = None) -> None:
         self.answers = answers
+        self.me = me or self.ME
         self.calls: list[tuple[str, str]] = []
         self.bodies: list[dict[str, Any]] = []
 
     async def __call__(
         self, base_url: str, headers: Any, method: str, path: str, action: str, **kwargs: Any
     ) -> tuple[_Resp | None, str | None]:
+        if path == "/api/me":
+            body, err = self.me
+            return (None, err) if err else (_Resp(body), None)
         self.calls.append((method, path))
         if "json" in kwargs:
             self.bodies.append(kwargs["json"])
@@ -50,6 +57,8 @@ class _FakeApi:
 
 async def _call(monkeypatch: pytest.MonkeyPatch, fake: _FakeApi, name: str) -> str:
     monkeypatch.setattr(health_reads, "_api", fake)
+    # The read scope (GET /api/me) goes through the shared helper.
+    monkeypatch.setattr(openaev_common, "_api", fake)
     executor = CallableToolExecutor()
     build_tools(TOKEN, executor)
     result = await executor.execute_tool(ToolCall(id="c", name=name, arguments={}))
@@ -80,13 +89,15 @@ async def test_every_request_of_the_reads_is_a_get(monkeypatch: pytest.MonkeyPat
 class _Counts(_FakeApi):
     """Answers every search with ``totalElements`` from ``count(path, filters)``."""
 
-    def __init__(self, count: Any) -> None:
-        super().__init__({})
+    def __init__(self, count: Any, me: tuple[Any, str | None] | None = None) -> None:
+        super().__init__({}, me)
         self.count = count
 
     async def __call__(
         self, base_url: str, headers: Any, method: str, path: str, action: str, **kwargs: Any
     ) -> tuple[_Resp | None, str | None]:
+        if path == "/api/me":
+            return await super().__call__(base_url, headers, method, path, action, **kwargs)
         await super().__call__(base_url, headers, method, path, action, **kwargs)
         filters = (kwargs["json"].get("filterGroup") or {}).get("filters", [])
         value = self.count(path, filters)
@@ -144,6 +155,72 @@ async def test_error_rate_counts_errors_per_day_with_the_mean(monkeypatch: pytes
     assert "not exposed by the OpenAEV API" in out
     out = await _call(monkeypatch, _Counts(lambda path, filters: "403 forbidden"), "get_openaev_error_rate")
     assert out == "OpenAEV error rate: 403 forbidden"
+
+
+# ── The caller's read scope (#1444): OpenAEV answers an empty page, never a 403 ──
+
+LIMITED = ({"user_admin": False, "user_is_admin_or_bypass": False, "user_capabilities": ["ACCESS_DASHBOARDS"]}, None)
+
+
+async def test_data_health_under_a_grant_limited_identity_says_the_zero_is_not_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = await _call(monkeypatch, _Counts(lambda path, filters: 0, me=LIMITED), "get_openaev_data_health")
+    assert out.startswith("Scope: this OpenAEV identity reads only what it holds a grant on")
+    assert "Scenarios: total 0 visible to this identity (scope-limited; not proof the platform is empty)" in out
+    assert "Simulations running over 24 h past their end: 0 visible to this identity" in out
+    assert "total 0;" not in out
+
+
+async def test_data_health_under_an_admin_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    out = await _call(monkeypatch, _Counts(lambda path, filters: 0), "get_openaev_data_health")
+    assert out.startswith("OpenAEV data health:")
+    assert "Scenarios: total 0; updated last 7 days 0" in out
+    assert "Scope:" not in out
+
+
+@pytest.mark.parametrize(
+    "me",
+    [
+        ({"user_admin": False, "user_capabilities": ["ACCESS_ASSESSMENT"]}, None),
+        ({"user_admin": False, "user_is_admin_or_bypass": True, "user_capabilities": []}, None),
+    ],
+    ids=["access-assessment", "bypass"],
+)
+async def test_a_capability_that_reads_everything_is_full_scope(
+    monkeypatch: pytest.MonkeyPatch, me: tuple[Any, str | None]
+) -> None:
+    out = await _call(monkeypatch, _Counts(lambda path, filters: 0, me=me), "get_openaev_error_rate")
+    assert "Scope:" not in out
+    assert "visible to this identity" not in out
+
+
+async def test_a_failed_me_read_is_an_unknown_scope_never_a_full_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _Counts(lambda path, filters: 0, me=(None, "OpenAEV error (HTTP 500)"))
+    out = await _call(monkeypatch, fake, "get_openaev_error_rate")
+    assert out.startswith("Scope: unknown (GET /api/me failed: OpenAEV error (HTTP 500))")
+    assert "0 visible to this identity (scope unknown; not proof the platform is empty)" in out
+
+
+async def test_the_scope_is_read_once_per_tool_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    reads: list[str] = []
+
+    class _Me(_Counts):
+        async def __call__(
+            self, base_url: str, headers: Any, method: str, path: str, action: str, **kwargs: Any
+        ) -> tuple[_Resp | None, str | None]:
+            if path == "/api/me":
+                reads.append(path)
+            return await super().__call__(base_url, headers, method, path, action, **kwargs)
+
+    fake = _Me(lambda path, filters: 0, me=LIMITED)
+    monkeypatch.setattr(health_reads, "_api", fake)
+    monkeypatch.setattr(openaev_common, "_api", fake)
+    executor = CallableToolExecutor()
+    build_tools(TOKEN, executor)
+    for name in SEARCH_NAMES:
+        await executor.execute_tool(ToolCall(id="c", name=name, arguments={}))
+    assert reads == ["/api/me"]
 
 
 async def test_platform_health_answers_version_licence_services_and_links(monkeypatch: pytest.MonkeyPatch) -> None:

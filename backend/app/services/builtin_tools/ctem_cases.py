@@ -734,7 +734,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "description": (
                             "The Grouping the review step drafted for this case in the threat intelligence "
                             "platform (its id, name and page "
-                            "url) and the security coverage requested on it (coverage_id), once requested."
+                            "url) and the security coverage requested on it (coverage_id), once requested. While the "
+                            "package sits in a draft, url is the draft page (/dashboard/data/import/draft/ then the draft id): the "
+                            "Grouping page does not resolve until the draft is validated."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},

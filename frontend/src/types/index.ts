@@ -100,6 +100,8 @@ export interface User {
   chat_sidebar_expanded_workspaces?: string[] | null;
   /** The bell shows the work items waiting for this person (#9437); on by default. */
   notify_waiting_work_items?: boolean;
+  /** The composer's reply suggestion after a chat turn; on by default. */
+  reply_suggestions_enabled?: boolean;
   role: "admin" | "user";
   sso_provider: string | null;
   default_knowledge_base_ids: string[] | null;
@@ -804,6 +806,11 @@ export interface GeneralAssistantConfig {
   platform_mcp_enabled: boolean;
   /** Global toggle for XTM One's own MCP server (/mcp/xtm). Default off. */
   xtm_mcp_enabled: boolean;
+  /**
+   * The composer's reply suggestion after a chat turn, generated on the
+   * routing model: nothing is generated while `routing_model` is unset.
+   */
+  reply_suggestions_enabled?: boolean;
   /**
    * Names of default-model fields unconditionally re-seeded from environment
    * variables on every startup and therefore read-only in the UI (e.g.

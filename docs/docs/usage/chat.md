@@ -134,6 +134,12 @@ A line under the composer reminds you that AI can make mistakes and that importa
 
 The lightning icon among the composer buttons counts the agentic actions consumed in the current quota period (the day, month or year your administrator configured), out of your limit when there is one. Hover it for the details. While an assistant works on your message, the action this reply consumes is shown in brackets: `4(+1)/10` means 4 actions before this reply, 1 for it, out of 10. It joins the total when the reply ends, along with any sandbox code runs counted toward the same limit; a reply that fails may have its action credited back instead (see [Configuration](../deployment/configuration.md#agentic-quota)). The counter is refreshed as well when a reply is stopped or fails, and when a reply you left running by opening another conversation ends.
 
+## Use a suggested reply
+
+Once an agent has answered, the message box may propose what you would likely ask next, greyed out, with a `Tab` key beside it. Press `Tab` (or the right arrow, or click the `Tab` key) to put it in the box, edit it if you want, then press Enter to send it: a suggestion is never sent by itself. Start typing or press Esc to dismiss it.
+
+There is not always one: the platform proposes nothing when the next step is not obvious, after a reply that failed or that you stopped, or when you already sent another message. The suggestion is made by the routing model your administrator sets in `Settings > AI Models`, from your message, the agent's answer and the tools it used. Turn suggestions off in [your profile](my-profile.md#profile-tab).
+
 ## Add to a reply that is still running
 
 You do not have to wait for an answer to correct or complete your request. The composer stays open while the agent works:

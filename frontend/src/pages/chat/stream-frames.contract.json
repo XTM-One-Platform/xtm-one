@@ -1,5 +1,5 @@
 {
-  "description": "The frames the web chat streams (POST /api/v1/web/chat/messages, GET .../events), as the backend writes them and the chat panel (@filigran/chatbot) reads them; backend/tests/test_chat_panel_contracts.py checks each against the backend's names and end rules. \"relayed\": the backend fans the frame out to every stream of the conversation, the event stream included (a session_expired ends each stream on its own). \"end\": how it ends a turn - \"provisional\" (an error or cancelled marked \"provisional\": true; the stored end follows - any other end is final), \"stored\" (it carries the stored reply's message_id), null (it ends none, or ends a turn whose stored end is lost). Every frame but user_message, conversation_title and session_expired names its turn (turn_id). Change a shape here and on both sides together.",
+  "description": "The frames the web chat streams (POST /api/v1/web/chat/messages, GET .../events), as the backend writes them and the chat panel (@filigran/chatbot) reads them; backend/tests/test_chat_panel_contracts.py checks each against the backend's names and end rules. \"relayed\": the backend fans the frame out to every stream of the conversation, the event stream included (a session_expired ends each stream on its own). \"end\": how it ends a turn - \"provisional\" (an error or cancelled marked \"provisional\": true; the stored end follows - any other end is final), \"stored\" (it carries the stored reply's message_id), null (it ends none, or ends a turn whose stored end is lost). Every frame but user_message, conversation_title, reply_suggestion and session_expired names its turn (turn_id). Change a shape here and on both sides together.",
   "samples": [
     {
       "name": "turn started",
@@ -138,6 +138,12 @@
       "relayed": true,
       "end": null,
       "frame": {"type": "conversation_title", "conversation_id": "11111111-2222-4333-8444-555555555555", "title": "Today's alerts"}
+    },
+    {
+      "name": "the user's likely next message",
+      "relayed": true,
+      "end": null,
+      "frame": {"type": "reply_suggestion", "conversation_id": "11111111-2222-4333-8444-555555555555", "message_id": "66666666-7777-4888-9999-000000000000", "text": "Enrich the three critical indicators"}
     },
     {
       "name": "the session ended",

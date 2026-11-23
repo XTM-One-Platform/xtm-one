@@ -427,6 +427,7 @@ ee:
   - backend/app/services/integration_event_filters.py
   - backend/app/services/event_enrichment*.py
   - backend/app/services/event_run_dedup.py
+  - backend/app/services/event_coalescing.py
   - backend/app/services/inbound_claims.py
   - backend/app/services/ci_red_claims.py
   - backend/app/services/mail_send_guard.py
@@ -612,6 +613,7 @@ ee:
   - frontend/src/pages/ToolsAndIntegrations.tsx
   - frontend/src/pages/analytics/top-agents.tsx
   - frontend/src/pages/integration-detail/ToolsCard.tsx
+  - frontend/src/pages/profile/ReplySuggestionsCard.tsx
   - frontend/src/pages/profile/WaitingWorkItemsNotifyCard.tsx
   - frontend/src/pages/settings/ScannedToolsField.tsx
   - frontend/src/pages/settings/scanned-tools.ts

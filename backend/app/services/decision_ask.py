@@ -419,6 +419,34 @@ def _links(value: object) -> list[dict[str, str]]:
     return out
 
 
+#: An OpenCTI draft page (#1453): ``https://host[/base]/dashboard/data/import/draft/<uuid>``.
+_OPENCTI_DRAFT_PAGE = re.compile(r"^(.*?)/dashboard/data/import/draft/[0-9a-fA-F-]{36}(?:[/?#].*)?$")
+#: The OpenCTI object pages an object created inside a draft does not have until the draft is
+#: validated: the analyses (Grouping, Report, ...) and the id resolver.
+_OPENCTI_OBJECT_PAGE = re.compile(r"^(.*?)/dashboard/(?:analyses/[a-z_]+|id)/[^/?#]+")
+
+
+def drop_links_shadowed_by_drafts(links: list[dict[str, str]]) -> list[dict[str, str]]:
+    """*links* without the OpenCTI object pages a draft link of the same platform shadows (#1453).
+
+    An object an agent creates inside an OpenCTI draft (a Grouping, a Report)
+    has no live page until a person validates the draft: its page answers
+    "not found". When an ask links a draft, it links that draft alone for the
+    platform it lives on; an object page of the same platform (same origin and
+    base path) next to it is dropped. Other platforms' links are kept. Pure.
+    """
+    bases = {m.group(1).rstrip("/").lower() for link in links if (m := _OPENCTI_DRAFT_PAGE.match(link["url"]))}
+    if not bases:
+        return links
+    kept: list[dict[str, str]] = []
+    for link in links:
+        found = _OPENCTI_OBJECT_PAGE.match(link["url"])
+        if found and found.group(1).rstrip("/").lower() in bases:
+            continue
+        kept.append(link)
+    return kept
+
+
 def normalize_ask(value: object) -> dict[str, Any] | None:
     """The ask as stored, ``None`` when cleared (``{}``, ``null``, blank text).
 
@@ -464,7 +492,7 @@ def normalize_ask(value: object) -> dict[str, Any] | None:
     deadline = _deadline(value.get("deadline"))
     if deadline:
         ask["deadline"] = deadline
-    links = _links(value.get("links"))
+    links = drop_links_shadowed_by_drafts(_links(value.get("links")))
     if links:
         ask["links"] = links
     return ask
