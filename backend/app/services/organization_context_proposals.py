@@ -69,6 +69,9 @@ PROPOSABLE_EXPOSURE_PATHS: tuple[str, ...] = ("owned_domains", "address_ranges",
 #: The reference exchange rates the risk agents cite to convert a figure (#1383): an
 #: administrator sets them by API or through an agent; not a contract field.
 PROPOSABLE_RATE_PATHS: tuple[str, ...] = ("fx_rates",)
+#: What the organization ships, with its repositories (#1432): the CTEM scope gate resolves a
+#: vulnerability on one of them to its repositories. Not a contract field.
+PROPOSABLE_PRODUCT_PATHS: tuple[str, ...] = ("shipped_products",)
 
 
 def _contract_paths(role: str) -> tuple[str, ...]:
@@ -80,6 +83,7 @@ def _contract_paths(role: str) -> tuple[str, ...]:
             + PROPOSABLE_POLICY_PATHS
             + PROPOSABLE_EXPOSURE_PATHS
             + PROPOSABLE_RATE_PATHS
+            + PROPOSABLE_PRODUCT_PATHS
         )
     return tuple(path for path, _label in TRACKED_CONTRACT_FIELDS)
 

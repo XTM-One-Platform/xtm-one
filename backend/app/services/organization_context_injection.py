@@ -229,7 +229,9 @@ def render_summary(row: Any, *, tracked_count: int = 0, ctem_work: bool = True) 
         'get_organization_context(category="tech_stack", query="cisco") (it pages); category="*" lists them.'
     )
     index = "Categories:\n" + "\n".join(
-        cats.index_line(category, counts[category.name]) for category in cats.CATEGORIES
+        cats.index_line(category, counts[category.name])
+        for category in cats.CATEGORIES
+        if cats.indexed(category, counts[category.name])
     )
     category_fields = {category.field for category in cats.CATEGORIES}
     labels = dict(CONTRACT_FIELDS)

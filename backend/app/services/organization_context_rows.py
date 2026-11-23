@@ -12,8 +12,9 @@ and ``remove_organization_rows`` tools stand on:
   source is the platform the rows come from (``intune``...), never a hand
   source (``manual``, ``csv``, ``api``): a row a person wrote is never
   updated or removed, and an incoming row named like one is refused;
-- tech stack products and AI systems have no source: a new name is added,
-  an existing one is left as it is (never overwritten);
+- tech stack products, shipped products (#1432) and AI systems have no
+  source: a new name is added, an existing one is left as it is (never
+  overwritten);
 - every row is validated with the profile's own models (the taxonomy of the
   CSV and the import paths), a bad row is refused with its reason and the
   others go on;
@@ -38,6 +39,7 @@ from app.services.organization_context import (
     AssetEntry,
     AssetGroupEntry,
     OrganizationProfile,
+    ShippedProduct,
     TechStackEntry,
 )
 
@@ -47,6 +49,8 @@ ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
     "asset_groups": ("asset_groups", AssetGroupEntry, 500),
     "tech_stack": ("tech_stack", TechStackEntry, 500),
     "ai_systems": ("ai_systems", AiSystem, 200),
+    # #1432: what the organization ships, keyed on the product like the tech stack.
+    "shipped_products": ("shipped_products", ShippedProduct, 200),
 }
 #: Sections keyed on ``source`` + ``external_id`` (the others on the name).
 SOURCED_SECTIONS: frozenset[str] = frozenset({"assets", "asset_groups"})
@@ -149,7 +153,7 @@ def plan_upsert(profile: OrganizationProfile, section: str, source: str, rows: l
     draft = profile.model_copy(deep=True)
     current: list[Any] = list(getattr(draft, attr))
     sourced = section in SOURCED_SECTIONS
-    name_key = "product" if section == "tech_stack" else "name"
+    name_key = "product" if section in ("tech_stack", "shipped_products") else "name"
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if sourced and r.external_id}
     by_name = {getattr(r, name_key).casefold(): r for r in current}
     seen: set[Any] = set()
