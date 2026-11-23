@@ -36,12 +36,17 @@ const SOURCE_LABELS: Record<string, string> = {
   ...INVENTORY_SOURCE_LABELS,
 };
 
+/** The prefix of a source an agent wrote (`agent:<name>`), as the backend's AGENT_SOURCE_PREFIX. */
+const AGENT_SOURCE_PREFIX = "agent:";
+
 /**
- * The translated name of a record's source (`csv` reads "Import CSV" in French; UX round 3 on #1254, B10). A source
- * outside the known set is shown as stored.
+ * The translated name of a record's source (`csv` reads "Import CSV" in French; UX round 3 on #1254, B10). An agent
+ * source reads with the agent's own name, the name the Sources tab shows (the backend's display_name of
+ * `agent:<name>`), so two agents never share one label (UX round 7 on #1254, B13); a bare `agent:` reads "Agent". A
+ * source outside the known set is shown as stored.
  */
 export function sourceLabel(t: Translate, source: string): string {
-  if (source.startsWith("agent:")) return t(SOURCE_KIND_LABELS.agent);
+  if (source.startsWith(AGENT_SOURCE_PREFIX)) return source.slice(AGENT_SOURCE_PREFIX.length).trim() || t(SOURCE_KIND_LABELS.agent);
   const label = SOURCE_LABELS[source];
   return label ? t(label) : source;
 }
