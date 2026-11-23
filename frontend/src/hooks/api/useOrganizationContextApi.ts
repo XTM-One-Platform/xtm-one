@@ -595,12 +595,10 @@ const SYNCS = [...KEY, "syncs"] as const;
 /** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
 export type OrganizationSyncScope = "profile" | "inventory" | "";
 
-/** `enabled` false for a reader: the syncs API is for administrators only (403 otherwise, UX r1 B1 on #1540). */
-export function useOrganizationSyncs(scope: OrganizationSyncScope = "", enabled = true) {
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
   return useQuery<OrganizationSync[]>({
     queryKey: [...SYNCS, scope],
     queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
-    enabled,
     // The list says its own failure with a retry; it never takes the page down.
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
@@ -746,6 +744,39 @@ export function useRunOrganizationSync() {
   return useMutation<OrganizationSync, Error, string>({
     mutationFn: (id) => api.post(`/organization-context/syncs/${id}/run`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What Run all syncs did: the syncs that ran and those whose run was refused or failed (#1548). */
+export interface RunAllSyncsResult {
+  ran: number;
+  failed: number;
+}
+
+/**
+ * Run all syncs (#1548): every given sync runs now, one after the other (two runs never write the profile at once),
+ * through the per-sync Run now endpoint; the list is read again after each so its Last run cell follows. No "Sync all"
+ * row is created.
+ */
+export function useRunOrganizationSyncs() {
+  const qc = useQueryClient();
+  return useMutation<RunAllSyncsResult, Error, string[]>({
+    mutationFn: async (ids) => {
+      let ran = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          const done: OrganizationSync = await api.post(`/organization-context/syncs/${id}/run`, {});
+          if (done?.last_result?.error) failed += 1;
+          else ran += 1;
+        } catch {
+          failed += 1;
+        }
+        await qc.invalidateQueries({ queryKey: KEY });
+      }
+      return { ran, failed };
+    },
     meta: { suppressGlobalErrorToast: true },
   });
 }
