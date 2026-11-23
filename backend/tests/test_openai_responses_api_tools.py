@@ -398,9 +398,11 @@ def _refusing_client(calls: list[dict]) -> SimpleNamespace:
     async def completions_create(**params):
         return await create(params)
 
-    return SimpleNamespace(
+    client = SimpleNamespace(
         base_url=httpx.URL(_GATEWAY.url), api_key="k", chat=SimpleNamespace(completions=SimpleNamespace(create=completions_create))
     )
+    client.with_options = lambda **_options: client  # the gateway's chat client: no SDK retry
+    return client
 
 
 async def test_an_openai_compatible_provider_remembers_the_refusal_per_base_url():

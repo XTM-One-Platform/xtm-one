@@ -610,7 +610,7 @@ def dispatch_scope(assignment_id: object) -> Iterator[None]:
 
 
 async def note_rate_limited(source: str) -> None:
-    """Record a provider's 429 met by an assignment's run. Never raises.
+    """Record a provider's rate limit (a 429, or the AI Gateway's throttle) met by an assignment's run. Never raises.
 
     Only a 429 met inside ``dispatch_scope`` counts, model provider
     (``source="llm"``) or integration alike, and it backs off that assignment
@@ -626,7 +626,7 @@ async def note_rate_limited(source: str) -> None:
         redis = await _redis()
         if await redis.set(_ASSIGNMENT_THROTTLE_PREFIX + assignment_id, "1", ex=seconds, nx=True):
             logger.info(
-                "Assignment dispatch backing off for %ds: %s rate limit (429) on assignment %s",
+                "Assignment dispatch backing off for %ds: %s rate limit on assignment %s",
                 seconds,
                 source,
                 assignment_id,

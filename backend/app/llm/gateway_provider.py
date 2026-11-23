@@ -308,6 +308,11 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         # The client's api_key is a placeholder: the row's token and target route it.
         return endpoint_of(self.client, f"{self._token or ''}||{self._target or ''}")
 
+    def _chat_client(self) -> openai.AsyncOpenAI:
+        # ``retry_llm_call`` already retries chat 5 times: the SDK's 2 under it sent 18 requests
+        # per call into a throttled upstream. Embeddings, media and listings keep the SDK retry.
+        return self.client.with_options(max_retries=0)
+
     def _reasoning_effort(self, model: str, kwargs: dict) -> str | None:
         # ``disable_thinking`` has no OpenAI-format field: Claude 4.7+ thinks by
         # default within ``max_tokens``, so small JSON calls come back cut. The

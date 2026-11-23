@@ -36,6 +36,7 @@ from app.llm.base import (
     ModelDeclinedError,
     build_openai_messages_async,
     declined_error,
+    gateway_error_envelope,
     parse_tool_arguments,
     retry_llm_call,
     usage_sink_of,
@@ -85,9 +86,7 @@ _LISTED_CONTEXT_WINDOW_FIELDS = (
 
 def marked_not_retryable(body: object) -> bool:
     """True when an error body, or its ``error`` envelope, says ``retryable: false``."""
-    if isinstance(body, Mapping) and isinstance(body.get("error"), Mapping):
-        body = body["error"]
-    return isinstance(body, Mapping) and body.get("retryable") is False
+    return gateway_error_envelope(body).get("retryable") is False
 
 
 def is_retryable_openai(exc: Exception) -> bool:
@@ -601,11 +600,8 @@ async def _create_completion(
 def _error_message(exc: openai.APIStatusError) -> str:
     """The body's ``error.message``, else the status: never the SDK's rendering,
     which carries the whole body (a proxy page can echo the request)."""
-    body = exc.body
     # The SDK hands over the ``error`` envelope's content, or the whole body.
-    if isinstance(body, Mapping) and isinstance(body.get("error"), Mapping):
-        body = body["error"]
-    message = body.get("message") if isinstance(body, Mapping) else None
+    message = gateway_error_envelope(exc.body).get("message")
     return message if isinstance(message, str) and message else f"HTTP {exc.status_code}"
 
 
@@ -1006,6 +1002,10 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         """Where a tools refusal is remembered (``create_with_effort_retry``)."""
         return endpoint_of(self.client)
 
+    def _chat_client(self) -> AsyncOpenAI:
+        """The client chat completions are sent with; every such call is wrapped in ``retry_llm_call``."""
+        return self.client
+
     async def _shape_request(self, params: dict, kwargs: dict) -> None:
         """Last edit of a chat-completions request before it is sent; *kwargs* are the caller's."""
 
@@ -1101,7 +1101,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         await self._shape_request(params, kwargs)
 
         response = await retry_llm_call(
-            lambda: _create_completion(self.client, params, model, replay, self.refusal_endpoint()),
+            lambda: _create_completion(self._chat_client(), params, model, replay, self.refusal_endpoint()),
             is_retryable=is_retryable_openai,
         )
 
@@ -1215,7 +1215,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         # Retry transient errors on stream establishment only — nothing has
         # been yielded to the caller until the create() call returns.
         stream = await retry_llm_call(
-            lambda: _create_completion(self.client, params, model, replay, self.refusal_endpoint()),
+            lambda: _create_completion(self._chat_client(), params, model, replay, self.refusal_endpoint()),
             is_retryable=is_retryable_openai,
         )
         on_thinking = kwargs.get("on_thinking")
@@ -1277,7 +1277,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
 
         oai_messages, replay = await self._prepare_messages(messages, model, tools, kwargs)
         return await consume_openai_stream_with_tools(
-            self.client, model=model, oai_messages=oai_messages, tools=tools,
+            self._chat_client(), model=model, oai_messages=oai_messages, tools=tools,
             on_token=on_token, temperature=temperature, max_tokens=max_tokens,
             include_usage=self.supports_stream_usage, replay=replay,
             shape_request=lambda params: self._shape_request(params, kwargs),
