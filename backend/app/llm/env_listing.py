@@ -15,20 +15,29 @@ import os
 import re
 from collections.abc import Iterable
 from contextlib import suppress
-from typing import Any
+from typing import Any, NamedTuple
 
 from app.core.utils import format_exception_message
 from app.llm.env_models import ENV_PREFIX, env_models_for
 
 logger = logging.getLogger(__name__)
 
+# The only provider whose listing marks a chat default (#1421).
+_GATEWAY = "filigran_gateway"
 # Providers whose chat models the seed lists when ``LLM_PROVIDER_{P}_MODELS``
 # is unset: the gateway's catalog is curated upstream, so "all" is meaningful.
-SEED_LISTED_PROVIDERS = frozenset({"filigran_gateway"})
+SEED_LISTED_PROVIDERS = frozenset({_GATEWAY})
 # Short: it runs on every boot and under the AI toggle's bootstrap lock.
 SEED_LISTING_TIMEOUT_SECONDS = 5.0
 
 _KEY_PATTERN = re.compile(rf"^{ENV_PREFIX}([A-Z][A-Z0-9_]*)_API_KEY$")
+
+
+class SeedListing(NamedTuple):
+    """A provider's chat models, and the one the AI Gateway marks ``default_for: ["chat"]``."""
+
+    models: list[str]
+    chat_default: str | None = None
 
 
 def env_provider_keys(*, warn: bool = True) -> list[tuple[str, str]]:
@@ -101,7 +110,7 @@ def catalogs_to_follow(providers: list[tuple[str, str]], rows: Iterable[Any], mo
     return (eligible & has_catalog) - catalogs_to_list(providers, rows, models_editable)
 
 
-async def list_models_for_seed(provider_name: str, api_key: str) -> list[str] | None:
+async def list_models_for_seed(provider_name: str, api_key: str) -> SeedListing | None:
     """The chat models *provider_name* lists, or ``None`` when it cannot answer."""
     from app.llm.router import PROVIDER_MAP, is_chat_capable_model, provider_instance
     from app.services.vault import resolve_secret_text
@@ -110,6 +119,8 @@ async def list_models_for_seed(provider_name: str, api_key: str) -> list[str] | 
     try:
         provider = provider_instance(PROVIDER_MAP[provider_name], await resolve_secret_text(api_key))
         listed = await asyncio.wait_for(provider.list_models(), timeout=SEED_LISTING_TIMEOUT_SECONDS)
+        # Answered from the listing just made, no second call.
+        chat_default = await provider.marked_default_model("chat") if provider_name == _GATEWAY else None
     except Exception as exc:
         logger.warning(
             "LLM env seed: could not list the %s models, its model list is left as it is: %s",
@@ -121,23 +132,45 @@ async def list_models_for_seed(provider_name: str, api_key: str) -> list[str] | 
         if close := getattr(getattr(provider, "client", None), "close", None):
             with suppress(Exception):
                 await close()
-    return [m for m in listed if is_chat_capable_model(m)] or None
+    models = [m for m in listed if is_chat_capable_model(m)]
+    return SeedListing(models, chat_default) if models else None
 
 
-def listing_default(current: str | None, declared: str | None, listed: list[str]) -> str | None:
-    """The default for a listed catalog: *current*, else *declared*, while listed; else the first."""
-    from app.llm.env_models import resolve_default_model
-
-    return resolve_default_model(current if current in listed else declared, listed)
-
-
-def apply_listing(cfg: Any, listed: list[str]) -> None:
-    """Make *listed* the catalog of *cfg*, and its snapshot (``env_models``)."""
+def declared_default(provider_name: str, chat_default: str | None, listed: list[str]) -> str | None:
+    """The default a listing of *provider_name* declares: the provider's own (the gateway's
+    ``default`` alias), or, for the AI Gateway, the chat model it marks while listed."""
     from app.llm.router import PROVIDER_MAP
 
-    declared = getattr(PROVIDER_MAP.get(cfg.provider), "default_model", None)
+    if provider_name == _GATEWAY and chat_default and chat_default in listed:
+        return chat_default
+    return getattr(PROVIDER_MAP.get(provider_name), "default_model", None)
+
+
+def replaced_alias(provider_name: str, declared: str | None) -> str | None:
+    """The gateway's ``default`` alias when its marked chat model replaces it, else ``None``:
+    a saved alias then counts as unset (#1421)."""
+    from app.llm.router import PROVIDER_MAP
+
+    alias = getattr(PROVIDER_MAP.get(provider_name), "default_model", None)
+    return alias if provider_name == _GATEWAY and declared != alias else None
+
+
+def listing_default(
+    current: str | None, declared: str | None, listed: list[str], replaced: str | None = None
+) -> str | None:
+    """The default for a listed catalog: *current* (unless it is *replaced*), else *declared*,
+    while listed; else the first."""
+    from app.llm.env_models import resolve_default_model
+
+    keep = current in listed and current != replaced
+    return resolve_default_model(current if keep else declared, listed)
+
+
+def apply_listing(cfg: Any, listed: list[str], chat_default: str | None = None) -> None:
+    """Make *listed* the catalog of *cfg*, and its snapshot (``env_models``)."""
+    declared = declared_default(cfg.provider, chat_default, listed)
     cfg.available_models = listed
-    cfg.default_model = listing_default(cfg.default_model, declared, listed)
+    cfg.default_model = listing_default(cfg.default_model, declared, listed, replaced_alias(cfg.provider, declared))
     cfg.env_models = listed
 
 
