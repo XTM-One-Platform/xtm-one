@@ -17,6 +17,11 @@ export const INVENTORY_LABEL = "Inventory";
 /** The page's route. */
 export const INVENTORY_PATH = "/ctem/inventory";
 
+/** A code repository asset (GitHub or GitLab source, #1331): its software list is its dependencies. */
+export function isCodeRepository(asset: { category: string | null; subcategory: string | null } | undefined): boolean {
+  return asset?.category === "source_code" && asset.subcategory === "code_repository";
+}
+
 /** The names of the sources only the Inventory lists (SBOM and the platforms). @i18n-keys */
 const INVENTORY_SOURCE_LABELS = {
   sbom: "SBOM",
