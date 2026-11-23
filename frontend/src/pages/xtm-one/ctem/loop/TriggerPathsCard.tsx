@@ -22,8 +22,7 @@ import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { HeroCard } from "../stage-heroes";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { SignalSourcesButton } from "./SignalSourcesPanel";
-import { connectHref, connectTarget, connectedCount, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
+import { connectHref, connectTarget, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
 
@@ -64,7 +63,7 @@ function PathRow({ path }: { path: CtemSignalPath }) {
         <span className="flex flex-nowrap items-center gap-2 whitespace-nowrap content-caption">
           <span className="text-default-secondary" data-testid="ctem-trigger-path-status">{t_i18n(PATH_STATUS_LABEL[status])}</span>
           {target && (
-            <Button variant="ghost" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-trigger-path-connect">{t_i18n("Connect")}</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-trigger-path-connect">{target.off ? t_i18n("Turn on") : t_i18n("Connect")}</Button>
           )}
         </span>
       )}
@@ -74,25 +73,11 @@ function PathRow({ path }: { path: CtemSignalPath }) {
 
 export function TriggerPathsCard() {
   const { t_i18n } = useFormatter();
-  const { count } = useNumberFormat();
   const { data, isLoading } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
-  const connected = connectedCount(paths);
+  // No connected-count caption nor sources button (Sam, 23 Nov 2026, #1344): each row carries its status.
   return (
-    <HeroCard
-      title={t_i18n("Signals by trigger path")}
-      testId="ctem-trigger-paths"
-      chips={
-        paths.length > 0 ? (
-          <span className="inline-flex items-center gap-1">
-            <span className="content-caption text-default-secondary tabular-nums">
-              {t_i18n("{connected} of {total} trigger paths connected", { connected: count(connected), total: count(paths.length) })}
-            </span>
-            <SignalSourcesButton />
-          </span>
-        ) : null
-      }
-    >
+    <HeroCard title={t_i18n("Signals by trigger path")} testId="ctem-trigger-paths">
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : (

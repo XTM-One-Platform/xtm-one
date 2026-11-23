@@ -487,6 +487,8 @@ export interface DataTableProps<T> {
   fitGrid?: boolean;
   /** data-testid of every body row, for the page's tests. */
   rowTestId?: string;
+  /** `data-*` attributes of one body row (its id, its status), for the page's tests and styles; a row with `rowHref` takes none. */
+  rowDataAttributes?: (row: T) => Record<`data-${string}`, string | undefined>;
 }
 
 /**
@@ -605,6 +607,7 @@ function DataTableView<T>({
   fill = false,
   fitGrid = false,
   rowTestId,
+  rowDataAttributes,
   state,
   setState,
 }: DataTableProps<T> & { state: DataTableState; setState: (next: DataTableState) => void }) {
@@ -955,6 +958,7 @@ function DataTableView<T>({
     ) : (
       <tr
         key={key}
+        {...rowDataAttributes?.(row)}
         data-testid={rowTestId}
         className={className}
         onClick={opens ? () => onRowClick?.(row) : undefined}

@@ -3,19 +3,23 @@
 /**
  * The signal sources (#1189, dev-docs/ctem-signals.md section 2bis):
  * every trigger path the loop knows, read from `GET /ctem-signals/paths` and
- * never hard-coded, grouped by lens. Each path says what fires it, whether a
- * source is connected (Connected, Not connected, or Agents and API only: a path
- * with no automatic source never reads connected), the sources with their logos
- * and the event that fires each, its signals of the last 30 days, and one
- * action: Connect the first unbound source, or Open signals in the loop trace.
+ * never hard-coded, as a compact table grouped by lens (Sam, 23 Nov 2026, #1344):
+ * trigger path (label, description on line 2), sources (logo and name, the kind
+ * as secondary text, the event that fires it in a tooltip), status (its own
+ * column so every chip aligns: Connected, Off, Not connected, or Agents and API
+ * only, a path with no automatic source never reading connected), signals in 30
+ * days, last signal, and one action: Connect or Turn on the first unbound
+ * source, or Open signals in the Signals tab. Rows of at most two lines; below
+ * the 4xl container width the Sources and Last signal columns step into line 2
+ * of the first cell.
  *
  * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
- * from the page's tabs and summary strip, an empty signal list and the trigger
- * paths card.
+ * from the page's tabs and summary strip.
  */
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { Tip } from "@/components/ui/tooltip";
 import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
@@ -23,10 +27,8 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
-import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
-import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { SIGNAL_SOURCES_PATH, signalsHref } from "./signals-route";
+import { signalsHref } from "./signals-route";
 import {
   connectHref,
   connectTarget,
@@ -40,6 +42,9 @@ import {
 
 const LENSES = ["inside", "outside", "world"] as const;
 
+/** The status order of the sort and the filter: connected first, agents-only last. */
+const STATUS_ORDER = ["connected", "off", "not_connected", "agents_api"] as const;
+
 /** The lens headings and what each sees. @i18n-keys */
 const LENS_HEADING = { inside: "Inside", outside: "Outside", world: "World" } as const;
 /** @i18n-keys */
@@ -49,107 +54,42 @@ const LENS_HELP = {
   world: "What happens in the threat landscape that may concern you",
 } as const;
 
-/**
- * The icon button that opens the Sources tab of the Signals page (#1263), in
- * the Discovery stage's trigger paths card header. The command center's key row
- * has none: its signals counter opens the page, Sources is a tab of it (Sam, 22 Nov 2026).
- */
-export function SignalSourcesButton({ className }: { className?: string }) {
-  const { t_i18n } = useFormatter();
-  return (
-    <Tip content={t_i18n("Signal sources")}>
-      <RouterLink
-        to={SIGNAL_SOURCES_PATH}
-        aria-label={t_i18n("Signal sources")}
-        data-testid="ctem-signal-sources-open"
-        className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-default-secondary hover:bg-elevation-hover hover:text-default-primary", BUTTON_ROLE_FOCUS_RING, className)}
-      >
-        <Icon name="satellite-dish" size={16} aria-hidden />
-      </RouterLink>
-    </Tip>
-  );
-}
-
-function SourceLine({ source }: { source: CtemSignalPathSource }) {
+/** One source: logo and name, the kind as secondary text, the event that fires it in a tooltip (never a third line). */
+function SourceItem({ source }: { source: CtemSignalPathSource }) {
   const { t_i18n } = useFormatter();
   // The loop trace's naming (signalProviderName), read here without importing that module: it imports this one.
   const name = CTEM_PRODUCT_INFO[source.provider]?.name ?? INTEGRATION_PROVIDER_NAMES[source.provider] ?? source.provider;
   return (
-    <li className="flex min-w-0 items-start gap-2 content-caption" data-testid="ctem-signal-source" data-provider={source.provider} data-kind={source.kind} data-bound={source.bound}>
-      <ProviderLogo provider={source.provider} className="mt-0.5 size-4 shrink-0" decorative />
-      <span className="min-w-0">
-        <span className={cn("font-medium", !source.bound && "text-default-secondary")}>{name}</span>
-        <span className="text-default-secondary"> · {t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
-        <span className="block text-default-secondary">{t_i18n(source.event)}</span>
+    <Tip content={source.event ? t_i18n(source.event) : null}>
+      <span
+        tabIndex={0}
+        className="inline-flex min-w-0 items-center gap-1.5 rounded-sm"
+        data-testid="ctem-signal-source"
+        data-provider={source.provider}
+        data-kind={source.kind}
+        data-bound={source.bound}
+        data-off={source.off ? true : undefined}
+      >
+        <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
+        <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
+        <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
       </span>
-    </li>
+    </Tip>
   );
 }
 
-function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals: (pathId: string) => void }) {
-  const { t_i18n, intl } = useFormatter();
-  const navigate = useNavigate();
-  const { count, exactCount } = useNumberFormat();
-  const status = pathStatus(path);
-  const target = status === "connected" ? null : connectTarget(path);
+function SourceList({ path, className }: { path: CtemSignalPath; className?: string }) {
+  const { t_i18n } = useFormatter();
   const sources = path.sources ?? [];
-  const n30 = path.count_30d ?? 0;
-  const byState = (["new", "to_validate", "watchlist", "case_opened"] as const)
-    .map((s) => `${t_i18n(SIGNAL_STATE_LABEL[s])} ${exactCount(path.counts?.[s] ?? 0)}`)
-    .join(", ");
+  if (sources.length === 0) {
+    return <span className={className ? `${className} text-default-secondary` : "text-default-secondary"}>{t_i18n("None")}</span>;
+  }
   return (
-    <li
-      className="flex min-w-0 flex-col gap-2 py-3"
-      data-testid="ctem-signal-sources-path"
-      data-path={path.id}
-      data-status={status}
-    >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-elevation-hover text-accent" aria-hidden>
-          <Icon name={(PATH_ICON[path.id] ?? "activity") as IconName} size={16} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h4 className="min-w-0 content-compact font-medium">{t_i18n(path.label)}</h4>
-            <Chip label={t_i18n(PATH_STATUS_LABEL[status])} severity={PATH_STATUS_TONE[status]} className="shrink-0" data-testid="ctem-signal-sources-status" />
-          </div>
-          {path.description && <p className="content-caption text-default-secondary">{t_i18n(path.description)}</p>}
-        </div>
-      </div>
-      {sources.length > 0 ? (
-        <ul className="flex flex-col gap-1.5 pl-11">
-          {sources.map((s) => (
-            <SourceLine key={`${s.provider}:${s.kind}`} source={s} />
-          ))}
-        </ul>
-      ) : (
-        <p className="pl-11 content-caption text-default-secondary">
-          {t_i18n("No automatic source yet: agents and the API can record it.")}
-        </p>
-      )}
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pl-11 content-caption text-default-secondary">
-        <Tip content={byState}>
-          <span className="tabular-nums" tabIndex={0} data-testid="ctem-signal-sources-30d">
-            {t_i18n("{count, plural, one {# signal} other {# signals}} in 30 days", { count: n30 })}
-          </span>
-        </Tip>
-        {path.last_signal_at && (
-          <span>{t_i18n("Last signal {date}", { date: formatShortDateTimeIntl(intl, path.last_signal_at) })}</span>
-        )}
-        <span className="ml-auto flex shrink-0 items-center gap-1">
-          {target && (
-            <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-signal-sources-connect">
-              {t_i18n("Connect")}
-            </Button>
-          )}
-          {(path.total ?? 0) > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => onOpenSignals(path.id)} title={exactCount(path.total)} data-testid="ctem-signal-sources-path-open">
-              {t_i18n("Open signals")} <span className="tabular-nums">{count(path.total)}</span>
-            </Button>
-          )}
-        </span>
-      </div>
-    </li>
+    <span className={className ? `${className} flex min-w-0 flex-wrap gap-x-3` : "flex min-w-0 flex-wrap gap-x-3"}>
+      {sources.map((s) => (
+        <SourceItem key={`${s.provider}:${s.kind}`} source={s} />
+      ))}
+    </span>
   );
 }
 
@@ -159,49 +99,178 @@ function PathCard({ path, onOpenSignals }: { path: CtemSignalPath; onOpenSignals
  * opens the Signals tab filtered on it.
  */
 export function SignalSourcesPanel() {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
-  const { data, isLoading, isError } = useCtemSignalPaths();
+  const { count, exactCount } = useNumberFormat();
+  const { data, isLoading, isError, refetch } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
-  // A path card opens that path's signals (davidloiret review on #1194): its count is the path's total.
-  const openSignals = (pathId: string) => navigate(signalsHref({ path: pathId }));
-  if (isLoading) return <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>;
-  if (isError) return <p className="content-compact text-default-secondary">{t_i18n("The signal sources could not be read. Try again in a moment.")}</p>;
-  return (
-    <div className="flex flex-col gap-5" data-testid="ctem-signal-sources">
-      {LENSES.map((lens) => {
-        const inLens = paths.filter((p) => p.default_lens === lens);
-        if (inLens.length === 0) return null;
-        return (
-          <section key={lens} className="flex min-w-0 flex-col gap-2" data-testid={`ctem-signal-sources-lens-${lens}`}>
-            <div className="flex items-center gap-2">
-              <Icon name={LENS_ICON[lens] as IconName} size={16} className="text-default-secondary" aria-hidden />
-              <h2 className="content-compact font-medium">{t_i18n(LENS_HEADING[lens])}</h2>
-              <span className="content-caption text-default-secondary">{t_i18n(LENS_HELP[lens])}</span>
-            </div>
-            <ul className="divide-y divide-[var(--border-elevation-subtle)]">
-              {inLens.map((p) => (
-                <PathCard key={p.id} path={p} onOpenSignals={openSignals} />
-              ))}
-            </ul>
-          </section>
-        );
-      })}
-    </div>
-  );
-}
+  const lastSignal = (path: CtemSignalPath) =>
+    path.last_signal_at ? formatShortDateTimeIntl(intl, path.last_signal_at) : t_i18n("None");
 
-/** The link an empty signal list shows: the Sources tab. */
-export function SignalSourcesLink() {
-  const { t_i18n } = useFormatter();
+  const columns: DataTableColumn<CtemSignalPath>[] = [
+    {
+      key: "path",
+      header: "Trigger path",
+      sortValue: (path) => t_i18n(path.label),
+      cell: (path) => (
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-elevation-hover text-accent" aria-hidden>
+            <Icon name={(PATH_ICON[path.id] ?? "activity") as IconName} size={16} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-medium" data-testid="ctem-signal-sources-path-name">{t_i18n(path.label)}</span>
+            {/* Line 2: the description; below 4xl the sources and last signal step in here instead. */}
+            {path.description && (
+              <span className="hidden truncate content-caption text-default-secondary @4xl:block">{t_i18n(path.description)}</span>
+            )}
+            <span className="flex min-w-0 items-center gap-3 truncate content-caption text-default-secondary @4xl:hidden">
+              <SourceList path={path} />
+              {path.last_signal_at && <span className="shrink-0">{lastSignal(path)}</span>}
+            </span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "sources",
+      header: "Sources",
+      hideBelow: "4xl",
+      hideable: true,
+      interactive: true,
+      cell: (path) => <SourceList path={path} />,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: 168,
+      sortValue: (path) => STATUS_ORDER.indexOf(pathStatus(path)),
+      cell: (path) => {
+        const status = pathStatus(path);
+        return <Chip label={t_i18n(PATH_STATUS_LABEL[status])} severity={PATH_STATUS_TONE[status]} data-testid="ctem-signal-sources-status" />;
+      },
+    },
+    {
+      key: "count_30d",
+      header: "Signals (30 days)",
+      align: "right",
+      width: 136,
+      interactive: true,
+      hideable: true,
+      sortValue: (path) => path.count_30d ?? 0,
+      cell: (path) => {
+        const byState = (["new", "to_validate", "watchlist", "case_opened"] as const)
+          .map((s) => `${t_i18n(SIGNAL_STATE_LABEL[s])} ${exactCount(path.counts?.[s] ?? 0)}`)
+          .join(", ");
+        const n30 = path.count_30d ?? 0;
+        return (
+          <Tip content={byState}>
+            <span className="tabular-nums" tabIndex={0} title={exactCount(n30)} data-testid="ctem-signal-sources-30d">
+              {count(n30)}
+            </span>
+          </Tip>
+        );
+      },
+    },
+    {
+      key: "last_signal",
+      header: "Last signal",
+      hideBelow: "4xl",
+      hideable: true,
+      width: 152,
+      sortValue: (path) => path.last_signal_at ?? "",
+      cell: (path) => <span className={path.last_signal_at ? undefined : "text-default-secondary"}>{lastSignal(path)}</span>,
+    },
+    {
+      key: "action",
+      header: "Actions",
+      align: "right",
+      width: 160,
+      interactive: true,
+      cell: (path) => {
+        const target = pathStatus(path) === "connected" ? null : connectTarget(path);
+        return (
+          <span className="inline-flex items-center justify-end gap-1">
+            {target && (
+              <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-signal-sources-connect">
+                {target.off ? t_i18n("Turn on") : t_i18n("Connect")}
+              </Button>
+            )}
+            {!target && (path.total ?? 0) > 0 && (
+              // A path row opens that path's signals (davidloiret review on #1194): its count is the path's total.
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate(signalsHref({ path: path.id }))}
+                title={exactCount(path.total)}
+                data-testid="ctem-signal-sources-path-open"
+              >
+                {t_i18n("Open signals")} <span className="tabular-nums">{count(path.total)}</span>
+              </Button>
+            )}
+          </span>
+        );
+      },
+    },
+  ];
+
   return (
-    <RouterLink
-      to={SIGNAL_SOURCES_PATH}
-      data-testid="ctem-signal-sources-link"
-      className={cn("inline-flex items-center gap-1.5 rounded-sm content-compact text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
-    >
-      <Icon name="satellite-dish" size={16} aria-hidden />
-      {t_i18n("See which signal sources are connected")}
-    </RouterLink>
+    <div data-testid="ctem-signal-sources">
+      <DataTable
+        rows={paths}
+        columns={columns}
+        rowKey={(path) => path.id}
+        rowLines={2}
+        layout="fixed"
+        // Twelve paths: one page at the default size, the pager kept like every records table.
+        defaultPageSize={25}
+        searchFields={(path) => [
+          t_i18n(path.label),
+          path.description ? t_i18n(path.description) : null,
+          ...(path.sources ?? []).map((s) => CTEM_PRODUCT_INFO[s.provider]?.name ?? INTEGRATION_PROVIDER_NAMES[s.provider] ?? s.provider),
+        ]}
+        filters={[
+          {
+            key: "status",
+            label: "Status",
+            values: (path) => [pathStatus(path)],
+            options: STATUS_ORDER.map((s) => ({ value: s, label: t_i18n(PATH_STATUS_LABEL[s]) })),
+            // An ordinal scale: connected first, agents-only last.
+            ordered: true,
+          },
+          {
+            key: "lens",
+            label: "Lens",
+            values: (path) => [path.default_lens],
+            options: LENSES.map((lens) => ({ value: lens, label: t_i18n(LENS_HEADING[lens]) })),
+            // The loop's order: inside, outside, world.
+            ordered: true,
+          },
+        ]}
+        storageKey="ctem-signal-sources"
+        noResultsLabel={t_i18n("No trigger path matches these filters")}
+        groupBy={{
+          value: (path) => path.default_lens,
+          rank: (lens) => {
+            const at = (LENSES as readonly string[]).indexOf(lens);
+            return at < 0 ? LENSES.length : at;
+          },
+          label: (lens) => (
+            <span className="flex min-w-0 items-center gap-2" data-testid={`ctem-signal-sources-lens-${lens}`}>
+              <Icon name={(LENS_ICON[lens as keyof typeof LENS_ICON] ?? "activity") as IconName} size={16} className="shrink-0 text-default-secondary" aria-hidden />
+              <span className="shrink-0">{t_i18n(LENS_HEADING[lens as keyof typeof LENS_HEADING] ?? lens)}</span>
+              {lens in LENS_HELP && (
+                <span className="truncate font-normal text-default-secondary">{t_i18n(LENS_HELP[lens as keyof typeof LENS_HELP])}</span>
+              )}
+            </span>
+          ),
+        }}
+        rowDataAttributes={(path) => ({ "data-path": path.id, "data-status": pathStatus(path) })}
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={() => void refetch()}
+        emptyLabel={t_i18n("No trigger path is known yet.")}
+        rowTestId="ctem-signal-sources-path"
+      />
+    </div>
   );
 }

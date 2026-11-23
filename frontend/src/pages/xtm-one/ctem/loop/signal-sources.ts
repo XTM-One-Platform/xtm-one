@@ -14,26 +14,29 @@ export const SIGNAL_SOURCES_PARAM = "signal-sources";
 /** The status labels. @i18n-keys */
 export const PATH_STATUS_LABEL = {
   connected: "Connected",
+  off: "Off",
   not_connected: "Not connected",
   agents_api: "Agents and API only",
 } as const satisfies Record<CtemSignalPathStatus, string>;
 
-/** Connected reads healthy, a source left unbound reads medium, agents-only is neutral: never green. */
+/** Connected reads healthy, a source left unbound reads medium, a pass turned off and agents-only are neutral: never green. */
 export const PATH_STATUS_TONE = {
   connected: "low",
+  off: "neutral",
   not_connected: "medium",
   agents_api: "neutral",
 } as const satisfies Record<CtemSignalPathStatus, "low" | "medium" | "neutral">;
 
 /**
  * A path's status: the API's when present, else derived from its sources the
- * same way (no source: agents and the API only; one bound: connected).
+ * same way (no source: agents and the API only; one bound: connected; one off: off).
  */
 export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): CtemSignalPathStatus {
   if (path.status) return path.status;
   const sources = path.sources ?? [];
   if (sources.length === 0) return "agents_api";
-  return sources.some((s) => s.bound) ? "connected" : "not_connected";
+  if (sources.some((s) => s.bound)) return "connected";
+  return sources.some((s) => s.off) ? "off" : "not_connected";
 }
 
 /** "N of M trigger paths connected": agents-only paths count in M, never in N. */
@@ -41,8 +44,8 @@ export function connectedCount(paths: readonly Pick<CtemSignalPath, "status" | "
   return paths.filter((p) => pathStatus(p) === "connected").length;
 }
 
-/** The providers whose scheduled pass is switched on in Settings > Organization (outside lens). */
-const PROFILE_PASS_FIELD: Record<string, string> = { shodan: "attack_surface", gti: "attack_surface" };
+/** The providers whose scheduled pass is switched on in Settings > Organization (outside lens, evidence health). */
+const PROFILE_PASS_FIELD: Record<string, string> = { shodan: "attack_surface", gti: "attack_surface", opencrq: "evidence_health" };
 
 /**
  * Where Connect goes for one source (split-sync rule): a pass set in the
@@ -55,9 +58,14 @@ export function connectHref(source: Pick<CtemSignalPathSource, "provider" | "kin
   return `/integrations/new?provider=${encodeURIComponent(source.provider)}`;
 }
 
-/** The first source a not-connected path should connect: a listener first, then a pass, then the playbook. */
+/**
+ * The first source a path should connect: a pass turned off first (Turn on is one click),
+ * then a listener, then a pass, then the playbook.
+ */
 export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignalPathSource | null {
   const unbound = (path.sources ?? []).filter((s) => !s.bound);
+  const off = unbound.find((s) => s.off);
+  if (off) return off;
   const order = ["listener", "pass", "pir_playbook"];
   return [...unbound].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0] ?? null;
 }

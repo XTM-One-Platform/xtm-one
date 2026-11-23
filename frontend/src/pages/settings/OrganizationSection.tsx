@@ -109,6 +109,7 @@ import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
+import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
 import {
   PROFILE_CARD_PARAM,
@@ -2145,6 +2146,8 @@ export function OrganizationSection() {
             {exposureCards(["assets_exposure", "asset_groups", "prioritization_policy"])}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
             <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />
+            {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}
+            <OrganizationEvidenceHealthCard id={`${fieldId}-evidence_health`} fold={cardFold("evidence_health", null)} />
           </div>
           )}
 

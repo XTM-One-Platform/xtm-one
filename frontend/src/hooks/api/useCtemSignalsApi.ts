@@ -124,8 +124,11 @@ export function useCtemCaseSignals(caseId: string | undefined) {
   });
 }
 
-/** Connected (a bound source), not connected (a source exists, none bound) or agents and API only (no source). */
-export type CtemSignalPathStatus = "connected" | "not_connected" | "agents_api";
+/**
+ * Connected (a bound source), off (a pass whose provider is connected but which does not run, #1344),
+ * not connected (a source exists, no integration of it is connected) or agents and API only (no source).
+ */
+export type CtemSignalPathStatus = "connected" | "off" | "not_connected" | "agents_api";
 
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
@@ -133,8 +136,10 @@ export interface CtemSignalPathSource {
   kind: "listener" | "pass" | "pir_playbook";
   /** The English line naming the event that fires the path (an i18n key). */
   event: string;
-  /** Bound for the caller: a connected integration they can see (and, for a pass, its switch on). */
+  /** Bound for the caller: a connected integration they can see (and, for a pass, the pass runs on it). */
   bound: boolean;
+  /** A pass whose provider is connected but which does not run: turned off, or no integration it can pick (#1344). */
+  off?: boolean;
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */
