@@ -299,6 +299,23 @@ assets. Nothing on the page asks the user to type a version in the tech stack.
   the list header shows "Updated 4 min ago" (exact time on hover) and, after an
   outage, a muted line "OpenAEV did not answer at 13:40, cases unchanged." with
   a link to the integrations.
+- A recompute never builds a case (#1529). The two ways into a case are a signal
+  the scope gate kept (`ctem_case_loop.open_from_signal`) and a split by a
+  person or an agent (`create_manual_case`, `create_ctem_case`);
+  `tests/test_ctem_case_creation_paths.py` holds it. Each source issue whose fix
+  no case holds is recorded as one signal (`services/ctem_source_signals.py`,
+  intake `listener`, recorder `system`), idempotent on source, external id and
+  fix key: an OpenCTI vulnerability on inventory software is `new_vulnerability`,
+  an OpenAEV CVE finding on an asset is `proven_exploitable`. The signal carries
+  the fix in `evidence.case_fix`, so `open_from_signal` opens or joins the case
+  of that remediation key (one fix, one case, as before). The issue is a member
+  of that case and so is its signal. An issue joining an existing case records
+  its signal too, joined to the case (`join_case`). A signal the gate keeps out
+  (watchlist, to validate, discarded) stays a signal on the Signals page and
+  opens no case. The recompute keeps member upkeep only: add, resolve and reopen
+  members, the inventory-fixed and not-affected rules. A source signal is as
+  visible as its issue (`ctem_cases_view.source_signal_members`). A merge moves
+  the merged case's signals to the survivor.
 - `POST /api/v1/ctem-cases/recompute` stays as an INTERNAL route for agents and
   administrators (no screen calls it): any user, one per minute per user
   (`services/ctem_cases_source.py`). Every path reads OpenCTI and OpenAEV with the
@@ -540,30 +557,9 @@ then the existing AI assessment and facts grid unchanged.
   link); its action slot holds only the quiet freshness line of s.4.3, never a
   refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
-- One full list, no state tabs and no "Act on this first" band (#1503):
-  quick filter chips above the table (`QuickFilterChips`), each with its
-  count and in the URL: the scope (`?state=`: Open by default, Waiting for
-  decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
-  Critical and high). A case Waiting for decision says what it waits on, who
-  and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
-- **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
-  (quick filters, search and filters applied) at `/ctem/cases` or as columns
-  at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
-  Columns are the eight statuses in lifecycle order, or the five CTEM phases
-  when grouped by CTEM phase (`phase` on each list row:
-  `ctem_case_audit.current_phase` of the history the viewer is served; a
-  case with no event yet sits in a last "Phase not known yet" column). Cards:
-  title, urgency, owner, due, what a waiting case waits on, the loop line. In
-  the status layout a card is dragged to another column to change its status
-  (`PATCH /ctem-cases/{id}`); New, Analyzing, Remediating and Validating are
-  set by a drop (an unowned case moved to Remediating takes the person
-  dropping it as owner), Waiting for decision, Mitigated watching, Resolved
-  and Accepted risk are refused with their reason (each needs what a drop
-  cannot carry: the case page sets them), and the API's own refusal is shown
-  the same way. The Mobilization stage page's flow strip (7.1) stays a strip.
-- Group by (`?c_group=`, both views in the list): owner, status, CTEM phase,
-  priority, fix family.
+- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
+  exact counts: Needs attention, In progress, Resolved ("All time" in its
+  tooltip, A1), Accepted risk, All.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
@@ -734,10 +730,14 @@ the Settings form carries it whole.
   exploitation reading and the treatment plan, OpenCTI for the analyst
   review, OpenAEV for validation) with its logo and connection state, and a
   "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
-  the source readers from the sources of its visible issues ("Opened from
-  OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
-  findings on your assets").
+  No section repeats who works the case. A case is opened only by a signal
+  or split into its own case by a person or an agent (#1529): "Opened by"
+  lists the signals, and on a case with none says "Split into its own case
+  by a person or an agent" (a `created` event to `manual`) or, for a case a
+  source read built before the readers recorded signals, "Opened by a source
+  read before signals (legacy)". Legacy cases are labelled, not backfilled:
+  their members carry no reference that maps one signal per case for every
+  viewer.
 - Assets and crown jewels (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or

@@ -15,9 +15,10 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Table, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
@@ -39,9 +40,24 @@ NOW = datetime(2026, 11, 21, 18, 0, tzinfo=UTC)
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker]:
-    tables = with_referenced_tables([CtemCase.__table__, CtemCaseIssue.__table__, CtemCaseEvent.__table__])
+    from app.models.ctem_signal import CtemSignal
+
+    models = (CtemCase, CtemCaseIssue, CtemCaseEvent, CtemSignal)
+    tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
     async with scratch_database("ctemticketing", tables=tables) as db:
         yield db.sessions
+
+
+@pytest.fixture(autouse=True)
+def _gate_opens_a_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source read's signal opens its case (#1529): the scope gate decides ``case`` here."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    async def evaluate(db: object, row: Any, **_: object) -> None:
+        row.state = "confirmed"
+        row.decision = {"outcome": "case", "state": "confirmed"}
+
+    monkeypatch.setattr(gate_store, "evaluate", evaluate)
 
 
 def _issue(ext: str, cve: str) -> rules.SourceIssue:
@@ -75,7 +91,7 @@ async def _mobilized_case(session, *, severity: str = "P1", primary: bool = True
     )
     case = (await session.execute(select(CtemCase).where(CtemCase.organization_id == org.id))).scalar_one()
     await store.update_case(
-        session, case, actor=str(user.id), actor_kind="user", state="remediating", owner_user_id=user.id, now=NOW
+        session, case, actor=str(user.id), actor_kind="user", state="in_progress", owner_user_id=user.id, now=NOW
     )
     case.severity = severity
     await session.commit()
@@ -171,7 +187,7 @@ async def test_ticket_done_asks_the_retest_once_and_the_case_stays_open(monkeypa
 
         async with sessions() as session:
             case = await session.get(CtemCase, case_id)
-            assert case.state == "remediating"
+            assert case.state == "in_progress"
             assert (case.tickets[0]["status"], case.tickets[0]["sync"]["external_status"]) == ("done", "Done")
             # The case resolves on its re-test: the next pass leaves the done ticket as it is.
             case.state = "resolved"

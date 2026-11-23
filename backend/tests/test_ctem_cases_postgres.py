@@ -11,16 +11,18 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Table, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_signal import CtemSignal
 from app.models.organization import Organization
 from app.models.user import User
 from app.services import ctem_cases as rules
@@ -35,7 +37,8 @@ KEY = "upgrade:apache/tomcat@9.0.98"
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker]:
-    tables = with_referenced_tables([CtemCase.__table__, CtemCaseIssue.__table__, CtemCaseEvent.__table__])
+    models = (CtemCase, CtemCaseIssue, CtemCaseEvent, CtemSignal)
+    tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
     async with scratch_database("ctemcases", tables=tables) as db:
         yield db.sessions
 
@@ -63,9 +66,22 @@ async def _seed(session) -> tuple[uuid.UUID, uuid.UUID]:
     return org.id, user.id
 
 
+@pytest.fixture(autouse=True)
+def _gate_opens_a_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The scope gate decides ``case`` on every source signal: these tests are about the case store (#1529)."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    async def evaluate(db: Any, row: CtemSignal, **_: Any) -> None:
+        row.state = "confirmed"
+        row.decision = {"outcome": "case", "state": "confirmed"}
+
+    monkeypatch.setattr(gate_store, "evaluate", evaluate)
+
+
 async def _members(session, case: CtemCase) -> dict[str, bool]:
+    """The source issue members of *case*; the signals the issues recorded are members too, left out here."""
     rows = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.case_id == case.id))).scalars()
-    return {f"{r.source}:{r.external_id}": r.open for r in rows}
+    return {f"{r.source}:{r.external_id}": r.open for r in rows if r.source != "signal"}
 
 
 async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_closed():
@@ -79,6 +95,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
             "updated": 0,
             "resolved": 0,
             "reopened": 0,
+            "signals": 1,
             "no_known_fix": 0,
             "not_affected": 0,
         }
@@ -89,7 +106,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
             case,
             actor=str(owner_id),
             actor_kind="user",
-            state="remediating",
+            state="in_progress",
             owner_user_id=owner_id,
             due_at=due,
             now=NOW,
@@ -106,7 +123,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
         await session.commit()
         assert counts["updated"] == 1 and counts["created"] == 0
         await session.refresh(case)
-        assert (case.state, case.owner_user_id, case.due_at) == ("remediating", owner_id, due)
+        assert (case.state, case.owner_user_id, case.due_at) == ("in_progress", owner_id, due)
         assert await _members(session, case) == {"opencti:v1": True, "opencti:v2": True}
 
         counts = await store.apply_recompute(
@@ -134,7 +151,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
         assert await _members(session, case) == {"opencti:v1": False, "opencti:v2": False}
 
 
-async def test_an_expired_acceptance_returns_to_new():
+async def test_an_expired_acceptance_returns_to_needs_attention():
     async with _database() as sessions, sessions() as session:
         org_id, owner_id = await _seed(session)
         await store.apply_recompute(
@@ -158,7 +175,7 @@ async def test_an_expired_acceptance_returns_to_new():
         await session.commit()
         await session.refresh(case)
         assert (case.state, case.accepted_reason, case.owner_user_id) == (
-            "new",
+            "needs_attention",
             "compensating control",
             owner_id,
         )
@@ -191,7 +208,7 @@ async def test_a_manual_split_pins_its_issues_through_recompute():
         assert counts["created"] == 0
         await session.refresh(manual)
         assert await _members(session, source) == {"opencti:v1": True}
-        assert await _members(session, manual) == {"opencti:v2": True} and manual.state == "new"
+        assert await _members(session, manual) == {"opencti:v2": True} and manual.state == "needs_attention"
         with pytest.raises(rules.CaseRuleError):
             await store.create_manual_case(
                 session,
@@ -242,17 +259,24 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
 
         (stored,) = await store.list_cases(session, organization_id=org_id, vertical="cyber")
         case, rows = stored
-        assert case.state == "new"
-        assert {f"{r.source}:{r.external_id}": r.open for r in rows} == {"opencti:v1": True, "opencti:v2": True}
+        assert case.state == "needs_attention"
+        issue_rows = {f"{r.source}:{r.external_id}": r.open for r in rows if r.source != "signal"}
+        assert issue_rows == {"opencti:v1": True, "opencti:v2": True}
         # Nothing of the source in the database: no name, score, asset or count column.
         for table in (CtemCase.__table__, CtemCaseIssue.__table__):
             assert not {"name", "cvss", "epss", "kev", "assets", "issue_count", "priority"} & set(table.c.keys())
 
+        # Each viewer sees the source signals of the issues they see (#1529), the rule of viewer_view.
+        alice = replace(alice, signals=await view_of.source_signal_members(session, set(alice.issues)))
+        bob = replace(bob, signals=await view_of.source_signal_members(session, set(bob.issues)))
+        assert len(alice.signals) == 2 and len(bob.signals) == 1
         case_id, rows, events = await store.get_case(session, case.id, organization_id=org_id)
         for_alice = view_of.hydrate(case_id, rows, events, alice)
         for_bob = view_of.hydrate(case_id, rows, events, bob)
+        assert for_alice is not None and for_bob is not None
         assert for_alice["restricted_count"] == 0 and for_alice["max_cvss"] == 10.0
-        assert for_bob["restricted_count"] == 1 and for_bob["max_cvss"] == 9.8 and for_bob["kev_count"] == 0
+        # CVE-2 and the signal it recorded are both restricted for Bob.
+        assert for_bob["restricted_count"] == 2 and for_bob["max_cvss"] == 9.8 and for_bob["kev_count"] == 0
         assert {"restricted": True} in for_bob["issues"]
         assert "CVE-2" not in str(for_bob) and "secret-host" not in str(for_bob) and "opencti:v2" not in str(for_bob)
         assert view_of.hydrate(case_id, rows, events, carol) is None
@@ -298,7 +322,7 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
             target,
             actor=str(owner_id),
             actor_kind="user",
-            state="remediating",
+            state="in_progress",
             owner_user_id=owner_id,
             now=NOW,
         )
@@ -315,7 +339,7 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
         )
         await session.commit()
         await session.refresh(target)
-        assert (target.state, target.owner_user_id) == ("remediating", owner_id)
+        assert (target.state, target.owner_user_id) == ("in_progress", owner_id)
         assert set(target.keys) == {KEY, *merged_keys}
         assert await _members(session, target) == {"opencti:v1": True, "opencti:o1": True}
         assert (await session.get(CtemCase, merged_id)) is None
@@ -375,6 +399,13 @@ async def test_a_reader_case_raises_its_events_once_and_takes_the_severity_of_it
         await session.commit()
         assert again.items == []
         assert await loop.announce_unannounced(session, events=again, now=NOW) == 0
+        # Opened from its signal (#1529): the ``created`` event names the signal, no backfill announce.
+        created = (
+            await session.execute(
+                select(CtemCaseEvent).where(CtemCaseEvent.case_id == case.id, CtemCaseEvent.kind == "created")
+            )
+        ).scalar_one()
+        assert (created.reason or "").startswith("signal ")
 
         closing = loop.PendingEvents()
         await store.apply_recompute(
@@ -405,7 +436,7 @@ async def test_a_reader_case_raises_its_events_once_and_takes_the_severity_of_it
                 select(CtemCaseEvent).where(CtemCaseEvent.case_id == case.id, CtemCaseEvent.kind == store.ANNOUNCED)
             )
         ).scalars()
-        assert len(list(announced)) == 1
+        assert list(announced) == []
 
 
 async def test_a_lower_priority_read_never_relaxes_the_severity() -> None:
@@ -436,18 +467,27 @@ async def test_the_backfill_announces_every_open_case_once() -> None:
 
     async with _database() as sessions, sessions() as session:
         org_id, _ = await _seed(session)
-        issues = [_issue("v1", "CVE-1")]
-        other = rules.SourceIssue(
-            source="opencti", external_id="n1", name="CVE-9", product="nginx", vendor="F5", fixed_version="1.27.3"
-        )
-        # Written without events: what every case of a build before #1206 looks like.
-        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=[*issues, other], now=NOW)
+        # Written by a source read without events: what every case of a build before #1206 looks like.
+        for title, label, state in (
+            ("Upgrade Tomcat", "Apache Tomcat", "needs_attention"),
+            ("Upgrade nginx", "F5 nginx", "resolved"),
+        ):
+            session.add(
+                CtemCase(
+                    organization_id=org_id,
+                    vertical="cyber",
+                    title=title,
+                    remediation_kind="upgrade",
+                    product_label=label,
+                    keys=[f"upgrade:-/{label.lower()}@latest"],
+                    pinned_issues=[],
+                    state=state,
+                    state_since=NOW,
+                )
+            )
         await session.commit()
         cases = (await session.execute(select(CtemCase))).scalars().all()
-        assert len(cases) == 2
-        resolved = next(c for c in cases if c.product_label and "nginx" in c.product_label.lower())
-        resolved.state = "resolved"
-        await session.commit()
+        resolved = next(c for c in cases if c.state == "resolved")
 
         first = loop.PendingEvents()
         assert await loop.announce_unannounced(session, events=first, now=NOW) == 1
@@ -459,6 +499,58 @@ async def test_the_backfill_announces_every_open_case_once() -> None:
         assert await loop.announce_unannounced(session, events=second, now=NOW) == 0
         assert second.items == []
         assert await loop.announce_unannounced(session, events=None, now=NOW) == 0
+
+
+async def test_a_source_read_records_one_signal_per_issue_and_opens_the_case_from_it() -> None:
+    """#1529: the case of a source read opens from its signal; a second read adds no signal and no case."""
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        issues = [_issue("v1", "CVE-1"), _issue("v2", "CVE-2")]
+        first = await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=issues, now=NOW)
+        await session.commit()
+        again = await store.apply_recompute(
+            session, organization_id=org_id, vertical="cyber", issues=issues, now=NOW + timedelta(hours=1)
+        )
+        await session.commit()
+        assert (first["created"], first["signals"]) == (1, 2)
+        assert (again["created"], again["signals"]) == (0, 0)
+        case = (await session.execute(select(CtemCase))).scalar_one()
+        assert case.trigger_path == "new_vulnerability" and case.keys == [KEY]
+        signals = (await session.execute(select(CtemSignal))).scalars().all()
+        assert {s.source_external_id for s in signals} == {"v1", "v2"}
+        assert all(s.case_id == case.id and s.state == "case_opened" for s in signals)
+        assert {s.seen_count for s in signals} == {2}
+        rows = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.case_id == case.id))).scalars().all()
+        assert {f"{r.source}:{r.external_id}" for r in rows} == {
+            "opencti:v1",
+            "opencti:v2",
+            *(f"signal:{s.id}" for s in signals),
+        }
+        events = (await session.execute(select(CtemCaseEvent))).scalars().all()
+        created = [e for e in events if e.kind == "created"]
+        assert len(created) == 1 and (created[0].reason or "").startswith("signal ")
+        assert not [e for e in events if e.reason == "source read"]
+
+
+async def test_a_source_signal_the_gate_keeps_out_opens_no_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1529: a watchlisted source signal stays a signal; no case, no member."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    async def watch(db: Any, row: CtemSignal, **_: Any) -> None:
+        row.state = "watchlist"
+        row.decision = {"outcome": "watchlist", "state": "watchlist"}
+
+    monkeypatch.setattr(gate_store, "evaluate", watch)
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        counts = await store.apply_recompute(
+            session, organization_id=org_id, vertical="cyber", issues=[_issue("v1", "CVE-1")], now=NOW
+        )
+        await session.commit()
+        assert (counts["created"], counts["signals"]) == (0, 1)
+        assert (await session.execute(select(CtemCase))).scalars().all() == []
+        (signal,) = (await session.execute(select(CtemSignal))).scalars().all()
+        assert (signal.state, signal.case_id, signal.trigger_path) == ("watchlist", None, "new_vulnerability")
 
 
 async def test_a_manual_split_announces_the_new_case() -> None:

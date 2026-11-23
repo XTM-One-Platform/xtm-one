@@ -38,7 +38,6 @@ from sqlalchemy import select
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.models.user import User
-from app.services import ctem_case_audit as audit
 from app.services import ctem_cases as rules
 
 logger = logging.getLogger(__name__)
@@ -194,7 +193,33 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
     are found by id. The signal members are read fresh on every call.
     """
     view = await _product_view(db, user_id, vertical, fresh=fresh)
-    return replace(view, signals=await signal_members(db, user_id))
+    seen = set(view.issues) | set(view.unavailable)
+    return replace(view, signals=await signal_members(db, user_id) | await source_signal_members(db, seen))
+
+
+async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
+    """The ``signal:<id>`` members a source reader recorded for issues this viewer sees (#1529).
+
+    A signal of an OpenCTI or OpenAEV issue is recorded by the system; it is
+    as visible as its issue (``evidence.source_issue``), never more.
+    """
+    if not seen:
+        return set()
+    from app.services.ctem_source_signals import SOURCE_PATHS
+
+    query = select(CtemSignal.id, CtemSignal.evidence).where(
+        CtemSignal.case_id.is_not(None), CtemSignal.source_provider.in_(tuple(SOURCE_PATHS))
+    )
+    try:
+        rows = (await db.execute(query)).all()
+    except Exception:
+        logger.info("CTEM cases: source signal members unreadable", exc_info=True)
+        return set()
+    return {
+        f"{SIGNAL_SOURCE}:{signal_id}"
+        for signal_id, evidence in rows
+        if isinstance(evidence, dict) and evidence.get("source_issue") in seen
+    }
 
 
 async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
@@ -383,16 +408,6 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
         "reason": None if hidden else row.reason,
         "evidence": None if hidden else row.evidence,
     }
-
-
-def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
-    """Where one case stands, from the history this viewer is served (#1503).
-
-    ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
-    """
-    served = [_event(row, view) for row in events]
-    return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:

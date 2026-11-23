@@ -143,7 +143,13 @@ async def apply_recompute(
 
     *issues* are the open issues that user sees, *closed* the member ids their
     read confirmed closed. Answers the counts written: created, updated,
-    resolved, reopened, no_known_fix (counts of this user's own view only).
+    resolved, reopened, signals, no_known_fix (counts of this user's own view only).
+
+    The recompute never builds a case (#1529): an issue whose fix no case
+    holds is recorded as a signal (``ctem_source_signals``) and its case opens
+    through the scope gate and ``ctem_case_loop.open_from_signal`` only; an
+    issue joining an existing case records its signal too, joined to that case.
+    ``created`` counts the cases those signals opened in this pass.
 
     *events* collects the case events (``ctem_case.opened`` on a new case,
     ``reopened`` and ``resolved`` on a state the read moved) for the caller to
@@ -179,35 +185,38 @@ async def apply_recompute(
         )
         for c in cases
     ]
-    counts = {"created": 0, "updated": 0, "resolved": 0, "reopened": 0}
+    counts = {"created": 0, "updated": 0, "resolved": 0, "reopened": 0, "signals": 0}
     seen = {i.member_id: i for i in issues if not i.not_affected}
+    opened: set[uuid.UUID] = set()
+    joined: dict[uuid.UUID, set[str]] = {}
     for plan in rules.plan_recompute(snapshots, issues, closed):
         if plan.case_id is None:
+            # A fix no case holds yet: each issue is a signal; the gate decides whether a case opens (#1529).
             remediation = plan.remediation
             if remediation is None:  # a new-case plan always carries its remediation
                 continue
-            case = CtemCase(
-                id=uuid.uuid4(),
-                organization_id=organization_id,
-                vertical=vertical,
-                title=remediation.title,
-                remediation_kind=remediation.kind,
-                product_label=remediation.product_label,
-                fixed_version=remediation.fixed_version,
-                keys=[remediation.key],
-                pinned_issues=[],
-                state="new",
-                state_since=now,
-            )
-            db.add(case)
-            await db.flush()
             for member_id in plan.add:
-                source, external_id = _split_member(member_id)
-                db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
-            db.add(_event(case.id, actor, "created", to_value=remediation.key, at=now))
-            _rank(case, [seen[m] for m in plan.add if m in seen], now)
-            announce(db, case, events, now, reason="source read")
-            counts["created"] += 1
+                issue = seen.get(member_id)
+                if issue is None:
+                    continue
+                signal, created = await _source_signal(db, organization_id, issue, remediation, now)
+                if signal is None:
+                    continue
+                counts["signals"] += int(created)
+                case = await _case_of_signal(db, signal, vertical=vertical, events=events, now=now)
+                if case is None:
+                    continue
+                if case.id not in by_id and case.id not in opened:
+                    opened.add(case.id)
+                    counts["created"] += 1
+                # The case takes the severity of the most urgent issue this read sees; never relaxes.
+                _rank(case, [issue], now)
+                done = joined.setdefault(case.id, {f"{r.source}:{r.external_id}" for r in members.get(case.id, [])})
+                if member_id not in done:
+                    done.add(member_id)
+                    source, external_id = _split_member(member_id)
+                    db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
+                    db.add(_event(case.id, actor, "issue_added", issue=member_id, at=now))
             continue
         case = by_id[plan.case_id]
         rows = {f"{r.source}:{r.external_id}": r for r in members[case.id]}
@@ -223,6 +232,18 @@ async def apply_recompute(
             source, external_id = _split_member(member_id)
             db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
             db.add(_event(case.id, actor, "issue_added", issue=member_id, at=now))
+        # Every issue of the case this read sees is a signal too, joined to the case that holds its fix
+        # (#1529); a re-read moves the signal's last sighting, never adds one.
+        for member_id in sorted({*plan.add, *plan.reopen, *(m for m, r in rows.items() if r.open)}):
+            fix = rules.remediation_of(seen[member_id]) if member_id in seen else None
+            if fix is None:
+                continue
+            signal, created = await _source_signal(db, organization_id, seen[member_id], fix, now)
+            counts["signals"] += int(created)
+            if signal is not None:
+                from app.services import ctem_case_loop as loop
+
+                loop.join_case(db, signal, case, events=events, now=now)
         for member_id in plan.reopen:
             rows[member_id].open = True
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
@@ -251,22 +272,73 @@ async def apply_recompute(
             case.state = plan.new_state
             case.state_since = now
             _state_event(case, events, now)
-        # A signal case keeps the severity of its decision record (ctem_case_loop.open_from_signal).
-        if not any(r.source == "signal" for r in members[case.id]):
-            still_open = [
-                seen[m]
-                for m, row in rows.items()
-                if m in seen and (row.open or m in plan.reopen) and m not in plan.resolve
-            ]
-            _rank(case, [*still_open, *(seen[m] for m in plan.add if m in seen)], now)
+        # The source issues this read sees escalate the case, never relax it; a case of signals alone
+        # keeps the severity of its decision record (ctem_case_loop.open_from_signal).
+        still_open = [
+            seen[m] for m, row in rows.items() if m in seen and (row.open or m in plan.reopen) and m not in plan.resolve
+        ]
+        _rank(case, [*still_open, *(seen[m] for m in plan.add if m in seen)], now)
     grouping = rules.group_issues(issues)
     counts["no_known_fix"] = len(grouping.no_known_fix)
     counts["not_affected"] = len(grouping.not_affected)
     return counts
 
 
+async def _source_signal(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    issue: rules.SourceIssue,
+    fix: rules.Remediation,
+    now: datetime,
+) -> tuple[Any, bool]:
+    """Record the signal of one source issue keyed on *fix*, gated once when new; ``(row | None, created)``.
+
+    Idempotent on the source, the external id and the fix key
+    (``ctem_source_signals.signal_of``): a re-read moves ``last_seen_at``. A
+    gate failure leaves the signal ``new`` for the on-demand pass.
+    """
+    import logging
+
+    from app.services import ctem_scope_gate_store as gate_store
+    from app.services import ctem_signals, ctem_source_signals
+
+    inp = ctem_source_signals.signal_of(issue, fix)
+    if inp is None:
+        return None, False
+    async with db.begin_nested():
+        row, created = await ctem_signals.record_signal(
+            db,
+            organization_id=organization_id,
+            signal=inp,
+            recorded_via="listener",
+            recorded_by=rules.SYSTEM_ACTOR,
+            now=now,
+        )
+    if created:
+        try:
+            async with db.begin_nested():
+                await gate_store.evaluate(db, row, now=now)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "CTEM scope gate not run on source signal %s; it stays new", row.id, exc_info=True
+            )
+    return row, created
+
+
+async def _case_of_signal(
+    db: AsyncSession, signal: Any, *, vertical: str, events: PendingEvents | None, now: datetime
+) -> CtemCase | None:
+    """The case a source signal opened or joined: ``open_from_signal`` is the only way in (#1529)."""
+    from app.services import ctem_case_loop as loop
+
+    if signal.case_id is not None:
+        return await db.get(CtemCase, signal.case_id)
+    async with db.begin_nested():
+        return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=now)
+
+
 async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -> int:
-    """Return every case whose accepted risk expired to ``new``; answers how many."""
+    """Return every case whose accepted risk expired to needs attention; answers how many."""
     now = now or datetime.now(UTC)
     rows = (
         await db.execute(select(CtemCase).where(CtemCase.state == "accepted_risk", CtemCase.accepted_until <= now))
@@ -281,12 +353,12 @@ async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -
                 rules.SYSTEM_ACTOR,
                 "state",
                 from_value="accepted_risk",
-                to_value="new",
+                to_value="needs_attention",
                 reason="accepted risk expired",
                 at=now,
             )
         )
-        case.state = "new"
+        case.state = "needs_attention"
         case.state_since = now
         expired += 1
     return expired
@@ -431,7 +503,7 @@ async def create_manual_case(
         remediation_kind="manual",
         keys=[],
         pinned_issues=wanted,
-        state="new",
+        state="needs_attention",
         state_since=now,
     )
     db.add(case)
@@ -503,6 +575,10 @@ async def merge_cases(
             await db.delete(row)
         # The merged case's history moves to the survivor: nothing of it is lost.
         await db.execute(update(CtemCaseEvent).where(CtemCaseEvent.case_id == source_id).values(case_id=target_id))
+        # So do the signals that opened or joined it (#1529): a signal never outlives its case.
+        from app.models.ctem_signal import CtemSignal
+
+        await db.execute(update(CtemSignal).where(CtemSignal.case_id == source_id).values(case_id=target_id))
         db.add(
             _event(
                 target_id,
