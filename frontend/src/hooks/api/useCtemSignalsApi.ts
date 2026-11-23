@@ -140,6 +140,12 @@ export interface CtemSignalPathSource {
   bound: boolean;
   /** A pass whose provider is connected but which does not run: turned off, or no integration it can pick (#1344). */
   off?: boolean;
+  /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
+  excluded?: boolean;
+  /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */
+  available?: boolean;
+  /** The other trigger paths this source feeds (a pass is organization-wide: one switch feeds them all). */
+  also_feeds?: string[];
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */

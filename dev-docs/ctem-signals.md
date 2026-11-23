@@ -164,6 +164,33 @@ on one line, cut with an ellipsis, the whole list in a tooltip. An empty signal 
 shows the table's standard empty statement alone; the summary strip carries
 the connected count.
 
+**Managing a path's sources (#1445).** A row of the Sources tab opens the
+path's side panel (`SignalPathSourcesSheet`): every source of the path,
+connected or not, its state (feeds this path, not used on this path, off, not
+set up, not connected on this platform) and the control that exists for it.
+A scheduled pass of the profile shows its organization-wide switch (the same
+`enabled` its card writes, so no second store), the integrations it runs on,
+a pointer to its card when no integration is chosen or no owned domain or
+range is set, and the other paths it also feeds (`also_feeds`). A live
+listener has no switch in the model: it runs while its integration is
+connected, and the panel says so. The PIR playbook shows its state and points
+to the PIR field. A provider with no integration here gets Connect.
+
+Every connected source has "Use on this path": the per path exclusion
+`signal_sources.excluded` of the organization profile, `{path: ["provider:kind"]}`
+(`SignalSourcesSettings`, validated against `PATH_SOURCES`). An excluded source
+is not bound on that path (`bound` false, `excluded` true, `available` true:
+its provider still reads connected), so the path status and the connected count
+follow, and it keeps feeding its other paths. The recording points read the
+exclusions before they record (`ctem_signal_sources.excluded_sources`,
+`is_excluded`): the listener and PIR playbook delivery
+(`ctem_signal_listeners.note_event`), the OpenCTI third party listener
+(`note_tracked_organizations`), the evidence health pass, and the attack
+surface pass, which skips a finding only excluded providers saw
+(`ctem_attack_surface._kept_for_path`). Every write is a profile save, so the
+controls are an administrator's; a reader sees the same states, controls
+disabled.
+
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 
 One row per `(organization_id, recorded_by, dedupe_key)`.
