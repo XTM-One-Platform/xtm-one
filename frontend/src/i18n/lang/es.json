@@ -21220,5 +21220,6 @@
   "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisiones de los miembros de esta flota que esperan a una persona: ejecuciones en pausa y elementos de trabajo. Abrir esta pestaña no inicia ninguna ejecución ni consume cuota.",
   "A source read before signals (legacy)": "Una lectura de fuente anterior a las señales (heredado)",
   "A signal you cannot see": "Una señal que no puede ver",
-  "Split into its own case by a person or an agent": "Separado en su propio caso por una persona o un agente"
+  "Split into its own case by a person or an agent": "Separado en su propio caso por una persona o un agente",
+  "Subcategories of {category}": "Subcategorías de {category}"
 }

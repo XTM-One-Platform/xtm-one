@@ -21220,5 +21220,6 @@
   "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.",
   "A source read before signals (legacy)": "A source read before signals (legacy)",
   "A signal you cannot see": "A signal you cannot see",
-  "Split into its own case by a person or an agent": "Split into its own case by a person or an agent"
+  "Split into its own case by a person or an agent": "Split into its own case by a person or an agent",
+  "Subcategories of {category}": "Subcategories of {category}"
 }
