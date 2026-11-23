@@ -249,6 +249,8 @@ STACK_IMAGES: dict[str, tuple[str, ...]] = {
     "jvm": ("toolchain-jvm",),
     "rust": ("toolchain-rust",),
     "dbt": ("toolchain-dbt", "toolchain-python"),
+    # helm is a binary of every toolchain image (Dockerfile.sandbox.toolchain, toolchain-base), never of a -dev one.
+    "helm": ("toolchain-python", "toolchain-node", "toolchain-jvm", "toolchain-rust", "toolchain-dbt"),
 }
 #: ``package.json`` script names per kind, preferred first.
 _NODE_SCRIPTS = (
@@ -2624,6 +2626,18 @@ def _dbt(collector: _Collector, paths: frozenset[str]) -> None:
             collector.add(directory, "dbt", "lint", ["sqlfluff", "lint", "."], f"{source} (sqlfluff)")
 
 
+def _helm(collector: _Collector, paths: frozenset[str]) -> None:
+    """``helm-lint`` and ``helm-parse`` (``helm template``) for every chart root (a ``Chart.yaml``; subcharts under it are its own).
+
+    Both read the chart offline; a chart whose ``dependencies`` are not vendored under ``charts/``
+    needs ``helm dependency build`` first, which fetches from the chart repositories.
+    """
+    for directory in _roots(paths, ("Chart.yaml",)):
+        source = _join(directory, "Chart.yaml")
+        collector.add(directory, "helm", "lint", ["helm", "lint", "."], source)
+        collector.add(directory, "helm", "parse", ["helm", "template", "xtm-check", "."], f"{source} (helm template)")
+
+
 def _make(collector: _Collector, files: Mapping[str, bytes]) -> None:
     for path in sorted(p for p in files if posixpath.basename(p) in ("Makefile", "makefile", "GNUmakefile")):
         directory = posixpath.dirname(path)
@@ -2850,6 +2864,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _jvm(collector, listing, files)
     _rust(collector, listing)
     _dbt(collector, listing)
+    _helm(collector, listing)
     _make(collector, files)
     _script_tests(collector, listing)
     _apply_pythons(collector)

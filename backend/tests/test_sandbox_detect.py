@@ -899,6 +899,18 @@ def test_an_image_key_that_is_not_configured_falls_back_to_the_next_then_names_t
     assert _detect({"Cargo.toml": ""}, images={"python"}).checks["rust-unit"].image == "toolchain-rust"
 
 
+def test_a_helm_chart_gets_lint_and_template_checks_on_a_toolchain_image() -> None:
+    found = _detect(
+        {"charts/app/Chart.yaml": "name: app\n", "charts/app/charts/sub/Chart.yaml": "name: sub\n"},
+        images={"python-dev", "toolchain-node"},
+    )
+    lint, template = found.checks["charts/app:helm-lint"], found.checks["charts/app:helm-parse"]
+    assert (lint.argv, lint.default_args, lint.cwd) == (("helm", "lint"), (".",), "charts/app")
+    assert template.argv == ("helm", "template", "xtm-check", ".")
+    assert lint.image == template.image == "toolchain-node"
+    assert not any(name.startswith("charts/app/charts/sub:") for name in found.checks)
+
+
 def test_the_generic_toolchain_images_are_preferred_over_a_repositorys_locked_dev_images():
     pkg = json.dumps({"scripts": {"test": "jest"}})
     keys = {"python", "python-dev", "nodejs-dev", "toolchain-node", "toolchain-python", "toolchain-dbt"}
