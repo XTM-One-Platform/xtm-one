@@ -8,7 +8,7 @@ administrator opts the fleet in. Boolean NOT NULL with a constant default
 upgrade turns tool-level enforcement off everywhere. The seed never writes it.
 
 Revision ID: g1467fleettoolgate1
-Revises: u1305pastel01
+Revises: i126replysugus
 Create Date: 2026-11-23 10:30:00.000000
 """
 
@@ -22,7 +22,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "g1467fleettoolgate1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "u1305pastel01"
+down_revision: str | Sequence[str] | None = "i126replysugus"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
