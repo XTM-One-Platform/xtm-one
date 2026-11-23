@@ -71,7 +71,8 @@ def test_every_agent_works_with_opencrq_alone():
 def test_every_assignment_is_admin_opt_in_and_off():
     seeded = _assignments()
     assert [a["name"] for a in seeded] == [a["name"] for a in m3.RISK_BUDGET_DESK_ASSIGNMENTS]
-    assert len(seeded) == 5
+    # Five triggers of the desk plus the "Gate answered" listener (#1388).
+    assert len(seeded) == 6
     for a in seeded:
         assert a["enabled"] is False and a["admin_opt_in"] is True, a["name"]
         assert (m3.ORCHESTRATOR, a["name"]) in ADMIN_OPT_IN_BUILTIN_ASSIGNMENTS
