@@ -300,8 +300,12 @@ export function useSoftwareList(query: {
 }
 
 /** One software with its versions, a page of its installations and its dependencies both ways. */
-export function useSoftware(id: string | undefined, installations: { offset: number; limit: number }) {
-  const qs = pageQuery({ installations_offset: installations.offset, installations_limit: installations.limit });
+export function useSoftware(id: string | undefined, installations: { offset: number; limit: number; q?: string }) {
+  const qs = pageQuery({
+    installations_offset: installations.offset,
+    installations_limit: installations.limit,
+    installations_q: installations.q?.trim(),
+  });
   return useQuery<SoftwareDetail>({
     queryKey: [...KEY, "software-detail", id, qs],
     queryFn: () => api.get(`/organization-context/software/${id}?${qs}`),

@@ -220,12 +220,35 @@ def dependency_edges(software: Sequence[Mapping[str, Any]]) -> list[tuple[Versio
     return edges
 
 
+def software_types(software: Iterable[Mapping[str, Any]]) -> dict[Key, str]:
+    """The type the sources declare for each software (pure, testable).
+
+    An SBOM component says what it is (``library``, ``operating_system``, ...);
+    a type other than ``application`` wins, a value outside :data:`SOFTWARE_TYPES`
+    is ignored. A software no source types is absent (the sync keeps ``application``).
+    """
+    out: dict[Key, str] = {}
+    for soft in software:
+        product = str(soft.get("product") or "").strip()
+        declared = str(soft.get("type") or "").strip()
+        if not product or declared not in SOFTWARE_TYPES:
+            continue
+        key = (_key(soft.get("vendor")), _key(product))
+        if out.get(key, "application") == "application":
+            out[key] = declared
+    return out
+
+
 async def sync_software(
     db: AsyncSession,
     organization_id: uuid.UUID,
     edges: Iterable[tuple[VersionKey, VersionKey, str]] = (),
+    types: Mapping[Key, str] | None = None,
 ) -> dict[str, int]:
     """Bring the software, versions and dependencies of *organization_id* in line with its installations.
+
+    *types* (:func:`software_types`) gives a synced software the type its sources declare;
+    a hand-typed software keeps the type its administrator chose.
 
     Runs after a rebuild wrote the installations (the caller commits). Answers
     counts: ``software``, ``versions``, ``dependencies`` written and ``removed``.
@@ -283,6 +306,8 @@ async def sync_software(
             )
             db.add(soft)
             stored[key] = soft
+        if soft.origin != "manual":
+            soft.software_type = (types or {}).get(key, "application")
         soft.vendor = _cut(row.vendor, 200)
         soft.product = _cut(row.product, 200)
         # The name an administrator gave a hand-typed software stays; a synced one takes the sources'.
@@ -539,8 +564,13 @@ async def get_software(
     *,
     installations_offset: int = 0,
     installations_limit: int = 100,
+    installations_q: str = "",
 ) -> dict[str, Any] | None:
-    """One software: its versions with asset counts, a page of its installations, what it depends on and what uses it."""
+    """One software: its versions with asset counts, a page of its installations, what it depends on and what uses it.
+
+    *installations_q* narrows the installations page (and its ``total``) to the assets whose name holds it;
+    the software's own asset count stays the whole count.
+    """
     soft = (
         await db.execute(
             select(OrganizationSoftware).where(
@@ -570,12 +600,22 @@ async def get_software(
     )
     limit, offset = _limit(installations_limit), max(0, int(installations_offset or 0))
     where = inst.software_version_id.in_(ids) if ids else inst.id.is_(None)
-    total = (await db.execute(select(func.count()).select_from(inst).where(where))).scalar() or 0
+    page_where = [where]
+    if installations_q.strip():
+        page_where.append(OrganizationAsset.name_key.like(f"%{_key(installations_q)}%"))
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(inst)
+            .join(OrganizationAsset, OrganizationAsset.id == inst.asset_id)
+            .where(*page_where)
+        )
+    ).scalar() or 0
     rows = (
         await db.execute(
             select(inst, OrganizationAsset.name)
             .join(OrganizationAsset, OrganizationAsset.id == inst.asset_id)
-            .where(where)
+            .where(*page_where)
             .order_by(OrganizationAsset.name_key, inst.version, OrganizationAsset.id)
             .offset(offset)
             .limit(limit)

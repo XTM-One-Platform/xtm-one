@@ -996,10 +996,11 @@ async def get_organization_software(
     software_id: uuid.UUID,
     installations_offset: int = Query(0, ge=0),
     installations_limit: int = Query(100, ge=1, le=200),
+    installations_q: str = Query("", max_length=200),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One software: its versions with asset counts, its installations, what it depends on and what uses it."""
+    """One software: its versions with asset counts, its installations (searchable by asset name), what it depends on and what uses it."""
     from app.services.organization_software_store import get_software
 
     org = await _built_store(db)
@@ -1010,6 +1011,7 @@ async def get_organization_software(
             software_id,
             installations_offset=installations_offset,
             installations_limit=installations_limit,
+            installations_q=installations_q,
         )
         if org is not None
         else None

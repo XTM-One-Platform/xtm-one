@@ -235,7 +235,8 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     from app.services import organization_software_store as software_store
 
     edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
-    await software_store.sync_software(db, org, edges)
+    types = software_store.software_types(soft for thing in things for soft in thing["software"])
+    await software_store.sync_software(db, org, edges, types)
     return len(things)
 
 
@@ -445,6 +446,8 @@ def sbom_components(sbom: Any) -> list[dict[str, Any]]:
             "cpe": _cut(comp.cpe, 300),
             "purl": _cut(comp.purl, 500),
             "bundled_in": _cut(sbom.bundled_in(comp), 300),
+            # What the component is (#1495): library, operating_system, ... (the software's type).
+            "type": comp.software_type,
             # The components it depends on (#1495), ``product version`` labels.
             "depends_on": [_cut(label, 300) for label in sbom.depends_on(comp)],
         }

@@ -20,6 +20,7 @@ import {
   type SoftwareVersion,
   useSoftware,
 } from "@/hooks/api/useOrganizationAssetsApi";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import { AssetSection, Fact } from "./ctem/AssetOverview";
@@ -58,9 +59,14 @@ export default function CtemSoftwareDetail() {
   const { t_i18n, intl } = useFormatter();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  // Page and page size both reach the API: a size picked in the table is the request's limit.
-  const [page, setPage] = useState({ index: 0, size: INSTALLATIONS_PAGE_SIZE });
-  const { data, isLoading, isError, refetch } = useSoftware(id, { offset: page.index * page.size, limit: page.size });
+  // Page, page size and search all reach the API: the Installed on search narrows the server page by asset name.
+  const [page, setPage] = useState({ index: 0, size: INSTALLATIONS_PAGE_SIZE, search: "" });
+  const search = useDebounce(page.search, 300);
+  const { data, isLoading, isError, refetch } = useSoftware(id, {
+    offset: page.index * page.size,
+    limit: page.size,
+    q: search,
+  });
 
   if (isError && !data) {
     return (
@@ -291,7 +297,7 @@ export default function CtemSoftwareDetail() {
         id="software-installations"
         title={t_i18n("Installed on")}
         count={installations?.total}
-        empty={!isLoading && (installations?.total ?? 0) === 0}
+        empty={!isLoading && !page.search.trim() && (installations?.total ?? 0) === 0}
         emptyLabel={t_i18n("No asset runs this software.")}
       >
         <DataTable<SoftwareInstallation>
@@ -300,7 +306,7 @@ export default function CtemSoftwareDetail() {
           rowKey={(i) => `${i.asset_id}|${i.version_id ?? i.version}|${i.bundled_in ?? ""}`}
           rowHref={(i) => `${INVENTORY_PATH}/assets/${i.asset_id}`}
           server={{ total: installations?.total ?? 0 }}
-          onStateChange={(state) => setPage({ index: state.page, size: state.pageSize })}
+          onStateChange={(state) => setPage({ index: state.page, size: state.pageSize, search: state.search })}
           defaultPageSize={INSTALLATIONS_PAGE_SIZE}
           noFilters="One software's installations, paged on the server."
           exportName="ctem-software-installations"
