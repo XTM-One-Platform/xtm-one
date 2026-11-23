@@ -78,6 +78,11 @@ connected integration, so the off holds: `evidenceHealthSavedIntegration`).
 and the tick, so the badge never reads Connected when the pass would skip. The
 attack surface pass stays opt-in (it needs owned domains or ranges and spends
 provider credits): a connected Shodan or GTI with the pass off reads `off`.
+Listeners are bound on the integrations visible to the caller; both passes
+are read on the platform's connected integrations
+(`ctem_signal_sources.platform_connected_ids`), because a pass is
+organization-wide: a reader who cannot see the administrator's Shodan or
+OpenCRQ integration reads the same `connected` or `off` as the administrator.
 
 The Sources tab of the Signals page (`/ctem/signals/sources`,
 `SignalSourcesPanel.tsx`) is a compact table grouped by lens: trigger path,
@@ -86,7 +91,9 @@ signal, action; rows of at most two lines. Connect sends a listener to
 `/integrations/new?provider=`; Connect or Turn on sends a pass and the
 playbook to their card in Settings > Organization (attack surface: outside
 lens; evidence health: its card beside it on CTEM > Inventory, whose `?card=`
-link opens the edit view on that card). Those two edit the organization profile,
+link opens the edit view on that card and writes `edit=1` in the same URL, so
+the view outlives the card parameter the landing drops:
+`ctem/inventory-edit-view.ts`). Those two edit the organization profile,
 so only an administrator gets the button (`connectNeedsAdmin`); a reader reads
 the status. Below the 4xl width the sources step into line 2 of the first cell
 on one line, cut with an ellipsis, the whole list in a tooltip. An empty signal list

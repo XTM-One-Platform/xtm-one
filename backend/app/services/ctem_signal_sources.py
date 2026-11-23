@@ -159,8 +159,32 @@ def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:
     return out
 
 
+async def platform_connected_ids(db: AsyncSession, providers: tuple[str, ...]) -> dict[str, set[str]]:
+    """The connected integration ids of the platform per provider, whoever can see them.
+
+    A scheduled pass is organization-wide: it runs on an administrator's
+    integration for every reader, so its status is read on the platform's
+    connected integrations, never on the caller's visible ones (#1344, UX round 2).
+    """
+    from app.models.integration import Integration
+
+    rows = (
+        await db.execute(
+            select(Integration.id, Integration.provider).where(
+                Integration.provider.in_(providers), Integration.status == "connected"
+            )
+        )
+    ).all()
+    return _connected_ids([(r[0], r[1]) for r in rows])
+
+
 async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
-    """The ``(provider, kind)`` pairs bound for the caller, and the passes ``off`` (module docstring)."""
+    """The ``(provider, kind)`` pairs bound for the caller, and the passes ``off`` (module docstring).
+
+    Listeners are read on the integrations visible to the caller; the passes on
+    the platform's connected integrations (:func:`platform_connected_ids`), so
+    every role reads the same status for an organization-wide pass.
+    """
     from app.api.v1.helpers import integration_visible_filter
     from app.models.assignment import Assignment
     from app.models.integration import Integration
@@ -184,23 +208,24 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
 
     primary = await get_primary(db)
     if primary is not None:
+        platform = await platform_connected_ids(db, ATTACK_SURFACE_PROVIDERS + EVIDENCE_HEALTH_PROVIDERS)
         version = await org_context.current_version(db, primary.id)
         profile = org_context.parse_profile(version.profile if version else {})
         surface = profile.attack_surface
         ids = {i for i in [surface.integration, *surface.integrations] if i}
         for provider in ATTACK_SURFACE_PROVIDERS:
-            if surface.enabled and ids & connected.get(provider, set()):
+            if surface.enabled and ids & platform.get(provider, set()):
                 bound.add((provider, "pass"))
-            elif connected.get(provider):
+            elif platform.get(provider):
                 bound.off.add((provider, "pass"))
         # The tick's rule, on the platform's connected integrations (the pass is organization-wide).
         state, picked = evidence_health.resolve_pass(
             profile.evidence_health, await evidence_health.connected_integration_ids(db)
         )
         for provider in EVIDENCE_HEALTH_PROVIDERS:
-            if state == evidence_health.PASS_ON and picked in connected.get(provider, set()):
+            if state == evidence_health.PASS_ON and picked in platform.get(provider, set()):
                 bound.add((provider, "pass"))
-            elif state != evidence_health.PASS_NONE and connected.get(provider):
+            elif state != evidence_health.PASS_NONE and platform.get(provider):
                 bound.off.add((provider, "pass"))
 
     if "opencti" in connected:

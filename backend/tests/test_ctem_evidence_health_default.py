@@ -138,6 +138,43 @@ async def test_a_connected_attack_surface_provider_with_the_pass_off_reads_off(m
     assert sources.path_status(sources.path_sources("surface_drift", bound)) == "off"
 
 
+def _reader_platform(monkeypatch: pytest.MonkeyPatch, platform: dict[str, set[str]]) -> None:
+    """The caller sees no integration; the platform holds *platform* (an administrator's)."""
+
+    async def _platform(db: Any, providers: tuple[str, ...]) -> dict[str, set[str]]:
+        return {p: ids for p, ids in platform.items() if p in providers}
+
+    monkeypatch.setattr(sources, "platform_connected_ids", _platform)
+
+
+@pytest.mark.asyncio
+async def test_a_reader_reads_off_on_an_attack_surface_pass_an_administrator_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch(monkeypatch, {}, [])
+    _reader_platform(monkeypatch, {"shodan": {ONE}})
+    bound = await sources.bound_sources(_Db([]), uuid.uuid4())  # type: ignore[arg-type]
+    assert ("shodan", "listener") not in bound
+    assert ("shodan", "pass") in bound.off
+    assert sources.path_status(sources.path_sources("surface_drift", bound)) == "off"
+
+
+@pytest.mark.asyncio
+async def test_a_reader_reads_connected_on_an_attack_surface_pass_that_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch(monkeypatch, {"attack_surface": {"enabled": True, "integration": ONE}}, [])
+    _reader_platform(monkeypatch, {"shodan": {ONE}})
+    bound = await sources.bound_sources(_Db([]), uuid.uuid4())  # type: ignore[arg-type]
+    assert sources.path_status(sources.path_sources("surface_drift", bound)) == "connected"
+
+
+@pytest.mark.asyncio
+async def test_a_reader_reads_the_evidence_health_pass_of_the_platform(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch(monkeypatch, {}, [ONE])
+    _reader_platform(monkeypatch, {"opencrq": {ONE}})
+    bound = await sources.bound_sources(_Db([]), uuid.uuid4())  # type: ignore[arg-type]
+    assert sources.path_status(sources.path_sources("control_decay", bound)) == "connected"
+
+
 @pytest.mark.asyncio
 async def test_the_tick_runs_on_the_single_connected_integration_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import ctem_case_loop
