@@ -67,8 +67,6 @@ export interface User {
   title: string | null;
   timezone: string | null;
   theme: "dark" | "light" | null;
-  /** "Pastel colours" profile preference (#1305): standard colours when false. */
-  pastel_colours?: boolean;
   // UI language override: "auto" (inherit platform language) or a supported
   // locale code (e.g. "fr-fr").
   language: string;

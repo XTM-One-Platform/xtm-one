@@ -9,7 +9,7 @@ import type { CtemSignal, CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import CtemSignals from "../../CtemSignals";
-import { readSignalsView, signalsHref } from "./signals-route";
+import { readSignalsView, selectAllScope, signalsHref } from "./signals-route";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -23,6 +23,25 @@ vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
 }));
 
 const get = vi.mocked(api.get);
+
+// The bulk bar shows two actions inline from 1440 px, one below (UX round 2 on #1521, B1).
+const originalMatchMedia = window.matchMedia;
+function setCompactToolbar(compact: boolean) {
+  window.matchMedia = ((query: string) => ({
+    matches: compact && query === "(max-width: 1439px)",
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+afterEach(() => {
+  window.matchMedia = originalMatchMedia;
+});
+
 const ID = "00000000-0000-0000-0000-000000000001";
 
 function signal(n: number, over: Partial<CtemSignal> = {}): CtemSignal {
@@ -126,6 +145,139 @@ describe("Signals page", () => {
     expect(screen.queryByTestId("ctem-signal-sources-link")).toBeNull();
   });
 
+  // #1505: unmatched signals are dismissed in one call, the selected rows or every one of the state.
+  it("dismisses every unmatched signal of the state in one call", async () => {
+    const signals = Array.from({ length: 3 }, (_, i) => signal(i + 1));
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 120, counts: { changed: 120, skipped: 0, discarded: 120 } });
+    // The page holds 3 rows; the state counts 120: "select all" reaches past the page.
+    renderPage("/ctem/signals?state=to_validate", { total: 3, counts: { to_validate: 120 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    fireEvent.click(within(bar).getByRole("button", { name: /select all 120/ }));
+    fireEvent.click(within(screen.getByTestId("ctem-signals-bulk-actions")).getByTestId("ctem-signals-dismiss"));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/ctem-signals/triage", { action: "dismiss", filter: { state: "to_validate" } }),
+    );
+    post.mockReset();
+  });
+
+  // Review on #1521: "select all" covers what the table shows, never rows its filters hide.
+  it("sends the trigger path filter with select all, and offers no select all under a search or a source filter", async () => {
+    expect(selectAllScope(new URLSearchParams("state=to_validate"))).toEqual({});
+    expect(selectAllScope(new URLSearchParams("s_f_path=new_exposure"))).toEqual({ trigger_path: "new_exposure" });
+    expect(selectAllScope(new URLSearchParams("s_f_path=new_exposure&s_f_path=code_flaw"))).toBeNull();
+    expect(selectAllScope(new URLSearchParams("s_f_source=shodan"))).toBeNull();
+    expect(selectAllScope(new URLSearchParams("s_q=host-1"))).toBeNull();
+
+    // 30 signals of the path, 2 of another: the page shows 25, "select all 30" names the path.
+    const signals = [
+      ...Array.from({ length: 30 }, (_, i) => signal(i + 1)),
+      ...Array.from({ length: 2 }, (_, i) => signal(i + 31, { trigger_path: "code_flaw", trigger_path_label: "Code flaw" })),
+    ];
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 30, counts: { changed: 30, skipped: 0, discarded: 30 } });
+    renderPage("/ctem/signals?state=to_validate&s_f_path=new_exposure", { total: 32, counts: { to_validate: 32 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    fireEvent.click(within(bar).getByRole("button", { name: /select all 30/ }));
+    fireEvent.click(within(screen.getByTestId("ctem-signals-bulk-actions")).getByTestId("ctem-signals-dismiss"));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/ctem-signals/triage", {
+        action: "dismiss",
+        filter: { state: "to_validate", trigger_path: "new_exposure" },
+      }),
+    );
+    post.mockReset();
+  });
+
+  it("offers no select all while the table is searched", async () => {
+    const signals = Array.from({ length: 3 }, (_, i) => signal(i + 1));
+    renderPage("/ctem/signals?state=to_validate&s_q=host", { total: 3, counts: { to_validate: 120 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).queryByRole("button", { name: /select all/ })).toBeNull();
+  });
+
+  it("checks the selected rows again by id", async () => {
+    setCompactToolbar(false);
+    const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1));
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 1, counts: { changed: 0, skipped: 0, to_validate: 1 } });
+    renderPage("/ctem/signals?state=to_validate", { total: 2, counts: { to_validate: 2 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    fireEvent.click(await screen.findByTestId("ctem-signals-recheck"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/ctem-signals/triage", { action: "recheck", ids: [expect.any(String)] }));
+    expect(screen.queryByTestId("ctem-signals-restore")).toBeNull();
+    post.mockReset();
+  });
+
+  // UX round 1 on #1521, B2: a dismissed signal stays dismissed on a re-check, so a selection of
+  // dismissed signals alone is offered Restore, never Check again or Dismiss.
+  it("offers only Restore for a selection of dismissed signals", async () => {
+    const dismissed = { state: "discarded" as const, decision: { reason_code: "dismissed_by_user" } as CtemSignal["decision"] };
+    const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1, dismissed));
+    renderPage("/ctem/signals?state=discarded", { total: 2, counts: { discarded: 2 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).getByTestId("ctem-signals-restore")).toBeTruthy();
+    expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
+    expect(within(bar).queryByTestId("ctem-signals-dismiss")).toBeNull();
+    expect(within(bar).queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+
+  it("says nothing changed instead of a success when a triage changes no signal", async () => {
+    setCompactToolbar(false);
+    const signals = [signal(1)];
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 1, counts: { changed: 0, skipped: 1 } });
+    renderPage("/ctem/signals?state=to_validate", { total: 1, counts: { to_validate: 1 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    fireEvent.click(await screen.findByTestId("ctem-signals-recheck"));
+    expect(await screen.findByText("No signal changed")).toBeTruthy();
+    expect(screen.queryByText(/checked again/)).toBeNull();
+    post.mockReset();
+  });
+
+  // UX round 2 on #1521, B1: at 1080 a selection keeps the toolbar on one 32 px row, so one
+  // action shows inline and the others are rows of More actions.
+  it("shows one bulk action inline below 1440 px, the rest under More actions", async () => {
+    setCompactToolbar(true);
+    const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1));
+    renderPage("/ctem/signals?state=to_validate", { total: 2, counts: { to_validate: 2 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    // Every row of the state selected: no "select all" link, so one action shows inline.
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).getByTestId("ctem-signals-dismiss")).toBeTruthy();
+    expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
+    expect(within(bar).getByRole("button", { name: "More actions" })).toBeTruthy();
+  });
+
+  // UX round 4 on #1521, B1: at 1080 with a trigger path filter and a selection, the "select all N"
+  // link takes the inline slot and every action is a row of More actions, so the bar keeps one row.
+  it("moves every bulk action under More actions below 1440 px while select all is offered", async () => {
+    setCompactToolbar(true);
+    const signals = Array.from({ length: 8 }, (_, i) => signal(i + 1));
+    renderPage("/ctem/signals?state=to_validate&s_f_path=new_exposure", { total: 8, counts: { to_validate: 9 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).getByRole("button", { name: /select all 8/ })).toBeTruthy();
+    expect(within(bar).queryByTestId("ctem-signals-dismiss")).toBeNull();
+    expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
+    expect(within(bar).getByRole("button", { name: "More actions" })).toBeTruthy();
+    // Once every row of the path is selected, the link is gone and one action is back inline.
+    fireEvent.click(within(bar).getByRole("button", { name: /select all 8/ }));
+    expect(within(screen.getByTestId("ctem-signals-bulk-actions")).getByTestId("ctem-signals-dismiss")).toBeTruthy();
+  });
+
   it("says the sources are connected and nothing was seen when one is", async () => {
     renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] });
     await waitFor(() =>
@@ -168,7 +320,7 @@ describe("Signals summary strip", () => {
   it("opens the Signals tab on the state a card names", async () => {
     renderPage("/ctem/signals/sources", { total: 3, counts: { to_validate: 3 }, signals: [] }, paths);
     const strip = await screen.findByTestId("ctem-signals-summary");
-    const card = await within(strip).findByRole("button", { name: /To validate/ });
+    const card = await within(strip).findByRole("button", { name: /Unmatched/ });
     fireEvent.click(card);
     await waitFor(() => expect(location()).toBe("/ctem/signals?state=to_validate"));
   });

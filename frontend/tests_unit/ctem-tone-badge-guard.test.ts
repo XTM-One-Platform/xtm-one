@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 
 /**
  * A CTEM case state, priority, loop severity or signal state is drawn by the
- * shared ToneBadge (components/ui/tone-badge.tsx, #1267: outlined in standard
- * colours, the library Chip's plain fill under the pastel preference), never
- * by the library Chip directly or by a hand-written tone badge (UX round 1 B1
+ * shared ToneBadge (components/ui/tone-badge.tsx, #1267: the library Chip's
+ * single style since design system 1.13.0, #1595), never by the library Chip
+ * directly or by a hand-written tone badge (UX round 1 B1
  * of #1270). Static, like the other design-system guards.
  */
 
