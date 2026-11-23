@@ -462,6 +462,108 @@ def last_lines(text: str, *, count: int = LAST_LINES, max_chars: int = MAX_LAST_
     return list(reversed(kept))
 
 
+_DIFF_GIT = re.compile(r"^diff --git ")
+_OLD_FILE = re.compile(r"^--- (a/|/dev/null)")
+_NEW_FILE = re.compile(r"^\+\+\+ (b/|/dev/null)")
+_HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+#: Header lines git writes between ``diff --git`` and ``---`` (modes, index, renames, binary).
+_GIT_HEADER = re.compile(
+    r"^(index |old mode |new mode |deleted file mode |new file mode |similarity index |dissimilarity index |"
+    r"rename from |rename to |copy from |copy to |Binary files )"
+)
+
+
+def _patch_line(raw: str) -> str:
+    """A raw log line as the diff printed it: the runner timestamp and colours removed, never clipped."""
+    return _ANSI.sub("", _TIMESTAMP.sub("", raw.rstrip("\r").lstrip("\ufeff")))
+
+
+def _hunk_end(lines: list[str], start: int) -> int | None:
+    """The index after the hunk whose ``@@`` header is ``lines[start]``, or ``None`` when it is cut short.
+
+    The header's counts say how many old and new lines follow; a blank line is a context line
+    that lost its leading space in the log, a ``\\ No newline`` marker counts for neither side.
+    """
+    match = _HUNK.match(lines[start])
+    if match is None:
+        return None
+    old = int(match.group(1)) if match.group(1) is not None else 1
+    new = int(match.group(2)) if match.group(2) is not None else 1
+    index = start + 1
+    while old > 0 or new > 0:
+        if index >= len(lines):
+            return None
+        line = lines[index]
+        if line.startswith("\\"):
+            index += 1
+            continue
+        tag = line[:1]
+        if tag == "-":
+            old -= 1
+        elif tag == "+":
+            new -= 1
+        elif tag in (" ", ""):
+            old -= 1
+            new -= 1
+        else:
+            return None
+        if old < 0 or new < 0:
+            return None
+        index += 1
+    while index < len(lines) and lines[index].startswith("\\"):
+        index += 1
+    return index
+
+
+def extract_patch(text: str) -> str | None:
+    """The unified diff(s) a job log printed, as ``git apply`` and ``sandbox_apply_patch`` take them.
+
+    A formatter or generator check (``ruff format --diff``, ``git diff --exit-code`` after
+    codegen, prettier, spotless) prints the change it wants. Each file block starts at a
+    ``diff --git`` line or a ``--- a/`` line directly followed by ``+++ b/``; its hunks are
+    kept while their ``@@`` counts are met, so the runner's next line (``##[error]``, the
+    tool's verdict) never joins the patch. A context line the log printed blank is written
+    back with its leading space. ``None`` when no block has a complete hunk.
+    """
+    lines = [_patch_line(raw) for raw in text.splitlines()]
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        header: list[str] = []
+        cursor = index
+        if _DIFF_GIT.match(lines[cursor]):
+            header.append(lines[cursor])
+            cursor += 1
+            while cursor < len(lines) and _GIT_HEADER.match(lines[cursor]):
+                header.append(lines[cursor])
+                cursor += 1
+        if not (cursor + 1 < len(lines) and _OLD_FILE.match(lines[cursor]) and _NEW_FILE.match(lines[cursor + 1])):
+            index += 1
+            continue
+        header += [lines[cursor], lines[cursor + 1]]
+        cursor += 2
+        hunks: list[str] = []
+        while cursor < len(lines) and _HUNK.match(lines[cursor]):
+            end = _hunk_end(lines, cursor)
+            if end is None:
+                break
+            hunks += [line if line else " " for line in lines[cursor:end]]
+            cursor = end
+        if hunks:
+            out += header + hunks
+            index = cursor
+        else:
+            index += 1
+    if not out:
+        return None
+    return "\n".join(out) + "\n"
+
+
+def patch_file_count(patch: str) -> int:
+    """How many files a patch :func:`extract_patch` returned changes (its ``+++`` lines)."""
+    return sum(1 for line in patch.splitlines() if _NEW_FILE.match(line))
+
+
 def _clip_line(line: str) -> str:
     """*line* at most :data:`MAX_LINE_CHARS` characters, its start and end kept."""
     if len(line) <= MAX_LINE_CHARS:

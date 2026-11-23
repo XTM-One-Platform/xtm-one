@@ -176,6 +176,25 @@ Versions compare part by part (numbers as numbers, `rc`/`beta`/`alpha`/`dev`
 before the release, a post-release letter after it, an epoch `1:` and a `v`
 prefix read); distribution backports are not visible.
 
+### 4.2quater Version match on remediation and mobilize cards (#1472)
+
+An upgrade proposal never asserts the hosts are vulnerable without a version
+compared. `ctem_version_match.version_match` states three facts: the running
+versions (from `running_versions` below, or `unknown: no asset reports
+<product>`), the affected range (`unknown: OpenCTI holds no affected versions`
+until a source gives one) and the fixed version (the case's, or `unknown`);
+`blind` is true when the running version or the affected range is unknown.
+`get_ctem_case` answers it as `version_match` on an upgrade case (`null`
+otherwise), and the Remediation Coordinator's `actions` carry it.
+
+The platform enforces the line where the card is written, not in a prompt:
+`work_item.create_work_item` and `update_work_item` complete the ask of an item
+keyed `ctem:remediation:`, `ctem:f1:case-mobilize:` or `ctem:f2:mobilize:`
+and a case id, when the case is an upgrade and the ask has no `Version match:`
+line: the line goes first in the context, then, when blind, "Proposed without
+version matching: ..." and "Verify the running version, then upgrade". A case
+that cannot be read leaves the ask as given; the version is never guessed.
+
 ### 4.2ter Running versions from the asset inventory (#1252)
 
 The version an organization runs is read from its assets, never typed in the
