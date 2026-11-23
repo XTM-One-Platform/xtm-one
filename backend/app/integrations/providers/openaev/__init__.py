@@ -79,6 +79,7 @@ from .notifications import register as register_notifications
 from .phishing import register as register_phishing
 from .platform import register as register_platform
 from .preview import register as register_preview
+from .read_scope import ReadScope
 from .simulations import register as register_simulations
 from .taxonomy import register as register_taxonomy
 from .teams import register as register_teams
@@ -154,6 +155,9 @@ def build_tools(
     # Every module's requests scope themselves to the default tenant through
     # this one resolver (read by ``_scope_path``), so a new module cannot forget.
     headers.tenant_scope = capabilities
+    # The caller's read rights (GET /api/me, once per tool set): OpenAEV answers an
+    # empty page to a grant-limited identity, so the count reads say so (#1444).
+    headers.read_scope = ReadScope(base_url, headers)
 
     tools: list[ToolDefinition] = []
     tools += register_core(base_url, headers, executor)

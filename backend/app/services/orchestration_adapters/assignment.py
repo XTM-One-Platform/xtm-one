@@ -37,7 +37,12 @@ from app.models.assignment import AssignmentRun
 from app.models.orchestration import OrchestrationExecution, OrchestrationOutboxEvent
 from app.services import assignment_run_resume, assignment_run_wake
 from app.services import orchestration_engine as engine
-from app.services.failure_causes import FailureCause, FailureContext, classify_run_failure
+from app.services.failure_causes import (
+    FailureCause,
+    FailureContext,
+    FailureDetermination,
+    classify_run_failure,
+)
 from app.services.orchestration_adapters.base import (
     AdapterContext,
     AdapterResult,
@@ -606,6 +611,13 @@ class AssignmentAdapter(OrchestrationAdapter):
         if run.status in TERMINAL_RUN_STATUSES:
             await self._settle_failed_run_charge(ctx, run)
             return
+        if engine.expired_before_start(execution):
+            # Its queue-wait bound passed before any worker started it: nothing
+            # ran, nothing was charged, no partner was started. Failed with its
+            # own cause and the wait it spent, and NO ``run.failed``: observers
+            # of that event must not add work to the queue that starved it.
+            await _fail_expired_before_start(ctx, run, execution)
+            return
         run.status = "failed"
         # A run lost once more than it may be resumed fails with the resume
         # cap's reason, never the hand-back's "runs again at once".
@@ -726,6 +738,33 @@ class AssignmentAdapter(OrchestrationAdapter):
 
         await ctx.db.commit()
         await _publish_run_failed(run, run.error)  # never raises
+
+
+async def _fail_expired_before_start(
+    ctx: AdapterContext, run: AssignmentRun, execution: OrchestrationExecution
+) -> None:
+    """Fail *run*, never started before its queue-wait bound, with ``deadline_exceeded_before_start``.
+
+    The run record carries ``queue_wait_seconds`` and ``started: false`` under
+    ``trigger_context['queue']``. No ``run.failed`` is published.
+    """
+    waited = engine.queue_wait_seconds(execution)
+    run.status = "failed"
+    run.error = engine.expired_before_start_message("The assignment run", execution)
+    run.failure_cause = FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value
+    run.failure_determination = FailureDetermination.STRUCTURAL.value
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "queue": {"queue_wait_seconds": waited, "started": False},
+    }
+    run.completed_at = datetime.now(UTC)
+    await ctx.db.commit()
+    logger.warning(
+        "Assignment run %s never started: its queue-wait bound passed after %s s; failed with %s, no run.failed",
+        run.id,
+        waited,
+        FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value,
+    )
 
 
 class AssignmentRunWakeSweepAdapter(OrchestrationAdapter):

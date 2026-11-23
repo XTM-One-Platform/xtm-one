@@ -292,6 +292,48 @@ def test_a_failed_simulation_is_named_with_the_backend_answer_and_seeded_on_the_
     assert "seed_missing" not in module.STATE
 
 
+def test_the_history_writes_finished_simulations_once_with_bound_values(monkeypatch, tmp_path):
+    """Gap lab-openaev-no-history-seed: past finished simulations with scored expectations, no hand SQL."""
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    monkeypatch.setattr(module, "psql", lambda sql, **params: calls.append((sql, params)) or "10")
+    assert module.seed_history() is True
+    sql, params = calls[0]
+    assert params == {"scenario": module.SEED_SCENARIO["scenario_name"], "weeks": str(module.HISTORY_WEEKS)}
+    assert module.SEED_SCENARIO["scenario_name"] not in sql, "values are bound as psql variables, never spliced"
+    assert "'FINISHED'" in sql and "injects_expectations" in sql and "scenarios_exercises" in sql
+    for kind in ("PREVENTION", "DETECTION", "VULNERABILITY"):
+        assert f"'{kind}'" in sql
+    # The next start on the kept database writes nothing again.
+    assert module.seed_history() is False
+    assert len(calls) == 1
+
+
+def test_a_failed_history_is_named_and_tried_again_on_the_next_start(monkeypatch, tmp_path):
+    module = _module()
+    monkeypatch.setattr(module, "STATE", {"seed_missing": "asset lab-web-01 (HTTP 400)"})
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+
+    def fail(sql, **params):
+        raise module.subprocess.CalledProcessError(3, ["psql"], stderr="ERROR:  no scenario named Lab")
+
+    monkeypatch.setattr(module, "psql", fail)
+    assert module.seed_history() is False
+    missing = module.STATE["seed_missing"]
+    assert missing.startswith("asset lab-web-01 (HTTP 400); ")
+    assert module.HISTORY_STEP in missing and "no scenario named" in missing
+    monkeypatch.setattr(module, "psql", lambda sql, **params: "10")
+    assert module.seed_history() is True
+
+
+def test_the_start_writes_the_history_after_the_api_seed():
+    source = SCRIPT.read_text()
+    main = source[source.index("def main()") :]
+    assert main.index("seed()") < main.index("seed_history()")
+
+
 def test_the_seed_waits_for_the_admin_token_the_start_up_runner_writes(monkeypatch):
     """/api/health answers before InitAdminCommandLineRunner wrote the admin token: 401 until then (gap
     lab-openaev-seed-401), so the seed waits for GET /api/me to authenticate."""
