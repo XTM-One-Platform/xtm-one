@@ -320,6 +320,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       if (open) for (const other of LIST_KEYS) if (other !== key && next[other]?.open) next[other] = { ...next[other]!, open: null } as never;
       return next;
     });
+  // A shipped product kept with a repository that is not owner/name: the API refuses it, so nothing is sent;
+  // the row opens with its field marked and focused, the card in view, never a toast (UX r1 B1 on #1483).
+  const refuseBadRepositories = (): boolean => {
+    const bad = listRows("shipped_products").find((row) => !row.removed && row.value.product.trim() && !row.value.repositories.every(isRepository));
+    if (!bad) return false;
+    goToTab(tabOfField("shipped_products"));
+    setListOpen("shipped_products", bad.key);
+    setFocusTarget(`${fieldId}-shipped_products-repositories`);
+    return true;
+  };
   /** The open form with each list as its editor holds it. */
   const withLists = (base: ProfileForm): ProfileForm =>
     LIST_KEYS.reduce((next, key) => (listEdits[key] ? { ...next, [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) } : next), base);
@@ -506,6 +516,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // A list card's Save writes the saved profile with that list alone changed (whole-profile PUT).
   const saveList = (key: ListKey) => {
     if (!data || !listEdits[key]) return;
+    if (key === "shipped_products" && refuseBadRepositories()) return;
     const parsed = fromForm({ ...toForm(data.profile), [key]: committedValues(listEdits[key]!.rows as EditRow<unknown>[]) });
     if ("invalid" in parsed) return;
     const kept = committedValues(listEdits[key]!.rows as EditRow<Provenance>[]);
@@ -686,6 +697,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
     setInvalidField(null);
     if (scoreInvalid) return;
+    if (refuseBadRepositories()) return;
     // A ServiceNow table the CTEM case sync cannot write to is shown inline on the Record type
     // field (#923 UX round 3 B1): nothing is sent, the field is focused, never a toast.
     if (form.ticketing.sync && !isSupportedRecordType(ticketingIntegration?.provider ?? "", form.ticketing.sync.record_type)) {
@@ -1160,14 +1172,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const shippedEdit: ListEditColumn<Shipped>[] = [
     { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), false, "Vendor", suggestId("shipped_products", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc" },
-    { key: "cpe", header: "CPE (optional)", hideable: true, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    // Below 72rem CPE steps aside to the Columns pill with Source, so the repositories column keeps at least
+    // 240 px for its tag input (UX r1 B2 on #1483: at 1080 it had 58 px, header and chips cut).
+    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: JEWEL_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     {
       key: "repositories",
       header: "Source repositories",
       hideable: true,
+      // No fixed width: the column takes what Product, Vendor and the stepped-aside columns leave.
       read: (v) => readCell(v.repositories.join(", ")),
       edit: (v, set, bad) => (
         <TagInput
+          id={`${fieldId}-shipped_products-repositories`}
           value={v.repositories}
           onChange={(repositories) => set({ repositories })}
           preserveCase

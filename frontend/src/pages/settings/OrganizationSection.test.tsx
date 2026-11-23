@@ -372,6 +372,21 @@ describe("OrganizationSection", () => {
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true"));
   });
 
+  it("refuses a shipped product with a repository that is not owner/name inline: nothing sent, no toast, the field focused (#1483 UX r1 B1)", async () => {
+    renderPage("business");
+    fireEvent.click(await screen.findByTestId("settings.organization.edit-shipped_products"));
+    fireEvent.click(await screen.findByRole("button", { name: /Add a shipped product/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Product" }), { target: { value: "Acme Agent" } });
+    const repos = screen.getByRole("textbox", { name: "Source repositories" });
+    fireEvent.change(repos, { target: { value: "not a repo" } });
+    fireEvent.keyDown(repos, { key: "Enter" });
+    fireEvent.click(within(await screen.findByTestId("settings.organization.list-save-bar")).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Source repositories" })));
+    expect(screen.getByRole("textbox", { name: "Source repositories" }).getAttribute("aria-invalid")).toBe("true");
+    expect(put).not.toHaveBeenCalled();
+    expect(screen.queryByText("The organization profile was not saved")).toBeNull();
+  });
+
   it("lists the crown jewels in a table with column headers", async () => {
     renderPage("business");
     await screen.findByText("Payments");
