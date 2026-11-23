@@ -55,6 +55,25 @@ class Component:
     version: str | None
     cpe: str | None
     purl: str | None
+    #: The software type the component declares (:data:`COMPONENT_TYPES`), ``application`` when it says nothing.
+    software_type: str = "application"
+
+
+#: CycloneDX ``type`` and SPDX ``primaryPackagePurpose`` (lower-cased) to the software type of the inventory.
+COMPONENT_TYPES: Mapping[str, str] = {
+    "library": "library",
+    "framework": "library",
+    "operating-system": "operating_system",
+    "operating_system": "operating_system",
+    "firmware": "firmware",
+    "device-driver": "firmware",
+    "container": "container_image",
+}
+
+
+def software_type_of(declared: str | None) -> str:
+    """The software type a component's declared type gives; ``application`` for any other or no value."""
+    return COMPONENT_TYPES.get((declared or "").strip().lower(), "application")
 
 
 @dataclass(frozen=True)
@@ -178,6 +197,7 @@ def _cyclonedx(doc: Mapping[str, Any]) -> list[Component]:
                 version=version_of(_text(node, "version")),
                 cpe=_text(node, "cpe"),
                 purl=_text(node, "purl"),
+                software_type=software_type_of(_text(node, "type")),
             )
         )
         children = _list(node, "components")
@@ -252,6 +272,7 @@ def _spdx(doc: Mapping[str, Any]) -> list[Component]:
                 version=version_of(_text(pkg, "versionInfo")),
                 cpe=cpe,
                 purl=purl,
+                software_type=software_type_of(_text(pkg, "primaryPackagePurpose")),
             )
         )
     return out

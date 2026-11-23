@@ -3,7 +3,7 @@
 /**
  * The sources of one trigger path, managed in place (#1445, dev-docs/ctem-signals.md section 2bis).
  *
- * Opened from a row of the Sources tab. Every source of the path is listed, connected or not, with
+ * Opened from a row of the signal sources page. Every source of the path is listed, connected or not, with
  * its state and the control that exists for it today:
  * - every connected source: "Use on this path", the per path exclusion of the organization profile
  *   (`signal_sources.excluded`); taking it off this path never turns it off for its other paths;
