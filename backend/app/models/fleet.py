@@ -202,6 +202,14 @@ class Fleet(VisibilityColumns, Base):
     customer_gates: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSON(none_as_null=True), nullable=True, default=None
     )
+    #: Whether the platform also pauses the tool calls a waiting gate maps to
+    #: (#1467). Off by default and never written by the seed: by design XTM One
+    #: enables no programmatic tool-level gate, a fleet's gates are instructions
+    #: to its members (a decision item with its ask card). An administrator
+    #: opts a fleet in (``PUT /fleets/{id}/autonomy``, ``enforce_at_tool_level``).
+    enforce_gates_at_tool_level: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     #: Where the fleet's instructions (persona, guardrails, skills) put it on
     #: the four-level scale, between-step positions allowed (#10168, B2-I of
     #: #10000; ``fleet_autonomy.INSTRUCTIONS_POSITIONS``). Never a platform

@@ -1856,6 +1856,7 @@ async def _approval_gates_response(db: AsyncSession, user: User, fleet: Fleet) -
         computed_catalog_on=computed_on,
         instructions_position=getattr(fleet, "instructions_position", None),
         instructions_position_announced=bool(getattr(fleet, "instructions_position_announced", None)),
+        enforce_at_tool_level=bool(getattr(fleet, "enforce_gates_at_tool_level", False)),
     )
 
 
@@ -1872,6 +1873,11 @@ async def get_fleet_approval_gates_endpoint(
     """
     fleet = await _visible_fleet(db, user, fleet_id)
     return await _approval_gates_response(db, user, fleet)
+
+
+TOOL_LEVEL_ENFORCEMENT_REFUSAL = (
+    "Only an administrator can turn the platform's tool-level pauses of a fleet's gates on or off."
+)
 
 
 @router.put("/{fleet_id}/autonomy", response_model=FleetApprovalGatesResponse)
@@ -1896,7 +1902,14 @@ async def apply_fleet_autonomy_endpoint(
 
     fleet = await _manageable_fleet(db, user, fleet_id)
     fields = {"autonomy_level"} if body.pins is None else {"autonomy_level", "approval_pins"}
+    if body.enforce_at_tool_level is not None:
+        fields.add("enforce_gates_at_tool_level")
     _ensure_writable(fleet, fields)
+    previous_enforced = bool(getattr(fleet, "enforce_gates_at_tool_level", False))
+    new_enforced = previous_enforced if body.enforce_at_tool_level is None else body.enforce_at_tool_level
+    # Tool-level enforcement is an administrator's opt-in (#1467), both ways.
+    if new_enforced != previous_enforced and not user.is_admin:
+        raise HTTPException(status_code=403, detail=TOOL_LEVEL_ENFORCEMENT_REFUSAL)
     previous_level = effective_level(fleet.autonomy_level)
     previous_pins = clean_pins(getattr(fleet, "approval_pins", None))
     new_pins = clean_pins(body.pins) if body.pins is not None else previous_pins
@@ -1908,6 +1921,7 @@ async def apply_fleet_autonomy_endpoint(
     if pins_lower_approval(previous_pins, new_pins) and not user.is_admin:
         raise HTTPException(status_code=403, detail=PIN_RUN_REFUSAL)
     fleet.autonomy_level = new_level
+    fleet.enforce_gates_at_tool_level = new_enforced
     if not fleet.is_builtin or body.pins is not None:
         fleet.approval_pins = new_pins
     await log_audit(
@@ -1918,7 +1932,14 @@ async def apply_fleet_autonomy_endpoint(
         entity_id=fleet.id,
         entity_name=fleet.name,
         summary=f"Set the autonomy level of fleet '{fleet.name}' to {new_level}",
-        details={"from": previous_level, "to": new_level, "pins_from": previous_pins, "pins_to": new_pins},
+        details={
+            "from": previous_level,
+            "to": new_level,
+            "pins_from": previous_pins,
+            "pins_to": new_pins,
+            "tool_level_from": previous_enforced,
+            "tool_level_to": new_enforced,
+        },
         request=request,
     )
     await db.commit()

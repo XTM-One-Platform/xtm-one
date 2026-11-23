@@ -59,7 +59,6 @@ _GATED: list[tuple[str, dict[str, Any]]] = [
     ("manage_openaev_atomic_testing", {"action": "launch", "inject_id": _TEST}),
     ("manage_openaev_atomic_testing", {"action": "relaunch", "inject_id": _TEST}),
     ("manage_openaev_atomic_testing", {"action": "recurrence", "inject_id": _TEST, "recurrence": "P1D"}),
-    ("manage_opencti_security_coverage", {"action": "create", "covered_id": "x"}),
 ]
 
 #: Reads stay free at every level.
@@ -137,6 +136,21 @@ def test_the_validation_gate_says_what_it_gates_in_plain_words(slug: str) -> Non
 def test_every_creating_or_starting_call_pauses_at_the_seeded_level(name: str, arguments: dict[str, Any]) -> None:
     assert _pauses(_gate(SEEDED_FLEET_AUTONOMY_LEVEL), _call(name, arguments))
     assert not _pauses(_gate("autonomous"), _call(name, arguments))
+
+
+@pytest.mark.parametrize("slug", _VALIDATION_FLEETS)
+def test_the_coverage_request_sits_under_the_review_gate_alone(slug: str) -> None:
+    """#1467: one decision, one gate key on the call (never also the validation gate)."""
+    from app.services.fleet_autonomy import rule_matches
+
+    rules = gated_tool_rules("full_gates", _gates(slug))
+    keys = {
+        r["key"]
+        for r in rules
+        if rule_matches(r, "manage_opencti_security_coverage", {"action": "create", "covered_id": "x"})
+    }
+    assert CTEM_VALIDATION_GATE not in keys
+    assert len(keys) <= 1
 
 
 @pytest.mark.parametrize(("name", "arguments"), _FREE)
