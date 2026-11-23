@@ -117,6 +117,7 @@ from app.services.sub_agent_files import (
     task_turn_file_refs,
     with_task_attempt_fence,
 )
+from app.services.sub_agent_result_text import RUN_SUMMARY_CHARS, clipped, stored_answer
 from app.services.tool_scaffolding import (
     fold_tool_scaffolding,
     transcript_tool_names,
@@ -4156,7 +4157,9 @@ async def _execute_sub_agent_task(
                     and _resp.count("```") == 2
                 ):
                     _resp = _strip_code_fences(_resp)
-                task2.result = _resp[:50_000]
+                # The whole answer: a cut here was silent and the parent could
+                # never read the rest (``sub_agent_result_text``).
+                task2.result = stored_answer(_resp)
                 task2.completed_at = datetime.now(UTC)
                 # Record the files the loop produced. A wait-budget
                 # continuation was handed the files its predecessor wrote (they
@@ -4181,7 +4184,11 @@ async def _execute_sub_agent_task(
                     db,
                     assignment_run_id,
                     "completed",
-                    result_summary=agent_response[:10_000],
+                    result_summary=clipped(
+                        agent_response,
+                        RUN_SUMMARY_CHARS,
+                        read_call=f'get_full_task_result(task_id="{task_id}")',
+                    ),
                     messages=chat_messages,
                 )
 
@@ -5015,12 +5022,19 @@ async def _complete_task_before_turn(
     an evaluation's chain gets an empty ledger (``_record_no_turn_ledger``).
     """
     task.status = "completed"
-    task.result = answer[:50_000]
+    task.result = stored_answer(answer)
     task.completed_at = datetime.now(UTC)
     _record_no_turn_ledger(task)
     if assignment_run_id:
         await update_assignment_run(
-            db, assignment_run_id, "completed", result_summary=answer[:10_000]
+            db,
+            assignment_run_id,
+            "completed",
+            result_summary=clipped(
+                answer,
+                RUN_SUMMARY_CHARS,
+                read_call=f'get_full_task_result(task_id="{task_id}")',
+            ),
         )
     await _update_task_delegation(db, task_id, "completed", result=answer)
     await db.commit()
