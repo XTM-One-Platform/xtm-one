@@ -321,7 +321,13 @@ class FleetEnableEstimate:
 
 
 def scheduled_runs_per_day(assignments: list[Any]) -> float:
-    """The runs a day the schedules of *assignments* start (an unreadable cron counts 0)."""
+    """The runs a day the schedules of *assignments* start (an unreadable cron counts 0).
+
+    Kept to four decimals, never one: a monthly schedule is 0.0333 a day, and a
+    per-item rate rounded to 0.0 made a monthly-only pick read as no run at all
+    once the client summed the items (#1538, UX round 1 B3). The client rounds
+    the total it shows.
+    """
     from app.services.fleet_doc_generation import QUOTA_DAYS, runs_per_month
 
     total = 0
@@ -330,7 +336,7 @@ def scheduled_runs_per_day(assignments: list[Any]) -> float:
             continue
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
         total += runs_per_month(config.get("cron")) or 0
-    return round(total / QUOTA_DAYS, 1)
+    return round(total / QUOTA_DAYS, 4)
 
 
 async def average_run_cost(db: AsyncSession, assignment_ids: list[uuid.UUID], *, days: int) -> float | None:

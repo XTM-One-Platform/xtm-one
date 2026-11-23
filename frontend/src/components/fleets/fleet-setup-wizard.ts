@@ -153,17 +153,28 @@ export function pickedPlan(items: readonly FleetEnableItem[], left: ReadonlySet<
   };
 }
 
+/** Days a monthly load counts (the About tab basis). */
+const MONTH_DAYS = 30;
+
 /**
  * The expected load of a pick (#1538): the runs a day its schedules start, how
  * many of its automations run once per event, and a cost a day from the mean
  * cost of one run the plan read (null without a run in its window). An order
  * of magnitude, never a quote.
+ *
+ * The per-item rates are summed unrounded and only the total is rounded, so a
+ * pick of monthly schedules never reads as no run. Under one run a day the
+ * load is said per month (`perMonth`): `runs` and `cost` then count a month
+ * of `MONTH_DAYS` days, else a day (`runs` to one decimal).
  */
 export function pickedLoad(picked: readonly FleetEnableItem[], estimate: FleetEnableEstimate | null | undefined) {
-  const runsPerDay = Math.round(picked.reduce((sum, item) => sum + (item.runs_per_day ?? 0), 0) * 10) / 10;
+  const rawPerDay = picked.reduce((sum, item) => sum + (item.runs_per_day ?? 0), 0);
+  const perMonth = rawPerDay > 0 && rawPerDay < 1;
+  const rawRuns = perMonth ? rawPerDay * MONTH_DAYS : rawPerDay;
+  const runs = perMonth ? Math.max(1, Math.round(rawRuns)) : Math.round(rawRuns * 10) / 10;
   const eventDriven = picked.filter((item) => item.event_driven).length;
   const avg = estimate?.avg_cost_per_run ?? null;
-  return { runsPerDay, eventDriven, costPerDay: avg === null ? null : avg * runsPerDay, costDays: estimate?.cost_days ?? 30 };
+  return { runs, perMonth, eventDriven, cost: avg === null ? null : avg * rawRuns, costDays: estimate?.cost_days ?? 30 };
 }
 
 /**

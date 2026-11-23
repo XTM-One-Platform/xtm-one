@@ -243,6 +243,16 @@ async def test_estimate_counts_the_picked_schedules_and_events_and_prices_a_day(
     assert picked.scheduled_runs_per_day == 1.0 and picked.event_automations == 0
 
 
+def test_sub_daily_schedule_keeps_its_rate_unrounded() -> None:
+    """#1550 UX round 1 B3: a rate under one a day keeps four decimals, never one.
+
+    A weekly cron fires 4 or 5 times in any 30 days, whatever today is.
+    """
+    weekly = _assignment("Weekly", enabled=False, reason="created_disabled")
+    weekly.trigger_config = {"cron": "0 9 * * 1"}
+    assert fleet_control.scheduled_runs_per_day([weekly]) in {round(4 / 30, 4), round(5 / 30, 4)}
+
+
 @pytest.mark.asyncio
 async def test_estimate_without_history_gives_no_cost():
     rows = [(_assignment("Manual", enabled=False, reason="user_toggle"), _agent())]

@@ -49,6 +49,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { StepBar } from "@/components/ui/step-bar";
 import { useToast } from "@/components/ui/toast";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { useUsers } from "@/hooks/api/useAuthApi";
 import {
   useFleet,
@@ -64,6 +65,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { fleetViewPath } from "@/lib/fleet-operations";
 import { exactCost, formatCost } from "@/lib/trace-utils";
+import { cn } from "@/lib/utils";
 
 import { quotaRange } from "./fleet-about-showcase";
 import { fleetRefusalMessage } from "./fleet-refusals";
@@ -199,16 +201,38 @@ export function FleetSetupWizard({
   };
 
   const close = () => onOpenChange(false);
-  // One sentence each, never joined: their order and punctuation stay each locale's own.
-  const loadLines = [
-    t_i18n("{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}", { count: load.runsPerDay }),
+  // Under one run a day the load is said per month (UX round 1 B3 on #1550).
+  const runsLine = load.perMonth
+    ? t_i18n("{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}", { count: load.runs })
+    : t_i18n("{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}", { count: load.runs });
+  const eventLine =
     load.eventDriven > 0
       ? t_i18n("{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}", { count: load.eventDriven })
-      : null,
-    load.costPerDay === null
+      : null;
+  const costLine =
+    load.cost === null
       ? t_i18n("No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.", { days: load.costDays })
-      : t_i18n("About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.costPerDay, intl.locale), days: load.costDays }),
-  ].filter((line): line is string => Boolean(line));
+      : load.perMonth
+        ? t_i18n("About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays })
+        : t_i18n("About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.cost, intl.locale), days: load.costDays });
+  // The exact cost on hover and focus, through the shared Tip, never a native title (UX round 1 B2 on #1550).
+  const costTip = load.cost === null ? undefined : exactCost(load.cost, intl.locale);
+  // One sentence each, never joined: their order and punctuation stay each locale's own.
+  const renderLoadLines = (Line: "p" | "span", className?: string) => (
+    <>
+      <Line className={className}>{runsLine}</Line>
+      {eventLine && <Line className={className}>{eventLine}</Line>}
+      {costTip ? (
+        <Tip content={costTip}>
+          <Line tabIndex={0} className={cn(className, "w-fit", TIP_WRAP_FOCUS_RING)} data-testid="fleet-enable-load-cost">
+            {costLine}
+          </Line>
+        </Tip>
+      ) : (
+        <Line className={className}>{costLine}</Line>
+      )}
+    </>
+  );
   const range = quotaRange(documentation.data?.structured);
   const estimate = documentation.isError
     ? t_i18n("The run estimate could not be read.")
@@ -399,9 +423,7 @@ export function FleetSetupWizard({
                 )}
                 {plan.data && count > 0 && (
                   <div className="content-compact text-default-secondary tabular-nums" data-testid="fleet-enable-load">
-                    {loadLines.map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
+                    {renderLoadLines("p")}
                   </div>
                 )}
                 {plan.error && (
@@ -438,15 +460,9 @@ export function FleetSetupWizard({
                 <span className="tabular-nums">{estimate}</span>
               </li>
               {plan.data && count > 0 && (
-                <li className="flex flex-wrap items-center gap-2" data-testid="fleet-setup-review-load">
+                <li className="flex flex-wrap items-start gap-2" data-testid="fleet-setup-review-load">
                   <span className="w-40 shrink-0 font-medium">{t_i18n("Expected load")}</span>
-                  <span className="min-w-0 flex-1 space-y-0.5 tabular-nums" title={load.costPerDay === null ? undefined : exactCost(load.costPerDay, intl.locale)}>
-                    {loadLines.map((line) => (
-                      <span key={line} className="block">
-                        {line}
-                      </span>
-                    ))}
-                  </span>
+                  <span className="min-w-0 flex-1 space-y-0.5 tabular-nums">{renderLoadLines("span", "block")}</span>
                 </li>
               )}
             </ul>
