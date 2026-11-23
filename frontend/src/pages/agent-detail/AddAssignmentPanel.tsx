@@ -32,7 +32,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Tip } from "@/components/ui/tooltip";
 import { withBoundEntities } from "@/lib/entity-list-scope";
 import { cn } from "@/lib/utils";
-import { TRIGGER_TYPES, TRIGGER_ICONS, CRON_PRESETS, INTEGRATION_PROVIDER_NAMES, providerLogoSrc } from "@/lib/constants";
+import { TRIGGER_TYPES, TRIGGER_ICONS, TRIGGER_LABELS, CRON_PRESETS, INTEGRATION_PROVIDER_NAMES, providerLogoSrc } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import type { Agent, TriggerConfig, TriggerType } from "@/types";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
@@ -40,6 +40,9 @@ import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { PlatformEventFields } from "@/pages/assignment-detail/PlatformEventFields";
 import { platformDeadlineSavable, platformEventConfig, platformEventDraft, type PlatformEventDraft } from "@/lib/platform-events";
+import { CtemSignalTriggerFields } from "@/pages/assignment-detail/CtemSignalTriggerFields";
+import { CTEM_SIGNAL_TILE, ctemSignalConfig, ctemSignalDraft, triggerTiles, type CtemSignalDraft } from "@/lib/ctem-signal-trigger";
+import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 
 /** Platform picker value for "every platform of the provider". */
 const ALL_PLATFORMS = "__all__";
@@ -92,6 +95,10 @@ export function AddAssignmentPanel({ agent, onClose, preset }: { agent: Agent; o
   const [platformDraft, setPlatformDraft] = useState<PlatformEventDraft>(() =>
     platformEventDraft(preset?.platformEvents?.length ? ({ event: preset.platformEvents } as unknown as TriggerConfig) : undefined),
   );
+  // The CTEM signal tile (#1409): saved as a platform_event trigger on the ctem_signal.* events.
+  const isXtmOne = useIsXtmOne();
+  const [ctemTile, setCtemTile] = useState(false);
+  const [ctemDraft, setCtemDraft] = useState<CtemSignalDraft>(() => ctemSignalDraft("manual", undefined));
 
   // Platform scope: detect scoped template bindings (from integration scope_config)
   const { data: platformRegistrations } = usePlatformRegistrations();
@@ -128,7 +135,7 @@ export function AddAssignmentPanel({ agent, onClose, preset }: { agent: Agent; o
       triggerConfig.event = eventType;
       if (eventIntegrationId) triggerConfig.integration_id = eventIntegrationId;
     }
-    if (triggerType === "platform_event") Object.assign(triggerConfig, platformEventConfig(platformDraft));
+    if (triggerType === "platform_event") Object.assign(triggerConfig, ctemTile ? ctemSignalConfig(ctemDraft) : platformEventConfig(platformDraft));
     // Include scope bindings if any platform was pinned
     const hasScope = Object.keys(scopeBindings).length > 0;
     // Creating an assignment on a shared agent lends what it names to the
@@ -165,19 +172,24 @@ export function AddAssignmentPanel({ agent, onClose, preset }: { agent: Agent; o
         <div className="grid gap-3 xl:grid-cols-2">
           <Input aria-label={t_i18n("Assignment name")} placeholder={t_i18n("Assignment name")} value={name} onChange={(e) => setName(e.target.value)} />
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
-            {TRIGGER_TYPES.map((t) => {
+            {triggerTiles(TRIGGER_TYPES, isXtmOne).map((t) => {
               const Icon = TRIGGER_ICONS[t] ?? Zap;
               const disabled = t === "integration_event" && eventDisabled;
+              const active = t === CTEM_SIGNAL_TILE ? ctemTile : triggerType === t && !ctemTile;
               return (
                 <Tip key={t} content={disabled ? t_i18n("No agent integrations support events") : undefined}>
                   <Button
-                    variant={triggerType === t ? "default" : "outline"}
+                    variant={active ? "default" : "outline"}
                     size="sm"
                     className={cn("w-full h-10 content-caption gap-1", disabled && "opacity-40 cursor-not-allowed")}
+                    aria-pressed={active}
                     disabled={disabled}
-                    onClick={() => setTriggerType(t)}
+                    onClick={() => {
+                      setCtemTile(t === CTEM_SIGNAL_TILE);
+                      setTriggerType((t === CTEM_SIGNAL_TILE ? "platform_event" : t) as TriggerType);
+                    }}
                   >
-                    <Icon className="h-3 w-3" />{t_i18n(t === "integration_event" ? "Event" : t === "work_item" ? "Work item" : t === "platform_event" ? "Platform event" : t)}
+                    <Icon className="h-3 w-3" />{t_i18n(t === "integration_event" ? "Event" : t === "work_item" ? "Work item" : t === "platform_event" ? "Platform event" : t === CTEM_SIGNAL_TILE ? TRIGGER_LABELS[t] : t)}
                   </Button>
                 </Tip>
               );
@@ -196,9 +208,10 @@ export function AddAssignmentPanel({ agent, onClose, preset }: { agent: Agent; o
         {triggerType === "work_item" && (
           <p className="text-[11px] text-default-secondary">{t_i18n("This assignment becomes the agent's inbox: the scheduler automatically claims and runs the agent's due work items. Fine-tune filters later in the trigger settings.")}</p>
         )}
-        {triggerType === "platform_event" && (
+        {triggerType === "platform_event" && !ctemTile && (
           <PlatformEventFields draft={platformDraft} onChange={setPlatformDraft} isAdmin={isAdmin} />
         )}
+        {triggerType === "platform_event" && ctemTile && <CtemSignalTriggerFields draft={ctemDraft} onChange={setCtemDraft} />}
         {triggerType === "integration_event" && (
           <div className="space-y-3 rounded-sm bg-elevation-hover p-3">
             {eventCapableIntegrations.length > 0 ? (
@@ -331,7 +344,7 @@ export function AddAssignmentPanel({ agent, onClose, preset }: { agent: Agent; o
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>{t_i18n("Cancel")}</Button>
-          <AiDisabledTip><Button onClick={handleCreate} disabled={!name.trim() || !prompt.trim() || create.isPending || aiOff || (triggerType === "platform_event" && (platformDraft.events.length === 0 || !platformDeadlineSavable(platformDraft.expiresAt)))}>{create.isPending ? t_i18n("Creating...") : t_i18n("Create Assignment")}</Button></AiDisabledTip>
+          <AiDisabledTip><Button onClick={handleCreate} disabled={!name.trim() || !prompt.trim() || create.isPending || aiOff || (triggerType === "platform_event" && !ctemTile && (platformDraft.events.length === 0 || !platformDeadlineSavable(platformDraft.expiresAt)))}>{create.isPending ? t_i18n("Creating...") : t_i18n("Create Assignment")}</Button></AiDisabledTip>
         </div>
       </CardContent>
     </Card>

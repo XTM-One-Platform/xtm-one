@@ -224,6 +224,8 @@ export const TRIGGER_ICONS: Record<string, React.ElementType> = {
   manual: Play,
   work_item: ListChecks,
   platform_event: Radio,
+  // The CTEM signal tile of the trigger picker (#1409), a platform_event trigger underneath.
+  ctem_signal: Radar,
 };
 
 export const TRIGGER_LABELS: Record<string, string> = {
@@ -233,6 +235,7 @@ export const TRIGGER_LABELS: Record<string, string> = {
   manual: "Manual",
   work_item: "Work item",
   platform_event: "Platform event",
+  ctem_signal: "CTEM signal",
   followup: "Follow-up",
 };
 
