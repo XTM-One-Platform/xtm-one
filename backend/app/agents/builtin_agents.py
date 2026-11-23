@@ -2919,6 +2919,12 @@ CTEM_F2_GATE_PREFIXES: tuple[str, ...] = (
     "ctem:f2:mobilize:",
 )
 CTEM_GATE_ANSWERED = GATE_ANSWERED
+#: Every key the CTEM loops mint starts with it. The "Gate answered" listener
+#: hears a person's answer on ANY of them (an evidence request or an operational
+#: blocker the loop keyed outside the catalog above included): the event's
+#: ``answered`` flag, not the key, says a person decided, so a dependency
+#: release of a case or re-test item never wakes it.
+CTEM_KEY_PREFIX = "ctem:"
 
 
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
@@ -2961,11 +2967,16 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
     }
 
 
-def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str, prefixes: tuple[str, ...]) -> dict[str, Any]:
-    """The listener that resumes a case once a person answered one of its waiting gates (#1388)."""
+def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict[str, Any]:
+    """The listener that resumes a case once a person answered one of its waiting gates (#1388).
+
+    It hears every answered ``ctem:`` key, not only the catalog the persona names
+    (``CTEM_F*_GATE_PREFIXES``): a key the loop minted outside it resumes the case too.
+    """
     return gate_answered_assignment(
         common,
-        prefixes=prefixes,
+        prefixes=(CTEM_KEY_PREFIX,),
+        answered_only=True,
         inherit_switch_from="Case opened or reopened",
         description=(
             "Resumes a CTEM case when a person answers one of its waiting gates: records the "
@@ -2991,9 +3002,7 @@ CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
-CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(
-    _CTEM_F2_COMMON, fleet_key="ctem:f2", prefixes=CTEM_F2_GATE_PREFIXES
-)
+CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(_CTEM_F2_COMMON, fleet_key="ctem:f2")
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 
@@ -3247,7 +3256,7 @@ CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     owner_filter={"not_in": list(CTEM_USE_CASE_FLEETS)},
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
-CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1", prefixes=CTEM_F1_GATE_PREFIXES))
+CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1"))
 
 #: The one timer prefix the loop arms (#1574): its reminders reach its own listener, never another agent's.
 CTEM_LOOP_REMINDER_PREFIX = "ctem-loop-reminder:"

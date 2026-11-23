@@ -136,3 +136,44 @@ def test_software_types_keep_a_declared_type_over_application_and_drop_unknown_v
 
 def test_a_label_naming_nothing_on_the_asset_gives_no_edge() -> None:
     assert sw.dependency_edges([{"product": "a", "version": "1", "depends_on": ["b 2"], "bundled_in": "c"}]) == []
+
+
+def test_the_matcher_reads_each_software_with_its_one_known_version() -> None:
+    entries = sw.matcher_entries(
+        [
+            {"vendor": "Fortinet", "product": "FortiOS", "cpe": "cpe:2.3:o:fortinet:fortios:*", "versions": ["7.2.4"]},
+            {"vendor": "Google", "product": "Chrome", "cpe": "", "versions": ["130.0", "131.0", "unknown"]},
+            {"vendor": "Microsoft", "product": "Microsoft Teams", "cpe": "", "versions": ["unknown"]},
+        ]
+    )
+    assert entries == [
+        {
+            "product": "FortiOS",
+            "vendor": "Fortinet",
+            "cpe": "cpe:2.3:o:fortinet:fortios:*",
+            "version": "7.2.4",
+            "label": "Fortinet FortiOS",
+        },
+        # Two known versions run: no installed version is stated, never a guess.
+        {"product": "Chrome", "vendor": "Google", "cpe": "", "version": "", "label": "Google Chrome"},
+        # Only unknown: empty, never the word unknown as a version to match.
+        {"product": "Microsoft Teams", "vendor": "Microsoft", "cpe": "", "version": "", "label": "Microsoft Teams"},
+    ]
+
+
+def test_a_typed_profile_row_no_software_carries_is_still_matched() -> None:
+    entries = sw.matcher_entries(
+        [{"vendor": "Google", "product": "Chrome", "cpe": "", "versions": ["131.0"]}],
+        [
+            # The same software typed by hand: its CPE fills the gap, its version never wins.
+            {"vendor": "google", "product": "chrome", "cpe": "cpe:2.3:a:google:chrome:*", "version": "99"},
+            # A product with no vendor joins the one software of that product.
+            {"vendor": "", "product": "CHROME", "cpe": "", "version": ""},
+            {"vendor": "", "product": "Jira", "cpe": "", "version": ""},
+            {"vendor": "", "product": "  ", "cpe": "", "version": ""},
+        ],
+    )
+    assert [(e["label"], e["cpe"], e["version"]) for e in entries] == [
+        ("Google Chrome", "cpe:2.3:a:google:chrome:*", "131.0"),
+        ("Jira", "", ""),
+    ]
