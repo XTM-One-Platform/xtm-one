@@ -90,8 +90,15 @@ async def _resolves(
     return bool(((data or {}).get("grouping") or {}).get("id"))
 
 
-async def grouping_placement(db: AsyncSession, user_id: str, grouping_id: str) -> Placement:
-    """Where *grouping_id* is for *user_id*'s own OpenCTI read (see the module docstring)."""
+async def grouping_placement(
+    db: AsyncSession, user_id: str, grouping_id: str, *, draft_first: bool = False
+) -> Placement:
+    """Where *grouping_id* is for *user_id*'s own OpenCTI read (see the module docstring).
+
+    *draft_first* (#1573): an open draft holding the Grouping wins over the live
+    graph, for a package whose review did not approve it: an entity that exists
+    live and is edited in a draft is still a drafted package.
+    """
     try:
         cred = await _user_creds(db, user_id, "opencti")
     except Exception as exc:
@@ -103,7 +110,7 @@ async def grouping_placement(db: AsyncSession, user_id: str, grouping_id: str) -
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             live = await _resolves(client, base_url, headers, grouping_id)
-            if live:
+            if live and not draft_first:
                 return Placement(LIVE, base_url)
             if live is None:
                 return Placement(UNKNOWN, base_url, detail="OpenCTI did not answer the live graph read")
@@ -120,7 +127,7 @@ async def grouping_placement(db: AsyncSession, user_id: str, grouping_id: str) -
     except Exception as exc:
         logger.warning("CTEM threat package: OpenCTI read failed: %s", format_exception_message(exc))
         return Placement(UNKNOWN, base_url, detail="OpenCTI could not be read")
-    return Placement(ABSENT, base_url)
+    return Placement(LIVE if live else ABSENT, base_url)
 
 
 def _grouping_page_of(package: dict[str, Any]) -> bool:
@@ -130,21 +137,37 @@ def _grouping_page_of(package: dict[str, Any]) -> bool:
     return bool(url) and loop._DRAFT_URL.match(url) is None and loop._GROUPING_URL.match(url) is not None
 
 
-async def verify_package(db: AsyncSession, user_id: str, package: Any) -> Any:
+def _not_approved(review: str | None) -> bool:
+    from app.services import ctem_cases_view as view_of
+
+    return review in (view_of.REVIEW_WAITING, view_of.REVIEW_REJECTED, view_of.REVIEW_REPLAN)
+
+
+async def verify_package(db: AsyncSession, user_id: str, package: Any, review: str | None = None) -> Any:
     """*package* as it may be recorded: a Grouping page only once the Grouping is live.
 
     A Grouping found inside an open draft is recorded with that draft's page
     (``drafted``); one OpenCTI cannot place is refused (:class:`CaseRuleError`),
     so a Grouping page is never stored on trust. Anything but a Grouping page
-    is returned as given (``record_threat_package`` validates it).
+    is returned as given (``record_threat_package`` validates it). *review* is
+    the case's ``ctem_cases_view.review_outcome`` (#1573): while the review
+    waits, was refused or asked for a re-plan, an open draft holding the
+    Grouping wins over the live graph, and a Grouping found in none is refused.
     """
     if not isinstance(package, dict) or not _grouping_page_of(package):
         return package
-    placement = await grouping_placement(db, user_id, str(package.get("grouping_id") or "").strip())
-    if placement.where == LIVE:
-        return package
+    held = _not_approved(review)
+    placement = await grouping_placement(db, user_id, str(package.get("grouping_id") or "").strip(), draft_first=held)
     if placement.where == DRAFT:
         return {**package, "url": placement.draft_page}
+    if placement.where == LIVE and held:
+        raise rules.CaseRuleError(
+            "threat_package.url is the Grouping page but the case's analyst review (ctem.analyst_review) did not "
+            "approve the package: record the draft page while the review waits, is refused or asks for a re-plan, "
+            "and the Grouping page once the review is approved and the draft applied"
+        )
+    if placement.where == LIVE:
+        return package
     if placement.where == ABSENT:
         raise rules.CaseRuleError(
             "threat_package.url is the Grouping page but the Grouping is neither in OpenCTI's live graph nor in "
@@ -160,38 +183,55 @@ async def verify_package(db: AsyncSession, user_id: str, package: Any) -> Any:
 async def repair_stored_packages(
     db: AsyncSession, organization_id: uuid.UUID, user_id: str, *, dry_run: bool = True, now: datetime | None = None
 ) -> dict[str, Any]:
-    """Re-read every case's newest package stored with a Grouping page and correct the wrong ones (#1547).
+    """Re-read every case's newest package stored with a Grouping page and correct the wrong ones (#1547, #1573).
 
     Read with *user_id*'s own OpenCTI access (the administrator who runs it). A
     Grouping inside an open draft gets a new ``threat_package`` event with the
     draft page; one absent from the live graph and from every open draft gets
     one with no page (both read ``drafted``); a live one, or one that cannot be
-    read, is left as it is (``unreadable`` counts those). *dry_run* writes
-    nothing. The caller commits.
+    read, is left as it is (``unreadable`` counts those). A case whose analyst
+    review did not approve the package (waiting, refused, re-plan; #1573) is
+    read draft first, and a live Grouping with no draft gets no page either:
+    its page was never the approved one. ``review`` names that outcome per
+    case. *dry_run* writes nothing. The caller commits.
     """
+    from app.services import ctem_cases_view as view_of
+
     rows = (
         await db.execute(
             select(CtemCaseEvent)
             .join(CtemCase, CtemCase.id == CtemCaseEvent.case_id)
-            .where(CtemCase.organization_id == organization_id, CtemCaseEvent.kind == "threat_package")
+            .where(CtemCase.organization_id == organization_id, CtemCaseEvent.kind.in_(("threat_package", "gate")))
             .order_by(CtemCaseEvent.at.asc())
         )
     ).scalars()
     newest: dict[uuid.UUID, CtemCaseEvent] = {}
+    gates: dict[uuid.UUID, list[CtemCaseEvent]] = {}
     for row in rows:
-        newest[row.case_id] = row
+        if row.kind == "gate":
+            gates.setdefault(row.case_id, []).append(row)
+        elif row.kind == "threat_package":
+            newest[row.case_id] = row
     candidates = [row for row in newest.values() if row.to_value and _grouping_page_of({"url": row.evidence})]
     corrected: list[dict[str, Any]] = []
     unreadable = 0
     at = now or datetime.now(UTC)
     for row in candidates[:REPAIR_CAP]:
-        placement = await grouping_placement(db, user_id, str(row.to_value))
-        if placement.where in (LIVE, UNKNOWN):
+        review = view_of.review_outcome(gates.get(row.case_id, []))
+        held = _not_approved(review)
+        placement = await grouping_placement(db, user_id, str(row.to_value), draft_first=held)
+        if placement.where == UNKNOWN or (placement.where == LIVE and not held):
             unreadable += placement.where == UNKNOWN
             continue
         page = placement.draft_page or None
         corrected.append(
-            {"case_id": str(row.case_id), "grouping_id": row.to_value, "placement": placement.where, "url": page}
+            {
+                "case_id": str(row.case_id),
+                "grouping_id": row.to_value,
+                "placement": placement.where,
+                "review": review,
+                "url": page,
+            }
         )
         if not dry_run:
             db.add(
