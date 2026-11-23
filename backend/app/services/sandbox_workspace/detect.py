@@ -2775,6 +2775,54 @@ def _apply_formatters(collector: _Collector) -> None:
         )
 
 
+#: The lockfile-only update of each Node package manager's locked install, by the install's argv head.
+_RELOCK_ARGV = {
+    ("yarn", "install", "--immutable"): ("yarn", "install", "--mode=update-lockfile"),
+    ("yarn", "install", "--frozen-lockfile"): ("yarn", "install", "--ignore-scripts"),
+    ("pnpm", "install", "--frozen-lockfile"): ("pnpm", "install", "--lockfile-only"),
+    ("npm", "ci"): ("npm", "install", "--package-lock-only", "--ignore-scripts"),
+}
+
+
+def _relock_argv(argv: tuple[str, ...]) -> tuple[str, ...]:
+    """The lockfile update of a locked Node install *argv*, ``()`` when it is none (a pinned pnpm keeps its runner)."""
+    runner: tuple[str, ...] = ()
+    head = argv
+    if argv[:1] == ("corepack",) and len(argv) > 1 and argv[1].startswith("pnpm@"):
+        runner, head = argv[:2], ("pnpm", *argv[2:])
+    for locked, relock in _RELOCK_ARGV.items():
+        if head[: len(locked)] == locked:
+            relocked = (*relock, *(a for a in head[len(locked) :] if a != "--immutable"))
+            return (*runner, *relocked[1:]) if runner else relocked
+    return ()
+
+
+def _node_relock(collector: _Collector) -> None:
+    """A ``<dir>:node-relock`` check next to every locked Node install (``--immutable``, ``--frozen-lockfile``, ``npm ci``).
+
+    A dependency or pin bump needs its lockfile regenerated, and the install check refuses a lock that
+    no longer matches: the lock was edited by hand. The relock runs the same manager in lock-update mode
+    (``yarn install --mode=update-lockfile``, ``pnpm install --lockfile-only``, ``npm install
+    --package-lock-only``), needs no install first, and is not an install, so the lockfile it rewrites is
+    the change ``from_checkout`` commits.
+    """
+    for (directory, stack, kind), spec in list(collector.found.items()):
+        key = (directory, stack, "relock")
+        if stack != "node" or kind != "install" or key in collector.found or len(collector.found) >= MAX_CHECKS:
+            continue
+        argv = _relock_argv(spec.argv)
+        if not argv:
+            continue
+        collector.found[key] = replace(
+            spec,
+            name=f"{directory}:node-relock" if directory else "node-relock",
+            argv=argv,
+            default_args=(),
+            description=f"lockfile update of {spec.name}: rewrites the lock after a manifest change"[:200],
+            install_first=False,
+        )
+
+
 def _compose(files: Mapping[str, bytes], infra: list[Infra]) -> None:
     for path in sorted(p for p in files if _COMPOSE.match(posixpath.basename(p))):
         services = _yaml(files[path]).get("services")
@@ -2807,6 +2855,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _apply_pythons(collector)
     _apply_pnpm(collector, files)
     _apply_formatters(collector)
+    _node_relock(collector)
     _actions_lint(collector, listing)
     _compose(files, infra)
     unique = list(dict.fromkeys(row for row in infra if row.name))[:MAX_INFRA]
