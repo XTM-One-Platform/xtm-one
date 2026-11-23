@@ -904,6 +904,10 @@ _EXEMPT_DETERMINISTIC_FLOW_CONTROL = {
 # POSTs that only read, or grant a read.
 _EXEMPT_READ_IN_POST = {
     "export_knowledge_base",
+    # The inventory lookup of a platform's pivot (#1178): reads the canonical
+    # assets the given identifiers name - no model, nothing written. A POST
+    # only because up to 200 identifiers do not fit a query string.
+    "lookup_canonical_assets",
     # The secret picker's check of one vault reference: it reads the
     # secret on the server and answers whether it can be read, nothing written.
     "check_reference",

@@ -877,6 +877,95 @@ async def get_asset(
     }
 
 
+#: The most identifiers one lookup reads (a page of a platform's list, its hero).
+MAX_LOOKUP_KEYS = 200
+#: The identifier kinds another platform names an asset by: what it holds itself. A serial or a
+#: cloud id is never guessed from a free value (``web-02`` would read as the serial ``WEB02``).
+LOOKUP_KINDS: tuple[str, ...] = ("fqdn", "hostname", "mac", "ip")
+
+
+def _lookup_keys(value: str) -> set[tuple[str, str]]:
+    """The (kind, normalised value) pairs *value* may be: an FQDN and its hostname, a MAC, an IP."""
+    return {(kind, key) for kind in LOOKUP_KINDS if (key := identity.normalize_identifier(kind, value))}
+
+
+async def find_assets_by_identifier(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    values: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """The canonical asset each of *values* names, by the value as asked.
+
+    A value is read as every :data:`LOOKUP_KINDS` kind it can be (``web-02`` a
+    hostname, ``10.0.0.5`` an IP, ``aa:bb:...`` a MAC, ``web-02.corp.example``
+    an FQDN and the hostname ``web-02``) and matched against the identifiers of every
+    source record, normalised as the identity engine compares them, then
+    against the asset's name. A value no asset holds is absent; when several
+    assets hold it (a weak key such as a shared IP), the first by name answers.
+    The profile caps its rows at 5,000, so one scan of the records is bounded.
+    """
+    asked: dict[str, set[tuple[str, str]]] = {}
+    for value in values[:MAX_LOOKUP_KEYS]:
+        text_value = str(value or "").strip()
+        if text_value and text_value not in asked:
+            asked[text_value] = _lookup_keys(text_value)
+    if not asked:
+        return {}
+    held: dict[tuple[str, str], set[uuid.UUID]] = {}
+    for asset_id, identifiers in (
+        await db.execute(
+            select(OrganizationAssetSource.asset_id, OrganizationAssetSource.identifiers).where(
+                OrganizationAssetSource.organization_id == organization_id
+            )
+        )
+    ).all():
+        record = identity.SourceRecord(source="lookup", external_id="", identifiers=dict(identifiers or {}))
+        for kind in LOOKUP_KINDS:
+            for key in record.keys(kind):
+                held.setdefault((kind, key), set()).add(asset_id)
+    by_name: dict[str, set[uuid.UUID]] = {}
+    names = {_key(v) for v in asked}
+    for asset_id, name_key in (
+        await db.execute(
+            select(OrganizationAsset.id, OrganizationAsset.name_key).where(
+                OrganizationAsset.organization_id == organization_id, OrganizationAsset.name_key.in_(names)
+            )
+        )
+    ).all():
+        by_name.setdefault(name_key, set()).add(asset_id)
+    matched: dict[str, set[uuid.UUID]] = {}
+    for value, keys in asked.items():
+        ids: set[uuid.UUID] = set()
+        for pair in keys:
+            ids |= held.get(pair, set())
+        ids |= by_name.get(_key(value), set())
+        if ids:
+            matched[value] = ids
+    if not matched:
+        return {}
+    every = {i for ids in matched.values() for i in ids}
+    assets = {
+        a.id: a
+        for a in (await db.execute(select(OrganizationAsset).where(OrganizationAsset.id.in_(every)))).scalars().all()
+    }
+    out: dict[str, dict[str, Any]] = {}
+    for value, ids in matched.items():
+        found = sorted((assets[i] for i in ids if i in assets), key=lambda a: (a.name_key, a.canonical_key))
+        if found:
+            asset = found[0]
+            summary = _summary(asset, [], 0)
+            out[value] = {
+                "id": summary["id"],
+                "name": summary["name"],
+                "category": summary["category"],
+                "criticality": summary["criticality"],
+                "internet_facing": summary["internet_facing"],
+                "owner": summary["owner"],
+                "matches": len(found),
+            }
+    return out
+
+
 async def assets_of_software(
     db: AsyncSession,
     organization_id: uuid.UUID,

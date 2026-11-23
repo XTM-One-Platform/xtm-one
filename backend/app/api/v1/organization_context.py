@@ -447,6 +447,56 @@ async def read_asset_identity(
     }
 
 
+class AssetLookupRequest(BaseModel):
+    #: The identifiers a platform holds for its own objects: hostnames, FQDNs, IP or MAC addresses.
+    keys: list[str] = Field(min_length=1, max_length=200)
+
+
+class AssetLookupMatch(BaseModel):
+    key: str
+    id: str
+    name: str
+    category: Any = None
+    criticality: Any = None
+    internet_facing: Any = None
+    owner: Any = None
+    #: How many assets hold the key (a shared IP): the first by name answers.
+    matches: int
+    #: The asset's page in the CTEM inventory.
+    url: str
+
+
+class AssetLookupResponse(BaseModel):
+    items: list[AssetLookupMatch]
+
+
+@router.post("/assets/lookup", response_model=AssetLookupResponse)
+async def lookup_canonical_assets(
+    body: AssetLookupRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> AssetLookupResponse:
+    """The inventory assets the given identifiers name, for a platform's cross-product pivot.
+
+    OpenCTI, OpenAEV and OpenCRQ call it with the user's own token (the user
+    reads what the inventory list answers him); a key no asset holds is absent.
+    """
+    from app.services.email import platform_url
+    from app.services.organization_asset_store import find_assets_by_identifier
+
+    org = await _built_store(db)
+    if org is None:
+        return AssetLookupResponse(items=[])
+    found = await find_assets_by_identifier(db, org, body.keys)
+    base = platform_url()
+    return AssetLookupResponse(
+        items=[
+            AssetLookupMatch(key=key, url=f"{base}/ctem/inventory/assets/{match['id']}", **match)
+            for key, match in found.items()
+        ]
+    )
+
+
 @router.get("/assets/by-software", response_model=CanonicalAssetsPage)
 async def list_assets_of_software(
     product: str = Query(..., min_length=1, max_length=200),
