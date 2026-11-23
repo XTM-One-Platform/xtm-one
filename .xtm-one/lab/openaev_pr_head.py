@@ -13,7 +13,8 @@ against its own backend, its own Flyway migrations and seeded data, not a stub (
    ``openaev``; pg_trgm and hstore are in the contrib set), OpenSearch and RabbitMQ from the OpenCTI lab's store
    services (``lab-opencti-search`` on 9200, ``lab-opencti-broker`` on 5672), as OpenAEV's CI runs them.
 3. The administrator is the platform's own (``OPENAEV_ADMIN_*``); the seed goes through the public API with its
-   token on the default tenant: assets, an asset group, a scenario and a simulation of it.
+   token on the default tenant: assets, an asset group, a scenario and a simulation of it; then, through psql, one
+   finished simulation of that scenario per past week with scored expectations (``seed_history``).
 4. ``/lab/sign-in`` sets the ``openaev_token`` cookie to the admin token (``TokenAuthenticationFilter`` reads
    it), then opens ``/``. Theme: ``/lab/theme/dark`` or ``/lab/theme/light`` (``PUT /api/me/profile``).
 5. This script listens on ``PORT``, the preview port: ``/lab/*`` here, everything else (websockets included) to
@@ -33,6 +34,7 @@ import http.server
 import io
 import json
 import os
+import subprocess
 import sys
 import tarfile
 import threading
@@ -131,6 +133,62 @@ SEED_ATOMIC_TESTING = {
     "inject_description": "Seeded by the xtm-one OpenAEV lab; launched, no implant answers, so it stays running.",
     "inject_content": {},
 }
+#: The history the dashboards and trends read: finished simulations of the seeded scenario, one per past week, each
+#: with prevention, detection and vulnerability expectations on the seeded assets and asset groups, some failed (gap
+#: lab-openaev-no-history-seed: run 043c787d wrote them by hand through lab-sql). The API cannot back-date a
+#: simulation, so this step writes the rows with psql; every row's updated_at is now, so the indexer picks them up.
+HISTORY_WEEKS = 10
+HISTORY_STEP = "history of finished simulations"
+HISTORY_SQL = """
+SELECT set_config('lab.scenario', :'scenario', false), set_config('lab.weeks', :'weeks', false);
+DO $$
+DECLARE
+  sc text; w int; ex text; inj text; g record; a record; k int := 0;
+  weeks int := current_setting('lab.weeks')::int;
+BEGIN
+  SELECT scenario_id INTO sc FROM scenarios WHERE scenario_name = current_setting('lab.scenario') LIMIT 1;
+  IF sc IS NULL THEN
+    RAISE EXCEPTION 'no scenario named %', current_setting('lab.scenario');
+  END IF;
+  FOR w IN 1..weeks LOOP
+    ex := gen_random_uuid()::text;
+    INSERT INTO exercises(exercise_id, exercise_name, exercise_start_date, exercise_end_date, exercise_status,
+                          exercise_category, exercise_created_at, exercise_updated_at)
+    VALUES (ex, current_setting('lab.scenario') || ', week ' || (weeks + 1 - w), now() - w * interval '7 days',
+            now() - w * interval '7 days' + interval '2 hours', 'FINISHED', 'attack-scenario',
+            now() - w * interval '7 days', now());
+    INSERT INTO scenarios_exercises(scenario_id, exercise_id) VALUES (sc, ex);
+    inj := gen_random_uuid()::text;
+    INSERT INTO injects(inject_id, inject_title, inject_all_teams, inject_enabled, inject_depends_duration,
+                        inject_exercise, inject_created_at, inject_updated_at)
+    VALUES (inj, 'Execute validation payloads', false, true, 0, ex, now() - w * interval '7 days', now());
+    FOR g IN SELECT asset_group_id FROM asset_groups LOOP
+      k := k + 1;
+      INSERT INTO injects_expectations(inject_expectation_id, inject_expectation_created_at,
+        inject_expectation_updated_at, exercise_id, inject_id, inject_expectation_type, inject_expectation_score,
+        inject_expectation_expected_score, inject_expectation_name, inject_expectation_group, asset_group_id,
+        inject_expiration_time, inject_expectation_signatures_initialized, inject_expectation_collector_missing_at_init)
+      VALUES (gen_random_uuid()::text, now() - w * interval '7 days', now(), ex, inj,
+              CASE WHEN k % 2 = 0 THEN 'PREVENTION' ELSE 'DETECTION' END,
+              CASE WHEN (k * 7 + w) % 5 < 2 THEN 0 ELSE 100 END, 100,
+              CASE WHEN k % 2 = 0 THEN 'Prevention' ELSE 'Detection' END, true, g.asset_group_id, 21600, true, false);
+    END LOOP;
+    FOR a IN SELECT asset_id FROM assets WHERE asset_type = 'Endpoint' LOOP
+      k := k + 1;
+      INSERT INTO injects_expectations(inject_expectation_id, inject_expectation_created_at,
+        inject_expectation_updated_at, exercise_id, inject_id, inject_expectation_type, inject_expectation_score,
+        inject_expectation_expected_score, inject_expectation_name, inject_expectation_group, asset_id,
+        inject_expiration_time, inject_expectation_signatures_initialized, inject_expectation_collector_missing_at_init)
+      VALUES (gen_random_uuid()::text, now() - w * interval '7 days', now(), ex, inj,
+              CASE k % 3 WHEN 0 THEN 'PREVENTION' WHEN 1 THEN 'DETECTION' ELSE 'VULNERABILITY' END,
+              CASE WHEN (k * 3 + w) % 4 = 0 THEN 0 ELSE 100 END, 100,
+              CASE k % 3 WHEN 0 THEN 'Prevention' WHEN 1 THEN 'Detection' ELSE 'Vulnerability' END,
+              false, a.asset_id, 21600, true, false);
+    END LOOP;
+  END LOOP;
+END $$;
+SELECT count(*) FROM exercises WHERE exercise_status = 'FINISHED';
+"""
 STATE: dict[str, str] = {}
 #: The seed steps the database holds (step name: created id), written after each step: a kept database seeds only
 #: the steps this record lacks, so a step that failed or was cut on the first start lands on the next one.
@@ -534,6 +592,39 @@ def seed() -> list[str]:
     return done
 
 
+def psql(sql: str, **params: str) -> str:
+    """Run *sql* on the lab's ``openaev`` database; each value of *params* is bound as a psql variable
+    (``:'name'``), never spliced in. The statement goes on stdin: psql interpolates variables in a script only."""
+    dest = lab.stores.STORES_DIR if lab.stores.installed(lab.stores.STORES_DIR) else lab.CACHE / "stores"
+    argv = [str(lab.stores.pg_bindir(dest) / "psql"), "-h", "127.0.0.1", "-p", str(lab.stores.PG_PORT),
+            "-U", "copilot", "-d", DATABASE, "-v", "ON_ERROR_STOP=1", "-qAt"]
+    for name, value in params.items():
+        argv += ["-v", f"{name}={value}"]
+    return subprocess.run(argv, input=sql, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def seed_history() -> bool:
+    """The finished simulations of the past weeks, written once per database (recorded as ``HISTORY_STEP``) after
+    the API seed, so the scenario's created rows exist. A failure is named in ``STATE["seed_missing"]`` and tried
+    again on the next start; True when the rows were written in this call."""
+    record = seeded_record()
+    if HISTORY_STEP in record:
+        lab.log(f"openaev seed: {HISTORY_STEP} kept from the previous run")
+        return False
+    try:
+        finished = psql(HISTORY_SQL, scenario=SEED_SCENARIO["scenario_name"], weeks=str(HISTORY_WEEKS))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        detail = (getattr(exc, "stderr", "") or str(exc)).strip()[:300]
+        lab.log(f"openaev seed: {HISTORY_STEP} failed: {detail}")
+        missing = [part for part in STATE.get("seed_missing", "").split("; ") if part]
+        STATE["seed_missing"] = "; ".join([*missing, f"{HISTORY_STEP} ({detail})"])
+        return False
+    record[HISTORY_STEP] = finished.splitlines()[-1] if finished else ""
+    SEEDED.parent.mkdir(parents=True, exist_ok=True)
+    SEEDED.write_text(json.dumps(record))
+    return True
+
+
 def set_theme(theme: str) -> None:
     me = api("GET", "/api/me") or {}
     api("PUT", "/api/me/profile", {
@@ -638,6 +729,8 @@ def main() -> None:
         wait_for_admin_token()
         for item in seed():
             lab.log(f"seeded openaev {item}")
+        if seed_history():
+            lab.log(f"seeded openaev {HISTORY_STEP} ({HISTORY_WEEKS} weeks)")
     STATE["seeded"] = "1"
     lab.log(f"seeded signed-in session for {ADMIN_EMAIL} (admin token cookie)")
     lab.wait_http(f"http://127.0.0.1:{VITE_PORT}/", 300, "openaev-front")
