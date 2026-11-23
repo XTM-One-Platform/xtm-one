@@ -3438,6 +3438,9 @@ async def get_embedding_provider(
     2. Fallback: :func:`implicit_embedding_fallback`, the first configured
        provider in :data:`_EMBEDDING_PROVIDERS` order, with its built-in
        default model.
+    3. With no embedding model stored, an AI Gateway's flagged embedding
+       model, saved as the default where it re-embeds no stored vector
+       (:mod:`app.llm.gateway_embedding_default`).
 
     Uses a single DB query for all provider configs and the provider
     instance cache to avoid redundant Fernet decrypt + SDK client creation.
@@ -3499,6 +3502,15 @@ async def get_embedding_provider(
         config, model = fallback
         await ensure_not_excluded(db, config, "Embedding", user_id)
         return _with_embedding_dimensions(await _cached_provider(config)), model, config.id
+
+    # 3. No other provider embeds: the AI Gateway's flagged model, saved first.
+    if not ps.embedding_model and any(c.provider == FiligranGatewayProvider.provider_name for c in configs):
+        from app.llm.gateway_embedding_default import fill_at_lookup
+
+        if (adopted := await fill_at_lookup(ps, configs)) is not None:
+            config = next((c for c in configs if c.id == adopted[0].id), adopted[0])
+            await ensure_not_excluded(db, config, "Embedding", user_id)
+            return _with_embedding_dimensions(await _cached_provider(config)), adopted[1], config.id
 
     raise EmbeddingConfigurationError(
         "An embedding-capable provider is required (OpenAI, Gemini, Azure OpenAI, Mistral, Bedrock, Ollama, "

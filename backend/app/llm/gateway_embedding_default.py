@@ -1,0 +1,176 @@
+"""The AI Gateway's flagged embedding model, saved into an EMPTY platform embedding default (#1422).
+
+Saved only where it re-embeds no stored vector: a re-embedding is hours of
+heavy load. Once saved it is the platform's choice; a later flag never moves it.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+from collections.abc import Iterable
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.llm.gateway_provider import FiligranGatewayProvider
+from app.models.agent_memory_entry import AgentMemoryEntry
+from app.models.embedding import Embedding
+from app.models.llm_config import LLMProviderConfig
+
+logger = logging.getLogger(__name__)
+
+GATEWAY = FiligranGatewayProvider.provider_name
+
+# A refused flag is not re-checked at every embedding lookup: the check reads
+# the vector tables, and vectors rarely start matching.
+_REFUSED_TTL_SECONDS = 300.0
+_refused_until: dict[tuple[uuid.UUID, str, int | None], float] = {}
+
+
+def _dims(table) -> object:
+    return func.coalesce(table.embedding_dimensions, func.vector_dims(table.embedding))
+
+
+async def _reembeds_nothing(db: AsyncSession, model: str, dimensions: int | None) -> bool:
+    """Whether *model* from the gateway re-embeds no stored vector.
+
+    True with no vector stored, or when every one is the gateway's *model* at
+    one size that *dimensions* (the stored setting) does not contradict.
+    """
+    chunk = (
+        await db.execute(select(Embedding.embedding_provider, Embedding.embedding_model, _dims(Embedding)).limit(1))
+    ).first()
+    memory = (
+        await db.execute(
+            select(AgentMemoryEntry.embedding_model, _dims(AgentMemoryEntry))
+            .where(AgentMemoryEntry.embedding.is_not(None))
+            .limit(1)
+        )
+    ).first()
+    if chunk is None and memory is None:
+        return True
+    size = chunk[2] if chunk is not None else memory[1]
+    if dimensions is not None and dimensions != size:
+        return False
+    other_chunk = (
+        select(Embedding.id)
+        .where(
+            or_(
+                Embedding.embedding_provider.is_distinct_from(GATEWAY),
+                Embedding.embedding_model.is_distinct_from(model),
+                _dims(Embedding).is_distinct_from(size),
+            )
+        )
+        .exists()
+    )
+    # A memory entry records no provider: its model and size decide.
+    other_memory = (
+        select(AgentMemoryEntry.id)
+        .where(
+            AgentMemoryEntry.embedding.is_not(None),
+            or_(
+                AgentMemoryEntry.embedding_model.is_distinct_from(model),
+                _dims(AgentMemoryEntry).is_distinct_from(size),
+            ),
+        )
+        .exists()
+    )
+    return not (await db.execute(select(or_(other_chunk, other_memory)))).scalar()
+
+
+async def _flagged(configs: Iterable[LLMProviderConfig], dimensions: int | None) -> list[tuple[LLMProviderConfig, str]]:
+    """Each AI Gateway of *configs* with the embedding model it flags, those refused lately left out."""
+    from app.llm.router import gateway_default
+
+    out = []
+    for config in configs:
+        if config.provider != GATEWAY or not (listed := await gateway_default([config], "embedding")):
+            continue
+        if _refused_until.get((config.id, listed[2], dimensions), 0.0) <= time.monotonic():
+            out.append((config, listed[2]))
+    return out
+
+
+async def adoptable_gateway_default(
+    db: AsyncSession, configs: Iterable[LLMProviderConfig], *, dimensions: int | None
+) -> tuple[LLMProviderConfig, str] | None:
+    """The first AI Gateway of *configs* flagging an embedding model that re-embeds nothing, and that model."""
+    for config, model in await _flagged(configs, dimensions):
+        if await _reembeds_nothing(db, model, dimensions):
+            return config, model
+        _refused_until[(config.id, model, dimensions)] = time.monotonic() + _REFUSED_TTL_SECONDS
+        logger.info("AI Gateway default embedding model %s not used: stored vectors would be re-embedded", model)
+    return None
+
+
+async def fill_from_gateway(
+    db: AsyncSession, ps, configs: Iterable[LLMProviderConfig]
+) -> tuple[LLMProviderConfig, str] | None:
+    """Save the gateway's flagged embedding model into *ps* when its embedding model is empty."""
+    if ps.embedding_model:
+        return None
+    adopted = await adoptable_gateway_default(db, configs, dimensions=ps.embedding_dimensions)
+    if adopted is not None:
+        _save(ps, *adopted)
+        await db.flush()
+    return adopted
+
+
+def _save(ps, config: LLMProviderConfig, model: str) -> None:
+    ps.embedding_provider = GATEWAY
+    ps.embedding_provider_id = config.id
+    ps.embedding_model = model
+
+
+async def byollm_keeps_it_empty(db: AsyncSession) -> bool:
+    """Under ``BYOLLM_ACTIVATED``, an administrator-configured install's empty default is their choice."""
+    from app.core.config import settings
+
+    if not settings.byollm_activated:
+        return False
+    from app.main import _byollm_install_configured
+
+    return await _byollm_install_configured(db)
+
+
+async def fill_at_lookup(ps, configs: list[LLMProviderConfig]) -> tuple[LLMProviderConfig, str] | None:
+    """:func:`fill_from_gateway` for an embedding lookup that found no model, committed in its own session.
+
+    The caller's transaction may roll back, or hold the settings row for long.
+    """
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    from app.api.v1.platform_settings_helpers import peek_platform_settings
+    from app.core import database
+    from app.llm.router import select_provider_configs
+
+    # Flags are cached and refusals remembered: with no candidate, the lookup pays no query.
+    if not await _flagged(configs, ps.embedding_dimensions):
+        return None
+    async with database.async_session() as db:
+        # Never waits on a row lock: the caller's own transaction may hold it.
+        stored = await peek_platform_settings(db)
+        if stored is None or stored.embedding_model or await byollm_keeps_it_empty(db):
+            return None
+        configs = list((await db.execute(select_provider_configs())).scalars().all())
+        adopted = await adoptable_gateway_default(db, configs, dimensions=stored.embedding_dimensions)
+        if adopted is None:
+            return None
+        try:
+            await db.refresh(stored, with_for_update={"nowait": True})
+        except DBAPIError:
+            return None
+        if stored.embedding_model:
+            # Another lookup saved first: use what it saved.
+            adopted = next(((c, stored.embedding_model) for c in configs if c.id == stored.embedding_provider_id), None)
+            if adopted is None:
+                return None
+        else:
+            _save(stored, *adopted)
+            await db.commit()
+    for attr in ("embedding_provider", "embedding_provider_id", "embedding_model"):
+        set_committed_value(ps, attr, getattr(stored, attr))
+    return adopted

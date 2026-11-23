@@ -68,6 +68,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.base import BaseLLMProvider
+from app.llm.gateway_embedding_default import adoptable_gateway_default, byollm_keeps_it_empty
 from app.llm.router import (
     CHATLESS_PROVIDERS,
     EMBEDDING_DEFAULTS,
@@ -1069,6 +1070,11 @@ async def compute_deletion_impact(
         )
     elif embedding_orphaned:
         fallback = implicit_embedding_fallback(survivors)
+        if fallback is None and not await byollm_keeps_it_empty(db):
+            # As ``get_embedding_provider`` does next: an AI Gateway's flagged model, where it re-embeds nothing.
+            fallback = await adoptable_gateway_default(
+                db, survivors, dimensions=getattr(ps, "embedding_dimensions", None)
+            )
         embedding_default = EmbeddingImpact(
             "cleared",
             embedding_before,
