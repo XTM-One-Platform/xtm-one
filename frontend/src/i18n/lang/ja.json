@@ -21124,5 +21124,7 @@
   "On: forked repositories are imported too, tagged fork.": "オン: フォークしたリポジトリも fork タグ付きでインポートされます。",
   "Off: each repository's dependencies are read.": "オフ: 各リポジトリの依存関係を読み取ります。",
   "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster.": "GitHub: 依存関係グラフの SBOM。GitLab: 依存関係リスト (GitLab Ultimate のみ)。オン: リポジトリのみで高速。",
-  "Resource ID": "リソース ID"
+  "Resource ID": "リソース ID",
+  "Hide from the command center. The setup stays on the CTEM loop fleet page.": "コマンドセンターから非表示にします。設定は CTEM ループフリートのページに残ります。",
+  "Hide the CTEM loop setup from the command center": "CTEM ループの設定をコマンドセンターから非表示にする"
 }
