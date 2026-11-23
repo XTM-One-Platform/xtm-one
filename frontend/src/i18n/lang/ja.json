@@ -13926,6 +13926,8 @@
   "The model got stuck repeating the same text, so this run was stopped: the result is partial.": "モデルが同じテキストを繰り返し続けたため、この実行を停止しました。部分的な結果です。",
   "The model did not answer in time, so this run stopped before the agent finished.": "モデルが時間内に応答しなかったため、この実行はエージェントが完了する前に停止しました。",
   "This run stopped while tasks it delegated were still running: the result is partial.": "委任したタスクがまだ実行中のまま、この実行は停止しました。結果は部分的です。",
+  "The agent finished, but none of its integrations could be read: the result is not assessable.": "エージェントは完了しましたが、どの連携も読み取れませんでした。結果は評価できません。",
+  "Not assessable": "評価不可",
   "This run stopped before the agent finished: the result is partial.": "この実行はエージェントが完了する前に停止しました。結果は部分的です。",
   "Takes": "取得元",
   "Live data from {platform}, read with your own access.": "{platform} のライブデータ (あなた自身のアクセス権で読み取り)",
