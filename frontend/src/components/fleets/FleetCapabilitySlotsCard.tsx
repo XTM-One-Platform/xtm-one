@@ -405,7 +405,8 @@ export function FleetCapabilitySlotsCard({
         <Button
           type="button"
           variant="outline"
-          className="min-w-0 flex-1 gap-1.5"
+          // The Button wraps its children in a span: it must shrink too, or the label runs past the row (#1376 r2).
+          className="min-w-0 flex-1 gap-1.5 [&>span]:min-w-0 [&>span]:max-w-full"
           onClick={open}
           aria-label={why}
           data-testid={`type-blocked-open-${type.capability}`}
