@@ -1650,6 +1650,9 @@ def backend_env() -> dict[str, str]:
         # A platform cost ceiling, so the non-admin peer meets the blocked-limit states of the Budget tab and
         # the fleet Run defaults on real rows (``seed_budget_ceiling``); a declaration's env sets ``0`` for none.
         "AGENT_LOOP_MAX_COST_USD": os.environ.get("AGENT_LOOP_MAX_COST_USD", LAB_BUDGET_CEILING_USD),
+        # The decisions read switch (off by default in production): on in every lab, so ``GET /decisions/waiting``
+        # answers the open decision ``seed_open_decision`` writes; a declaration's env sets ``false``.
+        "DECISIONS_READ_ENABLED": os.environ.get("DECISIONS_READ_ENABLED", "true"),
         **edition_env(),
         **langfuse_env(),
     }
@@ -4144,6 +4147,42 @@ def seed_stale_reasons(token: str, base: str) -> dict[str, dict[str, str]]:
         raise RuntimeError(f"stale reasons not read back: {', '.join(wrong)}")
     return {"stale reasons": {"id": ",".join(f"{r}={i}" for r, i in ids.items()),
                               "url": f"{base}/tasks/work-items?view=stale"}}
+
+
+def seed_open_decision(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One work item waiting for the administrator's decision, so the decisions inbox renders a real row.
+
+    Created through the API with ``needs_human`` and a complete ask, no owner agent (no inbox claims
+    it): the dual write opens its ``decisions`` row. Read back from ``GET /decisions/waiting``, which
+    the lab turns on with ``DECISIONS_READ_ENABLED`` (``backend_env``): a switch off, or the item
+    missing from the inbox, raises. Logged ``seeded open decision: <url>``. May raise: the caller
+    logs and skips.
+    """
+    item = _created(api("POST", "/work-items", token, {
+        "title": f"{SEED_NAME} decision waiting for you",
+        "description": "Seeded by the lab: a work item parked for a person's decision.",
+        "correlation_key": "lab-open-decision",
+        "dedupe": True,
+        "dedupe_by": "key",
+        "needs_human": True,
+        "ask": {
+            "question": "Ship the seeded change to every lab?",
+            "context": "Seeded by the lab so the decisions inbox shows one open row.\nAnswering it changes nothing.",
+            "options": [
+                {"key": "A", "label": "Ship it", "effect": "The item reopens with this answer."},
+                {"key": "B", "label": "Hold it", "effect": "The item reopens with this answer."},
+            ],
+            "recommendation": "A",
+        },
+    }))
+    inbox = api("GET", "/decisions/waiting?limit=200", token)
+    if not isinstance(inbox, dict) or inbox.get("enabled") is not True:
+        reason = inbox.get("reason") if isinstance(inbox, dict) else str(inbox)[:120]
+        raise RuntimeError(f"the decisions inbox is off: {reason}")
+    ids = {str(row.get("id")) for row in inbox.get("items") or [] if isinstance(row, dict)}
+    if f"work_item:{item}" not in ids:
+        raise RuntimeError(f"the open decision of work item {item} is not in GET /decisions/waiting")
+    return {"open decision": {"id": f"work_item:{item}", "url": f"{base}/tasks/work-items/{item}"}}
 
 
 def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
@@ -7170,6 +7209,10 @@ def seed_entities() -> None:
         seeded.update(seed_stale_reasons(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["stale reasons"] = str(exc)[:600]
+    try:
+        seeded.update(seed_open_decision(token, base))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["open decision"] = str(exc)[:600]
     if seeds_kb_stale_embeddings():
         try:
             seeded.update(seed_kb_stale_embeddings(token, base))
