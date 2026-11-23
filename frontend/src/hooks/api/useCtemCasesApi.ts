@@ -344,7 +344,16 @@ export interface CtemCaseGateRecord {
   work_item_id: string | null;
   /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
   recorded_on_case: boolean;
-  next: { at: string; kind: string | null; headline: string | null; actor_type: string | null; actor_name: string | null } | null;
+  /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */
+  next: {
+    at: string;
+    kind: string | null;
+    from?: string | null;
+    to?: string | null;
+    headline: string | null;
+    actor_type: string | null;
+    actor_name: string | null;
+  } | null;
 }
 
 /** `owner_fleet` of a case: `active` false when no active fleet owns it (#1390). */

@@ -11,30 +11,63 @@
  * timeline. Never prints a raw id: a person the viewer may not see is "a person".
  */
 import type * as React from "react";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
+import { Link } from "@filigran/design-system";
 import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
 import type { CtemCaseGateRecipient, CtemCaseGateRecord, CtemCaseGateStatus } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { workItemPath } from "@/lib/task-routes";
-import { formatTimeAgo } from "@/lib/relative-time";
-import { GATE_REASON_LABEL } from "./case-gates";
+import { CASE_EVENT_LABEL } from "./case-events";
+import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, isGateOutcome } from "./case-gates";
+import { CASE_STATE_LABEL } from "./cases-shared";
 
-/** A record's status in words and tone. @i18n-keys */
-const GATE_STATUS_LABEL = {
+/**
+ * What the chip says: the record's status, an answer read by the meaning of
+ * the option chosen (approved, rejected, deferred), "answered" only when the
+ * option has no known meaning.
+ */
+export type GateChip = Exclude<CtemCaseGateStatus, "answered"> | "approved" | "rejected" | "deferred" | "answered";
+
+/** A chip in words. @i18n-keys */
+const GATE_CHIP_LABEL = {
   waiting: "Waiting",
   answered: "Answered",
+  approved: "Approved",
+  rejected: "Rejected",
+  deferred: "Deferred",
   passed_automatically: "Passed automatically",
   expired: "Expired",
   cancelled: "Cancelled",
-} as const satisfies Record<CtemCaseGateStatus, string>;
+} as const satisfies Record<GateChip, string>;
 
-const GATE_STATUS_TONE: Record<CtemCaseGateStatus, HotTone> = {
+const GATE_CHIP_TONE: Record<GateChip, HotTone> = {
   waiting: "yellow",
-  answered: "green",
+  answered: "neutral",
+  approved: "green",
+  rejected: "red",
+  deferred: "neutral",
   passed_automatically: "blue",
   expired: "orange",
   cancelled: "neutral",
 };
+
+/** The first word of an option key or label that tells its meaning. */
+const ANSWER_MEANING: ReadonlyArray<[RegExp, "approved" | "rejected" | "deferred"]> = [
+  [/^(approve[ds]?|approval|accept(ed|s)?|allow(ed|s)?|yes|go|confirm(ed|s)?)$/, "approved"],
+  [/^(reject(ed|s)?|decline[ds]?|deny|denied|refuse[ds]?|no|block(ed|s)?)$/, "rejected"],
+  [/^(defer(red|s)?|postpone[ds]?|later|snooze[ds]?|wait|hold)$/, "deferred"],
+];
+
+function meaningOf(text: string | null | undefined): "approved" | "rejected" | "deferred" | null {
+  const word = (text ?? "").trim().toLowerCase().split(/[^a-z]+/)[0] ?? "";
+  return ANSWER_MEANING.find(([pattern]) => pattern.test(word))?.[1] ?? null;
+}
+
+/** The chip of a record: an answer by the meaning of its option key, else its label, else "answered". */
+export function gateChipOf(record: Pick<CtemCaseGateRecord, "status" | "option">): GateChip {
+  if (record.status !== "answered") return record.status;
+  return meaningOf(record.option?.key) ?? meaningOf(record.option?.label) ?? "answered";
+}
 
 /** The channel an answer came from (`decision_router.SURFACES`). @i18n-keys */
 const GATE_SURFACES = {
@@ -132,6 +165,7 @@ export function GateDecisionRecord({
   const { t_i18n, intl } = useFormatter();
   const when = (at: string | null) => (at ? intl.formatDate(at, { dateStyle: "medium", timeStyle: "short" }) : null);
   const status = record.status;
+  const chip = gateChipOf(record);
   const answered = status === "answered";
   const passed = status === "passed_automatically";
   const reason = passed ? gateRecordReason(record.reason) : null;
@@ -147,20 +181,18 @@ export function GateDecisionRecord({
       : null;
   const surface = record.surface ? t_i18n(GATE_SURFACE_LABEL[record.surface] ?? "XTM One") : null;
   const askedOf = recipient(record.asked_of);
-  const statusAt = answered ? record.answered_at : passed ? record.passed_at : record.asked_at;
+  // A waiting gate shows its asked time and wait in the grid alone: one reading of one time.
+  const statusAt = answered ? record.answered_at : passed ? record.passed_at : status === "waiting" ? null : record.asked_at;
+  const next = record.next;
+  const nextGate = next?.kind === "gate" && next.from ? next.from : null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-2" data-testid={testId} data-status={status}>
+    <div className="flex min-w-0 flex-col gap-2" data-testid={testId} data-status={status} data-chip={chip}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {title && <span className="font-medium">{title}</span>}
-        <ToneBadge tone={GATE_STATUS_TONE[status]} data-testid={`${testId}-status`}>
-          {t_i18n(GATE_STATUS_LABEL[status])}
+        <ToneBadge tone={GATE_CHIP_TONE[chip]} data-testid={`${testId}-status`}>
+          {t_i18n(GATE_CHIP_LABEL[chip])}
         </ToneBadge>
-        {status === "waiting" && record.asked_at && (
-          <span className="text-default-secondary" data-testid={`${testId}-since`}>
-            {formatTimeAgo(intl, record.asked_at)}
-          </span>
-        )}
         {statusAt && <span className="ml-auto whitespace-nowrap text-default-secondary">{when(statusAt)}</span>}
       </div>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -171,9 +203,7 @@ export function GateDecisionRecord({
         )}
         {answered && record.option && (
           <Field label={t_i18n("Option chosen")} testId={`${testId}-option`}>
-            {record.option.label
-              ? t_i18n("{option}. {label}", { option: record.option.key, label: record.option.label })
-              : t_i18n("Option {option}", { option: record.option.key })}
+            {record.option.label || t_i18n("Option {option}", { option: record.option.key })}
           </Field>
         )}
         {answered && record.comment && (
@@ -193,8 +223,8 @@ export function GateDecisionRecord({
         )}
         {record.asked_by_agent && (
           <Field label={t_i18n("Asked by")} testId={`${testId}-asked-by`}>
-            <Link to={`/agents/${record.asked_by_agent.id}`} className="font-medium hover:underline">
-              {record.asked_by_agent.name || t_i18n("Agent")}
+            <Link asChild>
+              <RouterLink to={`/agents/${record.asked_by_agent.id}`}>{record.asked_by_agent.name || t_i18n("Agent")}</RouterLink>
             </Link>
           </Field>
         )}
@@ -220,17 +250,27 @@ export function GateDecisionRecord({
         )}
         {record.work_item_id && (
           <Field label={t_i18n("Decision")} testId={`${testId}-decision`}>
-            <Link to={workItemPath(record.work_item_id)} className="font-medium hover:underline">
-              {t_i18n("Open the decision")}
+            <Link asChild>
+              <RouterLink to={workItemPath(record.work_item_id)}>{t_i18n("Open the decision")}</RouterLink>
             </Link>
           </Field>
         )}
-        {record.next && (
+        {next && (
           <Field label={t_i18n("Next step")} testId={`${testId}-next`} wide>
+            {/* The words the History timeline draws for the event, never its raw kind. */}
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-              <span className="min-w-0">{record.next.headline || record.next.kind || t_i18n("Case updated")}</span>
-              {record.next.actor_name && <span className="text-default-secondary">{t_i18n("by {name}", { name: record.next.actor_name })}</span>}
-              <span className="whitespace-nowrap text-default-secondary">{when(record.next.at)}</span>
+              {nextGate ? (
+                <span className="min-w-0">{t_i18n(GATE_LABEL[nextGate] ?? "Gate")}</span>
+              ) : (
+                <span className="min-w-0">{t_i18n((next.kind && CASE_EVENT_LABEL[next.kind]) || "Case updated")}</span>
+              )}
+              {next.kind === "state" && next.to && (
+                <span>{t_i18n(CASE_STATE_LABEL[next.to as keyof typeof CASE_STATE_LABEL] ?? "Case updated")}</span>
+              )}
+              {nextGate && isGateOutcome(next.to) && <span className="font-medium">{t_i18n(GATE_OUTCOME_LABEL[next.to])}</span>}
+              {next.headline && <span className="min-w-0 text-default-secondary">{next.headline}</span>}
+              {next.actor_name && <span className="text-default-secondary">{t_i18n("by {name}", { name: next.actor_name })}</span>}
+              <span className="whitespace-nowrap text-default-secondary">{when(next.at)}</span>
             </span>
           </Field>
         )}

@@ -85,6 +85,8 @@ def test_answered_on_the_decision_without_a_case_event_is_answered() -> None:
     assert record["asked_of"] == {"type": "user", "id": PERSON, "name": "Sam"}
     assert record["asked_by_agent"] == {"id": AGENT, "name": "Loop orchestrator"}
     assert record["next"]["kind"] == "note"
+    # The UI names the next event with the History words, which read from / to (a state, a gate outcome).
+    assert "from" in record["next"] and "to" in record["next"]
     assert record["decision_id"] == f"work_item:{ITEM}"
 
 

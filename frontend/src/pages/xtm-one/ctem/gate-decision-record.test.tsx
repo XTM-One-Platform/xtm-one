@@ -12,7 +12,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
-import { gateRecordOf, gateRecordReason, waitParts } from "./GateDecisionRecord";
+import { gateChipOf, gateRecordOf, gateRecordReason, waitParts } from "./GateDecisionRecord";
 
 const state = vi.hoisted(() => ({ items: [] as unknown[] }));
 
@@ -92,6 +92,15 @@ describe("gate record helpers", () => {
     expect(gateRecordReason({ kind: "person" })).toBeNull();
     expect(gateRecordReason(null)).toBeNull();
   });
+
+  it("reads an answer by the meaning of its option, answered when it has none", () => {
+    expect(gateChipOf({ status: "answered", option: { key: "approve", label: "Approve the threat package" } })).toBe("approved");
+    expect(gateChipOf({ status: "answered", option: { key: "reject", label: "Reject the package" } })).toBe("rejected");
+    expect(gateChipOf({ status: "answered", option: { key: "B", label: "Defer to next week" } })).toBe("deferred");
+    expect(gateChipOf({ status: "answered", option: { key: "A", label: "Launch the atomic test" } })).toBe("answered");
+    expect(gateChipOf({ status: "answered", option: null })).toBe("answered");
+    expect(gateChipOf({ status: "expired", option: { key: "approve", label: null } })).toBe("expired");
+  });
 });
 
 describe("GateDecisionRecord", () => {
@@ -99,14 +108,49 @@ describe("GateDecisionRecord", () => {
     render(<GateDecisionRecord record={rec({})} />);
     expect(screen.getByTestId("ctem-gate-record-status").textContent).toBe("Answered");
     expect(screen.getByTestId("ctem-gate-record-by").textContent).toContain("Samuel Hassine");
-    expect(screen.getByTestId("ctem-gate-record-option").textContent).toContain("A. Launch the atomic test");
+    expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Launch the atomic test");
     expect(screen.getByTestId("ctem-gate-record-comment").textContent).toContain("Go, the asset is in the lab group.");
     expect(screen.getByTestId("ctem-gate-record-wait").textContent).toContain("45");
     expect(screen.getByTestId("ctem-gate-record-surface").textContent).toContain("Teams card");
     expect((screen.getByTestId("ctem-gate-record-decision").querySelector("a") as HTMLAnchorElement).getAttribute("href")).toBe("/tasks/work-items/w-1");
+    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Recorded a validation");
     expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Atomic test launched in OpenAEV");
     expect(screen.queryByText("Waited for a person")).toBeNull();
     expect(screen.queryByTestId("ctem-gate-record-pending")).toBeNull();
+  });
+
+  it("shows a rejection as Rejected, never as a green Answered", () => {
+    render(<GateDecisionRecord record={rec({ key: "ctem.analyst_review", option: { key: "reject", label: "Reject the package" } })} />);
+    expect(screen.getByTestId("ctem-gate-record-status").textContent).toBe("Rejected");
+    expect(screen.getByTestId("ctem-gate-record").getAttribute("data-chip")).toBe("rejected");
+    expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Reject the package");
+  });
+
+  it("falls back to the option key only when there is no label", () => {
+    render(<GateDecisionRecord record={rec({ option: { key: "C", label: null } })} />);
+    expect(screen.getByTestId("ctem-gate-record-option").querySelector("dd")?.textContent).toBe("Option C");
+  });
+
+  it("names the next step in words, never its raw kind", () => {
+    const states = rec({ next: { at: "2026-11-23T12:42:00Z", kind: "state", from: "needs_attention", to: "in_progress", headline: null, actor_type: "agent", actor_name: null } });
+    const { unmount } = render(<GateDecisionRecord record={states} />);
+    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Changed the state to");
+    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("In progress");
+    const parts = Array.from(screen.getByTestId("ctem-gate-record-next").querySelectorAll("dd span span")).map((s) => s.textContent);
+    expect(parts).not.toContain("state");
+    unmount();
+    const gate = rec({ next: { at: "2026-11-23T12:42:00Z", kind: "gate", from: "ctem.analyst_review", to: "answered", headline: null, actor_type: "system", actor_name: null } });
+    render(<GateDecisionRecord record={gate} />);
+    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Review: an analyst checks the threat package");
+    expect(screen.getByTestId("ctem-gate-record-next").textContent).toContain("Answered by a person");
+  });
+
+  it("draws both links through the design-system link", () => {
+    render(<GateDecisionRecord record={rec({})} />);
+    const decision = screen.getByRole("link", { name: "Open the decision" });
+    const agent = screen.getByRole("link", { name: "CTEM Validator" });
+    expect(decision.getAttribute("href")).toBe("/tasks/work-items/w-1");
+    expect(agent.getAttribute("href")).toBe("/agents/a-1");
   });
 
   it("says the case has not recorded an answer yet, and still reads as answered", () => {
@@ -143,7 +187,9 @@ describe("GateDecisionRecord", () => {
       <GateDecisionRecord record={rec({ status: "waiting", answered_at: null, answered_by: null, option: null, comment: null, surface: null, next: null, deadline: "2026-11-24T12:00:00Z" })} />,
     );
     expect(screen.getByTestId("ctem-gate-record-status").textContent).toBe("Waiting");
-    expect(screen.getByTestId("ctem-gate-record-since")).toBeTruthy();
+    // One reading of the wait: the grid alone, no relative time and no asked time in the header.
+    expect(screen.queryByTestId("ctem-gate-record-since")).toBeNull();
+    expect(screen.getAllByText(/Nov 23, 2026/)).toHaveLength(1);
     expect(screen.getByTestId("ctem-gate-record-asked-of").textContent).toContain("Samuel Hassine");
     expect(screen.getByTestId("ctem-gate-record-deadline")).toBeTruthy();
     expect(screen.getByTestId("ctem-gate-record-wait").textContent).toContain("Waiting for");
@@ -168,7 +214,7 @@ describe("the gate cards read the record first", () => {
   it("Remediation decision: an answered record replaces the outcome line", () => {
     const record = rec({ key: "ctem.remediation.decision", option: { key: "B", label: "Upgrade nginx" } });
     render(<CaseRemediationDecision caseId="c1" history={[ev({ from: "ctem.remediation.decision" })]} gates={[record]} />);
-    expect(screen.getByTestId("ctem-case-remediation-record-option").textContent).toContain("B. Upgrade nginx");
+    expect(screen.getByTestId("ctem-case-remediation-record-option").querySelector("dd")?.textContent).toBe("Upgrade nginx");
     expect(screen.queryByTestId("ctem-case-remediation-outcome")).toBeNull();
     expect(screen.queryByTestId("ctem-case-remediation-elsewhere")).toBeNull();
   });

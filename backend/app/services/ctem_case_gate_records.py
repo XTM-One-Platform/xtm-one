@@ -155,6 +155,9 @@ def _next_event(history: Iterable[Mapping[str, Any]], after: datetime | None, ke
     return {
         "at": best[0].isoformat(),
         "kind": event.get("kind"),
+        # The words the History timeline draws for the event read these (a state's new value, a gate and its outcome).
+        "from": event.get("from"),
+        "to": event.get("to"),
         "headline": event.get("headline"),
         "actor_type": event.get("actor_type"),
         "actor_name": event.get("actor_name"),
