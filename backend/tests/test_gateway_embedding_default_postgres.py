@@ -51,6 +51,27 @@ class _Flag:
         monkeypatch.setattr(FiligranGatewayProvider, "marked_default_model", _marked)
 
 
+class _Native:
+    """Stands in for the gateway's embeddings: the model's native size; counts the probes."""
+
+    def __init__(self, monkeypatch, size: int | None = 4):
+        self.size = size
+        self.calls = 0
+
+        async def _embed(provider: FiligranGatewayProvider, text: str, model: str | None = None) -> list[float]:
+            self.calls += 1
+            if self.size is None:
+                raise RuntimeError("gateway unreachable")
+            return [0.1] * self.size
+
+        monkeypatch.setattr(FiligranGatewayProvider, "embed", _embed)
+
+
+@pytest.fixture(autouse=True)
+def native(monkeypatch) -> _Native:
+    return _Native(monkeypatch)
+
+
 @pytest.fixture(autouse=True)
 def _fresh_caches(monkeypatch):
     monkeypatch.setattr(settings, "byollm_activated", False)
@@ -132,7 +153,7 @@ async def _set_dimensions(sessions, dims: int) -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_stored_vector_saves_the_flagged_model(monkeypatch):
+async def test_no_stored_vector_saves_the_flagged_model(monkeypatch, native):
     async with _database() as sessions:
         _Flag(monkeypatch, FLAGGED)
         gateway = await _add_config(sessions, GATEWAY)
@@ -140,10 +161,11 @@ async def test_no_stored_vector_saves_the_flagged_model(monkeypatch):
         await _added(sessions, gateway)
 
         assert await _stored(sessions) == (GATEWAY, gateway.id, FLAGGED, None)
+        assert native.calls == 0  # nothing stored, nothing to compare
 
 
 @pytest.mark.asyncio
-async def test_vectors_of_the_flagged_model_at_one_size_save_it_without_dimensions(monkeypatch):
+async def test_vectors_of_the_flagged_model_at_one_size_save_it_without_dimensions(monkeypatch, native):
     async with _database() as sessions:
         _Flag(monkeypatch, FLAGGED)
         gateway = await _add_config(sessions, GATEWAY)
@@ -155,19 +177,22 @@ async def test_vectors_of_the_flagged_model_at_one_size_save_it_without_dimensio
         await _added(sessions, gateway)
 
         assert await _stored(sessions) == (GATEWAY, gateway.id, FLAGGED, None)
+        assert native.calls == 1  # unset dimensions: the native size is probed
 
 
 @pytest.mark.asyncio
-async def test_stored_dimensions_equal_to_the_vectors_save_it(monkeypatch):
+async def test_stored_dimensions_equal_to_the_vectors_save_it(monkeypatch, native):
     async with _database() as sessions:
         _Flag(monkeypatch, FLAGGED)
         gateway = await _add_config(sessions, GATEWAY)
         await _chunk(sessions, GATEWAY, FLAGGED, 4)
         await _set_dimensions(sessions, 4)
+        native.size = 6  # the stored setting decides, not the native size
 
         await _added(sessions, gateway)
 
         assert await _stored(sessions) == (GATEWAY, gateway.id, FLAGGED, 4)
+        assert native.calls == 0
 
 
 @pytest.mark.parametrize(
@@ -181,10 +206,12 @@ async def test_stored_dimensions_equal_to_the_vectors_save_it(monkeypatch):
         "memory_other_model",
         "memory_other_dimensions",
         "configured_dimensions_differ",
+        "native_size_differs",
+        "native_size_unknown",
     ],
 )
 @pytest.mark.asyncio
-async def test_vectors_a_switch_would_re_embed_leave_the_default_empty(monkeypatch, case):
+async def test_vectors_a_switch_would_re_embed_leave_the_default_empty(monkeypatch, native, case):
     async with _database() as sessions:
         _Flag(monkeypatch, FLAGGED)
         gateway = await _add_config(sessions, GATEWAY)
@@ -208,6 +235,10 @@ async def test_vectors_a_switch_would_re_embed_leave_the_default_empty(monkeypat
             await _memory(sessions, FLAGGED, 6)
         elif case == "configured_dimensions_differ":
             await _set_dimensions(sessions, 8)
+        elif case == "native_size_differs":
+            native.size = 6  # unset dimensions embed at 6: the stored 4s would be re-embedded
+        elif case == "native_size_unknown":
+            native.size = None  # the probe failed
 
         await _added(sessions, gateway)
 
@@ -486,3 +517,16 @@ async def test_a_lookup_losing_the_save_race_uses_the_saved_model(monkeypatch):
             _provider, model, config_id = await router.get_embedding_provider(db)
 
         assert (model, config_id) == ("saved", gateway.id)
+
+
+@pytest.mark.asyncio
+async def test_vectors_of_another_model_refuse_without_probing(monkeypatch, native):
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+        await _chunk(sessions, "openai", "text-embedding-3-large", 4)
+
+        await _added(sessions, gateway)
+
+        assert await _stored(sessions) == (None, None, None, None)
+        assert native.calls == 0

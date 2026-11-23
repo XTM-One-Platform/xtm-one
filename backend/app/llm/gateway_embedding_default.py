@@ -17,6 +17,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.utils import format_exception_message
+from app.llm.base import BaseLLMProvider
 from app.llm.gateway_provider import FiligranGatewayProvider
 from app.models.agent_memory_entry import AgentMemoryEntry
 from app.models.embedding import Embedding
@@ -36,11 +38,21 @@ def _dims(table) -> object:
     return func.coalesce(table.embedding_dimensions, func.vector_dims(table.embedding))
 
 
-async def _reembeds_nothing(db: AsyncSession, model: str, dimensions: int | None) -> bool:
+async def _native_size(provider: BaseLLMProvider, model: str) -> int | None:
+    """The size *model* embeds at with no dimensions set, or ``None`` when the probe fails."""
+    provider.embedding_dimensions = None  # what ``get_embedding_provider`` sets with none stored
+    try:
+        return len(await provider.embed("dimension probe", model=model)) or None
+    except Exception as exc:
+        logger.warning("AI Gateway embedding model %s not probed: %s", model, format_exception_message(exc))
+        return None
+
+
+async def _reembeds_nothing(db: AsyncSession, provider: BaseLLMProvider, model: str, dimensions: int | None) -> bool:
     """Whether *model* from the gateway re-embeds no stored vector.
 
     True with no vector stored, or when every one is the gateway's *model* at
-    one size that *dimensions* (the stored setting) does not contradict.
+    one size: *dimensions* (the stored setting), else the model's native size.
     """
     chunk = (
         await db.execute(select(Embedding.embedding_provider, Embedding.embedding_model, _dims(Embedding)).limit(1))
@@ -80,10 +92,16 @@ async def _reembeds_nothing(db: AsyncSession, model: str, dimensions: int | None
         )
         .exists()
     )
-    return not (await db.execute(select(or_(other_chunk, other_memory)))).scalar()
+    if (await db.execute(select(or_(other_chunk, other_memory)))).scalar():
+        return False
+    # Unset dimensions embed at the native size: stored vectors at any other would be re-embedded.
+    # Probed last, once every stored vector is known to match.
+    return dimensions is not None or await _native_size(provider, model) == size
 
 
-async def _flagged(configs: Iterable[LLMProviderConfig], dimensions: int | None) -> list[tuple[LLMProviderConfig, str]]:
+async def _flagged(
+    configs: Iterable[LLMProviderConfig], dimensions: int | None
+) -> list[tuple[LLMProviderConfig, BaseLLMProvider, str]]:
     """Each AI Gateway of *configs* with the embedding model it flags, those refused lately left out."""
     from app.llm.router import gateway_default
 
@@ -92,7 +110,7 @@ async def _flagged(configs: Iterable[LLMProviderConfig], dimensions: int | None)
         if config.provider != GATEWAY or not (listed := await gateway_default([config], "embedding")):
             continue
         if _refused_until.get((config.id, listed[2], dimensions), 0.0) <= time.monotonic():
-            out.append((config, listed[2]))
+            out.append(listed)
     return out
 
 
@@ -100,8 +118,8 @@ async def adoptable_gateway_default(
     db: AsyncSession, configs: Iterable[LLMProviderConfig], *, dimensions: int | None
 ) -> tuple[LLMProviderConfig, str] | None:
     """The first AI Gateway of *configs* flagging an embedding model that re-embeds nothing, and that model."""
-    for config, model in await _flagged(configs, dimensions):
-        if await _reembeds_nothing(db, model, dimensions):
+    for config, provider, model in await _flagged(configs, dimensions):
+        if await _reembeds_nothing(db, provider, model, dimensions):
             return config, model
         _refused_until[(config.id, model, dimensions)] = time.monotonic() + _REFUSED_TTL_SECONDS
         logger.info("AI Gateway default embedding model %s not used: stored vectors would be re-embedded", model)
