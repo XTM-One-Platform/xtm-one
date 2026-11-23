@@ -60,7 +60,7 @@ from typing import Any, TypeGuard
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.llm.base import ChatMessage, retry_llm_call
+from app.llm.base import ChatMessage, retry_llm_call, told_not_to_retry
 from app.llm.cut_answers import answer_was_cut
 from app.llm.model_limits import resolve_provider_max_output_tokens
 from app.llm.provider_errors import api_error_message, error_status
@@ -1236,7 +1236,12 @@ def output_budget(llm: object, model: str | None) -> int:
 
 
 def is_transient(exc: BaseException) -> bool:
-    """A provider failure worth asking again: a timeout, a dropped connection, a rate limit, a server error."""
+    """A provider failure worth asking again: a timeout, a dropped connection, a rate limit, a server error.
+
+    Not one the provider says not to retry (a spent quota, a long circuit-open).
+    """
+    if told_not_to_retry(exc):
+        return False
     if isinstance(exc, TimeoutError | ConnectionError):
         return True
     name = type(exc).__name__

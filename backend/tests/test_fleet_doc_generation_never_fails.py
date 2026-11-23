@@ -165,6 +165,36 @@ def test_transient_failures_are_told_from_the_others() -> None:
     assert not gen.is_transient(ValueError("a defect"))
 
 
+def _told_not_to_retry(cls, status: int):
+    import httpx
+
+    request = httpx.Request("POST", "https://gateway.local/v1/chat/completions")
+    response = httpx.Response(status, headers={"x-should-retry": "false", "retry-after": "86400"}, request=request)
+    return cls("quota exceeded", response=response, body=None)
+
+
+def test_an_error_the_provider_says_not_to_retry_is_not_transient() -> None:
+    import openai
+
+    assert not gen.is_transient(_told_not_to_retry(openai.RateLimitError, 429))
+    assert not gen.is_transient(_told_not_to_retry(openai.InternalServerError, 502))
+
+
+async def test_an_error_the_provider_says_not_to_retry_is_never_sent_twice(monkeypatch) -> None:
+    import openai
+
+    from app.llm import base
+
+    # No real back-off: a wrong retry fails on the call count, not after minutes of waits.
+    monkeypatch.setattr(base, "_extract_retry_after", lambda _exc: None)
+    model = _Scripted(lambda _m, _n: _told_not_to_retry(openai.RateLimitError, 429))
+    with pytest.raises(gen.FleetDocDraftError):
+        await gen.draft_fleet_documentation(object(), uuid.uuid4(), _fleet(), llm=model)
+    # The drafter still tries its parts and sections, each once.
+    sent = [tuple(message.content for message in messages) for messages, _budget in model.calls]
+    assert len(sent) == len(set(sent))
+
+
 async def test_a_section_the_provider_keeps_failing_on_is_pending_and_the_rest_is_saved(fingerprint) -> None:
     """One section failing after its retries: the rest is saved, that section keeps its text and is pending."""
 
