@@ -131,6 +131,37 @@ def test_the_password_row_is_the_hub_scheme():
     assert digest == hashlib.pbkdf2_hmac("sha512", b"secret", b"00ff", 1000, 64).hex() and len(digest) == 128
 
 
+def test_the_platforms_register_on_the_personal_space_and_are_read_back(monkeypatch):
+    """One registerPlatform per seeded platform, then registeredPlatforms: a mail refusal never hides a registration."""
+    module = _module()
+    calls: list[tuple[str, dict]] = []
+
+    def graphql(query, variables=None, cookie=""):
+        calls.append((query, variables or {}))
+        if "organizations" in query:
+            orgs = [
+                {"id": "o-demo", "name": "Winterfell", "personal_space": False},
+                {"id": "o-own", "name": "lab", "personal_space": True},
+            ]
+            return {"data": {"me": {"organizations": orgs}}}, []
+        if "registerPlatform" in query:
+            return {"errors": [{"message": "smtp refused"}]}, []
+        return {"data": {"registeredPlatforms": [{"title": "Lab OpenCTI", "contract": "EE"}]}}, []
+
+    monkeypatch.setattr(module, "sign_in", lambda email, password: ["s=1; Path=/"])
+    monkeypatch.setattr(module, "graphql", graphql)
+    monkeypatch.setattr(module.lab, "log", lambda message: None)
+    assert module.seed_platforms() == ["Lab OpenCTI (EE, lab)"]
+    registered = [variables["input"] for query, variables in calls if "registerPlatform" in query]
+    assert [entry["identifier"] for entry in registered] == ["opencti", "openaev", "xtmone"]
+    assert {entry["organizationId"] for entry in registered} == {"o-own"}
+    assert len({entry["platform"]["id"] for entry in registered}) == len(module.PLATFORMS)
+    # OpenAEV 2.4.0 and later registers per tenant: the seed stays under it, with no tenant.
+    openaev = next(entry["platform"] for entry in registered if entry["identifier"] == "openaev")
+    assert tuple(int(part) for part in openaev["version"].split(".")) < (2, 4, 0) and "tenantId" not in openaev
+    assert "registeredPlatforms" in calls[-1][0]
+
+
 FONT_TS = """import { Geologica, IBM_Plex_Sans } from 'next/font/google';
 
 export const geologica = Geologica({

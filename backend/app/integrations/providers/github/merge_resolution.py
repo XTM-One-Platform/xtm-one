@@ -68,6 +68,7 @@ import base64
 import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -89,6 +90,8 @@ from .contents import (
     _graphql_signature_verdict,
     _json_object,
     _rest_signature_verdict,
+    _scratch_branch_name,
+    _sweep_stale_scratch_branches,
 )
 
 #: What ``keep`` takes: the branch's own version, the merged ref's, or both sides' lines in each overlapping hunk
@@ -646,6 +649,7 @@ async def _alignment_failed(
     chain: _Chain,
     back: dict[str, bytes | None],
     before_call: str = "",
+    shown: str = "",
 ) -> str:
     """The answer when an alignment commit fails: the commits already landed are undone, nothing is merged."""
     failure = chain.failure or "Error: a commit of the alignment did not land."
@@ -668,8 +672,14 @@ async def _alignment_failed(
             )
         text = f"{text}\nThe ref update back to {before_call[:12]} was refused ({why}), so signed commits undo them."
     undone = await _signed_commits(
-        client, headers, repo, repo_url, branch, chain.tip,
-        f"Restore {branch}'s version of the files a stopped merge needed", {path: back[path] for path in landed},
+        client,
+        headers,
+        repo,
+        repo_url,
+        branch,
+        chain.tip,
+        f"Restore {shown or branch}'s version of the files a stopped merge needed",
+        {path: back[path] for path in landed},
     )
     if undone.failure is not None:
         return (
@@ -899,6 +909,7 @@ async def _undo_alignment(
     before_call: str,
     tip: str,
     back: dict[str, bytes | None],
+    shown: str = "",
 ) -> str:
     """Take the alignment commits of this call off *branch* (ref update, else signed restore commits); the sentence."""
     refused = await _restore_head(client, headers, repo, repo_url, branch, before_call, tip)
@@ -908,7 +919,13 @@ async def _undo_alignment(
             "left its history and its tree is as before the call."
         )
     undone = await _signed_commits(
-        client, headers, repo, repo_url, branch, tip, f"Restore {branch}'s version of the files a refused merge needed",
+        client,
+        headers,
+        repo,
+        repo_url,
+        branch,
+        tip,
+        f"Restore {shown or branch}'s version of the files a refused merge needed",
         back,
     )
     if undone.failure is not None:
@@ -982,6 +999,40 @@ def _broken_resolutions(
     )
 
 
+async def _move_target(
+    client: Any, headers: dict[str, str], repo: str, repo_url: str, branch: str, before: str, last: str
+) -> str | None:
+    """Fast-forward *branch* from *before* to *last* once; None when done, else why it was not moved."""
+    now = await _branch_tip(client, headers, repo, repo_url, branch)
+    if now != before:
+        return f"'{branch}' now points at {now[:12] or 'an unreadable commit'}, not at {before[:12]}"
+    _, err = await _common.safe_request(
+        client,
+        "patch",
+        f"{repo_url}/git/refs/heads/{_enc(branch)}",
+        _PROVIDER,
+        f"move branch {branch} of {repo} to the resolved merge",
+        headers=_json_headers(headers),
+        json={"sha": last, "force": False},
+    )
+    return err
+
+
+def _unsettled(lead: str, both: list[str], resolutions: dict[str, Resolution]) -> str | None:
+    """Why *resolutions* do not settle the paths changed on both sides, or ``None`` when they do."""
+    missing = [path for path in both if path not in resolutions]
+    unknown = sorted(set(resolutions) - set(both))
+    if not missing and not unknown:
+        return None
+    lines = [f"Error: {lead}, and the resolutions do not settle it, so nothing was written."]
+    if missing:
+        lines.append(f"Changed on both sides with no resolution ({len(missing)}): {_listed(missing)}.")
+    if unknown:
+        lines.append(f"Resolutions of paths not changed on both sides ({len(unknown)}): {_listed(unknown)}.")
+    lines.append("Give exactly one resolution per path changed on both sides.")
+    return "\n".join(lines)
+
+
 async def resolve_and_merge(
     client: Any,
     headers: dict[str, str],
@@ -993,18 +1044,100 @@ async def resolve_and_merge(
     both: list[str],
     resolutions: dict[str, Resolution],
 ) -> str:
-    """Land a conflicting merge with its *resolutions* in signed commits split under the cap; the answer for the model."""
-    lead = f"Merging '{head}' into '{branch}' of {repo} conflicts"
-    missing = [path for path in both if path not in resolutions]
-    unknown = sorted(set(resolutions) - set(both))
-    if missing or unknown:
-        unsettled = [f"Error: {lead}, and the resolutions do not settle it, so nothing was written."]
-        if missing:
-            unsettled.append(f"Changed on both sides with no resolution ({len(missing)}): {_listed(missing)}.")
-        if unknown:
-            unsettled.append(f"Resolutions of paths not changed on both sides ({len(unknown)}): {_listed(unknown)}.")
-        unsettled.append("Give exactly one resolution per path changed on both sides.")
-        return "\n".join(unsettled)
+    """Land a conflicting merge on a scratch branch, then move *branch* once to its last commit.
+
+    The alignment, the merge and the resolution chunks are written on ``tmp/commit-batch/...`` made at the
+    branch's tip, so *branch* never points at an intermediate commit: no push event, CI run or stacked pull
+    request sees the ref's side of a conflicting file or a split resolution at ``(k/n)``. The branch is then
+    fast-forwarded once, only while it still points at the tip read; any failure leaves it unchanged.
+    """
+    # Resolutions that cannot settle the conflict are refused before any write, the scratch branch included.
+    unsettled = _unsettled(f"Merging '{head}' into '{branch}' of {repo} conflicts", both, resolutions)
+    if unsettled:
+        return unsettled
+    before = await _branch_tip(client, headers, repo, repo_url, branch)
+    if not before:
+        return f"Error: the tip of '{branch}' of {repo} could not be read, so nothing was written."
+    now = time.time()
+    await _sweep_stale_scratch_branches(client, headers, repo_url, repo, now)
+    scratch = _scratch_branch_name(before, now)
+    _, err = await _common.safe_request(
+        client,
+        "post",
+        f"{repo_url}/git/refs",
+        _PROVIDER,
+        f"create scratch branch {scratch} in {repo}",
+        headers=_json_headers(headers),
+        json={"ref": f"refs/heads/{scratch}", "sha": before},
+    )
+    if err:
+        return f"{err}\nThe scratch branch the merge is built on could not be made, so nothing was written."
+    keep_scratch = False
+    try:
+        answer = await _resolve_and_merge_on(
+            client, headers, repo, repo_url, scratch, head, message, both, resolutions, target=branch
+        )
+        # The steps name the branch they wrote on: the scratch one, never seen by the caller.
+        answer = answer.replace(scratch, branch)
+        last = final_head_of(answer)
+        if not answer.startswith("Merged") or not last:
+            # The helpers name the branch they wrote on: the scratch stands for the target in the answer.
+            return (
+                f"{answer.replace(scratch, branch)}\nAll of the above happened on a scratch branch made at "
+                f"{before[:12]}, now deleted: '{branch}' itself was never moved and is unchanged."
+            )
+        why = await _move_target(client, headers, repo, repo_url, branch, before, last)
+        if why is not None:
+            keep_scratch = True
+            return (
+                f"Error: the merge was built on scratch branch '{scratch}' (last commit {last}), but '{branch}' "
+                f"was not moved to it and is unchanged: {why}. A pull request can take the scratch branch; the "
+                f"next split commit on {repo} deletes it once it is a day old."
+            )
+        moved = await _settled_tip(client, headers, repo, repo_url, branch, last)
+        body, sep, tail = answer.rpartition("\nFinal head: ")
+        note = (
+            f"\nBuilt on a scratch branch, then '{branch}' moved once from {before[:12]} to {last[:12]}: it never "
+            "pointed at an intermediate commit."
+        )
+        if moved != last:
+            note += f" Read back: '{branch}' points at {moved[:12] or 'an unreadable commit'}."
+        return f"{body}{note}{sep}{tail}" if sep else answer + note
+    finally:
+        if not keep_scratch:
+            await _common.safe_request(
+                client,
+                "delete",
+                f"{repo_url}/git/refs/heads/{_enc(scratch)}",
+                _PROVIDER,
+                f"delete scratch branch {scratch} of {repo}",
+                headers=headers,
+            )
+
+
+async def _resolve_and_merge_on(
+    client: Any,
+    headers: dict[str, str],
+    repo: str,
+    repo_url: str,
+    branch: str,
+    head: str,
+    message: str,
+    both: list[str],
+    resolutions: dict[str, Resolution],
+    *,
+    target: str = "",
+) -> str:
+    """Land a conflicting merge with its *resolutions* in signed commits split under the cap on *branch*.
+
+    *branch* is the scratch branch :func:`resolve_and_merge` made; *target* names the branch it stands for in
+    the answer.
+    """
+    shown = target or branch
+    lead = f"Merging '{head}' into '{shown}' of {repo} conflicts"
+    unsettled = _unsettled(lead, both, resolutions)
+    if unsettled:
+        return unsettled
     ours = await _read_side(client, headers, repo, repo_url, branch)
     if isinstance(ours, str):
         return f"{ours}\nNothing was written."
@@ -1012,7 +1145,7 @@ async def resolve_and_merge(
     if isinstance(theirs, str):
         return f"{theirs}\nNothing was written."
     for path in sorted(resolutions):
-        refusal = _mode_refusal(path, ((branch, ours.entries.get(path)), (head, theirs.entries.get(path))))
+        refusal = _mode_refusal(path, ((shown, ours.entries.get(path)), (head, theirs.entries.get(path))))
         if refusal:
             return refusal
     written: dict[str, bytes] = {}
@@ -1113,7 +1246,7 @@ async def resolve_and_merge(
                         f"is {now}. The merge landed while this call ran (an earlier or replayed call), so this "
                         "call wrote nothing more. Read the resolved files on the branch if they matter."
                     )
-            return await _alignment_failed(client, headers, repo, repo_url, branch, chain, back, ours.commit)
+            return await _alignment_failed(client, headers, repo, repo_url, branch, chain, back, ours.commit, shown)
         tip = chain.tip
         lines += _chain_lines("1", chain, f"'{head}' versions of")
     # The ref is read again: a ref that moved since the snapshot is not merged from the snapshot.
@@ -1160,7 +1293,7 @@ async def resolve_and_merge(
     if status == 204:
         # The branch already held the ref when the take commits landed on it: no merge follows them, so they would
         # only replace the branch's own files with the ref's versions. They are undone before the answer.
-        undo = await _undo_alignment(client, headers, repo, repo_url, branch, ours.commit, tip, back)
+        undo = await _undo_alignment(client, headers, repo, repo_url, branch, ours.commit, tip, back, shown)
         return (
             f"Error: {lead}: GitHub answered that '{branch}' already contains {theirs.commit[:12]} ('{head}' when it "
             f"was read), so no merge was needed and the resolved content was not written. {undo}"
@@ -1185,7 +1318,7 @@ async def resolve_and_merge(
         why = f"{why}; the ref update back to {ours.commit[:12]} was refused ({refused})"
         undone = await _signed_commits(
             client, headers, repo, repo_url, branch, tip,
-            f"Restore {branch}'s version of the files a refused merge needed", back,
+            f"Restore {shown}'s version of the files a refused merge needed", back,
         )
         if undone.failure is not None:
             how = "answered nothing" if isinstance(undone.failure, _Lost) else "could not be finished"
@@ -1269,6 +1402,6 @@ async def resolve_and_merge(
         lines.append(f"Kept as on '{head}': {_listed(kept)}.")
     lines.append(final_head_line(tip))
     return (
-        f"Merged '{head}' into '{branch}' of {repo} with its conflicts resolved, in commits GitHub built:\n"
+        f"Merged '{head}' into '{shown}' of {repo} with its conflicts resolved, in commits GitHub built:\n"
         + "\n".join(lines)
     )

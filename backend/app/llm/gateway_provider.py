@@ -291,6 +291,8 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         # "text-embedding-3-small"). Populated lazily from /v1/models.
         self._owner_cache: dict[str, str | None] = {}
         self._owner_misses: dict[str, float] = {}
+        # ``self.client`` and its copy without SDK retries (:meth:`_chat_client`).
+        self._retryless_chat: tuple[openai.AsyncOpenAI, openai.AsyncOpenAI] | None = None
         # (model, dimension) pairs the upstream refused: embedded at native size from then on.
         self._refused_dimensions: set[tuple[str, int]] = set()
         # Image models the gateway declares it edits with (``"image_edit": true``, XTM-One-Platform/ai-gateway#358),
@@ -307,6 +309,13 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
     def refusal_endpoint(self) -> Endpoint | None:
         # The client's api_key is a placeholder: the row's token and target route it.
         return endpoint_of(self.client, f"{self._token or ''}||{self._target or ''}")
+
+    def _chat_client(self) -> openai.AsyncOpenAI:
+        # ``retry_llm_call`` already retries chat 5 times: the SDK's 2 under it sent 18 requests
+        # per call into a throttled upstream. Embeddings, media and listings keep the SDK retry.
+        if self._retryless_chat is None or self._retryless_chat[0] is not self.client:
+            self._retryless_chat = (self.client, self.client.with_options(max_retries=0))
+        return self._retryless_chat[1]
 
     def _reasoning_effort(self, model: str, kwargs: dict) -> str | None:
         # ``disable_thinking`` has no OpenAI-format field: Claude 4.7+ thinks by

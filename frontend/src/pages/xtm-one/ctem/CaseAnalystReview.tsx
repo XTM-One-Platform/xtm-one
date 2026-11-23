@@ -20,7 +20,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
 import { waitsForAnswer } from "@/lib/work-item-context";
-import { GATE_OUTCOME_LABEL, latestGate } from "./case-gates";
+import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
 
@@ -66,7 +66,7 @@ export function CaseAnalystReview({
             <span className="font-medium">
               {gate.to === "passed_automatically"
                 ? t_i18n("Analyst review skipped by policy")
-                : t_i18n(GATE_OUTCOME_LABEL[gate.to as keyof typeof GATE_OUTCOME_LABEL] ?? gate.to ?? "")}
+                : t_i18n(GATE_CARD_STATUS_LABEL[gate.to as keyof typeof GATE_CARD_STATUS_LABEL] ?? gate.to ?? "")}
             </span>
             {gate.to === "passed_automatically" && (
               <span className="text-default-secondary">{t_i18n("The fleet requests the coverage without a person")}</span>
