@@ -72,7 +72,6 @@ import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
-import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -780,9 +779,6 @@ export default function CtemCaseDetail() {
           </ol>
         </CardContent>
       </Card>
-
-      {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
-      <LegacySignalLinks />
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">
