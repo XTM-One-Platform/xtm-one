@@ -21213,6 +21213,7 @@
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。",
   "About the knowledge and sources": "ナレッジとソースについて",
   "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そしてクラウンジュエルと PIR を供給するソース。",
-  "Opened by a source read before signals (legacy)": "シグナル導入前のソース読み取りで作成 (レガシー)",
+  "A source read before signals (legacy)": "シグナル導入前のソース読み取り (レガシー)",
+  "A signal you cannot see": "閲覧権限のないシグナル",
   "Split into its own case by a person or an agent": "ユーザーまたはエージェントにより個別のケースに分割"
 }
