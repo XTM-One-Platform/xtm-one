@@ -21,7 +21,7 @@ TODAY = date(2026, 11, 23)
 CVE = "CVE-2026-12345"
 
 
-def _profile(**extra) -> oc.OrganizationProfile:
+def _profile(**extra: object) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
             "tech_stack": [{"product": "PostgreSQL", "vendor": "PostgreSQL"}],
@@ -47,7 +47,7 @@ def _profile(**extra) -> oc.OrganizationProfile:
     )
 
 
-def _facts(ref: str = CVE, kind: str = "vulnerability", **evidence) -> gate.SignalFacts:
+def _facts(ref: str = CVE, kind: str = "vulnerability", **evidence: object) -> gate.SignalFacts:
     return gate.SignalFacts(
         trigger_path="new_vulnerability",
         lens="world",
@@ -81,11 +81,21 @@ def test_shipped_products_is_a_category_a_row_section_and_proposable() -> None:
     assert "shipped_products" in _contract_paths("primary")
 
 
+def test_a_settings_save_without_shipped_products_keeps_the_stored_ones() -> None:
+    import inspect
+
+    from app.api.v1 import organization_context as api
+
+    source = inspect.getsource(api.save_organization_context)
+    assert '("fx_rates", "shipped_products")' in source
+
+
 def test_the_index_names_shipped_products_only_once_filled() -> None:
     category = categories.get("shipped_products")
     assert category is not None
     assert not categories.indexed(category, 0) and categories.indexed(category, 2)
-    assert categories.indexed(categories.get("tech_stack"), 0)
+    tech_stack = categories.get("tech_stack")
+    assert tech_stack is not None and categories.indexed(tech_stack, 0)
 
 
 def test_rows_upsert_adds_a_new_product_and_keeps_an_existing_one() -> None:
@@ -188,4 +198,5 @@ def test_the_opencti_cve_and_the_repository_advisory_share_one_case_key() -> Non
         subject_label="Acme Server flaw",
         evidence={"repository": "acme/server", "assets": ["acme/server"]},
     )
-    assert loop.fix_of(world).key == loop.fix_of(advisory).key == f"patch:vulnerability/{CVE.lower()}"
+    expected = f"patch:vulnerability/{CVE.lower()}"
+    assert loop.fix_of(world).key == loop.fix_of(advisory).key == expected  # type: ignore[arg-type]
