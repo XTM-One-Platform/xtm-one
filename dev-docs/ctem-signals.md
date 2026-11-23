@@ -21,7 +21,7 @@ lenses disagree. Before this change none of that had a place to land.
 |---|---|---|---|
 | 1 | `new_vulnerability` | world | OpenCTI Vulnerability created or updated; OpenCTI `has` relationship to a Vulnerability (lens inside) |
 | 2 | `relevant_threat` | world | OpenCTI Intrusion Set, Threat Actor, Campaign or Malware created or updated |
-| 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants), `issue.sla.breached` (re-sights the issue's signal), `ci.gate.failed`, `scan.image.finished` with issues |
+| 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants), `issue.sla.breached` (re-sights the issue's signal), `ci.gate.failed`, `scan.image.finished` with issues; GitHub `dependabot_alert` created, reopened, auto-reopened or reintroduced (#1331) |
 | 4 | `proven_exploitable` | inside | OpenAEV `critical_asset_reached`: a finished simulation's attack path reached a high or very high criticality asset, the simulation as subject (CTEM-13); tool and API |
 | 5 | `new_exposure` | outside | tool and API |
 | 6 | `stale_asset` | outside | OpenAEV asset turned stale (CTEM-27), tool and API |
@@ -44,6 +44,29 @@ and titled on that version (`upgrade:-/<package>@<version>`). An
 `issue.closed` records no signal: it closes the case member of the signals the
 issue recorded, and the last member closed resolves the case on a passing
 validation of kind `rescan` (`ctem_case_loop.close_signal_members`).
+
+A GitHub Dependabot alert (#1331, slice 2 of the code repository sources) is
+a path 3 signal keyed `<repository id>:<alert number>` (alert numbers restart
+per repository). Its evidence names the package, ecosystem, manifest, vulnerable
+range, GHSA and CVE ids, and writes the repository's full name, id and identity
+key (`github.com:repository:<id>`, the key the GitHub asset source writes) to
+`evidence.assets`, so the scope gate resolves it to the repository asset. With
+a first patched version the case is an upgrade in that repository, keyed
+`upgrade:<repository>/<package>@<version>` and titled "Upgrade <package> to
+<version> in <repository>". `fixed`, `dismissed` and `auto_dismissed` close its
+members as Aikido's `issue.closed` does. Read-only: nothing is written to GitHub.
+
+A GitHub repository security advisory the organization published on one of its
+repositories (#1410) is a vulnerability in a product it ships: a path 1 signal
+(`new_vulnerability`, lens `inside`, subject kind `vulnerability`) keyed
+`<repository id>:<GHSA id>`. Only `repository_advisory.published` with the
+advisory's own `state` at `published` records one: a private report in triage
+(`reported`), a draft or a withdrawn advisory records nothing. The subject is
+the CVE id when the advisory has one, else its GHSA id, so the same CVE seen
+from OpenCTI lands on the same subject (related signals, one case per fix). The
+evidence names the GHSA and CVE ids, severity, CVSS score, summary, advisory
+link, affected packages with their vulnerable range and patched versions, and
+writes the repository to `evidence.assets` as for a Dependabot alert.
 
 ## 2bis. Signal sources (the dialog of the command center)
 
@@ -84,20 +107,10 @@ are read on the platform's connected integrations
 organization-wide: a reader who cannot see the administrator's Shodan or
 OpenCRQ integration reads the same `connected` or `off` as the administrator.
 
-The Signals page (`/ctem/signals`) is a row of the CTEM menu group, between
-Cases and Inventory (#1401), with the standard list header. Its Sources tab
-(`/ctem/signals/sources`, `SignalSourcesPanel.tsx`) is a compact table grouped
-by lens: trigger path, sources (the event sentence in a tooltip), status,
-signals in 30 days, last signal, action; rows of at most two lines. The
-Sources column lists what feeds the path on this platform: every source of a
-connected provider (a provider with a bound source or a pass `off` on any
-path, `connectedProviders`), each with its state: bound, Off, or Not set up
-(the provider is connected, this source is not, e.g. the PIR playbook of a
-connected OpenCTI). A source whose provider has no integration here is folded
-into one muted "+N possible" whose tooltip lists them with "Not connected on
-this platform" (`splitSources`, `sourceState`); a path with no source of a
-connected provider lists them muted inline, under its Not connected status.
-Connect sends a listener to
+The Sources tab of the Signals page (`/ctem/signals/sources`,
+`SignalSourcesPanel.tsx`) is a compact table grouped by lens: trigger path,
+sources (the event sentence in a tooltip), status, signals in 30 days, last
+signal, action; rows of at most two lines. Connect sends a listener to
 `/integrations/new?provider=`; Connect or Turn on sends a pass and the
 playbook to their card in Settings > Organization (attack surface: outside
 lens; evidence health: its card beside it on CTEM > Inventory, whose `?card=`
