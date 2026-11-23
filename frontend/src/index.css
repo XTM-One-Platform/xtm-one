@@ -198,10 +198,6 @@
    ========================================================================= */
 @custom-variant light (&:where([data-mode="light"], [data-mode="light"] *):not(:where([data-mode="dark"], [data-mode="dark"] *)));
 @custom-variant dark (&:where(:root:not([data-mode="light"]), :root:not([data-mode="light"]) *, [data-mode="dark"], [data-mode="dark"] *));
-/* "Pastel colours" profile preference (#1305): the design system's `pastel:`
-   classes (severity chip fills) are safelisted above and fire under the
-   `pastel` root class useThemeEffect sets; standard colours otherwise. */
-@custom-variant pastel (&:where(.pastel, .pastel *));
 
 /* =========================================================================
    Product tokens.

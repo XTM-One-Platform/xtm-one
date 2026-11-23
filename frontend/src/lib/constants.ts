@@ -2638,8 +2638,8 @@ export const CTEM_BAND_SCALE_TEXT =
 
 /** Priority of a CTEM briefing next step or recommended action: its label and
  *  the ToneBadge tone it is drawn in (#1354), so the High / Medium / Low chip
- *  follows the pastel preference like every other CTEM chip (plain when pastel,
- *  outlined when standard) and looks identical on the Exposure Briefing page,
+ *  wears the single chip style of every other CTEM chip (design system 1.13.0,
+ *  #1595) and looks identical on the Exposure Briefing page,
  *  the briefing card, Act now and Recommended actions. The labels are context
  *  keys: the bare "Medium" key means "medium term" in fr, es and ja. */
 export const CTEM_PRIORITY_CONFIG: Record<string, { label: string; tone: HotTone }> = {
