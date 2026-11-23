@@ -1655,6 +1655,7 @@ def backend_env() -> dict[str, str]:
         "DECISIONS_READ_ENABLED": os.environ.get("DECISIONS_READ_ENABLED", "true"),
         **edition_env(),
         **langfuse_env(),
+        **smtp_env(),
     }
 
 
@@ -1782,6 +1783,14 @@ LAB_LANGFUSE_SECRET_KEY = "sk-lf-lab-only-never-used-outside-the-lab"  # noqa: S
 #: Its host: the discard port of the loopback, so a tracing client the backend builds is refused at once and
 #: nothing leaves the lab (the client then waits its cooldown before trying again).
 LAB_LANGFUSE_HOST = "http://127.0.0.1:9"
+#: ``LAB_SMTP`` values: ``off`` leaves SMTP unconfigured (every lab), ``on`` hands the backend lab-only ``SMTP_*``
+#: values, so ``is_email_configured()`` answers true and the screens that need an SMTP server render (#1542).
+LAB_SMTP_STATES = ("off", "on")
+#: The lab's SMTP server: the discard port of the loopback, so a send is refused at connect, the caller's failure
+#: path runs and no mail leaves the lab.
+LAB_SMTP_HOSTNAME = "127.0.0.1"
+LAB_SMTP_PORT = "9"
+LAB_SMTP_FROM = "lab-only-sender@example.invalid"
 
 
 def lab_switch(name: str, values: tuple[str, ...]) -> str:
@@ -1808,6 +1817,24 @@ def langfuse_env() -> dict[str, str]:
         "LANGFUSE_PUBLIC_KEY": LAB_LANGFUSE_PUBLIC_KEY,
         "LANGFUSE_SECRET_KEY": LAB_LANGFUSE_SECRET_KEY,
         "LANGFUSE_HOST": LAB_LANGFUSE_HOST,
+    }
+
+
+def smtp_env() -> dict[str, str]:
+    """``LAB_SMTP=on``: lab-only ``SMTP_*`` values, so the backend answers SMTP configured (#1542).
+
+    The host is the loopback's discard port: ``is_email_configured()`` answers true, the Platform email
+    integration and the send buttons are offered, and a send is refused at connect (no mail leaves the lab).
+    ``off`` (the default) leaves the backend's environment as it is. Lab-only.
+    """
+    if lab_switch("LAB_SMTP", LAB_SMTP_STATES) != "on":
+        return {}
+    return {
+        "SMTP_HOSTNAME": LAB_SMTP_HOSTNAME,
+        "SMTP_PORT": LAB_SMTP_PORT,
+        "SMTP_FROM": LAB_SMTP_FROM,
+        "SMTP_STARTTLS": "false",
+        "SMTP_USE_TLS": "false",
     }
 
 
