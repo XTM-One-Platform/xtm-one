@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import type { CtemCaseEvent, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { auditRows, filterRows, groupByPhase, phaseBand, runPhase } from "./ctem-case-audit";
+import { auditChange, auditRows, filterRows, groupByPhase, phaseBand, runPhase, type ChangeWords } from "./ctem-case-audit";
 
 const event = (at: string, kind: string, extra: Partial<CtemCaseEvent> = {}): CtemCaseEvent =>
   ({ at, actor: "system", kind, issue: null, from: null, to: null, reason: null, evidence: null, ...extra }) as CtemCaseEvent;
@@ -39,26 +39,66 @@ describe("auditRows (#1490)", () => {
   });
 });
 
-describe("answered waiting gate (UX round 1 on #1520, B2)", () => {
-  it("reads an answered gate as its answer, an unanswered one as Waiting, in rows and group counts", () => {
-    const answered = event("2026-11-19T10:00:00Z", "gate", {
-      phase: "prioritization",
-      autonomy: "waiting",
-      to: "waited",
-      answer: { at: "2026-11-19T11:00:00Z", outcome: "answered", by: "u-1", option: "A" },
-    });
-    const byPolicy = event("2026-11-19T09:00:00Z", "gate", {
-      phase: "validation",
-      autonomy: "waiting",
-      to: "waited",
-      answer: { at: "2026-11-19T09:30:00Z", outcome: "passed_automatically", by: null, option: null },
-    });
-    const open = event("2026-11-19T08:00:00Z", "gate", { phase: "remediation", autonomy: "waiting", to: "waited", answer: null });
-    const rows = auditRows([answered, byPolicy, open], undefined);
-    expect(rows.map((r) => r.autonomy)).toEqual(["validated_by_person", "validated_by_policy", "waiting"]);
+describe("answered waiting gate (UX round 2 on #1520, B2)", () => {
+  const request = event("2026-11-19T10:00:00Z", "gate", {
+    phase: "prioritization",
+    autonomy: "waiting",
+    actor_type: "agent",
+    actor: "ag-1",
+    to: "waited",
+    answer: { at: "2026-11-19T11:00:00Z", outcome: "answered", by: "u-1", option: "A" },
+  });
+  const answer = event("2026-11-19T11:00:00Z", "gate", {
+    phase: "prioritization",
+    autonomy: "validated_by_person",
+    actor_type: "person",
+    actor: "u-1",
+    to: "answered",
+    waited_since: "2026-11-19T10:00:00Z",
+  });
+  const open = event("2026-11-19T08:00:00Z", "gate", { phase: "remediation", autonomy: "waiting", to: "waited", answer: null });
+
+  it("counts a gate and its answer as one validation; the answered request reads Waited, uncounted", () => {
+    const rows = auditRows([answer, request, open], undefined);
+    expect(rows.map((r) => r.autonomy)).toEqual(["validated_by_person", "waited", "waiting"]);
     const prioritization = groupByPhase(rows).find((g) => g.phase === "prioritization");
-    expect(prioritization?.counts.waiting).toBe(0);
     expect(prioritization?.counts.validated_by_person).toBe(1);
+    expect(prioritization?.counts.waiting).toBe(0);
+    expect(prioritization?.counts.waited).toBe(0);
+    expect(groupByPhase(rows).find((g) => g.phase === "remediation")?.counts.waiting).toBe(1);
+  });
+
+  it("gives the Autonomy filter one validated row for the gate", () => {
+    const rows = auditRows([answer, request], undefined);
+    expect(rows.filter((r) => r.autonomy === "validated_by_person")).toHaveLength(1);
+  });
+});
+
+describe("auditChange (UX round 2 on #1520, B1)", () => {
+  const states: Record<string, string> = { needs_attention: "Needs attention", in_progress: "In progress" };
+  const people: Record<string, string> = { "u-1": "Alice Martin", "u-2": "Bob Stone" };
+  const words: ChangeWords = {
+    word: (_kind, value) => states[value] ?? null,
+    person: (id) => people[id] ?? "a person",
+    date: (iso) => iso.slice(0, 10),
+  };
+
+  it("says the owner by name, never the user id", () => {
+    expect(auditChange({ kind: "owner", from: "u-1", to: "u-2" }, words)).toEqual({ from: "Alice Martin", to: "Bob Stone" });
+  });
+
+  it("says the due date as a date, never the raw timestamp", () => {
+    expect(auditChange({ kind: "due", from: "2026-11-27T17:00:00+00:00", to: "2026-11-28T17:00:00+00:00" }, words)).toEqual({
+      from: "2026-11-27",
+      to: "2026-11-28",
+    });
+    expect(auditChange({ kind: "due", from: "soon", to: "2026-11-28T17:00:00+00:00" }, words)).toBeNull();
+  });
+
+  it("says a state by its label, and gives no change for a value or kind it cannot say", () => {
+    expect(auditChange({ kind: "state", from: "needs_attention", to: "in_progress" }, words)).toEqual({ from: "Needs attention", to: "In progress" });
+    expect(auditChange({ kind: "state", from: "needs_attention", to: "weird_key" }, words)).toBeNull();
+    expect(auditChange({ kind: "source_event", from: "a", to: "b" }, words)).toBeNull();
   });
 });
 

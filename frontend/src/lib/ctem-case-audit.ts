@@ -30,6 +30,7 @@ export const AUTONOMY_CLASSES = [
   "validated_by_person",
   "validated_by_policy",
   "waiting",
+  "waited",
   "changed",
   "by_person",
   "system",
@@ -42,6 +43,7 @@ export const AUTONOMY_LABEL = {
   validated_by_person: "Validated by a person",
   validated_by_policy: "Validated by policy",
   waiting: "Waiting for a person",
+  waited: "Waited for a person",
   changed: "Changed",
   by_person: "Done by a person",
   system: "System",
@@ -53,6 +55,7 @@ export const AUTONOMY_VARIANT: Record<AutonomyClass, "success" | "warning" | "se
   validated_by_person: "success",
   validated_by_policy: "outline",
   waiting: "warning",
+  waited: "outline",
   changed: "outline",
   by_person: "secondary",
   system: "outline",
@@ -130,14 +133,58 @@ export function auditRows(history: readonly CtemCaseEvent[], runs: readonly Ctem
 }
 
 /**
- * A waiting gate that has an answer reads as its answer (UX round 1 on #1520, B2):
- * validated by policy when the answer passed it automatically, else by a person.
- * Only an unanswered gate stays Waiting, in the row badge, the group counts and the
- * Autonomy filter alike.
+ * A waiting gate that has an answer reads Waited (UX round 2 on #1520, B2): the answer
+ * row already carries the validation (by a person or by policy), so the request row
+ * takes a neutral class that no group count holds; one gate and its answer count as
+ * one validation in the header, the badge and the Autonomy filter alike. Only an
+ * unanswered gate stays Waiting.
  */
 function answeredClass(e: CtemCaseEvent, served: AutonomyClass): AutonomyClass {
   if (served !== "waiting" || e.kind !== "gate" || !e.answer) return served;
-  return e.answer.outcome === "passed_automatically" ? "validated_by_policy" : "validated_by_person";
+  return "waited";
+}
+
+/** The classes a phase header counts: an answered request is told by its answer row. */
+export const COUNTED_AUTONOMY_CLASSES: readonly AutonomyClass[] = AUTONOMY_CLASSES.filter((c) => c !== "waited");
+
+/** How the values of a from -> to are said (UX round 2 on #1520, B1). */
+export interface ChangeWords {
+  /** A state, validation result or ticket status in words; null when it has no label. */
+  word: (kind: string, value: string) => string | null;
+  /** A person's name from their user id. */
+  person: (id: string) => string;
+  /** A date: the user's locale on screen, an ISO date in the CSV. */
+  date: (iso: string) => string;
+}
+
+/** The kinds whose from -> to the History says, and how. */
+const CHANGE_KIND: Record<string, "word" | "person" | "date" | "raw"> = {
+  state: "word",
+  validation: "word",
+  ticket: "word",
+  owner: "person",
+  due: "date",
+  // Versions are values, not keys.
+  retargeted: "raw",
+};
+
+/**
+ * An event's from -> to in words, never a raw key, user id or timestamp: the owner by
+ * name, the due date as a date, a state by its label. A kind with no way to say its
+ * values, or a value without a label, gives no change at all.
+ */
+export function auditChange(e: Pick<CtemCaseEvent, "kind" | "from" | "to">, words: ChangeWords): { from: string; to: string } | null {
+  const how = CHANGE_KIND[e.kind];
+  if (!how || !e.from || !e.to) return null;
+  const say = (v: string): string | null => {
+    if (how === "person") return words.person(v);
+    if (how === "date") return Number.isNaN(Date.parse(v)) ? null : words.date(v);
+    if (how === "word") return words.word(e.kind, v);
+    return v;
+  };
+  const from = say(e.from);
+  const to = say(e.to);
+  return from !== null && to !== null ? { from, to } : null;
 }
 
 export interface AuditFilter {
@@ -152,7 +199,7 @@ export function filterRows(rows: readonly AuditRow[], filter: AuditFilter): Audi
 export interface PhaseGroup {
   phase: AuditPhase;
   rows: AuditRow[];
-  /** Rows of each autonomy class in the group. */
+  /** Rows of each autonomy class in the group; an answered request (Waited) is never counted. */
   counts: Record<AutonomyClass, number>;
 }
 
@@ -173,7 +220,7 @@ export function groupByPhase(rows: readonly AuditRow[]): PhaseGroup[] {
       groups.set(row.phase, group);
     }
     group.rows.push(row);
-    group.counts[row.autonomy] += 1;
+    if (row.autonomy !== "waited") group.counts[row.autonomy] += 1;
   }
   return [...groups.values()].sort((a, b) => AUDIT_PHASES.indexOf(b.phase) - AUDIT_PHASES.indexOf(a.phase));
 }

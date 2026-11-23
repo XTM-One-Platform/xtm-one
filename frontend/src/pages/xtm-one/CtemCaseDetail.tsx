@@ -43,7 +43,7 @@ import {
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
 import { CASE_RUN_LINE, caseRunLine } from "@/lib/ctem-case-activity";
-import { auditRows, type AuditRow } from "@/lib/ctem-case-audit";
+import { auditChange, auditRows, type AuditRow } from "@/lib/ctem-case-audit";
 import { CaseAuditTrail } from "./ctem/CaseAuditTrail";
 import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
@@ -188,16 +188,13 @@ const VALIDATION_RESULT_LABEL: Record<string, string> = {
 
 /**
  * The word of one side of an event's from -> to, through the labels its action uses
- * (UX round 1 on #1520, B3): never a raw key such as `needs_attention`.
+ * (UX round 1 on #1520, B3): never a raw key such as `needs_attention`; null when the
+ * value has no label (UX round 2, B1), so the row shows no change rather than a key.
  */
-function changeWord(kind: string, value: string): string {
-  if (kind === "ticket") return TICKET_EVENT_STATUS[value] ?? value;
-  return (
-    CASE_STATE_LABEL[value as keyof typeof CASE_STATE_LABEL] ??
-    VALIDATION_RESULT_LABEL[value] ??
-    TICKET_EVENT_STATUS[value] ??
-    value
-  );
+function changeWord(kind: string, value: string): string | null {
+  if (kind === "ticket") return TICKET_EVENT_STATUS[value] ?? null;
+  if (kind === "validation") return VALIDATION_RESULT_LABEL[value] ?? null;
+  return CASE_STATE_LABEL[value as keyof typeof CASE_STATE_LABEL] ?? null;
 }
 
 /**
@@ -312,6 +309,8 @@ export default function CtemCaseDetail() {
       if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
       // A gate answered by a person names them by id in its reason.
       if (e.kind === "gate" && e.to === "answered" && isUserId(e.reason)) ids.add(e.reason);
+      // An owner change names both owners by id (UX round 2 on #1520, B1).
+      if (e.kind === "owner") for (const v of [e.from, e.to]) if (v && isUserId(v)) ids.add(v);
     }
     return [...ids];
   }, [kase]);
@@ -328,14 +327,29 @@ export default function CtemCaseDetail() {
   };
   const eventLabel = (e: CtemCaseEvent) =>
     e.kind === "ticket" && !e.from ? t_i18n("Ticket created") : t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case");
+  // The from -> to in words (UX round 2 on #1520, B1): the owner by name, the due date in
+  // the user's locale on screen and as an ISO date in the CSV, a state by its label.
+  const changeTextOf = (e: CtemCaseEvent, forCsv = false) =>
+    auditChange(e, {
+      word: (kind, value) => {
+        const word = changeWord(kind, value);
+        return word === null ? null : t_i18n(word);
+      },
+      person: (personId) => personName(personId) ?? t_i18n("a person"),
+      date: (iso) => (forCsv ? iso.slice(0, 10) : intl.formatDate(iso, { dateStyle: "medium" })),
+    });
   const actionTextOf = (row: AuditRow): string => {
     if (row.kind === "run") return t_i18n(CASE_RUN_LINE[caseRunLine(timelineOutcome(row.run.outcome, row.run.status))]);
     const e = row.event;
+    // "Changed the state to" carries its target, as the Timeline does, so the Action
+    // reads whole when the Change column is hidden (UX round 2 on #1520, B3).
+    if (e.kind === "state" && e.to) {
+      const target = changeWord("state", e.to);
+      return target ? `${eventLabel(e)} ${t_i18n(target)}` : eventLabel(e);
+    }
     const detail = e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : (e.headline ?? "");
     return detail ? `${eventLabel(e)}: ${detail}` : eventLabel(e);
   };
-  const changeTextOf = (e: CtemCaseEvent) =>
-    e.from && e.to ? { from: t_i18n(changeWord(e.kind, e.from)), to: t_i18n(changeWord(e.kind, e.to)) } : null;
   const renderRun = (run: CtemCaseRun) => {
     const outcome = timelineOutcome(run.outcome, run.status);
     return (

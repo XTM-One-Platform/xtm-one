@@ -24,6 +24,7 @@ import {
   AUTONOMY_CLASSES,
   AUTONOMY_LABEL,
   AUTONOMY_VARIANT,
+  COUNTED_AUTONOMY_CLASSES,
   filterRows,
   groupByPhase,
   isAuditPhase,
@@ -54,8 +55,11 @@ interface CaseAuditTrailProps {
   actorName: (row: AuditRow) => string;
   /** The text the CSV and the search read for an event's action (plain words). */
   actionText: (row: AuditRow) => string;
-  /** An event's from -> to in words (the labels the action uses), null when it changed nothing. */
-  changeText: (event: CtemCaseEvent) => { from: string; to: string } | null;
+  /**
+   * An event's from -> to in words (the labels its action uses, the owner by name, the due
+   * date as a date; an ISO date for the CSV), null when it changed nothing it can say.
+   */
+  changeText: (event: CtemCaseEvent, forCsv?: boolean) => { from: string; to: string } | null;
   /** A person's name from their user id (a gate answered by a person names them by id). */
   personName: (id: string | null | undefined) => string | null;
 }
@@ -160,7 +164,7 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
       </span>
     );
   };
-  const change = (r: AuditRow) => (r.kind === "event" && r.event.kind !== "gate" ? changeText(r.event) : null);
+  const change = (r: AuditRow, forCsv = false) => (r.kind === "event" && r.event.kind !== "gate" ? changeText(r.event, forCsv) : null);
 
   const columns: DataTableColumn<AuditRow>[] = [
     {
@@ -174,6 +178,10 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
     {
       key: "phase",
       header: "Phase",
+      // The band and the filter already say the phase: below 6xl the column goes so the
+      // table fits a 1080 screen (UX round 2 on #1520, B3).
+      hideable: true,
+      hideBelow: "6xl",
       cell: (r) => t_i18n(AUDIT_PHASE_LABEL[r.phase]),
       sortValue: (r) => r.phase,
       csv: (r) => r.phase,
@@ -194,7 +202,8 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
         r.kind === "run" ? (
           <span className="flex items-center gap-2 whitespace-nowrap">{renderRun(r.run)}</span>
         ) : (
-          <span className="block max-w-[32rem]">
+          // 16 rem below 6xl so the table fits at 1080, 32 rem above (UX round 2 on #1520, B3).
+          <span className="block max-w-[16rem] @6xl:max-w-[32rem]">
             <TruncatedText text={actionText(r)} lines={2} />
           </span>
         ),
@@ -217,7 +226,7 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
         return c ? <span className="whitespace-nowrap">{`${c.from} → ${c.to}`}</span> : null;
       },
       csv: (r) => {
-        const c = change(r);
+        const c = change(r, true);
         return c ? `${c.from} -> ${c.to}` : "";
       },
     },
@@ -329,7 +338,7 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
                   {info && info.entered_at && (
                     <span className="content-compact text-default-secondary">{formatDurationShort(info.seconds)}</span>
                   )}
-                  {AUTONOMY_CLASSES.filter((c) => group.counts[c] > 0).map((c) => (
+                  {COUNTED_AUTONOMY_CLASSES.filter((c) => group.counts[c] > 0).map((c) => (
                     <Badge key={c} variant={AUTONOMY_VARIANT[c]} data-testid="ctem-audit-group-count">
                       {t_i18n(AUTONOMY_LABEL[c])} {formatCount(intl.locale, group.counts[c])}
                     </Badge>
