@@ -21087,5 +21087,7 @@
   "The run-as user was not saved.": "実行ユーザーは保存されませんでした。",
   "Saved. The next check round reads the modules as this user.": "保存しました。次回のチェックでは、このユーザーとしてモジュールを読み取ります。",
   "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "このユーザーは {modules} にアクセスできません。Platform Health はこのユーザーとしてモジュールのチェックを実行します。{modules} へのアクセス権を付与するか、アクセス権を持つユーザーを選択してください。",
-  "The run-as user does not exist or is deactivated.": "実行ユーザーが存在しないか、無効化されています。"
+  "The run-as user does not exist or is deactivated.": "実行ユーザーが存在しないか、無効化されています。",
+  "Hide from the command center. The setup stays on the CTEM loop fleet page.": "コマンドセンターから非表示にします。設定は CTEM ループフリートのページに残ります。",
+  "Hide the CTEM loop setup from the command center": "CTEM ループの設定をコマンドセンターから非表示にする"
 }
