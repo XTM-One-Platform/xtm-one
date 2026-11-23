@@ -113,6 +113,17 @@ def test_each_register_event_keeps_only_a_succeeded_run_of_its_own_job_kinds():
         assert payload_filter_reason(other, flt) is not None, a["name"]
 
 
+def test_trimmed_snapshots_are_archived_never_lost() -> None:
+    """A month pushed out of keep_last goes to the archive key, so the desk state stays small (#1417)."""
+    assert m3.STATE_ARCHIVE_KEY.startswith(m3.STATE_KEY)
+    events = [a for a in m3.RISK_BUDGET_DESK_ASSIGNMENTS if a["trigger_type"] == "integration_event"]
+    for a in events:
+        assert m3.STATE_ARCHIVE_KEY in a["prompt"], a["name"]
+        assert f"keep_last {m3.SNAPSHOTS_KEPT}" in a["prompt"], a["name"]
+    persona = (_PERSONAS / f"{m3.ORCHESTRATOR}.md").read_text(encoding="utf-8")
+    assert m3.STATE_ARCHIVE_KEY in persona
+
+
 def test_roi_on_seeded_units_and_the_orchestrator_counts_nothing_twice():
     assert BUILTIN_ROI_UNITS[m3.REGISTER_ANALYST].unit == "risk_scenario_quantified"
     assert BUILTIN_ROI_UNITS[m3.INVESTMENT_ANALYST].unit == "investment_case_written"

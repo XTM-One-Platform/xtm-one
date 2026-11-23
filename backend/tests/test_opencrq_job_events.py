@@ -184,6 +184,31 @@ def test_a_job_that_processed_nothing_is_no_event() -> None:
     assert len(opencrq_job_events.coalesce_events([unknown], "finding_score_changed", base_url="", tenant_id="t")) == 1
 
 
+def test_a_kind_that_never_reports_progress_is_kept_at_zero() -> None:
+    """A job that reports no expected total ends at 0 whatever it did: its run is still an event."""
+    silent = {
+        **_run("p", "2026-11-06T07:00:00Z", kind="crq-price-recompute"),
+        "processedTotal": 0,
+        "expectedTotal": None,
+    }
+    events = opencrq_job_events.coalesce_events([silent], "risk_scenario_recomputed", base_url="", tenant_id="t")
+    assert [e["message_id"] for e in events] == ["opencrq:t:p"]
+
+
+def test_the_job_payload_scenario_ids_travel_on_the_event() -> None:
+    one = {**_run("a", "2026-11-06T07:00:00Z"), "payload": {"riskScenarioId": "s1"}}
+    two = {**_run("b", "2026-11-06T07:01:00Z"), "payload": {"riskScenarioIds": ["s2", "s1"]}}
+    plain = _run("c", "2026-11-06T07:02:00Z")
+    (event,) = opencrq_job_events.coalesce_events(
+        [one, two, plain], "risk_scenario_recomputed", base_url="", tenant_id="t"
+    )
+    assert event["entity"]["risk_scenario_ids"] == ["s1", "s2"]
+    assert [c["risk_scenario_ids"] for c in event["covers"]] == [["s1"], ["s2", "s1"], []]
+    single = opencrq_job_events.run_event(one, "risk_scenario_recomputed", base_url="", tenant_id="t")
+    assert single["entity"]["risk_scenario_ids"] == ["s1"]
+    assert "risk_scenario_ids" not in opencrq_job_events.run_event(plain, "x", base_url="", tenant_id="t")["entity"]
+
+
 def test_the_coalesce_key_is_per_tenant_and_event() -> None:
     assert opencrq_job_events.coalesce_key("risk_scenario_recomputed", "a") != opencrq_job_events.coalesce_key(
         "risk_scenario_recomputed", "b"

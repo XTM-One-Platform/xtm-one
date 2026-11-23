@@ -67,6 +67,10 @@ FLEET_NAME = "Risk budget desk"
 
 #: Shared state of the fleet: the last register snapshot, the ranked investments, the Board packs.
 STATE_KEY = "opencrq:risk-budget-desk:state"
+#: Where the monthly snapshots trimmed from STATE_KEY (keep_last) go: history is archived, never lost.
+STATE_ARCHIVE_KEY = f"{STATE_KEY}:archive"
+#: Monthly snapshots kept in STATE_KEY: two years of trend.
+SNAPSHOTS_KEPT = 24
 #: Work-item key prefix of the recommendations the fleet files for a person.
 RECOMMENDATION_PREFIX = "opencrq:risk-budget-desk:recommendation:"
 #: Work-item key prefix of a proposed write to the register of record (a scenario, its loss
@@ -296,7 +300,8 @@ _EVENT_PROMPT = (
     f"{MATERIAL_MOVE_PERCENT:g}% and no scenario crossed the risk tolerance, stop there and answer the run "
     "JSON with the summary 'no material move', writing nothing. Otherwise delegate to the Register Analyst "
     "the scenarios re-priced since the last snapshot, with the driver of each move, and record the "
-    "snapshot keyed by the current month (update the entry of that month in place, never a second one). "
+    "snapshot keyed by the current month (update the entry of that month in place, never a second one; "
+    f"a new month is appended with keep_last {SNAPSHOTS_KEPT} and archive_key {STATE_ARCHIVE_KEY}). "
     "When a scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades "
     "that bring it back and file one recommendation work item. A write the register needs (a scenario, its "
     "loss estimates, the risk tolerance) is proposed for a person as one needs_human work item keyed "

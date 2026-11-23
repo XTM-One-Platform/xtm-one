@@ -38,7 +38,10 @@ poll page to the assignment as ONE event (``coalesce_events``): the newest run
 is the entity, ``covers`` lists every run of the page, and ``coalesce_key``
 (tenant and event) lets the dispatcher fold a later page into a run of the
 same key still waiting in the queue (``services/event_coalescing.py``). A run
-that processed nothing (``processedTotal`` 0, a no-op recompute) is no event.
+that reports its progress and processed nothing (``expectedTotal`` set,
+``processedTotal`` 0, a no-op recompute) is no event; a kind that never
+reports progress ends at 0 whatever it did, so its runs are kept. The risk
+scenario ids a job payload names travel on the entity and in ``covers``.
 """
 
 from __future__ import annotations
@@ -74,6 +77,21 @@ def runs_query(event_type: str, since: str, limit: int) -> dict[str, Any]:
     }
 
 
+def risk_scenario_ids(run: dict[str, Any]) -> list[str]:
+    """The risk scenario ids the run's job payload names (``riskScenarioId`` or ``riskScenarioIds``), in order."""
+    payload = run.get("payload")
+    if not isinstance(payload, dict):
+        return []
+    ids: list[str] = []
+    single = payload.get("riskScenarioId")
+    if isinstance(single, str) and single:
+        ids.append(single)
+    many = payload.get("riskScenarioIds")
+    if isinstance(many, list):
+        ids.extend(item for item in many if isinstance(item, str) and item and item not in ids)
+    return ids
+
+
 def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> dict[str, Any]:
     """The payload one run hands to the assignment: an id the seen set keys on and the run itself."""
     run_id = str(run.get("id") or "")
@@ -93,6 +111,9 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
         "tenant_id": tenant_id,
         "instance_url": base_url,
     }
+    scenario_ids = risk_scenario_ids(run)
+    if scenario_ids:
+        entity["risk_scenario_ids"] = scenario_ids
     return {
         "message_id": f"opencrq:{tenant_id}:{run_id}" if run_id else "",
         "provider": PROVIDER,
@@ -106,13 +127,20 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
 MAX_COVERED_RUNS = 50
 
 
+def _count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def processed_nothing(run: dict[str, Any]) -> bool:
     """A run that reports it processed nothing: a no-op recompute, no event.
 
-    Only an explicit 0 counts; a run that does not report its total is kept.
+    Only a run that reports its progress counts: it declared an
+    ``expectedTotal`` and ended with ``processedTotal`` 0. A job kind that
+    never reports progress (``crq-price-recompute``, for one) ends every run
+    with ``processedTotal`` 0 whatever it re-priced, so a 0 without an
+    expected total says nothing and the run is kept.
     """
-    total = run.get("processedTotal")
-    return isinstance(total, int) and not isinstance(total, bool) and total == 0
+    return _count(run.get("expectedTotal")) is not None and _count(run.get("processedTotal")) == 0
 
 
 def coalesce_key(event_type: str, tenant_id: str) -> str:
@@ -129,6 +157,7 @@ def covered_run(run: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         "kind": run.get("kind"),
         "finished_at": run.get("finishedAt"),
         "processed_total": run.get("processedTotal"),
+        "risk_scenario_ids": risk_scenario_ids(run),
     }
 
 
@@ -151,6 +180,11 @@ def coalesce_events(
     event["covers"] = covers[-MAX_COVERED_RUNS:]
     event["run_count"] = len(covers)
     event["coalesce_key"] = coalesce_key(event_type, tenant_id)
+    page_scenarios: list[str] = []
+    for run in kept:
+        page_scenarios.extend(sid for sid in risk_scenario_ids(run) if sid not in page_scenarios)
+    if page_scenarios:
+        event["entity"]["risk_scenario_ids"] = page_scenarios
     if len(covers) > 1:
         event["summary"] = (
             f"{len(covers)} OpenCRQ {event_type} jobs succeeded, the last "
