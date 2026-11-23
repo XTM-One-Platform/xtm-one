@@ -314,6 +314,17 @@ which carry no brand, by a glyph; the name in the tooltip and for screen
 readers). With no fixed version the card says it is unknown and what was
 checked; with no asset running the product it says the versions come from the
 assets. Nothing on the page asks the user to type a version in the tech stack.
+Per platform (slice 3 of #1572): when a row names a `platform` the table adds a
+Platform column, and when the case carries `fixed_versions` a Fixed version
+column (the row's own platform fix) and the line "Fixed version per platform:
+Windows: 36.0 and macOS: 37.0"; the totals then read "below / on the fixed
+version of their platform". A row whose `status_reason` is "fix not known for
+this platform" reads that status, never "Cannot be compared" alone; a
+`platform_unverified` answer says the generic fix names no platform while the
+assets run several, and `assets_fix_not_known_for_platform` is counted in its
+own line. `assets_multi_version` above 0 adds the line that those assets are
+counted in each of their rows, so the row sum above the asset count reads as
+explained. A single-platform answer draws the card as before.
 
 ### 4.3 Recompute
 
