@@ -35,7 +35,7 @@ import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
@@ -370,9 +370,7 @@ async def read_running_versions(
         async with db.begin_nested():
             counted, named = await _read_rows(db, organization_id, keys)
             os_assets = await _read_os_assets(db, organization_id, family) if family else []
-            platforms = await _read_platforms(
-                db, organization_id, {str(a) for *_, asset_ids in counted for a in asset_ids or () if a}
-            )
+            platforms = await _read_platforms(db, organization_id, keys) if counted else {}
     except Exception:  # the inventory never breaks a case read
         logger.info("CTEM case running versions unavailable", exc_info=True)
         return None
@@ -567,16 +565,32 @@ async def _read_asset_rows(
     ]
 
 
-async def _read_platforms(db: AsyncSession, organization_id: uuid.UUID, asset_ids: set[str]) -> dict[str, str | None]:
-    """The platform (``os_family``) of each asset id, one read (#1572); empty for no id."""
-    if not asset_ids:
-        return {}
+def _platforms_query(organization_id: uuid.UUID, keys: tuple[str, ...]) -> Select[Any]:
+    """The platform (``os_family``) of every asset running one of *keys* (#1572).
+
+    A join on the software rows, never a list of asset ids: the bind parameters
+    are the organization and the product keys, so a product installed on more
+    assets than the driver's parameter cap still reads.
+    """
     asset = OrganizationAsset
-    result = await db.execute(
-        select(asset.id, asset.fields["os_family"]["value"].astext).where(
-            asset.organization_id == organization_id, asset.id.in_([uuid.UUID(a) for a in asset_ids])
+    soft = OrganizationAssetSoftware
+    return (
+        select(asset.id, asset.fields["os_family"]["value"].astext)
+        .join(soft, soft.asset_id == asset.id)
+        .where(
+            asset.organization_id == organization_id,
+            soft.organization_id == organization_id,
+            soft.product_key.in_(keys),
         )
+        .distinct()
     )
+
+
+async def _read_platforms(db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...]) -> dict[str, str | None]:
+    """The platform (``os_family``) of each asset running the case's product, one read (#1572)."""
+    if not keys:
+        return {}
+    result = await db.execute(_platforms_query(organization_id, keys))
     return {str(asset_id): _platform(platform) for asset_id, platform in result.all()}
 
 

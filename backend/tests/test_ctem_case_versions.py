@@ -27,6 +27,19 @@ def _row(
     return {"vendor": vendor, "product": product, "version": version, "asset_ids": ids, "sources": list(sources)}
 
 
+def test_the_platform_read_binds_the_product_keys_never_the_asset_ids() -> None:
+    # #1575 review: an IN list of asset ids hits the driver's 32,767 bind cap on a large estate.
+    from sqlalchemy.dialects import postgresql
+
+    org = uuid.uuid4()
+    statement = versions._platforms_query(org, ("google chrome",))
+    compiled = statement.compile(dialect=postgresql.dialect())  # type: ignore[no-untyped-call]
+    sql = str(compiled)
+    assert "organization_asset_software" in sql
+    assert "organization_assets.id IN" not in sql
+    assert len(compiled.params) <= 6
+
+
 def test_versions_are_listed_with_their_asset_counts_and_sources():
     answer = versions.running_versions(
         [_row("10.0.22631.4317", 640, sources=("intune", "defender")), _row("10.0.22621.3880", 274)],

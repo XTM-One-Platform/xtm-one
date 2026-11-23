@@ -227,7 +227,9 @@ same way.
   (section 4.2bis, steps 1 and 2); nothing asks the user to type a version.
 - per platform (#1572): a row is one (version, `platform`), the platform
   being the asset's `fields.os_family` (Intune, Defender, OpenAEV fill it;
-  `null` when unknown), with its `asset_ids` (at most 20, `more_asset_ids`
+  `null` when unknown; read by a join on the software rows of the case's
+  product keys, never an IN list of asset ids, so no estate size reaches the
+  driver's bind cap), with its `asset_ids` (at most 20, `more_asset_ids`
   counts the rest). Each asset is compared with the fixed version of its own
   platform: `fixed_versions` `{platform: version}` when the remediation names
   one (the row then carries its `fixed_version`), else the case's generic
