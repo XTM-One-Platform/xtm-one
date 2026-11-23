@@ -21176,5 +21176,22 @@
   "What this reply suggestion setting does": "Qué hace este ajuste de sugerencias de respuesta",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "Activado, el modelo de enrutamiento de la plataforma lee cada respuesta y propone un próximo mensaje, en gris en el cuadro de mensaje. Tab lo coloca en el cuadro, escribir o Escape lo descarta, y no se envía nada hasta que pulse Intro. Desactivado, no se genera ninguna sugerencia para usted.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Cuando un agente ha respondido, el modelo de enrutamiento propone el próximo mensaje del usuario en el cuadro de mensaje del chat (Tab para usarlo). Cada usuario puede desactivarlo en su perfil.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta.",
+  "Feeds this path": "Alimenta esta ruta",
+  "Not used on this path": "No se usa en esta ruta",
+  "Not used here": "No se usa aquí",
+  "Scheduled pass on": "Pasada programada activada",
+  "Runs on: {names}": "Se ejecuta en: {names}",
+  "Choose the integration it runs on in its settings card.": "Elija la integración en la que se ejecuta en su tarjeta de configuración.",
+  "Open its settings": "Abrir su configuración",
+  "Use on this path": "Usar en esta ruta",
+  "Sources of this trigger path": "Fuentes de esta ruta de activación",
+  "Scheduled pass saved": "Pasada programada guardada",
+  "Source used on this path": "Fuente usada en esta ruta",
+  "Source taken off this path": "Fuente retirada de esta ruta",
+  "No owned domain or address range is set: the pass has nothing to look up.": "No hay ningún dominio ni rango de direcciones propio definido: la pasada no tiene nada que consultar.",
+  "The switch is organization-wide. Also feeds: {paths}": "El interruptor se aplica a toda la organización. También alimenta: {paths}",
+  "A live listener runs while its integration is connected.": "Un oyente en vivo funciona mientras su integración está conectada.",
+  "Only an administrator can change the sources of a trigger path.": "Solo un administrador puede cambiar las fuentes de una ruta de activación.",
+  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración."
 }
