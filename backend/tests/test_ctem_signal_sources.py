@@ -56,6 +56,8 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
         "event": sources.PATH_SOURCES["code_flaw"][0].event,
         "bound": False,
         "off": False,
+        "excluded": False,
+        "also_feeds": ["credential_leak"],
     }
     assert rows["new_exposure"]["last_signal_at"] is None
 

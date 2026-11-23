@@ -551,6 +551,12 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             primary = await get_primary(db)
             if primary is None:
                 return False
+            from app.services.ctem_signal_sources import excluded_sources, is_excluded
+
+            # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
+            kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
+            if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind):
+                return False
             signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
@@ -605,6 +611,11 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
         async with async_session() as db:
             primary = await get_primary(db)
             if primary is None:
+                return 0
+            from app.services.ctem_signal_sources import excluded_sources, is_excluded
+
+            # Path 11 excluded for the OpenCTI listener by an administrator (#1445): nothing is recorded.
+            if is_excluded(await excluded_sources(db, primary.id), "third_party_event", "opencti", "listener"):
                 return 0
             for raw in organization_ids:
                 try:

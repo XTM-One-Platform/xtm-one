@@ -162,6 +162,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "asset_identity",
     # Cases attention weights (#1176): read by the Cases list and case page, never dumped into the always-on block.
     "case_attention",
+    # Per path source exclusions (#1445): read where a signal is recorded, never dumped into the always-on block.
+    "signal_sources",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -693,6 +695,46 @@ class EvidenceHealthPass(BaseModel):
     cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
 
 
+#: One source of a trigger path as ``provider:kind`` (``ctem_signal_sources.source_key``).
+_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)$")
+
+
+class SignalSourcesSettings(BaseModel):
+    """Which connected source feeds which CTEM trigger path (#1445, ``dev-docs/ctem-signals.md`` s.2bis).
+
+    Every connected source feeds every path it can by default. ``excluded``
+    names, per trigger path, the sources (``provider:kind``) an administrator
+    took off that path alone: an excluded source records nothing on it and is
+    not bound on it, while it keeps feeding its other paths. Set from the
+    Sources tab of CTEM > Signals.
+    """
+
+    model_config = _Strict
+
+    excluded: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("excluded")
+    @classmethod
+    def _clean_excluded(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        from app.services.ctem_signal_sources import PATH_SOURCES, source_key
+
+        out: dict[str, list[str]] = {}
+        for path, keys in value.items():
+            known = {source_key(s.provider, s.kind) for s in PATH_SOURCES.get(path, ())}
+            if not known:
+                raise ValueError(f"{path!r} is not a trigger path with a source")
+            cleaned: list[str] = []
+            for key in keys:
+                key = str(key).strip()
+                if not _SOURCE_KEY.match(key) or key not in known:
+                    raise ValueError(f"{key!r} is not a source of the trigger path {path!r}")
+                if key not in cleaned:
+                    cleaned.append(key)
+            if cleaned:
+                out[path] = sorted(cleaned)
+        return out
+
+
 class CasesRecompute(BaseModel):
     """How often the shared CTEM cases are recomputed from the source products (``dev-docs/ctem-cases.md`` s.4.3).
 
@@ -845,6 +887,8 @@ class OrganizationProfile(BaseModel):
     evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
     #: How often the shared CTEM cases are recomputed with no user action.
     cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
+    #: The sources an administrator took off one trigger path (#1445).
+    signal_sources: SignalSourcesSettings = Field(default_factory=SignalSourcesSettings)
     #: How one asset is matched across sources and which source each field shows (#1178).
     asset_identity: AssetIdentity = Field(default_factory=AssetIdentity)
     #: The points of the Cases attention score (#1176): what needs attention first.
