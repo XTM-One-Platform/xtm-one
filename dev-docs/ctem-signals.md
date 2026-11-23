@@ -164,6 +164,33 @@ on one line, cut with an ellipsis, the whole list in a tooltip. An empty signal 
 shows the table's standard empty statement alone; the summary strip carries
 the connected count.
 
+**Managing a path's sources (#1445).** A row of the Sources tab opens the
+path's side panel (`SignalPathSourcesSheet`): every source of the path,
+connected or not, its state (feeds this path, not used on this path, off, not
+set up, not connected on this platform) and the control that exists for it.
+A scheduled pass of the profile shows its organization-wide switch (the same
+`enabled` its card writes, so no second store), the integrations it runs on,
+a pointer to its card when no integration is chosen or no owned domain or
+range is set, and the other paths it also feeds (`also_feeds`). A live
+listener has no switch in the model: it runs while its integration is
+connected, and the panel says so. The PIR playbook shows its state and points
+to the PIR field. A provider with no integration here gets Connect.
+
+Every connected source has "Use on this path": the per path exclusion
+`signal_sources.excluded` of the organization profile, `{path: ["provider:kind"]}`
+(`SignalSourcesSettings`, validated against `PATH_SOURCES`). An excluded source
+is not bound on that path (`bound` false, `excluded` true, `available` true:
+its provider still reads connected), so the path status and the connected count
+follow, and it keeps feeding its other paths. The recording points read the
+exclusions before they record (`ctem_signal_sources.excluded_sources`,
+`is_excluded`): the listener and PIR playbook delivery
+(`ctem_signal_listeners.note_event`), the OpenCTI third party listener
+(`note_tracked_organizations`), the evidence health pass, and the attack
+surface pass, which skips a finding only excluded providers saw
+(`ctem_attack_surface._kept_for_path`). Every write is a profile save, so the
+controls are an administrator's; a reader sees the same states, controls
+disabled.
+
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 
 One row per `(organization_id, recorded_by, dedupe_key)`.
@@ -249,55 +276,10 @@ Any other agent reads the signals through the read-only built-in group
 the case reads; `dev-docs/ctem-cases.md` section 8.1). It never records a
 signal.
 
-## 6bis. Signal events and the CTEM signal trigger (#1409)
-
-Two platform events (`services/platform_events.PLATFORM_EVENTS`, listed by
-`list_platform_events`), never one per sighting:
-
-| Event | Raised when | Raised by |
-|---|---|---|
-| `ctem_signal.recorded` | the first sighting of a signal, after the scope gate gave its first verdict (or none when the gate did not run) | `ctem_scope_gate_store.evaluate_after_record` |
-| `ctem_signal.triaged` | a later evaluation changes a verdict the signal already had (`confirmed`, `to_validate`, `watchlist`, `discarded`) | `ctem_scope_gate_store.evaluate` with `events`, from `POST /ctem-signals/{id}/evaluate` and `POST /ctem-signals/evaluate` |
-
-A re-sighting raises nothing; the first verdict of a new signal is carried by
-`recorded`, never a `triaged`. Both are queued in `ctem_case_loop.PendingEvents`
-and published after the commit, `recorded` ahead of the case events of the
-same sighting. Event ids are stable (one per signal for `recorded`, one per
-verdict change for `triaged`).
-
-**Payload: ids and routing only.** `signal_id`, `trigger_path`, `lens`,
-`source_provider`, `subject_kind`, `verdict`, `case_id`, plus
-`previous_verdict` on `triaged`. These are the filter keys. The agent reads the
-signal itself with `list_ctem_signals signal_id=...` under the run's
-permissions.
-
-**Visibility.** Both events are viewer-checked (`VIEWER_CHECKED_EVENTS`), the
-case events' delivery check: a subscription hears one only when the user its
-run executes as reads the signal (`ctem_signals.user_reads_signal`: an
-administrator, or the signal's recorder). A listener-recorded signal
-(`recorded_by = system`) reaches only an assignment that runs as an
-administrator.
-
-**The trigger.** The assignment form shows a "CTEM signal" tile next to
-"Platform event" (XTM One mode). It saves a `platform_event` trigger: `event`
-is one of the two events or both, and `filter` holds an any-of list for each
-of `trigger_path`, `lens`, `source_provider`, `subject_kind` and `verdict`
-that is filled (empty: every signal). A stored `platform_event` trigger on the
-signal events alone, with those filter keys only and no one-off watch,
-deadline or scope, reopens on the tile (`frontend/src/lib/ctem-signal-trigger.ts`).
-`create_assignment` and `update_assignment` set the same trigger with
-`trigger_type="platform_event"`; no new trigger type.
-
-**Bursts.** One run per signal, under the assignment's `max_concurrent_runs`
-(the platform-event queue). Platform events have no batching today, so the
-trigger offers no "batch every N minutes" setting.
-
 ## 7. Tests
 
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:
 one signal per path through each, idempotence, filters, recorder scope,
 Copilot mode), `tests/test_ctem_signals_postgres.py` (the upsert, a new
 sighting keeps the next steps' writes, organization isolation, filters, the
-check constraints), `tests/test_ctem_signal_events.py` (section 6bis: first
-sighting raises `recorded`, re-sighting nothing, a verdict change `triaged`,
-a non-admin subscriber does not hear an admin-only signal, filters match).
+check constraints).
