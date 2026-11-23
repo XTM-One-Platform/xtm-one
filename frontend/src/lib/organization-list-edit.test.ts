@@ -10,7 +10,9 @@ import {
   committedValues,
   fieldSuggestions,
   isCpe,
+  isRepository,
   LIST_ISSUES,
+  LIST_RULES,
   patchRow,
   patchRows,
   removeRow,
@@ -104,6 +106,18 @@ describe("organization list edit (#12256)", () => {
     assert.equal(isCpe("cpe:/a:atlassian:jira:9.4"), true);
     assert.equal(isCpe("cpe:2.3:a:vendor:product:*"), false);
     assert.equal(isCpe("jira"), false);
+  });
+
+  it("reads a source repository as owner/name, a GitHub address included, and flags a shipped product row that is not (#1432)", () => {
+    assert.equal(isRepository("acme/server"), true);
+    assert.equal(isRepository("https://github.com/acme/server.git"), true);
+    assert.equal(isRepository("server"), false);
+    assert.equal(isRepository(""), false);
+    const rules = LIST_RULES.shipped_products;
+    assert.deepEqual(rules.check({ product: "Acme Server", vendor: "Acme", cpe: "", repositories: ["acme/server"] }), []);
+    assert.deepEqual(rules.check({ product: "Acme Server", vendor: "", cpe: "", repositories: ["server"] }), [LIST_ISSUES.repository]);
+    assert.deepEqual(rules.check({ product: "", vendor: "", cpe: "jira", repositories: [] }), [LIST_ISSUES.emptyName, LIST_ISSUES.cpe]);
+    assert.equal(rules.identity({ product: " Acme ", vendor: "Acme", cpe: "", repositories: [] }), "Acme\u0000Acme");
   });
 
   it("adds pasted rows in order, sets a field on the selected rows and removes them in bulk (slice 2)", () => {

@@ -239,3 +239,67 @@ async def test_suggestions_show_to_managers_only_and_dismiss_and_restore_like_fi
     assert desk.fleet.documentation["findings"] == []
     view = await fleet_docs.documentation_view(object(), desk.fleet, can_edit=True)
     assert len(view.findings) == 3
+
+
+# Built-in fleets suggest only what the reader can change (#1510).
+
+
+def _open_everywhere(desk) -> None:
+    desk.members[0].disable_chat = False
+
+
+async def test_a_built_in_fleet_gets_no_practice_suggestion(desk) -> None:
+    _open_everywhere(desk)
+    desk.fleet.is_builtin = True
+    assert await _suggestions(desk, assignments=[], open_owned={desk.members[1].id: 2}) == []
+
+
+async def test_a_fork_of_a_built_in_fleet_keeps_every_practice(desk) -> None:
+    _open_everywhere(desk)
+    desk.fleet.is_builtin = False
+    found = await _suggestions(desk, assignments=[], open_owned={desk.members[1].id: 2})
+    assert {s["kind"] for s in found} == {
+        "member_cannot_consult_orchestrator",
+        "member_chat_open",
+        "owner_without_inbox",
+        "orchestrator_without_listeners",
+    }
+
+
+async def test_a_built_in_member_of_a_custom_fleet_gets_no_practice(desk, monkeypatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setattr(Settings, "is_xtm_one", property(lambda _self: True))
+    triage = desk.members[0]
+    triage.is_builtin = True
+    found = await _suggestions(desk)
+    assert [s["member"] for s in found] == ["Enrich", "Report"]
+
+
+def test_every_kind_names_its_surface_and_only_the_customer_layer_stays_on_a_built_in() -> None:
+    assert set(practice.PRACTICE_KINDS) | set(FINDING_KINDS) <= set(practice.KIND_SURFACES)
+    builtin = SimpleNamespace(is_builtin=True)
+    custom = SimpleNamespace(is_builtin=False)
+    kept = {k for k in practice.KIND_SURFACES if practice.suggestion_editable(builtin, {"kind": k})}
+    assert kept == {"missing_integration", "no_gate_on_sensitive_action"}
+    assert all(practice.suggestion_editable(custom, {"kind": k}) for k in practice.KIND_SURFACES)
+    # Derived from the lock's own field sets, not a second list.
+    assert practice.builtin_editable_surfaces() == {"agent_integrations", "fleet_gates"}
+
+
+async def test_the_chip_the_list_and_the_count_agree_on_a_built_in_fleet(desk, stored_view) -> None:
+    stored_view["items"] = []
+    desk.fleet.is_builtin = True
+    desk.fleet.documentation["findings"] = [
+        {"kind": "missing_automation", "member": "Triage", "subject": "schedule", "finding": "No schedule."},
+        {"kind": "missing_integration", "member": "Enrich", "subject": "opencti", "finding": "No OpenCTI."},
+        {"kind": "member_without_role", "member": "Report", "subject": "role label", "finding": "No role."},
+    ]
+    view = await fleet_docs.documentation_view(object(), desk.fleet, can_edit=True)
+    assert [f["kind"] for f in view.findings] == ["missing_integration"]
+    assert await fleet_docs.open_suggestion_count(object(), desk.fleet) == 1
+    shown, _held, _prints = await fleet_docs.manager_suggestions(object(), desk.fleet)
+    assert [f["kind"] for f in shown] == ["missing_integration"]
+
+    desk.fleet.is_builtin = False  # a fork: every finding again
+    assert await fleet_docs.open_suggestion_count(object(), desk.fleet) == 3
