@@ -16,7 +16,19 @@
           "loss_avoided": {"type": "number"},
           "detections": {"type": "array", "items": {"type": "string"}, "description": "The detection rules drafted for this action."},
           "ticket_draft": {"type": "string", "description": "The ticket body for the ticketing target; proposed, never filed."},
-          "retest": {"type": "string", "description": "The re-test that proves the action."}
+          "retest": {"type": "string", "description": "The re-test that proves the action."},
+          "version_match": {
+            "type": "object",
+            "description": "For an upgrade: the version match get_ctem_case answers. blind is true when the running version or the affected range is unknown; the action then says verify the running version, then upgrade.",
+            "properties": {
+              "running": {"type": "string", "description": "The versions the assets run with their counts, or unknown with the reason."},
+              "affected": {"type": "string", "description": "The affected version range, or unknown with the reason."},
+              "fixed": {"type": "string", "description": "The fixed version, or unknown."},
+              "blind": {"type": "boolean"}
+            },
+            "required": ["running", "affected", "fixed", "blind"],
+            "additionalProperties": false
+          }
         },
         "required": ["title", "asset", "change", "evidence", "owner_role", "ticket_draft", "retest"],
         "additionalProperties": false

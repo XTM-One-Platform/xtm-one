@@ -5,6 +5,13 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## The Filigran AI Gateway provider is always offered
+
+**No migration. Drop `FILIGRAN_GATEWAY_PROVIDER` from `ENABLED_FEATURES` if it is set.**
+
+- **Changed**: the `FILIGRAN_GATEWAY_PROVIDER` feature flag is gone. Administrators can add a Filigran AI Gateway provider from **Settings → AI Models** on every deployment.
+- **Leftover id**: `ENABLED_FEATURES=FILIGRAN_GATEWAY_PROVIDER` is logged as unknown and ignored.
+
 ## STIX scores before and after metric suite 16.0 are not comparable
 
 **No migration. Rescore stored STIX baselines before comparing them with new runs.**

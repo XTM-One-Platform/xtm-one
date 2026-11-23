@@ -337,6 +337,14 @@ def _as_baseline(row: CtemSurfaceObservation) -> Baseline:
     return Baseline(host=row.host, ports=ports, last_seen_at=seen, signalled=tuple(row.signalled or []))
 
 
+def _kept_for_path(excluded: dict[str, set[tuple[str, str]]], path: str, providers: Iterable[str]) -> bool:
+    """Whether a finding seen by *providers* is recorded on *path*: at least one of them is not excluded
+    from it (#1445). A host no provider of the pass is named for keeps the old behaviour."""
+    off = excluded.get(path, set())
+    named = [p for p in providers if p]
+    return not named or any((p, "pass") not in off for p in named)
+
+
 async def run_pass(
     db: AsyncSession,
     *,
@@ -380,9 +388,17 @@ async def run_pass(
         row.signalled = _still_holding(row.signalled or [], obs)
     await db.flush()
 
+    from app.services.ctem_signal_sources import parse_excluded
+
+    # The providers an administrator took off a path (#1445): a finding only they saw records nothing there.
+    excluded = parse_excluded(profile)
+    seen_by = {host_key(obs.host): list(obs.providers or [reader.provider]) for obs in observations}
     pending = ctem_case_loop.PendingEvents()
     counts: dict[str, int] = {"observed": len(observations), "recorded": 0}
     for finding in findings:
+        if not _kept_for_path(excluded, finding.trigger_path, seen_by.get(finding.host) or reader.provider.split("+")):
+            counts["excluded"] = counts.get("excluded", 0) + 1
+            continue
         signal, created = await ctem_signals.record_signal(
             db,
             organization_id=organization_id,

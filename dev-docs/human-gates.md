@@ -30,8 +30,10 @@ message carries resolves (section 9, I.7).
 
 Fleet gates are a source of decisions 2 and 5, never a gate of their own: a
 gate of a fleet's approval catalog (`dev-docs/ctem-fleets.md` section 11) that
-waits at the fleet's autonomy level and pins pauses its tools through gate 2,
-or asks through gate 5 (a `needs_human` work item with an ask) when it has no
+waits at the fleet's autonomy level and pins is an instruction to the members
+(#1467): no tool call pauses unless an administrator opted the fleet in to
+tool-level enforcement (`Fleet.enforce_gates_at_tool_level`, off by default),
+in which case it pauses its tools through gate 2; it asks through gate 5 (a `needs_human` work item with an ask) when it has no
 tool, with the gate key as the decision's source. The CTEM loop fleets (#916,
 CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
 `ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,

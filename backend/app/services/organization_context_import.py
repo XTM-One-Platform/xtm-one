@@ -191,6 +191,8 @@ class ReadResult:
     software_error: str = ""
     #: GitLab dependency vulnerabilities per project read whole (#1331), recorded as CTEM signals at save.
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: Name and identity key per repository id (#1331, slice 4): the asset a dependency match lands on.
+    repositories: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -209,6 +211,8 @@ class ImportPlan:
     gone: list[str] = field(default_factory=list)
     #: True when the administrator chose to remove the ``gone`` rows (default: they are kept).
     remove_gone: bool = False
+    #: ``gone`` rows a sync kept because another writer wrote them (#1473): only its own rows go.
+    gone_kept: list[str] = field(default_factory=list)
     #: Rows the source returned that the sync excludes (its ``excluded_external_ids``, #1134).
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
@@ -230,6 +234,8 @@ class ImportPlan:
     software_error: str = ""
     #: GitLab dependency vulnerabilities per project; recorded by :func:`store_endpoint_software`.
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: Name and identity key per repository id; dependencies matched to OpenCTI after the save.
+    repositories: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -249,6 +255,7 @@ class ImportPlan:
             "updated": self.updated[:SAMPLE_SIZE],
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
+            "gone_kept": self.gone_kept[:SAMPLE_SIZE],
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
@@ -539,6 +546,7 @@ def plan_import(
         software_unread=read.software_unread,
         software_error=read.software_error,
         findings=read.findings,
+        repositories=read.repositories,
     )
     draft = profile.model_copy(deep=True)
     if section in SOURCED_FIELDS:
@@ -612,7 +620,12 @@ def _merge_sourced(
         ]
         plan.gone = [getattr(r, name_key) for r in gone]
         if plan.remove_gone:
-            dropped |= {id(r) for r in gone}
+            # A sync removes only the rows it wrote itself (#1473): a row another
+            # writer keyed on this source (a reconcile pull, a one-off import, a
+            # row read as a platform row) is reported gone and kept.
+            owned = [r for r in gone if not plan.sync_id or r.sync_id == plan.sync_id]
+            plan.gone_kept = [getattr(r, name_key) for r in gone if id(r) not in {id(o) for o in owned}]
+            dropped |= {id(r) for r in owned}
     if dropped:
         current = [r for r in current if id(r) not in dropped]
     setattr(draft, attr, current[:cap])
@@ -1027,14 +1040,19 @@ async def _read_code(db: AsyncSession, user_id: str, source: str, filters: dict[
     result.software_rows = sum(len(v) for v in result.software.values())
     result.software_unread = {k for k in read.software_unread if k in kept}
     result.findings = {k: v for k, v in read.findings.items() if k in kept}
+    result.repositories = {
+        r.external_id: {"name": r.name, "identity_key": r.cloud_resource_id} for r in result.rows if r.external_id
+    }
     return result
 
 
-async def store_endpoint_software(db: AsyncSession, plan: ImportPlan) -> int:
+async def store_endpoint_software(db: AsyncSession, plan: ImportPlan, *, user_id: Any = None) -> int:
     """After a saved plan of an endpoint source, store each device's software and rebuild the store.
 
     The software of a device the source no longer returns goes with it when the
     read was complete; a device whose software read failed keeps what was stored.
+    A code source's dependencies are then matched to OpenCTI vulnerabilities with
+    *user_id*'s own credential, after the caller's commit (#1331, slice 4).
     Answers the documents written or removed (0: nothing to do).
     """
     from app.services import organization_asset_store as store
@@ -1055,6 +1073,17 @@ async def store_endpoint_software(db: AsyncSession, plan: ImportPlan) -> int:
         from app.services import ctem_code_findings
 
         await ctem_code_findings.record_findings(db, plan.findings, organization_id=primary.id)
+    if plan.repositories and user_id:
+        # Dependencies matched to OpenCTI vulnerabilities, PURL first (#1331, slice 4).
+        from app.services import ctem_dependency_matches
+
+        ctem_dependency_matches.schedule_after_commit(
+            db,
+            organization_id=primary.id,
+            user_id=str(user_id),
+            software=plan.software,
+            repositories=plan.repositories,
+        )
     return changed
 
 
@@ -1349,7 +1378,8 @@ def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str,
     used = ", ".join(f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "", [], {}))
     basis = f"import of {plan.section}: {len(plan.new)} new, {len(plan.updated)} updated"
     if plan.gone:
-        basis += f", {len(plan.gone)} no longer in the source ({'removed' if plan.remove_gone else 'kept'})"
+        removed = len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0
+        basis += f", {len(plan.gone)} no longer in the source ({removed} removed, {len(plan.gone) - removed} kept)"
     if plan.excluded:
         basis += f", {len(plan.excluded)} excluded by the sync"
     basis += f"; read {datetime.now(UTC).strftime('%Y-%m-%dT%H:%MZ')}"
