@@ -190,6 +190,74 @@ def classify_nuclei_template(text: str) -> InjectEffects:
     return effects
 
 
+_VERSION_WORDS = re.compile(r"version|banner|fingerprint", re.IGNORECASE)
+
+
+def _template_meta(text: str) -> tuple[str, bool]:
+    """The template's id (lower case) and whether it reads a version (an extractor naming one)."""
+    import yaml
+
+    try:
+        doc = yaml.safe_load(text or "")
+    except yaml.YAMLError:
+        return "", False
+    if not isinstance(doc, dict):
+        return "", False
+    reads = False
+    for key in ("http", "requests", "network", "tcp"):
+        for block in doc.get(key) or []:
+            if isinstance(block, dict) and block.get("extractors"):
+                reads = reads or bool(_VERSION_WORDS.search(str(block.get("extractors"))))
+    return str(doc.get("id") or "").strip().lower(), reads
+
+
+@dataclass
+class Coverage:
+    """Which requested CVE or template ids a selected template set actually tests."""
+
+    covered: list[str] = field(default_factory=list)
+    uncovered: list[str] = field(default_factory=list)
+    reads_version: bool = False
+
+    @property
+    def state(self) -> str:
+        if not self.covered:
+            return "none"
+        return "partial" if self.uncovered else "full"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "state": self.state}
+
+
+def template_coverage(templates: list[str], requested_ids: list[str]) -> Coverage:
+    """Resolve each requested id against the templates given: an id with no template is not tested."""
+    metas = [_template_meta(t) for t in templates if t and t.strip()]
+    ids = {m[0] for m in metas if m[0]}
+    cover = Coverage(reads_version=any(m[1] for m in metas))
+    for wanted in requested_ids:
+        name = str(wanted).strip()
+        if name:
+            (cover.covered if name.lower() in ids else cover.uncovered).append(name)
+    if not requested_ids:
+        cover.covered = sorted(ids)
+    return cover
+
+
+def classify_templates(templates: list[str]) -> InjectEffects:
+    """The effects of several templates run together: the worst class, every side effect."""
+    parts = [classify_nuclei_template(t) for t in templates if t and t.strip()]
+    if not parts:
+        return InjectEffects(UNKNOWN, reasons=["no template given: its effect is unknown"])
+    rank = {READ_ONLY: 0, UNKNOWN: 1, INTRUSIVE: 2}
+    merged = InjectEffects(max((p.classification for p in parts), key=rank.__getitem__))
+    for part in parts:
+        merged.side_effects += part.side_effects
+        merged.cleanup += [c for c in part.cleanup if c not in merged.cleanup]
+        merged.reasons += part.reasons
+        merged.needs_credentials = merged.needs_credentials or part.needs_credentials
+    return merged
+
+
 def classify_inject(
     *, injector: str = "", template: str | None = None, contract_read_only: bool | None = None
 ) -> InjectEffects:
@@ -220,6 +288,7 @@ def validation_gate_ask(
     subject: str,
     target_is_lab: bool = False,
     passive_option: str = "",
+    coverage: Coverage | None = None,
 ) -> dict[str, Any]:
     """The ask of the gate ``ctem.validation.non_readonly`` for one inject, built from its classification.
 
@@ -242,6 +311,12 @@ def validation_gate_ask(
         if effects.needs_credentials
         else "Runs without credentials: yes."
     )
+    if coverage is not None:
+        lines.append("Tested: " + (", ".join(coverage.covered) or "nothing (no template matches)") + ".")
+        if coverage.uncovered:
+            lines.append("Not tested (no template): " + ", ".join(coverage.uncovered) + ".")
+        if not coverage.reads_version:
+            lines.append("It does not read the running version.")
     lines.append("A no-match is " + effects.negative_result + "; the case stays open with its remediation.")
     options: list[dict[str, str]] = [
         {"key": "A", "label": f"Run it against the asset{' (a lab)' if target_is_lab else ''}", "effect": lines[0]},
@@ -260,6 +335,8 @@ def validation_gate_ask(
     # Against an asset that is not a lab, an intrusive or unknown inject is never the recommendation:
     # B is the passive check when one is offered, else not running it.
     recommendation = "A" if effects.classification == READ_ONLY or target_is_lab else "B"
+    if coverage is not None and coverage.covered and coverage.uncovered:
+        subject = ", ".join(coverage.covered)
     return {
         "question": f"Run the {subject} validation inject against the asset?",
         "context": "\n".join(lines),
@@ -284,9 +361,12 @@ __all__ = [
     "INTRUSIVE",
     "READ_ONLY",
     "UNKNOWN",
+    "Coverage",
     "InjectEffects",
     "checked_safe_mode",
     "classify_inject",
     "classify_nuclei_template",
+    "classify_templates",
+    "template_coverage",
     "validation_gate_ask",
 ]

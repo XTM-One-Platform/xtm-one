@@ -157,6 +157,35 @@ def test_a_read_only_or_lab_inject_may_be_recommended() -> None:
     assert effects_of.validation_gate_ask(exploit, subject="x", target_is_lab=True)["recommendation"] == "A"
 
 
+#: One unauthenticated POST, no version read (shape of a public object-storage CVE template).
+POST_ONLY_TEMPLATE = """
+id: CVE-2023-28432
+info:
+  name: Object storage - information disclosure
+  severity: high
+  tags: cve,cve2023,minio
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/minio/bootstrap/v1/verify"
+"""
+
+
+def test_a_requested_cve_without_a_template_is_not_tested_and_not_promised() -> None:
+    cover = effects_of.template_coverage([POST_ONLY_TEMPLATE], ["CVE-2023-28432", "CVE-2023-28434"])
+    assert cover.covered == ["CVE-2023-28432"] and cover.uncovered == ["CVE-2023-28434"]
+    assert cover.reads_version is False and cover.state == "partial"
+    effects = effects_of.classify_templates([POST_ONLY_TEMPLATE])
+    ask = effects_of.validation_gate_ask(effects, subject="CVE-2023-28432, CVE-2023-28434", coverage=cover)
+    assert "Not tested (no template): CVE-2023-28434" in ask["context"]
+    assert "CVE-2023-28434" not in ask["question"]
+    assert "does not read the running version" in ask["context"]
+
+
+def test_a_version_extractor_counts_as_a_version_read() -> None:
+    assert effects_of.template_coverage([VERSION_TEMPLATE], []).reads_version is True
+
+
 def test_safe_mode_is_honoured_only_for_a_read_only_inject() -> None:
     assert effects_of.checked_safe_mode(True, effects_of.READ_ONLY) == (True, None)
     corrected, warning = effects_of.checked_safe_mode(True, effects_of.INTRUSIVE)

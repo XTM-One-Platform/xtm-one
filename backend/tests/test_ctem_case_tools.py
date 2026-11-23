@@ -302,6 +302,31 @@ async def test_safe_mode_of_an_intrusive_inject_is_corrected_and_its_pass_is_inc
     assert env.case.validations[-1]["safe_mode"] is False and env.case.validations[-1]["conclusive"] is False
 
 
+async def test_a_requested_id_with_no_template_is_never_recorded_negative(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import ctem_case_loop
+
+    async def _publish(_pending: ctem_case_loop.PendingEvents) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
+    body = json.loads(
+        await env.call(
+            "record_ctem_case_validation",
+            case_id=str(env.case.id),
+            provider="openaev",
+            ref="inject-8",
+            result="not_exposed",
+            inject_class="read_only",
+            not_tested=["CVE-2026-2"],
+        )
+    )
+    assert body["updated"]["state"] == "needs_attention" and body["not_tested"] == ["CVE-2026-2"]
+    entry = env.case.validations[-1]
+    assert entry["conclusive"] is False and "not tested" in entry["note"]
+
+
 async def test_the_assess_tool_answers_the_classification_and_the_gate_ask(env: SimpleNamespace) -> None:
     body = json.loads(
         await env.call(

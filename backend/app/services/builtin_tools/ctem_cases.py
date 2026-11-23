@@ -330,6 +330,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         run_order: list[str] | None = None,
         conclusive: bool | None = None,
         inject_class: str = "",
+        not_tested: list[str] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -337,6 +338,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         from app.services.ctem_inject_effects import checked_safe_mode
 
         klass = (inject_class or "").strip() or None
+        untested = [str(i).strip() for i in (not_tested or []) if str(i).strip()]
+        if untested:
+            # #1458: an id with no template was not tested; no negative is ever recorded for it.
+            note = ("not tested (no template): " + ", ".join(untested) + ". " + (note or "")).strip()
+            if result in rules.PASSING_RESULTS:
+                conclusive = False
         safe_mode = safe_mode if isinstance(safe_mode, bool) else None
         warning = None
         if safe_mode is True:
@@ -374,6 +381,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refreshed = await _shown(db, wanted, org_id, vertical)
                 answer: dict[str, Any] = {"updated": refreshed[2] if refreshed else {"id": str(wanted)}}
                 newest = (shown[0].validations or [{}])[-1]
+                if untested:
+                    answer["not_tested"] = untested
                 if result in rules.PASSING_RESULTS and newest.get("conclusive") is False:
                     answer["inconclusive"] = (
                         "recorded as inconclusive: the case stays open with its remediation; only a check "
@@ -395,21 +404,36 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         contract_read_only: bool | None = None,
         target_is_lab: bool = False,
         passive_option: str = "",
+        templates: list[str] | None = None,
+        requested_ids: list[str] | None = None,
     ) -> str:
-        from app.services.ctem_inject_effects import classify_inject, validation_gate_ask
-
-        effects = classify_inject(
-            injector=injector,
-            template=template or None,
-            contract_read_only=contract_read_only if isinstance(contract_read_only, bool) else None,
+        from app.services.ctem_inject_effects import (
+            classify_inject,
+            classify_templates,
+            template_coverage,
+            validation_gate_ask,
         )
+
+        texts = [str(t) for t in (templates or []) if str(t).strip()] + ([template] if template.strip() else [])
+        flag = contract_read_only if isinstance(contract_read_only, bool) else None
+        effects = (
+            classify_templates(texts)
+            if texts
+            else classify_inject(injector=injector, template=None, contract_read_only=flag)
+        )
+        wanted = [str(i) for i in (requested_ids or []) if str(i).strip()]
+        coverage = template_coverage(texts, wanted) if (texts or wanted) else None
         ask = validation_gate_ask(
             effects,
             subject=(subject or "proposed").strip()[:200],
             target_is_lab=bool(target_is_lab),
             passive_option=passive_option or "",
+            coverage=coverage,
         )
-        return _dump({"effects": effects.to_dict(), "gate_ask": ask})
+        body: dict[str, Any] = {"effects": effects.to_dict(), "gate_ask": ask}
+        if coverage is not None:
+            body["coverage"] = coverage.to_dict()
+        return _dump(body)
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
         from app.core.database import async_session
@@ -824,6 +848,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "enum": ["read_only", "intrusive", "unknown"],
                         "description": "The classification assess_ctem_validation_inject answered for the inject that ran.",
                     },
+                    "not_tested": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Requested ids assess_ctem_validation_inject found no template for.",
+                    },
                     "conclusive": {
                         "type": "boolean",
                         "description": "True only when the check proves the exposure gone (the fixed version read).",
@@ -852,6 +881,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "subject": {"type": "string", "description": "What it tests, e.g. the CVE id."},
                     "injector": {"type": "string", "description": "The injector, e.g. nuclei."},
                     "template": {"type": "string", "description": "The Nuclei template's YAML, whole."},
+                    "templates": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Every selected template.",
+                    },
+                    "requested_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "The CVE or template ids asked for; one with no template is not tested.",
+                    },
                     "contract_read_only": {"type": "boolean", "description": "The contract's own flag, if any."},
                     "target_is_lab": {"type": "boolean", "description": "True for a lab asset only."},
                     "passive_option": {"type": "string", "description": "A read-only check to offer instead."},
