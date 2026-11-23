@@ -1231,7 +1231,7 @@ def gateway_error_envelope(body: object) -> Mapping:
 
 
 def is_rate_limit_error(exc: BaseException) -> bool:
-    """Whether a provider SDK error is a rate limit (HTTP 429, its Bedrock form, or the AI Gateway's throttle)."""
+    """Whether a provider SDK error is a rate limit (HTTP 429, its Bedrock form, or the AI Gateway's throttle or shedding)."""
     for status in (
         getattr(exc, "status_code", None),
         getattr(exc, "code", None),
@@ -1241,9 +1241,13 @@ def is_rate_limit_error(exc: BaseException) -> bool:
             return True
     # The gateway answers an upstream throttle, or the circuit it opened, with a 502 it marks
     # ``retryable: true``: the only errors it marks so, a plain provider fault says nothing.
+    # Its own load shedding is a 503 ``gateway_overloaded``.
     error = gateway_error_envelope(getattr(exc, "body", None))
-    if getattr(exc, "status_code", None) == 502 and error.get("code") == "provider_error":
+    status = getattr(exc, "status_code", None)
+    if status == 502 and error.get("code") == "provider_error":
         return error.get("retryable") is True
+    if status == 503 and error.get("code") == "gateway_overloaded":
+        return True
     response = getattr(exc, "response", None)
     if isinstance(response, dict):
         code = (response.get("Error") or {}).get("Code")
@@ -1258,7 +1262,7 @@ async def _note_llm_rate_limit() -> None:
 
         await note_rate_limited("llm")
     except Exception:
-        logger.debug("Could not report an LLM 429 to assignment dispatch", exc_info=True)
+        logger.debug("Could not report an LLM rate limit to assignment dispatch", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

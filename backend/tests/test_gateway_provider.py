@@ -388,8 +388,13 @@ class TestGatewayThrottle:
             (502, gateway_refusal_body(), False),
             (502, "<html>Bad Gateway</html>", False),
             (500, gateway_throttle_body(), False),
+            # The gateway shedding load: the caller should slow down too.
+            (503, {"error": {"message": "gateway overloaded", "code": "gateway_overloaded", "retry_after_seconds": 1}},
+             True),
+            (503, {"error": {"message": "unavailable", "code": "service_unavailable"}}, False),
         ],
-        ids=["throttled", "circuit-open", "unwrapped", "plain-fault", "refusal", "html", "not-502"],
+        ids=["throttled", "circuit-open", "unwrapped", "plain-fault", "refusal", "html", "not-502", "overloaded",
+             "other-503"],
     )
     def test_only_a_gateway_throttle_counts_as_a_rate_limit(self, status, body, expected):
         from app.llm.base import is_rate_limit_error
@@ -432,6 +437,14 @@ class TestGatewayThrottle:
                 await provider.chat_stream_with_tools(messages, model="m")
         assert len(calls) == base.LLM_MAX_RETRIES + 1
         assert noted and set(noted) == {"llm"}
+
+    def test_the_chat_client_is_built_once_per_client(self):
+        provider = _mock_provider(lambda _r: httpx.Response(200))
+        first = provider._chat_client()
+        assert provider._chat_client() is first
+        assert first.max_retries == 0
+        provider.client = provider.client.with_options(timeout=5)
+        assert provider._chat_client() is not first
 
     @pytest.mark.asyncio
     async def test_an_embedding_keeps_the_sdk_retry(self):
