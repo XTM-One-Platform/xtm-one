@@ -356,6 +356,8 @@ async def record_validation(
     note: str | None = None,
     safe_mode: bool | None = None,
     run_order: list[str] | None = None,
+    conclusive: bool | None = None,
+    inject_class: str | None = None,
     actor: str = rules.SYSTEM_ACTOR,
     events: PendingEvents | None = None,
     now: datetime | None = None,
@@ -368,8 +370,17 @@ async def record_validation(
     ``mitigated_watching`` and the re-test stays on. ``safe_mode`` (CTEM-12):
     true when only read-only injects ran, false when a non-read-only one ran,
     None when the module did not say. ``run_order``: the target asset groups in
-    the order they were tested (at most 20 names). The caller commits.
+    the order they were tested (at most 20 names). ``conclusive`` (#1458):
+    false when a pass only says an exploit attempt did not land (it proves
+    nothing, so the case stays open with its remediation), true when the check
+    proves the exposure gone (the fixed version read), None when the writer did
+    not say (a scanner closing the finding at source). ``inject_class``: the
+    platform's reading of the inject that ran (``ctem_inject_effects``); an
+    intrusive or unknown inject is never recorded as safe mode, and its pass is
+    inconclusive unless ``conclusive`` is true. The caller commits.
     """
+    from app.services.ctem_inject_effects import CLASSES, READ_ONLY, checked_safe_mode
+
     if result not in VALIDATION_RESULTS:
         raise rules.CaseRuleError(f"unknown validation result {result!r}")
     if not (provider or "").strip() or not (ref or "").strip():
@@ -385,8 +396,17 @@ async def record_validation(
         "mitigation_only": bool(mitigation_only),
         "note": (note or "").strip()[:500] or None,
     }
+    if inject_class is not None and inject_class not in CLASSES:
+        raise rules.CaseRuleError(f"unknown inject class {inject_class!r}")
+    if inject_class is not None:
+        entry["inject_class"] = inject_class
+        safe_mode, _warning = checked_safe_mode(safe_mode, inject_class)
+        if conclusive is None and inject_class != READ_ONLY:
+            conclusive = False
     if safe_mode is not None:
         entry["safe_mode"] = bool(safe_mode)
+    if conclusive is not None:
+        entry["conclusive"] = bool(conclusive)
     order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
     if order:
         entry["run_order"] = order
@@ -394,7 +414,9 @@ async def record_validation(
     case.validation_plan = True
     db.add(_event(case.id, actor, "validation", now, to_value=result, evidence=f"{entry['provider']}:{entry['ref']}"))
     evidence = f"validation {entry['provider']} {entry['ref']}: {result}"
-    if result in rules.PASSING_RESULTS:
+    if result in rules.PASSING_RESULTS and conclusive is False:
+        pass  # inconclusive: recorded, the case keeps its state and its remediation (#1458)
+    elif result in rules.PASSING_RESULTS:
         if mitigation_only and case.state in (*OPEN_STATES, "resolved"):
             if case.state != "mitigated_watching":
                 db.add(_transition(case, "mitigated_watching", now, evidence=evidence, actor=actor))

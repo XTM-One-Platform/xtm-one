@@ -42,6 +42,7 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "create_ctem_case",
     "update_ctem_case",
     "record_ctem_case_validation",
+    "assess_ctem_validation_inject",
     "record_ctem_case_ticket",
     "decide_ctem_case_remediation",
     "sync_ctem_case_ticket",
@@ -327,11 +328,19 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         note: str = "",
         safe_mode: bool | None = None,
         run_order: list[str] | None = None,
+        conclusive: bool | None = None,
+        inject_class: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
         from app.services import ctem_cases as rules
+        from app.services.ctem_inject_effects import checked_safe_mode
 
+        klass = (inject_class or "").strip() or None
+        safe_mode = safe_mode if isinstance(safe_mode, bool) else None
+        warning = None
+        if safe_mode is True:
+            safe_mode, warning = checked_safe_mode(safe_mode, klass)
         wanted = _uuid(case_id)
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
@@ -353,20 +362,54 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     result=result,
                     mitigation_only=bool(mitigation_only),
                     note=note or None,
-                    safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                    safe_mode=safe_mode,
                     run_order=[str(n) for n in run_order] if isinstance(run_order, list) else None,
+                    conclusive=conclusive if isinstance(conclusive, bool) else None,
+                    inject_class=klass,
                     actor=agent_id,
                     events=pending,
                 )
                 await db.commit()
                 await case_loop.publish_pending(pending)
                 refreshed = await _shown(db, wanted, org_id, vertical)
-                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+                answer: dict[str, Any] = {"updated": refreshed[2] if refreshed else {"id": str(wanted)}}
+                newest = (shown[0].validations or [{}])[-1]
+                if result in rules.PASSING_RESULTS and newest.get("conclusive") is False:
+                    answer["inconclusive"] = (
+                        "recorded as inconclusive: the case stays open with its remediation; only a check "
+                        "proving the fixed version resolves it"
+                    )
+                if warning:
+                    answer["warning"] = warning
+                return _dump(answer)
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case validation failed", exc_info=True)
             return "Error: the validation could not be recorded right now. Say so; nothing was changed."
+
+    async def _assess(
+        subject: str = "",
+        injector: str = "",
+        template: str = "",
+        contract_read_only: bool | None = None,
+        target_is_lab: bool = False,
+        passive_option: str = "",
+    ) -> str:
+        from app.services.ctem_inject_effects import classify_inject, validation_gate_ask
+
+        effects = classify_inject(
+            injector=injector,
+            template=template or None,
+            contract_read_only=contract_read_only if isinstance(contract_read_only, bool) else None,
+        )
+        ask = validation_gate_ask(
+            effects,
+            subject=(subject or "proposed").strip()[:200],
+            target_is_lab=bool(target_is_lab),
+            passive_option=passive_option or "",
+        )
+        return _dump({"effects": effects.to_dict(), "gate_ask": ask})
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
         from app.core.database import async_session
@@ -597,6 +640,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
     executor.register("create_ctem_case", _create)
     executor.register("update_ctem_case", _update)
     executor.register("record_ctem_case_validation", _validation)
+    executor.register("assess_ctem_validation_inject", _assess)
     executor.register("record_ctem_case_ticket", _ticket)
     executor.register("decide_ctem_case_remediation", _remediation)
     executor.register("sync_ctem_case_ticket", _sync_ticket)
@@ -753,8 +797,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="record_ctem_case_validation",
             description=(
                 "Write a validation or re-test result on a CTEM case: the validation module's simulation, "
-                "scenario or test id and its result. passed or not_exposed resolves the case (mitigation_only: "
-                "mitigated, watching, the re-test stays on); failed reopens a resolved case; pending only records."
+                "scenario or test id and its result. A conclusive passed or not_exposed resolves the case "
+                "(mitigation_only: mitigated, watching, the re-test stays on); a pass of an intrusive or unknown "
+                "inject (inject_class from assess_ctem_validation_inject) is inconclusive unless conclusive is true "
+                "(the fixed version proven): the case stays open. failed reopens a resolved case; pending only records."
             ),
             input_schema={
                 "type": "object",
@@ -769,7 +815,19 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "kind": {"type": "string", "description": "validation or retest (default retest)."},
                     "mitigation_only": {"type": "boolean"},
                     "note": {"type": "string"},
-                    "safe_mode": {"type": "boolean", "description": "True when only read-only injects ran."},
+                    "safe_mode": {
+                        "type": "boolean",
+                        "description": "True only when every inject that ran was classified read_only; else recorded false.",
+                    },
+                    "inject_class": {
+                        "type": "string",
+                        "enum": ["read_only", "intrusive", "unknown"],
+                        "description": "The classification assess_ctem_validation_inject answered for the inject that ran.",
+                    },
+                    "conclusive": {
+                        "type": "boolean",
+                        "description": "True only when the check proves the exposure gone (the fixed version read).",
+                    },
                     "run_order": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -777,6 +835,28 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     },
                 },
                 "required": ["case_id", "provider", "ref", "result"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="assess_ctem_validation_inject",
+            description=(
+                "Read what a proposed validation inject does to its target before the gate "
+                "ctem.validation.non_readonly: read_only, intrusive or unknown, the requests that change state, "
+                "the cleanup, whether it needs credentials, what a no-match proves, and the gate ask built from "
+                "it. Write the ask from this answer only."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "What it tests, e.g. the CVE id."},
+                    "injector": {"type": "string", "description": "The injector, e.g. nuclei."},
+                    "template": {"type": "string", "description": "The Nuclei template's YAML, whole."},
+                    "contract_read_only": {"type": "boolean", "description": "The contract's own flag, if any."},
+                    "target_is_lab": {"type": "boolean", "description": "True for a lab asset only."},
+                    "passive_option": {"type": "string", "description": "A read-only check to offer instead."},
+                },
+                "required": ["subject"],
             },
             source=_SOURCE,
         ),

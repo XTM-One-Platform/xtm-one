@@ -413,7 +413,12 @@ def latest_validation(validations: Iterable[dict[str, Any]] | None) -> dict[str,
 
 
 def passing(validation: dict[str, Any] | None) -> bool:
-    return validation is not None and validation.get("result") in PASSING_RESULTS
+    """A pass that proves: an entry marked inconclusive (``conclusive`` false, #1458) proves nothing."""
+    return (
+        validation is not None
+        and validation.get("result") in PASSING_RESULTS
+        and validation.get("conclusive") is not False
+    )
 
 
 def check_transition(
