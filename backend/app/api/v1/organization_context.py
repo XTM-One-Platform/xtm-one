@@ -57,6 +57,8 @@ class OrganizationContextVersionSummary(BaseModel):
     created_at: datetime
     author_user_id: str | None
     missing_fields: list[str]
+    #: The crown jewels the version holds (#1558): the restore picker shows which version still has them.
+    crown_jewels: int = 0
     #: An ``ai_draft`` version's accepted proposals: field -> ``{source, basis}``.
     sources: dict[str, Any] | None = None
 
@@ -82,6 +84,9 @@ class OpenCrqSyncRequest(BaseModel):
     #: False (default) answers the plan and writes nothing.
     apply: bool = False
     tenant_id: str = ""
+    #: The lowest OpenCRQ criticality the check pulls (low, medium, high, very_high, #1558);
+    #: empty: the saved crown-jewel sync's filter, else high.
+    min_criticality: Literal["", "low", "medium", "high", "very_high"] = ""
 
 
 class OpenCrqSyncResponse(BaseModel):
@@ -270,6 +275,7 @@ async def list_organization_context_versions(
             created_at=row.created_at,
             author_user_id=str(row.author_user_id) if row.author_user_id else None,
             missing_fields=org_context.missing_fields(org_context.parse_profile(row.profile)),
+            crown_jewels=len((row.profile or {}).get("crown_jewels") or []),
             sources=row.sources,
         )
         for row in rows
@@ -686,12 +692,11 @@ async def list_tech_stack_inventory(
 @router.get("/software", response_model=CanonicalAssetsPage)
 async def list_organization_software(
     q: str = Query("", max_length=200),
-    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
-    type: list[str] = Query(default_factory=list, max_length=10),
+    type: str = Query("", max_length=30),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: list[str] = Query(default_factory=list, max_length=10),
-    cpe_state: list[str] = Query(default_factory=list, max_length=10),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
     unknown_version: bool | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -748,12 +753,11 @@ async def list_assets_of_software_version(
 @router.get("/software/export.csv")
 async def export_organization_software(
     q: str = Query("", max_length=200),
-    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
-    type: list[str] = Query(default_factory=list, max_length=10),
+    type: str = Query("", max_length=30),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: list[str] = Query(default_factory=list, max_length=10),
-    cpe_state: list[str] = Query(default_factory=list, max_length=10),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
     unknown_version: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
@@ -1004,11 +1008,10 @@ async def get_organization_software(
     software_id: uuid.UUID,
     installations_offset: int = Query(0, ge=0),
     installations_limit: int = Query(100, ge=1, le=200),
-    installations_q: str = Query("", max_length=200),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One software: its versions with asset counts, its installations (searchable by asset name), what it depends on and what uses it."""
+    """One software: its versions with asset counts, its installations, what it depends on and what uses it."""
     from app.services.organization_software_store import get_software
 
     org = await _built_store(db)
@@ -1019,7 +1022,6 @@ async def get_organization_software(
             software_id,
             installations_offset=installations_offset,
             installations_limit=installations_limit,
-            installations_q=installations_q,
         )
         if org is not None
         else None
@@ -1597,7 +1599,9 @@ async def sync_organization_context_with_opencrq(
     from app.services.organization_context_opencrq import run_sync
 
     try:
-        plan, errors = await run_sync(db, user_id=admin.id, apply=body.apply, tenant_id=body.tenant_id)
+        plan, errors = await run_sync(
+            db, user_id=admin.id, apply=body.apply, tenant_id=body.tenant_id, min_criticality=body.min_criticality
+        )
         if plan is None:
             raise HTTPException(status_code=409, detail="; ".join(errors))
         await db.commit()
