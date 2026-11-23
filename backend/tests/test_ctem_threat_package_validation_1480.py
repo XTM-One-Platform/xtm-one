@@ -342,3 +342,132 @@ async def test_repair_corrects_stored_grouping_pages_not_in_the_live_graph(
     }
     corrected = _shown(rows[:2] + [w for w in written if w.case_id == in_draft], view_of.ViewerView(opencti=True))
     assert (corrected["state"], corrected["coverage_requested"]) == ("drafted", False)
+
+
+# #1573: the state follows the analyst review gate, not the page alone.
+
+
+def _gate(case_id: uuid.UUID, outcome: str, at: datetime, *, option: str = "", by: str = "") -> CtemCaseEvent:
+    return CtemCaseEvent(
+        case_id=case_id,
+        actor="agent-1",
+        kind="gate",
+        at=at,
+        from_value="ctem.analyst_review",
+        to_value=outcome,
+        reason=by or None,
+        evidence=option or None,
+    )
+
+
+def _live_package(case_id: uuid.UUID, at: datetime) -> CtemCaseEvent:
+    return _stored(case_id, GROUPING, GROUPING_URL, at)
+
+
+@pytest.mark.parametrize(
+    ("gates", "state", "requested"),
+    [
+        ([("waited", "", "")], "awaiting_review", False),
+        (
+            [("waited", "", ""), ("answered", "Hold it, re-scope to the internet-facing hosts first", "u")],
+            "replan",
+            False,
+        ),
+        ([("waited", "", ""), ("answered", "Reject", "u")], "rejected", False),
+        ([("waited", "", ""), ("answered", "Approve", "u")], "validated", True),
+        ([("waited", "", ""), ("answered", "", "OpenCTI analyst mark")], "validated", True),
+        ([("passed_automatically", "", "full_autonomous")], "validated", True),
+        ([("waited", "", ""), ("answered", "", "u")], "validated", True),
+        ([], "validated", True),
+    ],
+    ids=["waiting", "free-text", "refused", "approved", "mark", "policy", "answer-unread", "no-gate"],
+)
+def test_grouping_page_reads_validated_only_when_the_review_approved(
+    gates: list[tuple[str, str, str]], state: str, requested: bool
+) -> None:
+    case_id = uuid.uuid4()
+    events = [_gate(case_id, o, NOW + timedelta(minutes=i), option=opt, by=by) for i, (o, opt, by) in enumerate(gates)]
+    events.append(_live_package(case_id, NOW + timedelta(minutes=10)))
+    for view in (view_of.ViewerView(opencti=True), view_of.ViewerView(opencti=False)):
+        shown = _shown(events, view, now=NOW + timedelta(hours=1))
+        assert (shown["state"], shown["coverage_requested"]) == (state, requested)
+
+
+def test_replanned_package_is_neither_drafted_coverage_nor_overdue() -> None:
+    case_id = uuid.uuid4()
+    events = [
+        _gate(case_id, "waited", NOW),
+        _gate(case_id, "answered", NOW + timedelta(minutes=1), option="Rework the package"),
+        _stored(case_id, GROUPING, DRAFT_URL, NOW + timedelta(minutes=2)),
+    ]
+    shown = _shown(events, view_of.ViewerView(opencti=True), sla_due_at=NOW, now=NOW + timedelta(hours=1))
+    assert (shown["state"], shown["coverage_drafted"], shown["draft_overdue"]) == ("replan", False, False)
+
+
+def test_waiting_review_past_the_sla_is_overdue() -> None:
+    case_id = uuid.uuid4()
+    events = [_gate(case_id, "waited", NOW), _stored(case_id, GROUPING, DRAFT_URL, NOW)]
+    shown = _shown(events, view_of.ViewerView(opencti=True), sla_due_at=NOW, now=NOW + timedelta(hours=1))
+    assert (shown["state"], shown["coverage_drafted"], shown["draft_overdue"]) == ("awaiting_review", True, True)
+
+
+def test_newest_review_gate_decides() -> None:
+    case_id = uuid.uuid4()
+    events = [
+        _gate(case_id, "answered", NOW, option="Rework the package"),
+        _gate(case_id, "waited", NOW + timedelta(minutes=1)),
+        _gate(case_id, "answered", NOW + timedelta(minutes=2), option="Approve and request coverage"),
+    ]
+    assert view_of.review_outcome(events) == view_of.REVIEW_APPROVED
+    assert view_of.review_outcome(list(reversed(events))) == view_of.REVIEW_APPROVED
+    assert view_of.review_outcome([]) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review", ["waiting", "replan", "rejected"])
+async def test_grouping_page_of_a_not_approved_review_is_recorded_as_its_draft(
+    monkeypatch: pytest.MonkeyPatch, review: str
+) -> None:
+    """The Grouping resolves live AND sits in an open draft: the draft wins while the review is not approved."""
+    _fake_opencti(monkeypatch, live={GROUPING}, drafts={OPEN_DRAFT: {GROUPING}})
+    package = {"grouping_id": GROUPING, "url": GROUPING_URL, "coverage_id": COVERAGE}
+    checked = await package_live.verify_package(cast(Any, None), "u-1", package, review)
+    assert checked["url"] == f"https://cti.example.test/dashboard/data/import/draft/{OPEN_DRAFT}"
+    approved = await package_live.verify_package(cast(Any, None), "u-1", package, "approved")
+    assert approved == package
+
+
+@pytest.mark.asyncio
+async def test_live_grouping_page_of_a_refused_review_with_no_draft_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_opencti(monkeypatch, live={GROUPING}, drafts={OPEN_DRAFT: set()})
+    with pytest.raises(rules.CaseRuleError, match="did not approve"):
+        await package_live.verify_package(
+            cast(Any, None), "u-1", {"grouping_id": GROUPING, "url": GROUPING_URL}, "replan"
+        )
+
+
+@pytest.mark.asyncio
+async def test_repair_corrects_grouping_pages_of_cases_whose_review_did_not_approve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    other = "3b4c5d6e-7f80-4911-a2b3-c4d5e6f7a8b9"
+    _fake_opencti(monkeypatch, live={GROUPING, other}, drafts={OPEN_DRAFT: {GROUPING}})
+    replan, refused, approved = (uuid.uuid4() for _ in range(3))
+    page = "https://cti.example.test/dashboard/analyses/groupings/{}".format
+    rows = [
+        _gate(replan, "answered", NOW, option="Rework the package"),
+        _stored(replan, GROUPING, page(GROUPING), NOW + timedelta(minutes=1)),
+        _gate(refused, "answered", NOW, option="Reject"),
+        _stored(refused, other, page(other), NOW + timedelta(minutes=1)),
+        _gate(approved, "answered", NOW, option="Approve"),
+        _stored(approved, other, page(other), NOW + timedelta(minutes=1)),
+    ]
+    db = _RepairSession(rows)
+    answer = await package_live.repair_stored_packages(cast(Any, db), uuid.uuid4(), "u-1", dry_run=True)
+    assert (answer["checked"], answer["corrected"], answer["unreadable"]) == (3, 2, 0)
+    fixed = {c["case_id"]: (c["url"], c["review"]) for c in answer["cases"]}
+    assert fixed == {
+        str(replan): (f"https://cti.example.test/dashboard/data/import/draft/{OPEN_DRAFT}", "replan"),
+        str(refused): (None, "rejected"),
+    }
+    assert _events(db) == []
