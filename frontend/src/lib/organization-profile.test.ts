@@ -25,7 +25,6 @@ const PROFILE: ProfileLike = {
   size: "251-1000",
   crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "a-1" }],
   tech_stack: [],
-  ai_systems: [],
   pir_ids: ["pir-1"],
   pir_names: { "pir-1": "Ransomware on energy" },
   risk_appetite: { annual_loss_threshold: 1000000, approval_threshold: null },

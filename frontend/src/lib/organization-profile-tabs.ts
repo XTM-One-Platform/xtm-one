@@ -44,7 +44,6 @@ export const PROFILE_CARD_TAB = {
   shipped_products: "business",
   tracked_organizations: "business",
   tech_stack: "technology",
-  ai_systems: "technology",
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
@@ -62,7 +61,6 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  */
 export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   tech_stack: "/ctem/inventory/tech-stack",
-  ai_systems: "/ctem/inventory/ai-systems",
   assets_exposure: "/ctem/inventory",
   // The settings cards have their own Inventory tab (#1511), never an edit view opened by URL only.
   prioritization_policy: "/ctem/inventory/exposure",
@@ -101,7 +99,8 @@ export const PROFILE_FIELD_CARD = {
   crown_jewels: "crown_jewels",
   shipped_products: "shipped_products",
   tech_stack: "tech_stack",
-  ai_systems: "ai_systems",
+  // #1501: the AI systems are the assets of category ai_target, edited on the asset list.
+  ai_systems: "assets_exposure",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
   prioritization_policy: "prioritization_policy",
