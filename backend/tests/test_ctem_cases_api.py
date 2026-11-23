@@ -115,6 +115,15 @@ def api(monkeypatch):
     from app.services import ctem_case_routing
 
     monkeypatch.setattr(ctem_case_routing, "owner_view", _owner_view)
+
+    async def _gate_records(_db, _case_id, _history, *, viewer_id):
+        # The gate records read (#1518) is covered in test_ctem_case_gate_records; it opens its own
+        # PostgreSQL session through work_item.list_work_items, which the unit shard does not have.
+        return []
+
+    from app.services import ctem_case_gate_records_view
+
+    monkeypatch.setattr(ctem_case_gate_records_view, "gate_records", _gate_records)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
 

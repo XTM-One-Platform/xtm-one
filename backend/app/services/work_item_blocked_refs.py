@@ -143,6 +143,12 @@ MAX_REFS = 20
 MAX_REASON_CHARS = 2000
 #: Items one delivery may release.
 _MAX_ITEMS_PER_EVENT = 50
+#: Blocked items naming a repository one delivery, or one polling pass, scans for
+#: the ones it concerns: the cap above applies after the match, never before it, so
+#: a long tail of older items on the same repository cannot hide the item a
+#: closing names (an item re-parked after a merge queue removal stayed blocked
+#: about 20 h behind 50 older ones).
+_CANDIDATE_SCAN = 2000
 #: Polling fallback: an item blocked and quiet this long has its references read
 #: (the race of a reference merged before the item was blocked on it included).
 POLL_MIN_AGE_SECONDS = 2 * 60
@@ -1050,9 +1056,25 @@ def _like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def concerns_event(refs: Any, event: PullRequestEvent) -> bool:
+    """Whether one of *refs* may be moved by *event*: same repository, and its number or head branch. Pure.
+
+    A coarse pre-filter of the candidates (the apply decides): a reference on the
+    event's pull request or issue, or one following the event's head branch.
+    """
+    for ref in refs or []:
+        if not isinstance(ref, dict) or ref.get("repo") != event.repo:
+            continue
+        if ref.get("number") in event.pr_numbers:
+            return True
+        if ref.get("head_branch") and event.head_branch and ref.get("head_branch") == event.head_branch:
+            return True
+    return False
+
+
 async def _candidate_ids(db, event: PullRequestEvent) -> list[uuid.UUID]:
     rows = await db.execute(
-        select(WorkItem.id)
+        select(WorkItem.id, WorkItem.blocked_on_refs)
         .where(
             WorkItem.status == "blocked",
             WorkItem.blocked_on_refs.is_not(None),
@@ -1060,9 +1082,9 @@ async def _candidate_ids(db, event: PullRequestEvent) -> list[uuid.UUID]:
             cast(WorkItem.blocked_on_refs, Text).ilike(f"%{_like_literal(event.repo)}%", escape="\\"),
         )
         .order_by(WorkItem.last_activity_at.asc())
-        .limit(_MAX_ITEMS_PER_EVENT)
+        .limit(_CANDIDATE_SCAN)
     )
-    return [row[0] for row in rows.all()]
+    return [row[0] for row in rows.all() if concerns_event(row[1], event)][:_MAX_ITEMS_PER_EVENT]
 
 
 async def _apply_to_item(item_id: uuid.UUID, event: PullRequestEvent, now: datetime) -> str | None:
@@ -1358,7 +1380,11 @@ HINT_QUIET_SECONDS = 20.0
 HINT_MAX_READS = 5
 
 
-async def _hint_candidates(db, event: PullRequestEvent) -> list[tuple[uuid.UUID, Any, list]]:
+async def _hint_candidates(
+    db: Any, event: PullRequestEvent, matches: Any = None
+) -> list[tuple[uuid.UUID, Any, list[Any]]]:
+    """The blocked items whose references *matches* (default :func:`_named_by`) finds named by *event*."""
+    named = matches or _named_by
     rows = await db.execute(
         select(WorkItem.id, WorkItem.user_id, WorkItem.blocked_on_refs)
         .where(
@@ -1369,9 +1395,11 @@ async def _hint_candidates(db, event: PullRequestEvent) -> list[tuple[uuid.UUID,
             cast(WorkItem.blocked_on_refs, Text).ilike(f"%{_like_literal(event.repo)}%", escape="\\"),
         )
         .order_by(WorkItem.last_activity_at.asc())
-        .limit(_MAX_ITEMS_PER_EVENT)
+        .limit(_CANDIDATE_SCAN)
     )
-    return [(row[0], row[1], list(row[2] or [])) for row in rows.all()]
+    return [(row[0], row[1], list(row[2] or [])) for row in rows.all() if named(list(row[2] or []), event)][
+        :_MAX_ITEMS_PER_EVENT
+    ]
 
 
 def _named_by(refs: list, event: PullRequestEvent) -> list[dict]:
@@ -2042,7 +2070,11 @@ async def release_from_workflow_run_delivery(event: PullRequestEvent) -> dict[st
         return counts
     try:
         async with async_session() as db:
-            candidates = [c for c in await _hint_candidates(db, event) if named_by_workflow_run(c[2], event)]
+            candidates = [
+                c
+                for c in await _hint_candidates(db, event, named_by_workflow_run)
+                if named_by_workflow_run(c[2], event)
+            ]
             tokens: dict[tuple[str, str], str | None] = {}
             for _, user_id, _ in candidates:
                 for provider in readers:
@@ -2219,7 +2251,11 @@ async def _poll_candidates(db, now: datetime) -> list[tuple[uuid.UUID, Any, list
             WorkItem.last_activity_at <= now - timedelta(seconds=POLL_MIN_AGE_SECONDS),
         )
         .order_by(WorkItem.last_activity_at.asc())
-        .limit(POLL_MAX_ITEMS * 4)
+        # The whole blocked set up to the scan cap: the pass keeps the items not read
+        # in the quiet window (:func:`_due`), so a window of the oldest items only
+        # left every newer one unread once those had all been read (an item
+        # re-parked after a merge queue removal waited about 20 h for its merge).
+        .limit(_CANDIDATE_SCAN)
     )
     return [(row[0], row[1], list(row[2] or [])) for row in rows.all()]
 
