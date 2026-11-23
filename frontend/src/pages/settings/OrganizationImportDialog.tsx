@@ -170,7 +170,7 @@ const FILTER_HELP = {
   skip_software: { helper: "Off: each endpoint's installed applications are read.", info: "Tanium's installed applications with their versions. On: endpoints only, faster." },
   filter_query: { helper: "Only hosts this FQL expression matches. Empty: every host.", info: "A Falcon Query Language filter on the host fields, such as tags:'SensorGroupingTags/Finance'." },
   ci_class: { helper: "The CMDB class to read. Default: Computers.", info: "The ServiceNow hardware class whose configuration items become assets." },
-  operational_status: { helper: "Only CIs in these states. Empty: every state but retired.", info: "The operational status ServiceNow gives the configuration item." },
+  operational_status: { helper: "Only CIs in these states. Empty: every state. CIs whose install status is Retired are always left out.", info: "The operational status ServiceNow gives the configuration item." },
   query: { helper: "Only CIs this encoded query matches. Empty: every CI of the class.", info: "A ServiceNow encoded query, as the list view's Copy query gives it, such as location.name=Paris." },
   skip_dependencies: { helper: "Off: each repository's dependencies are read.", info: "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster." },
 } as const;

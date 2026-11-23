@@ -84,7 +84,7 @@ const MICROSOFT_VALUE_LABELS = {
 const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership", "health_status", "exposure_level"]);
 
 /** ServiceNow's operational status choice values. @i18n-keys */
-const OPERATIONAL_STATUS_LABELS = { "1": "Operational", "2": "Non-operational", "3": "Repair in progress", "4": "DR standby", "5": "Ready", "6": "Retired" } as const;
+const OPERATIONAL_STATUS_LABELS = { "1": "Operational", "2": "Non-operational", "3": "Repair in progress", "4": "DR standby", "5": "Ready", "6": "Retired (ServiceNow status)" } as const;
 
 /** ServiceNow's CMDB hardware classes a sync may read. @i18n-keys */
 const CI_CLASS_LABELS = { cmdb_ci_computer: "Computers", cmdb_ci_server: "Servers", cmdb_ci_hardware: "All hardware", cmdb_ci_netgear: "Network gear" } as const;
@@ -98,7 +98,7 @@ const SWITCH_VALUE_LABELS = {
   include_archived: "Included",
   include_forks: "Included",
   skip_dependencies: "Not read",
-  skip_software: "Not read",
+  skip_software: "Not read (software)",
 } as const;
 
 type Translate = (text: string, values?: Record<string, string | number>) => string;
