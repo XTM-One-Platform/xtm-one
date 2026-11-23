@@ -21,7 +21,7 @@ install triggers there, so their holders are cleared and the lock timeout set
 before the guarded ``CREATE TABLE``s; the other tables reference new ones only.
 
 Revision ID: r1543assetrecords01
-Revises: f1526fleetrunbudget1
+Revises: h1499wicompany1
 Create Date: 2026-11-23 14:40:00.000000
 """
 
@@ -37,7 +37,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "r1543assetrecords01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "f1526fleetrunbudget1"
+down_revision: str | Sequence[str] | None = "h1499wicompany1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

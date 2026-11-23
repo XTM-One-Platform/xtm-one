@@ -96,6 +96,11 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_map(rows: Iterable[Any]) -> dict[Any, Any]:
+    """Two-column result rows as a dict (first column -> second)."""
+    return {row[0]: row[1] for row in rows}
+
+
 def _key(value: Any) -> str:
     return " ".join(str(value or "").split()).casefold()
 
@@ -389,7 +394,7 @@ async def _write_memberships(
     wanted = {r.group_key for r in records if r.group_key}
     if not wanted:
         return
-    groups = dict(
+    groups = _as_map(
         (
             await db.execute(
                 select(OrganizationAssetGroup.name_key, OrganizationAssetGroup.id).where(
@@ -788,13 +793,13 @@ async def upsert_records(
     changed: list[OrganizationAssetRecord] = []
     for value in values:
         ref = (value["source"], value["external_id"])
-        record = stored.get(ref)
-        if record is None:
+        found = stored.get(ref)
+        if found is None:
             if _is_hand(origin):
                 await _check_group(db, organization_id, value)
-            fresh.append(value)
-            stored[ref] = None  # type: ignore[assignment]  # a duplicate row of the batch keeps the first
+            fresh.append(value)  # a duplicate row of the batch is dropped below, the first kept
             continue
+        record = found
         before = record_row(record)
         if before == value:
             result.unchanged += 1
@@ -1172,7 +1177,7 @@ async def refresh_clusters(
     old_assets = set(gone) | {r.asset_id for r in records if r.asset_id}
     known: dict[str, uuid.UUID] = {}
     if old_assets:
-        known = dict(
+        known = _as_map(
             (
                 await db.execute(
                     select(OrganizationAsset.canonical_key, OrganizationAsset.id).where(
@@ -1259,7 +1264,7 @@ async def _refresh_possible_matches(db: AsyncSession, organization_id: uuid.UUID
     for kind, value, asset_id in pairs:
         by_value.setdefault((kind, value), set()).add(asset_id)
     concerned = {a for holders in by_value.values() if len(holders) > 1 for a in holders} | assets
-    canon = dict(
+    canon = _as_map(
         (
             await db.execute(
                 select(OrganizationAsset.id, OrganizationAsset.canonical_key).where(OrganizationAsset.id.in_(concerned))
@@ -1306,7 +1311,7 @@ async def rebuild_from_records(db: AsyncSession, organization_id: uuid.UUID, *, 
     """Rebuild the organization's canonical store from all its records (an identity settings change, an admin)."""
     if not locked:
         await _lock(db, organization_id)
-    known = dict(
+    known = _as_map(
         (
             await db.execute(
                 select(OrganizationAsset.canonical_key, OrganizationAsset.id).where(
