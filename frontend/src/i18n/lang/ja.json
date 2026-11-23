@@ -20624,6 +20624,7 @@
   "Left for later: Members screen": "後で設定: メンバー画面",
   "Complete on the Members screen": "メンバー画面で設定",
   "Run estimate": "実行見積もり",
+  "Expected load": "想定される負荷",
   "I will do it later": "後で設定する",
   "Autonomy": "自律性",
   "Run as and automations": "実行ユーザーと自動化",
@@ -21215,5 +21216,9 @@
   "About the inventory sources": "インベントリのソースについて",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。",
   "About the knowledge and sources": "ナレッジとソースについて",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そしてクラウンジュエルと PIR を供給するソース。"
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そしてクラウンジュエルと PIR を供給するソース。",
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {1 日あたりのスケジュール実行はありません。} other {1 日あたり約 # 回のスケジュール実行。}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, other {# 件のオートメーションはイベントごとに 1 回実行され、イベントが届くたびに実行されます。}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "コストはまだありません: これらのオートメーションは過去 {days, plural, other {# 日間}}に実行されていません。",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "スケジュール実行で 1 日あたり約 {cost}(過去 {days, plural, other {# 日間}}の実行の平均コストから算出)。"
 }
