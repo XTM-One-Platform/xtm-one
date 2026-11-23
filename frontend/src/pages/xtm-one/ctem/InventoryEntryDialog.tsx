@@ -315,12 +315,27 @@ function EntryForm({
       </DialogHeader>
       <DialogBody className="space-y-4">
         {!bulk && (
-          <SettingsField id="entry-name" label={t_i18n("Name")} required helper={locked("name") ? lockedHelper : undefined}>
+          <SettingsField
+            id="entry-name"
+            label={t_i18n("Name")}
+            required
+            helper={locked("name") ? lockedHelper : isGroup ? t_i18n("A unique name for the group, for example Payment platform.") : t_i18n("The name your teams use for this asset, for example payments-api-prod.")}
+            info={
+              isGroup
+                ? t_i18n("Shown in the inventory and on every asset of the group. Two groups cannot share a name. Required.")
+                : t_i18n("Shown in the inventory, in CTEM cases and in briefings. Use the name OpenCTI, OpenAEV and OpenCRQ know, so the agents match their data to this asset. Required.")
+            }
+          >
             <Input id="entry-name" aria-labelledby={settingsFieldLabelId("entry-name")} value={draft.name} onChange={(e) => set("name")(e.target.value)} disabled={locked("name")} maxLength={200} />
           </SettingsField>
         )}
         {!bulk && !isGroup && (
-          <SettingsField id="entry-type" label={t_i18n("Category")} helper={locked("category") ? lockedHelper : undefined}>
+          <SettingsField
+            id="entry-type"
+            label={t_i18n("Category")}
+            helper={locked("category") ? lockedHelper : t_i18n("What kind of asset this is, for example Web application.")}
+            info={t_i18n("The asset type of the OpenAEV taxonomy. CTEM agents read it to match vulnerabilities and attack paths to the asset. Left as a generic asset, nothing is matched by type.")}
+          >
             <SearchableSelect
               id="entry-type"
               aria-labelledby={settingsFieldLabelId("entry-type")}
@@ -334,26 +349,56 @@ function EntryForm({
           </SettingsField>
         )}
         {!bulk && isGroup && (
-          <SettingsField id="entry-description" label={t_i18n("Description")}>
+          <SettingsField
+            id="entry-description"
+            label={t_i18n("Description")}
+            helper={t_i18n("What the group holds and why it matters, in one or two sentences.")}
+            info={t_i18n("Shown on the group and read by the CTEM agents when they explain why a case matters. Left empty, the group has no description.")}
+          >
             <Textarea id="entry-description" aria-labelledby={settingsFieldLabelId("entry-description")} rows={3} value={draft.description} onChange={(e) => set("description")(e.target.value)} disabled={locked("description")} />
           </SettingsField>
         )}
         {!isGroup && (
-          <SettingsField id="entry-criticality" label={t_i18n("Criticality")} helper={locked("criticality") ? lockedHelper : undefined}>
+          <SettingsField
+            id="entry-criticality"
+            label={t_i18n("Criticality")}
+            helper={locked("criticality") ? lockedHelper : t_i18n("How much harm a compromise of this asset would cause.")}
+            info={t_i18n("Very high, high, medium or low, as in OpenAEV. CTEM agents read it to rank the cases on this asset. Left unknown, the agents cannot weigh its cases by criticality.")}
+          >
             {select("criticality", translated(ASSET_CRITICALITY_LABELS))}
           </SettingsField>
         )}
-        <SettingsField id="entry-internet_facing" label={t_i18n("Exposure")} helper={locked("internet_facing") ? lockedHelper : undefined}>
+        <SettingsField
+          id="entry-internet_facing"
+          label={t_i18n("Exposure")}
+          helper={locked("internet_facing") ? lockedHelper : t_i18n("Whether it can be reached from the internet.")}
+          info={t_i18n("An internet-facing asset is the first an attacker reaches. CTEM agents read it to rank the cases. Left unknown, the agents cannot weigh its exposure.")}
+        >
           {select("internet_facing", translated(EXPOSURE_LABELS))}
         </SettingsField>
-        <SettingsField id="entry-environment" label={t_i18n("Environment")}>
+        <SettingsField
+          id="entry-environment"
+          label={t_i18n("Environment")}
+          helper={t_i18n("Where it runs, for example Production.")}
+          info={t_i18n("Production, staging, development, test or other. CTEM agents read it to tell a production asset from a test one. Left empty, no environment is set.")}
+        >
           {select("environment", translated(ENVIRONMENT_LABELS), { none: true })}
         </SettingsField>
-        <SettingsField id="entry-owner" label={t_i18n("Owner")} helper={bulk ? t_i18n("Left empty, each row keeps its owner.") : undefined}>
+        <SettingsField
+          id="entry-owner"
+          label={t_i18n("Owner")}
+          helper={bulk ? t_i18n("Left empty, each row keeps its owner.") : t_i18n("The team or person who fixes its exposures, for example Payments team.")}
+          info={t_i18n("A team name or an email address. CTEM cases on this row name the owner as the one to act. Left empty, the cases name no owner.")}
+        >
           <Input id="entry-owner" aria-labelledby={settingsFieldLabelId("entry-owner")} value={draft.owner} onChange={(e) => set("owner")(e.target.value)} maxLength={200} />
         </SettingsField>
         {!isGroup && (
-          <SettingsField id="entry-group" label={t_i18n("Asset group")}>
+          <SettingsField
+            id="entry-group"
+            label={t_i18n("Asset group")}
+            helper={t_i18n("The group of the business service this asset serves.")}
+            info={t_i18n("Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.")}
+          >
             {select("group", Object.fromEntries(groupNames.map((g) => [g, g])), { none: true, sort: true })}
           </SettingsField>
         )}
