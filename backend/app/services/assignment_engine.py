@@ -164,6 +164,7 @@ from app.tools.wait_policy import WaitPolicy
 
 if TYPE_CHECKING:
     from app.services.agentic_gate import AgenticVerdict
+    from app.services.assignment_activation_check import ActivationCheckOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -3019,7 +3020,9 @@ async def _hold_event_for_lease(run: AssignmentRun, assignment: Assignment, hold
         return False
 
 
-async def _record_misconfigured_gate_check(run: AssignmentRun, assignment: Assignment, check: dict, outcome) -> None:
+async def _record_misconfigured_gate_check(
+    run: AssignmentRun, assignment: Assignment, check: dict[str, Any], outcome: ActivationCheckOutcome
+) -> None:
     """Name a gate check that can never pass as configured (#1400): a friction and a drop reason.
 
     The run is skipped by it (no model call); the friction under the run's

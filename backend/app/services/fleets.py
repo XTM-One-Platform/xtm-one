@@ -1168,11 +1168,7 @@ async def _cancel_moot_health_items(
     if run_ids:
         clauses.append(WorkItem.origin_run_id.in_(list(run_ids)))
     items = (
-        (
-            await db.execute(
-                select(WorkItem).where(or_(*clauses), WorkItem.status.notin_(WORK_ITEM_TERMINAL_STATUSES))
-            )
-        )
+        (await db.execute(select(WorkItem).where(or_(*clauses), WorkItem.status.notin_(WORK_ITEM_TERMINAL_STATUSES))))
         .scalars()
         .all()
     )
@@ -1202,9 +1198,7 @@ async def repair_orphaned_fleet_health_checks(db: AsyncSession) -> int:
     logger = logging.getLogger(__name__)
     checks = [
         row
-        for row in (
-            await db.execute(select(Assignment).where(Assignment.name == FLEET_HEALTH_CHECK_NAME))
-        )
+        for row in (await db.execute(select(Assignment).where(Assignment.name == FLEET_HEALTH_CHECK_NAME)))
         .scalars()
         .all()
         if is_fleet_health_check(row)
@@ -1213,26 +1207,18 @@ async def repair_orphaned_fleet_health_checks(db: AsyncSession) -> int:
         return 0
     gated = {row.id: _gated_fleet_id(row) for row in checks}
     wanted = {fid for fid in gated.values() if fid is not None}
-    live = set(
-        (await db.execute(select(Fleet.id).where(Fleet.id.in_(wanted)))).scalars().all() if wanted else []
-    )
+    live = set((await db.execute(select(Fleet.id).where(Fleet.id.in_(wanted)))).scalars().all() if wanted else [])
     repaired = 0
     for row in checks:
         fleet_id = gated[row.id]
         if fleet_id is None or fleet_id in live:
             continue
-        led = (
-            (await db.execute(select(Fleet).where(Fleet.orchestrator_agent_id == row.agent_id)))
-            .scalars()
-            .first()
-        )
+        led = (await db.execute(select(Fleet).where(Fleet.orchestrator_agent_id == row.agent_id))).scalars().first()
         already = led is not None and any(
             other.agent_id == row.agent_id and gated[other.id] == led.id for other in checks if other is not row
         )
         run_ids = (
-            (await db.execute(select(AssignmentRun.id).where(AssignmentRun.assignment_id == row.id)))
-            .scalars()
-            .all()
+            (await db.execute(select(AssignmentRun.id).where(AssignmentRun.assignment_id == row.id))).scalars().all()
         )
         if led is not None and not already:
             row.activation_check = fleet_health_check_gate(led.id)

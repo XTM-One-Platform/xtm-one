@@ -242,7 +242,7 @@ async def test_a_gate_by_base_name_and_integration_id_survives_a_suffix_change()
 
 
 @pytest.mark.asyncio
-async def test_a_gate_on_an_integration_the_agent_does_not_hold_skips_as_misconfigured():
+async def test_a_gate_on_an_integration_the_agent_does_not_hold_skips_as_misconfigured() -> None:
     check, _error, _ = parse_activation_check({"tool": "list_fake_events", "integration_id": str(uuid.uuid4())})
     outcome = await run_activation_check(check, _composite([(str(uuid.uuid4()), "a_corp"), (str(uuid.uuid4()), "b")]))
     assert not outcome.passed and outcome.misconfigured
