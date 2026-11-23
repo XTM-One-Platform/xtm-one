@@ -19,6 +19,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * `platform_event` trigger (`lib/ctem-signal-trigger.ts`). Every filter is
  * optional: an empty one takes every signal the run's identity can read.
  */
+import { Chip } from "@filigran/design-system";
 import { useId, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -177,7 +178,8 @@ export function CtemSignalTriggerFields({ draft, onChange }: { draft: CtemSignal
  * The read-only summary of a CTEM signal trigger (UX round 1 of #1419, B2): the
  * events it starts on, then one labelled group per filled filter with the same
  * translated labels as the form; "Every signal" when no filter is set. Never a
- * raw key, a JSON list or a scope the tile does not ask for.
+ * raw key, a JSON list or a scope the tile does not ask for. Each filter value
+ * is the design system Chip (UX round 2 of #1419), never a hand-rolled span.
  */
 export function CtemSignalSummary({ config }: { config: TriggerConfig }) {
   const { t_i18n } = useFormatter();
@@ -207,9 +209,9 @@ export function CtemSignalSummary({ config }: { config: TriggerConfig }) {
             return (
               <div key={f.key} className="space-y-1">
                 <dt className="content-caption text-default-secondary">{f.label}</dt>
-                <dd className="flex flex-wrap gap-1.5 content-caption">
+                <dd className="flex flex-wrap gap-1.5">
                   {draft.filters[f.key].map((v) => (
-                    <span key={v} className="rounded-sm bg-elevation-hover px-2 py-0.5">{labels.get(v) ?? v}</span>
+                    <Chip key={v} label={labels.get(v) ?? v} className="shrink-0" data-testid="ctem-signal-summary-value" />
                   ))}
                 </dd>
               </div>

@@ -39,6 +39,20 @@ describe("CtemSignalSummary", () => {
     expect(screen.queryByText("This agent's objects")).toBeNull();
   });
 
+  it("renders every filter value as the design system Chip", () => {
+    renderWithProviders(
+      <CtemSignalSummary
+        config={cfg({
+          event: "ctem_signal.triaged",
+          filter: { trigger_path: ["credential_leak"], verdict: ["confirmed", "to_validate"], source_provider: ["manual"] },
+        })}
+      />,
+    );
+    const chips = screen.getAllByTestId("ctem-signal-summary-value");
+    expect(chips).toHaveLength(4);
+    expect(chips.map((c) => c.textContent)).toContain("Credential or secret leak");
+  });
+
   it("reads a trigger without filters as every signal", () => {
     renderWithProviders(<CtemSignalSummary config={cfg({ event: "ctem_signal.triaged" })} />);
     expect(screen.getByText("Triaged")).toBeTruthy();
