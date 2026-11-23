@@ -1211,9 +1211,10 @@ describe("OrganizationSection", () => {
   });
 
   it("lands ?card=outside_lens on the outside lens card root (UX r1 B1 on #1159)", async () => {
+    // The card lives on CTEM > Inventory (#1178), which mounts the Exposure cards.
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization?card=outside_lens"]}>
-        <OrganizationSection />
+      <MemoryRouter initialEntries={["/ctem/inventory?card=outside_lens"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.exposure }} />
       </MemoryRouter>,
     );
     expect(await screen.findByTestId("settings.organization.panel-exposure")).toBeTruthy();
