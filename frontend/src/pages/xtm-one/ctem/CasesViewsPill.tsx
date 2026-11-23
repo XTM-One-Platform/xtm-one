@@ -16,9 +16,9 @@ import { FilterPillPanel, FilterPillTrigger, useFilterPopover } from "@/componen
 import { Input } from "@/components/ui/input";
 import { RowRemoveButton } from "@/components/ui/row-remove-button";
 import { useFormatter } from "@/i18n";
+import { randomId } from "@/lib/random-id";
 import {
   CASE_SAVED_VIEWS_STORAGE_KEY,
-  CASE_SAVED_VIEW_NAME_MAX,
   activeCaseView,
   addCaseSavedView,
   applyCaseView,
@@ -59,13 +59,16 @@ export function CasesViewsPill() {
   const query = caseViewQuery(searchParams);
   const active = activeCaseView(views, query);
   const label = t_i18n("Views");
+  // A long view name is cut so the toolbar keeps its anatomy at 1080 px; the
+  // tooltip names the whole view.
+  const pillText = active ? t_i18n("View: {name}", { name: active.name }) : label;
   const update = (next: CaseSavedView[]) => {
     setViews(next);
     storeViews(next);
   };
   const save = () => {
     if (!name.trim()) return;
-    update(addCaseSavedView(views, name, query, crypto.randomUUID()));
+    update(addCaseSavedView(views, name, query, randomId()));
     setName("");
   };
 
@@ -73,7 +76,8 @@ export function CasesViewsPill() {
     <div ref={ref} className="relative" data-testid="ctem-cases-views">
       <FilterPillTrigger
         icon={ViewsGlyph}
-        label={active ? t_i18n("View: {name}", { name: active.name }) : label}
+        label={<span className="max-w-48 truncate">{pillText}</span>}
+        title={active ? pillText : undefined}
         open={open}
         active={Boolean(active)}
         className="h-8"
@@ -99,7 +103,9 @@ export function CasesViewsPill() {
                     }}
                     className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2.5 py-1.5 text-left content-compact hover:bg-elevation-hover"
                   >
-                    <span className="min-w-0 flex-1 truncate">{v.name}</span>
+                    <span className="min-w-0 flex-1 truncate" title={v.name}>
+                      {v.name}
+                    </span>
                     {v.id === active?.id && <Icon name="check" size={16} className="size-3.5 shrink-0" aria-hidden />}
                   </button>
                   <RowRemoveButton label={t_i18n("Delete the view {name}", { name: v.name })} onClick={() => update(removeCaseSavedView(views, v.id))} />
@@ -114,16 +120,15 @@ export function CasesViewsPill() {
               save();
             }}
           >
+            {/* No maxLength: its counter would paint below the panel; addCaseSavedView cuts the name. */}
             <Input
               value={name}
-              maxLength={CASE_SAVED_VIEW_NAME_MAX}
               aria-label={t_i18n("Name of the view")}
               placeholder={t_i18n("Name of the view")}
               onChange={(e) => setName(e.target.value)}
-              className="h-8"
               data-testid="ctem-cases-view-name"
             />
-            <Button type="submit" variant="outline" className="h-8 shrink-0" disabled={!name.trim()} data-testid="ctem-cases-view-save">
+            <Button type="submit" variant="outline" className="shrink-0" disabled={!name.trim()} data-testid="ctem-cases-view-save">
               {t_i18n("Save view")}
             </Button>
           </form>

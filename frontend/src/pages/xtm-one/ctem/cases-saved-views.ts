@@ -18,7 +18,7 @@ export const CASE_SAVED_VIEWS_STORAGE_KEY = "xtm.ctem-cases.views";
 export const CASE_SAVED_VIEWS_MAX = 20;
 
 /** The longest name kept. */
-export const CASE_SAVED_VIEW_NAME_MAX = 60;
+const CASE_SAVED_VIEW_NAME_MAX = 60;
 
 /** The parameters a view keeps: the state tab and the table's own (`c_`), the page number aside. */
 function keptParam(key: string): boolean {
