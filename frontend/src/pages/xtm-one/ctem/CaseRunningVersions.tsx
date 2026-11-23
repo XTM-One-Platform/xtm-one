@@ -49,7 +49,8 @@ export function versionSourceName(source: string): string {
   return CTEM_PRODUCT_INFO[source]?.name ?? INTEGRATION_PROVIDER_NAMES[source] ?? SOURCE_GLYPHS[source]?.label ?? source;
 }
 
-function SourceMark({ source }: { source: string }) {
+/** One source as its logo or glyph, its name in the product tooltip and for screen readers; shared by Running versions and Affected assets (UX r2 B1 on #1324). */
+export function SourceMark({ source }: { source: string }) {
   const { t_i18n } = useFormatter();
   const name = t_i18n(versionSourceName(source));
   const glyph: { icon: IconName } | undefined = source.startsWith("agent:") ? { icon: "bot" } : SOURCE_GLYPHS[source];

@@ -54,6 +54,7 @@ import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
+import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { loopFleetOf } from "./ctem/case-loop-reason";
@@ -583,6 +584,9 @@ export default function CtemCaseDetail() {
       {kase.remediation_kind === "upgrade" && (
         <CaseRunningVersions productLabel={kase.product_label} fixedVersion={kase.fixed_version} versions={kase.running_versions} />
       )}
+
+      {/* The assets the visible issues name, each with the version it runs from the inventory (#1176 slice 3b). */}
+      <CaseAffectedAssets data={kase.affected_assets} />
 
       {kase.details_unavailable.length > 0 && (
         <p className="content-compact text-default-secondary">
