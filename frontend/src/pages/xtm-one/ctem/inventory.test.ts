@@ -6,7 +6,7 @@ import fr from "@/i18n/lang/fr.json";
 import { isAssetNotFound } from "@/hooks/api/useOrganizationAssetsApi";
 import { IMPORT_SOURCE_NAMES } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
-import { assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./inventory";
+import { assetCategory, assetCategoryLabel, assetFieldLabel, isCodeRepository, sourceLabel } from "./inventory";
 
 type Catalog = Record<string, string>;
 const translator = (catalog: Catalog) => (id: string) => catalog[id] ?? id;
@@ -89,6 +89,22 @@ describe("sourceLabel", () => {
     }
     expect(sourceLabel(tEn, "intune")).toBe("Microsoft Intune");
     expect(sourceLabel(tEn, "defender")).toBe("Microsoft Defender for Endpoint");
+  });
+});
+
+describe("isCodeRepository", () => {
+  it("is true only for a source code repository", () => {
+    expect(isCodeRepository({ category: "source_code", subcategory: "code_repository" })).toBe(true);
+    expect(isCodeRepository({ category: "source_code", subcategory: "ci_cd_pipeline" })).toBe(false);
+    expect(isCodeRepository({ category: "server", subcategory: null })).toBe(false);
+    expect(isCodeRepository(undefined)).toBe(false);
+  });
+
+  it("has the dependency labels in every catalog", () => {
+    for (const key of ["Dependencies", "Package URL", "No dependency known in this repository yet."]) {
+      expect((en as Record<string, string>)[key]).toBeTruthy();
+      expect((fr as Record<string, string>)[key]).toBeTruthy();
+    }
   });
 });
 
