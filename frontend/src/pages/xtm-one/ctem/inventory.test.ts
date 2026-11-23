@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import en from "@/i18n/lang/en.json";
 import fr from "@/i18n/lang/fr.json";
 import { isAssetNotFound } from "@/hooks/api/useOrganizationAssetsApi";
+import { IMPORT_SOURCE_NAMES } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 import { assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./inventory";
 
@@ -78,6 +79,16 @@ describe("sourceLabel", () => {
     expect(new Set(labels).size).toBe(2);
     expect(labels).not.toContain(SOURCE_KIND_LABELS.agent);
     expect(sourceLabel(tEn, "agent:")).toBe(SOURCE_KIND_LABELS.agent);
+  });
+
+  // Review of #1254, P3: since #1262 asset rows carry `intune` and `defender`, named as the Sources and syncs table does.
+  it("names the Microsoft endpoint sources by their product, in every language", () => {
+    for (const t of [tEn, tFr]) {
+      expect(sourceLabel(t, "intune")).toBe(IMPORT_SOURCE_NAMES.intune);
+      expect(sourceLabel(t, "defender")).toBe(IMPORT_SOURCE_NAMES.defender);
+    }
+    expect(sourceLabel(tEn, "intune")).toBe("Microsoft Intune");
+    expect(sourceLabel(tEn, "defender")).toBe("Microsoft Defender for Endpoint");
   });
 });
 

@@ -6,6 +6,7 @@
  */
 import { ASSET_CRITICALITY_LABELS, taxonomyValueLabel, typeLabel } from "@/lib/asset-taxonomy";
 import { ENVIRONMENT_LABELS } from "@/lib/organization-import-filters";
+import { IMPORT_SOURCE_NAMES } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 
 type Translate = (text: string) => string;
@@ -36,6 +37,12 @@ const SOURCE_LABELS: Record<string, string> = {
   ...INVENTORY_SOURCE_LABELS,
 };
 
+/**
+ * Product names, never translated: the endpoint sources read through their Microsoft integrations (`intune`,
+ * `defender`, #1262) read as the Sources and syncs table names them (review of #1254, P3).
+ */
+const PRODUCT_SOURCE_NAMES: Record<string, string> = { intune: IMPORT_SOURCE_NAMES.intune, defender: IMPORT_SOURCE_NAMES.defender };
+
 /** The prefix of a source an agent wrote (`agent:<name>`), as the backend's AGENT_SOURCE_PREFIX. */
 const AGENT_SOURCE_PREFIX = "agent:";
 
@@ -47,6 +54,7 @@ const AGENT_SOURCE_PREFIX = "agent:";
  */
 export function sourceLabel(t: Translate, source: string): string {
   if (source.startsWith(AGENT_SOURCE_PREFIX)) return source.slice(AGENT_SOURCE_PREFIX.length).trim() || t(SOURCE_KIND_LABELS.agent);
+  if (PRODUCT_SOURCE_NAMES[source]) return PRODUCT_SOURCE_NAMES[source];
   const label = SOURCE_LABELS[source];
   return label ? t(label) : source;
 }

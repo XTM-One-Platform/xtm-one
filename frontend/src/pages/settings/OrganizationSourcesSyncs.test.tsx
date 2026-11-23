@@ -278,6 +278,17 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(text).toContain("Failed");
   });
 
+  it("puts Filters behind Columns so the default columns fit the 1458 px card at 1728 (lab retest of #1294, D1)", async () => {
+    serve([sync()], [source()]);
+    render();
+    await rows();
+    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent ?? "");
+    // Filters steps behind Columns; the label summary is still searched and exported.
+    expect(headers.some((text) => text.startsWith("Filters"))).toBe(false);
+    expect(screen.getByRole("button", { name: /Columns/ })).toBeTruthy();
+    expect(screen.getAllByTestId("organization-sources.row")[0].textContent).not.toContain("dmz");
+  });
+
   it("shows a centred first-use state with Add a source when nothing feeds the sections", async () => {
     serve([], []);
     render();
