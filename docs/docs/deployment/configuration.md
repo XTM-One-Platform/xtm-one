@@ -154,9 +154,9 @@ Pre-provision LLM providers via environment variables so the platform is ready w
 | `PROMPT_CACHING_ENABLED` | No | `true` | Anthropic prompt caching: the repeated start of each request (tools, instructions, earlier messages) is billed at the cache rate. |
 | `PROMPT_CACHE_TTL` | No | `5m` | How long a cached prefix lives: `5m` or `1h` (twice the write cost, worth it for conversations with long pauses, such as approvals or channels). |
 
-Supported provider names: `OPENAI`, `ANTHROPIC`, `GEMINI`, `OPENROUTER`, `OLLAMA`, `MISTRAL`, `AZURE_OPENAI`, `BEDROCK`, `LITELLM`, `CUSTOM_OPENAI`, and `FILIGRAN_GATEWAY` when the `FILIGRAN_GATEWAY_PROVIDER` feature flag is on.
+Supported provider names: `OPENAI`, `ANTHROPIC`, `GEMINI`, `OPENROUTER`, `OLLAMA`, `MISTRAL`, `AZURE_OPENAI`, `BEDROCK`, `LITELLM`, `CUSTOM_OPENAI` and `FILIGRAN_GATEWAY`.
 
-The credential of `FILIGRAN_GATEWAY` is `url[||target_provider[||token]]`, with the URL first (unlike `CUSTOM_OPENAI`, which is `api_key||base_url`). Without a token the platform signs an XTM JWT on every request, so the gateway must trust this platform's `BASE_URL` as an issuer (the platform serves its public keys at `{BASE_URL}/xtm/auth/jwks`); with a token, the token is sent instead. With a token and no target provider, write `url||||token`. The provider is behind the `FILIGRAN_GATEWAY_PROVIDER` feature flag: enable it with `ENABLED_FEATURES=FILIGRAN_GATEWAY_PROVIDER`.
+The credential of `FILIGRAN_GATEWAY` is `url[||target_provider[||token]]`, with the URL first (unlike `CUSTOM_OPENAI`, which is `api_key||base_url`). Without a token the platform signs an XTM JWT on every request, so the gateway must trust this platform's `BASE_URL` as an issuer (the platform serves its public keys at `{BASE_URL}/xtm/auth/jwks`); with a token, the token is sent instead. With a token and no target provider, write `url||||token`.
 
 !!! tip "Managed deployments: operator baseline, admin curation"
     Set the credential and a baseline catalog from the environment, then let the tenant administrator curate which models are actually offered from **Settings → AI Models**:
