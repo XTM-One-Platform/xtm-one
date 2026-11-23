@@ -12,16 +12,15 @@ Design: ``dev-docs/ctem-cases.md`` sections 4 to 6.
   fix". Nothing is guessed.
 - :func:`plan_recompute` merges what ONE user sees into the shared cases
   (#11613) without touching state, owner, due date or notes: new keys become
-  cases in ``new``, an issue the user sees open is added or reopened,
+  cases in needs attention, an issue the user sees open is added or reopened,
   an issue is resolved only when that user's source read confirms it closed
   (never on absence from a narrower view), a case whose members are all
   resolved is resolved by the system unless its risk is accepted, a resolved
   case whose issues return is reopened.
 - :func:`check_transition` is the state machine: accepted risk needs an owner,
   a reason and an expiry and is refused to an agent; resolved needs evidence;
-  a person moving a case to remediating names its owner. :func:`expired_acceptance`
-  returns a case whose acceptance expired to ``new``. The loop's own moves
-  between the open statuses are ``ctem_case_status`` (#1503).
+  in progress needs an owner. :func:`expired_acceptance` returns a case whose
+  acceptance expired to needs attention.
 
 Pure functions over plain data: the API and the agent tools persist what they
 return (``ctem_cases_store``).
@@ -35,8 +34,8 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.models.ctem_case import CASE_STATES, OPEN_STATES, RESOLUTION_KINDS
-from app.services.ctem_fixed_version import smallest_fixing_every
+from app.models.ctem_case import CASE_STATES, RESOLUTION_KINDS
+from app.services.ctem_fixed_version import fold_by_platform, smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -81,6 +80,8 @@ class SourceIssue:
     version_note: str | None = None
     #: The OpenCTI Software ("<name> <version>") whose ``remediates`` gave ``fixed_version`` (#928), else ``None``.
     fixed_by: str | None = None
+    #: ``((platform, version), ...)`` when the remediating Software names its platform (#1572), else ``()``.
+    fixed_versions: tuple[tuple[str, str], ...] = ()
     #: With a declared version: whether OpenCTI holds a Software of it (#928); ``None`` when none is declared.
     declared_version_known: bool | None = None
     #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
@@ -105,6 +106,8 @@ class Remediation:
     title: str
     product_label: str | None = None
     fixed_version: str | None = None
+    #: ``((platform, version), ...)``: the fix of each platform the remediation names (#1572), else ``()``.
+    fixed_versions: tuple[tuple[str, str], ...] = ()
 
 
 def _norm(value: str | None) -> str:
@@ -129,6 +132,7 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
             title=name,
             # A course of action that is a plain upgrade names its version (CTEM-11).
             fixed_version=(issue.fixed_version or "").strip() or None,
+            fixed_versions=issue.fixed_versions,
         )
     if issue.product and issue.product.strip():
         label = _product_label(issue.vendor, issue.product)
@@ -143,6 +147,7 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
                 title=f"Upgrade {label} to {fixed}",
                 product_label=label,
                 fixed_version=fixed,
+                fixed_versions=issue.fixed_versions,
             )
         return Remediation(
             key=f"upgrade:{vendor}/{product}@latest",
@@ -178,12 +183,20 @@ def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
         if issue.fixed_version:
             targets.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(issue.fixed_version.strip())
     target = {k: smallest_fixing_every(v) for k, v in targets.items()}
+    # The per-platform fixes fold the same way (#1572); one member without them makes the fold generic.
+    per_platform: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for issue in issues:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not issue.installed_version:
+            continue
+        if issue.fixed_version:
+            per_platform.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(dict(issue.fixed_versions))
+    platform_target = {k: tuple(sorted(fold_by_platform(v).items())) for k, v in per_platform.items()}
     out: list[SourceIssue] = []
     for issue in issues:
         key = (_norm(issue.vendor), _norm(issue.product))
         fixed = target.get(key)
         if fixed and issue.installed_version and issue.fixed_version and not issue.course_of_action_id:
-            issue = replace(issue, fixed_version=fixed)
+            issue = replace(issue, fixed_version=fixed, fixed_versions=platform_target.get(key, ()))
         out.append(issue)
     return out
 
@@ -373,14 +386,14 @@ def plan_recompute(
         if case.fixed_in_inventory and case.id not in retarget:
             # No asset is left below the fix: the case resolves (a validation plan still needs its proof)
             # and is never reopened by issues that stay open at source on a version nobody runs.
-            if case.state in OPEN_STATES and not case.validation_plan:
+            if case.state in ("needs_attention", "in_progress") and not case.validation_plan:
                 plan.new_state = "resolved"
                 plan.evidence = FIXED_IN_INVENTORY
-        elif after and not any_open and case.state in OPEN_STATES and not case.validation_plan:
+        elif after and not any_open and case.state in ("needs_attention", "in_progress") and not case.validation_plan:
             plan.new_state = "resolved"
             plan.evidence = CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":
-            plan.new_state = "new"
+            plan.new_state = "needs_attention"
             plan.reason = "reopened: issues open again at source"
         plans.append(plan)
     return plans
@@ -397,6 +410,8 @@ def check_owner(state: str, owner_user_id: object | None) -> None:
     """Raise :class:`CaseRuleError` when the case's state cannot stand without an owner."""
     if owner_user_id is not None:
         return
+    if state == "in_progress":
+        raise CaseRuleError("a case in progress needs an owner")
     if state == "accepted_risk":
         raise CaseRuleError("an accepted risk needs an owner")
 
@@ -437,9 +452,7 @@ def check_transition(
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
-    ``actor_kind`` is ``user``, ``agent`` or ``system``. A person who moves a
-    case to ``remediating`` takes or names its owner (#1503; the loop moves it
-    there on a ticket or a decision without one). A case with a
+    ``actor_kind`` is ``user``, ``agent`` or ``system``. A case with a
     validation plan resolves, or goes to ``mitigated_watching``, only when its
     newest validation reference passed (#857): free-text evidence is not proof.
     """
@@ -452,10 +465,8 @@ def check_transition(
     reason = (reason or "").strip()
     evidence = (evidence or "").strip()
     accepted_until = as_utc(accepted_until)
-    if target == "remediating" and actor_kind == "user" and owner_user_id is None:
-        raise CaseRuleError("a person moving a case to remediating names its owner")
-    if target == "waiting_decision" and actor_kind == "user" and not reason:
-        raise CaseRuleError("waiting for decision needs what the case waits on (the reason)")
+    if target == "in_progress" and owner_user_id is None:
+        raise CaseRuleError("a case in progress needs an owner")
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
     proven = passing(latest_validation(validations))
@@ -477,7 +488,7 @@ def check_transition(
         if accepted_until > now + max_acceptance:
             raise CaseRuleError(f"the expiry date is at most {max_acceptance.days} days away")
     if (
-        target in OPEN_STATES
+        target == "needs_attention"
         and current in ("resolved", "accepted_risk", "mitigated_watching")
         and actor_kind == "agent"
         and not reason
@@ -486,7 +497,7 @@ def check_transition(
 
 
 def expired_acceptance(state: str, accepted_until: datetime | None, now: datetime) -> bool:
-    """True when an accepted risk has expired and the case returns to ``new``."""
+    """True when an accepted risk has expired and the case returns to needs attention."""
     return state == "accepted_risk" and accepted_until is not None and accepted_until <= now
 
 

@@ -9,8 +9,7 @@ grouping and the state rules live in ``services/ctem_cases.py``; the design is
 ``dev-docs/ctem-cases.md``.
 
 - ``ctem_cases``: the case, its fix (kind, title, product, fixed version),
-  its status (new, analyzing, waiting for decision, remediating, validating,
-  mitigated watching, resolved, accepted risk; #1503), owner,
+  its state (needs attention, in progress, resolved, accepted risk), owner,
   due date, the accepted-risk reason and expiry. Shared by the organization.
 - ``ctem_case_issues``: one row per member issue, its source id and whether it
   is still open; ``open`` false once a source read confirmed it closed.
@@ -51,28 +50,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
-#: The statuses of a case, in lifecycle (board) order (#1503). The loop moves a case through
-#: them itself (``services/ctem_case_status.py``): ``new`` (opened, triage not started),
-#: ``analyzing`` (agents scope, enrich, prioritize), ``waiting_decision`` (a gate waits on a
-#: person), ``remediating`` (fix decided, ticket or change in flight), ``validating`` (re-test
-#: pending). ``mitigated_watching``: the exposure is mitigated and proven so, the permanent fix
-#: is not in yet; the re-test stays on (#857).
-CASE_STATES: tuple[str, ...] = (
-    "new",
-    "analyzing",
-    "waiting_decision",
-    "remediating",
-    "validating",
-    "mitigated_watching",
-    "resolved",
-    "accepted_risk",
-)
-#: The statuses a case is still worked in (an SLA runs, a new signal joins it).
-OPEN_STATES: tuple[str, ...] = ("new", "analyzing", "waiting_decision", "remediating", "validating")
-#: The statuses a case is closed in (a re-test or a source read may reopen it).
-CLOSED_STATES: tuple[str, ...] = ("mitigated_watching", "resolved", "accepted_risk")
-#: The two statuses of the first case model, kept only to read old history events.
-LEGACY_STATES: dict[str, str] = {"needs_attention": "new", "in_progress": "remediating"}
+#: The states of a case, in board order. ``mitigated_watching``: the exposure is
+#: mitigated and proven so, the permanent fix is not in yet; the re-test stays on (#857).
+CASE_STATES: tuple[str, ...] = ("needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk")
+#: The states a case is still worked in (an SLA runs, a new signal joins it).
+OPEN_STATES: tuple[str, ...] = ("needs_attention", "in_progress")
 #: What the fix is. The last six are the fixes of the paths that carry no CVE (#857).
 REMEDIATION_KINDS: tuple[str, ...] = (
     "upgrade",
@@ -106,8 +88,7 @@ class CtemCase(Base):
     __tablename__ = "ctem_cases"
     __table_args__ = (
         CheckConstraint(
-            "state IN ('new', 'analyzing', 'waiting_decision', 'remediating', 'validating',"
-            " 'mitigated_watching', 'resolved', 'accepted_risk')",
+            "state IN ('needs_attention', 'in_progress', 'mitigated_watching', 'resolved', 'accepted_risk')",
             name="ck_ctem_cases_state_valid",
         ),
         CheckConstraint(
@@ -128,11 +109,14 @@ class CtemCase(Base):
     product_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     #: ``None`` when the data names the product but no fixed version.
     fixed_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    #: ``{platform: version}`` when the remediation names the fix of each platform (#1572), else ``{}``:
+    #: each asset is then compared with the fix of its own platform (``ctem_case_versions``).
+    fixed_versions: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
     #: Every remediation key mapped to this case (several after a manual merge).
     keys: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     #: ``source:external_id`` of the issues a manual split or a manual case owns.
     pinned_issues: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    state: Mapped[str] = mapped_column(String(20), nullable=False, default="new")
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="needs_attention")
     state_since: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -225,8 +225,44 @@ same way.
   up to `asset_count`;
 - with no fixed version: `fixed_version_checked` names the sources looked in
   (section 4.2bis, steps 1 and 2); nothing asks the user to type a version.
+- per platform (#1572): a row is one (version, `platform`), the platform
+  being the asset's `fields.os_family` (Intune, Defender, OpenAEV fill it;
+  `null` when unknown; read by a join on the software rows of the case's
+  product keys, never an IN list of asset ids, so no estate size reaches the
+  driver's bind cap), with its `asset_ids` (at most 20, `more_asset_ids`
+  counts the rest). Each asset is compared with the fixed version of its own
+  platform: `fixed_versions` `{platform: version}` when the remediation names
+  one (the row then carries its `fixed_version`), else the case's generic
+  `fixed_version`. A platform the per-platform map does not name, or a generic
+  fix over assets of several platforms (`platform_unverified` true), is never
+  read as fixed: an asset not below it is `not_comparable` with
+  `status_reason` "fix not known for this platform" (counted in
+  `assets_fix_not_known_for_platform`), so the case never leaves the scope on
+  the inventory. One platform with a generic fix behaves as before. The answer
+  also gives `platforms`, `assets_multi_version` (distinct assets running more
+  than one version), `version_row_asset_sum` and `version_rows_note`: the rows
+  may sum above `asset_count` because an asset running two versions is in each
+  row, while the three status totals still add up to `asset_count`. The
+  version match line names the platform (`36.0 (macOS) on 2 asset(s)`).
+- where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
+  reads each Software that `remediates` the vulnerability with its `cpe`;
+  `ctem_fixed_version.platform_of_software` takes the platform from the CPE
+  `target_sw` (then `target_hw`), else from one operating system the name or
+  the version names (two named: none; the bare word `ios` counts only in the
+  CPE target fields, since `Cisco IOS` / `ios_xe` are not Apple's iOS). `fixes_by_platform` keeps the smallest
+  fix above the declared version per platform; one remediating version above
+  it with no platform keeps the fix generic (`{}`), since its reach is not
+  known. The members of one product fold per platform like the generic target
+  (`fold_by_platform`: greatest fix per platform; one member without a map
+  makes it generic). The map travels on the remediation, the signal's
+  `case_fix.fixed_versions` (bounded to 12 platforms) and is kept on
+  `ctem_cases.fixed_versions` (JSON, `{}` by default, migration
+  `c1572ctemfixplat1`): set at opening, at a retarget, and refreshed at each
+  recompute from what the members' source names now. The case read and the
+  affected assets pass it to the running versions; the case summary carries
+  `fixed_versions`.
 
-Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
+Two grouped reads and one platform read, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
 
 ### 4.2quater Affected assets on the case read
@@ -254,8 +290,9 @@ outside the inventory is no link (CTEM-20-UI).
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
 against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
-asset running the product runs the fixed version or later (`all_on_fixed`: at
-least one asset on it, none below, none `unknown` or unreadable), the case
+asset running the product runs the fixed version of its platform or later
+(`all_on_fixed`: at least one asset on it, none below, none `unknown` or
+unreadable, not `platform_unverified`), the case
 leaves the scope. An open case resolves with the evidence "every asset running
 the product runs the fixed version or later (asset inventory)" and resolution
 kind `fixed`; a resolved case is not reopened by member issues that stay open
@@ -557,30 +594,9 @@ then the existing AI assessment and facts grid unchanged.
   link); its action slot holds only the quiet freshness line of s.4.3, never a
   refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
-- One full list, no state tabs and no "Act on this first" band (#1503):
-  quick filter chips above the table (`QuickFilterChips`), each with its
-  count and in the URL: the scope (`?state=`: Open by default, Waiting for
-  decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
-  Critical and high). A case Waiting for decision says what it waits on, who
-  and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
-- **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
-  (quick filters, search and filters applied) at `/ctem/cases` or as columns
-  at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
-  Columns are the eight statuses in lifecycle order, or the five CTEM phases
-  when grouped by CTEM phase (`phase` on each list row:
-  `ctem_case_audit.current_phase` of the history the viewer is served; a
-  case with no event yet sits in a last "Phase not known yet" column). Cards:
-  title, urgency, owner, due, what a waiting case waits on, the loop line. In
-  the status layout a card is dragged to another column to change its status
-  (`PATCH /ctem-cases/{id}`); New, Analyzing, Remediating and Validating are
-  set by a drop (an unowned case moved to Remediating takes the person
-  dropping it as owner), Waiting for decision, Mitigated watching, Resolved
-  and Accepted risk are refused with their reason (each needs what a drop
-  cannot carry: the case page sets them), and the API's own refusal is shown
-  the same way. The Mobilization stage page's flow strip (7.1) stays a strip.
-- Group by (`?c_group=`, both views in the list): owner, status, CTEM phase,
-  priority, fix family.
+- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
+  exact counts: Needs attention, In progress, Resolved ("All time" in its
+  tooltip, A1), Accepted risk, All.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
@@ -830,6 +846,8 @@ A decision is recorded in OpenCRQ as a treatment plan through four OpenCRQ provi
 On the case (CTEM-18-UI, #1068): `create_opencrq_treatment_plan` answers the plan's OpenCRQ link (`Link:` line, `/treatment-plans/<id>`), and the fleet attaches the plan to the case with `update_ctem_case` `treatment_plan` {id, name, url} (`ctem_case_loop.record_treatment_plan`: the id a UUID, the url the OpenCRQ page of that id, else refused; the same plan again writes nothing). No migration: one `treatment_plan` case event (`to` the id, `reason` the name, `evidence` the url). The case detail serves `treatment_plan`, the newest such event, as the exploitation reading (#936): id, name and link only to a viewer whose own OpenCRQ read is available, `{restricted: true, at}` to anyone else, and the history row of that kind carries no value for them. The case page shows it in a "Treatment plan" card (name linked to OpenCRQ, attach date; never blank) and the history line "Attached the treatment plan". The accepted residual risk and its expiry stay where they were: the accepted-risk card of the case and Governance & Risk > Accepted risks. Tests: `tests/test_ctem_case_treatment_plan.py`, `frontend/src/pages/xtm-one/ctem/case-treatment-plan.test.tsx`.
 
 Threat package state from the live graph (#1547): a threat package reads `validated` only when its stored page is the Grouping page, and that page is stored only once the Grouping resolves in OpenCTI's live graph. `update_ctem_case` `threat_package` runs `ctem_threat_package_live.verify_package` with the acting user's own OpenCTI access (`_user_creds`, never a system token): a live Grouping keeps its page, a Grouping found inside an open draft is recorded with that draft's page (`drafted`), one found nowhere or unreadable is refused and nothing is written. A package with no page reads `drafted` too. Packages stored before the check: `POST /api/v1/ctem-cases/threat-packages/repair` (administrators, `{"dry_run": true}` by default answers the count and the cases) re-reads each case's newest package stored with a Grouping page with the caller's access and writes a new `threat_package` event with the draft page (Grouping in an open draft) or no page (Grouping absent); a live or unreadable one is left (`unreadable` counts the latter).
+
+Threat package state from the review gate (#1573): the page alone never makes a package `validated`. `ctem_cases_view.review_outcome` reads the case's newest `ctem.analyst_review` gate event: `passed_automatically`, an answer by the analyst's mark, or an answered option whose WHOLE text is an approval (approve / accept / validate / publish, optionally followed by "and request coverage", "it" or "the package") is `approved`; an answered option whose whole text is a refusal (reject / refuse / deny / decline, optionally followed by "it" or "the package") is `rejected`; a leading word is never enough, so "Yes, but split the package first" or "No problem, publish it" stays `replan`; any other answered text (free text, another option) is `replan`; `waited` is `waiting`; an answer with no option recorded is `unread` and leaves the page rule alone. `threat_package_state(package, review)` answers `awaiting_review`, `replan` or `rejected` for those three whatever the stored page, else the #1547 page rule (`validated` or `drafted`); a case with no review gate keeps the page rule. `coverage_requested` stays true for `validated` only; `coverage_drafted` and `draft_overdue` cover `drafted` and `awaiting_review`. `verify_package(..., review)` reads an open draft first while the review is not approved: the draft page is recorded, a Grouping found only live is refused (its page was never approved). The repair route reads the case's gate events too: a non-approved case's Grouping page becomes its draft page, or no page when the Grouping sits in no open draft; each corrected case names its `review`. The case page's Analyst review card shows `replan` and `rejected` as their own stages.
 
 Attack path and blast radius (CTEM-23-UI, #1289): `get_opencrq_attack_path_reach` (`providers/opencrq/risk.py`) reads OpenCRQ's `supportingAssets.getAttackPathReach` for one supporting asset: the hops nearest first (each proven by an OpenAEV execution or inferred, with its simulation), the assets reached with their depth and criticality, and the primary assets behind them; hops unconfirmed past OpenCRQ's stale delay are left out. The triage analyst calls it on the matched asset with the highest impact and the orchestrator writes it with `update_ctem_case` `attack_path` (`ctem_case_loop.record_attack_path`: origin required, a hop with no end dropped, a nature other than proven read as inferred, capped at 40 hops and reached assets and 20 primary assets, replaced whole). Column `ctem_cases.attack_path` (JSON, `{}` until the first read; migration `c1289ctemattackpath1`). One `attack_path` case event per change, its evidence the counts alone. A hop also keeps `simulation_name`, `simulation_url` (an absolute http(s) page, else dropped) and `seen_at` (the ISO date of the execution, from OpenCRQ's last reported date). The case detail serves `attack_path` like the exploitation reading: asset names and the simulation name and page only to a viewer who reads OpenCRQ, else `Restricted`; the raw simulation id is never served; `null` before the first read. The case page shows the card "Attack path and blast radius" under "How it would be exploited" (`ctem/CaseAttackPath.tsx`): the origin as "Attack starts from", each hop with a Proven chip (high tone) or an Inferred chip (info tone), and for a proven hop "Proven by <simulation name>, <date>" (or "Proven by an OpenAEV simulation, <date>"), linked to the simulation page when there is one (UX round 1 on #1296).
 
