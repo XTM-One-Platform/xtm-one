@@ -1642,6 +1642,17 @@ default_args = ["--list"]
 timeout = 90
 image = "python-dev"
 
+# One raw HTTP request to a lab service from inside the lab (gap lab-http-probe-inside-lab): the status, every
+# header and the body's head, redirects never followed, where the browser tool answers an opaqueredirect with no
+# status and no Location. Run with sandbox_run_command(check="lab-http", service_id=<the lab>, args=["--url",
+# "http://127.0.0.1:<port>/path"]); --method, --header 'K: V' (repeatable), --data, --max-body. Exit 0 on any
+# HTTP answer, 2 when nothing answers.
+[check.lab-http]
+description = "One raw HTTP request to a lab service from inside the lab, redirects not followed: run with service_id = the lab; args: --url URL [--method NAME] [--header 'K: V'] [--data TEXT] [--max-body N]"
+argv = ["python", ".xtm-one/lab/lab_http.py"]
+timeout = 60
+image = "python-dev"
+
 # The type checker on the change: affected = "lines" hands scripts/types_changed.py
 # the Python files the checkout changed (a modified one as PATH:A-B,C-D, never a
 # test file the change left alone); mypy runs once over them with [tool.mypy] and
