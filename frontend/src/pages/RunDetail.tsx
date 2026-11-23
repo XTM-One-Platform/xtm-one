@@ -980,6 +980,8 @@ export default function RunDetail() {
     runContext.type === "scheduled_work_item" ? String(runContext.work_item_id ?? "") : "";
   // A run that wrote one file name twice: the chips number the revisions.
   const fileRevisions = conversationRevisions([{ created_at: run.created_at, attachments: chipAttachments }]);
+  // A delegation run (no assignment) names the agent that delegated it.
+  const delegatedFromName = run.parent_run_id && !run.assignment_name ? run.parent_agent_name || "" : "";
 
   return (
     <div className="space-y-6">
@@ -1004,7 +1006,10 @@ export default function RunDetail() {
                     ? String(runContext.title || t_i18n("Scheduled work item"))
                     : t_i18n("Delegation Run"))}
               </h1>
-              <div className="flex items-center gap-2 mt-1">
+              {/* The badges stay on one line; the names after them shrink with an ellipsis and a
+                  tooltip, never to 0 px (UX r2 B2 on #1590). A delegation run's names need more
+                  room than an assignment run's: below it they wrap as one group to a second line. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                 <Badge variant={statusCfg.badge} className="shrink-0 gap-1 whitespace-nowrap">
                   <StatusIcon className={cn("h-3 w-3", isRunning && "animate-spin")} />
                   {t_i18n(statusCfg.label)}
@@ -1016,12 +1021,15 @@ export default function RunDetail() {
                     {run.stop_reason === "integrations_unreadable" ? t_i18n("Not assessable") : t_i18n("Partial result")}
                   </Badge>
                 )}
-                {run.parent_run_id && !run.assignment_name && run.parent_agent_name && (
-                  <span className="content-compact text-accent flex shrink-0 items-center gap-1 whitespace-nowrap">
-                    {t_i18n("Delegated from")} <span className="font-medium">{run.parent_agent_name}</span>
-                  </span>
-                )}
-                <TruncatedText text={run.agent_name} className="content-compact text-default-secondary" />
+                <div className={cn("flex max-w-full flex-1 items-center gap-2", delegatedFromName ? "min-w-48" : "min-w-16")}>
+                  {delegatedFromName && (
+                    <span className="content-compact text-accent flex min-w-0 items-center gap-1">
+                      <span className="shrink-0 whitespace-nowrap">{t_i18n("Delegated from")}</span>
+                      <TruncatedText text={delegatedFromName} className="font-medium" />
+                    </span>
+                  )}
+                  <TruncatedText text={run.agent_name} className="content-compact text-default-secondary min-w-16" />
+                </div>
               </div>
             </div>
           </div>
