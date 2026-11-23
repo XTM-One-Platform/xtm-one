@@ -30,6 +30,7 @@ from app.models.organization_asset import (
     OrganizationSoftwareDependency,
     OrganizationSoftwareVersion,
 )
+from app.models.organization_asset_record import RECORD_MODELS
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_store as store
 from tests.scratch_database import scratch_database, with_referenced_tables
@@ -73,6 +74,7 @@ async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         OrganizationSoftwareVersion,
         OrganizationSoftwareDependency,
         OrganizationContextVersion,
+        *RECORD_MODELS,
     ]
     tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
     async with scratch_database("orgsbom", tables=tables) as db:

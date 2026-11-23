@@ -92,7 +92,7 @@ def build_organization_context_tool(
         from app.core.database import async_session
         from app.services import organization_context_categories as cats
         from app.services import organizations as orgs
-        from app.services.organization_context import ctem_work_for, current_version, parse_profile, render_for_agent
+        from app.services.organization_context import asset_list_counts, current_version, hydrated_profile
         from app.services.organization_context_injection import category_counts
 
         ref = str(organization or "").strip()
@@ -101,10 +101,17 @@ def build_organization_context_tool(
             async with async_session() as db:
                 if wanted:
                     row = await current_version(db)
-                    profile = parse_profile(row.profile if row else {})
+                    # #1543: the asset and group rows come from the asset records, paged like every category.
+                    profile = await hydrated_profile(db, row)
                     tracked = [o for o in await orgs.list_organizations(db) if o.role == "tracked"]
                     if wanted == "*":
-                        return cats.render_categories(category_counts(profile, tracked_count=len(tracked)))
+                        return cats.render_categories(
+                            category_counts(
+                                profile,
+                                tracked_count=len(tracked),
+                                asset_counts=await asset_list_counts(db, getattr(row, "organization_id", None)),
+                            )
+                        )
                     found_category = cats.get(wanted)
                     if found_category is None:
                         return (
@@ -129,7 +136,7 @@ def build_organization_context_tool(
                         limit=_int(limit) or cats.DEFAULT_PAGE,
                     )
                 if not ref:
-                    return render_for_agent(await current_version(db), ctem_work=await ctem_work_for(db, run_agent))
+                    return await _primary_block(db)
                 if ref == orgs.EVERY_ORGANIZATION:
                     return orgs.render_tracked_list(await orgs.list_organizations(db))
                 found = await orgs.resolve(db, ref)
@@ -139,13 +146,29 @@ def build_organization_context_tool(
                         'Call get_organization_context(organization="*") for the list.'
                     )
                 if found.role == "primary":
-                    return render_for_agent(await current_version(db), ctem_work=await ctem_work_for(db, run_agent))
+                    return await _primary_block(db)
                 return orgs.render_tracked_for_agent(found, await current_version(db, found.id))
         except Exception:
             logger.warning("Organization context read failed", exc_info=True)
             return (
                 "Error: the organization profile could not be read right now. Say so in your output; do not guess it."
             )
+
+    async def _primary_block(db: AsyncSession) -> str:
+        """The primary profile as an agent reads it, its asset and group counts from the records (#1543)."""
+        from app.services.organization_context import (
+            asset_list_counts,
+            ctem_work_for,
+            current_version,
+            render_for_agent,
+        )
+
+        primary = await current_version(db)
+        return render_for_agent(
+            primary,
+            ctem_work=await ctem_work_for(db, run_agent),
+            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+        )
 
     async def _inventory_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
         """The tech stack built from the assets' software (#1178, S4); ``[]`` when no asset carries software."""

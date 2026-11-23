@@ -236,6 +236,21 @@ class ImportPlan:
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Name and identity key per repository id; dependencies matched to OpenCTI after the save.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: Assets and asset groups since #1543: the organization whose records the plan was made on. Applied
+    #: by :func:`apply_record_import` as row writes (``writes``) and removals (``remove_refs``) by
+    #: ``(source, external_id)``, never a profile version; ``profile`` stays ``None``.
+    organization_id: uuid.UUID | None = None
+    writes: list[dict[str, Any]] = field(default_factory=list)
+    remove_refs: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def on_records(self) -> bool:
+        return self.organization_id is not None
+
+    @property
+    def has_writes(self) -> bool:
+        """A record plan that writes or removes at least one row."""
+        return bool(self.writes or self.remove_refs)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -629,6 +644,117 @@ def _merge_sourced(
     if dropped:
         current = [r for r in current if id(r) not in dropped]
     setattr(draft, attr, current[:cap])
+
+
+#: Sections whose rows are asset records since #1543 (planned and written by ``(source, external_id)``).
+RECORD_SECTIONS: frozenset[str] = frozenset({"assets", "asset_groups"})
+
+
+@dataclass
+class StoredRow:
+    """A stored record of the import's source, as :func:`plan_record_import` needs it."""
+
+    external_id: str
+    name: str
+    sync_id: str = ""
+
+
+def plan_record_import(
+    section: str,
+    source: str,
+    read: ReadResult,
+    *,
+    validate: Any,
+    stored: dict[tuple[str, str], dict[str, Any]],
+    names: dict[str, str],
+    source_rows: list[StoredRow],
+    remove_gone: bool = False,
+    excluded_ids: list[str] | None = None,
+    sync_id: str = "",
+    organization_id: uuid.UUID,
+) -> ImportPlan:
+    """What importing *read* into the asset or group records does (no I/O, #1543).
+
+    The merge rules of :func:`_merge_sourced`, against the records instead of
+    the profile: *stored* holds the records the read rows address, by
+    ``(source, external_id)``, as profile rows; *names* the name keys a new row
+    would clash with (for assets, the records of *source* only); *source_rows*
+    every record of *source* (read only when gone rows can be known: a
+    complete read, or a sync's exclusion list). *validate* is the record
+    service's validation, so a row equal to its record is ``unchanged`` and
+    never written. No cap: the tables hold what the profile could not.
+    """
+    from app.services.organization_context_rows import name_key
+
+    plan = ImportPlan(
+        section=section,
+        source=source,
+        source_total=read.total,
+        read=len(read.rows),
+        truncated=read.truncated,
+        error=read.error,
+        remove_gone=remove_gone and not read.truncated and not read.error,
+        batch_typed=read.batch_typed,
+        sync_id=sync_id[:64],
+        software=read.software,
+        software_rows=read.software_rows,
+        software_unread=read.software_unread,
+        software_error=read.software_error,
+        findings=read.findings,
+        repositories=read.repositories,
+        organization_id=organization_id,
+    )
+    excluded = {str(i) for i in excluded_ids or [] if str(i)}
+    _attr, name_attr, _cap, local = SOURCED_FIELDS[section]
+    taken = dict(names)
+    read_ids: set[str] = set()
+    seen: set[str] = set()
+    for row in read.rows:
+        value = row.model_dump(mode="json") if hasattr(row, "model_dump") else dict(row)
+        name = str(value.get(name_attr) or "")
+        external_id = str(value.get("external_id") or "")
+        read_ids.add(external_id)
+        if external_id in excluded:
+            plan.excluded.append(name)
+            continue
+        if external_id in seen:
+            continue  # a source answering one id twice: the first row counts, as in the profile merge
+        seen.add(external_id)
+        before = stored.get((source, external_id))
+        if before is not None:
+            kept = {f: before.get(f) for f in local if f in _ALWAYS_LOCAL or (not value.get(f) and before.get(f))}
+            merged = validate({**value, **kept, "sync_id": plan.sync_id or before.get("sync_id") or ""})
+            if merged == before:
+                plan.unchanged.append(name)
+            else:
+                plan.writes.append(merged)
+                plan.updated.append(name)
+            continue
+        if name_key(name) in taken:
+            plan.skipped.append(name)
+            continue
+        taken[name_key(name)] = source
+        plan.writes.append(validate({**value, **({"sync_id": plan.sync_id} if plan.sync_id else {})}))
+        plan.new.append(name)
+    dropped: set[str] = set()
+    if excluded:
+        gone_excluded = [r for r in source_rows if r.external_id in excluded]
+        plan.excluded_removed = [r.name for r in gone_excluded]
+        dropped = {r.external_id for r in gone_excluded}
+    if not plan.truncated and not plan.error:
+        gone = [r for r in source_rows if r.external_id not in read_ids and r.external_id not in dropped]
+        plan.gone = [r.name for r in gone]
+        if plan.remove_gone:
+            # A sync removes only the rows it wrote itself (#1473), as the profile merge does.
+            owned = [r for r in gone if not plan.sync_id or r.sync_id == plan.sync_id]
+            owned_ids = {r.external_id for r in owned}
+            plan.gone_kept = [r.name for r in gone if r.external_id not in owned_ids]
+            dropped |= owned_ids
+    plan.remove_refs = [(source, e) for e in sorted(dropped)]
+    plan.sample = [
+        row.model_dump(mode="json") if hasattr(row, "model_dump") else row for row in read.rows[:SAMPLE_SIZE]
+    ]
+    return plan
 
 
 def _merge_pirs(draft: OrganizationProfile, rows: list[dict[str, str]], plan: ImportPlan) -> None:
@@ -1400,16 +1526,112 @@ async def preview_import(
     excluded_ids: list[str] | None = None,
     sync_id: str = "",
 ) -> tuple[ImportPlan, int | None]:
-    """The import plan over the current profile, and the version it starts from (writes nothing)."""
+    """The import plan, and the profile version it starts from (writes nothing).
+
+    Assets and asset groups are planned against the records (#1543) when the
+    organization exists: :func:`apply_import` then writes them row by row. The
+    other sections, and a platform with no profile yet, plan on the profile.
+    """
     from app.services import organization_context as org_context
 
     current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
     read = await read_source(
         db, user_id=user_id, section=section, source=source, filters=filters, batch_type=batch_type
     )
+    if section in RECORD_SECTIONS and current is not None:
+        plan = await _plan_on_records(
+            db, section, source, read, remove_gone=remove_gone, excluded_ids=excluded_ids, sync_id=sync_id
+        )
+        if plan is not None:
+            return plan, current.version
+    base = org_context.parse_profile(current.profile if current else {})
     plan = plan_import(base, section, source, read, remove_gone=remove_gone, excluded_ids=excluded_ids, sync_id=sync_id)
     return plan, (current.version if current else None)
+
+
+async def _plan_on_records(
+    db: AsyncSession,
+    section: str,
+    source: str,
+    read: ReadResult,
+    *,
+    remove_gone: bool,
+    excluded_ids: list[str] | None,
+    sync_id: str,
+) -> ImportPlan | None:
+    """The record plan of an asset or group import (``None``: no organization yet)."""
+    from app.services import organization_asset_records as records
+
+    org = await records.ensure_records(db)
+    if org is None:
+        return None
+    refs = [
+        (source, str(getattr(r, "external_id", "") or ""))
+        for r in read.rows
+        if str(getattr(r, "external_id", "") or "")
+    ]
+    stored = await records.rows_by_ref(db, org, section, refs)
+    _attr, name_attr, _cap, _local = SOURCED_FIELDS[section]
+    names = await records.name_owners(
+        db, org, section, [str(getattr(r, name_attr, "") or "") for r in read.rows], source=source
+    )
+    gone_known = bool(excluded_ids) or (not read.truncated and not read.error)
+    source_rows = (
+        [StoredRow(e, n, s) for e, n, s in await records.source_refs(db, org, section, source)] if gone_known else []
+    )
+    validate = records.validate_asset if section == "assets" else records.validate_group
+
+    def checked(value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return validate(value)
+        except records.RecordError:
+            return value  # the source's own row model validated it; the write reports a bad field
+
+    return plan_record_import(
+        section,
+        source,
+        read,
+        validate=checked,
+        stored=stored,
+        names=names,
+        source_rows=source_rows,
+        remove_gone=remove_gone,
+        excluded_ids=excluded_ids,
+        sync_id=sync_id,
+        organization_id=org,
+    )
+
+
+async def apply_record_import(db: AsyncSession, plan: ImportPlan, *, actor: str) -> int:
+    """Write a record plan (#1543): its rows in batches, then its removals; answers the rows written or removed.
+
+    Origin ``sync:<id>`` for a sync (it owns its rows), else ``import``; each
+    changed row is in the change log, its identity cluster re-matched. No
+    profile version is saved (the caller commits).
+    """
+    from app.services import organization_asset_records as records
+
+    if plan.organization_id is None or plan.error:
+        return 0
+    origin = f"sync:{plan.sync_id}" if plan.sync_id else "import"
+    count = 0
+    for start in range(0, len(plan.writes), records.MAX_BATCH):
+        result = await records.write_rows(
+            db,
+            plan.organization_id,
+            plan.section,
+            plan.writes[start : start + records.MAX_BATCH],
+            origin=origin,
+            actor=actor,
+        )
+        count += len(result.created) + len(result.updated)
+    if plan.remove_refs:
+        count += len(
+            await records.remove_rows(
+                db, plan.organization_id, plan.section, plan.remove_refs, origin=origin, actor=actor
+            )
+        )
+    return count
 
 
 def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str, str]]:
