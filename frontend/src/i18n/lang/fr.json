@@ -21251,7 +21251,7 @@
   "Shown on the group and read by the CTEM agents when they explain why a case matters. Left empty, the group has no description.": "Affichée sur le groupe et lue par les agents CTEM quand ils expliquent l'importance d'un cas. Laissée vide, le groupe n'a pas de description.",
   "How much harm a compromise of this asset would cause.": "L'ampleur des dégâts que causerait la compromission de cet actif.",
   "Very high, high, medium or low, as in OpenAEV. CTEM agents read it to rank the cases on this asset. Left unknown, the agents cannot weigh its cases by criticality.": "Très élevée, élevée, moyenne ou faible, comme dans OpenAEV. Les agents CTEM s'en servent pour classer les cas de cet actif. Laissée inconnue, les agents ne peuvent pas pondérer ses cas par criticité.",
-  "Whether it can be reached from the internet.": "Si l'actif est joignable depuis internet.",
+  "Whether it can be reached from the internet.": "Joignable ou non depuis internet.",
   "An internet-facing asset is the first an attacker reaches. CTEM agents read it to rank the cases. Left unknown, the agents cannot weigh its exposure.": "Un actif exposé sur internet est le premier qu'un attaquant atteint. Les agents CTEM s'en servent pour classer les cas. Laissée inconnue, les agents ne peuvent pas pondérer son exposition.",
   "Where it runs, for example Production.": "Où il s'exécute, par exemple Production.",
   "Production, staging, development, test or other. CTEM agents read it to tell a production asset from a test one. Left empty, no environment is set.": "Production, préproduction, développement, test ou autre. Les agents CTEM s'en servent pour distinguer un actif de production d'un actif de test. Laissé vide, aucun environnement n'est défini.",
