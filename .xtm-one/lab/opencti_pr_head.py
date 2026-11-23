@@ -29,6 +29,11 @@ blank: its front queries fields the tag's backend lacks. Here both halves come f
    "parent": [key, port] | null, "configuration": {...}}], "links": [[from key, port, to key]]}}``. A configuration
    string ``{seeded:<kind>}`` is the id of a seeded entity (``{seeded:organization-filled}``). A playbook already
    holding its nodes is kept: the seed is idempotent across restarts.
+8. Seed script: a seed file entry may carry ``{"label", "script": "<path from this checkout's root>.mjs",
+   "path"?: "/dashboard/..."}`` instead of a query: the PR's own Node seed (a demo dataset, a .mjs or .js file) runs
+   with the lab's pinned node once the backend is healthy, with ``OPENCTI_URL`` (the backend), ``OPENCTI_TOKEN``
+   (the lab admin's token) and ``LAB_PREVIEW_URL`` in its environment, so no node is needed in another image and
+   no seed is hand-ported to GraphQL. A non-zero exit is logged and skipped; ``path`` names the page it fills.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ import os
 import secrets
 import select
 import socket
+import subprocess
 import sys
 import tarfile
 import threading
@@ -83,6 +89,9 @@ SUB_PATHS = (
     "opencti-platform/eslint-plugin-custom-rules",
 )
 THEMES = ("dark", "light")
+#: A PR seed script's extensions and its run budget, in seconds.
+SCRIPT_SUFFIXES = (".mjs", ".js", ".cjs")
+SCRIPT_TIMEOUT = 600
 #: Answered by this script once the backend is healthy (the preview server starts after it).
 READY_PATH = "/lab/ready"
 
@@ -191,16 +200,64 @@ def extra_seed(checkout: Path, environ: dict[str, str] | None = None) -> list[di
         raise SystemExit(f"opencti-pr-head: {path.name} is not JSON: {exc}") from None
     if not isinstance(entries, list) or not all(
         isinstance(e, dict) and isinstance(e.get("label"), str)
-        and (isinstance(e.get("query"), str) or valid_playbook(e.get("playbook")))
+        and (isinstance(e.get("query"), str) or valid_playbook(e.get("playbook"))
+             or seed_script(checkout, e.get("script")) is not None)
         for e in entries
     ):
         raise SystemExit(
-            f"opencti-pr-head: {path.name} must be a list of {{label, query, variables?, path?}} or {{label, playbook}} "
-            "objects (a playbook: name, nodes with key, component_id, name, parent; links as [from, port, to])"
+            f"opencti-pr-head: {path.name} must be a list of {{label, query, variables?, path?}}, {{label, playbook}} "
+            "or {label, script, path?} objects (a playbook: name, nodes with key, component_id, name, parent; links as "
+            f"[from, port, to]; a script: a {'/'.join(SCRIPT_SUFFIXES)} file inside this checkout)"
         )
-    return [{"label": e["label"], "query": e.get("query") or "", "variables": e.get("variables") or {},
-             "path": e.get("path") or "", "kind": "extra", **({"playbook": e["playbook"]} if e.get("playbook") else {})}
-            for e in entries]
+    seeds = []
+    for e in entries:
+        seed = {"label": e["label"], "query": e.get("query") or "", "variables": e.get("variables") or {},
+                "path": e.get("path") or "", "kind": "extra"}
+        if e.get("playbook"):
+            seed["playbook"] = e["playbook"]
+        script = seed_script(checkout, e.get("script"))
+        if script is not None and not seed["query"] and not e.get("playbook"):
+            seed["script"] = str(script)
+        seeds.append(seed)
+    return seeds
+
+
+def seed_script(checkout: Path, script: object) -> Path | None:
+    """The PR seed script *script* names, a Node file inside *checkout*; None when it is not one."""
+    if not isinstance(script, str) or not script.endswith(SCRIPT_SUFFIXES):
+        return None
+    root = checkout.resolve()
+    path = (root / script).resolve()
+    return path if path.is_relative_to(root) and path.is_file() else None
+
+
+def node_binary() -> Path:
+    """The lab's pinned node, unpacked by :func:`main` before any seed runs."""
+    return lab.CACHE / "node" / "package" / "bin" / "node"
+
+
+def run_script(entry: dict, base: str) -> tuple[str, str] | None:
+    """Run a PR seed script with the pinned node against the PR-head backend; its page, None on a failure (logged)."""
+    node = node_binary()
+    env = {**toolchain_env(node, dict(os.environ)), "OPENCTI_URL": BACKEND_URL, "OPENCTI_TOKEN": ADMIN_TOKEN,
+           "LAB_PREVIEW_URL": base}
+    script = Path(entry["script"])
+    process = lab.spawn(f"seed-script {entry['label']}", [str(node), str(script)], cwd=script.parent, env=env, daemon=False)
+    try:
+        code = process.wait(timeout=SCRIPT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        lab.log(f"opencti-pr-head: seed script {entry['label']} failed: still running after {SCRIPT_TIMEOUT} s, stopped")
+        return None
+    if code != 0:
+        lab.log(f"opencti-pr-head: seed script {entry['label']} failed: exit {code}")
+        return None
+    if not entry.get("path"):
+        lab.log(f"opencti-pr-head: seed script {entry['label']} ran")
+        return None
+    url = f"{base}{entry['path']}"
+    lab.log(f"{SESSION_PREFIX} {entry['label']}: {url}")
+    return entry["label"], url
 
 
 def valid_playbook(playbook: object) -> bool:
@@ -263,6 +320,11 @@ def run_seed(plan: list[dict], base: str, ids: dict[str, str] | None = None) -> 
     for entry in plan:
         if entry.get("playbook"):
             page = seed_playbook(entry["playbook"], base, ids, entry["label"])
+            if page:
+                pages.append(page)
+            continue
+        if entry.get("script"):
+            page = run_script(entry, base)
             if page:
                 pages.append(page)
             continue
@@ -793,7 +855,7 @@ def main() -> None:
     graphql_dir, front = root / GRAPHQL_DIR, root / FRONT_DIR
     lab.ROOT.mkdir(parents=True, exist_ok=True)
     lab.CACHE.mkdir(exist_ok=True)
-    node, yarn = lab.CACHE / "node" / "package" / "bin" / "node", lab.CACHE / "yarn" / "package" / "bin" / "yarn.js"
+    node, yarn = node_binary(), lab.CACHE / "yarn" / "package" / "bin" / "yarn.js"
     for spec, target in ((lab.NODE, "node"), (lab.YARN, "yarn")):
         with tarfile.open(fileobj=io.BytesIO(lab.fetch(spec)), mode="r:gz") as archive:
             archive.extractall(lab.CACHE / target, filter="data")

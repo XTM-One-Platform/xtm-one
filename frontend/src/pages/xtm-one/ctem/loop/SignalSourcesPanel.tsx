@@ -11,12 +11,12 @@
  * column so every chip aligns: Connected, Off, Not connected, or Agents and API
  * only, a path with no automatic source never reading connected), signals in 30
  * days, last signal, and one action: Connect or Turn on the first unbound
- * source, or Open signals in the Signals tab. Rows of at most two lines; below
+ * source, or Open signals in the signals list. Rows of at most two lines; below
  * the 4xl container width the Sources and Last signal columns step into line 2
  * of the first cell.
  *
- * The Sources tab of the Signals page (`/ctem/signals/sources`, #1263), reached
- * from the CTEM menu, the page's tabs and its summary strip.
+ * The signal sources page (`/ctem/signals/sources`, #1263, its own page since #1519),
+ * reached from the Signals page's header button and its summary strip.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -218,9 +218,9 @@ function SourceList({
 }
 
 /**
- * The Sources tab of the Signals page (#1263): every trigger path by lens,
+ * The signal sources page (#1263, #1519): every trigger path by lens,
  * its status, sources, signals in 30 days and Connect. A path's "Open signals"
- * opens the Signals tab filtered on it; a row opens its sources in the side
+ * opens the signals list filtered on it; a row opens its sources in the side
  * panel, where an administrator manages them (#1445).
  */
 export function SignalSourcesPanel() {
