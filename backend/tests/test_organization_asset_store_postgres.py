@@ -242,7 +242,8 @@ async def test_the_list_filters_on_fields_and_sources_and_the_facets_name_their_
     assert none.total == 0
     assert facets["criticality"] == [{"value": "high", "count": 1}, {"value": "low", "count": 1}]
     assert facets["category"] == [{"value": "host", "count": 2}]
-    assert facets["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 1}]
+    # laptop-01 holds an intune and an openaev record, web-02 an openaev one: a source counts assets.
+    assert facets["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 2}]
     # A facet's counts apply the other facets picked, never its own (OR within, AND across, #1501).
     assert narrowed["criticality"] == [{"value": "high", "count": 1}]
     assert narrowed["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 1}]

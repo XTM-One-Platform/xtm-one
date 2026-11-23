@@ -620,10 +620,6 @@ def build_organization_context_write_tools(
                     "section": {
                         "type": "string",
                         "enum": ["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-                        "description": (
-                            "ai_systems is deprecated (kept one release): it imports the assets of category "
-                            "ai_target; prefer assets."
-                        ),
                     },
                     "source": {"type": "string", "enum": _import_sources},
                     "filters": {"type": "object", "description": "The filters the dialog offers for that source."},
