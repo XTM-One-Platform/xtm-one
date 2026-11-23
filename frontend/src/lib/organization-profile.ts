@@ -27,6 +27,11 @@ export interface ProfileLike {
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
   tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
   ai_systems: ({ name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string } & Provenance)[];
+  /**
+   * What the organization ships, apart from what it runs (#1432): a vulnerability on one of these products (by CPE,
+   * then product and vendor) resolves to its source repositories (`owner/name`). Absent on a profile that declares none.
+   */
+  shipped_products?: ShippedProductRow[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615): the page never labels a PIR with its id. */
   pir_names?: Record<string, string>;
@@ -56,8 +61,15 @@ export interface ProfileLike {
   /** Parts edited outside this form (CTEM-28, #1216); kept whole through the form so a save never resets them. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
+  /** The sources taken off one CTEM trigger path (#1445), set from CTEM > Signals, Sources; kept whole through the form. */
+  signal_sources?: SignalSourcesSettings;
   /** How one asset is matched across sources and which source a field shows (#1178), set in CTEM > Inventory; kept whole through the form. */
   asset_identity?: AssetIdentitySettings;
+}
+
+/** Per CTEM trigger path, the sources (`provider:kind`) an administrator took off it (#1445). */
+export interface SignalSourcesSettings {
+  excluded?: Record<string, string[]>;
 }
 
 /** The saved asset identity settings; empty lists and maps keep the engine's defaults. */
@@ -425,7 +437,17 @@ export interface KnowledgeLink {
   kind: string;
 }
 
-export interface ProfileForm extends Omit<ProfileLike, "risk_appetite" | "loaded_hourly_rate"> {
+/** A product the organization ships (#1432); no sync writes these rows, so its provenance fields stay unset. */
+interface ShippedProductRow extends Provenance {
+  product: string;
+  vendor: string;
+  cpe: string;
+  repositories: string[];
+}
+
+export interface ProfileForm extends Omit<ProfileLike, "risk_appetite" | "loaded_hourly_rate" | "shipped_products"> {
+  /** Always a list in the form (edited as the other lists); a profile without one saves without the key. */
+  shipped_products: ShippedProductRow[];
   annual_loss_threshold: string;
   approval_threshold: string;
   loaded_hourly_rate: string;
@@ -604,6 +626,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
     tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
     ai_systems: profile.ai_systems.map((system) => ({ ...system })),
+    shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
     loaded_hourly_rate: numberText(profile.loaded_hourly_rate),
@@ -622,8 +645,16 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.case_attention ? { case_attention: { ...profile.case_attention } } : {}),
     ...(profile.evidence_health ? { evidence_health: profile.evidence_health } : {}),
     ...(profile.cases_recompute ? { cases_recompute: profile.cases_recompute } : {}),
+    ...(profile.signal_sources ? { signal_sources: { excluded: { ...(profile.signal_sources.excluded ?? {}) } } } : {}),
     ...(profile.asset_identity ? { asset_identity: { key_order: [...profile.asset_identity.key_order], precedence: { ...profile.asset_identity.precedence } } } : {}),
   };
+}
+
+/** The shipped products a save writes: rows without a product dropped, repositories trimmed and each once. */
+function shippedOf(rows: readonly ShippedProductRow[]): ShippedProductRow[] {
+  return rows
+    .filter((row) => row.product.trim())
+    .map((row) => ({ ...row, repositories: [...new Set(row.repositories.map((repo) => repo.trim()).filter(Boolean))] }));
 }
 
 /** The names kept for *ids*: one per PIR followed that has a name, none for a PIR no longer followed. */
@@ -683,6 +714,9 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
           .filter((entry) => entry.product.trim())
           .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
         ai_systems: form.ai_systems.filter((system) => system.name.trim()),
+        // Always sent, an empty list included, so removing the last row clears it: the server keeps the stored list
+        // only for a save that leaves the key out (#1432).
+        shipped_products: shippedOf(form.shipped_products),
         risk_appetite: {
           annual_loss_threshold: parseAmount(form.annual_loss_threshold, FIELD_LABELS["risk_appetite.annual_loss_threshold"], "annual_loss_threshold"),
           approval_threshold: parseAmount(form.approval_threshold, FIELD_LABELS["risk_appetite.approval_threshold"], "approval_threshold"),
@@ -714,6 +748,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         ...(form.case_attention ? { case_attention: form.case_attention } : {}),
         ...(form.evidence_health ? { evidence_health: form.evidence_health } : {}),
         ...(form.cases_recompute ? { cases_recompute: form.cases_recompute } : {}),
+        ...(form.signal_sources ? { signal_sources: form.signal_sources } : {}),
         ...(form.asset_identity ? { asset_identity: form.asset_identity } : {}),
       },
     };

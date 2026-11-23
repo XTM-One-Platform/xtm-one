@@ -28,6 +28,7 @@ export const LIST_ISSUES = {
   duplicate: "Same as another row",
   vendor: "Vendor is empty",
   cpe: "Not a valid CPE name",
+  repository: "A repository is not owner/name",
 } as const;
 
 export type ListIssue = (typeof LIST_ISSUES)[keyof typeof LIST_ISSUES];
@@ -144,6 +145,15 @@ export function isCpe(value: string): boolean {
   return parts.length === 13 && parts[0].toLowerCase() === "cpe" && parts[1] === "2.3" && /^[aho*-]$/.test(parts[2]) && parts.slice(3).every(Boolean);
 }
 
+/**
+ * A source repository as `owner/name` (#1432), a GitHub address read as its `owner/name` as the backend does;
+ * empty is not one.
+ */
+export function isRepository(value: string): boolean {
+  const text = value.trim().replace(/^(https?:\/\/)?github\.com\//i, "").replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+  return text.length <= 200 && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(text);
+}
+
 const norm = (text: string) => text.trim().toLowerCase();
 
 /**
@@ -182,6 +192,7 @@ export function attentionCount<V>(values: readonly V[], check: (value: V, all: r
 type Jewel = { name: string; business_service: string; owner: string; criticality: string };
 type Tech = { product: string; vendor: string; cpe: string };
 type AiSystem = { name: string; kind: string; owner: string; exposure: string };
+type Shipped = { product: string; vendor: string; cpe: string; repositories: readonly string[] };
 
 /** The checks and the identity of each list of the identity half of the profile. */
 export const LIST_RULES = {
@@ -200,6 +211,15 @@ export const LIST_RULES = {
   ai_systems: {
     check: (value: AiSystem): ListIssue[] => (value.name.trim() ? [] : [LIST_ISSUES.emptyName]),
     identity: (value: AiSystem) => value.name.trim(),
+  },
+  // What the organization ships (#1432): identified as the tech stack is, by product and vendor.
+  shipped_products: {
+    check: (value: Shipped): ListIssue[] => [
+      ...(value.product.trim() ? [] : [LIST_ISSUES.emptyName]),
+      ...(isCpe(value.cpe) ? [] : [LIST_ISSUES.cpe]),
+      ...(value.repositories.every(isRepository) ? [] : [LIST_ISSUES.repository]),
+    ],
+    identity: (value: Shipped) => (value.product.trim() ? `${value.product.trim()}\u0000${value.vendor.trim()}` : ""),
   },
 } as const;
 

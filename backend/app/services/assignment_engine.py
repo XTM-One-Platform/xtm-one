@@ -5744,6 +5744,11 @@ async def execute_assignment_run(
                         READ_ONLY_CONTEXT_KEY,
                         read_only_integration_ids,
                     )
+                    if _fleet_autonomy is not None:
+                        # The tools a gate of the run's fleet decides (#1480).
+                        from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY, gate_tool_names
+
+                        integration_context[FLEET_GATED_TOOLS_CONTEXT_KEY] = gate_tool_names(_fleet_autonomy[1])
 
                     # Resolved bindings: a template-bound provider marked
                     # read-only narrows the integration resolved for it above.

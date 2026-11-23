@@ -27,9 +27,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -427,20 +428,55 @@ def threat_package_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
     }
 
 
-def threat_package_for(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any] | None:
+#: An OpenCTI draft page: the package still sits in a draft (#1453, #1480); the same
+#: pattern ``ctem_case_loop.record_threat_package`` accepts.
+_DRAFT_PAGE = re.compile(
+    r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/data/import/draft/[0-9a-fA-F-]{36}(?:/[A-Za-z0-9._-]*)?$"
+)
+
+
+def threat_package_state(package: dict[str, Any]) -> str:
+    """``drafted`` while the package's page is its OpenCTI draft, else ``validated`` (#1480).
+
+    A drafted package and its coverage are not in OpenCTI's live graph: the
+    coverage has not reached OpenAEV. The Grouping page is written on the case
+    once the draft is validated.
+    """
+    url = str(package.get("url") or "")
+    return "drafted" if _DRAFT_PAGE.match(url) else "validated"
+
+
+def threat_package_for(
+    events: list[CtemCaseEvent], view: ViewerView, *, sla_due_at: datetime | None = None, now: datetime | None = None
+) -> dict[str, Any] | None:
     """The case's threat package as this viewer may read it (CTEM-16-UI, #1115).
 
-    Whether a package was drafted, whether its coverage was requested, and
-    when, go to every viewer of the case; the Grouping's name, ids and OpenCTI
-    link only to a viewer whose own OpenCTI read is available, else
-    ``restricted``.
+    Whether a package was drafted or validated, whether its coverage was
+    requested, and when, go to every viewer of the case; the Grouping's name,
+    ids and OpenCTI link only to a viewer whose own OpenCTI read is available,
+    else ``restricted``. ``coverage_requested`` is true only once the draft is
+    validated (#1480): a coverage written in a draft never reached OpenAEV, and
+    reads ``coverage_drafted``. ``draft_overdue``: still drafted past the case SLA.
     """
     package = threat_package_of(events)
     if package is None:
         return None
+    state = threat_package_state(package)
+    has_coverage = bool(package["coverage_id"])
+    at = now or datetime.now(UTC)
+    status = {
+        "state": state,
+        "coverage_requested": has_coverage and state == "validated",
+        "coverage_drafted": has_coverage and state == "drafted",
+        "draft_overdue": state == "drafted" and sla_due_at is not None and _aware(sla_due_at) < at,
+    }
     if not view.opencti:
-        return {"restricted": True, "coverage_requested": bool(package["coverage_id"]), "at": package["at"]}
-    return {**package, "coverage_requested": bool(package["coverage_id"]), "restricted": False}
+        return {"restricted": True, **status, "at": package["at"]}
+    return {**package, **status, "restricted": False}
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _rank(row: CtemCaseIssue, view: ViewerView) -> tuple:
@@ -472,7 +508,7 @@ def hydrate(
         "exploitation": exploitation_for(case, view),
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
-        "threat_package": threat_package_for(events, view),
+        "threat_package": threat_package_for(events, view, sla_due_at=case.sla_due_at),
     }
 
 
