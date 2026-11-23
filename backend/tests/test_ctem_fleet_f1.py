@@ -102,16 +102,15 @@ def test_the_new_agents_are_seeded_once():
 
 def test_the_spec_assignments_live_on_the_orchestrator() -> None:
     assignments = _f1_assignments()
-    # The three of the spec, plus the case loop (#891), the PIR score trigger (CTEM-08) and the
-    # threat signal run (#1580).
+    # The three of the spec, plus the case loop (#891) and the PIR score trigger (CTEM-08).
     assert set(assignments) == {
         "New relevant threat",
         "Threat activity flagged in a PIR",
-        "Threat signal recorded",
         "Weekly threat sweep",
         "Re-test due",
         "Case opened or reopened",
         "Gate answered",
+        "Loop reminder due",
     }
     assert assignments["Weekly threat sweep"]["trigger_config"] == {"cron": "0 7 * * 1"}
     assert assignments["Re-test due"]["trigger_type"] == "work_item"
@@ -130,172 +129,9 @@ def test_the_new_threat_trigger_is_provisioned_from_the_organization_profile():
 
 def test_the_pir_threat_trigger_is_a_pir_playbook_held_to_the_policy_threshold() -> None:
     trigger = _f1_assignments()["Threat activity flagged in a PIR"]
+    assert trigger["trigger_config"]["pir_min_score"] == "policy"
     spec = read_provision_spec(trigger["trigger_config"])
     assert spec is not None
     assert spec["mode"] == "pir_playbook"
     assert spec["organization_context"] == ["pir_ids"]
     assert "Vulnerability" not in spec["entity_types"]
-
-
-# ── #1580: the OpenCTI seeds are the intake, the signal event starts the run ──
-
-
-@pytest.mark.parametrize("name", ["New relevant threat", "Threat activity flagged in a PIR"])
-def test_the_opencti_threat_seeds_provision_and_only_listen(name):
-    from app.agents.builtin_agents import CTEM_LISTEN_ONLY_FILTER
-    from app.services.integration_event_filters import payload_filter_reason
-
-    trigger = _f1_assignments()[name]
-    assert trigger["trigger_type"] == "integration_event"
-    assert read_provision_spec(trigger["trigger_config"]) is not None
-    assert trigger["trigger_config"]["filter"] == CTEM_LISTEN_ONLY_FILTER
-    assert "pir_min_score" not in trigger["trigger_config"]
-    # A real OpenCTI delivery never passes: the signal is recorded by the webhook route.
-    delivery = {"event_type": "create", "data": {"type": "intrusion-set", "id": "intrusion-set--1"}}
-    assert payload_filter_reason(delivery, trigger["trigger_config"]["filter"]) is not None
-    assert "record_ctem_signal" not in trigger["prompt"]
-
-
-def test_the_threat_signal_run_listens_to_both_signal_events_with_an_explicit_cap():
-    from app.agents.gate_answered import INHERIT_SWITCH_FROM_KEY
-    from app.services.assignment_dispatch import assignment_concurrency_cap, seeded_trigger_config
-    from app.services.ctem_signals import SIGNAL_EVENTS
-
-    run = _f1_assignments()["Threat signal recorded"]
-    assert run["trigger_type"] == "platform_event"
-    config = run["trigger_config"]
-    assert tuple(config["event"]) == SIGNAL_EVENTS
-    assert config["scope"] == "all"
-    assert config["ordering_key"] == "signal_id"
-    # Explicit, never the seeded event default of 1 (#1460).
-    assert config["max_concurrent_runs"] > 1
-    assert (
-        assignment_concurrency_cap(seeded_trigger_config(run["trigger_type"], config)) == config["max_concurrent_runs"]
-    )
-    assert run[INHERIT_SWITCH_FROM_KEY] == "New relevant threat"
-    assert (run["enabled"], run["admin_opt_in"]) == (False, True)
-
-
-def _signal_event(**overrides):
-    return {
-        "signal_id": "s1",
-        "trigger_path": "relevant_threat",
-        "lens": "world",
-        "source_provider": "opencti",
-        "subject_kind": "threat",
-        "verdict": "to_validate",
-        "case_id": None,
-        **overrides,
-    }
-
-
-@pytest.mark.parametrize(
-    ("overrides", "runs"),
-    [
-        ({}, True),
-        ({"verdict": None}, True),
-        ({"verdict": "confirmed"}, False),  # the case loop's
-        ({"verdict": "watchlist"}, False),
-        ({"verdict": "discarded"}, False),
-        ({"trigger_path": "new_vulnerability"}, False),
-        ({"source_provider": "manual"}, False),
-    ],
-)
-def test_the_threat_signal_filter_keeps_the_signals_no_case_loop_owns(overrides, runs):
-    from app.services.integration_event_filters import payload_filter_reason
-
-    config = _f1_assignments()["Threat signal recorded"]["trigger_config"]
-    assert (payload_filter_reason(_signal_event(**overrides), config["filter"]) is None) is runs
-
-
-# ── #1580 upgrade: an installation seeded with the old run-on-delivery triggers ──
-
-
-def _seed_db(agent, existing, sibling=None):
-    from unittest.mock import AsyncMock, MagicMock
-
-    from tests.test_builtin_assignments_never_disabled import _Result
-
-    results = [
-        _Result(scalar=agent),  # phase 1: agent lookup for the stale sweep
-        _Result(items=[]),  # phase 1: no stale assignments
-        _Result(scalar=agent),  # phase 2: agent lookup
-        _Result(scalar=existing, items=[existing] if existing else []),
-    ]
-    if existing is None:
-        results.append(_Result(scalar=sibling, items=[sibling] if sibling else []))
-    db = AsyncMock()
-    db.execute = AsyncMock(side_effect=results)
-    db.commit = AsyncMock()
-    db.flush = AsyncMock()
-    db.add = MagicMock()
-    return db
-
-
-def _orchestrator_row():
-    import uuid
-    from unittest.mock import MagicMock
-
-    agent = MagicMock()
-    agent.id = uuid.uuid4()
-    agent.slug = _ORCH
-    agent.user_id = uuid.uuid4()
-    agent.is_company_managed = True
-    return agent
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("enabled", [True, False])
-async def test_an_old_intake_row_becomes_listen_only_keeping_its_switch_and_provisioning(monkeypatch, enabled):
-    import uuid
-    from unittest.mock import MagicMock
-
-    from app.agents.builtin_agents import CTEM_LISTEN_ONLY_FILTER
-    from app.agents.seed import seed_builtin_assignments
-    from app.services.opencti_trigger_provisioning import STATE_KEY
-
-    monkeypatch.setattr("app.agents.seed.BUILTIN_ASSIGNMENTS", [_f1_assignments()["New relevant threat"]])
-    run_as = uuid.uuid4()
-    existing = MagicMock()
-    existing.enabled = enabled
-    existing.run_as_user_id = run_as
-    existing.user_id = uuid.uuid4()
-    existing.prompt = "OpenCTI created the entity in the trigger below. ... record_ctem_signal ..."
-    existing.trigger_config = {"provider": "opencti", "provision": {}, STATE_KEY: {"trigger_ids": ["t1"]}}
-
-    inserted = await seed_builtin_assignments(_seed_db(_orchestrator_row(), existing), platform_mode="xtm_one")
-
-    assert inserted == 0
-    assert existing.enabled is enabled
-    assert existing.run_as_user_id == run_as
-    assert existing.trigger_config["filter"] == CTEM_LISTEN_ONLY_FILTER
-    assert existing.trigger_config[STATE_KEY] == {"trigger_ids": ["t1"]}
-    assert "record_ctem_signal" not in existing.prompt
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("intake_on", [True, False])
-async def test_the_threat_signal_run_takes_the_intake_switch_on_upgrade(monkeypatch, intake_on):
-    import uuid
-    from unittest.mock import MagicMock
-
-    from app.agents.seed import seed_builtin_assignments
-
-    monkeypatch.setattr("app.agents.seed.BUILTIN_ASSIGNMENTS", [_f1_assignments()["Threat signal recorded"]])
-    monkeypatch.setattr("app.agents.seed.is_emergency_stopped", lambda _a: False)
-    sibling = MagicMock()
-    sibling.enabled = intake_on
-    sibling.run_as_user_id = uuid.uuid4()
-    db = _seed_db(_orchestrator_row(), None, sibling)
-
-    inserted = await seed_builtin_assignments(db, platform_mode="xtm_one")
-
-    assert inserted == 1
-    (seeded,) = [call.args[0] for call in db.add.call_args_list]
-    assert seeded.enabled is intake_on
-    assert seeded.trigger_type == "platform_event"
-    assert seeded.trigger_config["max_concurrent_runs"] > 1
-    if intake_on:
-        assert seeded.run_as_user_id == sibling.run_as_user_id
-    else:
-        assert seeded.paused_reason == "created_disabled"

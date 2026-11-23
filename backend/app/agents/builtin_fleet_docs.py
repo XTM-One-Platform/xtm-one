@@ -66,10 +66,10 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "its SLA; one loop per case, on every trigger path (a use-case fleet takes the cases of its paths only while its own case automation is on). Cases opened before the fleet was enabled are taken on enable and on the hourly case sweep.\n"
         "- **Gate answered**: a person answers a gate a case waits on; the loop goes on from that step, "
         "or stops on a rejection.\n"
-        "- **New relevant threat** and **Threat activity flagged in a PIR**: the OpenCTI intake; each "
-        "delivery records a relevant threat signal, with no run of its own.\n"
-        "- **Threat signal recorded**: a threat signal recorded or moved to 'to validate' is scored "
-        "against the profile; a confirmed one goes to its case.\n"
+        "- **Loop reminder due**: a reminder the loop set on a case is due; the person a gate still waits "
+        "on is reminded once.\n"
+        "- **New relevant threat** and **Threat activity flagged in a PIR**: OpenCTI events, kept "
+        "when relevant to the profile or at the PIR threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
         "validated scenario once a fix is deployed.\n"
         "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
@@ -115,15 +115,16 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
         "OpenCRQ and proposes the three actions of the week, each closed by a re-test."
     ),
     "triggers": (
-        "- **New relevant threat**: an OpenCTI creation of an Intrusion Set or a Campaign records a relevant threat signal; no run of its own.\n"
-        "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR and records a relevant threat signal; no run of its own.\n"
-        "- **Threat signal recorded**: a relevant threat signal from OpenCTI is recorded, or the scope gate moves it to 'to validate'; the run scores its relevance against the profile. A confirmed signal opens its case through the case loop.\n"
+        "- **New relevant threat**: an OpenCTI creation of an Intrusion Set, a Campaign or a Report.\n"
+        "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR; the run starts when its live PIR score reaches the policy threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
         "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
         "re-test, or past its SLA, unless an active use-case fleet owns its path; the case is the record of the loop.\n"
         "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
-        "case and the loop goes on, or stops on a rejection."
+        "case and the loop goes on, or stops on a rejection.\n"
+        "- **Loop reminder due**: a reminder set on a case is due; the person a gate still waits on is "
+        "reminded once."
     ),
     "flow": (
         "1. Relevance: below the threshold the case closes as not relevant, with the reason.\n"
@@ -637,20 +638,13 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {
             "module": "opencti",
             "name": "New relevant threat",
-            "filter": "An intrusion set or a campaign is created",
-            "detail": "Records a relevant threat signal, no run of its own",
+            "filter": "An intrusion set, a campaign or a report is created",
         },
         {
             "module": "opencti",
             "name": "Threat activity flagged in a PIR",
             "filter": "Threat activity is flagged in an organization PIR",
-            "detail": "Records a relevant threat signal, no run of its own",
-        },
-        {
-            "module": "platform",
-            "name": "Threat signal recorded",
-            "filter": "A relevant threat signal is recorded or moved to 'to validate'",
-            "detail": "One run per signal; a confirmed signal goes to its case",
+            "detail": "Kept when its live PIR score reaches the policy threshold (75 by default)",
         },
         {
             "module": "schedule",
@@ -675,6 +669,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "name": "Gate answered",
             "filter": "A person answers a gate a case waits on",
             "detail": "The loop goes on from that step",
+        },
+        {
+            "module": "platform",
+            "name": "Loop reminder due",
+            "filter": "A reminder the loop set on a case is due",
+            "detail": "The person a gate still waits on is reminded once",
         },
     ],
     "steps": [
@@ -710,23 +710,23 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         _SWITCHED_ON,
     ],
     "quota": [
-        {"trigger": "New relevant threat", "basis": "No run: records signals", "runs_min": 0, "runs_max": 0},
         {
-            "trigger": "Threat activity flagged in a PIR",
-            "basis": "No run: records signals",
-            "runs_min": 0,
-            "runs_max": 0,
-        },
-        {
-            "trigger": "Threat signal recorded",
-            "basis": "One run per threat signal not yet confirmed",
+            "trigger": "New relevant threat",
+            "basis": "One run per event that passes the filters",
             "runs_min": 4,
             "runs_max": 30,
+        },
+        {
+            "trigger": "Threat activity flagged in a PIR",
+            "basis": "One run per flag at or above the policy threshold",
+            "runs_min": 0,
+            "runs_max": 20,
         },
         {"trigger": "Weekly threat sweep", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
         {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
         {"trigger": "Gate answered", "basis": "One run per gate answered", "runs_min": 0, "runs_max": 40},
+        {"trigger": "Loop reminder due", "basis": "One run per reminder due", "runs_min": 0, "runs_max": 40},
     ],
 }
 

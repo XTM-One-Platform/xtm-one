@@ -3086,32 +3086,16 @@ _F1_RUN = {
     "run_as_all_users": False,
 }
 
-#: The OpenCTI intake of the threat response fleet (#1580): each one provisions its OpenCTI
-#: trigger and listens with no run of its own; the webhook route records the relevant_threat
-#: signal (services/ctem_signal_listeners.py), and the signal event starts the run below.
-CTEM_F1_THREAT_INTAKE = "New relevant threat"
-CTEM_F1_PIR_INTAKE = "Threat activity flagged in a PIR"
-CTEM_F1_THREAT_SIGNAL = "Threat signal recorded"
-#: The verdicts the threat signal run takes: those the case loop does not own (a confirmed
-#: signal opens or joins a case, a watchlisted or discarded one waits), or none yet.
-CTEM_F1_THREAT_SIGNAL_VERDICTS: tuple[str, ...] = ("to_validate",)
-#: Threat signals assessed at once (one run per signal, ordered by the signal id).
-CTEM_F1_THREAT_SIGNAL_CONCURRENCY = 5
-_LISTEN_ONLY_PROMPT = (
-    "This assignment only listens: its filter drops every OpenCTI delivery, the platform records "
-    "the threat signal and the 'Threat signal recorded' assignment assesses it. If a delivery "
-    "reached you, answer that nothing is to do."
-)
-
 CTEM_F1_ASSIGNMENTS: list[dict] = [
     {
         **_F1_RUN,
-        "name": CTEM_F1_THREAT_INTAKE,
+        "name": "New relevant threat",
         "description": (
-            "Listens to OpenCTI: an intrusion set or a campaign created that targets the "
-            "organization's sector or regions records a relevant threat signal, which 'Threat "
-            "signal recorded' assesses. The OpenCTI trigger is provisioned from the organization "
-            "profile. No run of its own."
+            "When OpenCTI creates an intrusion set, a campaign or a report that "
+            "targets the organization's sector or regions, opens a threat "
+            "response case: relevance, scenario proposed, expected loss, three "
+            "actions. The OpenCTI trigger is provisioned from the organization "
+            "profile."
         ),
         "trigger_type": "integration_event",
         "trigger_config": {
@@ -3119,27 +3103,33 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "provision": {
                 "fleet": "Threat response",
                 "purpose": "New relevant threats",
-                # Unchanged (#1580): a Report records no signal (no listener row) and the
-                # weekly sweep covers it; the provisioned OpenCTI trigger is left as it is.
                 "entity_types": ["Intrusion-Set", "Campaign", "Report"],
                 "event_types": ["create"],
                 "organization_context": ["sector", "regions"],
             },
-            "filter": CTEM_LISTEN_ONLY_FILTER,
         },
-        "prompt": _LISTEN_ONLY_PROMPT,
+        "prompt": (
+            "OpenCTI created the entity in the trigger below. Score its relevance "
+            "first and stop with the reason when it is not relevant. When it is, "
+            "record it with record_ctem_signal (trigger_path relevant_threat, its "
+            "STIX id as source): the scope gate opens or joins its case, and the "
+            "case event runs the loop. End with the relevance verdict and the "
+            "signal id."
+        ),
     },
     {
         **_F1_RUN,
-        "name": CTEM_F1_PIR_INTAKE,
+        "name": "Threat activity flagged in a PIR",
         "description": (
-            "Listens to OpenCTI: an intrusion set, a threat actor, a campaign or a malware flagged "
-            "in one of the organization's PIRs records a relevant threat signal, which 'Threat "
-            "signal recorded' assesses. No run of its own."
+            "When OpenCTI flags an intrusion set, a threat actor, a campaign or a malware in one of "
+            "the organization's PIRs and its live PIR score reaches the prioritization policy's "
+            "threshold for threat activity (75 by default, editable in Settings), opens a threat "
+            "response case. The score is checked before any model call."
         ),
         "trigger_type": "integration_event",
         "trigger_config": {
             "provider": "opencti",
+            "pir_min_score": "policy",
             "provision": {
                 "fleet": "Threat response",
                 "purpose": "Threat activity flagged in a PIR",
@@ -3154,44 +3144,13 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
                 "organization_context": ["pir_ids"],
                 "pir_min_score": 1,
             },
-            "filter": CTEM_LISTEN_ONLY_FILTER,
         },
-        "prompt": _LISTEN_ONLY_PROMPT,
-    },
-    {
-        **_F1_RUN,
-        "name": CTEM_F1_THREAT_SIGNAL,
-        "description": (
-            "When a relevant threat signal from OpenCTI is recorded, or the scope gate moves it to "
-            "'to validate', scores its relevance against the organization profile and says what "
-            "the scope gate needs to confirm it. A confirmed signal is the case loop's."
-        ),
-        "trigger_type": "platform_event",
-        "trigger_config": {
-            "event": ["ctem_signal.recorded", "ctem_signal.triaged"],
-            "filter": {
-                "trigger_path": "relevant_threat",
-                "source_provider": "opencti",
-                "any": [
-                    {"verdict": {"exists": False}},
-                    {"verdict": {"in": list(CTEM_F1_THREAT_SIGNAL_VERDICTS)}},
-                ],
-            },
-            "scope": "all",
-            "max_concurrent_runs": CTEM_F1_THREAT_SIGNAL_CONCURRENCY,
-            "ordering_key": "signal_id",
-        },
-        # Upgrade: an installation whose OpenCTI intake is on gets this run on too.
-        INHERIT_SWITCH_FROM_KEY: CTEM_F1_THREAT_INTAKE,
         "prompt": (
-            "A relevant threat signal from OpenCTI is in the trigger below (signal_id, verdict). "
-            "Read it with list_ctem_signals signal_id, then read the entity it names in OpenCTI. "
-            "Score its relevance against the organization profile (get_organization_context: "
-            "sector, regions, technology, PIRs) and stop with the reason when it is not relevant. "
-            "When it is, name the profile entry it touches (a sector, a region, a technology, a "
-            "crown jewel or a PIR) and what is missing for the scope gate to confirm it, unless an "
-            "open case already covers it (list_ctem_cases); once confirmed, the case loop opens "
-            "the case. End with the relevance verdict, the signal id and the case id when one exists."
+            "OpenCTI flagged the entity in the trigger below in an organization PIR, at or above the "
+            "policy's threshold (read live before this run). Score its relevance and stop with the "
+            "reason when it is not relevant. When it is, record it with record_ctem_signal "
+            "(trigger_path relevant_threat, its STIX id as source): the scope gate opens or joins its "
+            "case. End with the relevance verdict and the signal id."
         ),
     },
     {
@@ -3243,6 +3202,46 @@ CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
 CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1", prefixes=CTEM_F1_GATE_PREFIXES))
+
+#: The one timer prefix the loop arms (#1574): its reminders reach its own listener, never another agent's.
+CTEM_LOOP_REMINDER_PREFIX = "ctem-loop-reminder:"
+#: Prefixes the loop armed before #1574: still heard, so a timer armed before the upgrade is not lost.
+CTEM_LOOP_LEGACY_TIMER_PREFIXES: tuple[str, ...] = ("ctem-gate-watch:", "ctem-loop-watch:")
+CTEM_LOOP_REMINDER = "Loop reminder due"
+CTEM_F1_ASSIGNMENTS.append(
+    {
+        **_F1_RUN,
+        "name": CTEM_LOOP_REMINDER,
+        "description": (
+            "A reminder the loop armed with arm_timer (key `ctem-loop-reminder:CASE_ID`) "
+            "reached its due time: the case and its open gates are re-read and the deciding person is "
+            "reminded once when a gate is still unanswered."
+        ),
+        "trigger_type": "platform_event",
+        "trigger_config": {
+            "event": "timer.due",
+            "scope": "own",
+            "filter": {
+                "correlation_key": {
+                    "starts_with": [CTEM_LOOP_REMINDER_PREFIX, *CTEM_LOOP_LEGACY_TIMER_PREFIXES],
+                }
+            },
+        },
+        # Takes the case listener's switch and run-as: a fleet already on gets it on upgrade.
+        INHERIT_SWITCH_FROM_KEY: CTEM_F1_CASE_ASSIGNMENT["name"],
+        "max_iterations": 40,
+        "timeout_seconds": 600,
+        "prompt": (
+            "A reminder you armed is due: the timer.due event below carries its correlation_key "
+            "(`ctem-loop-reminder:CASE_ID`) and its payload. Read the case with "
+            "get_ctem_case and its open gates. When a gate still waits on a person, remind that person "
+            "once on the gate's decision item (one note naming the decision and the SLA), and arm the "
+            "next reminder only if the case's SLA has not passed, always as `ctem-loop-reminder:CASE_ID`. When "
+            "nothing waits any more (the gate is answered, the case closed or moved on), do nothing and "
+            "end with one line saying so. Never remind twice for the same gate in one run."
+        ),
+    }
+)
 
 BUILTIN_ASSIGNMENTS.extend(CTEM_F1_ASSIGNMENTS)
 
