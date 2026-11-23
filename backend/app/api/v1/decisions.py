@@ -81,6 +81,16 @@ async def backfill_status(
 @router.get("/waiting")
 async def waiting(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    fleet: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Only the decisions this fleet raised (runs and work items of its current home members, #1493). "
+                "A fleet the caller cannot read is a 404; a manager of the fleet also sees the decisions "
+                "addressed to someone else, marked can_answer false."
+            )
+        ),
+    ] = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -91,7 +101,14 @@ async def waiting(
     """
     from app.services.decision_inbox import waiting_for
 
-    return await waiting_for(db, user, limit=limit)
+    if fleet is None:
+        return await waiting_for(db, user, limit=limit)
+    from app.api.v1.fleets import _visible_fleet
+    from app.api.v1.helpers import can_manage_entity
+
+    fleet_row = await _visible_fleet(db, user, fleet)
+    manages = await can_manage_entity(db, user, fleet_row)
+    return await waiting_for(db, user, limit=limit, fleet_id=fleet_row.id, every_recipient=manages)
 
 
 @router.post("/{decision_id}/answer")
