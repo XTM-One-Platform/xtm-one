@@ -54,6 +54,7 @@ from app.services.organization_context import (
     OrganizationProfile,
     TechStackEntry,
 )
+from app.services.organization_context_microsoft import os_family
 
 logger = logging.getLogger(__name__)
 
@@ -337,9 +338,30 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         external_id=asset_id[:200],
         # The hostname the agent reports (``asset_hostname``), an identity key beside the name.
         hostname=str(asset.get("asset_hostname") or "").strip()[:255],
+        # Its addresses: the MACs a strong key, the IPs a weak one (possible matches only).
+        mac=_openaev_list(asset.get("asset_mac_addresses")),
+        ip=_openaev_list(asset.get("asset_ips")),
+        # The platform as an OS family named as the Microsoft sources name it (``Windows``, ``macOS``).
+        os_family=openaev_os_family(asset.get("endpoint_platform")),
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
     )
+
+
+#: OpenAEV ``endpoint_platform`` values that name no operating system.
+_OPENAEV_NO_PLATFORM: frozenset[str] = frozenset({"", "unknown", "generic", "internal"})
+
+
+def openaev_os_family(platform: Any) -> str:
+    """OpenAEV's ``endpoint_platform`` as an OS family, the names the Intune and Defender sources use."""
+    text = str(platform or "").strip()
+    return "" if text.lower() in _OPENAEV_NO_PLATFORM else os_family(text)
+
+
+def _openaev_list(value: Any) -> list[str]:
+    """A list field of an OpenAEV endpoint (``asset_ips``, ``asset_mac_addresses``), non-empty values, ten at most."""
+    values = value if isinstance(value, list) else [value] if value else []
+    return [text for text in dict.fromkeys(str(v).strip()[:64] for v in values if v is not None) if text][:10]
 
 
 #: OpenAEV ``asset_status`` values (lower-cased) an asset row keeps (#1134 S4, CTEM-27).

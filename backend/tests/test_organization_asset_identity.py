@@ -40,6 +40,12 @@ def _rec(source: str, ext: str, **ids: object) -> SourceRecord:
         ("mac", "AA-BB-CC-DD-EE-FF", "aa:bb:cc:dd:ee:ff"),
         ("mac", "00:00:00:00:00:00", ""),
         ("mac", "not a mac", ""),
+        # Virtual interfaces (Docker bridge, VMware, VirtualBox, Hyper-V, QEMU/KVM) name no machine.
+        ("mac", "02:42:ac:11:00:02", ""),
+        ("mac", "00-50-56-AB-CD-EF", ""),
+        ("mac", "08:00:27:12:34:56", ""),
+        ("mac", "00:15:5D:01:02:03", ""),
+        ("mac", "52:54:00:12:34:56", ""),
         ("fqdn", "Web01.Corp.Example.", "web01.corp.example"),
         ("fqdn", "web01", ""),
         ("hostname", "CORP\\LAPTOP-ALICE", "laptop-alice"),
@@ -80,6 +86,35 @@ def test_different_serials_never_merge_on_a_shared_hostname() -> None:
     a = _rec("intune", "d-1", serial="AAA111", hostname="ws-7")
     b = _rec("openaev", "a-1", serial="BBB222", hostname="ws-7")
     assert len(ident.match_records([a, b])) == 2
+
+
+def test_a_machine_named_in_two_cases_by_two_sources_is_one_asset() -> None:
+    """An OpenAEV row stored with an empty hostname takes its name as hostname and merges with Intune's."""
+    intune = {
+        "name": "LAPT-FILI-0002",
+        "source": "intune",
+        "external_id": "d-1",
+        "hostname": "LAPT-FILI-0002",
+        "serial": "J1X3CD4",
+        "os_family": "Windows",
+    }
+    openaev = {"name": "lapt-fili-0002", "source": "openaev", "external_id": "a-1", "hostname": "", "mac": []}
+    [asset] = ident.dedupe_section("assets", [intune, openaev])
+    assert asset.sources == ["intune", "openaev"]
+    assert asset.explanation() == "merged on hostname"
+
+
+def test_openaev_and_intune_merge_on_a_mac_whatever_the_names() -> None:
+    intune = {"name": "LAPT-FILI-0002", "source": "intune", "external_id": "d-1", "mac": ["40:d1:33:98:4f:63"]}
+    openaev = {"name": "agent-7", "source": "openaev", "external_id": "a-1", "mac": ["40-D1-33-98-4F-63"]}
+    [asset] = ident.dedupe_section("assets", [intune, openaev])
+    assert asset.explanation() == "merged on MAC address"
+
+
+def test_a_shared_virtual_mac_never_merges_two_machines() -> None:
+    a = {"name": "build-01", "source": "intune", "external_id": "d-1", "mac": ["02:42:ac:11:00:02"]}
+    b = {"name": "build-02", "source": "openaev", "external_id": "a-1", "mac": ["02:42:ac:11:00:02"]}
+    assert len(ident.dedupe_section("assets", [a, b])) == 2
 
 
 def test_same_source_with_two_ids_is_two_things() -> None:
