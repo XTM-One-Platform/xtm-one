@@ -17667,6 +17667,7 @@
   "No asset yet: add them under Assets and exposure.": "資産がありません: 資産と露出で追加してください。",
   "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.": "資産がありません: 優先順位付けファネルはインターネットに露出した検出結果を区別できません。",
   "No knowledge base linked: agents cannot follow your own procedures.": "リンクされたナレッジベースがありません: エージェントは自社の手順に従えません。",
+  "No policy yet: findings rank as before.": "ポリシーがありません: 検出結果は従来どおりに順位付けされます。",
   "No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).": "ポリシーがありません: 検出結果は従来どおりに順位付けされます。編集して推奨ポリシー (CVSS 7、EPSS 0.1、KEV を常に含める) から始めてください。",
   "Not readable by you": "閲覧権限がありません",
   "Patch policy": "パッチポリシー",
