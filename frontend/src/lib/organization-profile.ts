@@ -53,17 +53,10 @@ export interface ProfileLike {
   attack_surface?: AttackSurfacePass;
   /** The points of the Cases attention score (#1176), set from CTEM > Cases; kept whole through the form. */
   case_attention?: CaseAttentionProfile;
-  /** Parts edited outside this form (CTEM-28, #1216); kept whole through the form so a save never resets them. */
+  /** Parts edited outside this form (CTEM-28, #1216, #1178); kept whole through the form so a save never resets them. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
-  /** How one asset is matched across sources and which source a field shows (#1178), set in CTEM > Inventory; kept whole through the form. */
-  asset_identity?: AssetIdentitySettings;
-}
-
-/** The saved asset identity settings; empty lists and maps keep the engine's defaults. */
-export interface AssetIdentitySettings {
-  key_order: string[];
-  precedence: Record<string, string[]>;
+  asset_identity?: Record<string, unknown>;
 }
 
 /** The Cases attention points as the profile stores them (backend `CaseAttentionWeights`). */
@@ -274,6 +267,10 @@ export interface AssetRow {
   tags: string[];
   source: string;
   external_id: string;
+  /** When the source last observed the asset, ISO 8601 UTC; absent or "" when it does not say (#1134 S4). */
+  last_seen?: string;
+  /** The source's activity status (OpenAEV: active, inactive, agentless, stale); absent or "" when unknown. */
+  status?: "" | "active" | "inactive" | "agentless" | "stale";
 }
 
 /** A group of assets (OpenAEV's asset group, #11781). */
@@ -549,7 +546,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.case_attention ? { case_attention: { ...profile.case_attention } } : {}),
     ...(profile.evidence_health ? { evidence_health: profile.evidence_health } : {}),
     ...(profile.cases_recompute ? { cases_recompute: profile.cases_recompute } : {}),
-    ...(profile.asset_identity ? { asset_identity: { key_order: [...profile.asset_identity.key_order], precedence: { ...profile.asset_identity.precedence } } } : {}),
+    ...(profile.asset_identity ? { asset_identity: profile.asset_identity } : {}),
   };
 }
 
