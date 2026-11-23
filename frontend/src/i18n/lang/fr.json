@@ -21240,5 +21240,13 @@
   "Every signal": "Tous les signaux",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Une exécution démarre pour chaque signal correspondant, dans la limite des exécutions en parallèle de la tâche. L'agent lit le signal avec list_ctem_signals et ses propres droits : un signal enregistré par un écouteur d'intégration n'atteint une tâche que si elle s'exécute en tant qu'administrateur.",
   "This entry no longer exists. The list is refreshed.": "Cette entrée n’existe plus. La liste est actualisée.",
-  "This entry could not be loaded.": "Cette entrée n’a pas pu être chargée."
+  "This entry could not be loaded.": "Cette entrée n’a pas pu être chargée.",
+  "Fix not known for this platform": "Correctif inconnu pour cette plateforme",
+  "{count, plural, =0 {No asset is below the fixed version of its platform} one {# asset still below the fixed version of its platform} other {# assets still below the fixed version of their platform}}": "{count, plural, =0 {Aucun actif sous la version corrective de sa plateforme} one {# actif encore sous la version corrective de sa plateforme} other {# actifs encore sous la version corrective de leur plateforme}}",
+  "{count, plural, =0 {No asset runs the fixed version of its platform yet} one {# asset runs the fixed version of its platform or later} other {# assets run the fixed version of their platform or later}}": "{count, plural, =0 {Aucun actif n'exécute encore la version corrective de sa plateforme} one {# actif exécute la version corrective de sa plateforme ou une version ultérieure} other {# actifs exécutent la version corrective de leur plateforme ou une version ultérieure}}",
+  "Fixed version per platform: {list}": "Version corrective par plateforme : {list}",
+  "{version} names no platform while the assets run several: an asset not below it is not read as fixed.": "{version} ne nomme aucune plateforme alors que les actifs en exécutent plusieurs : un actif qui n'est pas en dessous n'est pas considéré comme corrigé.",
+  "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}": "{count, plural, one {# actif est sur une plateforme sans correctif connu} other {# actifs sont sur une plateforme sans correctif connu}}",
+  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, one {# actif exécute plusieurs versions et compte dans chacune de ses lignes} other {# actifs exécutent plusieurs versions et comptent dans chacune de leurs lignes}}",
+  "Not known": "Inconnue"
 }

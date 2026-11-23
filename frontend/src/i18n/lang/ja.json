@@ -21240,5 +21240,13 @@
   "Every signal": "すべてのシグナル",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "一致するシグナルごとに、アサインメントの並列実行数の範囲内で実行が開始されます。エージェントは自身の権限で list_ctem_signals を使ってシグナルを読み取ります。統合リスナーが記録したシグナルは、管理者として実行されるアサインメントにのみ届きます。",
   "This entry no longer exists. The list is refreshed.": "このエントリは存在しません。一覧を更新します。",
-  "This entry could not be loaded.": "このエントリを読み込めませんでした。"
+  "This entry could not be loaded.": "このエントリを読み込めませんでした。",
+  "Fix not known for this platform": "このプラットフォームの修正は不明",
+  "{count, plural, =0 {No asset is below the fixed version of its platform} one {# asset still below the fixed version of its platform} other {# assets still below the fixed version of their platform}}": "{count, plural, =0 {プラットフォームの修正版より古い資産はありません} other {# 件の資産がまだプラットフォームの修正版より古いままです}}",
+  "{count, plural, =0 {No asset runs the fixed version of its platform yet} one {# asset runs the fixed version of its platform or later} other {# assets run the fixed version of their platform or later}}": "{count, plural, =0 {プラットフォームの修正版を実行している資産はまだありません} other {# 件の資産がプラットフォームの修正版以降を実行しています}}",
+  "Fixed version per platform: {list}": "プラットフォームごとの修正版: {list}",
+  "{version} names no platform while the assets run several: an asset not below it is not read as fixed.": "{version} はプラットフォームを指定していませんが、資産は複数のプラットフォームで動作しています。これより古くない資産も修正済みとは見なされません。",
+  "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}": "{count, plural, other {# 件の資産は修正が不明なプラットフォーム上にあります}}",
+  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, other {# 件の資産が複数のバージョンを実行しており、各行で数えられています}}",
+  "Not known": "不明"
 }
