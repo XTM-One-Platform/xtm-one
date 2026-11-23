@@ -46,7 +46,8 @@ _EVENT_NARROWING_KEYS = ("filter", "provision", "correlation_prefix")
 _SECTION_CEILING = 20_000
 _AGENT_SLUGS = {a["slug"] for a in BUILTIN_AGENTS}
 #: A slug of a product agent family, as a persona or a prompt cites one.
-_CITED_SLUG = re.compile(r"(?<![\w/.:-])((?:ctem|opencti|openaev|opencrq)-[a-z0-9]+(?:-[a-z0-9]+)+)(?![\w/.-])")
+#: A slug glued to a colon and more (`ctem-loop-reminder:<case>`) is a correlation key prefix, not a slug.
+_CITED_SLUG = re.compile(r"(?<![\w/.:-])((?:ctem|opencti|openaev|opencrq)-[a-z0-9]+(?:-[a-z0-9]+)+)(?![\w/.-]|:\S)")
 
 
 def _key(a: dict) -> str:
