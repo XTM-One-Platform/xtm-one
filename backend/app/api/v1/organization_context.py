@@ -252,6 +252,14 @@ async def save_organization_context(
     problems = check_links(profile)
     if problems:
         raise HTTPException(status_code=422, detail=problems[0])
+    # A synced row is read-only by hand on every surface: only its local fields change (#1367).
+    from app.services.organization_context_locks import synced_edit_problems
+
+    current = await org_context.current_version(db)
+    stored = org_context.parse_profile(current.profile).model_dump(mode="json") if current is not None else None
+    locked = synced_edit_problems(stored, profile.model_dump(mode="json"))
+    if locked:
+        raise HTTPException(status_code=422, detail=locked[0])
     from app.services.ctem_ticketing import target_problem
 
     ticketing_problem = await target_problem(db, profile)
