@@ -20626,6 +20626,7 @@
   "Left for later: Members screen": "Laissé pour plus tard : écran Membres",
   "Complete on the Members screen": "Compléter dans l'écran Membres",
   "Run estimate": "Estimation des exécutions",
+  "Expected load": "Charge attendue",
   "I will do it later": "Je le ferai plus tard",
   "Autonomy": "Autonomie",
   "Run as and automations": "Exécuter en tant que et automatisations",
@@ -21297,5 +21298,13 @@
   "The signals could not be updated": "Les signaux n'ont pas pu être mis à jour",
   "This signal opened a case: the case owns it now": "Ce signal a ouvert un dossier : le dossier en a désormais la charge",
   "Add to inventory": "Ajouter à l’inventaire",
-  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}"
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}",
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {Aucune exécution planifiée par jour.} one {Environ # exécution planifiée par jour.} other {Environ # exécutions planifiées par jour.}}",
+  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {Environ # exécution planifiée par mois.} other {Environ # exécutions planifiées par mois.}}",
+  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {Environ # exécution planifiée par an.} other {Environ # exécutions planifiées par an.}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automatisation s’exécute une fois par événement, aussi souvent que ses événements arrivent.} other {# automatisations s’exécutent une fois par événement, aussi souvent que leurs événements arrivent.}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "Pas encore de coût : ces automatisations ne se sont pas exécutées {days, plural, one {le dernier # jour} other {ces # derniers jours}}.",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par jour pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}.",
+  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par mois pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}.",
+  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Environ {cost} par an pour les exécutions planifiées, d’après le coût moyen de leurs exécutions {days, plural, one {du dernier # jour} other {des # derniers jours}}."
 }
