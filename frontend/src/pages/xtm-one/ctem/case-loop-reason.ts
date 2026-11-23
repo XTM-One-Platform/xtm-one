@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The CTEM loop fleet the reader sees and the reader sentences of a case
- * opened by no signal. Who works a case is read in `case-workers.ts` (#1266):
- * the loop fleet is one way among others, never assumed.
+ * The CTEM loop fleet the reader sees and how a case with no signal came to
+ * be. Who works a case is read in `case-workers.ts` (#1266): the loop fleet is
+ * one way among others, never assumed.
  */
 import { CTEM_LOOP_FLEET_SLUG as CTEM_LOOP_SLUG } from "@/components/fleets/CtemLoopSetupEntry";
 
@@ -44,17 +44,23 @@ export function ownerFleetId(slug: string, fleets: readonly LoopFleet[] | undefi
   return found?.id ?? null;
 }
 
-/**
- * The sentence of a case opened by no signal, from the sources of its issues:
- * the source readers matched them to the inventory. @i18n-keys
- */
-export const READER_OPENED_LABEL = {
-  opencti: "Opened from OpenCTI vulnerabilities matched to your inventory",
-  openaev: "Opened from OpenAEV findings on your assets",
-} as const;
-
-/** The reader sentences that apply, in a stable order; empty for a case with no visible issue. */
-export function readerOpenedLines(sources: readonly string[]): (keyof typeof READER_OPENED_LABEL)[] {
-  const seen = new Set(sources.map((s) => (s === "openbas" ? "openaev" : s)));
-  return (Object.keys(READER_OPENED_LABEL) as (keyof typeof READER_OPENED_LABEL)[]).filter((k) => seen.has(k));
+/** The fields of a history event the origin reads. */
+interface OriginEvent {
+  kind: string;
+  to: string | null;
 }
+
+/**
+ * How a case no signal opened came to be (#1529): a case is opened only by a
+ * signal or split into its own case by a person or an agent; a case with
+ * neither was built by a source read before the readers recorded signals.
+ */
+export function noSignalOrigin(history: readonly OriginEvent[] | undefined): "split" | "legacy" {
+  return (history ?? []).some((e) => e.kind === "created" && e.to === "manual") ? "split" : "legacy";
+}
+
+/** The sentence of each origin. @i18n-keys */
+export const NO_SIGNAL_ORIGIN_LABEL = {
+  split: "Split into its own case by a person or an agent",
+  legacy: "Opened by a source read before signals (legacy)",
+} as const;

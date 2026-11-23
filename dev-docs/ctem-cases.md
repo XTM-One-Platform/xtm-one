@@ -730,10 +730,14 @@ the Settings form carries it whole.
   exploitation reading and the treatment plan, OpenCTI for the analyst
   review, OpenAEV for validation) with its logo and connection state, and a
   "Connect <product>" button when it is not registered (`CaseSectionReason`).
-  No section repeats who works the case. "Opened by" on a case no signal opened names
-  the source readers from the sources of its visible issues ("Opened from
-  OpenCTI vulnerabilities matched to your inventory", "Opened from OpenAEV
-  findings on your assets").
+  No section repeats who works the case. A case is opened only by a signal
+  or split into its own case by a person or an agent (#1529): "Opened by"
+  lists the signals, and on a case with none says "Split into its own case
+  by a person or an agent" (a `created` event to `manual`) or, for a case a
+  source read built before the readers recorded signals, "Opened by a source
+  read before signals (legacy)". Legacy cases are labelled, not backfilled:
+  their members carry no reference that maps one signal per case for every
+  viewer.
 - Assets and crown jewels (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or

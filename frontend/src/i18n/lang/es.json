@@ -20080,7 +20080,6 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "Se activa cuando la ruta de ataque de una simulación finalizada alcanzó un activo de criticidad alta o muy alta en OpenAEV.",
   "Opened by": "Abierto por",
   "The signals of this case could not be read.": "No se pudieron leer las señales de este caso.",
-  "No signal opened this case: it groups open issues read from the products.": "Ninguna señal abrió este caso: agrupa problemas abiertos leídos de los productos.",
   "See the loop trace": "Ver la traza del bucle",
   "A signal joined the case": "Una señal se unió al caso",
   "Recorded a validation": "Registró una validación",
@@ -20714,8 +20713,6 @@
   "Not computed yet": "Aún no calculado",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} no respondió a las {time}, casos sin cambios.} other {{products} no respondieron a las {time}, casos sin cambios.}}",
   "Open the {product} integration": "Abrir la integración de {product}",
-  "Opened from OpenCTI vulnerabilities matched to your inventory": "Abierto a partir de vulnerabilidades de OpenCTI cotejadas con su inventario",
-  "Opened from OpenAEV findings on your assets": "Abierto a partir de hallazgos de OpenAEV en sus activos",
   "Add a sync": "Añadir una sincronización",
   "Start with your sources": "Empiece por sus fuentes",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Elija una plataforma y las secciones que rellena, previsualice las filas y manténgalas sincronizadas.",
@@ -21208,5 +21205,7 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Los productos que distribuye su organización, con sus repositorios de código: una vulnerabilidad en uno de ellos se asocia a sus repositorios en CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aún no hay productos distribuidos: una vulnerabilidad en un producto que distribuye queda sin resolver.",
-  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre"
+  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre",
+  "Opened by a source read before signals (legacy)": "Abierto por una lectura de fuente anterior a las señales (heredado)",
+  "Split into its own case by a person or an agent": "Separado en su propio caso por una persona o un agente"
 }
