@@ -1554,8 +1554,14 @@ async def _report_unquarantined_auth_failure(
     reason: str,
     consecutive: int = 1,
     kind: str = "credential",
+    recipient_id: _uuid.UUID | str | None = None,
 ) -> None:
     """Report an auth failure on an assignment the quarantine will never pause.
+
+    *recipient_id* is the run's user: a company-managed assignment has no
+    owner, and without it the notice was a live toast only, stored for nobody
+    (#1454). It is passed as ``company_recipient_id``, so a personal
+    assignment still notifies its owner.
 
     The quarantine is deliberately narrow — it only pauses unattended scheduler
     runs, and never touches built-in or per-user fan-out assignments.  Those
@@ -1601,6 +1607,7 @@ async def _report_unquarantined_auth_failure(
             "consecutive_auth_failures": consecutive,
             "auth_failure_kind": kind,
         },
+        company_recipient_id=recipient_id,
     )
     if not delivered:
         # The claim was taken before the notice was known to land. Keeping it
@@ -1686,6 +1693,7 @@ async def _report_after_consecutive_failures(
         reason=reason,
         consecutive=consecutive,
         kind=kind,
+        recipient_id=run.user_id,
     )
 
 
@@ -5385,6 +5393,11 @@ async def execute_assignment_run(
             composite = CompositeToolExecutor()
             mcp_manager = None
             integration_notice = ""
+            # Auth failures of the run's integration calls, and the refusal of
+            # a credential already rejected in this run (#1454).
+            from app.services.integration_auth_guard import AuthGuardedExecutor, IntegrationAuthGuard
+
+            auth_guard = IntegrationAuthGuard()
 
             from app.services.builtin_tools import load_custom_tools, load_mcp_tools
 
@@ -5800,7 +5813,10 @@ async def execute_assignment_run(
                         filtered_defs = filter_integration_tools(
                             integ_defs, merged_allowed
                         )
-                        composite.add_tools(filtered_defs, integ_exec)
+                        composite.add_tools(
+                            filtered_defs,
+                            AuthGuardedExecutor(integ_exec, filtered_defs, auth_guard),
+                        )
                         logger.info(
                             "Loaded %d integration tool(s) for assignment (%d filtered by scoping)",
                             len(filtered_defs),
@@ -8516,6 +8532,15 @@ async def execute_assignment_run(
                     f"{run.result_summary}\n\n{integration_notice}"
                     if run.result_summary
                     else integration_notice
+                )
+            # A run whose integration calls failed authentication is degraded,
+            # never a plain success: the record names the integrations, and
+            # the result says which data it had (#1454).
+            run.integration_auth_failures = auth_guard.failures() or None
+            _coverage_notice = auth_guard.coverage_notice()
+            if _coverage_notice and agent.output_format != "json":
+                run.result_summary = (
+                    f"{run.result_summary}\n\n{_coverage_notice}" if run.result_summary else _coverage_notice
                 )
 
             # ── Surface matplotlib charts produced by the code interpreter ─
