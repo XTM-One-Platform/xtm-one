@@ -59,6 +59,7 @@ def ownership_clause(
     user_column: Any,
     agent_columns: Sequence[Any] = (),
     company_column: Any = None,
+    company_rows_mine_by_user: bool = True,
 ):
     """The WHERE clause of *ownership*, or ``None`` when it filters nothing.
 
@@ -74,6 +75,11 @@ def ownership_clause(
 
     An anonymous caller (no user) owns nothing: "mine" is empty for them and
     "shared" is everything they see.
+
+    *company_rows_mine_by_user* ``False`` keeps a company-managed row out of
+    Mine when only its *user_column* names the caller (a work item a
+    company-managed agent filed for the person, #1499): it is listed under
+    Company, and stays Mine only through an agent the caller owns.
     """
     if not ownership or ownership == "all":
         return None
@@ -81,7 +87,10 @@ def ownership_clause(
         mine = false()
     else:
         owned_agents = select(Agent.id).where(Agent.user_id == user_uuid)
-        terms = [and_(user_column.is_not(None), user_column == user_uuid)]
+        user_term = and_(user_column.is_not(None), user_column == user_uuid)
+        if not company_rows_mine_by_user and company_column is not None:
+            user_term = and_(user_term, company_column.is_not(True))
+        terms = [user_term]
         terms.extend(
             and_(column.is_not(None), column.in_(owned_agents))
             for column in agent_columns
