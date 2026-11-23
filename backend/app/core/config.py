@@ -1073,6 +1073,14 @@ class Settings(BaseSettings):
     assignment_fair_share_enabled: bool = True
     assignment_fleet_max_share: float = 0.5
     assignment_agent_max_share: float = 0.5
+    # Delegation reserve: slots per worker above the shared pool that only a
+    # delegated child whose parent run is still running may take, once the
+    # shared pool is full (assignment child runs and background sub-agent
+    # tasks alike). A parent holds its slot while it waits for its child, so N
+    # parents filling the pool and each waiting on one child would otherwise
+    # wait until a deadline. Idle or not full, the pool claims as before. 0
+    # turns the reserve off.
+    delegation_reserve_slots: int = 2
     # Once an assignment's oldest queued delivery has waited this long, the
     # drain alternates its newest and oldest deliveries so fresh work is not
     # delayed by the whole backlog (nothing is dropped), and a WARNING says so

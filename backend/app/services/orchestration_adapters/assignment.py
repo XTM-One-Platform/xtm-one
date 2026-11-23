@@ -132,6 +132,42 @@ async def _pool_slots() -> int:
     return max(1, int(settings.max_concurrent_runs)) * max(1, int(workers or 1))
 
 
+async def children_of_live_parents(db: AsyncSession, due: list[OrchestrationExecution]) -> list[OrchestrationExecution]:
+    """The *due* assignment executions whose run is a delegated child of a run still running, oldest first."""
+    run_of: dict[uuid.UUID, object] = {}
+    for execution in due:
+        run_id = safe_uuid((execution.payload or {}).get("run_id"))
+        if run_id is not None:
+            run_of[execution.id] = run_id
+    if not run_of:
+        return []
+    parent_of = {
+        row[0]: row[1]
+        for row in (
+            await db.execute(
+                select(AssignmentRun.id, AssignmentRun.parent_run_id).where(
+                    AssignmentRun.id.in_(list(run_of.values())), AssignmentRun.parent_run_id.is_not(None)
+                )
+            )
+        ).all()
+    }
+    if not parent_of:
+        return []
+    live = set(
+        (
+            await db.execute(
+                select(AssignmentRun.id).where(
+                    AssignmentRun.id.in_(list(set(parent_of.values()))),
+                    AssignmentRun.status.in_(_LIVE_PARENT_STATUSES),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [e for e in due if parent_of.get(run_of.get(e.id)) in live]
+
+
 async def fair_share_deal(
     db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
 ) -> list[OrchestrationExecution]:
@@ -278,6 +314,13 @@ class AssignmentAdapter(OrchestrationAdapter):
     ) -> list[OrchestrationExecution]:
         """Fair share across fleets, delegated children first (``fair_share_deal``)."""
         return await fair_share_deal(db, due, worker_id)
+
+    async def deal_reserved_claims(
+        self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+    ) -> list[OrchestrationExecution]:
+        """What the delegation reserve may claim once the shared pool is full: the delegated runs whose parent
+        run is still running, oldest first."""
+        return await children_of_live_parents(db, due)
 
     def raised_attempt_bound(self, max_attempts: int) -> int:
         """A run queued under the old floor (4) is taken back under the task bound.
