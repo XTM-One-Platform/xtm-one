@@ -24,6 +24,25 @@ vi.mock("@/lib/commands/CommandsProvider", async (importOriginal) => ({
 }));
 
 const get = vi.mocked(api.get);
+
+// The bulk bar shows two actions inline from 1440 px, one below (UX round 2 on #1521, B1).
+const originalMatchMedia = window.matchMedia;
+function setCompactToolbar(compact: boolean) {
+  window.matchMedia = ((query: string) => ({
+    matches: compact && query === "(max-width: 1439px)",
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+afterEach(() => {
+  window.matchMedia = originalMatchMedia;
+});
+
 const ID = "00000000-0000-0000-0000-000000000001";
 
 function signal(n: number, over: Partial<CtemSignal> = {}): CtemSignal {
@@ -162,6 +181,7 @@ describe("Signals page", () => {
   });
 
   it("checks the selected rows again by id", async () => {
+    setCompactToolbar(false);
     const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1));
     const post = vi.mocked(api.post);
     post.mockResolvedValue({ matched: 1, counts: { changed: 0, skipped: 0, to_validate: 1 } });
@@ -190,6 +210,7 @@ describe("Signals page", () => {
   });
 
   it("says nothing changed instead of a success when a triage changes no signal", async () => {
+    setCompactToolbar(false);
     const signals = [signal(1)];
     const post = vi.mocked(api.post);
     post.mockResolvedValue({ matched: 1, counts: { changed: 0, skipped: 1 } });
@@ -200,6 +221,20 @@ describe("Signals page", () => {
     expect(await screen.findByText("No signal changed")).toBeTruthy();
     expect(screen.queryByText(/checked again/)).toBeNull();
     post.mockReset();
+  });
+
+  // UX round 2 on #1521, B1: at 1080 a selection keeps the toolbar on one 32 px row, so one
+  // action shows inline and the others are rows of More actions.
+  it("shows one bulk action inline below 1440 px, the rest under More actions", async () => {
+    setCompactToolbar(true);
+    const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1));
+    renderPage("/ctem/signals?state=to_validate", { total: 2, counts: { to_validate: 2 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).getByTestId("ctem-signals-dismiss")).toBeTruthy();
+    expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
+    expect(within(bar).getByRole("button", { name: "More actions" })).toBeTruthy();
   });
 
   it("says the sources are connected and nothing was seen when one is", async () => {

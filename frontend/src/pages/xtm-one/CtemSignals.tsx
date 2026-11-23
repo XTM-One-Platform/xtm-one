@@ -34,6 +34,7 @@ import { SlideOver } from "@/components/ui/slide-over";
 import { SourceBadge } from "@/components/ui/source-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useAuth } from "@/hooks/useAuth";
+import { useCompactToolbar } from "@/hooks/useCompactToolbar";
 import {
   CTEM_SIGNAL_STATES,
   useAddCtemSignalsToInventory,
@@ -115,6 +116,14 @@ export default function CtemSignals() {
   );
 }
 
+/**
+ * The type of a bulk action button: the toolbar's compact 12 px / 500, like Filters and Columns.
+ * `content-compact` alone loses to the design system Button's own decomposed
+ * `text-content-button font-semibold` (14 px / 600), so the decomposed compact utilities
+ * replace them through tailwind-merge (UX round 2 on #1521, B1).
+ */
+const BULK_BUTTON_TYPE = "px-2 font-content-compact text-content-compact leading-content-compact tracking-content-compact font-medium";
+
 function SignalsTab() {
   const { t_i18n } = useFormatter();
   const [params, setParams] = useSearchParams();
@@ -174,6 +183,7 @@ function SignalsTab() {
     });
   };
   // Add to inventory (#1505, administrators): only an unmatched signal has a subject to declare.
+  const compactToolbar = useCompactToolbar();
   const anyUnmatched = allMatching ? view.state === "to_validate" : selectedRows.some((s) => s.state === "to_validate");
   const runAddToInventory = () => {
     const body = allMatching && view.state ? { filter: { state: view.state } } : { ids: selected };
@@ -193,8 +203,9 @@ function SignalsTab() {
   const canSelectAllMatching = !!view.state && !allMatching && selected.length > 0 && stateTotal > selected.length;
   // The bulk actions the selection allows, most frequent first. Check again is offered only
   // for a selection that holds a signal not dismissed: a dismissed one stays dismissed on a
-  // re-check (UX round 1 on #1521, B2). Two show as toolbar buttons, the rest in the shared
-  // "More actions" menu, so the toolbar keeps one 32 px row at 1080 (B1).
+  // re-check (UX round 1 on #1521, B2). Two show as toolbar buttons (one below 1440 px), the
+  // rest in the shared "More actions" menu, so the toolbar keeps one 32 px row at 1080 with a
+  // selection (UX rounds 1 and 2 on #1521, B1).
   const bulkActions: { id: string; label: string; glyph: "plus" | "eye-off" | "refresh-cw" | "rotate-ccw"; run: () => void }[] = [
     ...(isAdmin && anyUnmatched ? [{ id: "add-to-inventory", label: t_i18n("Add to inventory"), glyph: "plus" as const, run: runAddToInventory }] : []),
     ...(anyOpen ? [{ id: "dismiss", label: t_i18n("Dismiss signals"), glyph: "eye-off" as const, run: () => runTriage("dismiss") }] : []),
@@ -203,8 +214,9 @@ function SignalsTab() {
       ? [{ id: "restore", label: t_i18n("Restore"), glyph: "rotate-ccw" as const, run: () => runTriage("restore") }]
       : []),
   ];
-  const inlineActions = bulkActions.slice(0, 2);
-  const menuActions: OverflowMenuItem[] = bulkActions.slice(2).map((a) => ({ id: a.id, label: a.label, glyph: a.glyph, onSelect: a.run, disabled: busy }));
+  const inlineCount = compactToolbar ? 1 : 2;
+  const inlineActions = bulkActions.slice(0, inlineCount);
+  const menuActions: OverflowMenuItem[] = bulkActions.slice(inlineCount).map((a) => ({ id: a.id, label: a.label, glyph: a.glyph, onSelect: a.run, disabled: busy }));
   const selectionActions = (
     <span className="flex flex-wrap items-center gap-2" data-testid="ctem-signals-bulk-actions">
       {canSelectAllMatching && (
@@ -217,7 +229,7 @@ function SignalsTab() {
           key={a.id}
           variant="outline"
           size="sm"
-          className={cn(TOOLBAR_CONTROL_HEIGHT, "px-2 content-compact")}
+          className={cn(TOOLBAR_CONTROL_HEIGHT, BULK_BUTTON_TYPE)}
           disabled={busy}
           onClick={a.run}
           data-testid={`ctem-signals-${a.id}`}
