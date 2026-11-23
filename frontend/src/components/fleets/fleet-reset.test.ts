@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { FleetResetResult } from "@/hooks/api/useFleetApi";
 
-import { resetPlanLines } from "./FleetResetDialog";
+import { resetPlanLines } from "./fleet-reset";
 
 const t = (key: string, values?: Record<string, unknown>) => (values ? `${key}|${JSON.stringify(values)}` : key);
 

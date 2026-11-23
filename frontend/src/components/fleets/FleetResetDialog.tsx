@@ -26,32 +26,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { useFleetReset, useFleetResetPlan, type FleetResetResult } from "@/hooks/api/useFleetApi";
+import { useFleetReset, useFleetResetPlan } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
 
 import { fleetRefusalMessage } from "./fleet-refusals";
-
-type Translate = ReturnType<typeof useFormatter>["t_i18n"];
-
-/** The lines of what a reset changes, from its dry run; a line whose count is 0 is left out. */
-export function resetPlanLines(plan: FleetResetResult, t_i18n: Translate): string[] {
-  const lines: string[] = [];
-  if (plan.automations > 0)
-    lines.push(t_i18n("{count, plural, one {# automation switched off and back to not set up} other {# automations switched off and back to not set up}}", { count: plan.automations }));
-  if (plan.run_as_cleared > 0)
-    lines.push(t_i18n("{count, plural, one {# run-as user cleared} other {# run-as users cleared}}", { count: plan.run_as_cleared }));
-  if (plan.bindings > 0)
-    lines.push(t_i18n("{count, plural, one {# binding removed from the members} other {# bindings removed from the members}}", { count: plan.bindings }));
-  if (plan.pins > 0) lines.push(t_i18n("{count, plural, one {# approval pin removed} other {# approval pins removed}}", { count: plan.pins }));
-  if (plan.gates > 0) lines.push(t_i18n("{count, plural, one {# added gate removed} other {# added gates removed}}", { count: plan.gates }));
-  if (plan.autonomy_level) lines.push(t_i18n("Autonomy level back to the shipped one"));
-  if (plan.agents > 0)
-    lines.push(t_i18n("{count, plural, one {# member agent rewritten from its shipped definition} other {# member agents rewritten from their shipped definition}}", { count: plan.agents }));
-  if (plan.settings.length > 0)
-    lines.push(t_i18n("{count, plural, one {# fleet setting back to its default} other {# fleet settings back to their default}}", { count: plan.settings.length }));
-  if (plan.documentation) lines.push(t_i18n("Documentation back to the shipped version"));
-  return lines;
-}
+import { resetPlanLines } from "./fleet-reset";
 
 export function FleetResetDialog({
   fleetId,
@@ -128,6 +107,7 @@ export function FleetResetDialog({
             </label>
             <Input
               id="fleet-reset-confirm"
+              aria-label={t_i18n("Type {name} to confirm", { name: fleetName })}
               autoComplete="off"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
