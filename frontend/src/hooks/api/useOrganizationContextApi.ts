@@ -293,7 +293,13 @@ export function useSaveOrganizationContext() {
   const qc = useQueryClient();
   return useMutation<OrganizationContextResponse, Error, SaveOrganizationContextBody>({
     mutationFn: (body) => api.put("/organization-context", body),
-    onSuccess: (saved) => qc.setQueryData(KEY, saved),
+    onSuccess: (saved) => {
+      qc.setQueryData(KEY, saved);
+      // The Inventory Assets tab and the asset page read the canonical assets (useOrganizationAssetsApi):
+      // a saved profile adds, updates or deletes rows there, and a stale list maps row positions
+      // onto the fresh profile (#1375 review).
+      void qc.invalidateQueries({ queryKey: ["organization-assets"] });
+    },
   });
 }
 

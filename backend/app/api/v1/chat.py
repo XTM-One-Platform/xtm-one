@@ -8339,6 +8339,8 @@ async def run_chat_connection(
     # The connection ends once its send is delivered: the turn it ran with its
     # title, or the turn it folded into up to that turn's end.
     _send_title_task: asyncio.Task | None = None
+    # And its reply suggestion (``services/chat_reply_suggestions.py``).
+    _send_suggestion_task: asyncio.Task | None = None
 
     async def _relay_folded_turn(token: str) -> None:
         """Relay the turn the send folded into, until its end reaches the client.
@@ -8426,6 +8428,9 @@ async def run_chat_connection(
 
         if data.get("supports_tool_approval"):
             _turn_supports_approval["value"] = True
+        # Only a client that offers it gets a reply suggestion: a caller
+        # reading to the end of the stream must not wait on one.
+        _turn_supports_reply_suggestions = bool(data.get("supports_reply_suggestions"))
 
         # Response mode for this turn, read from the send: the client
         # owns the toggle. Anything other than the one recognised value runs
@@ -10704,6 +10709,33 @@ async def run_chat_connection(
                 _title_task.add_done_callback(_turn_title_tasks.discard)
                 _send_title_task = _title_task
 
+            # The user's likely next message, once the answer is out
+            # (``services/chat_reply_suggestions.py``): a turn that ended on an
+            # answer only - not a stop, not an error - and for a client that
+            # offers it (``supports_reply_suggestions``).
+            if _turn_supports_reply_suggestions and not _turn_stopped and not _turn_error_out.get("error"):
+                from app.services.chat_reply_suggestions import (
+                    send_suggestion_after_done,
+                )
+
+                _suggestion_task = asyncio.create_task(
+                    send_suggestion_after_done(
+                        send=_safe_send_json,
+                        origin=_origin,
+                        conversation_id=conv_id,
+                        message_id=assistant_msg.id,
+                        user_id=user_id,
+                        agent_id=_turn_transfer_agent_id or conv_agent_id,
+                        user_text=content,
+                        assistant_text=assistant_text,
+                        turn_meta=_turn_meta,
+                    ),
+                    name=f"chat-reply-suggestion:{conv_id}",
+                )
+                _turn_title_tasks.add(_suggestion_task)
+                _suggestion_task.add_done_callback(_turn_title_tasks.discard)
+                _send_suggestion_task = _suggestion_task
+
             # The next turn's compaction, while the user reads this answer.
             # The margin covers the messages this turn stored; the
             # precompute checks the trigger on the history it loads.
@@ -10739,9 +10771,10 @@ async def run_chat_connection(
             with contextlib.suppress(asyncio.CancelledError):
                 await marker_refresh_task
 
-        # The stream ends with the turn's title.
-        if _send_title_task is not None:
-            await asyncio.gather(_send_title_task, return_exceptions=True)
+        # The stream ends with the turn's title and its reply suggestion.
+        _after_done = [t for t in (_send_title_task, _send_suggestion_task) if t is not None]
+        if _after_done:
+            await asyncio.gather(*_after_done, return_exceptions=True)
 
     except asyncio.CancelledError:
         # Catch-all for handler-task cancellation OUTSIDE the agent-loop

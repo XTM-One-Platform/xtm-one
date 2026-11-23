@@ -136,6 +136,8 @@ export function useUpdateProfile() {
       chat_sidebar_expanded_workspaces?: string[] | null;
       /** The bell shows the work items waiting for this person (#9437). */
       notify_waiting_work_items?: boolean;
+      /** The composer's reply suggestion after a chat turn. */
+      reply_suggestions_enabled?: boolean;
     }) =>
       api.put("/settings/preferences", data),
     // Serialized: every preference write PUTs a whole field value, so two
@@ -205,8 +207,8 @@ export function useAuthConfig() {
        Its ~15 other consumers degrade silently, and that is knowingly
        accepted rather than unnoticed. On a transient 5xx:
 
-       - `Settings` reads `FILIGRAN_GATEWAY_PROVIDER` as off and drops the
-         Gateway provider option;
+       - `Settings` reads `VIDEO_STUDIO` as off and drops the video models
+         and video-only providers;
        - `ForgotPassword` loses its "SSO accounts cannot reset a password" note;
        - `NewUser` / `Profile` / `ResetPassword` fall back to the client
          `MIN_PASSWORD_LENGTH`, so a stricter server policy shows inline

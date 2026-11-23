@@ -144,6 +144,8 @@ export const CAPABILITY_ICONS: Record<string, IconName> = {
   notification: "bell",
   edr_xdr: "shield-check",
   scanner: "bug",
+  application_security: "code-xml",
+  source_code: "file-code-corner",
   easm: "compass",
   vulnerability_intelligence: "triangle-alert",
   asset_inventory: "server",

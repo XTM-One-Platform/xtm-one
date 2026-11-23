@@ -514,7 +514,7 @@ def test_retry_path_deadline_applies_iteration_floor():
     assert "_apply_iteration_timeout_floor(" in retry_segment
     assert "resolve_run_max_iterations(" in retry_segment
     # Disabled timeout (<= 0) must still carry no deadline on the retry.
-    assert "retry_deadline = None" in retry_segment
+    assert "retry_deadline, retry_budget = None, {}" in retry_segment
 
 
 def test_agentic_loop_wait_for_applies_iteration_floor():

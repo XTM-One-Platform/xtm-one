@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.organization_context import AssetEntry, OrganizationProfile
+from app.services.organization_context import AssetEntry, OrganizationProfile, ShippedProduct
 
 #: Version of the decision record; a reader keys on it.
 DECISION_VERSION = 1
@@ -207,10 +207,16 @@ class Resolution:
     keys: list[str] = field(default_factory=list)
     #: CTEM-29: the owned domain an identity subject belongs to.
     domains: list[str] = field(default_factory=list)
+    #: #1432: the shipped products the software names, each ``{product, by, repositories}``.
+    shipped: list[dict[str, Any]] = field(default_factory=list)
+    #: #1432: their source repositories (``owner/name``), the subject's assets.
+    repositories: list[str] = field(default_factory=list)
 
     @property
     def resolved(self) -> bool:
-        return bool(self.assets or self.groups or self.crown_jewels or self.products or self.domains)
+        return bool(
+            self.assets or self.groups or self.crown_jewels or self.products or self.domains or self.repositories
+        )
 
 
 def identity_domain(ref: str) -> str:
@@ -239,6 +245,48 @@ def _product_matches(product: str, ref: str) -> bool:
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
     return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
+
+
+def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
+    """``(vendor, product)`` of a CPE 2.3 (``cpe:2.3:a:v:p:...``) or 2.2 (``cpe:/a:v:p``) string, else ``None``."""
+    text = ref.strip().lower()
+    if text.startswith("cpe:2.3:"):
+        parts = text.split(":")
+        return (parts[3], parts[4]) if len(parts) > 4 and parts[3] and parts[4] else None
+    if text.startswith("cpe:/"):
+        parts = text[len("cpe:/") :].split(":")
+        return (parts[1], parts[2]) if len(parts) > 2 and parts[1] and parts[2] else None
+    return None
+
+
+def _cpe_token(value: str) -> str:
+    """A vendor or product name as a CPE writes it (lower case, spaces as underscores)."""
+    return re.sub(r"\s+", "_", value.strip().lower())
+
+
+def shipped_match(entry: ShippedProduct, ref: str) -> str:
+    """How a software reference names a shipped product (#1432): ``cpe``, ``product`` or ``""`` (no match).
+
+    By CPE first: a CPE reference whose vendor and product are those of the
+    row's CPE (any version). Then by product and vendor: a CPE reference whose
+    vendor and product are the row's names, or a name that is the product
+    itself, or that names the product and, when the row has one, its vendor.
+    """
+    text = str(ref or "").strip()
+    if not text:
+        return ""
+    named = _cpe_vendor_product(text)
+    own = _cpe_vendor_product(entry.cpe) if entry.cpe else None
+    if named and own and named == own:
+        return "cpe"
+    if named:
+        product_ok = named[1] == _cpe_token(entry.product)
+        return "product" if product_ok and (not entry.vendor or named[0] == _cpe_token(entry.vendor)) else ""
+    if text.lower() == entry.product.lower():
+        return "product"
+    if not _product_matches(entry.product, text):
+        return ""
+    return "product" if entry.vendor and _product_matches(entry.vendor, text) else ""
 
 
 def runs_in_profile(profile: OrganizationProfile, name: str) -> list[str]:
@@ -292,12 +340,39 @@ def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
             _product_matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software
         ):
             out.products.append(entry.product)
+    _resolve_shipped(profile, software, out)
     if out.products:
         names = {p.lower() for p in out.products}
         for asset in profile.assets_exposure:
             if asset not in out.assets and names & {t.lower() for t in asset.tech_stack}:
                 out.assets.append(asset)
     return out
+
+
+def _resolve_shipped(profile: OrganizationProfile, software: list[str], out: Resolution) -> None:
+    """#1432: a vulnerability on a product the organization ships resolves to its repositories.
+
+    A row matched by CPE wins over a match by product and vendor; each
+    repository is the subject's asset, and the profile asset of the same name
+    (a repository the GitHub or GitLab import wrote) joins ``out.assets`` with
+    its criticality.
+    """
+    if not software or not profile.shipped_products:
+        return
+    matches: list[tuple[ShippedProduct, str]] = []
+    for entry in profile.shipped_products:
+        ways = {shipped_match(entry, ref) for ref in software} - {""}
+        if ways:
+            matches.append((entry, "cpe" if "cpe" in ways else "product"))
+    if any(by == "cpe" for _, by in matches):
+        matches = [(entry, by) for entry, by in matches if by == "cpe"]
+    for entry, by in matches:
+        out.shipped.append({"product": entry.product, "by": by, "repositories": list(entry.repositories)})
+        out.repositories += [r for r in entry.repositories if r not in out.repositories]
+    wanted = {r.lower() for r in out.repositories}
+    for asset in profile.assets_exposure:
+        if asset not in out.assets and stable_key(asset.name) in wanted:
+            out.assets.append(asset)
 
 
 def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, list[str], bool]:
@@ -411,6 +486,8 @@ def decide(
             "asset_groups": resolution.groups,
             "crown_jewels_named": resolution.crown_jewels,
             "tech_stack": resolution.products,
+            "shipped_products": resolution.shipped,
+            "repositories": resolution.repositories,
             "lenses": lenses,
             "confidence": confidence,
             "proven": proven,
@@ -463,7 +540,7 @@ def decide(
             )
         return done(
             "to_validate",
-            "subject not resolved to an asset, a crown jewel or the tech stack",
+            "subject not resolved to an asset, a crown jewel, the tech stack or a shipped product",
             code="subject_unresolved",
         )
 

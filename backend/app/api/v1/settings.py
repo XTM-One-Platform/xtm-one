@@ -234,14 +234,12 @@ async def _list_chat_models(provider) -> tuple[list[str], dict[str, list[str]] |
 
 
 def _ensure_new_provider_allowed(provider: str, *, from_integration: bool = False) -> None:
-    """Block configuring a NEW provider of a flag-gated type while its flag is off.
+    """Block configuring a NEW provider that is not addable by hand.
 
     Only guards the "create" surfaces (add-provider, and the pre-save
-    resolve/validate calls the add-provider dialog makes before saving) —
-    providers already configured keep working either way, so this is a
-    front door lock, not a runtime kill switch. A provider fed only by an
-    integration (``integration_fed_only``: LM Studio) is created from that
-    integration's console (*from_integration*), never by hand.
+    resolve/validate calls the add-provider dialog makes before saving).
+    A provider fed only by an integration (``integration_fed_only``: LM
+    Studio) is created from that integration's console (*from_integration*).
     """
     provider_cls = PROVIDER_MAP.get(provider)
     if getattr(provider_cls, "integration_fed_only", False) and not from_integration:
@@ -252,14 +250,6 @@ def _ensure_new_provider_allowed(provider: str, *, from_integration: bool = Fals
                 "company-managed integration of its kind."
             ),
         )
-    if provider == "filigran_gateway":
-        from app.core.feature_flags import is_feature_enabled
-
-        if not is_feature_enabled("FILIGRAN_GATEWAY_PROVIDER"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="The Filigran AI Gateway provider is disabled on this platform.",
-            )
 
 
 def env_managed_default_fields() -> set[str]:
@@ -494,6 +484,9 @@ def _build_ga_response(
         ),
         xtm_mcp_enabled=(
             bool(getattr(ps, "xtm_mcp_enabled", False)) if ps else False
+        ),
+        reply_suggestions_enabled=(
+            getattr(ps, "reply_suggestions_enabled", True) is not False if ps else True
         ),
         env_managed_fields=sorted(_env_managed_ga_fields()),
     )
@@ -3254,6 +3247,7 @@ async def get_general_assistant_config(
                 getattr(ps, "platform_mcp_enabled", True)
             ),
             xtm_mcp_enabled=bool(getattr(ps, "xtm_mcp_enabled", False)),
+            reply_suggestions_enabled=getattr(ps, "reply_suggestions_enabled", True) is not False,
             env_managed_fields=sorted(_env_managed_ga_fields()),
         )
 
@@ -3988,6 +3982,8 @@ async def update_general_assistant_config(
         ps.platform_mcp_enabled = body.platform_mcp_enabled
     if body.xtm_mcp_enabled is not None:
         ps.xtm_mcp_enabled = body.xtm_mcp_enabled
+    if body.reply_suggestions_enabled is not None:
+        ps.reply_suggestions_enabled = body.reply_suggestions_enabled
 
     license_changed = False
     if body.enterprise_license is not None:
@@ -4674,6 +4670,8 @@ async def update_preferences(
         )
     if body.notify_waiting_work_items is not None:
         user.notify_waiting_work_items = body.notify_waiting_work_items
+    if body.reply_suggestions_enabled is not None:
+        user.reply_suggestions_enabled = body.reply_suggestions_enabled
     if "chat_sidebar_expanded_workspaces" in body.model_fields_set:
         # Written whole, duplicates dropped in first-seen order; a key naming a
         # workspace since deleted is harmless (no group draws it).

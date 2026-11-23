@@ -99,6 +99,17 @@ LENT_SLOT_PAYLOAD_KEY = "lent_slot"
 #: Where ``claim_due(keep_slot=True)`` records when an execution first took a slot: an execution keeps it to
 #: its end, through a hand-over, before every execution that took one after it (``waiting_for_slot``).
 SLOT_SINCE_PAYLOAD_KEY = "slot_since"
+#: Where a creator records the execution budget of work whose deadline counts from its start, not from its
+#: creation (:func:`queued_deadline`): the seconds (timeout + grace) the work may run once a worker first claims
+#: it. Until then ``deadline_at`` is the queue-wait bound; :func:`claim_due` moves it to ``start + budget``.
+START_BUDGET_PAYLOAD_KEY = "start_budget_seconds"
+#: Where :func:`claim_due` records when such work was first claimed (ISO time): set once, kept by every re-claim.
+STARTED_AT_PAYLOAD_KEY = "started_at"
+#: Where :func:`claim_due` (at the start) or :func:`sweep_deadlines` (expired in the queue) records the seconds
+#: the work waited for a worker.
+QUEUE_WAIT_PAYLOAD_KEY = "queue_wait_seconds"
+#: Set by :func:`sweep_deadlines` on work that reached its queue-wait bound without ever starting.
+EXPIRED_BEFORE_START_PAYLOAD_KEY = "expired_before_start"
 #: Where a deferral puts the execution in its adapter's queue: ``after``
 #: what is due before ``now + delay`` (the default), ``keep`` its own place -
 #: claimable again after the delay, still ahead of what came after it -, or
@@ -227,6 +238,55 @@ def deadline_spent(deadline_at: datetime | None, *, now: datetime | None = None)
     """
     left = runnable_seconds_left(deadline_at, now=now)
     return left is not None and left <= 0
+
+
+def queued_deadline(
+    run_at: datetime | None,
+    budget_seconds: float | None,
+    *,
+    max_queue_wait_seconds: float | None = None,
+) -> tuple[datetime | None, dict]:
+    """The ``deadline_at`` and payload entry of work whose deadline counts from its start.
+
+    *budget_seconds* is what the work may run once a worker starts it (its timeout plus
+    ``orchestration_grace_seconds``); ``None`` sets no deadline at all (timeout disabled). Until
+    the first claim the deadline is the queue-wait bound, ``run_at`` plus *max_queue_wait_seconds*
+    (``settings.orchestration_max_queue_wait_seconds`` when ``None``; ``0`` or less: no queue bound);
+    :func:`claim_due` then sets it to the start plus the budget it finds under
+    :data:`START_BUDGET_PAYLOAD_KEY`. Time spent waiting for a worker is never charged to the work.
+    """
+    if budget_seconds is None:
+        return None, {}
+    wait = settings.orchestration_max_queue_wait_seconds if max_queue_wait_seconds is None else max_queue_wait_seconds
+    due = run_at or datetime.now(UTC)
+    deadline = due + timedelta(seconds=float(wait)) if wait and wait > 0 else None
+    return deadline, {START_BUDGET_PAYLOAD_KEY: float(budget_seconds)}
+
+
+def started_at(execution: OrchestrationExecution) -> datetime | None:
+    """When a worker first claimed *execution* (:data:`STARTED_AT_PAYLOAD_KEY`); ``None`` before."""
+    return _moment((getattr(execution, "payload", None) or {}).get(STARTED_AT_PAYLOAD_KEY))
+
+
+def expired_before_start(execution: OrchestrationExecution) -> bool:
+    """*execution* reached its queue-wait bound without ever being started by a worker."""
+    return bool((getattr(execution, "payload", None) or {}).get(EXPIRED_BEFORE_START_PAYLOAD_KEY))
+
+
+def queue_wait_seconds(execution: OrchestrationExecution) -> float | None:
+    """The seconds *execution* waited for a worker, once known (started, or expired in the queue)."""
+    value = (getattr(execution, "payload", None) or {}).get(QUEUE_WAIT_PAYLOAD_KEY)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def expired_before_start_message(work: str, execution: OrchestrationExecution) -> str:
+    """What work that waited past its queue-wait bound without starting says."""
+    waited = queue_wait_seconds(execution)
+    after = f" after {int(waited)} s" if waited is not None else ""
+    return (
+        f"{work} never started: no worker was free to run it{after} in the queue "
+        "(deadline_exceeded_before_start). Nothing ran and nothing was charged."
+    )
 
 
 def deadline_spent_message(work: str, deadline_at: datetime | None) -> str:
@@ -516,10 +576,26 @@ async def claim_due(
             payload[LENT_SLOT_PAYLOAD_KEY] = slot
         if keep_slot and SLOT_SINCE_PAYLOAD_KEY not in payload:
             payload[SLOT_SINCE_PAYLOAD_KEY] = now.isoformat()
+        _start_execution_clock(row, payload, now)
         if payload != (row.payload or {}):
             row.payload = payload
     await db.flush()
     return rows
+
+
+def _start_execution_clock(row: OrchestrationExecution, payload: dict, now: datetime) -> None:
+    """At the first claim of work created by :func:`queued_deadline`, its deadline becomes start + budget.
+
+    The queue wait is recorded beside it. A re-claim (a hand-back, a lost worker, a deferral) keeps
+    the start and the deadline it set: only the first start moves the clock.
+    """
+    budget = payload.get(START_BUDGET_PAYLOAD_KEY)
+    if not isinstance(budget, (int, float)) or payload.get(STARTED_AT_PAYLOAD_KEY):
+        return
+    payload[STARTED_AT_PAYLOAD_KEY] = now.isoformat()
+    due = _aware(row.run_at) if row.run_at is not None else now
+    payload[QUEUE_WAIT_PAYLOAD_KEY] = round(max(0.0, (now - due).total_seconds()), 3)
+    row.deadline_at = now + timedelta(seconds=float(budget))
 
 
 def _moment(recorded: object) -> datetime | None:
@@ -2032,7 +2108,10 @@ async def sweep_deadlines(
 
     Catches both "nobody ever claimed it" and "worker held the lease across the
     deadline" (and "waited on a callback that never arrived"). Returns the rows
-    so the reconciler can invoke ``adapter.on_dead_letter``.
+    so the reconciler can invoke ``adapter.on_dead_letter``. Work created by
+    :func:`queued_deadline` that no worker ever started is marked
+    :data:`EXPIRED_BEFORE_START_PAYLOAD_KEY` with its queue wait
+    (:func:`expired_before_start`).
     """
     now = datetime.now(UTC)
     conditions = [
@@ -2074,6 +2153,23 @@ async def sweep_deadlines(
             continue
         # deadline race: only dead_letter / cancelled are legal past deadline.
         row.state = "dead_letter"
+        payload = row.payload or {}
+        if isinstance(payload.get(START_BUDGET_PAYLOAD_KEY), (int, float)) and not payload.get(STARTED_AT_PAYLOAD_KEY):
+            # Its queue-wait bound, not its execution budget: no worker ever started it. Recorded apart
+            # (``deadline_exceeded_before_start``) so the adapter fails it without a model call, without
+            # ``run.failed`` and outside the failure counts.
+            due = _aware(row.run_at) if row.run_at is not None else now
+            row.payload = {
+                **payload,
+                EXPIRED_BEFORE_START_PAYLOAD_KEY: True,
+                QUEUE_WAIT_PAYLOAD_KEY: round(max(0.0, (now - due).total_seconds()), 3),
+            }
+            row.last_error = expired_before_start_message("The work", row)
+            row.lease_owner = None
+            row.lease_expires_at = None
+            row.updated_at = now
+            dead_lettered.append(row)
+            continue
         # The worker that held it, when one did: a deadline reached under a live holder reads apart from one
         # reached in the queue.
         held_by = f" (held by {row.lease_owner})" if row.lease_owner else ""

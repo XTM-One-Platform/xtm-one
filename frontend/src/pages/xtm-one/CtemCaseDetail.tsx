@@ -58,6 +58,7 @@ import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { loopFleetOf } from "./ctem/case-loop-reason";
 import { caseAutomations, caseSources, caseWork } from "./ctem/case-workers";
@@ -70,7 +71,7 @@ import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
 import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
-import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
@@ -530,20 +531,23 @@ export default function CtemCaseDetail() {
 
   return (
     <div className="space-y-6">
-      {/* The one CTEM header band (#11660): state, priority and owner on the
-          breadcrumb line, the title, the actions on the title line. */}
-      <CtemPageHeader
-        back={{ to: "/ctem/cases", label: "Back to Cases" }}
-        crumbExtras={
+      {/* The app's standard entity header (#1367, Sam 23 Nov 2026: no band with a surface and a border): the
+          back link, the title, state, priority and owner on its meta row, the actions on the title line. */}
+      <EntityPageHeader
+        backTo="/ctem/cases"
+        backLabel="Back to Cases"
+        badges={
           <>
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
+            <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />
             <CaseTicketChip tickets={kase.tickets} ticketing={kase.ticketing} showNotConnected />
           </>
         }
         title={kase.title}
+        wrapTitle
         hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
         hintLabel={t_i18n("About cases")}
         actions={

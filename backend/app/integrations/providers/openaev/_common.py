@@ -1314,6 +1314,8 @@ class OpenAEVHeaders(_RefreshableHeaders):
     """
 
     tenant_scope: PlatformCapabilities | None = None
+    #: The caller's read rights (``read_scope.ReadScope``), read by the count and list reads.
+    read_scope: Any = None
 
 
 def _headers(api_token: str, refresh_fn: RefreshFn | None = None) -> OpenAEVHeaders:

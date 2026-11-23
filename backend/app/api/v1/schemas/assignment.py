@@ -632,6 +632,9 @@ class AssignmentRunResponse(_RunOutcome, _ShownAsRead):
     # iteration cap, the wall clock, the per-run budget, ... NULL when it
     # ended on its own terms (``AssignmentRun.stop_reason``).
     stop_reason: str | None = None
+    # Integrations whose calls failed authentication in this run (#1454):
+    # ``[{integration, status, first_tool, tools}]``; NULL when none did.
+    integration_auth_failures: list[dict[str, Any]] | None = None
     human_input_question: str | None = None
     human_input_response: str | None = None
     human_input_history: list | None = None
@@ -925,6 +928,8 @@ class AssignmentRunDetailResponse(_RunOutcome, _ShownAsRead):
     failure_determination: str | None = None
     # Why a completed run stopped early — see AssignmentRunResponse.
     stop_reason: str | None = None
+    # Integration auth failures of the run — see AssignmentRunResponse (#1454).
+    integration_auth_failures: list[dict[str, Any]] | None = None
     human_input_question: str | None = None
     human_input_response: str | None = None
     human_input_history: list | None = None

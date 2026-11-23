@@ -189,6 +189,10 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     for key in ("x_opencti_cvss_base_score", "x_opencti_epss_score", "x_opencti_cisa_kev", "source_ref"):
         if data.get(key) not in (None, ""):
             evidence[key.removeprefix("x_opencti_")] = data[key]
+    cpes = _cpes_of(data)
+    if cpes:
+        # #1432: the CPEs a vulnerability names, so the scope gate resolves it to a shipped product.
+        evidence["cpe"] = cpes
     if kind.startswith("relationship:"):
         # CTEM-08: the software or asset the relationship starts from, so the scope
         # gate resolves the signal to the tech stack product it names.
@@ -204,6 +208,20 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
     return {"external_id": external_id or None, "ref": ref, "label": label, "evidence": evidence}
+
+
+#: The fields of an OpenCTI object that may carry CPE strings (#1432), read when present.
+_CPE_FIELDS: tuple[str, ...] = ("x_opencti_cpe", "x_opencti_cpes", "cpe", "cpes")
+
+
+def _cpes_of(data: Mapping[str, Any]) -> list[str]:
+    """The CPE strings an object carries in :data:`_CPE_FIELDS`, each once (at most 20)."""
+    found: list[str] = []
+    for key in _CPE_FIELDS:
+        value = data.get(key)
+        values = [value] if isinstance(value, str) else value if isinstance(value, list) else []
+        found += [v.strip()[:300] for v in values if isinstance(v, str) and v.strip().lower().startswith("cpe:")]
+    return list(dict.fromkeys(found))[:20]
 
 
 def _pir_matches(data: Mapping[str, Any], payload: Mapping[str, Any]) -> list[dict[str, Any]]:

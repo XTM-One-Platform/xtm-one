@@ -174,7 +174,9 @@ Common rules:
   hourly case sweep, `catch_up` hands every open case its owner never ran
   (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
   that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
-  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active}.
+  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active};
+  the case page header shows "Owned by <fleet>" linked to the fleet page, or
+  "No active fleet owns this case" when it is null or inactive.
   The run owns one work item `ctem:<fleet>:case:<case id>` (an open
   one gets a note, never a second loop), writes owner, state, validation
   (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the
@@ -1248,6 +1250,20 @@ kinds and `event_poller` polls them every 60 s.
 - The run receives `entity`: run id, kind, status, enqueued, started and
   finished times, processed and expected totals, progress message, trigger,
   attempt, tenant and the instance URL.
+- Coalescing (#1417): a poll page is ONE event, not one per job. The newest
+  run is the entity and the `message_id`; `covers` lists the runs of the page
+  (their own `message_id`s, marked seen at dispatch), `run_count` counts them,
+  and a run that reports progress and processed nothing (`expectedTotal`
+  set, `processedTotal` 0) is no event. A kind that never reports progress
+  (`crq-price-recompute`) ends at 0 whatever it re-priced, so its runs are
+  kept. The `riskScenarioId(s)` of a job payload travel as
+  `entity.risk_scenario_ids` and on each `covers` entry. The event carries
+  `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
+  trigger context and `trigger_or_queue_assignment` folds a later event with
+  the same key into the run of the same assignment still queued
+  (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
+  event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
+  starts one run and queues at most one more.
 
 ### 8.6 Known limit and the next slices
 
