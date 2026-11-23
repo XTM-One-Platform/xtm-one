@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_signal import CtemSignal
 from app.services import ctem_scope_gate as gate
+from app.services import ctem_signals as signals
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +220,17 @@ async def evaluate(
     profile: Any = None,
     scenarios: gate.ScenarioIndex | None = None,
     now: datetime | None = None,
+    events: Any = None,
 ) -> gate.Decision | None:
-    """Decide *row* and write its state and decision; ``None`` when it opened a case. The caller commits."""
+    """Decide *row* and write its state and decision; ``None`` when it opened a case. The caller commits.
+
+    With *events* (``ctem_case_loop.PendingEvents``), a verdict that changes a
+    verdict the signal already had adds ``ctem_signal.triaged`` (#1409); the first
+    verdict of a signal is reported by ``ctem_signal.recorded`` instead.
+    """
     if row.state not in GATED_STATES:
         return None
+    before = signals.verdict_of(row.state)
     at = now or datetime.now(UTC)
     profile = profile if profile is not None else await _profile(db, row.organization_id)
     decision = gate.decide(
@@ -236,6 +244,13 @@ async def evaluate(
     row.state = decision.state
     row.decision = decision.record
     row.updated_at = at
+    after = signals.verdict_of(row.state)
+    if events is not None and before is not None and after is not None and after != before:
+        events.add(
+            signals.SIGNAL_TRIAGED,
+            signals.signal_event_data(row, triaged=True, previous_verdict=before),
+            signals.signal_event_id(signals.SIGNAL_TRIAGED, row, f"{before}>{after}@{at.isoformat()}"),
+        )
     return decision
 
 
@@ -251,34 +266,62 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
 
     pending = ctem_case_loop.PendingEvents()
     if not created:
-        return pending
+        return pending  # a re-sighting raises nothing (#1409)
+
+    def recorded(verdict: str | None) -> None:
+        # ctem_signal.recorded first (#1409), with the gate's first verdict, then the case events.
+        # An event that cannot be built never refuses the signal.
+        try:
+            item = (
+                signals.SIGNAL_RECORDED,
+                signals.signal_event_data(row, verdict=verdict),
+                signals.signal_event_id(signals.SIGNAL_RECORDED, row, "first"),
+            )
+        except Exception:
+            logger.warning("ctem_signal.recorded not built for %s", getattr(row, "id", "?"), exc_info=True)
+            return
+        pending.items.insert(0, item)
+
     try:
         async with db.begin_nested():
             await evaluate(db, row)
     except Exception:
         logger.warning("CTEM scope gate not run on signal %s; it stays new", getattr(row, "id", "?"), exc_info=True)
+        recorded(None)
         return pending
+    verdict = signals.verdict_of(row.state)
     try:
         async with db.begin_nested():
             await ctem_case_loop.open_from_signal(db, row, events=pending)
     except Exception:
         pending.items.clear()
         logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
+    recorded(verdict)
     return pending
 
 
 async def evaluate_one(
-    db: AsyncSession, row: CtemSignal, *, evaluator_id: uuid.UUID | None, now: datetime | None = None
+    db: AsyncSession,
+    row: CtemSignal,
+    *,
+    evaluator_id: uuid.UUID | None,
+    now: datetime | None = None,
+    events: Any = None,
 ) -> gate.Decision | None:
     """Decide *row* again with its recorder's OpenCRQ read (:func:`scenario_reader`). The caller commits."""
     if row.state not in GATED_STATES:
         return None
     scenarios = await read_scenarios(db, user_id=scenario_reader(row, evaluator_id))
-    return await evaluate(db, row, scenarios=scenarios, now=now)
+    return await evaluate(db, row, scenarios=scenarios, now=now, events=events)
 
 
 async def evaluate_open(
-    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID | None, now: datetime | None = None
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    now: datetime | None = None,
+    events: Any = None,
 ) -> dict[str, int]:
     """Every gated signal of the organization decided again; counts by state after. The caller commits.
 
@@ -305,6 +348,6 @@ async def evaluate_open(
         reader = scenario_reader(row, user_id)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
-        await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=now)
+        await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=now, events=events)
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
