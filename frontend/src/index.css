@@ -65,7 +65,7 @@
    only honoured in the Tailwind ENTRY stylesheet — from an `@import` it is
    silently ignored, which is what made two earlier attempts at this look like
    the safelist itself was not working.
-   1328 classes, from the pinned library build. */
+   1334 classes, from the pinned library build. */
 @source inline("@dnd-kit/core @dnd-kit/sortable @filigran/design-system @radix-ui/react-accordion @radix-ui/react-avatar @radix-ui/react-checkbox @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-popover @radix-ui/react-radio-group @radix-ui/react-select @radix-ui/react-slider");
 @source inline("@radix-ui/react-slot @radix-ui/react-switch @radix-ui/react-tabs @radix-ui/react-toast @radix-ui/react-tooltip @tiptap/extension-highlight @tiptap/extension-image @tiptap/extension-list @tiptap/extension-subscript @tiptap/extension-superscript @tiptap/extension-table @tiptap/extension-text-align");
 @source inline("@tiptap/extension-text-style @tiptap/starter-kit [&::-ms-clear]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&>*:first-child]:rounded-l-sm [&>*:last-child]:rounded-r-sm [&>*:not(:first-child)]:border-l-0 [&>*]:min-w-0 [&>*]:shrink-0");
@@ -139,44 +139,45 @@
 @source inline("layer-0 layer-1 layer-2 layer-3 layers-2 layout-dashboard layout-grid layout-panel-left leading-[inherit] leading-content-base leading-content-base-bold leading-content-base-link");
 @source inline("leading-content-base-medium leading-content-button leading-content-caption leading-content-code leading-content-compact leading-content-compact-bold leading-content-compact-link leading-content-compact-medium leading-content-highlight leading-normal leading-title-2xl leading-title-jumbo");
 @source inline("leading-title-lg leading-title-md leading-title-sm leading-title-xl leading-title-xs left-0 left-1/2 left-[118px] left-[668px] light:active:bg-[var(--white-300)] light:bg-feedback-error-secondary-transparency-20 light:bg-feedback-info-secondary-transparency-20");
-@source inline("light:bg-feedback-success-secondary-transparency-20 light:bg-feedback-warning-secondary-transparency-20 light:bg-filigran-ia-tertiary light:hover:bg-[var(--white-300)] light:text-default-primary line-clamp-2 link-2 list-checks list-indent-decrease list-indent-increase list-none list-ordered");
-@source inline("list-tree list-x loader-circle locate-fixed log-out lucide-react m-0 map-pin max-h-40 max-h-85.5 max-h-[var(--radix-dropdown-menu-content-available-height)] max-h-[var(--radix-popover-content-available-height)]");
-@source inline("max-h-screen max-w-100 max-w-55 max-w-75 max-w-82 max-w-[250px] max-w-[calc(100vw-var(--spacing)*12)] max-w-full max-w-lg maximize-2 mb-2 menu-ai");
-@source inline("menu-more menu-table-context message-square message-square-more message-square-text messages-square meta-bar mic-off min-h-0 min-h-10 min-h-12 min-h-8");
-@source inline("min-h-9 min-w-0 min-w-18 min-w-24 min-w-5 min-w-50 min-w-[21px] min-w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-select-trigger-width)] ml-2 ml-auto mm:ss");
-@source inline("monitor-down monitor-smartphone motion-reduce:transition-none motion-safe:animate-spin mr-0.5 mr-1 ms-1 mt-1 mt-auto mx-1 mx-2 my-0.5");
-@source inline("my-1 negative-disabled negative-primary negative-secondary no-repeat no-underline object-cover opacity-0 opacity-50 opacity-80 orange-100 orange-200");
-@source inline("orange-300 orange-400 orange-500 orange-600 orange-700 orange-800 orange-900 outline-focus outline-none overflow-clip overflow-hidden overflow-x-auto");
-@source inline("overflow-x-hidden overflow-y-auto p-0 p-1 p-2 p-4 p-6 p-8 package-check page-break paint-roller panel-left-close");
-@source inline("panel-left-open panel-top pastel:before:bg-feedback-alert-secondary-transparency-30 pastel:before:bg-feedback-error-secondary-transparency-30 pastel:before:bg-feedback-info-secondary-transparency-30 pastel:before:bg-feedback-neutral-secondary-transparency-30 pastel:before:bg-feedback-success-secondary-transparency-30 pastel:before:bg-feedback-warning-secondary-transparency-30 pastel:bg-feedback-alert-secondary-transparency-30 pastel:bg-feedback-error-secondary-transparency-30 pastel:bg-feedback-info-secondary-transparency-30 pastel:bg-feedback-neutral-secondary-transparency-30");
-@source inline("pastel:bg-feedback-success-secondary-transparency-30 pastel:bg-feedback-warning-secondary-transparency-30 pastel:border-transparent pb-1 pb-2 pb-4 phone-off picture-in-picture-2 pin-off pl-2 pl-3 pl-4");
-@source inline("pl-6 pl-8 placeholder:text-default-secondary placeholder:text-input-placeholder plus-disabled pointer-events-none pr-0 pr-1 pr-11 pr-16 pr-2 pr-4");
-@source inline("pr-7 pr-8 pr-9 progress-bar-indicator pt-0 pt-2 pt-4 pt-6 pt-8 purple-100 purple-200 purple-300");
-@source inline("purple-400 purple-500 purple-600 purple-700 purple-800 purple-900 px-0 px-1 px-1.5 px-2 px-4 px-6");
-@source inline("py-0 py-1 py-2 py-4 react-dom react/jsx-runtime read-only red-100 red-200 red-300 red-400 red-500");
-@source inline("red-600 red-700 red-800 red-900 refresh-cw resize-none resize-x resize-y right-0 right-2 right-2.5 right-6");
-@source inline("right-[14%] ring-2 ring-[color:var(--black-1000)] ring-filigran-brand-primary-transparency-10 ring-focus ring-offset-2 ring-offset-focus rotate-3d rotate-ccw rounded-[inherit] rounded-full rounded-lg");
-@source inline("rounded-none rounded-sm rounded-t-none rounded-t-sm satellite-dish screen-reader scroll-smooth scrollbar-hide scrollbar-thin-input second-level select-none self-center");
-@source inline("self-stretch shadow-global-shadow share-2 shield-check shopping-basket shrink-0 size-0 size-11 size-12 size-2 size-4 size-5");
-@source inline("size-6 size-8 size-9.5 size-[279px] size-[545px] size-full skip-back skip-forward sliders-horizontal sliders-vertical square-chart-gantt square-pen");
-@source inline("square-terminal sr-only sticky-note sticky-note-plus stroke-default stroke-disabled stroke-error stroke-highlight stroke-info stroke-success table-2 table-properties");
-@source inline("tabular-nums tailwind-merge text-(--fds-button-color-ink) text-1 text-2 text-3 text-[length:inherit] text-alert text-align-center text-align-end text-align-start text-center");
-@source inline("text-color text-content-base text-content-base-bold text-content-base-link text-content-base-medium text-content-button text-content-caption text-content-code text-content-compact text-content-compact-bold text-content-compact-link text-content-compact-medium");
-@source inline("text-content-highlight text-default-disabled text-default-primary text-default-secondary text-entities-all-threats text-entities-analyses text-entities-arsenal text-entities-cases text-entities-events text-entities-location text-entities-observations text-entities-techniques");
-@source inline("text-entities-victimology text-feedback-alert-tertiary text-feedback-error-primary text-feedback-error-tertiary text-feedback-neutral-primary text-feedback-success-primary text-feedback-success-tertiary text-feedback-warning-tertiary text-filigran-brand-primary text-filigran-ia-primary text-gradient-focus text-gradient-ia");
-@source inline("text-icon-alert text-icon-default text-icon-disabled text-icon-error text-icon-highlight text-icon-info text-icon-neutral text-icon-success text-icon-warning text-inherit text-input-disabled text-input-error");
-@source inline("text-input-helper text-input-label text-input-placeholder text-input-required text-input-value text-left text-negative-primary text-right text-search text-title-2xl text-title-jumbo text-title-lg");
-@source inline("text-title-md text-title-sm text-title-xl text-title-xs thumbs-down thumbs-up title-2xl title-jumbo title-lg title-md title-sm title-xl");
-@source inline("title-xs to-transparent todo-list todo-list__label todo-list__label__description top-0 top-1/2 top-2 top-2.5 top-6 top-[-102px] top-[-42px]");
-@source inline("top-[14%] top-[var(--fds-drawer-inset-top,0)] top-left top-right touch-none tracking-content-base tracking-content-base-bold tracking-content-base-link tracking-content-base-medium tracking-content-button tracking-content-caption tracking-content-code");
-@source inline("tracking-content-compact tracking-content-compact-bold tracking-content-compact-link tracking-content-compact-medium tracking-content-highlight tracking-title-2xl tracking-title-jumbo tracking-title-lg tracking-title-md tracking-title-sm tracking-title-xl tracking-title-xs");
-@source inline("transition-[height] transition-[width] transition-colors transition-opacity transition-transform translate-x-1/2 trash-2 triangle-alert turquoise-100 turquoise-200 turquoise-300 turquoise-400");
-@source inline("turquoise-500 turquoise-600 turquoise-700 turquoise-750 turquoise-800 turquoise-900 ul.todo-list user-lock user-plus var(--bg-elevation-default) var(--black-1000) var(--text-default-secondary)");
-@source inline("var(--white-1000) visited:text-filigran-tonic-accent visited:underline volume-2 volume-x w-0 w-10 w-100 w-12 w-14 w-15 w-2/3");
-@source inline("w-20 w-21 w-25 w-3/5 w-37.5 w-4 w-45 w-5 w-50 w-55 w-6 w-62");
-@source inline("w-7 w-75 w-8 w-81 w-85 w-9 w-9/10 w-[100px] w-[126px] w-[179px] w-fit w-full");
-@source inline("w-max w-overlay-lg w-overlay-md w-overlay-sm w-overlay-xl w-screen white-1000 whitespace-nowrap yellow-100 yellow-200 yellow-300 yellow-400");
-@source inline("yellow-500 yellow-600 yellow-700 yellow-800 yellow-900 yyyy-MM-dd z-10 z-[var(--fds-z-overlay,50)]");
+@source inline("light:bg-feedback-success-secondary-transparency-20 light:bg-feedback-warning-secondary-transparency-20 light:bg-filigran-ia-tertiary light:hover:bg-[var(--white-300)] light:shadow-[inset_0_0_0_1px_var(--chip-data-ink-light)] light:text-(--chip-data-ink-light) light:text-default-primary line-clamp-2 link-2 list-checks list-indent-decrease list-indent-increase");
+@source inline("list-none list-ordered list-tree list-x loader-circle locate-fixed log-out lucide-react m-0 map-pin max-h-40 max-h-85.5");
+@source inline("max-h-[var(--radix-dropdown-menu-content-available-height)] max-h-[var(--radix-popover-content-available-height)] max-h-screen max-w-100 max-w-55 max-w-75 max-w-82 max-w-[250px] max-w-[calc(100vw-var(--spacing)*12)] max-w-full max-w-lg maximize-2");
+@source inline("mb-2 menu-ai menu-more menu-table-context message-square message-square-more message-square-text messages-square meta-bar mic-off min-h-0 min-h-10");
+@source inline("min-h-12 min-h-8 min-h-9 min-w-0 min-w-18 min-w-24 min-w-5 min-w-50 min-w-[21px] min-w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-select-trigger-width)] ml-2");
+@source inline("ml-auto mm:ss monitor-down monitor-smartphone motion-reduce:transition-none motion-safe:animate-spin mr-0.5 mr-1 ms-1 mt-1 mt-auto mx-1");
+@source inline("mx-2 my-0.5 my-1 negative-disabled negative-primary negative-secondary no-repeat no-underline object-cover opacity-0 opacity-50 opacity-80");
+@source inline("orange-100 orange-200 orange-300 orange-400 orange-500 orange-600 orange-700 orange-800 orange-900 outline-focus outline-none overflow-clip");
+@source inline("overflow-hidden overflow-x-auto overflow-x-hidden overflow-y-auto p-0 p-1 p-2 p-4 p-6 p-8 package-check page-break");
+@source inline("paint-roller panel-left-close panel-left-open panel-top pastel:before:bg-feedback-alert-secondary-transparency-30 pastel:before:bg-feedback-error-secondary-transparency-30 pastel:before:bg-feedback-info-secondary-transparency-30 pastel:before:bg-feedback-neutral-secondary-transparency-30 pastel:before:bg-feedback-success-secondary-transparency-30 pastel:before:bg-feedback-warning-secondary-transparency-30 pastel:bg-feedback-alert-secondary-transparency-30 pastel:bg-feedback-error-secondary-transparency-30");
+@source inline("pastel:bg-feedback-info-secondary-transparency-30 pastel:bg-feedback-neutral-secondary-transparency-30 pastel:bg-feedback-success-secondary-transparency-30 pastel:bg-feedback-warning-secondary-transparency-30 pastel:border-transparent pastel:shadow-none pastel:text-default-primary pb-1 pb-2 pb-4 phone-off picture-in-picture-2");
+@source inline("pin-off pl-2 pl-3 pl-4 pl-6 pl-8 placeholder:text-default-secondary placeholder:text-input-placeholder plus-disabled pointer-events-none pr-0 pr-1");
+@source inline("pr-11 pr-16 pr-2 pr-4 pr-7 pr-8 pr-9 progress-bar-indicator pt-0 pt-2 pt-4 pt-6");
+@source inline("pt-8 purple-100 purple-200 purple-300 purple-400 purple-500 purple-600 purple-700 purple-800 purple-900 px-0 px-1");
+@source inline("px-1.5 px-2 px-4 px-6 py-0 py-1 py-2 py-4 react-dom react/jsx-runtime read-only red-100");
+@source inline("red-200 red-300 red-400 red-500 red-600 red-700 red-800 red-900 refresh-cw resize-none resize-x resize-y");
+@source inline("right-0 right-2 right-2.5 right-6 right-[14%] ring-2 ring-[color:var(--black-1000)] ring-filigran-brand-primary-transparency-10 ring-focus ring-offset-2 ring-offset-focus rotate-3d");
+@source inline("rotate-ccw rounded-[inherit] rounded-full rounded-lg rounded-none rounded-sm rounded-t-none rounded-t-sm satellite-dish screen-reader scroll-smooth scrollbar-hide");
+@source inline("scrollbar-thin-input second-level select-none self-center self-stretch shadow-[inset_0_0_0_1px_var(--chip-data-ink-dark)] shadow-global-shadow share-2 shield-check shopping-basket shrink-0 size-0");
+@source inline("size-11 size-12 size-2 size-4 size-5 size-6 size-8 size-9.5 size-[279px] size-[545px] size-full skip-back");
+@source inline("skip-forward sliders-horizontal sliders-vertical square-chart-gantt square-pen square-terminal sr-only sticky-note sticky-note-plus stroke-default stroke-disabled stroke-error");
+@source inline("stroke-highlight stroke-info stroke-success table-2 table-properties tabular-nums tailwind-merge text-(--chip-data-ink-dark) text-(--fds-button-color-ink) text-1 text-2 text-3");
+@source inline("text-[length:inherit] text-alert text-align-center text-align-end text-align-start text-center text-color text-content-base text-content-base-bold text-content-base-link text-content-base-medium text-content-button");
+@source inline("text-content-caption text-content-code text-content-compact text-content-compact-bold text-content-compact-link text-content-compact-medium text-content-highlight text-default-disabled text-default-primary text-default-secondary text-entities-all-threats text-entities-analyses");
+@source inline("text-entities-arsenal text-entities-cases text-entities-events text-entities-location text-entities-observations text-entities-techniques text-entities-victimology text-feedback-alert-tertiary text-feedback-error-primary text-feedback-error-tertiary text-feedback-neutral-primary text-feedback-success-primary");
+@source inline("text-feedback-success-tertiary text-feedback-warning-tertiary text-filigran-brand-primary text-filigran-ia-primary text-gradient-focus text-gradient-ia text-icon-alert text-icon-default text-icon-disabled text-icon-error text-icon-highlight text-icon-info");
+@source inline("text-icon-neutral text-icon-success text-icon-warning text-inherit text-input-disabled text-input-error text-input-helper text-input-label text-input-placeholder text-input-required text-input-value text-left");
+@source inline("text-negative-primary text-right text-search text-title-2xl text-title-jumbo text-title-lg text-title-md text-title-sm text-title-xl text-title-xs thumbs-down thumbs-up");
+@source inline("title-2xl title-jumbo title-lg title-md title-sm title-xl title-xs to-transparent todo-list todo-list__label todo-list__label__description top-0");
+@source inline("top-1/2 top-2 top-2.5 top-6 top-[-102px] top-[-42px] top-[14%] top-[var(--fds-drawer-inset-top,0)] top-left top-right touch-none tracking-content-base");
+@source inline("tracking-content-base-bold tracking-content-base-link tracking-content-base-medium tracking-content-button tracking-content-caption tracking-content-code tracking-content-compact tracking-content-compact-bold tracking-content-compact-link tracking-content-compact-medium tracking-content-highlight tracking-title-2xl");
+@source inline("tracking-title-jumbo tracking-title-lg tracking-title-md tracking-title-sm tracking-title-xl tracking-title-xs transition-[height] transition-[width] transition-colors transition-opacity transition-transform translate-x-1/2");
+@source inline("trash-2 triangle-alert turquoise-100 turquoise-200 turquoise-300 turquoise-400 turquoise-500 turquoise-600 turquoise-700 turquoise-750 turquoise-800 turquoise-900");
+@source inline("ul.todo-list user-lock user-plus var(--bg-elevation-default) var(--black-1000) var(--text-default-secondary) var(--white-1000) visited:text-filigran-tonic-accent visited:underline volume-2 volume-x w-0");
+@source inline("w-10 w-100 w-12 w-14 w-15 w-2/3 w-20 w-21 w-25 w-3/5 w-37.5 w-4");
+@source inline("w-45 w-5 w-50 w-55 w-6 w-62 w-7 w-75 w-8 w-81 w-85 w-9");
+@source inline("w-9/10 w-[100px] w-[126px] w-[179px] w-fit w-full w-max w-overlay-lg w-overlay-md w-overlay-sm w-overlay-xl w-screen");
+@source inline("white-1000 whitespace-nowrap yellow-100 yellow-200 yellow-300 yellow-400 yellow-500 yellow-600 yellow-700 yellow-800 yellow-900 yyyy-MM-dd");
+@source inline("z-10 z-[var(--fds-z-overlay,50)]");
 /* fds-safelist:end */
 
 
