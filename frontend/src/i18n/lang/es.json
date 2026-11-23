@@ -21238,5 +21238,7 @@
   "Starts a run when a signal is": "Inicia una ejecución cuando una señal está",
   "Subject kind": "Tipo de sujeto",
   "Every signal": "Todas las señales",
-  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Una ejecución empieza por cada señal que coincide, dentro de las ejecuciones en paralelo de la tarea. El agente lee la señal con list_ctem_signals y sus propios permisos: una señal registrada por un oyente de integración solo llega a una tarea que se ejecuta como administrador."
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Una ejecución empieza por cada señal que coincide, dentro de las ejecuciones en paralelo de la tarea. El agente lee la señal con list_ctem_signals y sus propios permisos: una señal registrada por un oyente de integración solo llega a una tarea que se ejecuta como administrador.",
+  "This entry no longer exists. The list is refreshed.": "Esta entrada ya no existe. La lista se actualiza.",
+  "This entry could not be loaded.": "No se pudo cargar esta entrada."
 }
