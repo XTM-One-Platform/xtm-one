@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { Hash, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { hasScopeSelection, isElementScopeEnforceable, isScopeEnforced, withScopeEnforcement } from "@/lib/element-scope";
 import { ElementTypeEditor } from "@/components/ui/element-type-editor";
@@ -72,7 +72,7 @@ export function ElementBindingsCard({
       <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-2">
         <CardTitle className="content-base flex items-center gap-2">
           <Hash className="h-4 w-4 text-filigran-ia-primary" /> {t_i18n("Scope(s)")}
-          {totalBound > 0 && <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{totalBound}</Badge>}
+          {totalBound > 0 && <CountBadge variant="secondary">{totalBound}</CountBadge>}
         </CardTitle>
         <CardEditActions
           editing={editing}

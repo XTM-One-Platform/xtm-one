@@ -3,6 +3,7 @@
 import { Unplug, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -48,7 +49,7 @@ export function ConnectedAccountsCard({ integration }: { integration: Integratio
         <CardTitle className="content-base flex items-center gap-2">
           <Users className="h-4 w-4 text-accent" />
           {t_i18n("People's own accounts")}
-          <Badge variant="outline" className="content-caption">{count}</Badge>
+          <CountBadge variant="outline">{count}</CountBadge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">

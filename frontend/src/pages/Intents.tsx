@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge, BadgeFocusTrigger } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -913,9 +914,9 @@ function VerticalPanel({
               {t_i18n("Business verticals for intent routing")}
             </p>
           </div>
-          <Badge variant="outline" className="tabular-nums mr-2">
+          <CountBadge variant="outline" className="mr-2">
             {verticals.length}
-          </Badge>
+          </CountBadge>
           {expanded ? (
             <ChevronDown className="h-3.5 w-3.5 text-default-secondary" />
           ) : (

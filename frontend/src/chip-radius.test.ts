@@ -16,6 +16,8 @@
  *    PENDING_PILL_CHIPS with their count per file; a slice that moves one
  *    lowers its count, a new pill fails.
  *
+ * 4. a `<Badge>` holding only a count is a `CountBadge` (round counter).
+ *
  * Avatars, status dots, progress bars, toggles, spinners, round icon buttons
  * and counters are not chips and stay round.
  */
@@ -120,6 +122,34 @@ test("no Badge or ToneBadge overrides the chip radius at a call site", () => {
     return [...text.matchAll(OVERRIDE)].map((hit) => `${path.slice(SRC.length)}:${text.slice(0, hit.index).split("\n").length}`);
   });
   expect(offenders).toEqual([]);
+});
+
+/**
+ * A `<Badge>` whose only child is a count (a number, or an expression ending in
+ * `.length`, `.size`, `count` or `total`) is a counter, not a chip: it is drawn
+ * with `CountBadge` (a 20 px circle, the design-system standalone count), so a
+ * count never takes the square chip shape (#1333, UX round 1).
+ */
+const COUNT_ONLY_BADGE = /<Badge\b[^<>]*>\s*(?:\d+|\{[^{}]*(?:\.length|\.size|[cC]ount|[tT]otal\w*)\s*\})\s*<\/Badge>/g;
+
+test("a count is drawn with CountBadge, never a chip-shaped Badge", () => {
+  const offenders = sourceFiles(SRC).flatMap((path) => {
+    const text = readFileSync(path, "utf8");
+    return [...text.matchAll(COUNT_ONLY_BADGE)].map((hit) => `${path.slice(SRC.length)}:${text.slice(0, hit.index).split("\n").length}`);
+  });
+  expect(offenders).toEqual([]);
+  for (const count of ["<Badge variant=\"outline\">{items.length}</Badge>", "<Badge>{count}</Badge>", "<Badge variant=\"cyan\">3</Badge>", "<Badge>\n  {totalBound}\n</Badge>"]) {
+    expect(count.match(COUNT_ONLY_BADGE), count).not.toBeNull();
+  }
+  for (const chip of ["<Badge variant=\"outline\">{t_i18n(\"Paused\")}</Badge>", "<Badge>{span.type}</Badge>"]) {
+    expect(chip.match(COUNT_ONLY_BADGE), chip).toBeNull();
+  }
+});
+
+test("CountBadge stays round", () => {
+  const code = readFileSync(join(SRC, "components/ui/count-badge.tsx"), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  expect(code).toMatch(/\brounded-full\b/);
+  expect(code).toMatch(/\bmin-w-5\b/);
 });
 
 test("no new hand-made chip is drawn as a full pill", () => {
