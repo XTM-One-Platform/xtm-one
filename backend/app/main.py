@@ -370,8 +370,9 @@ async def _autonomous_loop() -> None:
     warnings and integration event polling.
 
     A tick that overruns the 55s TTL simply loses the lock to expiry and
-    the next worker may start a fresh (serialized-by-DB, idempotent)
-    tick — the same overrun semantics as before.
+    the next worker may start a fresh tick alongside it. Its sweeps are
+    idempotent, except a per-user fan-out still in progress, which a
+    per-assignment claim keeps to one tick (``_fanout_claim``).
 
     A tick that RAISES also keeps the window marker: the failed window
     is not retried by another worker (deliberate — every sweep inside

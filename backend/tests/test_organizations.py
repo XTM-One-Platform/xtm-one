@@ -38,6 +38,7 @@ def _org(role: str = "tracked", name: str = "Acme Cloud", relationship: str | No
 
 def _row(profile: dict, version: int = 2):
     return SimpleNamespace(
+        organization_id=None,  # no asset records read: the session is a stub
         version=version,
         profile=profile,
         source="form",

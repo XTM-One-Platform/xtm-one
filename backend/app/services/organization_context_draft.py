@@ -368,8 +368,8 @@ async def draft_profile(db: AsyncSession, *, user_id: uuid.UUID, tenant_id: str 
     """The draft over the current profile, and the version it was drafted from (writes nothing)."""
     from app.services import organization_context as org_context
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    # The asset lists come from the records (#1543): a draft saved over the stored JSON would drop the row writes.
+    current, base = await org_context.current_profile(db)
     version = current.version if current else None
     facts = await collect_facts(db, user_id=user_id, tenant_id=tenant_id)
     return merge_draft(base, facts), version

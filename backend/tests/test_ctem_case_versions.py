@@ -27,6 +27,19 @@ def _row(
     return {"vendor": vendor, "product": product, "version": version, "asset_ids": ids, "sources": list(sources)}
 
 
+def test_the_platform_read_binds_the_product_keys_never_the_asset_ids() -> None:
+    # #1575 review: an IN list of asset ids hits the driver's 32,767 bind cap on a large estate.
+    from sqlalchemy.dialects import postgresql
+
+    org = uuid.uuid4()
+    statement = versions._platforms_query(org, ("google chrome",))
+    compiled = statement.compile(dialect=postgresql.dialect())  # type: ignore[no-untyped-call]
+    sql = str(compiled)
+    assert "organization_asset_software" in sql
+    assert "organization_assets.id IN" not in sql
+    assert len(compiled.params) <= 6
+
+
 def test_versions_are_listed_with_their_asset_counts_and_sources():
     answer = versions.running_versions(
         [_row("10.0.22631.4317", 640, sources=("intune", "defender")), _row("10.0.22621.3880", 274)],
@@ -90,7 +103,9 @@ def test_the_same_version_from_two_rows_is_one_entry():
         fixed_version=None,
     )
     assert answer is not None
-    assert answer["versions"] == [{"version": "1.2", "asset_count": 7, "sources": ["intune", "sbom"]}]
+    (row,) = answer["versions"]
+    assert (row["version"], row["platform"], row["asset_count"], row["sources"]) == ("1.2", None, 7, ["intune", "sbom"])
+    assert len(row["asset_ids"]) == 7 and row["more_asset_ids"] == 0
     assert answer["asset_count"] == 7
 
 
@@ -327,7 +342,121 @@ def test_os_rows_join_the_affected_assets_by_name() -> None:
     by_asset = versions.versions_on_assets(rows, product_label="Microsoft Windows", fixed_version="10.0.26200.9974")
     assert by_asset["lapt-0002"] == {
         "asset_id": "a1",
+        "platform": "Windows",
         "versions": ["10.0.26200.9911"],
         "sources": ["intune"],
         "status": "below_fixed",
     }
+
+
+def _browser_inventory() -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """#1572 acceptance: 3 Windows on X.36, 2 macOS on X.36, 1 macOS on X.37, 1 Windows on X.35 and X.36."""
+    rows = [
+        _row("36.0", assets=("w1", "w2", "w3", "w4", "m1", "m2"), vendor="Acme", product="Browser"),
+        _row("37.0", assets=("m3",), vendor="Acme", product="Browser"),
+        _row("35.0", assets=("w4",), vendor="Acme", product="Browser"),
+    ]
+    platforms = {**{a: "Windows" for a in ("w1", "w2", "w3", "w4")}, **{a: "macOS" for a in ("m1", "m2", "m3")}}
+    return rows, platforms
+
+
+def test_running_versions_are_grouped_by_version_and_platform_with_a_fix_per_platform() -> None:
+    rows, platforms = _browser_inventory()
+    answer = versions.running_versions(
+        rows,
+        product_label="Acme Browser",
+        fixed_version="37.0",
+        fixed_versions_by_platform={"Windows": "36.0", "macOS": "37.0"},
+        asset_platforms=platforms,
+    )
+    assert answer is not None
+    found = {(v["version"], v["platform"]): (v["asset_count"], v["asset_ids"], v["status"]) for v in answer["versions"]}
+    assert found == {
+        ("36.0", "Windows"): (4, ["w1", "w2", "w3", "w4"], "fixed"),
+        ("35.0", "Windows"): (1, ["w4"], "below_fixed"),
+        ("36.0", "macOS"): (2, ["m1", "m2"], "below_fixed"),
+        ("37.0", "macOS"): (1, ["m3"], "fixed"),
+    }
+    assert (answer["asset_count"], answer["assets_multi_version"], answer["version_row_asset_sum"]) == (7, 1, 8)
+    assert answer["version_rows_note"] == versions.VERSION_ROWS_NOTE
+    assert (answer["assets_below_fixed"], answer["assets_on_fixed"], answer["assets_not_comparable"]) == (3, 4, 0)
+    assert answer["fixed_versions"] == {"Windows": "36.0", "macOS": "37.0"}
+    assert answer["platforms"] == ["Windows", "macOS"]
+    assert answer["platform_unverified"] is False
+    assert not versions.all_on_fixed(answer)
+
+
+def test_a_generic_fix_over_several_platforms_never_resolves_the_case() -> None:
+    rows, platforms = _browser_inventory()
+    answer = versions.running_versions(
+        rows, product_label="Acme Browser", fixed_version="36.0", asset_platforms=platforms
+    )
+    assert answer is not None
+    assert answer["platform_unverified"] is True
+    statuses = {(v["version"], v["platform"]): (v["status"], v.get("status_reason")) for v in answer["versions"]}
+    assert statuses[("36.0", "macOS")] == ("not_comparable", versions.FIX_NOT_KNOWN_FOR_PLATFORM)
+    assert statuses[("35.0", "Windows")] == ("below_fixed", None)
+    # Below the fix stays below; nothing reads fixed while the fix is not verified per platform.
+    assert answer["assets_below_fixed"] == 1
+    assert answer["assets_on_fixed"] == 0
+    assert answer["assets_fix_not_known_for_platform"] == 6
+    assert not versions.all_on_fixed(answer)
+    # Even with every asset at or above the generic fix.
+    only_fixed = versions.running_versions(
+        rows[:2], product_label="Acme Browser", fixed_version="36.0", asset_platforms=platforms
+    )
+    assert only_fixed is not None and not versions.all_on_fixed(only_fixed)
+
+
+def test_a_platform_the_per_platform_fix_does_not_name_is_not_comparable() -> None:
+    rows, platforms = _browser_inventory()
+    answer = versions.running_versions(
+        rows,
+        product_label="Acme Browser",
+        fixed_version="36.0",
+        fixed_versions_by_platform={"Windows": "36.0"},
+        asset_platforms=platforms,
+    )
+    assert answer is not None
+    assert answer["assets_not_comparable"] == 3
+    assert answer["assets_fix_not_known_for_platform"] == 3
+    assert not versions.all_on_fixed(answer)
+
+
+def test_a_single_platform_with_a_generic_fix_is_unchanged() -> None:
+    answer = versions.running_versions(
+        [_row("8.0.9", assets=("a1", "a2"), vendor="Oracle", product="Java")],
+        product_label="Oracle Java",
+        fixed_version="8.0.9",
+        asset_platforms={"a1": "Linux", "a2": "Linux"},
+    )
+    assert answer is not None
+    assert answer["platform_unverified"] is False
+    assert versions.all_on_fixed(answer)
+
+
+def test_the_case_read_passes_the_fix_of_each_platform_it_keeps() -> None:
+    from types import SimpleNamespace
+
+    assert versions._case_platform_fixes(SimpleNamespace(fixed_versions={"Windows": "1.36", "macOS": ""})) == {
+        "Windows": "1.36"
+    }
+    assert versions._case_platform_fixes(SimpleNamespace(fixed_versions=None)) == {}
+    assert versions._case_platform_fixes(SimpleNamespace()) == {}
+
+
+def test_versions_on_assets_use_the_fix_of_the_asset_platform() -> None:
+    browser = {"vendor": "Acme", "product": "Browser"}
+    rows = [
+        {"name": "mac-1", "asset_id": "m1", "version": "36.0", "sources": ["intune"], "platform": "macOS", **browser},
+        {"name": "win-1", "asset_id": "w1", "version": "36.0", "sources": ["intune"], "platform": "Windows", **browser},
+    ]
+    by_platform = versions.versions_on_assets(
+        rows,
+        product_label="Acme Browser",
+        fixed_version="37.0",
+        fixed_versions_by_platform={"Windows": "36.0", "macOS": "37.0"},
+    )
+    assert (by_platform["mac-1"]["status"], by_platform["win-1"]["status"]) == ("below_fixed", "fixed")
+    generic = versions.versions_on_assets(rows, product_label="Acme Browser", fixed_version="36.0")
+    assert generic["mac-1"]["status_reason"] == versions.FIX_NOT_KNOWN_FOR_PLATFORM
