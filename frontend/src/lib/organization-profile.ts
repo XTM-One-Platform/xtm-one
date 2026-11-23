@@ -267,6 +267,10 @@ export interface AssetRow {
   tags: string[];
   source: string;
   external_id: string;
+  /** When the source last observed the asset, ISO 8601 UTC; absent or "" when it does not say (#1134 S4). */
+  last_seen?: string;
+  /** The source's activity status (OpenAEV: active, inactive, agentless, stale); absent or "" when unknown. */
+  status?: "" | "active" | "inactive" | "agentless" | "stale";
 }
 
 /** A group of assets (OpenAEV's asset group, #11781). */
@@ -469,32 +473,6 @@ export const FIELD_HELP = {
 
 /** The platform a drafted field came from (the draft's `source`), as the product is named. */
 export const PLATFORM_NAMES: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
-
-/**
- * Every source an import or a sync reads, as the product is named: the platforms, then the
- * endpoint sources read through their own Microsoft integrations (#1251). Kept apart from PLATFORM_NAMES,
- * which lists the Filigran platforms only (dashboards, packs and drafts read it).
- */
-export const IMPORT_SOURCE_NAMES: Record<string, string> = {
-  ...PLATFORM_NAMES,
-  intune: "Microsoft Intune",
-  defender: "Microsoft Defender for Endpoint",
-};
-
-/**
- * The integration provider an import source is read through (its logo and the integration the backend
- * reads with): Intune through an `intune` integration, Defender for Endpoint through a `defender` one,
- * never the `microsoft` (Outlook, Teams) integration, whose token carries no device permission.
- */
-export const IMPORT_SOURCE_PROVIDER: Record<string, string> = { intune: "intune", defender: "defender" };
-
-/** The import sources a connected integration provider opens (an Intune integration opens Intune, a Defender one Defender). */
-export function importSourcesOfProvider(provider: string): string[] {
-  if (provider in PLATFORM_NAMES) return [provider];
-  return Object.entries(IMPORT_SOURCE_PROVIDER)
-    .filter(([, via]) => via === provider)
-    .map(([source]) => source);
-}
 
 /**
  * The platform an "unavailable" line of the draft names ("OpenCRQ: ..."), or ""

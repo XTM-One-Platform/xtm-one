@@ -39,7 +39,7 @@ import ipaddress
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.services.organization_context import HAND_SOURCES, PLATFORM_SOURCES
@@ -392,8 +392,6 @@ DEFAULT_PRECEDENCE: dict[str, tuple[str, ...]] = {
     "category": (HAND_CLASS, "openaev", "opencrq", "opencti", "mdm", "edr", "*"),
     "subcategory": (HAND_CLASS, "openaev", "opencrq", "opencti", "mdm", "edr", "*"),
 }
-#: The class each endpoint source is registered under (#1251): what ``DEFAULT_PRECEDENCE`` ranks.
-BUILTIN_SOURCE_CLASSES: dict[str, str] = {"intune": "mdm", "defender": "edr"}
 #: Precedence of a field not listed above: a person first, then the suite, then anything.
 FALLBACK_PRECEDENCE: tuple[str, ...] = (HAND_CLASS, "openaev", "opencrq", "opencti", "*")
 #: Fields only a person sets on a synced thing (local enrichment, #1134): never taken from a sync.
@@ -407,8 +405,6 @@ def source_class(source: str, classes: Mapping[str, str] | None = None) -> str:
     source = (source or "").strip().lower()
     if classes and source in classes:
         return classes[source]
-    if source in BUILTIN_SOURCE_CLASSES:
-        return BUILTIN_SOURCE_CLASSES[source]
     if source in HAND_SOURCES:
         return HAND_CLASS
     if source.startswith("agent:"):
@@ -778,7 +774,25 @@ def section_record(section: str, row: Mapping[str, Any], *, index: int = 0) -> S
     external_id = str(row.get("external_id") or "") or f"row-{index}"
     software = [dict(s) for s in row.get("software") or [] if isinstance(s, Mapping)]
     fields = {k: v for k, v in row.items() if k not in ("source", "external_id", "sync_id", "software")}
-    return SourceRecord(source=source, external_id=external_id, identifiers=ids(row), fields=fields, software=software)
+    return SourceRecord(
+        source=source,
+        external_id=external_id,
+        identifiers=ids(row),
+        fields=fields,
+        software=software,
+        last_seen=_row_last_seen(row.get("last_seen")),
+    )
+
+
+def _row_last_seen(value: Any) -> datetime | None:
+    """A row's ``last_seen`` (ISO 8601, #1134 S4) as an aware datetime, ``None`` when empty or unreadable."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        seen = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return seen.replace(tzinfo=UTC) if seen.tzinfo is None else seen
 
 
 def dedupe_section(
