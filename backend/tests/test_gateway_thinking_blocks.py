@@ -296,8 +296,8 @@ async def test_blocks_refused_again_without_them_were_not_the_cause(caplog):
 async def test_blocks_stay_retired_when_the_retry_only_hits_an_outage(monkeypatch):
     sleep = asyncio.sleep
     monkeypatch.setattr(asyncio, "sleep", lambda _delay: sleep(0))
-    # Raised to the provider (the SDK would re-send it itself), which retries it.
-    outage = httpx.Response(503, json={"error": {"message": "overloaded"}}, headers={"x-should-retry": "false"})
+    # The gateway's chat client leaves retries to the provider (#1468).
+    outage = httpx.Response(503, json={"error": {"message": "overloaded"}})
     gateway = _Gateway(httpx.Response(400, json=REFUSED_BLOCKS), outage, _ok())
     messages = _round(_kept())
     await gateway.provider().chat(messages, model=MODEL, tools=[TOOL])

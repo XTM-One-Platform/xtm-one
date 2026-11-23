@@ -39,6 +39,7 @@ from app.llm.base import (
     gateway_error_envelope,
     parse_tool_arguments,
     retry_llm_call,
+    told_not_to_retry,
     usage_sink_of,
 )
 from app.llm.model_capabilities import (
@@ -94,9 +95,12 @@ def is_retryable_openai(exc: Exception) -> bool:
 
     Used by both :class:`OpenAIProvider` and :class:`OpenAICompatibleProvider`.
     An error whose body says ``retryable: false`` (the AI Gateway's 502 for an
-    upstream 4xx) is never retried.
+    upstream 4xx), or whose headers say ``x-should-retry: false`` (a wait past
+    what the SDK honours), is never retried.
     """
     if marked_not_retryable(getattr(exc, "body", None)):
+        return False
+    if told_not_to_retry(exc):
         return False
     if isinstance(exc, openai.RateLimitError):
         return True
