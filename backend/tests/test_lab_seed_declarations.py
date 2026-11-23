@@ -88,6 +88,9 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
         "lab-group-ai-off": {"LAB_PEER_GROUP_AI": "off"},
         "lab-org-setup-prompt": {"LAB_ORG_SETUP_PROMPT": "on"},
         "lab-org-setup-prompt-light": {"LAB_ORG_SETUP_PROMPT": "on", "LAB_THEME": "light"},
+        # Organization rows written by platform syncs next to typed rows (#1345).
+        "lab-org-synced": {"LAB_ORG_SYNCED": "on"},
+        "lab-org-synced-light": {"LAB_ORG_SYNCED": "on", "LAB_THEME": "light"},
         "lab-perf-thread": {"LAB_PERF_THREAD": "on"},
         "lab-langfuse-env": {"LAB_LANGFUSE": "env"},
         "lab-db-license": {"LAB_LICENSE_SOURCE": "database"},
@@ -103,8 +106,16 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
             k: v for k, v in lab.items() if k not in ("env", "description")
         }, name
     assert not {
-        "LAB_EDITION", "LAB_DEFAULT_MODEL", "LAB_AI", "LAB_PEER_GROUP_AI", "LAB_LANGFUSE", "LAB_LICENSE_SOURCE",
-        "LAB_ORG_SETUP_PROMPT", "LAB_PERF_THREAD", "LAB_WORKER",
+        "LAB_EDITION",
+        "LAB_DEFAULT_MODEL",
+        "LAB_AI",
+        "LAB_PEER_GROUP_AI",
+        "LAB_LANGFUSE",
+        "LAB_LICENSE_SOURCE",
+        "LAB_ORG_SETUP_PROMPT",
+        "LAB_ORG_SYNCED",
+        "LAB_PERF_THREAD",
+        "LAB_WORKER",
     } & set(lab["env"])
 
 
@@ -807,6 +818,44 @@ def test_the_lab_seeds_a_budget_ceiling_the_peer_cannot_exceed_and_logs_its_flee
     assert "'AGENT_LOOP_MAX_COST_USD': os.environ.get('AGENT_LOOP_MAX_COST_USD', LAB_BUDGET_CEILING_USD)" in env
     peer = _lab_source("seed_peer")
     assert "seed_budget_ceiling(peer_token, base)" in peer and "skipped['budget ceiling']" in peer
+
+
+def test_the_lab_turns_the_decisions_read_switch_on_and_seeds_one_open_decision():
+    calls: list = []
+    answers: dict = {
+        ("POST", "/work-items"): {"id": "w1"},
+        ("GET", "/decisions/waiting?limit=200"): {"enabled": True, "items": [{"id": "work_item:w1"}]},
+    }
+
+    def api(method, path, token=None, body=None):
+        calls.append((method, path, token, body))
+        return answers.get((method, path), {})
+
+    base = "http://localhost:3100"
+    ns = _lab_namespace("seed_open_decision", "_created", "SEED_NAME", api=api)
+    assert ns["seed_open_decision"]("t", base) == {
+        "open decision": {"id": "work_item:w1", "url": f"{base}/tasks/work-items/w1"}
+    }
+    body = calls[0][3]
+    # A complete ask, as the API requires of needs_human; no owner agent, so no inbox claims it.
+    assert body["needs_human"] is True and "owner_agent_id" not in body
+    ask = body["ask"]
+    assert ask["question"] and len(ask["options"]) >= 2
+    assert ask["recommendation"] in {option["key"] for option in ask["options"]}
+
+    # The switch off, or the row missing, raises: the seed never reports a row the inbox does not show.
+    for waiting in (
+        {"enabled": False, "reason": "DECISIONS_READ_ENABLED is off", "items": []},
+        {"enabled": True, "items": []},
+    ):
+        answers[("GET", "/decisions/waiting?limit=200")] = waiting
+        with pytest.raises(RuntimeError):
+            ns["seed_open_decision"]("t", base)
+
+    env = _lab_source("backend_env")
+    assert "'DECISIONS_READ_ENABLED': os.environ.get('DECISIONS_READ_ENABLED', 'true')" in env
+    seed = _lab_source("seed_entities")
+    assert "seed_open_decision(token, base)" in seed and "skipped['open decision']" in seed
 
 
 def test_the_lab_seeds_the_friction_runs_through_the_backends_interpreter_and_logs_their_urls():

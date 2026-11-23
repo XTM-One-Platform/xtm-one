@@ -215,6 +215,27 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(text).toContain("Changes when a person edits the profile");
   });
 
+  it("lands an Assets chip filtered on the source key and draws a section with no Source filter as plain text (UX round 5 on #1254, B11)", async () => {
+    serve(
+      [sync({ id: "s-1", source: "openaev", section: "tech_stack" })],
+      [
+        source({ key: "openaev", display_name: "OpenAEV", rows: { tech_stack: 4 }, total: 4, sync_ids: ["s-1"] }),
+        source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 12 }, total: 12, sync_ids: [] }),
+      ],
+    );
+    render("inventory");
+    const all = await rows();
+    const csv = all.find((row) => row.textContent?.includes("CSV import"));
+    const openaev = all.find((row) => row.textContent?.includes("OpenAEV"));
+    if (!csv || !openaev) throw new Error("rows missing");
+    const assets = within(csv).getByTestId("organization-sources.chip");
+    expect(assets.tagName).toBe("BUTTON");
+    expect(assets.getAttribute("aria-label")).toBe("Assets from CSV import: 12 rows");
+    const tech = within(openaev).getByTestId("organization-sources.chip");
+    expect(tech.tagName).not.toBe("BUTTON");
+    expect(tech.closest("button")).toBeNull();
+  });
+
   it("labels each history entry in words and never shows the backend's sentence (UX r1 B7 on #1294)", async () => {
     serve([sync()], [source()]);
     const base = get.getMockImplementation();
@@ -255,6 +276,35 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     const text = all.map((row) => row.textContent ?? "").join(" | ");
     expect(text).toContain("Paused: The token was revoked.");
     expect(text).toContain("Failed");
+  });
+
+  it("names an agent or partner row by its source, its agent on the subline (lab retest of #1294, D2)", async () => {
+    serve(
+      [],
+      [
+        source({ key: "intune", kind: "agent", display_name: "Microsoft Intune", rows: { assets_exposure: 12 }, total: 12, written_by_agent: "CISO Office", sync_ids: [] }),
+        source({ key: "ciso-notes", kind: "agent", display_name: "ciso-notes", rows: { crown_jewels: 1 }, total: 1, written_by_agent: "CISO Office", sync_ids: [] }),
+      ],
+    );
+    render();
+    const all = await rows();
+    const intune = all.find((row) => row.textContent?.includes("Microsoft Intune"));
+    expect(intune?.textContent).toContain("Written by agent CISO Office");
+    expect(within(intune!).getByRole("button", { name: "Actions on Microsoft Intune" })).toBeTruthy();
+    // A source with only its raw key for a name falls back to the agent.
+    expect(all.some((row) => row.textContent?.startsWith("CISO Office"))).toBe(true);
+    expect(all.map((row) => row.textContent ?? "").join(" | ")).not.toContain("ciso-notes");
+  });
+
+  it("puts Filters behind Columns so the default columns fit the 1458 px card at 1728 (lab retest of #1294, D1)", async () => {
+    serve([sync()], [source()]);
+    render();
+    await rows();
+    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent ?? "");
+    // Filters steps behind Columns; the label summary is still searched and exported.
+    expect(headers.some((text) => text.startsWith("Filters"))).toBe(false);
+    expect(screen.getByRole("button", { name: /Columns/ })).toBeTruthy();
+    expect(screen.getAllByTestId("organization-sources.row")[0].textContent).not.toContain("dmz");
   });
 
   it("shows a centred first-use state with Add a source when nothing feeds the sections", async () => {

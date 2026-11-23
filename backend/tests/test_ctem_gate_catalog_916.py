@@ -2,7 +2,9 @@
 
 Pinned here without a database:
 - every CTEM loop fleet declares the seven CTEM gate keys, in loop order;
-- at the seeded level (Low) exactly one gate waits, ``ctem.mobilize``; Full
+- at the seeded level (Low) two gates wait on a fleet with the OpenAEV
+  validation step (``ctem.validation.non_readonly`` and ``ctem.mobilize``, Sam,
+  23 Nov 2026, #1339), ``ctem.mobilize`` alone on the third-party fleet; Full
   human gates makes every gate wait; Full autonomous none;
 - the remediation ticket tools are the Mobilize action (one decision covers the
   tickets of the case), the OpenAEV launches are the validation gate;
@@ -19,7 +21,12 @@ from typing import Any
 
 import pytest
 
-from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED, CTEM_GATE_KEYS, CTEM_MOBILIZE_GATE
+from app.agents.builtin_fleet_docs import (
+    BUILTIN_FLEET_STRUCTURED,
+    CTEM_GATE_KEYS,
+    CTEM_MOBILIZE_GATE,
+    CTEM_VALIDATION_GATE,
+)
 from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL, _seed_approval_gates
 from app.agents.seed import SEED_DATA_DIR
 from app.services.fleet_autonomy import AUTONOMY_LEVELS, effective_gates, gate_catalog, gated_tool_rules
@@ -38,10 +45,14 @@ def test_every_loop_fleet_declares_the_ctem_gate_catalog_in_loop_order(slug):
     assert tuple(g["key"] for g in _gates(slug)) == CTEM_GATE_KEYS
 
 
+_VALIDATION_FLEETS = ("ctem-loop", "ctem-vuln-prioritization", "ctem-ai-security")
+
+
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
-def test_out_of_the_box_only_mobilize_waits(slug):
+def test_out_of_the_box_the_validation_and_mobilize_wait(slug: str) -> None:
     catalog = gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug))
-    assert [e["key"] for e in catalog if e["gated"]] == [CTEM_MOBILIZE_GATE]
+    expected = [CTEM_VALIDATION_GATE, CTEM_MOBILIZE_GATE] if slug in _VALIDATION_FLEETS else [CTEM_MOBILIZE_GATE]
+    assert [e["key"] for e in catalog if e["gated"]] == expected
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)

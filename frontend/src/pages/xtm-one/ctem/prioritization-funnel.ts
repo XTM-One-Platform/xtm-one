@@ -47,6 +47,11 @@ export function isOrganizationSettingsHref(href: string): boolean {
   return href === "/settings/organization" || href.startsWith("/settings/organization?") || href.startsWith("/settings/organization/profile/");
 }
 
+/** Whether a link opens CTEM > Inventory, where the technology and exposure cards live (#1178). */
+export function isInventoryHref(href: string): boolean {
+  return href === "/ctem/inventory" || href.startsWith("/ctem/inventory?") || href.startsWith("/ctem/inventory/");
+}
+
 /** Name, definition and call to action of each layer (English catalog keys). */
 export const FUNNEL_LAYER_COPY: Record<CtemFunnelLayerKey, { name: string; definition: string; cta?: string }> = {
   known: {

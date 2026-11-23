@@ -4594,6 +4594,13 @@ async def run_agent_chat(
 
             if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
+            # The read-only CTEM group (#1337): bound on any agent, the reads the
+            # CTEM agents above do not already carry.
+            from app.services.builtin_tools import ctem_read_tools_for
+
+            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            if ctem_read is not None:
+                composite.add_tools(*ctem_read)
             # The learned skill (#914): a built-in agent records durable lessons.
             from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
 

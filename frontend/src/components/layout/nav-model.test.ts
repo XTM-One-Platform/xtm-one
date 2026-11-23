@@ -67,7 +67,7 @@ test("CTEM: a top-level group between Chat and Orchestration in XTM One mode onl
   const ctem = group("ctem", true, xtmOne);
   assert.equal(ctem.label, "CTEM");
   assert.equal(ctem.to, undefined, "no hub page: the heading folds the group");
-  assert.deepEqual(ctem.children.map((child) => child.to), ["/ctem/cases"]);
+  assert.deepEqual(ctem.children.map((child) => child.to), ["/ctem/cases", "/ctem/inventory"]);
   for (const flags of [{ ...xtmOne, aiEnabled: false }, { ...xtmOne, aiLicensed: false }, { ...xtmOne, chat: false }]) {
     const found = group("ctem", true, flags);
     assert.ok(!found.locked, "the group carries no lock");
@@ -75,6 +75,7 @@ test("CTEM: a top-level group between Chat and Orchestration in XTM One mode onl
     assert.ok(cases && !cases.locked, "listed and open: a read surface, no AI or licence lock");
   }
   assert.equal(ctem.children[0].label, "Cases");
+  assert.equal(ctem.children[1].label, "Inventory", "Sam, 22 Nov 2026 (#1178)");
   const glyphs = resolveNav(xtmOne, true)[0].entries.filter((entry) => entry.kind === "group" && entry.id !== "ctem").map((entry) => entry.icon);
   assert.ok(!glyphs.includes(ctem.icon), "the CTEM glyph is not another group's (Orchestration, Work)");
 });

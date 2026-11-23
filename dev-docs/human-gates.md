@@ -36,7 +36,10 @@ tool, with the gate key as the decision's source. The CTEM loop fleets (#916,
 CTEM-34) declare one key per loop stage (`ctem.validation.non_readonly`,
 `ctem.analyst_review`, `ctem.remediation.decision`, `ctem.mobilize`,
 `ctem.production_change`, `ctem.accept_risk`, `ctem.close_without_retest`);
-out of the box only `ctem.mobilize` waits, one decision per case. A built-in
+out of the box two gates wait per case, the OpenAEV validation (one decision
+per validation: a gate's `grant` lets the approved call cover the creation and
+the launch of the objects it named or created) and `ctem.mobilize` (one
+decision per case). A built-in
 fleet takes pins and added gates in its customer layer, kept across seed
 upgrades. No CTEM-specific card, endpoint, table, bell kind or channel
 message; the G2 migration backfills them like any other.

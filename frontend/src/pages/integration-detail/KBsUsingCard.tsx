@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useNavigate } from "react-router-dom";
 import { Database, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { useKBsByIntegration } from "@/hooks/api/useKnowledgeBaseApi";
 import { formatKBStats } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
@@ -33,7 +33,7 @@ export function KBsUsingCard({ integrationId }: { integrationId: string }) {
         <CardTitle className="content-base flex items-center gap-2">
           <Database className="h-4 w-4 text-accent" />
           {t_i18n("Knowledge Bases Using This Integration")}
-          {kbs && <Badge variant="cyan" className="content-caption ml-auto">{kbs.length}</Badge>}
+          {kbs && <CountBadge variant="cyan" className="ml-auto">{kbs.length}</CountBadge>}
         </CardTitle>
       </CardHeader>
       <CardContent>
