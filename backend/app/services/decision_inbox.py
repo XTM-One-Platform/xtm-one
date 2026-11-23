@@ -127,7 +127,35 @@ async def _source_names(db: AsyncSession, rows: list[Decision]) -> dict[tuple[st
     return names
 
 
-def present(row: Decision, names: SourceNames) -> dict[str, Any]:
+def fleet_decisions_clause(fleet_id: uuid.UUID):
+    """The open decisions a fleet raised: sources of its current home members (#1493).
+
+    A run of a home member (its ``agent_id``) and a work item a home member owns
+    or created. A flow run is not listed: a flow has no agent column to tie it
+    to a member. Resolved when the query runs, so a row follows
+    the agents in the fleet now, the population of the fleet's other lists
+    (:func:`app.services.fleet_views.fleet_scope_clause`).
+    """
+    from sqlalchemy import and_, or_
+
+    from app.models.assignment import AssignmentRun
+    from app.models.work_item import WorkItem
+    from app.services.fleet_views import fleet_scope_clause
+
+    runs = select(AssignmentRun.id).where(fleet_scope_clause(AssignmentRun.agent_id, fleet_id))
+    items = select(WorkItem.id).where(
+        or_(
+            fleet_scope_clause(WorkItem.owner_agent_id, fleet_id),
+            fleet_scope_clause(WorkItem.created_by_agent_id, fleet_id),
+        )
+    )
+    return or_(
+        and_(Decision.source_type == "run", Decision.source_id.in_(runs)),
+        and_(Decision.source_type == "work_item", Decision.source_id.in_(items)),
+    )
+
+
+def present(row: Decision, names: SourceNames, *, can_answer: bool = True) -> dict[str, Any]:
     """One inbox row: the columns of section 4 and what the card and the link need."""
     from app.services.decision_links import decision_link
 
@@ -144,25 +172,47 @@ def present(row: Decision, names: SourceNames) -> dict[str, Any]:
         "asked_at": row.created_at.isoformat() if row.created_at else None,
         "deadline": row.deadline.isoformat() if row.deadline else None,
         "link": decision_link(row.source_type, row.source_id, flow_id=names.flow_id),
+        # False on a fleet read for a decision addressed to someone else: shown read only (#1493).
+        "can_answer": can_answer,
     }
 
 
-async def waiting_for(db: AsyncSession, user: Any, *, limit: int = 50) -> dict[str, Any]:
-    """The open decisions *user* may answer, soonest deadline first, then oldest asked."""
+async def waiting_for(
+    db: AsyncSession,
+    user: Any,
+    *,
+    limit: int = 50,
+    fleet_id: uuid.UUID | None = None,
+    every_recipient: bool = False,
+) -> dict[str, Any]:
+    """The open decisions *user* may answer, soonest deadline first, then oldest asked.
+
+    With *fleet_id*, only the decisions that fleet raised (:func:`fleet_decisions_clause`,
+    the fleet's Approval tab, #1493). *every_recipient* (the caller manages the fleet,
+    checked by the route) also lists the fleet's decisions addressed to someone else,
+    each marked ``can_answer: false``: shown read only, never hidden silently.
+    """
     switch = await inbox_switch(db)
     if not switch["on"]:
         return {"enabled": False, "reason": switch["reason"], "items": []}
     keys = await recipients_of(db, user)
+    query = select(Decision).where(Decision.status == "open")
+    if fleet_id is not None:
+        query = query.where(fleet_decisions_clause(fleet_id))
+    if fleet_id is None or not every_recipient:
+        query = query.where(Decision.recipient.in_(keys))
     rows = list(
         (
             await db.execute(
-                select(Decision)
-                .where(Decision.status == "open", Decision.recipient.in_(keys))
-                .order_by(Decision.deadline.asc().nulls_last(), Decision.created_at.asc())
-                .limit(max(1, min(limit, MAX_LIMIT)))
+                query.order_by(Decision.deadline.asc().nulls_last(), Decision.created_at.asc()).limit(
+                    max(1, min(limit, MAX_LIMIT))
+                )
             )
         ).scalars()
     )
     names = await _source_names(db, rows)
-    items = [present(row, names.get((row.source_type, row.source_id), SourceNames())) for row in rows]
+    items = [
+        present(row, names.get((row.source_type, row.source_id), SourceNames()), can_answer=row.recipient in keys)
+        for row in rows
+    ]
     return {"enabled": True, "reason": None, "items": items}

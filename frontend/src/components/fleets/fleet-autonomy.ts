@@ -63,15 +63,6 @@ export function autonomyCounts(catalog: FleetAutonomyGate[], level: FleetAutonom
   return { automatic: catalog.length - waiting, waiting };
 }
 
-/** At `level`, the fleet's gated actions by name: those that wait for a person and those that run alone. */
-export function autonomySplit(
-  catalog: FleetAutonomyGate[],
-  level: FleetAutonomyLevel,
-): { waits: FleetAutonomyGate[]; runsAlone: FleetAutonomyGate[] } {
-  const waits = catalog.filter((gate) => gate.by_level?.[level] ?? true);
-  return { waits, runsAlone: catalog.filter((gate) => !waits.includes(gate)) };
-}
-
 /** Catalog keys of the impact classes, one sentence-case label each (UX design round 3 A1). */
 export const IMPACT_LABELS: Record<FleetAutonomyGate["impact"], string> = {
   low: "Low impact",
@@ -207,26 +198,6 @@ export function gateNames(
   t: (key: string, values?: Record<string, string | number>) => string,
 ): string {
   return gates.map((gate) => gateActionLabel(gate, t)).join("; ");
-}
-
-/** One integration (or module) of a list of gates, with its gates: the Approval tab groups by it (#10176). */
-export interface GateGroup {
-  key: string;
-  provider?: string;
-  module: FleetAutonomyGate["module"];
-  gates: FleetAutonomyGate[];
-}
-
-/** `gates` grouped by the integration they act in (else their module), the largest group first. */
-export function groupGates(gates: FleetAutonomyGate[]): GateGroup[] {
-  const groups = new Map<string, GateGroup>();
-  for (const gate of gates) {
-    const key = gate.provider || gate.module;
-    const group = groups.get(key) ?? { key, provider: gate.provider || undefined, module: gate.module, gates: [] };
-    group.gates.push(gate);
-    groups.set(key, group);
-  }
-  return [...groups.values()].sort((a, b) => b.gates.length - a.gates.length || a.key.localeCompare(b.key));
 }
 
 /**
