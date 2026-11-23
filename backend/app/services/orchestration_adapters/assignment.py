@@ -317,8 +317,11 @@ class AssignmentAdapter(OrchestrationAdapter):
     async def deal_claims(
         self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
     ) -> list[OrchestrationExecution]:
-        """Fair share across fleets, delegated children first (``fair_share_deal``)."""
-        return await fair_share_deal(db, due, worker_id)
+        """Fair share across fleets, delegated children first (``fair_share_deal``), without the runs of a
+        fleet over its run budget (``fleet_run_budget.hold_over_budget``): those stay queued."""
+        from app.services.fleet_run_budget import hold_over_budget
+
+        return await hold_over_budget(db, await fair_share_deal(db, due, worker_id))
 
     async def deal_reserved_claims(
         self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str

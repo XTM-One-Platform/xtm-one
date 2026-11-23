@@ -142,6 +142,7 @@ from app.api.v1.schemas.fleet import (
     FleetPrerequisiteConfirmRequest,
     FleetPrerequisiteState,
     FleetResponse,
+    FleetRunBudget,
     FleetRunEntry,
     FleetRunEstimateResponse,
     FleetRunStatsResponse,
@@ -244,6 +245,14 @@ router = APIRouter()
 
 _LABEL = "Fleet"
 _NOT_FOUND = f"{_LABEL} not found"
+
+
+def _run_budget_value(budget: FleetRunBudget | None) -> dict[str, int] | None:
+    """The stored form of a fleet's run budget (#1526): its bounds that are set, ``None`` when none is."""
+    if budget is None:
+        return None
+    stored = budget.model_dump(exclude_none=True)
+    return stored or None
 
 
 def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None) -> bool:
@@ -413,6 +422,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             exposed_agent_ids=[str(a) for a in exposed_agent_ids(f, by_fleet.get(f.id, []))],
             budget_config=f.budget_config or None,
             max_iterations=f.max_iterations,
+            run_budget=getattr(f, "run_budget", None) or None,
             member_defaults={
                 "context_inclusion": f.default_context_inclusion or "none",
                 "collaboration_instruction": f.default_collaboration_instruction or "",
@@ -502,6 +512,7 @@ async def create_fleet_endpoint(
     )
     fleet.budget_config = budget_config
     fleet.max_iterations = max_iterations
+    fleet.run_budget = _run_budget_value(body.run_budget)
     await apply_group_share_fields(db, fleet, body, partial=False)
     await log_audit(
         db,
@@ -606,6 +617,8 @@ async def update_fleet(
         )
     if "max_iterations" in fields:
         fleet.max_iterations = clamp_max_iterations(body.max_iterations) if body.max_iterations is not None else None
+    if "run_budget" in fields:
+        fleet.run_budget = _run_budget_value(body.run_budget)
     await apply_group_share_fields(db, fleet, body, partial=True)
     await handle_company_managed_toggle(
         db,
