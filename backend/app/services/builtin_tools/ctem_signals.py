@@ -207,7 +207,9 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
             logger.warning("CTEM signal record failed", exc_info=True)
             return "Error: the signal could not be recorded right now. Say so; nothing was recorded."
 
-    async def _list(state: str = "", trigger_path: str = "", lens: str = "", limit: int = 20, offset: int = 0) -> str:
+    async def _list(
+        state: str = "", trigger_path: str = "", lens: str = "", limit: int = 20, offset: int = 0, signal_id: str = ""
+    ) -> str:
         from app.core.database import async_session
         from app.services import ctem_signals as signals
         from app.services.organizations import get_primary
@@ -222,6 +224,18 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 # The admin bypass of an agent tool goes through the helper (strict admin
                 # access for agent tools and Platform Health reach decide it).
                 bypass, scope_block = await reader_scope(db, scope)
+                if signal_id:
+                    # One signal by id (the signal_id of a ctem_signal.* event, #1409), under the same scope.
+                    try:
+                        sid = uuid.UUID(str(signal_id))
+                    except ValueError:
+                        return "Refused: signal_id is not a UUID."
+                    row = await signals.get_signal(
+                        db, sid, organization_id=primary.id, recorded_by=None if bypass else str(scope)
+                    )
+                    if row is None:
+                        return "No such signal in your scope."
+                    return _dump({"total": 1, "signals": [signals.to_dict(row)], "scope": scope_block})
                 rows, total, counts = await signals.list_signals(
                     db,
                     organization_id=primary.id,
@@ -270,8 +284,8 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         ToolDefinition(
             name="record_ctem_signal",
             description=(
-                "Record a change in exposure that may start the CTEM loop (a CVE or an actor is optional). "
-                "The same dedupe_key again only moves last_seen_at."
+                "Record an exposure change that may start the CTEM loop (a CVE or an actor is optional). "
+                "A repeated dedupe_key only moves last_seen_at."
             ),
             input_schema={
                 "type": "object",
@@ -293,7 +307,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         ),
         ToolDefinition(
             name="list_ctem_signals",
-            description="The acting person's CTEM signals (an admin: all), latest first, counts by state.",
+            description="Your CTEM signals (admin: all), newest first, counts by state.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -302,6 +316,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "lens": lens_enum,
                     "limit": {"type": "integer"},
                     "offset": {"type": "integer"},
+                    "signal_id": {"type": "string"},
                 },
                 "required": [],
             },

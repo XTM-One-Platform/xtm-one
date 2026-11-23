@@ -1230,6 +1230,15 @@ def gateway_error_envelope(body: object) -> Mapping:
     return body if isinstance(body, Mapping) else {}
 
 
+def told_not_to_retry(exc: BaseException) -> bool:
+    """Whether the provider's response says ``x-should-retry: false``: a wait past what a client retry covers."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if not isinstance(headers, Mapping):
+        return False
+    value = headers.get("x-should-retry")
+    return isinstance(value, str) and value.lower() == "false"
+
+
 def is_rate_limit_error(exc: BaseException) -> bool:
     """Whether a provider SDK error is a rate limit (HTTP 429, its Bedrock form, or the AI Gateway's throttle or shedding)."""
     for status in (
@@ -1361,14 +1370,15 @@ async def retry_llm_call[T](
         try:
             return await fn()
         except Exception as exc:
+            if is_rate_limit_error(exc):
+                # Met by an assignment's run, it halves that assignment's
+                # concurrency for a while; anywhere else, nothing. Noted
+                # whether retried or not (``x-should-retry: false``).
+                await _note_llm_rate_limit()
             if not is_retryable(exc):
                 raise
 
             last_exc = exc
-            if is_rate_limit_error(exc):
-                # Met by an assignment's run, it halves that assignment's
-                # concurrency for a while; anywhere else, nothing.
-                await _note_llm_rate_limit()
 
             if attempt >= max_retries:
                 logger.error(

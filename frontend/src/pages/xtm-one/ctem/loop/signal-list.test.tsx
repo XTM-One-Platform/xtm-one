@@ -1,4 +1,4 @@
-// The Signals page (#1263): routes, filters in the URL, the old dialog links,
+// The Signals page (#1263): routes, filters in the URL,
 // the loop trace as a section of the page and the empty states.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +9,7 @@ import type { CtemSignal, CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import CtemSignals from "../../CtemSignals";
-import { LegacySignalLinks } from "./LegacySignalLinks";
-import { legacySignalsHref, readSignalsView, signalsHref } from "./signals-route";
+import { readSignalsView, signalsHref } from "./signals-route";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -72,7 +71,6 @@ function renderPage(entry: string, list: { total: number; counts: Record<string,
       <Routes>
         <Route path="/ctem/signals" element={<CtemSignals />} />
         <Route path="/ctem/signals/:tab" element={<CtemSignals />} />
-        <Route path="*" element={<LegacySignalLinks />} />
       </Routes>
       <Probe />
     </MemoryRouter>,
@@ -88,21 +86,6 @@ describe("signals routes", () => {
     expect(signalsHref()).toBe("/ctem/signals");
     expect(signalsHref({ state: "watchlist", path: "code_flaw" })).toBe("/ctem/signals?state=watchlist&s_f_path=code_flaw");
     expect(readSignalsView(new URLSearchParams("state=bogus&s_f_path=code_flaw&signal=abc"))).toEqual({ state: null, path: "code_flaw", signal: "abc" });
-  });
-
-  it("maps every old dialog link to the page with the same filter", () => {
-    expect(legacySignalsHref(new URLSearchParams("loop=signals:watchlist"))).toBe("/ctem/signals?state=watchlist");
-    expect(legacySignalsHref(new URLSearchParams("loop=signals:all:code_flaw"))).toBe("/ctem/signals?s_f_path=code_flaw");
-    expect(legacySignalsHref(new URLSearchParams(`loop=signal:${ID}`))).toBe(`/ctem/signals?signal=${ID}`);
-    expect(legacySignalsHref(new URLSearchParams(`loop=case:${ID}`))).toBe(`/ctem/cases/${ID}`);
-    expect(legacySignalsHref(new URLSearchParams("signal-sources=1"))).toBe("/ctem/signals/sources");
-    expect(legacySignalsHref(new URLSearchParams("tab=x"))).toBeNull();
-  });
-
-  it("redirects an old command center link to the filtered page", async () => {
-    renderPage("/?loop=signals:to_validate", { total: 1, counts: { to_validate: 1 }, signals: [signal(1)] });
-    await waitFor(() => expect(location()).toBe("/ctem/signals?state=to_validate"));
-    expect(await screen.findByTestId("ctem-signals-page")).toBeTruthy();
   });
 });
 
