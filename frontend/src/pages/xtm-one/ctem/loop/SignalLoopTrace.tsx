@@ -533,15 +533,18 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
       label: t_i18n("Source"),
       // The source's emblem and name (#1357), then the way to the source object.
       value: link ? (
-        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 align-top text-accent hover:underline">
           <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
           <Icon name="external-link" size={16} className="shrink-0" />
           <span className="sr-only">{t_i18n("Open the source")}</span>
         </a>
       ) : (
-        <span className="inline-flex min-w-0 items-center gap-1.5">
+        // On the top of the line box, the 24 px pivot pulled into the 16 px line: the value stays on its
+        // label's line and the row keeps its height (UX r1 B2 on #1358).
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-top">
           <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
           <ModulePivotLink
+            className="-my-1"
             module={pivotModule}
             baseUrl={pivotModule ? moduleUrls[pivotModule] : null}
             id={signal.source.external_id}

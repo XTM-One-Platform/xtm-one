@@ -26,6 +26,14 @@ describe("SourceBadge", () => {
     expect(badge.textContent).toBe("Signal");
     expect(badge.querySelector("img, svg")).toBeNull();
   });
+
+  it("draws its name through TruncatedText, with no native title (UX r1 B1 on #1358)", () => {
+    renderWithProviders(<SourceBadge source="a-very-long-brand-less-source-name" />);
+    const name = screen.getByText("a-very-long-brand-less-source-name");
+    // TruncatedText names a cut text with the design-system tooltip, never a title attribute.
+    expect(name.closest("[title]")).toBeNull();
+    expect(name.hasAttribute("data-state")).toBe(true);
+  });
 });
 
 describe("ModulePivotLink", () => {
