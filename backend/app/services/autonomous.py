@@ -45,6 +45,7 @@ import contextlib
 import functools
 import logging
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -1390,8 +1391,9 @@ async def run_autonomous_tick() -> int:
     """Run one tick of the autonomous scheduler.
 
     Returns the number of assignments triggered.
-    A lock prevents overlapping ticks when a previous tick runs longer
-    than the 60 s interval (e.g. slow KB sync or memory maintenance).
+    A lock prevents overlapping ticks in this process when a previous tick
+    runs longer than the 60 s interval (e.g. slow KB sync or memory
+    maintenance); other replicas are not covered by it.
     """
     if _tick_lock.locked():
         logger.warning("Skipping scheduler tick — previous tick still running")
@@ -3253,6 +3255,75 @@ async def _process_scheduled_evaluations(db: AsyncSession) -> int:
     return count
 
 
+# Renewed while the fan-out runs, so a fan-out of any size keeps it; a crashed
+# holder's claim lapses within the TTL and the window fires late, not twice.
+_FANOUT_CLAIM_TTL_SECONDS = 5 * 60
+_FANOUT_CLAIM_RENEW_SECONDS = 60
+
+# Touch the claim only while it is still ours, never a successor's.
+_FANOUT_CLAIM_RELEASE_SCRIPT = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+_FANOUT_CLAIM_RENEW_SCRIPT = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+return 0
+"""
+
+
+async def _renew_fanout_claim(redis, key: str, token: str) -> None:
+    while True:
+        await asyncio.sleep(_FANOUT_CLAIM_RENEW_SECONDS)
+        try:
+            renewed = await redis.eval(_FANOUT_CLAIM_RENEW_SCRIPT, 1, key, token, _FANOUT_CLAIM_TTL_SECONDS)
+        except Exception:
+            logger.debug("Fan-out claim renewal failed for %s", key, exc_info=True)
+            continue
+        if not renewed:
+            logger.warning("Fan-out claim %s lapsed before its fan-out ended", key)
+            return
+
+
+@contextlib.asynccontextmanager
+async def _fanout_claim(assignment_id):
+    """Whether this tick may fan out *assignment_id*: no other tick is fanning it out.
+
+    Released on exit, raise included, so a failed fan-out is retried by a
+    later tick. Not held when Redis does not answer: the window stays open.
+    """
+    key = f"copilot:scheduler_fanout_claim:{assignment_id}"
+    token = uuid.uuid4().hex
+    try:
+        from app.core.redis import redis_client
+
+        redis = await redis_client()
+        held = bool(await redis.set(key, token, nx=True, ex=_FANOUT_CLAIM_TTL_SECONDS))
+    except Exception:
+        logger.warning("Fan-out claim unavailable for %s", assignment_id, exc_info=True)
+        held = False
+    if not held:
+        yield False
+        return
+    renewal = asyncio.create_task(_renew_fanout_claim(redis, key, token))
+    try:
+        yield True
+    finally:
+        renewal.cancel()
+        try:
+            await redis.eval(_FANOUT_CLAIM_RELEASE_SCRIPT, 1, key, token)
+        except Exception:
+            logger.warning(
+                "Fan-out claim release failed for %s; it lapses in %ds",
+                assignment_id,
+                _FANOUT_CLAIM_TTL_SECONDS,
+                exc_info=True,
+            )
+
+
 # Per-user fan-out: skip users who already have a run within this window so a
 # monthly fan-out doesn't re-fire across scheduler ticks / restarts.
 _FANOUT_RECENT_DAYS = 25
@@ -3510,7 +3581,9 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
         agent_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
         agents_map = {a.id: a for a in agent_result.scalars().all()}
 
-    for assignment in assignments:
+    # Ids read before anything can roll back: the handler below logs one after
+    # its rollback has expired every instance of the session.
+    for assignment_id, assignment in [(a.id, a) for a in assignments]:
         try:
             cron_expr = (assignment.trigger_config or {}).get("cron")
             # Skip only when no cron is configured at all (key absent). A
@@ -3660,17 +3733,27 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                 structlog.contextvars.bind_contextvars(
                     agent=agent.name, assignment=assignment.name
                 )
-                fanned = await _fanout_assignment_to_users(
-                    db, assignment, agent, now, cron_expr
-                )
-                if fanned is None:
-                    # Agentic AI unavailable: the window stays open.
-                    continue
-                # Stamp only after a clean return (incl. 0 when all users are
-                # deduped) so a raised failure leaves the window open for the
-                # next tick; per-user dedup prevents duplicate runs on retry.
-                assignment.last_triggered_at = now
-                await db.commit()
+                # Dedup sees only committed runs, so a tick overlapping one
+                # still fanning out would serve its remaining users twice. The
+                # claim is held until the stamp below is committed.
+                async with _fanout_claim(assignment.id) as claimed:
+                    if not claimed:
+                        logger.info(
+                            "Fan-out of '%s' not claimed - another tick is fanning it "
+                            "out or Redis is unavailable; its window stays open",
+                            assignment.name,
+                        )
+                        continue
+                    fanned = await _fanout_assignment_to_users(
+                        db, assignment, agent, now, cron_expr
+                    )
+                    if fanned is None:
+                        # Agentic AI unavailable: the window stays open.
+                        continue
+                    # Stamp only after a clean return (0 included): a raise
+                    # leaves the window open, and dedup absorbs the retry.
+                    assignment.last_triggered_at = now
+                    await db.commit()
                 if fanned:
                     count += 1
                     logger.info(
@@ -3782,7 +3865,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             await db.rollback()
             logger.error(
                 "Error processing scheduled assignment %s: %s",
-                assignment.id,
+                assignment_id,
                 format_exception_message(e),
                 exc_info=True,
             )
