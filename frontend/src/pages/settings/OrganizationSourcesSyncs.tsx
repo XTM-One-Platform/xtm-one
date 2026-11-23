@@ -367,7 +367,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       hideBelow: "6xl",
       cell: (row) =>
         row.sync ? (
-          <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[13rem]" />
+          <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[12rem]" />
         ) : (
           <span className="text-default-secondary">{t_i18n(SOURCE_SCHEDULE_LABELS[row.source.kind])}</span>
         ),
