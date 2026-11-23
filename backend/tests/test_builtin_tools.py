@@ -597,6 +597,93 @@ async def test_get_full_task_result_rejects_edge_case_invalid_ids(monkeypatch, i
     assert full_res.content == _invalid_task_id_message(invalid_task_id)
 
 
+def _sections_answer() -> str:
+    """A 120,000-character answer of three sections with distinct markers."""
+    return "<<A>>" + "a" * 39_989 + "<</A>>" + "<<B>>" + "b" * 39_989 + "<</B>>" + "<<C>>" + "c" * 39_989 + "<</C>>"
+
+
+def _completed_executor(monkeypatch, answer: str):
+    async def _result(*_args: Any, **_kwargs: Any) -> Any:
+        return {"task_id": "t", "status": "completed", "result": answer, "error": None, "result_file_ids": []}
+
+    monkeypatch.setattr("app.services.sub_agent.get_task_result", _result)
+    _, executor = build_sub_agent_tools(
+        db=SimpleNamespace(),
+        user_id=str(uuid.uuid4()),
+        parent_agent_id=str(uuid.uuid4()),
+        handover_agents=[SimpleNamespace(id=uuid.uuid4(), name="Helper")],
+    )
+    assert executor is not None
+    return executor
+
+
+async def _full(executor, **arguments: Any) -> str:
+    res = await executor.execute_tool(ToolCall(id=str(uuid.uuid4()), name="get_full_task_result", arguments=arguments))
+    assert not res.is_error
+    return res.content
+
+
+@pytest.mark.asyncio
+async def test_get_full_task_result_pages_a_long_answer_to_its_end(monkeypatch):
+    """#1394: a 120,000-character answer is read whole, A, B and C, by offset;
+    every read names the total and the next offset, the last says the end."""
+    answer = _sections_answer()
+    assert len(answer) == 120_000
+    executor = _completed_executor(monkeypatch, answer)
+    task_id = str(uuid.uuid4())
+
+    first = await _full(executor, task_id=task_id)
+    assert first.startswith("[Task answer: characters 0 to 50,000 of 120,000; read the rest with ")
+    assert f'get_full_task_result(task_id="{task_id}", offset=50000)' in first
+
+    second = await _full(executor, task_id=task_id, offset=50_000)
+    assert "characters 50,000 to 100,000 of 120,000" in second
+    assert "offset=100000" in second
+
+    third = await _full(executor, task_id=task_id, offset=100_000)
+    assert "characters 100,000 to 120,000 of 120,000; this is the end." in third
+
+    read = "".join(part.split("\n\n", 1)[1] for part in (first, second, third))
+    assert read == answer
+    for marker in ("<<A>>", "<</A>>", "<<B>>", "<</B>>", "<<C>>", "<</C>>"):
+        assert marker in read
+
+
+@pytest.mark.asyncio
+async def test_get_full_task_result_honours_max_chars(monkeypatch):
+    executor = _completed_executor(monkeypatch, _sections_answer())
+    out = await _full(executor, task_id=str(uuid.uuid4()), offset=0, max_chars=1_000)
+    assert "characters 0 to 1,000 of 120,000" in out
+    assert "offset=1000" in out
+
+
+@pytest.mark.asyncio
+async def test_get_full_task_result_short_answer_is_unchanged(monkeypatch):
+    """An answer under one window reads exactly as before: no header."""
+    executor = _completed_executor(monkeypatch, "short answer")
+    assert await _full(executor, task_id=str(uuid.uuid4())) == "short answer"
+
+
+@pytest.mark.asyncio
+async def test_get_task_result_says_a_long_answer_pages(monkeypatch):
+    executor = _completed_executor(monkeypatch, _sections_answer())
+    task_id = str(uuid.uuid4())
+    res = await executor.execute_tool(
+        ToolCall(id=str(uuid.uuid4()), name="get_task_result", arguments={"task_ids": task_id})
+    )
+    assert "completed (120,000 chars)" in res.content
+    assert f'get_full_task_result(task_id="{task_id}", offset=N)' in res.content
+
+
+@pytest.mark.asyncio
+async def test_get_task_result_short_answer_has_no_paging_note(monkeypatch):
+    executor = _completed_executor(monkeypatch, "short answer")
+    res = await executor.execute_tool(
+        ToolCall(id=str(uuid.uuid4()), name="get_task_result", arguments={"task_ids": str(uuid.uuid4())})
+    )
+    assert "offset=N" not in res.content
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bad_task_ids", [None, 12345])
 async def test_multi_task_tools_reject_non_string_task_ids(monkeypatch, bad_task_ids):

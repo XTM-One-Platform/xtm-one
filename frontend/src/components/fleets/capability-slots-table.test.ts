@@ -8,6 +8,8 @@ import ja from "@/i18n/lang/ja.json";
 import { sortRows } from "@/lib/table-rows";
 
 import {
+  BLOCKED_REASON_LINES,
+  BLOCKED_REASON_SHORT,
   CAPABILITIES_OPEN_BY_DEFAULT,
   CAPABILITY_ICONS,
   FALLBACK_CAPABILITY_ICON,
@@ -18,11 +20,15 @@ import {
   STATUS_COLUMN_WIDTH,
   STATUS_LABEL_MAX_CHARS,
   TYPE_STATE_LABELS,
+  blockedFixPath,
   builtinValue,
   capabilityIcon,
+  firstBlocked,
   flexibleColumnWidth,
   customMembers,
   idsForPick,
+  isBuiltinValue,
+  multiChannelSelection,
   instructionSummaryKey,
   integrationIds,
   overwritableCustomMembers,
@@ -55,9 +61,36 @@ describe("capability types table (#1201)", () => {
     expect(FLEET_DEFAULTS_OPEN_BY_DEFAULT).toBe(false);
   });
 
-  it("sorts Not bound first, then Partial, None connected, Connected", () => {
-    const rows = [type("a", "connected"), type("b", "none_connected"), type("c", "partial"), type("d", "not_bound")];
-    expect(sortRows(rows, typeStateRank, "asc").map((row) => row.state)).toEqual(["not_bound", "partial", "none_connected", "connected"]);
+  it("sorts Not bound first, then Partial, Not usable, None connected, Connected", () => {
+    const rows = [type("a", "connected"), type("b", "none_connected"), type("c", "partial"), type("d", "not_bound"), type("e", "not_usable")];
+    expect(sortRows(rows, typeStateRank, "asc").map((row) => row.state)).toEqual([
+      "not_bound",
+      "partial",
+      "not_usable",
+      "none_connected",
+      "connected",
+    ]);
+  });
+
+  it("names a connected integration the members cannot take, never 'Connect one' (#1373)", () => {
+    const blocked = { ...JIRA, reason: "not_company_managed" as const };
+    const row = type("ticketing", "not_usable", { blocked: [blocked] });
+    expect(firstBlocked(row)).toEqual(blocked);
+    expect(firstBlocked(type("ticketing", "none_connected"))).toBeNull();
+    expect(blockedFixPath(blocked)).toBe("/integrations/i1");
+    for (const catalog of [en, fr, es, ja] as Record<string, string>[])
+      // The row names the integration in words, "YouTrack · Not company-managed", +N for the rest (UX r1 B2 of #1376).
+      for (const key of [...Object.values(BLOCKED_REASON_LINES), ...Object.values(BLOCKED_REASON_SHORT), "{name} · {reason}", "+{count}"])
+        expect(catalog[key], `${key} is in every catalog`).toBeTruthy();
+  });
+
+  it("shows the always-on built-in channel checked first, never the empty placeholder (#1373)", () => {
+    const notification = type("notification", "connected", { builtin: { key: "in_app", label: "In XTM One", always_on: true } });
+    expect(multiChannelSelection(notification, [])).toEqual(["builtin:in_app"]);
+    expect(multiChannelSelection(notification, [SNOW, JIRA])).toEqual(["builtin:in_app", "i1", "i2"]);
+    expect(multiChannelSelection(type("notification", "not_bound"), [JIRA])).toEqual(["i1"]);
+    expect(isBuiltinValue("builtin:in_app")).toBe(true);
+    expect(isBuiltinValue("i1")).toBe(false);
   });
 
   it("searches the capability, its built-in option, members, roles and bound integrations", () => {

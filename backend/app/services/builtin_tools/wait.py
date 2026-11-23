@@ -34,6 +34,7 @@ forty-second one when the delegated work finishes in forty seconds.
 from __future__ import annotations
 
 from app.core.utils import format_exception_message, safe_uuid
+from app.services.sub_agent_result_text import clipped
 from app.tools.wait_policy import WAIT_TERMINAL_STATUSES, WaitCondition
 
 from ._shared import logger
@@ -408,8 +409,9 @@ def make_task_condition(
             file_count = len(file_ids) if isinstance(file_ids, list) else 0
             if not body and not file_count:
                 continue
-            if len(body) > 1200:
-                body = body[:1200].rstrip() + "..."
+            # The extract names the cut and the call that reads the whole
+            # answer (#1394): a bare "..." read as the end of it.
+            body = clipped(body, _EXTRACT_MAX_CHARS, read_call=f'get_full_task_result(task_id="{tid}")')
             if file_count:
                 # The wait runs inside the loop, not through the tool
                 # executor, so it cannot hand refs to the FileContext itself:

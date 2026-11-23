@@ -135,6 +135,7 @@
   ],
   "get_opencrq_crq_what_if": [
     "controlCapabilities.getControlCapabilities",
+    "crqIndicators.getLatestRun",
     "crqIndicators.getWhatIfResults",
     "tenants.getTenants"
   ],
@@ -504,6 +505,7 @@
     "tenants.getTenants"
   ],
   "run_opencrq_crq_simulation": [
+    "crqIndicators.enqueueFamilyRecompute",
     "crqIndicators.enqueueSimulation",
     "tenants.getTenants"
   ],

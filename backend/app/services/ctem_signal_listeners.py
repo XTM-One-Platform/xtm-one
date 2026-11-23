@@ -17,15 +17,17 @@ Paths with a listener today: 1 (new vulnerability: an OpenCTI Vulnerability,
 or a ``has`` relationship to one), 2 (relevant threat: an OpenCTI Intrusion
 Set, Threat Actor, Campaign or Malware), 3 (code flaw: a new open Aikido
 issue, an SLA breach on one, a failed CI gate, a container image scan with
-issues; CTEM-25), 8 (mitigation regression: an OpenAEV scenario whose score
-degraded, CTEM-15), 10 (credential leak: an Aikido ``leaked_secret`` issue,
-CTEM-25; the secret itself is never stored). The other paths enter through
-the agent tool and the API until their products emit an event (design
-``dev-docs/ctem-signals.md`` section 4).
+issues; CTEM-25; a GitHub Dependabot alert on a repository, #1331; a GitHub
+repository security advisory the organization published, path 1, #1410), 8
+(mitigation regression: an OpenAEV scenario whose score degraded, CTEM-15),
+10 (credential leak: an Aikido ``leaked_secret`` issue, CTEM-25; the secret
+itself is never stored). The other paths enter through the agent tool and
+the API until their products emit an event (design ``dev-docs/ctem-signals.md`` section 4).
 
 An Aikido ``issue.closed`` records no signal: it closes the member of the
 signals that issue opened on their case, and the last member closed resolves
-the case on a provider re-scan (``ctem_case_loop.close_signal_members``).
+the case on a provider re-scan (``ctem_case_loop.close_signal_members``). A
+Dependabot alert fixed or dismissed closes its members the same way.
 """
 
 from __future__ import annotations
@@ -64,6 +66,25 @@ AIKIDO_ISSUE_EVENTS: tuple[str, ...] = (
 #: The Aikido deliveries that close the members an issue's signals hold on their case.
 AIKIDO_CLOSING_EVENTS: tuple[str, ...] = ("issue_closed",)
 
+#: The GitHub Dependabot alert deliveries that record (or re-sight) the alert's signal (#1331, slice 2).
+DEPENDABOT_OPEN_EVENTS: tuple[str, ...] = (
+    "dependabot_alert.created",
+    "dependabot_alert.reopened",
+    "dependabot_alert.auto_reopened",
+    "dependabot_alert.reintroduced",
+)
+#: The Dependabot alert deliveries that close the members the alert's signal holds on its case.
+DEPENDABOT_CLOSING_EVENTS: tuple[str, ...] = (
+    "dependabot_alert.fixed",
+    "dependabot_alert.dismissed",
+    "dependabot_alert.auto_dismissed",
+)
+
+#: The GitHub repository advisory deliveries that record a published advisory's signal (#1410).
+#: A ``reported`` advisory (a private report still in triage) is never one: the extractor
+#: also reads the advisory's own state and keeps ``published`` only.
+REPOSITORY_ADVISORY_EVENTS: tuple[str, ...] = ("repository_advisory.published",)
+
 #: The declarative table. Event keys are the ones the webhook routes compute.
 LISTENERS: tuple[Listener, ...] = (
     Listener("opencti", ("create", "update"), ("vulnerability",), "new_vulnerability", "world", "vulnerability"),
@@ -81,6 +102,12 @@ LISTENERS: tuple[Listener, ...] = (
     Listener("aikido", AIKIDO_ISSUE_EVENTS, ("leaked_secret",), "credential_leak", "world", "code"),
     Listener("aikido", AIKIDO_ISSUE_EVENTS, (), "code_flaw", "inside", "code"),
     Listener("aikido", ("ci_gate_failed", "scan_image_finished"), ("scan",), "code_flaw", "inside", "code"),
+    # #1331 slice 2: a Dependabot alert on a repository synced as an asset (path 3, a
+    # dependency flaw before production); the repository is the asset the case opens on.
+    Listener("github", DEPENDABOT_OPEN_EVENTS, (), "code_flaw", "inside", "code"),
+    # #1410: an advisory the organization published on one of its repositories is a new
+    # vulnerability in a product it ships (path 1); the repository is the asset it names.
+    Listener("github", REPOSITORY_ADVISORY_EVENTS, (), "new_vulnerability", "inside", "vulnerability"),
     # CTEM-26: OpenAEV reports a failed reachability assertion (a target that should not answer
     # answers) as the scenario's SCORE_DEGRADATION; the receiver stamps the assertion flag
     # (ctem_openaev_events.stamp_reachability_assertion), so it is an outside-lens exposure (path 5).
@@ -320,10 +347,161 @@ def _openaev_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def _dependabot_parts(payload: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    alert = payload.get("alert")
+    repository = payload.get("repository")
+    return (alert if isinstance(alert, dict) else {}), (repository if isinstance(repository, dict) else {})
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def dependabot_alert_id(payload: Mapping[str, Any]) -> str:
+    """The dedupe id of a Dependabot alert: ``<repository id>:<alert number>``, ``""`` when either is missing.
+
+    Alert numbers restart in every repository, so the repository id is part of the key.
+    """
+    alert, repository = _dependabot_parts(payload)
+    number, repo_id = alert.get("number"), repository.get("id")
+    if number in (None, "") or repo_id in (None, ""):
+        return ""
+    return f"{repo_id}:{number}"
+
+
+def _dependabot_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A GitHub Dependabot alert as a path 3 signal on its repository (#1331, slice 2).
+
+    The repository's full name, its id and its identity key (``github.com:repository:<id>``,
+    the key the GitHub asset source writes) go to ``evidence.assets``, so the scope gate
+    resolves the signal to the repository asset. The package, the vulnerable range and the
+    first patched version come from the alert; nothing is written back to GitHub.
+    """
+    from app.services.organization_context_code import GITHUB_HOST, repository_key
+
+    alert, repository = _dependabot_parts(payload)
+    external_id = dependabot_alert_id(payload)
+    if not external_id:
+        return None
+    dependency = _dict(alert.get("dependency"))
+    package = _dict(dependency.get("package"))
+    advisory = _dict(alert.get("security_advisory"))
+    vulnerability = _dict(alert.get("security_vulnerability"))
+    patched = _dict(vulnerability.get("first_patched_version"))
+    name = _text(package.get("name"))
+    full_name = _text(repository.get("full_name"))
+    evidence: dict[str, Any] = {"event": f"dependabot_alert.{_text(payload.get('action'))}"}
+    facts = {
+        "affected_package": name,
+        "ecosystem": _text(package.get("ecosystem")),
+        "manifest_path": _text(dependency.get("manifest_path")),
+        "scope": _text(dependency.get("scope")),
+        "vulnerable_range": _text(vulnerability.get("vulnerable_version_range")),
+        "severity": _text(vulnerability.get("severity") or advisory.get("severity")).lower(),
+        "ghsa_id": _text(advisory.get("ghsa_id")),
+        "cve_id": _text(advisory.get("cve_id")),
+        "summary": _text(advisory.get("summary"))[:300],
+        "repository": full_name,
+        "alert_url": _text(alert.get("html_url")),
+    }
+    evidence.update({k: v for k, v in facts.items() if v})
+    fixed = _text(patched.get("identifier"))[:100]
+    if fixed:
+        evidence["fixed_version"] = fixed
+    repo_id = repository.get("id")
+    assets = [full_name]
+    if repo_id not in (None, ""):
+        assets += [str(repo_id).strip(), repository_key(GITHUB_HOST, repo_id)]
+    evidence["assets"] = list(dict.fromkeys(a for a in assets if a))
+    ref = name or full_name or f"dependabot alert {external_id}"
+    return {"external_id": external_id, "ref": ref, "label": ref, "evidence": evidence}
+
+
+def repository_advisory_id(payload: Mapping[str, Any]) -> str:
+    """The dedupe id of a repository advisory: ``<repository id>:<GHSA id>``, ``""`` when either is missing."""
+    advisory, repository = _dict(payload.get("repository_advisory")), _dict(payload.get("repository"))
+    ghsa, repo_id = _text(advisory.get("ghsa_id")), repository.get("id")
+    if not ghsa or repo_id in (None, ""):
+        return ""
+    return f"{repo_id}:{ghsa}"
+
+
+def _advisory_packages(advisory: Mapping[str, Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for entry in advisory.get("vulnerabilities") or []:
+        if not isinstance(entry, dict):
+            continue
+        package = _dict(entry.get("package"))
+        row = {
+            "name": _text(package.get("name"))[:200],
+            "ecosystem": _text(package.get("ecosystem"))[:50],
+            "vulnerable_range": _text(entry.get("vulnerable_version_range"))[:200],
+            "patched_versions": _text(entry.get("patched_versions"))[:200],
+        }
+        row = {k: v for k, v in row.items() if v}
+        if row:
+            out.append(row)
+    return out[:20]
+
+
+def _repository_advisory_signal(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A published repository security advisory as a path 1 signal (#1410).
+
+    The organization published a vulnerability in its own repository, a product it
+    ships. The subject is the CVE id when there is one, else the GHSA id, so the same
+    CVE from OpenCTI lands on the same subject; the repository goes to ``evidence.assets``
+    (full name, id, identity key) as for a Dependabot alert. Only an advisory in state
+    ``published`` counts: a private report or a draft records nothing.
+    """
+    from app.services.organization_context_code import GITHUB_HOST, repository_key
+
+    advisory, repository = _dict(payload.get("repository_advisory")), _dict(payload.get("repository"))
+    if _text(advisory.get("state")).lower() != "published":
+        return None
+    external_id = repository_advisory_id(payload)
+    if not external_id:
+        return None
+    ghsa, cve = _text(advisory.get("ghsa_id")), _text(advisory.get("cve_id")).upper()
+    full_name = _text(repository.get("full_name"))
+    packages = _advisory_packages(advisory)
+    evidence: dict[str, Any] = {"event": f"repository_advisory.{_text(payload.get('action'))}"}
+    facts = {
+        "ghsa_id": ghsa,
+        "cve": cve,
+        "severity": _text(advisory.get("severity")).lower(),
+        "summary": _text(advisory.get("summary"))[:300],
+        "advisory_url": _text(advisory.get("html_url")),
+        "published_at": _text(advisory.get("published_at")),
+        "repository": full_name,
+    }
+    evidence.update({k: v for k, v in facts.items() if v})
+    cvss = _dict(advisory.get("cvss")).get("score")
+    if isinstance(cvss, int | float) and not isinstance(cvss, bool):
+        evidence["cvss_base_score"] = cvss
+    if packages:
+        evidence["affected_packages"] = packages
+    repo_id = repository.get("id")
+    assets = [full_name]
+    if repo_id not in (None, ""):
+        assets += [str(repo_id).strip(), repository_key(GITHUB_HOST, repo_id)]
+    evidence["assets"] = list(dict.fromkeys(a for a in assets if a))
+    ref = cve or ghsa
+    label = _text(advisory.get("summary"))[:300] or ref
+    return {"external_id": external_id, "ref": ref, "label": label, "evidence": evidence}
+
+
+def _github_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The GitHub row's signal: a repository advisory (path 1) or a Dependabot alert (path 3)."""
+    if row.trigger_path == "new_vulnerability":
+        return _repository_advisory_signal(payload)
+    return _dependabot_signal(row, payload)
+
+
 _EXTRACTORS: dict[str, Callable[[Listener, Mapping[str, Any]], dict[str, Any] | None]] = {
     "opencti": _opencti_signal,
     "aikido": _aikido_signal,
     "openaev": _openaev_signal,
+    "github": _github_signal,
 }
 
 
@@ -355,6 +533,9 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
         return False
     if provider == "aikido" and event_key in AIKIDO_CLOSING_EVENTS:
         await _close_at_source(provider, aikido_issue_id(payload))
+        return False
+    if provider == "github" and event_key in DEPENDABOT_CLOSING_EVENTS:
+        await _close_at_source(provider, dependabot_alert_id(payload))
         return False
     found = match(provider, event_key, payload)
     if found is None:

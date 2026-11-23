@@ -296,6 +296,122 @@ async def test_an_aikido_closed_issue_closes_its_members_and_records_nothing(mon
     assert closed == [("aikido", "42")]
 
 
+def _dependabot(action: str, **alert) -> dict:
+    base = {
+        "number": 12,
+        "html_url": "https://github.com/filigran/portal/security/dependabot/12",
+        "dependency": {"package": {"ecosystem": "npm", "name": "lodash"}, "manifest_path": "package-lock.json"},
+        "security_advisory": {"ghsa_id": "GHSA-x", "cve_id": "CVE-2021-23337", "severity": "high"},
+        "security_vulnerability": {
+            "severity": "high",
+            "vulnerable_version_range": "< 4.17.21",
+            "first_patched_version": {"identifier": "4.17.21"},
+        },
+    }
+    base.update(alert)
+    return {"action": action, "alert": base, "repository": {"id": 991, "full_name": "filigran/portal"}}
+
+
+def test_a_dependabot_alert_is_a_path_3_signal_on_its_repository():
+    """#1331: the repository and its identity key go to evidence.assets, the fix to the case."""
+    row, fields = listeners.match("github", "dependabot_alert.created", _dependabot("created"))
+    assert (row.trigger_path, row.lens, row.subject_kind) == ("code_flaw", "inside", "code")
+    assert (fields["external_id"], fields["ref"]) == ("991:12", "lodash")
+    evidence = fields["evidence"]
+    assert evidence["assets"] == ["filigran/portal", "991", "github.com:repository:991"]
+    assert evidence["fixed_version"] == "4.17.21" and evidence["repository"] == "filigran/portal"
+    assert evidence["cve_id"] == "CVE-2021-23337" and evidence["vulnerable_range"] == "< 4.17.21"
+    reopened = listeners.match("github", "dependabot_alert.reopened", _dependabot("reopened"))
+    assert reopened[1]["external_id"] == "991:12"
+
+
+def test_other_github_events_and_an_alert_without_its_repository_are_nothing():
+    assert listeners.match("github", "issues.opened", _dependabot("opened")) is None
+    assert listeners.match("github", "dependabot_alert.fixed", _dependabot("fixed")) is None
+    orphan = _dependabot("created")
+    orphan.pop("repository")
+    assert listeners.match("github", "dependabot_alert.created", orphan) is None
+
+
+async def test_a_fixed_or_dismissed_dependabot_alert_closes_its_members(monkeypatch):
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    closed: list = []
+
+    async def _close(provider, external_id):
+        closed.append((provider, external_id))
+        return 1
+
+    monkeypatch.setattr(listeners, "_close_at_source", _close)
+    for action in ("fixed", "dismissed"):
+        assert (
+            await listeners.note_event("github", f"dependabot_alert.{action}", _dependabot(action), verified=True)
+            is False
+        )
+    assert closed == [("github", "991:12"), ("github", "991:12")]
+    assert await listeners.note_event("github", "dependabot_alert.fixed", _dependabot("fixed"), verified=False) is False
+    assert len(closed) == 2
+
+
+def _advisory(state: str = "published", **advisory) -> dict:
+    base = {
+        "ghsa_id": "GHSA-aaaa-bbbb-cccc",
+        "cve_id": "cve-2026-1234",
+        "state": state,
+        "severity": "High",
+        "summary": "Template sandbox escape",
+        "html_url": "https://github.com/filigran/portal/security/advisories/GHSA-aaaa-bbbb-cccc",
+        "cvss": {"score": 8.1},
+        "vulnerabilities": [
+            {
+                "package": {"ecosystem": "npm", "name": "portal"},
+                "vulnerable_version_range": "< 2.4.0",
+                "patched_versions": ">= 2.4.0",
+            }
+        ],
+    }
+    base.update(advisory)
+    return {
+        "action": "published",
+        "repository_advisory": base,
+        "repository": {"id": 991, "full_name": "filigran/portal"},
+    }
+
+
+def test_a_published_repository_advisory_is_a_path_1_signal_on_its_cve():
+    """#1410: a vulnerability in a product the organization ships, keyed on the CVE like OpenCTI's."""
+    row, fields = listeners.match("github", "repository_advisory.published", _advisory())
+    assert (row.trigger_path, row.lens, row.subject_kind) == ("new_vulnerability", "inside", "vulnerability")
+    assert (fields["external_id"], fields["ref"]) == ("991:GHSA-aaaa-bbbb-cccc", "CVE-2026-1234")
+    assert fields["label"] == "Template sandbox escape"
+    evidence = fields["evidence"]
+    assert evidence["assets"] == ["filigran/portal", "991", "github.com:repository:991"]
+    assert evidence["severity"] == "high" and evidence["cvss_base_score"] == 8.1
+    assert evidence["cve"] == "CVE-2026-1234" and evidence["ghsa_id"] == "GHSA-aaaa-bbbb-cccc"
+    assert evidence["affected_packages"] == [
+        {"name": "portal", "ecosystem": "npm", "vulnerable_range": "< 2.4.0", "patched_versions": ">= 2.4.0"}
+    ]
+    assert evidence["advisory_url"].endswith("GHSA-aaaa-bbbb-cccc")
+
+
+def test_an_advisory_without_a_cve_is_keyed_on_its_ghsa_id():
+    _, fields = listeners.match("github", "repository_advisory.published", _advisory(cve_id=None))
+    assert fields["ref"] == "GHSA-aaaa-bbbb-cccc" and "cve" not in fields["evidence"]
+
+
+def test_an_advisory_in_triage_a_draft_or_without_its_repository_is_nothing():
+    for state in ("triage", "draft", "closed", "withdrawn", ""):
+        assert listeners.match("github", "repository_advisory.published", _advisory(state)) is None
+    reported = _advisory("triage")
+    reported["action"] = "reported"
+    assert listeners.match("github", "repository_advisory.reported", reported) is None
+    orphan = _advisory()
+    orphan.pop("repository")
+    assert listeners.match("github", "repository_advisory.published", orphan) is None
+    # A Dependabot delivery never reads as an advisory, nor the reverse.
+    assert listeners.match("github", "dependabot_alert.created", _advisory()) is None
+    assert listeners.match("github", "repository_advisory.published", _dependabot("created")) is None
+
+
 async def test_note_event_records_through_the_store_as_system(monkeypatch):
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
     seen: dict = {}
@@ -617,6 +733,7 @@ async def test_the_paths_name_their_sources_status_and_30_day_activity(client: A
     assert {(s["provider"], s["kind"], s["bound"]) for s in vuln["sources"]} == {
         ("opencti", "listener", True),
         ("opencti", "pir_playbook", False),
+        ("github", "listener", False),
     }
     assert paths["code_flaw"]["status"] == "not_connected"
     assert paths["stale_asset"]["count_30d"] == 1 and paths["stale_asset"]["last_signal_at"]

@@ -156,6 +156,16 @@ def fix_of(signal: CtemSignal) -> CaseFix:
     evidence = evidence if isinstance(evidence, dict) else {}
     package = str(evidence.get("affected_package") or "").strip()
     fixed = str(evidence.get("fixed_version") or "").strip()[:100]
+    repository = str(evidence.get("repository") or "").strip()
+    if kind == "patch" and package and fixed and repository:
+        # A dependency alert on one repository (a Dependabot alert, #1331): the upgrade is
+        # made in that repository, so the case keys and titles on it too.
+        return CaseFix(
+            key=_bounded_key(f"upgrade:{_norm(repository)}/{_norm(package)}@{_norm(fixed)}"),
+            kind="upgrade",
+            title=f"Upgrade {package} to {fixed} in {repository}"[:COLUMN_MAX],
+            fixed_version=fixed,
+        )
     if kind == "patch" and package and fixed:
         # A source that names the package and the version that fixes it (an Aikido dependency
         # issue, CTEM-25): the upgrade case keys and titles on that version.
@@ -1109,8 +1119,11 @@ async def publish_pending(events: PendingEvents | None) -> int:
         await publish_case_updates(frames)
     if not events.items:
         return 0
+    from app.services.ctem_case_routing import stamp_owners
     from app.services.platform_events import publish
 
+    # Exactly one fleet hears each case event: its owner, computed now (#1390).
+    await stamp_owners(data for _name, data, _eid in events.items)
     published = 0
     for name, data, event_id in events.items:
         if await publish(name, data, event_id=event_id):
