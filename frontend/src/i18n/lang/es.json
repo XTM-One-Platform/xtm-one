@@ -18207,6 +18207,7 @@
   "LLM firewall": "Cortafuegos LLM",
   "AI gateway": "Puerta de enlace de IA",
   "Vulnerability scanner": "Escáner de vulnerabilidades",
+  "Application security": "Seguridad de aplicaciones",
   "Criticality unknown": "Criticidad desconocida",
   "Very high (criticality)": "Muy alta",
   "Groups the assets join, as OpenAEV asset groups. An asset picks its group on its row.": "Los grupos a los que se unen los activos, como los grupos de activos de OpenAEV. Un activo elige su grupo en su fila.",
@@ -21168,9 +21169,12 @@
   "Keep as is": "Dejar como está",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, one {Se aplica a # fila. Una fila sincronizada conserva los valores que envía su fuente.} other {Se aplica a # filas. Una fila sincronizada conserva los valores que envía su fuente.}}",
   "Left empty, each row keeps its owner.": "Si se deja vacío, cada fila conserva su propietario.",
-  "Add a Sync all schedule": "Añadir una programación Sincronizar todo",
-  "Back to Organization Profile": "Volver al perfil de la organización",
-  "Inventory sources": "Fuentes del inventario",
-  "About the inventory sources": "Acerca de las fuentes del inventario",
-  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Las plataformas que cada sincronización lee según una programación, los agentes y socios que escriben a través de la API, las importaciones CSV y las filas introducidas a mano. La correspondencia de activos fusiona los registros de varias fuentes en un solo activo."
+  "Your reply suggestion choice was not changed": "Su elección sobre las sugerencias de respuesta no se ha modificado",
+  "Reply suggestions": "Sugerencias de respuesta",
+  "Once an agent has answered, the message box proposes what you would likely ask next. Press Tab to use it, then Enter to send.": "Cuando un agente ha respondido, el cuadro de mensaje propone lo que probablemente pedirá a continuación. Pulse Tab para usarlo y luego Intro para enviarlo.",
+  "Suggest my next message": "Sugerir mi próximo mensaje",
+  "What this reply suggestion setting does": "Qué hace este ajuste de sugerencias de respuesta",
+  "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "Activado, el modelo de enrutamiento de la plataforma lee cada respuesta y propone un próximo mensaje, en gris en el cuadro de mensaje. Tab lo coloca en el cuadro, escribir o Escape lo descarta, y no se envía nada hasta que pulse Intro. Desactivado, no se genera ninguna sugerencia para usted.",
+  "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Cuando un agente ha respondido, el modelo de enrutamiento propone el próximo mensaje del usuario en el cuadro de mensaje del chat (Tab para usarlo). Cada usuario puede desactivarlo en su perfil.",
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta."
 }
