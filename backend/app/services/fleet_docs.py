@@ -682,7 +682,7 @@ async def manager_suggestions(
     doc = _stored(fleet)
     if doc is None:
         return [], [], {}
-    from app.services.fleet_practice_suggestions import practice_suggestions
+    from app.services.fleet_practice_suggestions import practice_suggestions, suggestion_editable
 
     practice = await practice_suggestions(db, fleet)
     prints: dict[str, str] = {}
@@ -691,6 +691,9 @@ async def manager_suggestions(
     shown = [*visible_findings(doc, prints), *visible_practice(doc, prints, practice)]
     # A lapsed dismissal is a live suggestion again (#12099), its finding stored or not.
     shown = with_lapsed(doc, prints, shown)
+    # Only what the reader can change (#1510): on a built-in fleet a stored or lapsed finding on locked
+    # configuration is dropped too, so the chip, the list, get_fleet and the fleet health count the same.
+    shown = [s for s in shown if suggestion_editable(fleet, s)]
     return shown, holding_dismissals(doc, prints), prints
 
 
