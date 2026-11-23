@@ -21218,5 +21218,21 @@
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# décision attend une personne} other {# décisions attendent une personne}}",
   "oldest asked {age}": "la plus ancienne demandée {age}",
   "Read only: this decision is addressed to someone else.": "Lecture seule : cette décision est adressée à quelqu'un d'autre.",
-  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Décisions des membres de cette flotte en attente d'une personne : exécutions en pause et éléments de travail. Ouvrir cet onglet ne lance aucune exécution et ne consomme aucun quota."
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Décisions des membres de cette flotte en attente d'une personne : exécutions en pause et éléments de travail. Ouvrir cet onglet ne lance aucune exécution et ne consomme aucun quota.",
+  "CTEM signal": "Signal CTEM",
+  "CTEM signal recorded": "Signal CTEM enregistré",
+  "CTEM signal triaged": "Signal CTEM trié",
+  "Recorded or triaged": "Enregistré ou trié",
+  "Recorded": "Enregistré",
+  "Triaged": "Trié",
+  "A run starts when a signal is first seen, and again each time the scope gate changes its verdict.": "Une exécution démarre quand un signal est vu pour la première fois, puis à chaque changement de verdict de la porte de périmètre.",
+  "A run starts when a signal is first seen, with the scope gate's first verdict. Seeing it again starts nothing.": "Une exécution démarre quand un signal est vu pour la première fois, avec le premier verdict de la porte de périmètre. Le revoir ne démarre rien.",
+  "A run starts when the scope gate changes the verdict of a signal already seen, for example from to validate to confirmed.": "Une exécution démarre quand la porte de périmètre change le verdict d'un signal déjà vu, par exemple de à valider à confirmé.",
+  "Third party": "Tiers",
+  "Threat": "Menace",
+  "Recorded by hand": "Saisi à la main",
+  "Starts a run when a signal is": "Démarre une exécution quand un signal est",
+  "Subject kind": "Type de sujet",
+  "Every signal": "Tous les signaux",
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Une exécution démarre pour chaque signal correspondant, dans la limite des exécutions en parallèle de la tâche. L'agent lit le signal avec list_ctem_signals et ses propres droits : un signal enregistré par un écouteur d'intégration n'atteint une tâche que si elle s'exécute en tant qu'administrateur."
 }
