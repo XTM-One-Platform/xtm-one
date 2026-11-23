@@ -49,6 +49,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { XtmOneEmblem } from "@/components/ui/xtm-one-emblem";
 import {
@@ -61,6 +62,7 @@ import {
   type FleetSlotIntegration,
 } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 import {
   BLOCKED_REASON_LINES,
@@ -321,18 +323,9 @@ export function FleetCapabilitySlotsCard({
         <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid={`type-choice-${type.capability}`}>
           {builtinChip(type)}
           {integrationChips(type.choice, `type-bound-${type.capability}`)}
-          {/* A Not usable type names its blocked integrations here too, muted (UX r1 B2 of #1376). */}
-          {type.state === "not_usable" &&
-            (type.blocked ?? []).map((item) => (
-              <span
-                key={item.integration_id}
-                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-default-secondary"
-                data-testid={`type-blocked-chip-${type.capability}`}
-              >
-                <ProviderLogo provider={item.provider} className="h-4 w-4 shrink-0" decorative />
-                <TruncatedText text={blockedLabel(item)} />
-              </span>
-            ))}
+          {/* A Not usable type names its first blocked integration here, muted, one line: the rest
+              sit behind "+N" and its tip, the anatomy of the row's button (UX r2 B4 of #1376). */}
+          {type.state === "not_usable" && blockedChip(type)}
           {unsetMembers(type).length > 0 && type.choice.length > 0 && (
             <Badge variant="warning" className="whitespace-nowrap" data-testid={`type-unset-${type.capability}`}>
               {t_i18n("{count, plural, one {# member not set} other {# members not set}}", { count: unsetMembers(type).length })}
@@ -382,6 +375,32 @@ export function FleetCapabilitySlotsCard({
   // "YouTrack · Not company-managed": the integration and why the members cannot take it (UX r1 B2 of #1376).
   const blockedLabel = (blocked: NonNullable<ReturnType<typeof firstBlocked>>) =>
     t_i18n("{name} · {reason}", { name: integrationName(blocked), reason: t_i18n(BLOCKED_REASON_SHORT[blocked.reason]) });
+
+  // The Integration cell of a Not usable row: the first blocked integration cut with its tip, then
+  // "+N" whose tip lists the others, so the row keeps the table's one-line height (UX r2 B4 of #1376).
+  const blockedChip = (type: FleetCapabilityType) => {
+    const [first, ...others] = type.blocked ?? [];
+    if (!first) return null;
+    const rest = others.map((item) => blockedLabel(item)).join("\n");
+    return (
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-default-secondary" data-testid={`type-blocked-chip-${type.capability}`}>
+        <ProviderLogo provider={first.provider} className="h-4 w-4 shrink-0" decorative />
+        <TruncatedText text={blockedLabel(first)} />
+        {others.length > 0 && (
+          <Tip content={<span className="whitespace-pre-line">{rest}</span>}>
+            <span
+              tabIndex={0}
+              aria-label={rest}
+              className={cn("shrink-0 whitespace-nowrap", TIP_WRAP_FOCUS_RING)}
+              data-testid={`type-blocked-chip-more-${type.capability}`}
+            >
+              {t_i18n("+{count}", { count: others.length })}
+            </span>
+          </Tip>
+        )}
+      </span>
+    );
+  };
 
   // A Not usable row (#1373): the integration, why the members cannot take it, and a button to its page.
   const blockedAction = (type: FleetCapabilityType, blocked: NonNullable<ReturnType<typeof firstBlocked>>) => {
