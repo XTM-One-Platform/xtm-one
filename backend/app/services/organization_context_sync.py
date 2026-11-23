@@ -296,7 +296,9 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        result["removed"] = (len(plan.gone) if plan.remove_gone else 0) + len(plan.excluded_removed)
+        result["removed"] = (len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0) + len(
+            plan.excluded_removed
+        )
         result["excluded"] = len(plan.excluded)
         if plan.error:
             result["error"] = plan.error[:500]

@@ -548,7 +548,13 @@ in the versioned store `organization_context_versions` (S3, #8987;
 `services/organization_context.py` validates them and names the missing
 ones). Every agent reads it with the core tool `get_organization_context`;
 `GET /api/v1/organization-context` serves it, `PUT` (administrators) saves
-the next version with its source (`form`, `draft`, `api`). The free-text
+the next version with its source (`form`, `draft`, `api`). A `PUT` carrying
+`based_on_version` answers 409 when another version was saved since, and
+every save answers `removed_rows` (list field -> the rows the version before
+held and this one no longer holds). `GET /organization-context/versions/{n}`
+reads a past version whole and `POST /organization-context/versions/{n}/restore`
+(`fields`, `based_on_version`) saves the next version with those fields taken
+from it, provenance `restored from v<n>` (administrators). The free-text
 `company-context` knowledge base stays as background prose only:
 
 | Field | Type | Read by |
@@ -665,7 +671,15 @@ that administrator:
 - OpenCRQ to profile: a `very_high` asset no jewel names joins the profile
   as a `critical` crown jewel linked to it;
 - a jewel whose asset OpenCRQ no longer holds is reported
-  (`not_in_opencrq`) and kept.
+  (`not_in_opencrq`) and kept;
+- a link never makes a typed jewel an OpenCRQ row: it stays `manual` with
+  `opencrq_asset_id` as a link (only a row with no `source` at all, saved
+  before provenance, reads as an OpenCRQ row);
+- a synced jewel whose pushed criticality falls below the crown-jewel sync's
+  `min_criticality` becomes a typed row linked to its asset
+  (`kept_below_sync_threshold`), so the sync never removes a jewel for a
+  criticality the reconcile wrote. A sync with `remove_gone` removes only the
+  rows stamped with its own `sync_id`; the others are reported (`gone_kept`).
 
 A changed profile is saved as the next version with source `api`.
 
