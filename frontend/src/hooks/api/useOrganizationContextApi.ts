@@ -432,17 +432,7 @@ export function useDraftOrganizationContext() {
 /** A profile section the platform import fills (#11780); one run imports one section. */
 export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
-export type ImportSourceKey =
-  | "openaev"
-  | "opencti"
-  | "opencrq"
-  | "intune"
-  | "defender"
-  | "tanium"
-  | "crowdstrike"
-  | "servicenow"
-  | "github"
-  | "gitlab";
+export type ImportSourceKey = "openaev" | "opencti" | "opencrq" | "intune" | "defender" | "github" | "gitlab";
 
 export interface ImportSourcesResponse {
   sections: {
@@ -754,6 +744,39 @@ export function useRunOrganizationSync() {
   return useMutation<OrganizationSync, Error, string>({
     mutationFn: (id) => api.post(`/organization-context/syncs/${id}/run`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What Run all syncs did: the syncs that ran and those whose run was refused or failed (#1548). */
+export interface RunAllSyncsResult {
+  ran: number;
+  failed: number;
+}
+
+/**
+ * Run all syncs (#1548): every given sync runs now, one after the other (two runs never write the profile at once),
+ * through the per-sync Run now endpoint; the list is read again after each so its Last run cell follows. No "Sync all"
+ * row is created.
+ */
+export function useRunOrganizationSyncs() {
+  const qc = useQueryClient();
+  return useMutation<RunAllSyncsResult, Error, string[]>({
+    mutationFn: async (ids) => {
+      let ran = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          const done: OrganizationSync = await api.post(`/organization-context/syncs/${id}/run`, {});
+          if (done?.last_result?.error) failed += 1;
+          else ran += 1;
+        } catch {
+          failed += 1;
+        }
+        await qc.invalidateQueries({ queryKey: KEY });
+      }
+      return { ran, failed };
+    },
     meta: { suppressGlobalErrorToast: true },
   });
 }
