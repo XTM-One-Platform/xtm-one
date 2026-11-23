@@ -113,6 +113,15 @@ export function softwarePath(id: string): string {
 }
 
 /**
+ * The version of the software a page shows that one dependency edge was reported for, or `unknown`. The API puts
+ * that version in `from_version_id` in both directions (Depends on and Used by); `version_id` is always the other
+ * software's version (UX round 3 on #1549, B1: Used by read `version_id` and always showed Unknown).
+ */
+export function edgeOwnVersion(edge: { from_version_id: string }, versionOf: ReadonlyMap<string, string>): string {
+  return versionOf.get(edge.from_version_id) ?? "unknown";
+}
+
+/**
  * The translated words of one stored value of an inventory field (`host`, `very_high`, `yes`, `production`), the
  * same labels the profile's edit cards use (UX round 2 on #1254, B6). A value outside the known set is shown as
  * stored, never re-cased into a phrase no catalog holds.

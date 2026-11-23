@@ -24,7 +24,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import { AssetSection, Fact } from "./ctem/AssetOverview";
-import { INVENTORY_PATH, assetFieldLabel, softwarePath, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, assetFieldLabel, edgeOwnVersion, softwarePath, sourceLabel } from "./ctem/inventory";
 import { SourceLogo } from "./ctem/inventory-icons";
 
 /** The Installations table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -176,8 +176,8 @@ function SoftwareDetailPage({ id }: { id: string | undefined }) {
     },
   ];
 
-  /** The columns of one dependency direction: the other software and its version, and which version of this one. */
-  const edgeColumns = (own: "from_version_id" | "version_id"): DataTableColumn<SoftwareEdge>[] => [
+  /** The columns of both dependency directions: the other software and its version, and which version of this one. */
+  const edgeColumns: DataTableColumn<SoftwareEdge>[] = [
     {
       key: "software",
       header: "Software",
@@ -195,8 +195,8 @@ function SoftwareDetailPage({ id }: { id: string | undefined }) {
       key: "own",
       header: "Of this software",
       hint: t_i18n("The version of this software the dependency was reported for."),
-      cell: (e) => <VersionText version={versionOf.get(e[own]) ?? "unknown"} />,
-      csv: (e) => versionOf.get(e[own]) ?? "unknown",
+      cell: (e) => <VersionText version={edgeOwnVersion(e, versionOf)} />,
+      csv: (e) => edgeOwnVersion(e, versionOf),
       hideable: true,
     },
     {
@@ -332,7 +332,7 @@ function SoftwareDetailPage({ id }: { id: string | undefined }) {
       >
         <DataTable<SoftwareEdge>
           rows={dependsOn}
-          columns={edgeColumns("from_version_id")}
+          columns={edgeColumns}
           rowKey={(e) => `${e.from_version_id}|${e.version_id}|${e.kind}`}
           rowHref={(e) => softwarePath(e.software_id)}
           defaultSort={{ key: "software", direction: "asc" }}
@@ -354,7 +354,7 @@ function SoftwareDetailPage({ id }: { id: string | undefined }) {
       >
         <DataTable<SoftwareEdge>
           rows={usedBy}
-          columns={edgeColumns("version_id")}
+          columns={edgeColumns}
           rowKey={(e) => `${e.from_version_id}|${e.version_id}|${e.kind}`}
           rowHref={(e) => softwarePath(e.software_id)}
           defaultSort={{ key: "software", direction: "asc" }}
