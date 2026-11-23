@@ -14,6 +14,7 @@ from app.agents.builtin_agents import (
     CTEM_F1_GATE_PREFIXES,
     CTEM_F2_GATE_PREFIXES,
     CTEM_GATE_ANSWERED,
+    CTEM_KEY_PREFIX,
 )
 from app.agents.gate_answered import INHERIT_SWITCH_FROM_KEY
 from app.services.integration_event_filters import payload_filter_reason
@@ -41,13 +42,14 @@ def _persona_keys(slug: str) -> set[str]:
 @pytest.mark.parametrize("slug", sorted(_FLEETS))
 def test_every_gate_key_the_persona_names_is_covered_by_the_trigger(slug: str) -> None:
     prefixes = tuple(_gate_assignment(slug)["trigger_config"]["filter"]["correlation_key"]["starts_with"])
-    assert prefixes == _FLEETS[slug]
+    # The whole ctem: namespace: a key minted outside the catalog resumes the case too (#1388 follow-up).
+    assert prefixes == (CTEM_KEY_PREFIX,)
     named = _persona_keys(slug)
     assert named, slug
+    # The persona still names its catalog, every key of it under the listened namespace.
+    assert set(_FLEETS[slug]) <= named, (slug, set(_FLEETS[slug]) - named)
     uncovered = {k for k in named if not k.startswith(prefixes)}
     assert uncovered == set(), (slug, uncovered)
-    # And the trigger takes no key the persona never files.
-    assert set(prefixes) <= named, (slug, set(prefixes) - named)
 
 
 @pytest.mark.parametrize("slug", sorted(_FLEETS))
@@ -55,13 +57,23 @@ def test_the_trigger_hears_the_answer_only(slug: str) -> None:
     config = _gate_assignment(slug)["trigger_config"]
     assert config["event"] == "work_item.status_changed"
     assert config["scope"] == "own"
-    answered = {"previous_status": "blocked", "status": "open", "correlation_key": "ctem:validation:abc"}
+    answered = {
+        "previous_status": "blocked",
+        "status": "open",
+        "correlation_key": "ctem:validation:abc",
+        "answered": True,
+    }
     assert payload_filter_reason(answered, config["filter"]) is None
+    # A decision keyed outside the catalog (an evidence request, a blocker) is heard too.
+    for off_catalog in ("ctem:f1:version-read:abc", "ctem:f1:jira-reauth:abc", "ctem:f2:evidence:abc"):
+        assert payload_filter_reason({**answered, "correlation_key": off_catalog}, config["filter"]) is None
     for other in (
         {**answered, "previous_status": "open", "status": "claimed"},
         {**answered, "status": "done"},
-        {**answered, "correlation_key": "ctem:f1:retest:abc"},
-        {**answered, "correlation_key": "ctem:f2:case:abc"},
+        # A dependency release of a case or re-test item is not an answer.
+        {**answered, "correlation_key": "ctem:f1:retest:abc", "answered": None},
+        {key: v for key, v in answered.items() if key != "answered"} | {"correlation_key": "ctem:f2:case:abc"},
+        {**answered, "correlation_key": "opencti:pir-desk:approval:abc"},
     ):
         assert payload_filter_reason(other, config["filter"]) is not None, other
 
