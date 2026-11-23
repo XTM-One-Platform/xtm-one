@@ -30,6 +30,7 @@ from app.core.database import get_db
 from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
+from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_loop as case_loop
 from app.services import ctem_case_routing as case_routing
 from app.services import ctem_case_versions as case_versions
@@ -65,9 +66,6 @@ class CaseValidation(BaseModel):
     safe_mode: bool | None = None
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
-    #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
-    #: only on remediation evidence.
-    evidence_type: Literal["remediation", "validation"] | None = None
 
 
 class CaseUpdate(BaseModel):
@@ -405,8 +403,11 @@ async def get_ctem_case(
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, _, _), rendered = shown
+    # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
+    audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
     return {
         **rendered,
+        **audit,
         # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
         "running_versions": await case_versions.for_case(db, case),
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
@@ -473,7 +474,6 @@ async def record_ctem_case_validation(
             note=body.note,
             safe_mode=body.safe_mode,
             run_order=body.run_order,
-            evidence_type=body.evidence_type,
             actor=str(user.id),
             events=pending,
         )
