@@ -20993,5 +20993,13 @@
   "OS, compliance and ownership, each as a prefixed tag": "OS, conformité et propriété, chacun en étiquette préfixée",
   "OS, exposure level, health and risk, each as a prefixed tag": "OS, niveau d'exposition, santé et risque, chacun en étiquette préfixée",
   "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "Indisponible : aucune intégration {source} n'est connectée. Connectez-la dans Paramètres > Intégrations.",
-  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Indisponible : l'intégration {source} n'a pas de jeton. Autorisez-la de nouveau dans Paramètres > Intégrations."
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Indisponible : l'intégration {source} n'a pas de jeton. Autorisez-la de nouveau dans Paramètres > Intégrations.",
+  "Affected assets": "Actifs concernés",
+  "Version source: none yet": "Source de version : aucune pour l’instant",
+  "Not in the inventory": "Absent de l’inventaire",
+  "Running version": "Version en service",
+  "Search asset": "Rechercher un actif",
+  "Assets not listed": "Actifs non listés",
+  "No asset": "Aucun actif",
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# autre actif non listé} other {# autres actifs non listés}}"
 }
