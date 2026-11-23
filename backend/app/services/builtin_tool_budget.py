@@ -124,7 +124,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: total 472,914 on 22 Nov 2026).
 #: Raised to 473,900 for record_module_check_report in the health_modules group (#101 S15c:
 #: about +900, carried by Platform Health's three module checkers alone, 22 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 473_900
+#: Raised to 475,400 for the ctem_read group (#1337: three read-only CTEM functions, +1,454,
+#: opt-in on any agent, and +33 on the agent builder's group list, total 475,367 on 23 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 475_400
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -144,8 +146,9 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # get_trace_payload's include_reasoning (#12356: +227, on a main already at 146,033);
     # 146,100 with Platform Health built in, its groups advertised by the agent builder
     # (#101: +158 on each of create_agent, update_agent and clone_agent, 146,023 on 18 Nov 2026);
-    # 147,600 with the three knowledge base sync-source tools (#469: 147,482 on 19 Nov 2026).
-    "platform": 147_600,
+    # 147,600 with the three knowledge base sync-source tools (#469: 147,482 on 19 Nov 2026);
+    # 147,650 with the ctem_read group in the agent builder's group list (#1337: 147,614 on 23 Nov 2026).
+    "platform": 147_650,
     # 35,700 with list_programs and get_program_status (#10833: 35,547 on
     # 10 Nov 2026); 36,200 with the verdict release of blocked_on (#11214: 36,186 on
     # 11 Nov 2026); 36,600 with the shared state lifecycle arguments (#11696:

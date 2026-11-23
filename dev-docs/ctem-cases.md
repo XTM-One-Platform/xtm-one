@@ -754,6 +754,20 @@ profile tool, acting for the person the turn or run acts for. Tests:
 `tests/test_ctem_case_tools.py`, `tests/test_ctem_cases_postgres.py`
 (manual split survives a recompute).
 
+### 8.1 Read-only on any agent: the `ctem_read` group
+
+Any agent can be granted the reads through the built-in group `ctem_read`
+(`backend/app/services/builtin_tools/ctem_read.py`): `list_ctem_signals`,
+`list_ctem_cases` and `get_ctem_case`, no write function. Bound like any
+other suite, wired by `ctem_read_tools_for` in `agent_chat` and
+`assignment_engine` when a person is acted for, XTM One mode only. The rules
+are the case tools' own: the case renders through that person's source read,
+a case they see none of does not exist. A built-in CTEM agent that already
+carries a function keeps its own; the group adds only what it lacks.
+`get_ctem_case` there also answers `opened_by` (actor, time and how, from the
+oldest `created` event), `history_total` and `empty_sections` (the reason each
+empty section is empty). Tests: `tests/test_ctem_read_tools.py`.
+
 ## 9. UX decisions (round 1, 13 Nov 2026)
 
 1. Command center widget: in the default layout right after Act now, as a

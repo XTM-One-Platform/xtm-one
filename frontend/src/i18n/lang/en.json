@@ -20993,5 +20993,8 @@
   "OS, compliance and ownership, each as a prefixed tag": "OS, compliance and ownership, each as a prefixed tag",
   "OS, exposure level, health and risk, each as a prefixed tag": "OS, exposure level, health and risk, each as a prefixed tag",
   "Not available: no {source} integration is connected. Connect it in Settings > Integrations.": "Not available: no {source} integration is connected. Connect it in Settings > Integrations.",
-  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations."
+  "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.": "Not available: the {source} integration has no token. Authorize it again in Settings > Integrations.",
+  "CTEM Read": "CTEM Read",
+  "Read the CTEM signals and cases the person you act for can see, read-only": "Read the CTEM signals and cases the person you act for can see, read-only",
+  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only."
 }

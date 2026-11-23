@@ -410,6 +410,8 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         # User and group administration: the same, bound by an administrator
         # and wired for an administrator's turn alone.
         "user_admin",
+        # Read-only CTEM signals and cases (#1337): wired by the agent paths only.
+        "ctem_read",
     }
 )
 
