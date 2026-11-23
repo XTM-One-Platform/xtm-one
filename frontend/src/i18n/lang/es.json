@@ -21218,5 +21218,6 @@
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decisión espera a una persona} other {# decisiones esperan a una persona}}",
   "oldest asked {age}": "la más antigua solicitada {age}",
   "Read only: this decision is addressed to someone else.": "Solo lectura: esta decisión está dirigida a otra persona.",
-  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisiones de los miembros de esta flota que esperan a una persona: ejecuciones en pausa y elementos de trabajo. Abrir esta pestaña no inicia ninguna ejecución ni consume cuota."
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisiones de los miembros de esta flota que esperan a una persona: ejecuciones en pausa y elementos de trabajo. Abrir esta pestaña no inicia ninguna ejecución ni consume cuota.",
+  "Subcategories of {category}": "Subcategorías de {category}"
 }

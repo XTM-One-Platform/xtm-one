@@ -21218,5 +21218,6 @@
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}",
   "oldest asked {age}": "oldest asked {age}",
   "Read only: this decision is addressed to someone else.": "Read only: this decision is addressed to someone else.",
-  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota."
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.",
+  "Subcategories of {category}": "Subcategories of {category}"
 }
