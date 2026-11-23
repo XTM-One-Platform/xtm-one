@@ -2,9 +2,9 @@
 
 /**
  * CTEM > Inventory `/ctem/inventory/:tab?` (#1178, Sam 22 Nov 2026): the organization's assets, read from the
- * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and their
- * software, one entity per vendor and product (#1495). Every list is paginated on the server, so 10,000 assets read
- * as fast as ten.
+ * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and the
+ * tech stack built from their software. Every list is paginated on the server, so 10,000 assets read as fast as
+ * ten.
  */
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -20,30 +20,32 @@ import { Icon } from "@filigran/design-system";
 import {
   useAssetFacets,
   useCanonicalAssets,
+  useDeleteAssetRecords,
   useRecordAssetDecision,
+  useTechStackInventory,
   type AssetFilterKey,
   type CanonicalAssetSummary,
+  type TechStackItem,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useAuth } from "@/hooks/useAuth";
 import { OrganizationSection } from "@/pages/settings/OrganizationSection";
-import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
-import type { AssetRow } from "@/lib/organization-profile";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
 import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
-import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
+import { deletableRows, recordRefs, type RowRef } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { SoftwareTab } from "./ctem/SoftwareTab";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
-import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, RETIRED_TABS, type InventoryTab } from "./ctem/inventory-tabs";
+import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, type InventoryTab } from "./ctem/inventory-tabs";
 
 const ASSETS_URL_KEY = "a_";
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
+const TECH_URL_KEY = "t_";
+const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
@@ -84,26 +86,25 @@ function AssetsTab({ add }: { add: AddRequest }) {
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
-  // Entity management (#1367, point 2): Add, the row menu and the bulk actions write the profile's asset rows.
-  const { data: context } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
-  // The API type leaves the #11543 sections out; the profile carries them (lib/organization-profile ProfileForm).
-  const profileRows = ((context?.profile as { assets_exposure?: AssetRow[] } | undefined)?.assets_exposure ?? []) as AssetRow[];
+  // Entity management (#1367, point 2; row APIs since #1543): Add, the row menu and the bulk actions write the asset
+  // records behind each canonical asset, one row API call each, never the whole profile.
+  const remove = useDeleteAssetRecords();
   const [dialog, setDialog] = useState<EntryDialogMode | null>(null);
-  const [toDelete, setToDelete] = useState<number[] | null>(null);
-  const indexesOf = (assets: readonly CanonicalAssetSummary[]) => assetRowIndexes(profileRows, assets.flatMap((a) => a.records ?? []));
+  const [toDelete, setToDelete] = useState<{ ids: string[]; assetIds: string[] } | null>(null);
   // An asset whose every record a sync owns cannot be deleted here.
-  const handIndexes = (a: CanonicalAssetSummary) => indexesOf([a]).filter((i) => !isSyncedRow(profileRows[i]));
+  const handIds = (a: CanonicalAssetSummary) => deletableRows(recordRefs([a])).ids;
+  const updateMode = (refs: RowRef[]): EntryDialogMode => (refs.length === 1 ? { kind: "update", id: refs[0].id } : { kind: "bulk", rows: refs });
   const selectedAssets = (data?.items ?? []).filter((a) => selected.includes(a.id));
+  const askDelete = (assets: readonly CanonicalAssetSummary[]) =>
+    setToDelete({ ids: assets.flatMap(handIds), assetIds: assets.filter((a) => recordRefs([a]).every((r) => handIds(a).includes(r.id))).map((a) => a.id) });
   const onDelete = () => {
-    if (!context || !toDelete) return;
-    const out = deleteRows(profileRows, toDelete);
-    save.mutate(
-      { profile: { ...context.profile, assets_exposure: out.rows } as typeof context.profile, source: "form" },
+    if (!toDelete) return;
+    remove.mutate(
+      toDelete,
       {
-        onSuccess: () => {
+        onSuccess: (out) => {
           setSelected([]);
-          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.changed }), variant: "success" });
+          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.removed.length }), variant: "success" });
         },
         onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
       },
@@ -121,7 +122,10 @@ function AssetsTab({ add }: { add: AddRequest }) {
   }));
 
   const rows = data?.items ?? [];
-  const mergeRecords = rows.filter((a) => selected.includes(a.id)).flatMap((a) => a.records ?? []);
+  const mergeRecords = rows
+    .filter((a) => selected.includes(a.id))
+    .flatMap((a) => a.records ?? [])
+    .map((r) => ({ source: r.source, external_id: r.external_id }));
   const canMerge = selected.length >= 2 && mergeRecords.length >= 2 && mergeRecords.length <= MAX_MERGE_RECORDS;
   const onMerge = () => {
     decide.mutate(
@@ -245,8 +249,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
         rowActions={
           isAdmin
             ? (a) => {
-                const indexes = indexesOf([a]);
-                const deletable = handIndexes(a);
+                const refs = recordRefs([a]);
+                const deletable = handIds(a);
                 return (
                   <OverflowMenu
                     label={t_i18n("Actions on {name}", { name: a.name })}
@@ -256,8 +260,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
                         id: "update",
                         label: t_i18n("Update"),
                         glyph: "pencil",
-                        disabled: indexes.length === 0,
-                        onSelect: () => setDialog(indexes.length === 1 ? { kind: "update", index: indexes[0] } : { kind: "bulk", indexes }),
+                        disabled: refs.length === 0,
+                        onSelect: () => setDialog(updateMode(refs)),
                       },
                       {
                         id: "delete",
@@ -265,7 +269,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
                         destructive: true,
                         disabled: deletable.length === 0,
                         disabledReason: deletable.length === 0 ? syncedReason : undefined,
-                        onSelect: () => setToDelete(deletable),
+                        onSelect: () => askDelete([a]),
                       },
                     ]}
                   />
@@ -281,15 +285,16 @@ function AssetsTab({ add }: { add: AddRequest }) {
                 onChange: setSelected,
                 actions: (
                   <>
-                    <Button size="sm" variant="secondary" className={BULK_ACTION} onClick={() => setDialog({ kind: "bulk", indexes: indexesOf(selectedAssets) })}>
+                    <Button size="sm" variant="secondary" className={BULK_ACTION} disabled={recordRefs(selectedAssets).length === 0}
+                      onClick={() => setDialog({ kind: "bulk", rows: recordRefs(selectedAssets) })}>
                       {t_i18n("Update")}
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
                       className={BULK_ACTION}
-                      disabled={save.isPending || selectedAssets.every((a) => handIndexes(a).length === 0)}
-                      onClick={() => setToDelete(selectedAssets.flatMap(handIndexes))}
+                      disabled={remove.isPending || selectedAssets.every((a) => handIds(a).length === 0)}
+                      onClick={() => askDelete(selectedAssets)}
                     >
                       {t_i18n("Delete")}
                     </Button>
@@ -335,6 +340,93 @@ function AssetsTab({ add }: { add: AddRequest }) {
   );
 }
 
+function TechStackTab() {
+  const { t_i18n, intl } = useFormatter();
+  const [searchParams] = useSearchParams();
+  const table = readTableState(searchParams, TECH_URL_KEY, {
+    sort: { key: "product", direction: "asc" },
+    pageSize: storedPageSize(TECH_STORAGE_KEY, PAGE_SIZE),
+  });
+  const { data, isLoading, isError, refetch } = useTechStackInventory({
+    q: table.search,
+    offset: table.page * table.pageSize,
+    limit: table.pageSize,
+  });
+
+  const versions = (item: TechStackItem) =>
+    item.versions.map((v) => `${v.version} (${formatCount(intl.locale, v.asset_count)})`).join(", ");
+
+  const columns: DataTableColumn<TechStackItem>[] = [
+    {
+      key: "product",
+      header: "Product",
+      cell: (i) => <TruncatedText text={[i.vendor, i.product].filter(Boolean).join(" ")} className="max-w-[18rem] font-medium" />,
+      csv: (i) => [i.vendor, i.product].filter(Boolean).join(" "),
+      // The inventory answers by vendor and product: the one server sort.
+      sortValue: (i) => `${i.vendor} ${i.product}`.toLowerCase(),
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      cell: (i) => assetFieldLabel(t_i18n, "kind", i.kind),
+      csv: (i) => i.kind,
+      hideable: true,
+    },
+    {
+      key: "assets",
+      header: "Assets",
+      align: "right",
+      hint: t_i18n("The number of assets running the product, each counted once whatever its versions."),
+      cell: (i) => formatCount(intl.locale, i.asset_count),
+      csv: (i) => i.asset_count,
+    },
+    {
+      key: "versions",
+      header: "Versions in use",
+      cell: (i) => <TruncatedText text={versions(i)} className="max-w-[18rem]" />,
+      csv: (i) => versions(i),
+      hideable: true,
+    },
+    {
+      key: "cpe",
+      header: "CPE",
+      cell: (i) => <TruncatedText text={i.cpe ?? ""} className="max-w-[16rem] font-mono" />,
+      csv: (i) => i.cpe,
+      hideable: true,
+      hideBelow: "6xl",
+    },
+    {
+      key: "sources",
+      header: "Sources",
+      cell: (i) => <TruncatedText text={i.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[14rem]" />,
+      csv: (i) => i.sources.join(" "),
+      hideable: true,
+    },
+  ];
+
+  return (
+    <DataTable<TechStackItem>
+      rows={data?.items ?? []}
+      columns={columns}
+      rowKey={(i) => `${i.vendor}|${i.product}`}
+      server={{ total: data?.total ?? 0 }}
+      urlKey={TECH_URL_KEY}
+      storageKey={TECH_STORAGE_KEY}
+      defaultSort={{ key: "product", direction: "asc" }}
+      defaultPageSize={PAGE_SIZE}
+      searchPlaceholder={t_i18n("Search vendor or product")}
+      noFilters="The inventory answers a vendor or product search only."
+      exportName="ctem-inventory-tech-stack"
+      isLoading={isLoading && !data}
+      isError={isError}
+      onRetry={() => void refetch()}
+      emptyLabel={t_i18n("No product yet. It fills from the software of your assets and the products you add.")}
+      noResultsLabel={t_i18n("No product matches this search")}
+      rowTestId="ctem-inventory-tech-row"
+    />
+  );
+}
+
 export default function CtemInventory() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
@@ -362,7 +454,6 @@ export default function CtemInventory() {
   // syncs table, then Asset matching below it with no click (Sam, 23 Nov 2026: no header button).
   // The sources and syncs are read and written by administrators only (the API answers 403 to a reader): a reader
   // who opens the URL lands on the inventory (UX round 1 on #1476, B2).
-  if (RETIRED_TABS[tab]) return <Navigate to={`${INVENTORY_PATH}/${RETIRED_TABS[tab]}`} replace />;
   if (tab === "sources" && !isAdmin) {
     return authLoading ? null : <Navigate to={INVENTORY_PATH} replace />;
   }
@@ -385,7 +476,7 @@ export default function CtemInventory() {
       {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border). */}
       <ListPageHeader
         title={t_i18n(INVENTORY_LABEL)}
-        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The software tab lists every software the assets run, with its versions and where it is installed.")}
+        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         infoLabel={t_i18n("About the inventory")}
         actions={
           <span className="flex flex-wrap items-center gap-2">
@@ -417,8 +508,8 @@ export default function CtemInventory() {
         <OrganizationSection embed={{ cards: EXPOSURE_TAB_CARDS, readOnly: !isAdmin }} />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
-      ) : tab === "software" ? (
-        <SoftwareTab />
+      ) : tab === "tech-stack" ? (
+        <TechStackTab />
       ) : tab === "ai-systems" ? (
         <AiSystemsTab />
       ) : (

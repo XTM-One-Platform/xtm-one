@@ -31,6 +31,7 @@ from app.models.organization_asset import (
     OrganizationSoftwareDependency,
     OrganizationSoftwareVersion,
 )
+from app.models.organization_asset_record import RECORD_MODELS
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_store as store
 from app.services import organization_software_store as sw
@@ -63,9 +64,9 @@ APP = {
             "bom-ref": "app",
             "name": "web-app",
             "version": "2.0",
-            "components": [{"bom-ref": "ossl", "type": "library", "name": "openssl", "version": "3.0.15"}],
+            "components": [{"bom-ref": "ossl", "name": "openssl", "version": "3.0.15"}],
         },
-        {"bom-ref": "z", "type": "library", "name": "zlib", "version": "1.3.1"},
+        {"bom-ref": "z", "name": "zlib", "version": "1.3.1"},
     ],
     "dependencies": [{"ref": "app", "dependsOn": ["ossl"]}, {"ref": "ossl", "dependsOn": ["z"]}],
 }
@@ -83,6 +84,7 @@ async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         OrganizationSoftwareVersion,
         OrganizationSoftwareDependency,
         OrganizationContextVersion,
+        *RECORD_MODELS,
     ]
     tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
     async with scratch_database("orgsoftware", tables=tables) as db:
@@ -133,28 +135,6 @@ async def test_a_rebuild_creates_software_with_versions_and_links_every_installa
     assert detail["installations"]["total"] == 3
 
 
-async def test_the_installations_page_searches_by_asset_name_and_keeps_the_whole_asset_count() -> None:
-    async with _database() as sessions, sessions() as session:
-        org = await _setup(session, [HOST, HOST_2])
-        chrome = uuid.UUID((await sw.list_software(session, org)).items[0]["id"])
-        found = await sw.get_software(session, org, chrome, installations_q="WEB-03")
-        none = await sw.get_software(session, org, chrome, installations_q="db-")
-    assert found is not None and none is not None
-    assert [i["asset_name"] for i in found["installations"]["items"]] == ["web-03"]
-    assert found["installations"]["total"] == 1 and found["asset_count"] == 2
-    assert none["installations"]["items"] == [] and none["installations"]["total"] == 0
-
-
-async def test_the_asset_page_names_the_software_of_every_row() -> None:
-    async with _database() as sessions, sessions() as session:
-        org = await _setup(session, [HOST])
-        chrome = (await sw.list_software(session, org)).items[0]
-        asset_id = (await session.execute(select(OrganizationAsset.id))).scalar_one()
-        detail = await store.get_asset(session, org, asset_id)
-    assert detail is not None
-    assert {s["software_id"] for s in detail["software"]["items"]} == {chrome["id"]}
-
-
 async def test_the_software_id_survives_a_rebuild_and_unused_synced_software_goes() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _setup(session, [HOST])
@@ -194,12 +174,6 @@ async def test_an_sbom_gives_dependency_edges_and_the_assets_of_a_version_throug
         zlib_version = uuid.UUID(zlib["versions"][0]["id"])
         direct = await sw.assets_of_version(session, org, zlib_version, through_dependencies=False)
         through = await sw.assets_of_version(session, org, zlib_version)
-    # The SBOM's component type is the software's type (UX round 1, B2): libraries are not applications.
-    assert (items["openssl"]["type"], items["zlib"]["type"], items["web-app"]["type"]) == (
-        "library",
-        "library",
-        "application",
-    )
     assert {(d["software_name"], d["kind"]) for d in ossl["depends_on"]} == {
         ("zlib", "depends_on"),
         ("web-app", "bundled_in"),
@@ -233,19 +207,6 @@ async def test_a_hand_typed_software_takes_its_cpe_override_and_survives_a_rebui
     assert made["cpe"] == PORTAL_CPE and made["cpe_state"] == "override"
     assert kept is not None and kept["name"] == "Portal" and kept["cpe"] == PORTAL_CPE
     assert twice.value.status == 409 and bad_cpe.value.status == 422
-
-
-async def test_a_filter_with_several_values_answers_any_of_them() -> None:
-    async with _database() as sessions, sessions() as session:
-        org = await _setup(session, [HOST])
-        await sw.create_software(session, org, vendor="Acme", product="Portal", software_type="saas", cpe=PORTAL_CPE)
-        await session.commit()
-        both = await sw.list_software(session, org, origin=["manual", "synced"])
-        hand = await sw.list_software(session, org, origin=["manual"], cpe_state=["override", "reported"])
-        none = await sw.list_software(session, org, software_type=["firmware", "library"])
-    assert both.total == 2
-    assert [s["product"] for s in hand.items] == ["Portal"]
-    assert none.total == 0
 
 
 async def test_a_synced_software_is_read_only_but_for_its_cpe_override() -> None:

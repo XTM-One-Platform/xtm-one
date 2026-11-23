@@ -2,10 +2,11 @@
 
 /**
  * The canonical asset store of the organization (#1178, dev-docs/asset-model.md section 9): one asset per real
- * thing across sources, its software (one entity per vendor and product, #1495), the merge and split decisions and the SBOMs.
+ * thing across sources, its software, the tech stack built from it, the merge and split decisions and the SBOMs.
  * Read by the CTEM > Inventory page; every list is paginated on the server (`limit` at most 200).
  */
 
+import { useCallback } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -34,8 +35,6 @@ export interface CanonicalAssetSummary {
 }
 
 export interface AssetSoftware {
-  /** The software this row installs (its page), absent before the first rebuild links it (#1495). */
-  software_id?: string | null;
   vendor: string;
   product: string;
   /** `unknown` when no source knows it, never empty. */
@@ -73,80 +72,24 @@ export interface Page<T> {
   limit: number;
 }
 
-/** The types of a software (organization_software_store.SOFTWARE_TYPES). */
-export type SoftwareType = "application" | "operating_system" | "library" | "firmware" | "container_image" | "saas";
+interface TechStackVersion {
+  version: string;
+  asset_count: number;
+}
 
-/** How sure its CPE is (organization_asset_identity.CPE_CONFIDENCES). */
-export type CpeState = "override" | "reported" | "high" | "medium" | "low" | "unresolved";
-
-/** One software of the organization (#1495): one per vendor and product across every asset and SBOM. */
-export interface SoftwareSummary {
-  id: string;
-  name: string;
+export interface TechStackItem {
   vendor: string;
   product: string;
-  type: SoftwareType;
-  description: string;
-  cpe: string;
-  cpe_state: CpeState;
-  cpe_override: string;
-  purl: string;
-  /** `synced`: a source reports it, read-only; `manual`: typed by an administrator. */
-  origin: "synced" | "manual";
-  editable: boolean;
-  sources: string[];
-  version_count: number;
-  asset_count: number;
-  has_unknown_version: boolean;
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-export interface SoftwareVersion {
-  id: string;
-  /** `unknown` when no source knows it, never empty. */
-  version: string;
-  cpe: string;
-  purl: string;
-  eol: string | null;
-  asset_count: number;
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-export interface SoftwareInstallation {
-  asset_id: string;
-  asset_name: string;
-  version_id: string | null;
-  version: string;
-  install_date: string | null;
-  bundled_in: string | null;
-  sources: string[];
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-/** One dependency edge: a version of this software and the version of another it depends on (or that uses it). */
-export interface SoftwareEdge {
-  /** `depends_on` or `bundled_in`. */
+  /** installed, saas or cloud_service. */
   kind: string;
-  scope: string;
-  from_version_id: string;
-  version_id: string;
-  version: string;
-  software_id: string;
-  software_name: string;
+  versions: TechStackVersion[];
+  asset_count: number;
+  sources: string[];
+  manual: boolean;
+  cpe?: string;
+  cpe_source?: string;
+  cpe_confidence?: string;
 }
-
-export interface SoftwareDetail extends SoftwareSummary {
-  versions: SoftwareVersion[];
-  installations: Page<SoftwareInstallation>;
-  depends_on: SoftwareEdge[];
-  used_by: SoftwareEdge[];
-}
-
-/** The server filters of the software list. */
-export type SoftwareFilterKey = "type" | "origin" | "cpe_state";
 
 const KEY = ["organization-assets"] as const;
 
@@ -259,10 +202,11 @@ export function useImportAssetSbom(assetId: string | undefined) {
   });
 }
 
-/** One source record as a merge or split names it. */
+/** One source record as a merge or split names it; `id` is the asset record the row APIs write (#1543). */
 export interface AssetRecordRef {
   source: string;
   external_id: string;
+  id?: string;
 }
 
 /** An administrator's merge or split the store applies (`GET /assets/decisions`). */
@@ -284,35 +228,184 @@ export function useRecordAssetDecision() {
   });
 }
 
-/** A page of the organization's software (#1495), filtered on a name and on one value per filter. */
-export function useSoftwareList(query: {
-  q?: string;
-  offset: number;
-  limit: number;
-  filters?: Partial<Record<SoftwareFilterKey, readonly string[]>>;
-}) {
-  const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit, ...query.filters });
-  return useQuery<Page<SoftwareSummary>>({
-    queryKey: [...KEY, "software", qs],
-    queryFn: () => api.get(`/organization-context/software?${qs}`),
-    placeholderData: keepPreviousData,
+// ── Row APIs of the asset records and groups (#1543): one row in, one row out, never the whole profile ──
+
+/** An asset record as the row APIs answer it: its row, id and row version (what `If-Match` takes). */
+export interface AssetRecord {
+  id: string;
+  asset_id: string | null;
+  row_version: number;
+  name: string;
+  category: string;
+  subcategory: string;
+  criticality: string;
+  environment: string;
+  internet_facing: string;
+  owner: string;
+  group: string;
+  source: string;
+  external_id: string;
+  [field: string]: unknown;
+}
+
+/** An asset group as the row APIs answer it, with the number of assets in it. */
+export interface AssetGroupRecord {
+  id: string;
+  row_version: number;
+  name: string;
+  description: string;
+  environment: string;
+  internet_facing: string;
+  owner: string;
+  tags: string[];
+  tech_stack: string[];
+  source: string;
+  external_id: string;
+  member_count: number;
+}
+
+const GROUPS_KEY = [...KEY, "groups"] as const;
+
+/**
+ * Every asset group of the organization (`GET /asset-groups`). `throwOnError: false` keeps a failed read with the
+ * consumer that draws its own error state (the entry dialog), instead of the section error boundary.
+ */
+export function useAssetGroups(options: { throwOnError?: false } = {}) {
+  return useQuery<{ items: AssetGroupRecord[] }>({
+    queryKey: GROUPS_KEY,
+    queryFn: () => api.get("/organization-context/asset-groups"),
+    ...options,
   });
 }
 
-/** One software with its versions, a page of its installations and its dependencies both ways. */
-export function useSoftware(id: string | undefined, installations: { offset: number; limit: number; q?: string }) {
-  const qs = pageQuery({
-    installations_offset: installations.offset,
-    installations_limit: installations.limit,
-    installations_q: installations.q?.trim(),
-  });
-  return useQuery<SoftwareDetail>({
-    queryKey: [...KEY, "software-detail", id, qs],
-    queryFn: () => api.get(`/organization-context/software/${id}?${qs}`),
+/** One asset record, for the update form (`GET /assets/records/{id}`). */
+export function useAssetRecord(id: string | undefined) {
+  return useQuery<AssetRecord>({
+    queryKey: [...KEY, "record", id],
+    queryFn: () => api.get(`/organization-context/assets/records/${id}`),
     enabled: Boolean(id),
-    placeholderData: keepPreviousData,
-    // A software a rebuild removed answers 404: the page draws its not-found state, never the error boundary.
+    // A record a sync or another admin removed since the list loaded answers 404: the update dialog draws its own
+    // error state (Retry, Close), never the section error boundary, and a retry would not bring it back (UX round 1
+    // on #1551, B1).
     retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
-    throwOnError: (error) => !isAssetNotFound(error),
+    throwOnError: false,
+  });
+}
+
+/** The fields a person sets on a record or a group from the Inventory. */
+export type RowPatch = Record<string, string>;
+
+/** What a write of several rows answers: the rows written and the rows the API refused, with its reason. */
+export interface RowsOutcome {
+  written: number;
+  refused: { id: string; reason: string }[];
+}
+
+/** The asset lists and pages read again after a row write (never the whole profile). */
+function invalidateAssets(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: KEY });
+}
+
+/** Reads the asset lists and pages again: a dialog that found its row gone refreshes the list behind it. */
+export function useRefreshAssets(): () => void {
+  const qc = useQueryClient();
+  // The record the dialog failed to read is left out: reading it again would only fail again.
+  return useCallback(() => void qc.invalidateQueries({ queryKey: KEY, predicate: (q) => q.queryKey[1] !== "record" }), [qc]);
+}
+
+/** Add one asset by hand (`POST /assets`). */
+export function useCreateAssetRecord() {
+  const qc = useQueryClient();
+  return useMutation<AssetRecord, Error, RowPatch>({
+    mutationFn: (row) => api.post("/organization-context/assets", { ...row, source: "manual" }),
+    onSuccess: () => invalidateAssets(qc),
+  });
+}
+
+/**
+ * Change records one PATCH each (`PATCH /assets/records/{id}`): one row in, one row out. A refused row (a field its
+ * sync sends, a stale version) is reported, the others are written.
+ */
+export function useUpdateAssetRecords() {
+  const qc = useQueryClient();
+  return useMutation<RowsOutcome, Error, { ids: string[]; patch: RowPatch }>({
+    mutationFn: async ({ ids, patch }) => {
+      const settled = await Promise.allSettled(ids.map((id) => api.patch(`/organization-context/assets/records/${id}`, patch)));
+      return outcome(ids, settled);
+    },
+    onSettled: () => invalidateAssets(qc),
+  });
+}
+
+/**
+ * Delete records in one call (`POST /assets/bulk-delete`, at most 1,000). The assets whose every record goes leave the
+ * open list pages at once; the pages read again once the server answers.
+ */
+export function useDeleteAssetRecords() {
+  const qc = useQueryClient();
+  return useMutation<{ removed: string[] }, Error, { ids: string[]; assetIds: string[] }, { pages: [readonly unknown[], Page<CanonicalAssetSummary> | undefined][] }>({
+    mutationFn: ({ ids }) => api.post("/organization-context/assets/bulk-delete", { ids }),
+    onMutate: async ({ assetIds }) => {
+      const listKey = [...KEY, "list"];
+      await qc.cancelQueries({ queryKey: listKey });
+      const pages = qc.getQueriesData<Page<CanonicalAssetSummary>>({ queryKey: listKey });
+      const gone = new Set(assetIds);
+      qc.setQueriesData<Page<CanonicalAssetSummary>>({ queryKey: listKey }, (page) =>
+        page ? { ...page, items: page.items.filter((a) => !gone.has(a.id)), total: Math.max(0, page.total - page.items.filter((a) => gone.has(a.id)).length) } : page,
+      );
+      return { pages };
+    },
+    onError: (_error, _vars, context) => context?.pages.forEach(([key, page]) => qc.setQueryData(key, page)),
+    onSettled: () => invalidateAssets(qc),
+  });
+}
+
+/** Add an asset group (`POST /asset-groups`). */
+export function useCreateAssetGroup() {
+  const qc = useQueryClient();
+  return useMutation<AssetGroupRecord, Error, RowPatch>({
+    mutationFn: (row) => api.post("/organization-context/asset-groups", { ...row, source: "manual" }),
+    onSuccess: () => invalidateAssets(qc),
+  });
+}
+
+/** Change asset groups, one PATCH each (`PATCH /asset-groups/{id}`). */
+export function useUpdateAssetGroups() {
+  const qc = useQueryClient();
+  return useMutation<RowsOutcome, Error, { ids: string[]; patch: RowPatch }>({
+    mutationFn: async ({ ids, patch }) => outcome(ids, await Promise.allSettled(ids.map((id) => api.patch(`/organization-context/asset-groups/${id}`, patch)))),
+    onSettled: () => invalidateAssets(qc),
+  });
+}
+
+/** Delete asset groups, one DELETE each (`DELETE /asset-groups/{id}`); their assets stay and lose the group. */
+export function useDeleteAssetGroups() {
+  const qc = useQueryClient();
+  return useMutation<RowsOutcome, Error, string[], { groups?: { items: AssetGroupRecord[] } }>({
+    mutationFn: async (ids) => outcome(ids, await Promise.allSettled(ids.map((id) => api.delete(`/organization-context/asset-groups/${id}`)))),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: GROUPS_KEY });
+      const groups = qc.getQueryData<{ items: AssetGroupRecord[] }>(GROUPS_KEY);
+      const gone = new Set(ids);
+      if (groups) qc.setQueryData(GROUPS_KEY, { items: groups.items.filter((g) => !gone.has(g.id)) });
+      return { groups };
+    },
+    onError: (_error, _ids, context) => context?.groups && qc.setQueryData(GROUPS_KEY, context.groups),
+    onSettled: () => invalidateAssets(qc),
+  });
+}
+
+function outcome(ids: readonly string[], settled: readonly PromiseSettledResult<unknown>[]): RowsOutcome {
+  const refused = settled.flatMap((result, i) => (result.status === "rejected" ? [{ id: ids[i], reason: (result.reason as Error)?.message ?? "" }] : []));
+  return { written: settled.length - refused.length, refused };
+}
+
+/** The tech stack built from the assets' software: per product its kind, versions with asset counts, CPE. */
+export function useTechStackInventory(query: { q?: string; offset: number; limit: number }) {
+  const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit });
+  return useQuery<Page<TechStackItem>>({
+    queryKey: [...KEY, "tech-stack", qs],
+    queryFn: () => api.get(`/organization-context/inventory/tech-stack?${qs}`),
+    placeholderData: keepPreviousData,
   });
 }

@@ -278,11 +278,11 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 
 ### 9.2 Writes through the store, merge and split (S3)
 
-- **Every save refreshes the store.** `organization_context.save_version` calls
-  `organization_asset_store.refresh_after_save` in the same transaction: a sync run, an import, the form, the
-  agent row tools (`upsert_organization_rows`, `remove_organization_rows`) and a proposal all rebuild the store
-  with the rows they saved. A refresh failure is logged and never fails the save; the next read rebuilds
-  (`ensure_built`).
+- **Every save refreshes the store.** Since #1543 `organization_context.save_version` turns the asset and
+  group lists of the saved profile into row writes (`organization_asset_records.apply_profile_lists`), each
+  re-matching its own identity cluster, so a sync run, an import, the form and a proposal leave the store
+  current in the same transaction (the agent row tools write the records directly, section 9.2bis). A store
+  never built is built on its first read (`ensure_built`).
 - **One asset, several records.** In the `assets` section only (`MULTI_SOURCE_SECTIONS` of
   `organization_context_import` and `organization_context_rows`), a row whose name matches a row of another
   source is added beside it as a second record instead of being skipped (import, sync) or refused (agent
@@ -299,6 +299,53 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
     recorded, or a record addressed by its position (`row-<index>`, a row typed by hand with no `external_id`:
     the address moves when a row above it is removed, so the row gets an `external_id` first).
   - `DELETE /api/v1/organization-context/assets/decisions/{id}`: 204; the keys decide again.
+
+### 9.2bis Asset records as the source of truth (#1543)
+
+`organization_asset_records` (one row per record per source, unique `(organization, source, external_id)`),
+`organization_asset_identifiers`, `organization_asset_groups`, `organization_asset_group_members`,
+`organization_crown_jewel_assets` and `organization_asset_changes` (migration `r1543assetrecords01`) hold
+the assets and groups; `services/organization_asset_records.py` is their only writer. A write re-matches the
+identity cluster of the rows it touches (`identity_closure`, `refresh_clusters`), never the whole store, and
+appends one row per changed record to the change log. `save_version` turns an old client's `assets_exposure`
+and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrators, audited
+(`entity_type organization_context`):
+
+- `POST /api/v1/organization-context/assets` (an `AssetEntry` row): 201 with the record (`id`, `asset_id`,
+  `row_version`, audit columns); 422 names the bad field or a group that does not exist.
+- `GET /api/v1/organization-context/assets/records/{id}` (any signed-in user): the record and its `row_version`.
+- `PATCH /api/v1/organization-context/assets/records/{id}` (the fields to change; `If-Match: <row_version>`
+  optional): the record; 409 on a stale `If-Match`, 422 when a hand write changes a field a sync owns (#1367).
+- `DELETE /api/v1/organization-context/assets/records/{id}` (`If-Match` optional): 204.
+- `POST /api/v1/organization-context/assets/bulk-delete` `{ids}` (at most 1,000): `{removed}`.
+- `POST /api/v1/organization-context/assets/records/batch` `{rows}` (at most 10,000, matched on
+  `(source, external_id)`): `{created, updated, removed, unchanged}`; a row equal to its record is not written.
+- `POST`, `PATCH /{id}`, `DELETE /{id}` on `/api/v1/organization-context/asset-groups`: the same for groups; a
+  deleted group's records stay and lose the group.
+- `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
+  covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
+- `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
+  `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
+  `before` fields, a create goes.
+
+The agent row tools write the records too: `upsert_organization_rows` and `remove_organization_rows` on
+`assets` or `asset_groups` plan against the records the call addresses (`organization_context_rows.
+plan_record_upsert` / `plan_record_remove`, keyed on `(source, external_id)`, a field the source does not send
+kept from the record) and write through `organization_asset_records.write_rows` / `remove_rows` with origin
+`agent:<source>`: no profile version, no 5,000 cap, each changed row in the change log with the agent as actor,
+one audit entry per call. A row of another source with the same name is added beside it (the store merges
+them); a row of the same source with the name of another record is refused. Tech stack and AI systems rows
+stay on the profile path until they move to records (#1514, the Software entity).
+
+Imports and syncs of `assets` and `asset_groups` are planned on the records too
+(`organization_context_import.preview_import` -> `plan_record_import`, the merge rules of `_merge_sourced`:
+local fields a person set are kept, a new row named like another record of the source is skipped, a sync removes
+only the rows its own `sync_id` wrote, a truncated or failed read removes nothing) and applied by
+`apply_record_import` in batches of `MAX_BATCH` with origin `sync:<id>` or `import`. The stored rows are read by
+ref (`rows_by_ref`) and the gone rows by three indexed columns (`source_refs`): no profile version, no 5,000 cap,
+only the changed rows logged and re-matched. The sync result says `rows_written` instead of `version`; the
+one-off import (`POST /organization-context/import/apply`) and the agent's import tool answer `applied`
+without a version. The other sections keep the profile plan.
 
 ### 9.3 Tech stack from asset software (S4)
 
@@ -368,7 +415,6 @@ Reads (any signed-in user):
 
 - `GET /api/v1/organization-context/software?q=&type=&vendor=&source=&origin=&cpe_state=&unknown_version=&offset=&limit=`:
   one item per software with `version_count`, `asset_count` (distinct assets), `has_unknown_version`, `editable`.
-  `type`, `origin` and `cpe_state` repeat for several values (any of them), as the Software tab's filters send them.
 - `GET /api/v1/organization-context/software/{id}`: the software, its versions with asset counts, its
   installations (paginated), `depends_on` and `used_by` (one level, each edge with its version and kind).
 - `GET /api/v1/organization-context/software/versions/{id}/assets?through_dependencies=`: the assets where a
@@ -396,13 +442,7 @@ Writes (administrators, audited `entity_type organization_context`, `entity_name
 - `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
   attachment (every version when `version` is empty); 404 when the asset holds none.
 
-UI (slice 2): CTEM > Inventory has a Software tab (`/ctem/inventory/software`, the old `tech-stack` tab redirects
-there) listing every software with its type, asset and version counts, CPE or its state, and sources, filtered on
-type, origin and CPE state; each row opens `/ctem/inventory/software/{id}`: the identity and CPE card, versions with
-asset counts (`unknown` named), the assets it is installed on (server paged), depends on and used by. Each row of
-an asset page's Software section carries `software_id` and opens that page.
-
-Next slice: the `tech_stack` profile rows migrated to manual software
+Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
 and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
 (`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
 events for software writes are not raised yet: no subscriber needs them before slice 3.

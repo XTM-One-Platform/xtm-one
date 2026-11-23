@@ -30,10 +30,9 @@ import { useFormatter } from "@/i18n";
 import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
-import { assetRowIndexes } from "./ctem/inventory-entries";
+import { recordRefs } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
-import type { AssetRow } from "@/lib/organization-profile";
-import { INVENTORY_PATH, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, isCodeRepository, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 /** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -64,10 +63,9 @@ export default function CtemAssetDetail() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [splitPicked, setSplitPicked] = useState<string[]>([]);
   const [confirmSplit, setConfirmSplit] = useState(false);
-  // Update from the asset page (#1367, point 2): the profile rows behind its records, synced fields locked.
+  // Update from the asset page (#1367, point 2; row APIs since #1543): the asset records behind it, synced fields locked.
   const [entryDialog, setEntryDialog] = useState<EntryDialogMode | null>(null);
-  const profileAssets = ((context?.profile as { assets_exposure?: AssetRow[] } | undefined)?.assets_exposure ?? []) as AssetRow[];
-  const rowIndexes = data ? assetRowIndexes(profileAssets, data.records) : [];
+  const rowRefs = data ? recordRefs([data]) : [];
 
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const nameKey = (data?.name ?? "").trim().toLowerCase();
@@ -266,11 +264,11 @@ export default function CtemAssetDetail() {
           ) : undefined
         }
         actions={
-          isAdmin && rowIndexes.length > 0 ? (
+          isAdmin && rowRefs.length > 0 ? (
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setEntryDialog(rowIndexes.length === 1 ? { kind: "update", index: rowIndexes[0] } : { kind: "bulk", indexes: rowIndexes })}
+              onClick={() => setEntryDialog(rowRefs.length === 1 ? { kind: "update", id: rowRefs[0].id } : { kind: "bulk", rows: rowRefs })}
               data-testid="ctem-asset-update"
             >
               {t_i18n("Update")}
@@ -336,8 +334,6 @@ export default function CtemAssetDetail() {
           rows={software?.items ?? []}
           columns={softwareColumns}
           rowKey={(s) => `${s.vendor}|${s.product}|${s.version}`}
-          // Each row opens its software's page (#1495 slice 2); a row no rebuild has linked yet opens nothing.
-          rowHref={(s) => (s.software_id ? softwarePath(s.software_id) : undefined)}
           server={{ total: software?.total ?? 0 }}
           onStateChange={(state) => setSoftwarePage({ index: state.page, size: state.pageSize })}
           defaultPageSize={SOFTWARE_PAGE_SIZE}
