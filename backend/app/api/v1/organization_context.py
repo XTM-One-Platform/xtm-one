@@ -1902,7 +1902,9 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
+    source: Literal[
+        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
+    ]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1967,7 +1969,9 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"],
+    source: Literal[
+        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
+    ],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -2085,7 +2089,19 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab", ""] = ""
+    source: Literal[
+        "openaev",
+        "opencti",
+        "opencrq",
+        "intune",
+        "defender",
+        "tanium",
+        "crowdstrike",
+        "servicenow",
+        "github",
+        "gitlab",
+        "",
+    ] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).
