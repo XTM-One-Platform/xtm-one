@@ -54,6 +54,8 @@ You can usually review or update:
 
 If you use SSO, the page shows that clearly so you know sign-in is handled by your identity provider.
 
+`Reply suggestions` turns off the next-message suggestion the chat shows once an agent has answered (see [Chat](chat.md#use-a-suggested-reply)). It is on by default, and only works when your administrator has set a routing model.
+
 ## Password changes
 
 If you use a local account, the `Profile` tab also includes a password change area.

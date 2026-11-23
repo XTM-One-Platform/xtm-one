@@ -57,6 +57,7 @@ from ._common import (
     keep_findings_schema,
     simulation_results_answer,
 )
+from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,13 @@ def register(
             data = resp.json()
             items = data.get("content", data) if isinstance(data, dict) else data
             if not items:
-                return "No simulations found."
+                # OpenAEV answers an empty page to a grant-limited identity (#1444).
+                scope, cause = await area_scope(headers, "assessment")
+                return with_scope(
+                    "No simulations found" + (": " + count_text(0, scope) if scope != "full" else "") + ".",
+                    scope,
+                    cause,
+                )
             return f"Simulations ({len(items)}):\n" + "\n".join(
                 _fmt_exercise(e, base_url) for e in items
             )

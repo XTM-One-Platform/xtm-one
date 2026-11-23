@@ -16,7 +16,9 @@
 A built-in fleet only works on the customer's own estate once each role
 reaches the right kind of tool: Mobilization needs a ticketing and a
 notification channel, Validation an EDR/XDR, a scanner or an EASM, Triage
-vulnerability intelligence and an asset inventory. Each role label declares
+vulnerability intelligence and an asset inventory, plus application security
+and source code for the code flaws of the customer's own software (#1434).
+Each role label declares
 the capabilities it can use (:data:`ROLE_SLOTS`); a capability is a set of
 catalog ``integration_types`` (:data:`CAPABILITIES`), so any provider of the
 catalog typed that way fills it, with no provider named here.
@@ -59,10 +61,19 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
     "ticketing": {"label": "Ticketing", "integration_types": ("ticketing", "itsm", "project_management")},
     "notification": {"label": "Notification", "integration_types": ("messaging", "incident_management", "email")},
     "edr_xdr": {"label": "EDR / XDR", "integration_types": ("edr", "xdr")},
+    # Infrastructure and cloud scanners. A provider also typed application_security
+    # (Aikido) belongs to Application security only: ``excluded_types`` (#1434).
     "scanner": {
         "label": "Vulnerability scanner",
-        "integration_types": ("vulnerability_management", "application_security", "cloud_security"),
+        "integration_types": ("vulnerability_management", "cloud_security"),
+        "excluded_types": ("application_security",),
     },
+    # Code, dependency, secret, container and DAST findings (Aikido): the code_flaw and
+    # credential_leak signals of the CTEM loop (#1434).
+    "application_security": {"label": "Application security", "integration_types": ("application_security",)},
+    # The code hosts that hold the source_code assets (repositories, pipelines, packages)
+    # and their dependency alerts: GitHub, GitLab (#1434).
+    "source_code": {"label": "Source code", "integration_types": ("repository",)},
     "easm": {"label": "External attack surface", "integration_types": ("asm",)},
     "vulnerability_intelligence": {"label": "Vulnerability intelligence", "integration_types": ("threat_intel",)},
     "asset_inventory": {"label": "Asset inventory", "integration_types": ("cmdb", "endpoint_management")},
@@ -72,13 +83,13 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
 #: Role label (as the fleet seeds it on a member) -> the capabilities it can use, in order.
 ROLE_SLOTS: dict[str, tuple[str, ...]] = {
     "Mobilization": ("ticketing", "notification"),
-    "Validation": ("edr_xdr", "scanner", "easm"),
-    "Triage": ("vulnerability_intelligence", "asset_inventory"),
-    "Relevance": ("vulnerability_intelligence", "asset_inventory"),
+    "Validation": ("edr_xdr", "scanner", "easm", "application_security"),
+    "Triage": ("vulnerability_intelligence", "asset_inventory", "application_security", "source_code"),
+    "Relevance": ("vulnerability_intelligence", "asset_inventory", "application_security", "source_code"),
     "Hunt": ("siem", "edr_xdr"),
     "Detections": ("siem", "edr_xdr"),
     "Gap analysis": ("siem", "edr_xdr"),
-    "Discovery": ("scanner", "easm", "asset_inventory"),
+    "Discovery": ("scanner", "easm", "asset_inventory", "source_code", "application_security"),
 }
 
 SLOT_FILLED = "filled"
@@ -145,13 +156,18 @@ def providers_for(capability: str, catalog: Mapping[str, Any]) -> frozenset[str]
 
     An entry flagged ``capability_slots: False`` is never a candidate: a tool
     such as an extraction model keeps its ``integration_types`` for the
-    catalog browser without being offered as a data source of a slot.
+    catalog browser without being offered as a data source of a slot. A
+    capability's ``excluded_types`` keep out an entry typed one of them, so a
+    provider listed under a more specific capability is offered once (#1434).
     """
     types = set(CAPABILITIES[capability]["integration_types"])
+    excluded = set(CAPABILITIES[capability].get("excluded_types", ()))
     return frozenset(
         key
         for key, entry in catalog.items()
-        if entry.get("capability_slots", True) and types & set(entry.get("integration_types") or ())
+        if entry.get("capability_slots", True)
+        and types & set(entry.get("integration_types") or ())
+        and not excluded & set(entry.get("integration_types") or ())
     )
 
 

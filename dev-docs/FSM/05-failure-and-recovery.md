@@ -145,6 +145,20 @@ on a callback that never arrived"), then `on_dead_letter` fails the domain row.
 `deadline_at` is derived from `assignment.timeout_seconds` /
 `evaluation.timeout_seconds` / the sub-agent timeout + a grace window.
 
+Assignment runs (trigger, retry, de-queued delivery) and background tasks
+count that budget from their START, not from their creation (#1433):
+`queued_deadline()` puts the budget on the payload
+(`start_budget_seconds`) and sets `deadline_at` to the queue-wait bound
+(`run_at + ORCHESTRATION_MAX_QUEUE_WAIT_SECONDS`, or the assignment's
+`trigger_config.max_queue_wait_seconds`; `0` = none). The first `claim_due`
+sets `deadline_at = start + budget` and records `started_at` and
+`queue_wait_seconds`; a re-claim keeps them. A row the sweep finds past its
+queue bound with no `started_at` is marked `expired_before_start`: the
+assignment adapter fails the run with `deadline_exceeded_before_start`,
+`trigger_context.queue = {queue_wait_seconds, started: false}` and no
+`run.failed`; the sub-agent adapter fails the task with the same words.
+`timeout_seconds` is execution time.
+
 The sweep is a backstop, never the way work is meant to end: the work's own
 bound fires first, `orchestration_grace_seconds` earlier, and records what the
 run did. A re-run after a worker crash keeps the deadline it was created with,
