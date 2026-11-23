@@ -46,7 +46,7 @@ import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -1126,6 +1126,23 @@ class OwnerAgentUnreachableError(ValueError):
     """A work item handed to an agent its owner runs could never read (#858)."""
 
 
+async def _creator_is_company_agent(writer: CompanyManagedWriter, created_by_agent_id: str | None) -> bool:
+    """Whether the item is filed by a company-managed agent acting as itself (#1499).
+
+    Only an agent's own write counts (*writer* names the creating agent); the
+    flag is read from the agent row, never from the run that files the item.
+    """
+    creator = safe_uuid(created_by_agent_id) if created_by_agent_id else None
+    if creator is None or writer.agent_id != creator:
+        return False
+    from app.core.database import async_session
+    from app.models.agent import Agent
+
+    async with async_session() as db:
+        flag = (await db.execute(select(Agent.is_company_managed).where(Agent.id == creator))).scalar_one_or_none()
+    return bool(flag)
+
+
 async def _refuse_unreachable_owner(
     db: Any,
     *,
@@ -1276,9 +1293,11 @@ async def _workspace_tiers(
 def _ownership_clauses(ownership: str | None, user_uuid: uuid.UUID | None) -> list:
     """The Operations Mine | Shared | Company split of the visible items.
 
-    Mine = created by the caller (``user_id``), or owned or created by an
-    agent the caller owns; Company = company-managed and not mine; Shared =
-    the rest. Empty when *ownership* is omitted or ``all``.
+    Mine = created by the caller (``user_id``) and not company-managed, or
+    owned or created by an agent the caller owns; Company = company-managed
+    and not mine (an item a company-managed agent filed for the caller
+    included, #1499); Shared = the rest. Empty when *ownership* is omitted
+    or ``all``.
     """
     clause = ownership_clause(
         ownership,
@@ -1286,6 +1305,7 @@ def _ownership_clauses(ownership: str | None, user_uuid: uuid.UUID | None) -> li
         user_column=WorkItem.user_id,
         agent_columns=(WorkItem.owner_agent_id, WorkItem.created_by_agent_id),
         company_column=WorkItem.is_company_managed,
+        company_rows_mine_by_user=False,
     )
     return [] if clause is None else [clause]
 
@@ -2060,6 +2080,11 @@ async def create_work_item(
     from app.core.database import async_session
     from app.services.scheduled_work_items import refuse_generic_action_write
 
+    # An item a company-managed agent files as itself is the company's (#1499),
+    # whatever run path or tool files it: listed under Company, its person kept.
+    if not is_company_managed and await _creator_is_company_agent(writer, created_by_agent_id):
+        is_company_managed = True
+        writer = replace(writer, may_write=True)
     refuse_company_managed_write(
         writer, is_company_managed=is_company_managed, action="create", subject=_SUBJECT
     )

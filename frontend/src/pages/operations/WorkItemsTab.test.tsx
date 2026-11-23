@@ -17,8 +17,10 @@ import { renderWithProviders } from "@/testing/providers";
 import { blockedReason, cancelledBlockers } from "@/lib/work-item-context";
 import type { WorkItem } from "@/types";
 
+// An administrator in the test that reads a fleet tab with `?scope=all`; a reader elsewhere.
+let IS_ADMIN = false;
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "u1", timezone: "Europe/Paris" }, isAdmin: false }),
+  useAuth: () => ({ user: { id: "u1", timezone: "Europe/Paris" }, isAdmin: IS_ADMIN }),
 }));
 
 // The wide toolbar (pills): happy-dom's 1024 px window would select the
@@ -106,7 +108,9 @@ let ITEMS: WorkItem[] = MIXED;
 
 const idle = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
 // The filters of every list read, the last one last: the sort is read off it.
-const LIST_READS: Array<{ sort?: string; limit?: number; status?: string; open_only?: boolean }> = [];
+const LIST_READS: Array<{ sort?: string; limit?: number; status?: string; open_only?: boolean; vis?: string }> = [];
+// The filters of every count read (#1499: the Waiting for me chip's own read is among them).
+const COUNT_READS: Array<Record<string, unknown>> = [];
 /** The last read of the list itself (the Blocked hint reads 100 blocked items beside it). */
 const lastListRead = () => {
   const reads = LIST_READS.filter((f) => f.limit !== 100);
@@ -117,7 +121,10 @@ vi.mock("@/hooks/api/useWorkItemApi", () => ({
     LIST_READS.push(filters);
     return { data: ITEMS, isLoading: false };
   },
-  useWorkItemCount: (_filters: unknown, deletableOnly?: boolean) => ({ data: { count: deletableOnly ? 1 : 2 } }),
+  useWorkItemCount: (filters: Record<string, unknown>, deletableOnly?: boolean) => {
+    COUNT_READS.push(filters);
+    return { data: { count: deletableOnly ? 1 : 2 } };
+  },
   useStaleWorkItemCount: () => ({ data: { count: 0 } }),
   useWorkItemOwners: () => ({ data: [] }),
   useWorkItemGraph: () => ({ data: undefined, isLoading: false }),
@@ -133,6 +140,11 @@ vi.mock("@/hooks/api/useWorkItemApi", () => ({
 }));
 
 const { default: WorkItemsTab } = await import("./WorkItemsTab");
+
+// The last count read asked with `waiting_for_me` (#1499: the chip's own read).
+function lastWaitingCountRead(): Record<string, unknown> | undefined {
+  return [...COUNT_READS].reverse().find((f) => f.waiting_for_me === true);
+}
 
 function renderTab(query = "") {
   // A named segment: the tab shows its rows at once, without waiting for the
@@ -1080,6 +1092,55 @@ describe("Work Items quick filters", () => {
     expect(within(view).getByRole("button", { name: "Waiting for me" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(within(screen.getByRole("group", { name: "Quick filters" })).getByRole("button", { name: /Waiting for me/ }));
     expect(new URLSearchParams(LOCATION.search).has("view")).toBe(false);
+  });
+
+  it("counts every open item waiting for the reader, whatever the segment and filters (#1499)", () => {
+    COUNT_READS.length = 0;
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/operations?vis=company&status=blocked&agent=a1&wi_q=grafana"]}>
+        <WorkItemsTab />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    const read = lastWaitingCountRead();
+    expect(read).toMatchObject({ open_only: true, waiting_for_me: true });
+    expect(read?.vis).toBeUndefined();
+    expect(read?.status).toBeUndefined();
+    expect(read?.owner_agent_id).toBeUndefined();
+    expect(read?.search).toBeUndefined();
+  });
+
+  it("counts inside a locked fleet when an administrator reads scope=all (#1499)", () => {
+    IS_ADMIN = true;
+    try {
+      COUNT_READS.length = 0;
+      renderWithProviders(
+        <MemoryRouter initialEntries={["/operations?scope=all"]}>
+          <WorkItemsTab fleet="fleet-1" />
+        </MemoryRouter>,
+      );
+      expect(lastWaitingCountRead()).toMatchObject({ open_only: true, waiting_for_me: true, fleet: "fleet-1" });
+    } finally {
+      IS_ADMIN = false;
+    }
+  });
+
+  it("resets every other filter and lands on All when turned on (#1499)", () => {
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/operations?vis=company&status=blocked&agent=a1&wi_q=grafana"]}>
+        <WorkItemsTab />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    fireEvent.click(within(screen.getByRole("group", { name: "Quick filters" })).getByRole("button", { name: /Waiting for me/ }));
+    const params = new URLSearchParams(LOCATION.search);
+    expect(params.get("view")).toBe("waiting");
+    expect(params.get("vis")).toBe("all");
+    expect(params.has("status")).toBe(false);
+    expect(params.has("agent")).toBe(false);
+    expect(params.has("wi_q")).toBe(false);
+    expect(lastListRead()).toMatchObject({ waiting_for_me: true, open_only: true });
+    expect(lastListRead()?.vis).toBeUndefined();
   });
 
   it("marks the rows that wait for the reader", () => {

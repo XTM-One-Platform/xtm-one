@@ -37,10 +37,10 @@ holds what replaced that, apart from the SQL, which stays with the queue:
   oldest and newest alternately once its oldest queued run is older than
   ``ASSIGNMENT_QUEUE_BACKLOG_SECONDS``, so a backlog never delays fresh work by
   its whole length (nothing is dropped);
-- the 429 back-off: a 429 met by an assignment's run (model provider or
-  integration) halves that assignment's cap for
-  ``ASSIGNMENT_DISPATCH_RATE_LIMIT_BACKOFF_SECONDS``, a fixed window; a 429 met
-  anywhere else (chat, evaluations, embeddings) is none of dispatch's business
+- the rate-limit back-off: a rate limit met by an assignment's run (a model
+  provider's or an integration's 429, the AI Gateway's throttle) halves that
+  assignment's cap for ``ASSIGNMENT_DISPATCH_RATE_LIMIT_BACKOFF_SECONDS``, a
+  fixed window; one met anywhere else (chat, evaluations, embeddings) is none of dispatch's business
   (the retries of ``retry_llm_call`` and ``safe_request`` are unchanged);
 - the per-assignment dispatch gauges served on ``/metrics``.
 
@@ -489,7 +489,7 @@ def select_runs(
 
 
 def throttled_cap(cap: int) -> int:
-    """The cap an assignment backs off to while a provider answers 429."""
+    """The cap an assignment backs off to while a provider rate-limits it."""
     return max(1, cap // 2)
 
 
@@ -580,7 +580,7 @@ def fair_share_order(
 
 
 # ---------------------------------------------------------------------------
-# 429 back-off
+# Rate-limit back-off
 # ---------------------------------------------------------------------------
 
 _ASSIGNMENT_THROTTLE_PREFIX = "assignment_dispatch:throttled:"
@@ -601,7 +601,7 @@ async def _redis():
 
 @contextlib.contextmanager
 def dispatch_scope(assignment_id: object) -> Iterator[None]:
-    """Attribute the 429s met inside the block to this assignment's runs."""
+    """Attribute the rate limits met inside the block to this assignment's runs."""
     token = _current_assignment.set(str(assignment_id) if assignment_id else None)
     try:
         yield
@@ -610,13 +610,13 @@ def dispatch_scope(assignment_id: object) -> Iterator[None]:
 
 
 async def note_rate_limited(source: str) -> None:
-    """Record a provider's 429 met by an assignment's run. Never raises.
+    """Record a provider's rate limit (a 429, or the AI Gateway's throttle) met by an assignment's run. Never raises.
 
-    Only a 429 met inside ``dispatch_scope`` counts, model provider
+    Only a rate limit met inside ``dispatch_scope`` counts, model provider
     (``source="llm"``) or integration alike, and it backs off that assignment
-    alone: a 429 met in a chat, an evaluation or an embedding - on a user's own
+    alone: one met in a chat, an evaluation or an embedding - on a user's own
     key as often as not - throttles nothing. The window is fixed from
-    the first 429: the retries that follow do not extend it.
+    the first one: the retries that follow do not extend it.
     """
     seconds = int(settings.assignment_dispatch_rate_limit_backoff_seconds)
     assignment_id = _current_assignment.get()
@@ -626,13 +626,13 @@ async def note_rate_limited(source: str) -> None:
         redis = await _redis()
         if await redis.set(_ASSIGNMENT_THROTTLE_PREFIX + assignment_id, "1", ex=seconds, nx=True):
             logger.info(
-                "Assignment dispatch backing off for %ds: %s rate limit (429) on assignment %s",
+                "Assignment dispatch backing off for %ds: %s rate limit on assignment %s",
                 seconds,
                 source,
                 assignment_id,
             )
     except Exception as exc:
-        logger.debug("Could not record a %s 429 for dispatch: %s", source, format_exception_message(exc))
+        logger.debug("Could not record a %s rate limit for dispatch: %s", source, format_exception_message(exc))
     with contextlib.suppress(ValueError):
         _throttle_cache[uuid.UUID(assignment_id)] = (time.monotonic() + _THROTTLE_CACHE_SECONDS, True)
 
