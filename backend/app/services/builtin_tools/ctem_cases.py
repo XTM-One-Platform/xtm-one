@@ -181,9 +181,19 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if shown is None:
                     return f"No case {case_id}."
                 from app.services import ctem_case_versions as case_versions
+                from app.services import ctem_version_match as matching
 
-                # The versions the case's product runs on the assets (#1252).
-                return _dump({**shown[2], "running_versions": await case_versions.for_case(db, shown[0])})
+                # The versions the case's product runs on the assets (#1252), and
+                # what a proposal may claim from them (#1472): blind when unknown.
+                running = await case_versions.for_case(db, shown[0])
+                match = (
+                    matching.version_match(
+                        running, product_label=shown[0].product_label, fixed_version=shown[0].fixed_version
+                    )
+                    if shown[0].remediation_kind == "upgrade"
+                    else None
+                )
+                return _dump({**shown[2], "running_versions": running, "version_match": match})
         except Exception:
             logger.warning("CTEM case read failed", exc_info=True)
             return "Error: the case could not be read right now. Say so; do not guess it."
@@ -734,9 +744,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "description": (
                             "The Grouping the review step drafted for this case in the threat intelligence "
                             "platform (its id, name and page "
-                            "url) and the security coverage requested on it (coverage_id), once requested. While the "
-                            "package sits in a draft, url is the draft page (/dashboard/data/import/draft/ then the draft id): the "
-                            "Grouping page does not resolve until the draft is validated."
+                            "url) and the security coverage requested on it (coverage_id), once requested."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},

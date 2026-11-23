@@ -2150,6 +2150,7 @@ async def create_work_item(
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
+        structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
             workspace_id = await _default_workspace(db, user_id, creator_uuid)
@@ -2752,7 +2753,8 @@ async def update_work_item(
             from app.services.work_item_ask import with_source_links
 
             # The sources the reader opens, from the item's own text when the agent gave none (#834).
-            item.ask = with_source_links(new_ask, item.description, item.payload)
+            completed = await _complete_case_ask(db, item.correlation_key, new_ask)
+            item.ask = with_source_links(completed, item.description, item.payload)
         if item.status != "blocked" and previous_status == "blocked":
             # No longer blocked: what it waited for no longer applies. An item put
             # back to work keeps the pull requests it still waited for, so a
@@ -6682,6 +6684,21 @@ def _dependency_note(
         "text": f"still blocked: {', '.join(reasons)}; put it back in the queue or change blocked_on",
         "unblocked": False,
     }
+
+
+async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
+    """The ask of a CTEM remediation or mobilize gate completed with its case's version match (#1472).
+
+    The card states the running version, the affected range and the fixed
+    version, or that the proposal is blind, whatever the agent wrote: the
+    platform builds the line from the case (``ctem_version_match``). Any other
+    item's ask is returned as given.
+    """
+    if not ask:
+        return ask
+    from app.services.ctem_version_match import complete_gate_ask
+
+    return await complete_gate_ask(db, correlation_key, ask)
 
 
 def _ux_review_of(correlation_key: object, title: object) -> dict[str, Any] | None:
