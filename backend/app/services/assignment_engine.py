@@ -8561,6 +8561,13 @@ async def execute_assignment_run(
                 run.result_summary = (
                     f"{run.result_summary}\n\n{_coverage_notice}" if run.result_summary else _coverage_notice
                 )
+            # No called integration was readable: the run says so on its
+            # status line (run list, get_run, CTEM cards) instead of passing
+            # for a plain success; a limit stop keeps its own reason (#1589).
+            if run.stop_reason is None and auth_guard.unreadable():
+                from app.services.integration_auth_guard import UNREADABLE_STOP_REASON
+
+                run.stop_reason = UNREADABLE_STOP_REASON
 
             # ── Surface matplotlib charts produced by the code interpreter ─
             # Persist each chart as a durable run file and append it to the
@@ -8631,6 +8638,15 @@ async def execute_assignment_run(
                 effective_bindings,
                 guard=_repaired_json is None,
             )
+            # A JSON-output agent's degraded coverage goes in a ``_coverage``
+            # key of its JSON object, where its readers look, instead of the
+            # prose notice that would break the payload (#1589).
+            if agent.output_format == "json" and run.integration_auth_failures:
+                from app.services.integration_auth_guard import with_coverage_key
+
+                _with_coverage = with_coverage_key(run.result_summary, auth_guard.coverage_record())
+                if _with_coverage is not None:
+                    run.result_summary = _with_coverage
 
             # ── ROI: units of work this run produced (#8990, #9285) ──
             # The declaration is resolved (assignment, agent, legacy
