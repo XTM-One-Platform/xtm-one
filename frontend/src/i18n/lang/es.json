@@ -17667,6 +17667,7 @@
   "No asset yet: add them under Assets and exposure.": "Aún no hay activos: añádalos en Activos y exposición.",
   "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.": "Aún no hay activos: el embudo de priorización no puede distinguir los hallazgos expuestos a internet.",
   "No knowledge base linked: agents cannot follow your own procedures.": "Ninguna base de conocimiento vinculada: los agentes no pueden seguir sus procedimientos.",
+  "No policy yet: findings rank as before.": "Aún no hay política: los hallazgos se clasifican como antes.",
   "No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).": "Aún no hay política: los hallazgos se clasifican como antes. Edite para partir de la política recomendada (CVSS 7, EPSS 0,1, KEV siempre incluido).",
   "Not readable by you": "No legible para usted",
   "Patch policy": "Política de parches",

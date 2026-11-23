@@ -159,6 +159,7 @@ type ListKey = (typeof LIST_KEYS)[number];
 const EXPOSURE_TITLES = {
   assets_exposure: "Assets and exposure",
   asset_groups: "Asset groups",
+  prioritization_policy: "Prioritization policy",
   accepted_risks: "Accepted risks",
   enterprise_knowledge: "Enterprise knowledge",
 } as const;
@@ -222,7 +223,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
-  const synced = useSyncedRemoval();
+  // A reader (embed.readOnly) never reads an administrators-only route: a 403 would reach the page's error
+  // boundary and replace the whole Inventory page (UX r1 B1 on #1540).
+  const reader = embed?.readOnly === true;
+  const synced = useSyncedRemoval(!reader);
   const { data, isLoading } = useOrganizationContext();
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
@@ -230,7 +234,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const sync = useOpenCrqSync();
   // One mechanism for OpenCRQ (#1134 S2): once crown jewels sync from OpenCRQ, the card's OpenCRQ
   // button runs that sync (its filters, links and direction), never a second set of rules.
-  const { data: profileSyncs } = useOrganizationSyncs("profile");
+  const { data: profileSyncs } = useOrganizationSyncs("profile", !reader);
   const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
   const runSyncNow = useRunOrganizationSync();
   const drafting = useDraftOrganizationContext();
@@ -359,7 +363,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   }, [locale]);
   const countryName = (code: string) => regionNames?.of(code) ?? code;
   // Read in view mode too (#9615): a saved PIR is named, never shown by its id; cached 5 minutes.
-  const pirs = useOrganizationPirs(true);
+  const pirs = useOrganizationPirs(!reader);
   const pirText = usePirText();
   const savedPirs = useMemo(
     () => pirLabels(current?.pir_ids ?? [], current?.pir_names ?? {}, pirs.data, pirs.isLoading),
@@ -1520,6 +1524,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     current && (
       <OrganizationExposureCards
         cards={cards}
+        readOnly={reader}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1535,7 +1540,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         editAction={exposureEditAction}
         saveBar={(card) =>
           !editing && exposureEdit?.card === card ? (
-            <SettingsSaveBar dirty={exposureDirty(exposureEdit)} saving={save.isPending} saveDisabled={!exposureDirty(exposureEdit)} onSave={saveExposure} onCancel={stopExposureEdit} />
+            <SettingsSaveBar
+              dirty={exposureDirty(exposureEdit)}
+              saving={save.isPending}
+              saveDisabled={!exposureDirty(exposureEdit) || scoreInvalid}
+              onSave={saveExposure}
+              onCancel={stopExposureEdit}
+            />
           ) : null
         }
         fold={(section) =>

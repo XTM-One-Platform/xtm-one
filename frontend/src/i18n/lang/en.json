@@ -17667,6 +17667,7 @@
   "No asset yet: add them under Assets and exposure.": "No asset yet: add them under Assets and exposure.",
   "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.": "No asset yet: the prioritization funnel cannot tell internet-facing findings apart.",
   "No knowledge base linked: agents cannot follow your own procedures.": "No knowledge base linked: agents cannot follow your own procedures.",
+  "No policy yet: findings rank as before.": "No policy yet: findings rank as before.",
   "No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).": "No policy yet: findings rank as before. Edit to start from the recommended policy (CVSS 7, EPSS 0.1, KEV always in).",
   "Not readable by you": "Not readable by you",
   "Patch policy": "Patch policy",
