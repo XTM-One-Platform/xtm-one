@@ -234,14 +234,12 @@ async def _list_chat_models(provider) -> tuple[list[str], dict[str, list[str]] |
 
 
 def _ensure_new_provider_allowed(provider: str, *, from_integration: bool = False) -> None:
-    """Block configuring a NEW provider of a flag-gated type while its flag is off.
+    """Block configuring a NEW provider that is not addable by hand.
 
     Only guards the "create" surfaces (add-provider, and the pre-save
-    resolve/validate calls the add-provider dialog makes before saving) —
-    providers already configured keep working either way, so this is a
-    front door lock, not a runtime kill switch. A provider fed only by an
-    integration (``integration_fed_only``: LM Studio) is created from that
-    integration's console (*from_integration*), never by hand.
+    resolve/validate calls the add-provider dialog makes before saving).
+    A provider fed only by an integration (``integration_fed_only``: LM
+    Studio) is created from that integration's console (*from_integration*).
     """
     provider_cls = PROVIDER_MAP.get(provider)
     if getattr(provider_cls, "integration_fed_only", False) and not from_integration:
@@ -252,14 +250,6 @@ def _ensure_new_provider_allowed(provider: str, *, from_integration: bool = Fals
                 "company-managed integration of its kind."
             ),
         )
-    if provider == "filigran_gateway":
-        from app.core.feature_flags import is_feature_enabled
-
-        if not is_feature_enabled("FILIGRAN_GATEWAY_PROVIDER"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="The Filigran AI Gateway provider is disabled on this platform.",
-            )
 
 
 def env_managed_default_fields() -> set[str]:
