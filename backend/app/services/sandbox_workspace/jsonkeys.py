@@ -573,10 +573,10 @@ def _change_po(
                 change.removed.append(key)
             else:
                 change.absent.append(key)
+        for key in gets:
+            change.values[key] = catalog.value(key) if key in catalog else _MISSING
     except pocatalog.PoCatalogError as exc:
         raise JsonKeysError(f"{path}: {exc}") from None
-    for key in gets:
-        change.values[key] = catalog.value(key) if key in catalog else _MISSING
     if change.modified:
         change.text = catalog.render()
     return change

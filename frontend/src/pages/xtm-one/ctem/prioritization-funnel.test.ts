@@ -99,7 +99,7 @@ test("a not configured layer leads to the Settings card of its field, never the 
   assert.equal(notConfigured("relevant"), "/ctem/inventory/tech-stack?card=tech_stack");
   assert.equal(notConfigured("exposed"), "/ctem/inventory?card=assets_exposure");
   assert.equal(notConfigured("business_impact"), "/settings/organization/profile/business?card=crown_jewels");
-  assert.equal(notConfigured("policy"), "/ctem/inventory?card=prioritization_policy");
+  assert.equal(notConfigured("policy"), "/ctem/inventory/exposure?card=prioritization_policy");
   assert.equal(notConfigured("open_issues"), "/ctem/inventory/tech-stack?card=tech_stack");
   // Every layer with a call to action names a field, so no CTA falls back to the first tab.
   for (const [key, copy] of Object.entries(FUNNEL_LAYER_COPY)) {

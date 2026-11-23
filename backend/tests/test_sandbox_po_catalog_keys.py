@@ -146,7 +146,6 @@ def test_a_call_that_cannot_apply_is_refused_whole(call, message):
 @pytest.mark.parametrize(
     ("text", "message"),
     [
-        ('msgid "a"\nmsgstr "A"\n\nmsgid "a"\nmsgstr "B"\n', "twice"),
         ('msgid "a"\r\nmsgstr "A"\r\n', "CRLF"),
         ('msgid "a"\nmsgstr "A"\nnot po\n', "not a PO line"),
         ('msgid "a"\n', "needs a msgid and a msgstr"),
@@ -155,6 +154,46 @@ def test_a_call_that_cannot_apply_is_refused_whole(call, message):
 def test_a_file_that_is_not_a_catalog_is_refused(text, message):
     with pytest.raises(jsonkeys.JsonKeysError, match=message):
         jsonkeys.change_keys({"x.po": text}, set_keys={"*": {"z": "Z"}})
+
+
+LINGUI_DUPLICATE = (
+    'msgid "Assets"\nmsgstr "Actifs"\n'
+    "\n"
+    "#. js-lingui-explicit-id\n"
+    'msgid "{from} to {to}"\nmsgstr "{from} à {to}"\n'
+    "\n"
+    'msgid "{from} to {to}"\nmsgstr "du {from} au {to}"\n'
+)
+
+
+def test_a_msgid_present_twice_leaves_the_other_messages_editable():
+    out = jsonkeys.change_keys(
+        {FR_PATH: LINGUI_DUPLICATE}, set_keys={"*": {"Assets": "Les actifs", "Zebra": "Zèbre"}}, get=["Assets"]
+    )[0]
+    assert out.changed == ["Assets"] and out.added == ["Zebra"]
+    assert _changed_lines(LINGUI_DUPLICATE, out.text) == [
+        '-msgstr "Actifs"',
+        '+msgstr "Les actifs"',
+        "+",
+        '+msgid "Zebra"',
+        '+msgstr "Zèbre"',
+    ]
+    assert out.text.count('msgid "{from} to {to}"') == 2
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        {"set_keys": {"*": {"{from} to {to}": "x"}}},
+        {"get": ["{from} to {to}"]},
+        {"remove": ["{from} to {to}"]},
+        {"rename": {"{from} to {to}": "y"}},
+        {"set_keys": {"*": {"z": "Z"}}, "place": {"z": {"after": "{from} to {to}"}}},
+    ],
+)
+def test_a_call_naming_a_msgid_present_twice_is_refused_with_its_lines(call):
+    with pytest.raises(jsonkeys.JsonKeysError, match=r"twice \(lines 4, 8\)"):
+        jsonkeys.change_keys({FR_PATH: LINGUI_DUPLICATE}, **call)
 
 
 @pytest.mark.parametrize("value", ["a\nb", 'q"uote', "back\\slash", "tab\tt", "l’apostrophe"])

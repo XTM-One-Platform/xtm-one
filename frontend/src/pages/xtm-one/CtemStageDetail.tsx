@@ -53,7 +53,6 @@ import { postureBusy } from "./ctem/landing-refresh";
 import { Spinner } from "@filigran/design-system";
 import { ScopingRing, DiscoveryArea, ValidationMatrix, type DiscoveryPoint } from "./ctem/stage-heroes";
 import { DiscoveryMix } from "./ctem/DiscoveryMix";
-import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 import { TriggerPathsCard } from "./ctem/loop/TriggerPathsCard";
 import { ScopingMix } from "./ctem/ScopingMix";
 import { ValidationMix } from "./ctem/ValidationMix";
@@ -567,14 +566,8 @@ export default function CtemStageDetail() {
           onConnect={() => navigate("/")}
         />
       )}
-      {/* The loop's signals by trigger path and lens (CTEM-30, #937): each path's status and Connect are the Signal sources page's (#1263);
-          an old dialog link lands there with its filter. */}
-      {stage === "discovery" && vertical === "cyber" && (
-        <>
-          <TriggerPathsCard />
-          <LegacySignalLinks />
-        </>
-      )}
+      {/* The loop's signals by trigger path and lens (CTEM-30, #937): each path's status and Connect are the Signal sources page's (#1263). */}
+      {stage === "discovery" && vertical === "cyber" && <TriggerPathsCard />}
       {/* Prioritization's mixed views and gap fillers (#11998), under the funnel. */}
       {hasReal && stage === "prioritization" && vertical === "cyber" && (
         <PrioritizationMix

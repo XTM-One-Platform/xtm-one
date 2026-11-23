@@ -438,6 +438,55 @@ class TestGatewayThrottle:
         assert len(calls) == base.LLM_MAX_RETRIES + 1
         assert noted and set(noted) == {"llm"}
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("status", "body", "retry_after"),
+        [
+            (429, {"error": {"message": "quota exceeded", "type": "quota_exceeded", "code": "quota_exceeded",
+                             "retry_after_seconds": 86400}}, 86400),
+            (502, {"error": {**gateway_throttle_body(circuit_open=True)["error"], "retry_after_seconds": 120}}, 120),
+        ],
+        ids=["quota-exceeded", "long-circuit-open"],
+    )
+    @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
+    async def test_a_wait_past_60s_is_sent_once_and_backs_off(self, monkeypatch, call, status, body, retry_after):
+        # The gateway adds ``x-should-retry: false`` past 60 s (#1536).
+        from app.llm import base
+        from app.services import assignment_dispatch
+
+        # No real back-off: a wrong retry fails on the call count, not after minutes of waits.
+        monkeypatch.setattr(base, "_extract_retry_after", lambda _exc: None)
+        monkeypatch.setattr(base.random, "uniform", lambda _a, _b: 0)
+
+        noted: list[str] = []
+
+        async def _note(source):
+            noted.append(source)
+
+        monkeypatch.setattr(assignment_dispatch, "note_rate_limited", _note)
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            calls.append(request)
+            headers = {"retry-after": str(retry_after), "x-should-retry": "false"}
+            return httpx.Response(status, json=body, headers=headers)
+
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        messages = [ChatMessage(role="user", content="hi")]
+        with pytest.raises(openai.APIStatusError):
+            if call == "chat":
+                await provider.chat(messages, model="m")
+            elif call == "chat_stream":
+                async for _ in provider.chat_stream(messages, model="m"):
+                    pass
+            else:
+                await provider.chat_stream_with_tools(messages, model="m")
+        assert len(calls) == 1
+        assert noted == ["llm"]
+
     def test_the_chat_client_is_built_once_per_client(self):
         provider = _mock_provider(lambda _r: httpx.Response(200))
         first = provider._chat_client()
