@@ -67,7 +67,7 @@ const GROUP_LABELS: Record<Exclude<AssetFilterKey, "subcategory">, string> = {
  * At 1728 the card measured 1218 of 1218; 1536 (the 2xl step) keeps it about 1026 px, room for every column a
  * container of that width shows.
  */
-export const FACETS_BESIDE_MIN_WIDTH = 1536;
+const FACETS_BESIDE_MIN_WIDTH = 1536;
 export const FACETS_BESIDE_QUERY = `(min-width: ${FACETS_BESIDE_MIN_WIDTH}px)`;
 
 /** Whether a window this wide draws the facets beside the table (else behind the Filters button). */
