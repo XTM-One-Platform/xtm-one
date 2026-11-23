@@ -31,6 +31,14 @@ OpenCRQ needs no change and XTM One polls (``event_poller``, every 60 s):
 Each run becomes one event payload whose ``message_id`` is the run id, so the
 assignment's seen set runs it once, and whose ``entity`` describes the run
 (kind, status, times, totals, tenant, the OpenCRQ instance URL).
+
+A batch recompute in OpenCRQ ends tens of runs within minutes, and each run
+would start a whole register refresh (#1417). The poller therefore hands one
+poll page to the assignment as ONE event (``coalesce_events``): the newest run
+is the entity, ``covers`` lists every run of the page, and ``coalesce_key``
+(tenant and event) lets the dispatcher fold a later page into a run of the
+same key still waiting in the queue (``services/event_coalescing.py``). A run
+that processed nothing (``processedTotal`` 0, a no-op recompute) is no event.
 """
 
 from __future__ import annotations
@@ -92,6 +100,63 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
         "entity": entity,
         "summary": f"OpenCRQ job {run.get('kind')} {run.get('status')} at {run.get('finishedAt')}",
     }
+
+
+#: Most runs one coalesced event lists in ``covers``; the count is kept whole.
+MAX_COVERED_RUNS = 50
+
+
+def processed_nothing(run: dict[str, Any]) -> bool:
+    """A run that reports it processed nothing: a no-op recompute, no event.
+
+    Only an explicit 0 counts; a run that does not report its total is kept.
+    """
+    total = run.get("processedTotal")
+    return isinstance(total, int) and not isinstance(total, bool) and total == 0
+
+
+def coalesce_key(event_type: str, tenant_id: str) -> str:
+    """The key under which the events of one tenant and one event fold into one run."""
+    return f"{PROVIDER}:{tenant_id}:{event_type}"
+
+
+def covered_run(run: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    """One entry of a coalesced event's ``covers``; ``message_id`` is the run's own event id."""
+    run_id = str(run.get("id") or "")
+    return {
+        "id": run_id,
+        "message_id": f"opencrq:{tenant_id}:{run_id}" if run_id else "",
+        "kind": run.get("kind"),
+        "finished_at": run.get("finishedAt"),
+        "processed_total": run.get("processedTotal"),
+    }
+
+
+def coalesce_events(
+    runs: list[dict[str, Any]], event_type: str, *, base_url: str, tenant_id: str
+) -> list[dict[str, Any]]:
+    """One event for a poll page of *runs* (oldest first), or none.
+
+    The runs that processed nothing are left out. The newest run left is the
+    event's entity and id, so a page fetched again is skipped by the seen
+    set; ``covers`` lists the runs the event stands for, ``run_count`` counts
+    them all, and ``coalesce_key`` folds a later page into this one while its
+    run waits in the queue.
+    """
+    kept = [run for run in runs if not processed_nothing(run)]
+    if not kept:
+        return []
+    event = run_event(kept[-1], event_type, base_url=base_url, tenant_id=tenant_id)
+    covers = [covered_run(run, tenant_id) for run in kept]
+    event["covers"] = covers[-MAX_COVERED_RUNS:]
+    event["run_count"] = len(covers)
+    event["coalesce_key"] = coalesce_key(event_type, tenant_id)
+    if len(covers) > 1:
+        event["summary"] = (
+            f"{len(covers)} OpenCRQ {event_type} jobs succeeded, the last "
+            f"{kept[-1].get('kind')} at {kept[-1].get('finishedAt')}"
+        )
+    return [event]
 
 
 async def list_finished_runs(

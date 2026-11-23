@@ -80,6 +80,10 @@ REGISTER_EVENTS: dict[str, str] = {
     "Control validation ingested": "control_validation_ingested",
 }
 
+#: A register move below this share of the last snapshot's total is noise (a
+#: Monte Carlo re-run): no explanation, no snapshot, no investment case (#1417).
+MATERIAL_MOVE_PERCENT = 1.0
+
 #: What drove a scenario's expected annual loss to move.
 DRIVERS: tuple[str, ...] = ("frequency", "magnitude", "control", "asset", "settings", "unknown")
 
@@ -280,11 +284,16 @@ _COMMON = {
 }
 
 _EVENT_PROMPT = (
-    "OpenCRQ finished the job named in the trigger information below ({what}).\n"
-    "Run one register refresh of the risk budget desk: delegate to the Register Analyst the scenarios "
-    f"re-priced since the last snapshot in shared state {STATE_KEY}, with the driver of each move. When a "
-    "scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades that "
-    "bring it back and file one recommendation work item. Answer with the run JSON."
+    "OpenCRQ finished the jobs named in the trigger information below ({what}); `covers` lists every "
+    "job this one run stands for, `run_count` how many.\n"
+    "Run ONE register refresh of the risk budget desk for all of them. First read the register total "
+    f"and compare it with the last snapshot in shared state {STATE_KEY}: when the total moved by less than "
+    f"{MATERIAL_MOVE_PERCENT:g}% and no scenario crossed the risk tolerance, stop there and answer the run "
+    "JSON with the summary 'no material move', writing nothing. Otherwise delegate to the Register Analyst "
+    "the scenarios re-priced since the last snapshot, with the driver of each move, and record the "
+    "snapshot keyed by the current month (update the entry of that month in place, never a second one). "
+    "When a scenario crosses the risk tolerance, have the Investment Analyst price the control upgrades "
+    "that bring it back and file one recommendation work item. Answer with the run JSON."
 )
 
 RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
@@ -300,6 +309,10 @@ RISK_BUDGET_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "trigger_config": {
                 "provider": opencrq_job_events.PROVIDER,
                 "event": event,
+                # One refresh at a time per event: a burst of OpenCRQ jobs folds
+                # into the one queued run (event_coalescing, #1417), so two runs
+                # never read the same base and write two snapshots.
+                "max_concurrent_runs": 1,
                 # The poller already asks for these runs; the filter keeps a run
                 # from reaching the desk when another source replays the event.
                 "filter": {
