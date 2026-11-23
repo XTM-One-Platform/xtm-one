@@ -916,12 +916,93 @@ def missing_fields(profile: OrganizationProfile) -> list[str]:
 BRIEF_NOTICE_LINE = "Organization context incomplete: missing {fields}. The analysis would be sharper with them."
 
 
+#: The contract fields only the CTEM loop reads (scope gate, risk quantification,
+#: prioritization, ticketing): a run that is not CTEM work is never pushed to
+#: report them, and its briefs carry no notice about them (#1384).
+CTEM_ONLY_FIELDS: frozenset[str] = frozenset(
+    {
+        "pir_ids",
+        "risk_appetite.annual_loss_threshold",
+        "risk_appetite.approval_threshold",
+        "loaded_hourly_rate",
+        "ticketing",
+    }
+)
+
+
+def missing_for_run(missing: list[str], *, ctem_work: bool) -> list[str]:
+    """*missing* (contract paths) as a run reads it: the CTEM-only fields left out when it is not CTEM work."""
+    return list(missing) if ctem_work else [path for path in missing if path not in CTEM_ONLY_FIELDS]
+
+
+def holds_ctem_tools(agent: object) -> bool:
+    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem_read`` group bound."""
+    from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
+    from app.services.builtin_tools.ctem_read import CTEM_READ_GROUP
+    from app.services.builtin_tools.ctem_signals import CTEM_SIGNAL_AGENT_SLUGS
+
+    if agent is None:
+        return False
+    groups = getattr(agent, "builtin_tool_ids", None)
+    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_READ_GROUP in groups:
+        return True
+    slug = getattr(agent, "slug", None) or ""
+    return bool(getattr(agent, "is_builtin", False)) and slug in (CTEM_CASE_AGENT_SLUGS | CTEM_SIGNAL_AGENT_SLUGS)
+
+
+def is_ctem_fleet(*, slug: object, is_builtin: object, forked_from: object) -> bool:
+    """Whether a fleet is a CTEM fleet: a seeded CTEM fleet (a retired slug included) or a fork of one."""
+    from app.agents.builtin_fleets import BUILTIN_FLEETS, RETIRED_FLEET_SUCCESSORS
+
+    slugs = {entry["slug"] for entry in BUILTIN_FLEETS} | set(RETIRED_FLEET_SUCCESSORS)
+    if is_builtin and slug in slugs:
+        return True
+    source = forked_from if isinstance(forked_from, dict) else {}
+    return bool(source.get("is_builtin")) and source.get("slug") in slugs
+
+
+async def ctem_fleet(db: AsyncSession, fleet_id: object) -> bool:
+    """Whether the fleet *fleet_id* is a CTEM fleet; ``False`` for none or a failed read."""
+    from app.models.fleet import Fleet
+
+    if fleet_id is None:
+        return False
+    try:
+        row = (
+            await db.execute(select(Fleet.slug, Fleet.is_builtin, Fleet.forked_from).where(Fleet.id == fleet_id))
+        ).first()
+    except Exception:  # context, never a reason to fail a run: read as not CTEM
+        return False
+    if row is None:
+        return False
+    return is_ctem_fleet(slug=row[0], is_builtin=row[1], forked_from=row[2])
+
+
+async def ctem_work_for(db: AsyncSession, agent: object, *, fleet_id: object = None) -> bool:
+    """Whether a run of *agent* is CTEM work (#1384): it holds CTEM tools, or its home fleet is a CTEM fleet.
+
+    *fleet_id* is the home fleet the caller already resolved; without it the
+    home fleet is read. The one signal every organization block reads before
+    it pushes the CTEM-only fields and the brief notice.
+    """
+    if holds_ctem_tools(agent):
+        return True
+    if agent is None:
+        return False
+    if fleet_id is None:
+        from app.services.fleet_runs import home_fleet_defaults
+
+        fleet_id = getattr(await home_fleet_defaults(db, getattr(agent, "id", None)), "fleet_id", None)
+    return await ctem_fleet(db, fleet_id)
+
+
 def brief_notice_instruction(missing: list[str]) -> str:
     """What the agent is told to add to its briefs when *missing* (contract paths) names a field.
 
     ``""`` for a complete profile: a brief then carries no notice. Implemented
     once here and read by every profile block an agent gets (the basic
-    summary of every turn and the ``get_organization_context`` reading).
+    summary of every turn and the ``get_organization_context`` reading),
+    only on a run that is CTEM work (:func:`ctem_work_for`, #1384).
     """
     if not missing:
         return ""
@@ -1058,6 +1139,7 @@ async def fleet_run_context(
     *,
     fleet: object | None = None,
     organization_ids: list[uuid.UUID] | None = None,
+    agent: object = None,
 ) -> str:
     """The organization profile block appended to a fleet member's run prompt.
 
@@ -1069,7 +1151,9 @@ async def fleet_run_context(
     ``fleet_runs.assignment_fleet_context``) skips the home-fleet read.
     *organization_ids* are the tracked organizations the triggering event
     concerns (``services/organization_events.py``, #9157 M4): their profiles
-    follow the primary's, so the run names the organization.
+    follow the primary's, so the run names the organization. *agent* (the run's
+    agent row) and the home fleet decide whether the run is CTEM work, the
+    only runs told about the CTEM-only fields and the brief notice (#1384).
     """
     import logging
 
@@ -1080,7 +1164,8 @@ async def fleet_run_context(
         resolved = fleet if fleet is not None else await home_fleet_defaults(db, agent_id)
         if getattr(resolved, "fleet_id", None) is None:
             return ""
-        block = render_for_agent(await current_version(db))
+        ctem_work = holds_ctem_tools(agent) or await ctem_fleet(db, getattr(resolved, "fleet_id", None))
+        block = render_for_agent(await current_version(db), ctem_work=ctem_work)
         tracked = await scoped_tracked_blocks(db, getattr(resolved, "organization_scope", None))
         scoped = f"\n\n{FLEET_RUN_CONTEXT_HEADER}\n" + "\n\n".join([block, *tracked])
         return scoped + await _concerned_organizations_block(db, organization_ids or [])
@@ -1206,26 +1291,30 @@ def exposure_line(profile: OrganizationProfile) -> str:
     return f"Also filled, read by tool: {parts}; read one with get_organization_context(category=NAME)."
 
 
-def render_for_agent(row: OrganizationContextVersion | None) -> str:
+def render_for_agent(row: OrganizationContextVersion | None, *, ctem_work: bool = True) -> str:
     """The profile as an agent reads it: the filled fields, then the missing ones.
 
     The missing fields are named so the run reports them instead of
     guessing; the profile is data a person typed, so it is quarantined.
+    *ctem_work* false (:func:`ctem_work_for`): the CTEM-only fields are not
+    named and no brief notice is asked (#1384).
     """
     import json
 
     from app.services.content_safety import wrap_untrusted
 
     if row is None:
+        every = missing_for_run([path for path, _label in CONTRACT_FIELDS], ctem_work=ctem_work)
+        labels = dict(CONTRACT_FIELDS)
         return (
             "No organization profile is saved yet. Every field is missing: "
-            + ", ".join(label for _path, label in CONTRACT_FIELDS)
+            + ", ".join(labels[path] for path in every)
             + ". Do not guess them: name the fields your work needed in your output, "
-            "and say an administrator fills them in Settings > Organization. "
-            + brief_notice_instruction([path for path, _label in CONTRACT_FIELDS])
+            "and say an administrator fills them in Settings > Organization."
+            + (f" {brief_notice_instruction(every)}" if ctem_work else "")
         )
     profile = parse_profile(row.profile)
-    missing = missing_fields(profile)
+    missing = missing_for_run(missing_fields(profile), ctem_work=ctem_work)
     filled = {
         key: value
         for key, value in legacy_dump(profile).items()
@@ -1241,7 +1330,7 @@ def render_for_agent(row: OrganizationContextVersion | None) -> str:
         + (", ".join(labels[path] for path in missing) if missing else "none")
         + "."
         + (" Do not guess them: name the ones your work needed in your output." if missing else "")
-        + (f" {brief_notice_instruction(missing)}" if missing else ""),
+        + (f" {brief_notice_instruction(missing)}" if missing and ctem_work else ""),
         "",
         wrap_untrusted(json.dumps(filled, ensure_ascii=False, indent=1), "organization profile"),
     ]
