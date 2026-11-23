@@ -20626,7 +20626,6 @@
   "Left for later: Members screen": "Dejado para más tarde: pantalla Miembros",
   "Complete on the Members screen": "Completar en la pantalla Miembros",
   "Run estimate": "Estimación de ejecuciones",
-  "Expected load": "Carga prevista",
   "I will do it later": "Lo haré más tarde",
   "Autonomy": "Autonomía",
   "Run as and automations": "Ejecutar como y automatizaciones",
@@ -21240,12 +21239,6 @@
   "Subject kind": "Tipo de sujeto",
   "Every signal": "Todas las señales",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Una ejecución empieza por cada señal que coincide, dentro de las ejecuciones en paralelo de la tarea. El agente lee la señal con list_ctem_signals y sus propios permisos: una señal registrada por un oyente de integración solo llega a una tarea que se ejecuta como administrador.",
-  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {Ninguna ejecución programada al día.} one {Unas # ejecución programada al día.} other {Unas # ejecuciones programadas al día.}}",
-  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {Unas # ejecución programada al mes.} other {Unas # ejecuciones programadas al mes.}}",
-  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {Unas # ejecución programada al año.} other {Unas # ejecuciones programadas al año.}}",
-  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automatización se ejecuta una vez por evento, tan a menudo como lleguen sus eventos.} other {# automatizaciones se ejecutan una vez por evento, tan a menudo como lleguen sus eventos.}}",
-  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "Aún sin coste: estas automatizaciones no se han ejecutado {days, plural, one {en el último # día} other {en los últimos # días}}.",
-  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Unos {cost} al día para las ejecuciones programadas, según el coste medio de sus ejecuciones {days, plural, one {del último # día} other {de los últimos # días}}.",
-  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Unos {cost} al mes para las ejecuciones programadas, según el coste medio de sus ejecuciones {days, plural, one {del último # día} other {de los últimos # días}}.",
-  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Unos {cost} al año para las ejecuciones programadas, según el coste medio de sus ejecuciones {days, plural, one {del último # día} other {de los últimos # días}}."
+  "This entry no longer exists. The list is refreshed.": "Esta entrada ya no existe. La lista se actualiza.",
+  "This entry could not be loaded.": "No se pudo cargar esta entrada."
 }
