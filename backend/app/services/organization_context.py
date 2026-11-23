@@ -1292,6 +1292,15 @@ async def save_version(
             )
         )
     ).scalar()
+    # Since #1543 the asset records are the source of truth: the asset and group lists of the saved
+    # profile (an old client, an import or a sync still on this path) become row writes first, only
+    # the rows that differ, each re-matching its own identity cluster. A hand row gets its id written
+    # back on *profile* before the dump, so the next save addresses it exactly.
+    from app.services.organization_asset_records import apply_profile_lists
+
+    await apply_profile_lists(
+        db, organization_id, profile, origin="profile", actor=f"{source}:{author_user_id or ''}".rstrip(":")
+    )
     row = OrganizationContextVersion(
         organization_id=organization_id,
         version=int(latest or 0) + 1,
@@ -1302,11 +1311,6 @@ async def save_version(
     )
     db.add(row)
     await db.flush()
-    # Every writer (form, import, sync, agent row tools) goes through here: the canonical asset
-    # store follows the saved rows in the same transaction (#1178, S3), never on a later read.
-    from app.services.organization_asset_store import refresh_after_save
-
-    await refresh_after_save(db, organization_id)
     return row
 
 

@@ -19,14 +19,14 @@ persists its answer in ``models/organization_asset.py`` and answers the reads:
 - :func:`record_decision` and :func:`remove_decision` keep an administrator's
   merge (records that are one asset) or split (two records never one asset);
   every rebuild applies them (``organization_asset_decisions``, S3).
-- :func:`refresh_after_save` rebuilds the store in the transaction that saved a
-  new profile version (a sync run, an agent's row upsert), so a read never pays
-  for a sync's rows.
+- :func:`refresh_after_save` makes sure the store is built (since #1543 every
+  row write of ``organization_asset_records`` refreshes its own identity
+  clusters, so this is one indexed probe after the first build).
 - :func:`tech_stack_inventory` is the tech stack built from the software of the
   assets (S4): one item per vendor and product with the versions seen and the
   number of assets running each, plus the typed rows no source sees.
 
-The profile stays the source of the rows; the store is its canonical view.
+Since #1543 the asset records are the source of the rows; the store is their canonical view.
 """
 
 from __future__ import annotations
@@ -149,10 +149,27 @@ async def _current(db: AsyncSession, organization_id: uuid.UUID | None) -> Organ
 
 
 async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | None = None) -> int:
-    """Replace the store of *organization_id* (the primary when ``None``) with its profile's canonical assets.
+    """Rebuild the whole store of *organization_id* (the primary when ``None``) from its asset records.
 
-    Answers the number of canonical assets written (the caller commits). No
-    profile yet: the store is emptied and 0 is answered.
+    Since #1543 the records are the source of truth; the name is kept for its
+    callers (a merge or split decision, an identity settings change, an admin
+    rebuild). Answers the number of canonical assets written (the caller
+    commits). No profile yet: the store is emptied and 0 is answered.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await records.ensure_records(db, organization_id)
+    if org is None:
+        return 0
+    return await records.rebuild_from_records(db, org)
+
+
+async def rebuild_from_profile_rows(db: AsyncSession, organization_id: uuid.UUID | None = None) -> int:
+    """The rebuild before #1543, straight from the profile's ``assets_exposure``.
+
+    Kept as the reference the property test compares the incremental refresh
+    with; the product never calls it. Answers the number of canonical assets
+    written (the caller commits).
     """
     version = await _current(db, organization_id)
     if version is None:
@@ -707,22 +724,19 @@ def _jsonable(value: Any) -> Any:
 
 
 async def ensure_built(db: AsyncSession, organization_id: uuid.UUID | None = None) -> uuid.UUID | None:
-    """Build the store when it lags the current profile; answer the organization id (``None``: no profile)."""
-    version = await _current(db, organization_id)
-    if version is None:
-        return None
-    org: uuid.UUID = version.organization_id
-    built = (
-        await db.execute(
-            select(func.max(OrganizationAsset.profile_version)).where(OrganizationAsset.organization_id == org)
-        )
-    ).scalar()
-    has_rows = bool((version.profile or {}).get("assets_exposure"))
-    if (built or 0) != int(version.version) and (has_rows or built is not None):
-        await rebuild_from_profile(db, org)
-    elif await _unlinked_installation(db, org):
+    """Make sure the store is built from the asset records; answer the organization id (``None``: no profile).
+
+    Since #1543 the records (``organization_asset_records``) are the source of
+    truth and every row write refreshes its identity clusters itself: the first
+    call for an organization imports its profile rows and builds the store
+    once, later calls cost one indexed probe.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await records.ensure_records(db, organization_id)
+    if org is not None and await _unlinked_installation(db, org):
         # A store built before software was an entity (#1495): one rebuild links it.
-        await rebuild_from_profile(db, org)
+        await records.rebuild_from_records(db, org)
     return org
 
 

@@ -1339,6 +1339,119 @@ async def rebuild_from_records(db: AsyncSession, organization_id: uuid.UUID, *, 
     return len(written)
 
 
+# ── The profile save of one release: an old client's lists become row writes ──
+
+
+async def apply_profile_lists(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    profile: Any,
+    *,
+    origin: str,
+    actor: str,
+) -> WriteResult | None:
+    """Turn the ``assets_exposure`` of a saved *profile* into row writes against the records.
+
+    The compat path of ``PUT /organization-context`` (and every writer still on
+    ``save_version``): a row whose ``(source, external_id)`` is stored is updated
+    when it differs, a new row is created, a stored record the list no longer
+    holds is deleted. A hand row without ``external_id`` is matched by name
+    among the hand records, else created; the id it gets is written back on
+    *profile*, so the next save matches it exactly. ``None`` when *profile* has
+    no asset list (a tracked organization's profile). Only the rows that differ
+    are written, logged and re-matched.
+    """
+    from app.services.organization_context import HAND_SOURCES
+
+    rows = getattr(profile, "assets_exposure", None)
+    if rows is None:
+        return None
+    await ensure_records(db, organization_id)
+    await _lock(db, organization_id)
+    gone_groups = await _apply_profile_groups(
+        db, organization_id, getattr(profile, "asset_groups", None) or [], origin=origin, actor=actor
+    )
+    rec = OrganizationAssetRecord
+    stored_refs = {
+        (s, e): (i, n)
+        for i, s, e, n in (
+            await db.execute(
+                select(rec.id, rec.source, rec.external_id, rec.name_key).where(rec.organization_id == organization_id)
+            )
+        ).all()
+    }
+    by_hand_name: dict[str, list[str]] = {}
+    for (source, external_id), (_id, name_key) in stored_refs.items():
+        if source in HAND_SOURCES:
+            by_hand_name.setdefault(name_key, []).append(external_id)
+    wanted: set[tuple[str, str]] = set()
+    payload: list[dict[str, Any]] = []
+    for row in rows:
+        value = row.model_dump(mode="json") if hasattr(row, "model_dump") else dict(row)
+        source = str(value.get("source") or "manual").strip().lower() or "manual"
+        if not value.get("external_id"):
+            free = [e for e in by_hand_name.get(_key(value.get("name")), []) if (source, e) not in wanted]
+            value["external_id"] = free[0] if free and source in HAND_SOURCES else str(uuid.uuid4())
+            if hasattr(row, "external_id"):
+                row.external_id = value["external_id"]
+        wanted.add((source, value["external_id"]))
+        payload.append(value)
+    gone = [i for ref, (i, _n) in stored_refs.items() if ref not in wanted]
+    result = WriteResult()
+    for start in range(0, len(payload), MAX_BATCH):
+        part = await upsert_records(db, organization_id, payload[start : start + MAX_BATCH], origin=origin, actor=actor)
+        result.created += part.created
+        result.updated += part.updated
+        result.unchanged += part.unchanged
+    for start in range(0, len(gone), MAX_BATCH):
+        result.removed += await delete_records(
+            db, organization_id, gone[start : start + MAX_BATCH], origin=origin, actor=actor
+        )
+    for group_id in gone_groups:
+        await delete_group(db, organization_id, group_id, origin=origin, actor=actor)
+    return result
+
+
+async def _apply_profile_groups(
+    db: AsyncSession, organization_id: uuid.UUID, groups: Sequence[Any], *, origin: str, actor: str
+) -> list[uuid.UUID]:
+    """Upsert the groups of an old client's ``asset_groups`` (by source and id, else by name); answer the gone ones.
+
+    Written before the assets, so an asset naming a new group finds it; the
+    groups the list no longer holds are answered for deletion after the assets.
+    """
+    stored = list(
+        (
+            await db.execute(
+                select(OrganizationAssetGroup).where(OrganizationAssetGroup.organization_id == organization_id)
+            )
+        ).scalars()
+    )
+    by_ref = {(g.source, g.external_id): g for g in stored}
+    by_name = {g.name_key: g for g in stored}
+    kept: set[uuid.UUID] = set()
+    for row in groups:
+        value = row.model_dump(mode="json") if hasattr(row, "model_dump") else dict(row)
+        source = str(value.get("source") or "manual").strip().lower() or "manual"
+        found = by_ref.get((source, str(value.get("external_id") or ""))) if value.get("external_id") else None
+        found = found or by_name.get(_key(value.get("name"))[:200])
+        if found is not None and value == group_row(found):
+            kept.add(found.id)
+            continue
+        group = await upsert_group(
+            db,
+            organization_id,
+            value,
+            origin=origin,
+            actor=actor,
+            group_id=found.id if found is not None else None,
+        )
+        kept.add(group.id)
+        if hasattr(row, "external_id") and not getattr(row, "external_id", ""):
+            row.external_id = group.external_id
+    return [g.id for g in stored if g.id not in kept]
+
+
 # ── Reads ─────────────────────────────────────────────────────────────
 
 
