@@ -130,6 +130,42 @@ def test_batch_taxonomy_reads_a_category_a_pair_or_a_legacy_type():
     assert imp.batch_taxonomy("not-a-type") is None
 
 
+async def test_openaev_inventory_adds_the_non_endpoint_assets_once(monkeypatch):
+    calls: list[str] = []
+    endpoint = {"asset_id": "e1", "asset_type": "endpoint", "asset_name": "srv-01", "asset_hostname": "srv-01"}
+    rows = {
+        "/api/endpoints/search": [endpoint],
+        "/api/assets/search": [
+            {**endpoint, "asset_hostname": None},
+            {
+                "asset_id": "w1",
+                "asset_type": "asset",
+                "asset_name": "app.example.io",
+                "asset_category": "web_application",
+            },
+            {"asset_id": "t1", "asset_type": "ai_target", "asset_name": "llm"},
+        ],
+    }
+
+    async def fake_search(base_url, headers, path, filter_group, text=""):
+        calls.append(path)
+        return imp.ReadResult(rows=list(rows[path]), total=len(rows[path]))
+
+    monkeypatch.setattr(imp, "_openaev_search", fake_search)
+    read = await imp._openaev_inventory("https://aev", {}, None)
+    assert calls == ["/api/endpoints/search", "/api/assets/search"]
+    assert [r["asset_id"] for r in read.rows] == ["e1", "w1"]
+    assert read.rows[0]["asset_hostname"] == "srv-01"
+    assert read.total == 2
+    web = imp.openaev_asset(read.rows[1])
+    assert web is not None and web.name == "app.example.io" and web.external_id == "w1"
+
+    calls.clear()
+    only = await imp._openaev_inventory("https://aev", {}, None, endpoints_only=True)
+    assert calls == ["/api/endpoints/search"]
+    assert [r["asset_id"] for r in only.rows] == ["e1"]
+
+
 def test_openaev_asset_group_is_an_asset_groups_entry():
     group = imp.openaev_asset_group(
         {"asset_group_id": "g1", "asset_group_name": "dmz", "asset_group_description": "edge"}

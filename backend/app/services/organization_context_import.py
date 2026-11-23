@@ -793,6 +793,42 @@ async def _openaev_search(
     return result
 
 
+#: OpenAEV ``asset_type`` values another read already serves whole: the endpoints (``/api/endpoints/search``,
+#: hostname, IPs and MACs included) and the AI targets (their own section).
+_OPENAEV_TYPES_READ_ELSEWHERE: frozenset[str] = frozenset({"endpoint", "ai_target"})
+
+
+async def _openaev_inventory(
+    base_url: str, headers: dict[str, Any], filter_group: dict[str, Any] | None, *, endpoints_only: bool = False
+) -> ReadResult:
+    """Every OpenAEV asset of an assets import: the endpoints whole, then the rest of the inventory.
+
+    ``/api/endpoints/search`` answers the endpoints only; a web application, a cloud resource, a SaaS
+    application or a network device created as a generic asset lives in the unified inventory
+    (``/api/assets/search``), thin (no hostname) but named and categorised. Without this second read
+    those assets never reached the XTM One inventory, so no other product could find them there.
+    A platform filter names endpoints alone: the second read is skipped.
+    """
+    read = await _openaev_search(base_url, headers, "/api/endpoints/search", filter_group)
+    if read.error or endpoints_only:
+        return read
+    rest = await _openaev_search(base_url, headers, "/api/assets/search", filter_group)
+    if rest.error:
+        return ReadResult(error=rest.error)
+    seen = {str(r.get("asset_id") or "") for r in read.rows}
+    others = [
+        r
+        for r in rest.rows
+        if str(r.get("asset_type") or "").strip().lower() not in _OPENAEV_TYPES_READ_ELSEWHERE
+        and str(r.get("asset_id") or "") not in seen
+    ]
+    read.rows = (read.rows + others)[:MAX_ROWS]
+    read.truncated = read.truncated or rest.truncated or (bool(others) and len(read.rows) >= MAX_ROWS)
+    if read.total is not None:
+        read.total += len(others)
+    return read
+
+
 async def _openaev_group_members(
     base_url: str, headers: dict[str, Any], group_ids: list[str]
 ) -> tuple[list[str], str | None]:
@@ -831,8 +867,11 @@ async def _read_openaev(
                 return ReadResult(error=err)
             if not asset_ids:
                 return ReadResult(total=0)
-        read = await _openaev_search(
-            base_url, headers, "/api/endpoints/search", openaev_filter_group(filters, asset_ids=asset_ids)
+        read = await _openaev_inventory(
+            base_url,
+            headers,
+            openaev_filter_group(filters, asset_ids=asset_ids),
+            endpoints_only=bool(_values(filters, "platform")),
         )
         read.rows = [r for r in (openaev_asset(a, batch_type) for a in read.rows) if r]
         return read
