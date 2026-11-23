@@ -17,13 +17,13 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { HeroCard } from "../stage-heroes";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { SignalSourcesButton } from "./SignalSourcesPanel";
-import { connectHref, connectTarget, connectedCount, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
+import { connectHref, connectNeedsAdmin, connectTarget, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
 
@@ -42,8 +42,11 @@ function PathRow({ path }: { path: CtemSignalPath }) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
   const { count, exactCount } = useNumberFormat();
+  const { isAdmin } = useAuth();
   const status = pathStatus(path);
-  const target = status === "connected" ? null : connectTarget(path);
+  const unbound = status === "connected" ? null : connectTarget(path);
+  // A profile pass is turned on by an administrator: a reader gets no button for it.
+  const target = unbound && (isAdmin || !connectNeedsAdmin(unbound)) ? unbound : null;
   return (
     <li className="flex min-w-0 flex-col gap-1 py-1.5 content-compact" data-testid="ctem-trigger-path" data-path={path.id} data-status={status}>
       <span className="min-w-0 font-medium" data-testid="ctem-trigger-path-name">{t_i18n(path.label)}</span>
@@ -64,7 +67,7 @@ function PathRow({ path }: { path: CtemSignalPath }) {
         <span className="flex flex-nowrap items-center gap-2 whitespace-nowrap content-caption">
           <span className="text-default-secondary" data-testid="ctem-trigger-path-status">{t_i18n(PATH_STATUS_LABEL[status])}</span>
           {target && (
-            <Button variant="ghost" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-trigger-path-connect">{t_i18n("Connect")}</Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-trigger-path-connect">{target.off ? t_i18n("Turn on") : t_i18n("Connect")}</Button>
           )}
         </span>
       )}
@@ -74,25 +77,11 @@ function PathRow({ path }: { path: CtemSignalPath }) {
 
 export function TriggerPathsCard() {
   const { t_i18n } = useFormatter();
-  const { count } = useNumberFormat();
   const { data, isLoading } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
-  const connected = connectedCount(paths);
+  // No connected-count caption nor sources button (Sam, 23 Nov 2026, #1344): each row carries its status.
   return (
-    <HeroCard
-      title={t_i18n("Signals by trigger path")}
-      testId="ctem-trigger-paths"
-      chips={
-        paths.length > 0 ? (
-          <span className="inline-flex items-center gap-1">
-            <span className="content-caption text-default-secondary tabular-nums">
-              {t_i18n("{connected} of {total} trigger paths connected", { connected: count(connected), total: count(paths.length) })}
-            </span>
-            <SignalSourcesButton />
-          </span>
-        ) : null
-      }
-    >
+    <HeroCard title={t_i18n("Signals by trigger path")} testId="ctem-trigger-paths">
       {isLoading ? (
         <p className="content-compact text-default-secondary">{t_i18n("Loading...")}</p>
       ) : (

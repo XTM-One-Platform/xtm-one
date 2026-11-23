@@ -17,10 +17,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 const get = vi.mocked(api.get);
 
+// Turn on of a profile pass is an administrator's action (UX round 1 on #1356, B3).
+const auth = vi.hoisted(() => ({ isAdmin: true }));
+vi.mock("@/hooks/useAuth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useAuth")>();
+  return { ...actual, useAuth: () => ({ ...actual.useAuth(), isAdmin: auth.isAdmin }) };
+});
+
 const LONG = "Credential or secret leak tied to an in-scope identity";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auth.isAdmin = true;
   get.mockResolvedValue({
     paths: [
       {
@@ -50,6 +58,38 @@ describe("TriggerPathsCard", () => {
     expect(leak).toBeTruthy();
     expect(within(leak as HTMLElement).getByTestId("ctem-trigger-path-status").textContent).toBe("Not connected");
     expect(within(leak as HTMLElement).getByRole("button", { name: "Connect" })).toBeTruthy();
-    expect(screen.getByText("1 of 2 trigger paths connected")).toBeTruthy();
+    // No connected-count caption nor sources button any more (Sam, 23 Nov 2026, #1344).
+    expect(screen.queryByText("1 of 2 trigger paths connected")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Signal sources" })).toBeNull();
+  });
+
+  it("reads Off with Turn on for a pass whose provider is connected (#1344)", async () => {
+    get.mockResolvedValue({
+      paths: [
+        {
+          id: "control_decay",
+          label: "Control decay",
+          default_lens: "inside",
+          listener: false,
+          counts: {},
+          total: 0,
+          configured: false,
+          status: "off",
+          sources: [{ provider: "opencrq", kind: "pass", event: "", bound: false, off: true }],
+        },
+      ],
+    });
+    renderWithProviders(<MemoryRouter><TriggerPathsCard /></MemoryRouter>);
+    const row = await screen.findByTestId("ctem-trigger-path");
+    expect(within(row).getByTestId("ctem-trigger-path-status").textContent).toBe("Off");
+    expect(within(row).getByRole("button", { name: "Turn on" })).toBeTruthy();
+
+    // A reader reads Off and gets no Turn on: the card it opens is an administrator's.
+    auth.isAdmin = false;
+    row.remove();
+    renderWithProviders(<MemoryRouter><TriggerPathsCard /></MemoryRouter>);
+    const readerRow = await screen.findByTestId("ctem-trigger-path");
+    expect(within(readerRow).getByTestId("ctem-trigger-path-status").textContent).toBe("Off");
+    expect(within(readerRow).queryByRole("button", { name: "Turn on" })).toBeNull();
   });
 });

@@ -48,6 +48,7 @@ export const PROFILE_CARD_TAB = {
   asset_groups: "exposure",
   prioritization_policy: "exposure",
   outside_lens: "exposure",
+  evidence_health: "exposure",
   enterprise_knowledge: "knowledge",
   scheduled_imports: "knowledge",
   context_injection: "knowledge",
@@ -64,6 +65,7 @@ const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   assets_exposure: "/ctem/inventory",
   prioritization_policy: "/ctem/inventory",
   outside_lens: "/ctem/inventory",
+  evidence_health: "/ctem/inventory",
   asset_groups: "/ctem/inventory/asset-groups",
 };
 
@@ -105,6 +107,7 @@ export const PROFILE_FIELD_CARD = {
   owned_domains: "outside_lens",
   address_ranges: "outside_lens",
   attack_surface: "outside_lens",
+  evidence_health: "evidence_health",
   enterprise_knowledge: "enterprise_knowledge",
   tracked_organizations: "tracked_organizations",
 } as const satisfies Record<string, ProfileCard>;
