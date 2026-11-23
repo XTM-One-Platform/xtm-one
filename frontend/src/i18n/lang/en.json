@@ -21265,5 +21265,6 @@
   "Next step": "Next step",
   "Recorded on the case: pending": "Recorded on the case: pending",
   "{count, plural, one {# minute} other {# minutes}}": "{count, plural, one {# minute} other {# minutes}}",
-  "{count, plural, one {# second} other {# seconds}}": "{count, plural, one {# second} other {# seconds}}"
+  "{count, plural, one {# second} other {# seconds}}": "{count, plural, one {# second} other {# seconds}}",
+  "Subcategories of {category}": "Subcategories of {category}"
 }
