@@ -18206,6 +18206,7 @@
   "LLM firewall": "Cortafuegos LLM",
   "AI gateway": "Puerta de enlace de IA",
   "Vulnerability scanner": "Escáner de vulnerabilidades",
+  "Application security": "Seguridad de aplicaciones",
   "Criticality unknown": "Criticidad desconocida",
   "Very high (criticality)": "Muy alta",
   "Groups the assets join, as OpenAEV asset groups. An asset picks its group on its row.": "Los grupos a los que se unen los activos, como los grupos de activos de OpenAEV. Un activo elige su grupo en su fila.",
