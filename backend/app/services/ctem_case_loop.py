@@ -44,6 +44,7 @@ from app.models.ctem_case import (
     CtemCaseIssue,
 )
 from app.models.ctem_signal import CtemSignal
+from app.services import ctem_case_status as case_status
 from app.services import ctem_cases as rules
 
 logger = logging.getLogger(__name__)
@@ -307,7 +308,7 @@ async def open_from_signal(
             remediation_kind=fix.kind if fix.kind in REMEDIATION_KINDS else "manual",
             keys=[fix.key],
             pinned_issues=[],
-            state="needs_attention",
+            state="new",
             state_since=now,
             trigger_path=signal.trigger_path,
             risk_scenario_ids=scenarios,
@@ -519,10 +520,17 @@ async def record_validation(
             if events is not None:
                 events.add(CASE_RESOLVED, case_data(case), _event_id(CASE_RESOLVED, case, at))
     elif result == "failed" and case.state in ("resolved", "mitigated_watching"):
-        db.add(_transition(case, "needs_attention", now, reason=f"re-test failed: {evidence}", actor=actor))
+        db.add(
+            _transition(case, case_status.reopen_target(case), now, reason=f"re-test failed: {evidence}", actor=actor)
+        )
         case.resolution_kind = None
         if events is not None:
             events.add(CASE_REOPENED, case_data(case), _event_id(CASE_REOPENED, case, at))
+    else:
+        # A pending re-test puts the case in validation; a failed one on an open case back to remediation (#1503).
+        moved = case_status.after_validation(case, now, result=result, actor=actor, evidence=evidence)
+        if moved is not None:
+            db.add(moved)
     if events is not None:
         events.frame(case, "validation", now)
     return case
@@ -546,11 +554,13 @@ def record_ticket(
     now: datetime | None = None,
     sync: dict[str, Any] | None = None,
 ) -> CtemCase:
-    """Write or update a ticket reference on *case* (#891); never moves the case state.
+    """Write or update a ticket reference on *case* (#891).
 
-    One entry per ``(integration, key)``: a second write of the same ticket
-    updates its status and url in place, so a rerun never lists a ticket twice.
-    The case closes on proof (a validation reference), not on a ticket. The caller commits.
+    A ticket in flight moves an open case to ``remediating``; a ticket done on a
+    case with a re-test plan moves it to ``validating`` (#1503). One entry per
+    ``(integration, key)``: a second write of the same ticket updates its status
+    and url in place, so a rerun never lists a ticket twice. The case closes on
+    proof (a validation reference), not on a ticket. The caller commits.
 
     *sync* (#917) is the sync record of a ticket the sync layer manages:
     ``{state, since, error, fix, provider, correlation, external_status}``; it
@@ -603,6 +613,9 @@ def record_ticket(
             evidence=f"{integration}:{key}",
         )
     )
+    moved = case_status.after_ticket(case, now, status=status, actor=actor, evidence=f"{integration}:{key}")
+    if moved is not None:
+        db.add(moved)
     return case
 
 
@@ -645,7 +658,8 @@ def record_exploitation(
     replaced whole (the newest read is the truth); an entry with no valid
     technique is dropped. One ``exploitation`` event when it changed, its
     evidence the technique ids alone (the history is served to every viewer,
-    the asset names are not). Never moves the case state. The caller commits.
+    the asset names are not). A new case moves to ``analyzing`` (#1503). The
+    caller commits.
     """
     now = now or datetime.now(UTC)
     kept: list[dict[str, Any]] = []
@@ -685,6 +699,9 @@ def record_exploitation(
             evidence=", ".join(ids)[:300],
         )
     )
+    moved = case_status.after_triage(case, now, actor=actor, what="exploitation reading")
+    if moved is not None:
+        db.add(moved)
     return case
 
 
@@ -812,6 +829,9 @@ def record_attack_path(
             evidence=f"{len(hops)} hop(s), {proven} proven, {len(reached)} reached, {len(primary)} primary",
         )
     )
+    moved = case_status.after_triage(case, now, actor=actor, what="attack path")
+    if moved is not None:
+        db.add(moved)
     return case
 
 
@@ -836,8 +856,8 @@ def record_gate(
     *by* names what let it run (the autonomy level or the pin) or who answered;
     *option* the option chosen. One ``gate`` event: ``from`` the key, ``to`` the
     outcome, ``reason`` the by, ``evidence`` the option, so the loop trace shows
-    every gate, never hides an automatic pass. Never moves the case state. The
-    caller commits.
+    every gate, never hides an automatic pass. The gate also moves the case
+    status (``ctem_case_status.after_gate``, #1503). The caller commits.
     """
     from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
 
@@ -858,6 +878,10 @@ def record_gate(
             evidence=(option or "").strip()[:300] or None,
         )
     )
+    # The gate moves the case status (#1503): waited parks it on a person, the answer moves it on.
+    moved = case_status.after_gate(case, now or datetime.now(UTC), key=key, outcome=outcome, by=by, actor=actor)
+    if moved is not None:
+        db.add(moved)
     return case
 
 
@@ -881,8 +905,8 @@ def record_treatment_plan(
     ``treatment_plan`` event: ``to`` the plan id, ``reason`` the name,
     ``evidence`` the url; the view serves the name and the url only to a viewer
     who reads OpenCRQ. *previous* is the plan already attached (the newest
-    event): the same plan again writes nothing. Never moves the case state. The
-    caller commits.
+    event): the same plan again writes nothing. A new plan moves an open case to
+    ``remediating`` (#1503). The caller commits.
     """
     if not isinstance(plan, dict):
         raise rules.CaseRuleError("treatment_plan must be an object with id, name and url")
@@ -915,6 +939,9 @@ def record_treatment_plan(
             evidence=url or None,
         )
     )
+    moved = case_status.after_remediation_plan(case, now or datetime.now(UTC), actor=actor, evidence=url or plan_id)
+    if moved is not None:
+        db.add(moved)
     return case
 
 
@@ -988,6 +1015,9 @@ def record_threat_package(
             evidence=stored["url"],
         )
     )
+    moved = case_status.after_triage(case, now or datetime.now(UTC), actor=actor, what="threat package")
+    if moved is not None:
+        db.add(moved)
     return case
 
 

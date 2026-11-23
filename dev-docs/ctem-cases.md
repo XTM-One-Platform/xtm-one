@@ -557,9 +557,30 @@ then the existing AI assessment and facts grid unchanged.
   link); its action slot holds only the quiet freshness line of s.4.3, never a
   refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
-- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
-  exact counts: Needs attention, In progress, Resolved ("All time" in its
-  tooltip, A1), Accepted risk, All.
+- One full list, no state tabs and no "Act on this first" band (#1503):
+  quick filter chips above the table (`QuickFilterChips`), each with its
+  count and in the URL: the scope (`?state=`: Open by default, Waiting for
+  decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
+  Critical and high). A case Waiting for decision says what it waits on, who
+  and since when (the "Waits on" column; `waiting_on` on each list row: the
+  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
+- **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
+  (quick filters, search and filters applied) at `/ctem/cases` or as columns
+  at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
+  Columns are the eight statuses in lifecycle order, or the five CTEM phases
+  when grouped by CTEM phase (`phase` on each list row:
+  `ctem_case_audit.current_phase` of the history the viewer is served; a
+  case with no event yet sits in a last "Phase not known yet" column). Cards:
+  title, urgency, owner, due, what a waiting case waits on, the loop line. In
+  the status layout a card is dragged to another column to change its status
+  (`PATCH /ctem-cases/{id}`); New, Analyzing, Remediating and Validating are
+  set by a drop (an unowned case moved to Remediating takes the person
+  dropping it as owner), Waiting for decision, Mitigated watching, Resolved
+  and Accepted risk are refused with their reason (each needs what a drop
+  cannot carry: the case page sets them), and the API's own refusal is shown
+  the same way. The Mobilization stage page's flow strip (7.1) stays a strip.
+- Group by (`?c_group=`, both views in the list): owner, status, CTEM phase,
+  priority, fix family.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
