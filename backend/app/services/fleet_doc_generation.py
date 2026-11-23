@@ -54,6 +54,7 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeGuard
 
@@ -1308,7 +1309,21 @@ class _Parts:
         self.findings = merge_findings(self.findings, other.findings)
         self.notes.extend(other.notes)
         self.pending.extend(other.pending)
-        self.failure = self.failure or other.failure
+        if other.failure is not None and (self.failure is None or told_not_to_retry(other.failure)):
+            self.failure = other.failure
+
+    @property
+    def refused(self) -> bool:
+        """The provider said not to retry (a spent quota): every other part would meet the same refusal."""
+        return self.failure is not None and told_not_to_retry(self.failure)
+
+    async def add_each_alone(self, keys: list[str], draft_one: Callable[[str], Awaitable[_Parts]]) -> None:
+        """*keys* drafted one at a time, the rest left pending unasked once the provider refuses."""
+        for index, key in enumerate(keys):
+            if self.refused:
+                self.pending.extend(keys[index:])
+                return
+            self.add(await draft_one(key))
 
 
 def _kept_as_written(text: str) -> str:
@@ -1376,24 +1391,30 @@ async def sections_in_parts(
                 notes=[n for n in got.notes if n.get("code") == "section_cut"],
             )
             missing = [k for k in wanted if k not in got.sections]
-            for key in missing:
-                out.add(await _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key))
+            await out.add_each_alone(
+                missing,
+                lambda key: _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key),
+            )
             return out
     except FleetDocDraftError:
         pass  # unreadable: split below
     except Exception as exc:
         if not _provider_failure(exc):
             raise
-        if len(wanted) == 1:
+        if len(wanted) == 1 or told_not_to_retry(exc):
             return _Parts(pending=list(wanted), failure=exc)
         out = _Parts()
-        for key in wanted:
-            out.add(await _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key))
+        await out.add_each_alone(
+            wanted, lambda key: _one_section_markdown(llm, model, budget, context, {**current, **out.sections}, key)
+        )
         return out
     if len(wanted) == 1:
         return await _one_section_markdown(llm, model, budget, context, current, wanted[0])
     half = len(wanted) // 2
     out = await sections_in_parts(llm, model, budget, context, current, wanted[:half])
+    if out.refused:
+        out.pending.extend(wanted[half:])
+        return out
     out.add(await sections_in_parts(llm, model, budget, context, {**current, **out.sections}, wanted[half:]))
     return out
 
@@ -1521,6 +1542,9 @@ async def draft_fleet_documentation(
     except Exception as exc:
         if not _provider_failure(exc):
             raise
+        if told_not_to_retry(exc):
+            # A spent quota: every part would be refused too.
+            raise FleetDocDraftError(failure_cause(exc)) from exc
         logger.info("Fleet documentation: one-call draft failed (%s), drafted in parts", api_error_message(exc))
 
     if draft is None:
