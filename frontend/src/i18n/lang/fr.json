@@ -21297,5 +21297,6 @@
   "The signals could not be updated": "Les signaux n'ont pas pu être mis à jour",
   "This signal opened a case: the case owns it now": "Ce signal a ouvert un dossier : le dossier en a désormais la charge",
   "Add to inventory": "Ajouter à l’inventaire",
-  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}"
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}",
+  "Subcategories of {category}": "Sous-catégories de {category}"
 }
