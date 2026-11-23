@@ -472,9 +472,18 @@ REVIEW_REPLAN = "replan"
 #: Answered with no option recorded: the answer cannot be read, the page rule alone decides.
 REVIEW_UNREAD = "unread"
 
-#: An answered option that approves the package, or refuses it; any other text is a re-plan.
-_APPROVE_OPTION = re.compile(r"^\s*(approve|approved|accept|accepted|validate|validated|publish|yes|go)\b", re.I)
-_REJECT_OPTION = re.compile(r"^\s*(reject|rejected|refuse|refused|deny|denied|decline|declined|no)\b", re.I)
+#: An answered option that approves the package, or refuses it, matched on the WHOLE answer:
+#: ``record_gate`` stores free text as typed, so "Yes, but split the package first" or
+#: "No problem, publish it" must stay a re-plan, never a leading-word match (#1576 review).
+_APPROVE_OPTION = re.compile(
+    r"^\s*(approve|approved|accept|accepted|validate|validated|publish)"
+    r"(\s+(and\s+)?(request\s+(the\s+)?coverage|publish(\s+it)?|it|the\s+package))?\s*\.?\s*$",
+    re.I,
+)
+_REJECT_OPTION = re.compile(
+    r"^\s*(reject|rejected|refuse|refused|deny|denied|decline|declined)(\s+(it|the\s+package))?\s*\.?\s*$",
+    re.I,
+)
 #: The analyst's mark in OpenCTI answers by approving (``ctem_analyst_mark``).
 _MARK_ANSWER = re.compile(r"analyst'?s? mark", re.I)
 
@@ -496,9 +505,9 @@ def review_outcome(events: list[CtemCaseEvent]) -> str | None:
     if newest.to_value != "answered":
         return REVIEW_WAITING
     option = (newest.evidence or "").strip()
-    if _APPROVE_OPTION.match(option) or (not option and _MARK_ANSWER.search(newest.reason or "")):
+    if _APPROVE_OPTION.fullmatch(option) or (not option and _MARK_ANSWER.search(newest.reason or "")):
         return REVIEW_APPROVED
-    if _REJECT_OPTION.match(option):
+    if _REJECT_OPTION.fullmatch(option):
         return REVIEW_REJECTED
     return REVIEW_REPLAN if option else REVIEW_UNREAD
 

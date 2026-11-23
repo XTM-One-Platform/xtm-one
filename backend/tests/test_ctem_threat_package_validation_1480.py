@@ -423,6 +423,28 @@ def test_newest_review_gate_decides() -> None:
     assert view_of.review_outcome([]) is None
 
 
+@pytest.mark.parametrize(
+    ("option", "outcome"),
+    [
+        ("Approve", "approved"),
+        ("Approve and request coverage", "approved"),
+        ("approved.", "approved"),
+        ("Reject", "rejected"),
+        ("Decline the package", "rejected"),
+        ("Go back and re-scope to the internet-facing hosts", "replan"),
+        ("Yes, but split the package first", "replan"),
+        ("No problem, publish it", "replan"),
+        ("Approve, but split the package first", "replan"),
+        ("yes", "replan"),
+        ("no", "replan"),
+    ],
+)
+def test_review_option_is_matched_on_the_whole_answer(option: str, outcome: str) -> None:
+    case_id = uuid.uuid4()
+    events = [_gate(case_id, "waited", NOW), _gate(case_id, "answered", NOW + timedelta(minutes=1), option=option)]
+    assert view_of.review_outcome(events) == outcome
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("review", ["waiting", "replan", "rejected"])
 async def test_grouping_page_of_a_not_approved_review_is_recorded_as_its_draft(
