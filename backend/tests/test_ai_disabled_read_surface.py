@@ -470,6 +470,13 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # An SBOM imported on an asset (#1178): an administrator's file parsed into the
     # asset's software, no model involved.
     "import_asset_sbom",
+    # Software typed, changed, deleted, attached or detached by an administrator (#1495):
+    # a stored row and a rebuild, no model involved.
+    "create_organization_software",
+    "update_organization_software",
+    "delete_organization_software",
+    "attach_organization_software",
+    "detach_organization_software",
     # A change proposed from chat for that profile (#9484 S-a2): an
     # administrator accepting or rejecting a stored proposal. Accepted fields are
     # saved as the next version, accepted organizations created with monitoring
@@ -874,10 +881,6 @@ _EXEMPT_OPERATOR_CONTROL = {
     # re-stamps them as never set up. It only removes future AI work, as Pause
     # all does, so AI off must not block it. No model call.
     "unset_fleet_automations",
-    # Reset a built-in fleet to its factory state (#1508): automations off,
-    # bindings and customer settings cleared. It only removes future AI work and
-    # makes no model call, so AI off must not block it.
-    "reset_fleet_to_factory",
     # The same two on several fleets at once, plus the admins' every-fleet Pause
     # switch and a bulk autonomy level (#9769 S3): no model call, a level change
     # only decides which future tool calls wait for a person.
