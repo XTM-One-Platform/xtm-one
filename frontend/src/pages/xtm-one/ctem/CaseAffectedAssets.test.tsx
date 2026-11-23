@@ -57,6 +57,15 @@ describe("CaseAffectedAssets (#1176 slice 3b)", () => {
     expect(container.textContent).not.toMatch(/tech stack/i);
   });
 
+  it("opens the asset overview from an inventory asset, and nothing from an asset outside it (CTEM-20-UI)", () => {
+    draw(FROM_INVENTORY);
+    const rows = screen.getAllByTestId("ctem-case-affected-asset-row");
+    const web = rows.find((r) => within(r).queryByText("web-01"))!;
+    expect(within(web).getByRole("link").getAttribute("href")).toBe("/ctem/inventory/assets/a1");
+    const db = rows.find((r) => within(r).queryByText("db-01"))!;
+    expect(within(db).queryByRole("link")).toBeNull();
+  });
+
   it("says the version source is none yet, with no version column, when the inventory gives none", () => {
     const { container } = draw({
       version_source: "none",

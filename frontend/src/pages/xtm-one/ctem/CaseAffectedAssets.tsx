@@ -7,7 +7,9 @@
  * the product it runs, read from the asset inventory (Intune, Defender, an
  * SBOM, OpenAEV), never typed in the tech stack. When the versions do not come
  * from the inventory the card says "Version source: none yet" and asks nothing
- * of the user.
+ * of the user. A row of an asset the inventory holds opens its overview
+ * (CTEM > Inventory, `/ctem/inventory/assets/:id`: software, sources, SBOM);
+ * an asset outside the inventory opens nothing.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
@@ -17,6 +19,12 @@ import type { CtemCaseAffectedAsset, CtemCaseAffectedAssets } from "@/hooks/api/
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import { SourceMark, versionSourceName } from "./CaseRunningVersions";
+import { INVENTORY_PATH } from "./inventory";
+
+/** The asset overview of a row, only when the inventory holds the asset (CTEM-20-UI). */
+function affectedAssetHref(asset: CtemCaseAffectedAsset): string | undefined {
+  return asset.in_inventory && asset.asset_id ? `${INVENTORY_PATH}/assets/${encodeURIComponent(asset.asset_id)}` : undefined;
+}
 
 const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string> = {
   below_fixed: "Below the fixed version",
@@ -167,6 +175,7 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
           columns={columns}
           filters={filters}
           rowKey={(a) => a.name}
+          rowHref={affectedAssetHref}
           searchFields={(a) => [a.name]}
           searchPlaceholder={t_i18n("Search asset")}
           defaultSort={{ key: "open", direction: "desc" }}
