@@ -143,6 +143,11 @@ class FakeGitHub:
         self.merged = False
         self.calls: list[tuple[str, str, dict]] = []
         self.blobs = {_sha(t): t for side in self.sides.values() for t in side.values()}
+        # A resolved merge is built on a tmp/commit-batch/ scratch branch sharing the branch's state; the target
+        # keeps its own tip (target_tip) until the one fast-forward moves it.
+        self.scratch: str | None = None
+        self.target_tip: str | None = None
+        self.target_moves: list[str] = []
 
     def _changed(self, side: str) -> list[dict]:
         base, mine = self.sides["base"], self.sides[side]
@@ -166,6 +171,25 @@ class FakeGitHub:
 
         def ok(payload, status: int = 200):
             return httpx.Response(status, json=payload), None
+
+        if method == "get" and url == f"{API}/git/matching-refs/heads/tmp/commit-batch":
+            return ok([])
+        if method == "post" and url == f"{API}/git/refs":
+            self.scratch = kwargs["json"]["ref"].removeprefix("refs/heads/")
+            assert self.scratch.startswith("tmp/commit-batch/") and kwargs["json"]["sha"] == self.tip
+            self.target_tip = self.tip
+            return ok({"ref": kwargs["json"]["ref"]}, 201)
+        if method == "delete" and self.scratch and url == f"{API}/git/refs/heads/{self.scratch}":
+            return httpx.Response(204), None
+        if method == "patch" and url == f"{API}/git/refs/heads/feat/x":
+            assert kwargs["json"]["force"] is False and kwargs["json"]["sha"] == self.tip
+            self.target_moves.append(kwargs["json"]["sha"])
+            self.target_tip = None
+            return ok({"object": {"sha": kwargs["json"]["sha"]}})
+        if self.scratch and self.scratch in url:
+            url = url.replace(self.scratch, "feat/x")
+        elif self.target_tip is not None and method == "get" and url == f"{API}/commits/feat/x":
+            return ok({"sha": self.target_tip, "commit": {"tree": {"sha": TREES["ours"]}}})
 
         if method == "get" and url == API:
             return ok({"default_branch": "main"})
