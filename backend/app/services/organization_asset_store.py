@@ -47,6 +47,7 @@ from app.models.organization_asset import (
     OrganizationAssetSbom,
     OrganizationAssetSoftware,
     OrganizationAssetSource,
+    OrganizationSoftwareVersion,
 )
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_identity as identity
@@ -438,6 +439,8 @@ def sbom_components(sbom: Any) -> list[dict[str, Any]]:
             "cpe": _cut(comp.cpe, 300),
             "purl": _cut(comp.purl, 500),
             "bundled_in": _cut(sbom.bundled_in(comp), 300),
+            # What the component is (#1495): library, operating_system, ... (the software's type).
+            "type": comp.software_type,
             # The components it depends on (#1495), ``product version`` labels.
             "depends_on": [_cut(label, 300) for label in sbom.depends_on(comp)],
         }
@@ -996,6 +999,22 @@ async def get_asset(
         .scalars()
         .all()
     )
+    # The software each row installs (#1495 slice 2): the asset page links every row to its software page.
+    version_ids = {s.software_version_id for s in software if s.software_version_id}
+    software_of: dict[uuid.UUID, uuid.UUID] = (
+        {
+            vid: sid
+            for vid, sid in (
+                await db.execute(
+                    select(OrganizationSoftwareVersion.id, OrganizationSoftwareVersion.software_id).where(
+                        OrganizationSoftwareVersion.id.in_(version_ids)
+                    )
+                )
+            ).all()
+        }
+        if version_ids
+        else {}
+    )
     names = list(dict.fromkeys(r.source for r in records))
     detail_refs = {asset.id: [{"source": r.source, "external_id": r.external_id} for r in records]}
     await _attach_record_ids(db, organization_id, [asset.id], detail_refs)
@@ -1016,7 +1035,15 @@ async def get_asset(
             for r, ref in zip(records, detail_refs[asset.id], strict=True)
         ],
         "software": {
-            "items": [_software_dict(s) for s in software],
+            "items": [
+                {
+                    **_software_dict(s),
+                    "software_id": (
+                        str(software_of[s.software_version_id]) if s.software_version_id in software_of else None
+                    ),
+                }
+                for s in software
+            ],
             "total": int(soft_total),
             "offset": offset,
             "limit": limit,
