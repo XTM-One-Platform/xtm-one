@@ -39,7 +39,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
 const INVENTORY_CARDS = {
-  technology: ["tech_stack"],
+  technology: ["tech_stack", "ai_systems"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -77,6 +77,7 @@ const CONTEXT: OrganizationContextResponse = {
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     tech_stack: [],
+    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -498,6 +499,8 @@ describe("OrganizationSection", () => {
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
+    // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
+    expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
@@ -1097,6 +1100,104 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText("Add Billing from OpenCRQ as a crown jewel")).toBeTruthy();
     expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
     expect(screen.getByRole("button", { name: /Apply/ })).toBeTruthy();
+  });
+
+  it("says no OpenCRQ asset reaches the threshold, with the counts, instead of already agree (#1558)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path === "/organization-context" ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [] } } : base(path),
+    );
+    post.mockImplementation(async (_path: string, body: unknown) => {
+      const level = (body as { min_criticality?: string }).min_criticality ?? "high";
+      return {
+        applied: false,
+        plan: {
+          linked: [],
+          pushed_to_opencrq: [],
+          pulled_from_opencrq: level === "medium" ? [{ opencrq_asset_id: "a-5", name: "CRM" }] : [],
+          ambiguous: [],
+          not_in_opencrq: [],
+          in_sync: level !== "medium",
+          min_criticality: level,
+          assets_read: 1751,
+          by_criticality: { unknown: 1750, medium: 1 },
+        },
+        errors: [],
+        version: null,
+      };
+    });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Check against OpenCRQ/ }));
+    const none = await screen.findByTestId("settings.organization.opencrq-none-rated");
+    expect(none.textContent).toContain("No OpenCRQ supporting asset is rated High or above: 1,751 assets read.");
+    expect(none.textContent).toContain("1,750 unrated, 1 medium");
+    expect(screen.queryByText("The crown jewels and OpenCRQ already agree.")).toBeNull();
+    expect(post).toHaveBeenCalledWith("/organization-context/opencrq-sync", { apply: false });
+    // Picking medium re-runs the check at that threshold, and the plan proposes the medium asset.
+    fireEvent.click(screen.getByTestId("settings.organization.opencrq-threshold"));
+    fireEvent.click(await screen.findByRole("option", { name: "Medium or above" }));
+    await waitFor(() => expect(post).toHaveBeenLastCalledWith("/organization-context/opencrq-sync", { apply: false, min_criticality: "medium" }));
+    expect(await screen.findByText("Add CRM from OpenCRQ as a crown jewel")).toBeTruthy();
+  });
+
+  it("restores the crown jewels of a past version alone, from the version it starts from (#1558)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path.startsWith("/organization-context/versions?"))
+        return [
+          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 0 },
+          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 2 },
+        ];
+      if (path === "/organization-context/versions/28")
+        return {
+          ...CONTEXT,
+          version: 28,
+          profile: {
+            ...CONTEXT.profile,
+            crown_jewels: [
+              { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" },
+              { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
+            ],
+          },
+        };
+      return base(path);
+    });
+    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
+    const dialog = await screen.findByTestId("settings.organization.restore-dialog");
+    // The current version is never offered; the newest one holding crown jewels is picked and previewed.
+    expect(within(dialog).queryByText("Version 46")).toBeNull();
+    expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    // The preview badges carry the criticality words of the card, never the bare "High" key (#1567 UX r2 B2).
+    expect(within(dialog).getByText("High (criticality)")).toBeTruthy();
+    expect(within(dialog).getByText("Critical (criticality)")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),
+    );
+  });
+
+  it("shows a refused restore inline in the dialog and offers a reload of the versions on a 409 (#1567 UX B2)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path.startsWith("/organization-context/versions?"))
+        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 1 }];
+      if (path === "/organization-context/versions/28")
+        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
+      return base(path);
+    });
+    post.mockRejectedValue(Object.assign(new Error("The profile changed since version 46 (now version 47)."), { status: 409 }));
+    renderPage("business");
+    fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
+    const dialog = await screen.findByTestId("settings.organization.restore-dialog");
+    expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("The profile changed since version 46");
+    expect(within(alert).getByRole("button", { name: "Reload the versions" })).toBeTruthy();
   });
 
   it("opens the form on the draft from the platforms, names each source, and saves it as a draft version", async () => {

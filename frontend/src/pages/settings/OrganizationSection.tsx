@@ -63,6 +63,7 @@ import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
+  type OpenCrqLevel,
   type OpenCrqSyncResponse,
   type OrganizationDraftResponse,
   type OrganizationProfile,
@@ -109,6 +110,7 @@ import { ProviderLogo } from "@/components/ui/provider-logo";
 import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
+import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
@@ -133,6 +135,11 @@ import {
 import { Icon, Spinner } from "@filigran/design-system";
 import { BackButton } from "@/components/ui/back-button";
 
+/** @i18n-keys */
+const AI_KIND_LABELS = { assistant: "Assistant", agent: "Agent", model_api: "Model API", embedded: "Embedded" } as const;
+/** @i18n-keys */
+const EXPOSURE_LABELS = { internal: "Internal", partner: "Partner", public: "Public" } as const;
+
 const NO_SIZE = "none";
 const NO_VALUE = "none";
 
@@ -140,12 +147,13 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack"] as const;
+const LIST_KEYS = ["crown_jewels", "shipped_products", "tech_stack", "ai_systems"] as const;
 /** @i18n-keys */
 const LIST_TITLES = {
   crown_jewels: "Crown jewels and business services",
   shipped_products: "Shipped products",
   tech_stack: "Tech stack",
+  ai_systems: "AI systems inventory",
 } as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
@@ -182,6 +190,14 @@ const JEWEL_STEP_ASIDE = "6xl" as const;
 
 /** The values of the crown jewels' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
+/** The OpenCRQ assets read, counted by criticality, when none reaches the check's threshold (#1558). @i18n-keys */
+const OPENCRQ_COUNT_LABELS = {
+  unknown: "{count, plural, one {# unrated} other {# unrated}}",
+  low: "{count, plural, one {# low} other {# low}}",
+  medium: "{count, plural, one {# medium} other {# medium}}",
+  high: "{count, plural, one {# high} other {# high}}",
+  very_high: "{count, plural, one {# very high} other {# very high}}",
+} as const;
 /**
  * An amount field: the room for its unit goes on the inner input element (the
  * library's className lands on the wrapper), so the field keeps the column
@@ -233,6 +249,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
   const [draftFailed, setDraftFailed] = useState(false);
   const [plan, setPlan] = useState<OpenCrqSyncResponse | null>(null);
+  // "Restore from a past version" on the crown-jewel card (#1558).
+  const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
   const [invalidField, setInvalidField] = useState<AmountField | null>(null);
   // The exposure rows are checked live once a Save was refused for them (UX B3), and the API's refusal is drawn on its row.
@@ -735,9 +753,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     });
   };
 
-  const runSync = (apply: boolean) =>
+  // The threshold of the check (#1558): the one the last plan answered (the saved sync's filter by default), or the level picked.
+  const runSync = (apply: boolean, level?: OpenCrqLevel) =>
     sync.mutate(
-      { apply },
+      { apply, ...((level ?? plan?.plan.min_criticality) ? { min_criticality: level ?? plan?.plan.min_criticality } : {}) },
       {
         onSuccess: (result) => {
           setPlan(result.applied ? null : result);
@@ -909,6 +928,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   });
   type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
   type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
+  type AiRow = { index: number; value: ProfileForm["ai_systems"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
@@ -1047,9 +1067,61 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
     sourceFilter<TechRow>(),
   ];
+  const aiColumns: DataTableColumn<AiRow>[] = [
+    {
+      key: "name",
+      header: "AI system",
+      width: readWidth(240),
+      cell: ({ value }) => readCell(value.name),
+      interactive: true,
+      sortValue: sortable<AiRow>(({ value }) => value.name.toLowerCase()),
+      firstSort: "asc",
+      csv: ({ value }) => value.name,
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      hideable: true,
+      headerClassName: "w-44",
+      width: readWidth(120),
+      cell: ({ value }) => readCell(value.kind ? optionLabel(AI_KIND_LABELS, value.kind) : ""),
+      interactive: true,
+      sortValue: sortable<AiRow>(({ value }) => optionLabel(AI_KIND_LABELS, value.kind)),
+      csv: ({ value }) => value.kind,
+    },
+    {
+      key: "exposure",
+      header: "Exposure",
+      hideable: true,
+      headerClassName: "w-40",
+      width: readWidth(120),
+      cell: ({ value }) => readCell(value.exposure ? optionLabel(EXPOSURE_LABELS, value.exposure) : ""),
+      interactive: true,
+      sortValue: sortable<AiRow>(({ value }) => Object.keys(EXPOSURE_LABELS).indexOf(value.exposure)),
+      csv: ({ value }) => value.exposure,
+    },
+    {
+      key: "owner",
+      header: "Owner",
+      hideable: true,
+      cell: ({ value }) => readCell(value.owner),
+      interactive: true,
+      sortValue: sortable<AiRow>(({ value }) => value.owner.toLowerCase()),
+      firstSort: "asc",
+      csv: ({ value }) => value.owner,
+    },
+    sourceColumn<AiRow>(),
+  ];
+  const aiFilters: DataTableFilter<AiRow>[] = [
+    optionFilter<AiRow>("kind", "Kind", AI_KIND_LABELS, ({ value }) => value.kind),
+    // Ordinal scale: internal, partner, public (#12289).
+    optionFilter<AiRow>("exposure", "Exposure", EXPOSURE_LABELS, ({ value }) => value.exposure, true),
+    sourceFilter<AiRow>(),
+  ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
   type Jewel = ProfileForm["crown_jewels"][number];
   type Tech = ProfileForm["tech_stack"][number];
+  type AiSystem = ProfileForm["ai_systems"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
@@ -1115,6 +1187,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
     sourceEdit<Tech>(),
   ];
+  const aiEdit: ListEditColumn<AiSystem>[] = [
+    { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+    { key: "kind", header: "Kind", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.kind ? optionLabel(AI_KIND_LABELS, v.kind) : ""), edit: (v, set) => pick(AI_KIND_LABELS, v.kind, "Kind", (kind) => set({ kind })), sortValue: (v) => optionLabel(AI_KIND_LABELS, v.kind) },
+    { key: "exposure", header: "Exposure", hideable: true, headerClassName: "w-40", width: readWidth(120), read: (v) => readCell(v.exposure ? optionLabel(EXPOSURE_LABELS, v.exposure) : ""), edit: (v, set) => pick(EXPOSURE_LABELS, v.exposure, "Exposure", (exposure) => set({ exposure })), sortValue: (v) => Object.keys(EXPOSURE_LABELS).indexOf(v.exposure) },
+    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("ai_systems", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
+    sourceEdit<AiSystem>(),
+  ];
   // What the organization ships (#1432): a vulnerability on one of these resolves to its repositories in CTEM.
   const shippedEdit: ListEditColumn<Shipped>[] = [
     { key: "product", header: "Product", width: readWidth(200), read: (v) => readCell(v.product), edit: (v, set, bad) => editText("Product", v.product, (product) => set({ product }), bad), sortValue: (v) => v.product.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
@@ -1155,8 +1234,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     ],
     tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
     shipped_products: [{ key: "vendor", label: "Vendor", suggestions: suggestId("shipped_products", "vendor") }],
+    ai_systems: [
+      { key: "owner", label: "Owner", suggestions: suggestId("ai_systems", "owner") },
+      { key: "kind", label: "Kind", options: AI_KIND_LABELS },
+      { key: "exposure", label: "Exposure", options: EXPOSURE_LABELS },
+    ],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], shipped_products: ["vendor"], tech_stack: ["vendor"], ai_systems: ["owner"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
@@ -1197,6 +1281,19 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)") },
         identity: LIST_RULES.shipped_products.identity,
       } as PasteSpec<Shipped>,
+    },
+    ai_systems: {
+      title: "Paste AI systems",
+      example: "Support chatbot, assistant, public, Jane Doe",
+      fieldLabels: { name: "AI system", kind: "Kind", exposure: "Exposure", owner: "Owner" },
+      spec: {
+        fields: ["name", "kind", "exposure", "owner"],
+        empty: { name: "", kind: "assistant", owner: "", exposure: "internal", openaev_asset_id: "" },
+        name: "name",
+        headers: { name: header("AI system"), kind: header("Kind"), exposure: header("Exposure"), owner: header("Owner") },
+        choices: { kind: choiceWords(AI_KIND_LABELS), exposure: choiceWords(EXPOSURE_LABELS) },
+        identity: LIST_RULES.ai_systems.identity,
+      } as PasteSpec<AiSystem>,
     },
   };
   /** `ordered` as optionFilter: an ordinal scale keeps its order. */
@@ -1378,6 +1475,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     !plan.plan.pulled_from_opencrq.length &&
     !plan.plan.ambiguous.length &&
     !plan.plan.not_in_opencrq.length;
+  // Nothing to link and no asset at the threshold (#1558): the plan says so with the counts, never "already agree".
+  const noneRated = !!planEmpty && (current?.crown_jewels.length ?? 0) === 0 && plan?.plan.assets_read !== undefined;
+  const ratedCounts = plan?.plan.by_criticality
+    ? (Object.entries(plan.plan.by_criticality) as [keyof typeof OPENCRQ_COUNT_LABELS, number][])
+        .filter(([level]) => level in OPENCRQ_COUNT_LABELS)
+        .map(([level, count]) => t_i18n(OPENCRQ_COUNT_LABELS[level], { count }))
+        .join(", ")
+    : "";
 
   const missing = data?.missing_fields ?? [];
   // Per tab (#12329): the unsaved changes (the whole form, or the card in edit alone), the fields
@@ -2011,6 +2116,21 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   )}
                 </Tip>
+                {!listOpen("crown_jewels") && (
+                  // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
+                  <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      aria-label={t_i18n("Restore from a past version")}
+                      data-testid="settings.organization.crown-jewels-restore"
+                      disabled={editing || cardOpen !== null}
+                      onClick={() => setRestoreOpen(true)}
+                    >
+                      <Icon name="rotate-ccw" size={16} aria-hidden />
+                    </Button>
+                  </Tip>
+                )}
                 {listEditAction("crown_jewels")}
                 {pasteAction("crown_jewels")}
                 {listOpen("crown_jewels") && (
@@ -2055,7 +2175,17 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               ))}
             {plan && (
               <div data-testid="settings.organization.opencrq-plan" className="mt-3 space-y-1.5 rounded-sm border border-elevation-subtle p-3">
-                {planEmpty ? (
+                {noneRated ? (
+                  <div className="space-y-1" data-testid="settings.organization.opencrq-none-rated">
+                    <p>
+                      {t_i18n("{count, plural, =0 {No OpenCRQ supporting asset is rated {threshold} or above: no asset read.} one {No OpenCRQ supporting asset is rated {threshold} or above: # asset read.} other {No OpenCRQ supporting asset is rated {threshold} or above: # assets read.}}", {
+                        count: plan.plan.assets_read ?? 0,
+                        threshold: t_i18n(MIN_CRITICALITY_LABELS[plan.plan.min_criticality ?? "high"]),
+                      })}
+                    </p>
+                    {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}
+                  </div>
+                ) : planEmpty ? (
                   <p>{t_i18n("The crown jewels and OpenCRQ already agree.")}</p>
                 ) : (
                   <ul className="list-disc space-y-1 pl-5">
@@ -2079,6 +2209,31 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 {plan.errors.map((error) => (
                   <p key={error} className="text-default-secondary">{error}</p>
                 ))}
+                {plan.plan.min_criticality && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span id={`${fieldId}-opencrq-threshold`} className="content-compact text-default-secondary">
+                      {t_i18n("Pull OpenCRQ assets rated")}
+                    </span>
+                    <div className="w-40">
+                      <Select
+                        value={plan.plan.min_criticality}
+                        disabled={editing || sync.isPending}
+                        onValueChange={(value) => runSync(false, value as OpenCrqLevel)}
+                      >
+                        <SelectTrigger aria-labelledby={`${fieldId}-opencrq-threshold`} data-testid="settings.organization.opencrq-threshold">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(MIN_CRITICALITY_LABELS) as OpenCrqLevel[]).map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {t_i18n("{level} or above", { level: t_i18n(MIN_CRITICALITY_LABELS[level]) })}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2 pt-1">
                   {!planEmpty && (
                     <Button className="gap-1.5" disabled={editing || sync.isPending} onClick={() => runSync(true)}>
@@ -2091,6 +2246,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 </div>
               </div>
             )}
+            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
           {/* What the organization ships (#1432), apart from the tech stack it runs: CTEM resolves a vulnerability on one to its repositories. */}
@@ -2213,6 +2369,59 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           </SettingsCard>
           )}
 
+          {show("ai_systems") && (
+          <SettingsCard
+            id={`${fieldId}-ai_systems`}
+            className={SECTION_BAR_ANCHOR_CLASS}
+            data-anchor="card"
+            {...cardFold("ai_systems", current.ai_systems.length)}
+            tabIndex={-1}
+            data-testid="settings.organization.ai-systems"
+            icon={Bot}
+            title={t_i18n("AI systems inventory")}
+            description={t_i18n("The AI systems the AI security fleet tests.")}
+            action={
+              <>
+                {attention("ai_systems")}
+                {listEditAction("ai_systems")}
+                {pasteAction("ai_systems")}
+                {listOpen("ai_systems") && (
+                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("ai_systems", { name: "", kind: "assistant", owner: "", exposure: "internal", openaev_asset_id: "" })}>
+                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add an AI system")}
+                  </Button>
+                )}
+              </>
+            }
+          >
+            <OrganizationUsedBy fields={["ai_systems"]} readers={usedBy} agents={usedByAgents} />
+            {listEditor("ai_systems", {
+              columns: aiEdit,
+              filters: [valueFilter("kind", "Kind", AI_KIND_LABELS, (v: AiSystem) => v.kind), valueFilter("exposure", "Exposure", EXPOSURE_LABELS, (v: AiSystem) => v.exposure, true)], // exposure: ordinal (#12289)
+              searchFields: (v) => [v.name, v.owner, optionLabel(AI_KIND_LABELS, v.kind)],
+              rowLabel: (v) => v.name,
+              storageKey: "settings-organization-ai-systems",
+              rowTestId: "settings.organization.ai-system-row",
+              emptyLabel: t_i18n("No AI system yet: the AI security fleet has nothing to test."),
+            }) ??
+              (current.ai_systems.length === 0 ? (
+                <p className="text-default-secondary">{t_i18n("No AI system yet: the AI security fleet has nothing to test.")}</p>
+              ) : (
+                <DataTable
+                  rows={current.ai_systems.map((value, index) => ({ index, value }))}
+                  columns={aiColumns}
+                  layout={tableLayout}
+                  rowKey={(row) => String(row.index)}
+                  searchFields={(row) => [row.value.name, row.value.owner, t_i18n(AI_KIND_LABELS[row.value.kind as keyof typeof AI_KIND_LABELS] ?? row.value.kind)]}
+                  searchPlaceholder={t_i18n("Search...")}
+                  filters={aiFilters}
+                  exportName="ai-systems"
+                  urlKey="oai_"
+                  storageKey="settings-organization-ai-systems"
+                  emptyLabel={t_i18n("No AI system yet: the AI security fleet has nothing to test.")}
+                />
+              ))}
+          </SettingsCard>
+          )}
           </div>
           )}
 
