@@ -21214,5 +21214,7 @@
   "{count, plural, one {# signal restored} other {# signals restored}}": "{count, plural, one {# signal restauré} other {# signaux restaurés}}",
   "{count, plural, one {# signal checked again} other {# signals checked again}}": "{count, plural, one {# signal vérifié de nouveau} other {# signaux vérifiés de nouveau}}",
   "The signals could not be updated": "Les signaux n'ont pas pu être mis à jour",
-  "This signal opened a case: the case owns it now": "Ce signal a ouvert un dossier : le dossier en a désormais la charge"
+  "This signal opened a case: the case owns it now": "Ce signal a ouvert un dossier : le dossier en a désormais la charge",
+  "Add to inventory": "Ajouter à l’inventaire",
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}"
 }

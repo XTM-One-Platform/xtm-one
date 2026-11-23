@@ -21214,5 +21214,7 @@
   "{count, plural, one {# signal restored} other {# signals restored}}": "{count, plural, other {# 件のシグナルを復元しました}}",
   "{count, plural, one {# signal checked again} other {# signals checked again}}": "{count, plural, other {# 件のシグナルを再確認しました}}",
   "The signals could not be updated": "シグナルを更新できませんでした",
-  "This signal opened a case: the case owns it now": "このシグナルはケースを開きました。現在はケースが管理しています"
+  "This signal opened a case: the case owns it now": "このシグナルはケースを開きました。現在はケースが管理しています",
+  "Add to inventory": "インベントリに追加",
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, other {#件をインベントリに追加しました}}"
 }
