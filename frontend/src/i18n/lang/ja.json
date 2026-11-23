@@ -21218,5 +21218,6 @@
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, other {# 件の判断が担当者を待っています}}",
   "oldest asked {age}": "最も古い依頼 {age}",
   "Read only: this decision is addressed to someone else.": "読み取り専用: この判断は他の担当者宛てです。",
-  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "担当者を待っているこのフリートのメンバーの判断: 一時停止中の実行と作業項目。このタブを開いても実行は開始されず、クォータも消費されません。"
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "担当者を待っているこのフリートのメンバーの判断: 一時停止中の実行と作業項目。このタブを開いても実行は開始されず、クォータも消費されません。",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }
