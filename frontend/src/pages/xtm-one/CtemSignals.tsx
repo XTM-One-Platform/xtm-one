@@ -24,6 +24,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
@@ -155,13 +156,18 @@ function SignalsTab() {
       onSuccess: (result) => {
         setSelected([]);
         setAllMatching(false);
-        const changed = result.counts.changed ?? 0;
+        const count = action === "recheck" ? result.matched - (result.counts.skipped ?? 0) : (result.counts.changed ?? 0);
+        // Nothing changed is never a success (UX round 1 on #1521, B2): it says so, neutral.
+        if (count <= 0) {
+          toast({ title: t_i18n("No signal changed"), variant: "info" });
+          return;
+        }
         const title =
           action === "dismiss"
-            ? t_i18n("{count, plural, one {# signal dismissed} other {# signals dismissed}}", { count: changed })
+            ? t_i18n("{count, plural, one {# signal dismissed} other {# signals dismissed}}", { count })
             : action === "restore"
-              ? t_i18n("{count, plural, one {# signal restored} other {# signals restored}}", { count: changed })
-              : t_i18n("{count, plural, one {# signal checked again} other {# signals checked again}}", { count: result.matched - (result.counts.skipped ?? 0) });
+              ? t_i18n("{count, plural, one {# signal restored} other {# signals restored}}", { count })
+              : t_i18n("{count, plural, one {# signal checked again} other {# signals checked again}}", { count });
         toast({ title, variant: "success" });
       },
       onError: () => toast({ title: t_i18n("The signals could not be updated"), variant: "error" }),
@@ -185,6 +191,20 @@ function SignalsTab() {
     });
   };
   const canSelectAllMatching = !!view.state && !allMatching && selected.length > 0 && stateTotal > selected.length;
+  // The bulk actions the selection allows, most frequent first. Check again is offered only
+  // for a selection that holds a signal not dismissed: a dismissed one stays dismissed on a
+  // re-check (UX round 1 on #1521, B2). Two show as toolbar buttons, the rest in the shared
+  // "More actions" menu, so the toolbar keeps one 32 px row at 1080 (B1).
+  const bulkActions: { id: string; label: string; glyph: "plus" | "eye-off" | "refresh-cw" | "rotate-ccw"; run: () => void }[] = [
+    ...(isAdmin && anyUnmatched ? [{ id: "add-to-inventory", label: t_i18n("Add to inventory"), glyph: "plus" as const, run: runAddToInventory }] : []),
+    ...(anyOpen ? [{ id: "dismiss", label: t_i18n("Dismiss signals"), glyph: "eye-off" as const, run: () => runTriage("dismiss") }] : []),
+    ...(anyOpen ? [{ id: "recheck", label: t_i18n("Check again"), glyph: "refresh-cw" as const, run: () => runTriage("recheck") }] : []),
+    ...(anyDismissed || (allMatching && view.state === "discarded")
+      ? [{ id: "restore", label: t_i18n("Restore"), glyph: "rotate-ccw" as const, run: () => runTriage("restore") }]
+      : []),
+  ];
+  const inlineActions = bulkActions.slice(0, 2);
+  const menuActions: OverflowMenuItem[] = bulkActions.slice(2).map((a) => ({ id: a.id, label: a.label, glyph: a.glyph, onSelect: a.run, disabled: busy }));
   const selectionActions = (
     <span className="flex flex-wrap items-center gap-2" data-testid="ctem-signals-bulk-actions">
       {canSelectAllMatching && (
@@ -192,28 +212,21 @@ function SignalsTab() {
           {t_i18n("select all {count}", { count: stateTotal })}
         </Button>
       )}
-      {isAdmin && anyUnmatched && (
-        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={runAddToInventory} data-testid="ctem-signals-add-to-inventory">
-          <Icon name="plus" size={16} aria-hidden />
-          {t_i18n("Add to inventory")}
+      {inlineActions.map((a) => (
+        <Button
+          key={a.id}
+          variant="outline"
+          size="sm"
+          className={cn(TOOLBAR_CONTROL_HEIGHT, "px-2 content-compact")}
+          disabled={busy}
+          onClick={a.run}
+          data-testid={`ctem-signals-${a.id}`}
+        >
+          <Icon name={a.glyph} size={16} aria-hidden />
+          {a.label}
         </Button>
-      )}
-      <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={() => runTriage("recheck")} data-testid="ctem-signals-recheck">
-        <Icon name="refresh-cw" size={16} aria-hidden />
-        {t_i18n("Check again")}
-      </Button>
-      {anyOpen && (
-        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={() => runTriage("dismiss")} data-testid="ctem-signals-dismiss">
-          <Icon name="eye-off" size={16} aria-hidden />
-          {t_i18n("Dismiss signals")}
-        </Button>
-      )}
-      {(anyDismissed || (allMatching && view.state === "discarded")) && (
-        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={() => runTriage("restore")} data-testid="ctem-signals-restore">
-          <Icon name="rotate-ccw" size={16} aria-hidden />
-          {t_i18n("Restore")}
-        </Button>
-      )}
+      ))}
+      {menuActions.length > 0 && <OverflowMenu label={t_i18n("More actions")} items={menuActions} busy={busy} />}
     </span>
   );
 

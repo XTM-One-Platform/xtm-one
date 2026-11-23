@@ -174,6 +174,34 @@ describe("Signals page", () => {
     post.mockReset();
   });
 
+  // UX round 1 on #1521, B2: a dismissed signal stays dismissed on a re-check, so a selection of
+  // dismissed signals alone is offered Restore, never Check again or Dismiss.
+  it("offers only Restore for a selection of dismissed signals", async () => {
+    const dismissed = { state: "discarded" as const, decision: { reason_code: "dismissed_by_user" } as CtemSignal["decision"] };
+    const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1, dismissed));
+    renderPage("/ctem/signals?state=discarded", { total: 2, counts: { discarded: 2 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).getByTestId("ctem-signals-restore")).toBeTruthy();
+    expect(within(bar).queryByTestId("ctem-signals-recheck")).toBeNull();
+    expect(within(bar).queryByTestId("ctem-signals-dismiss")).toBeNull();
+    expect(within(bar).queryByRole("button", { name: "More actions" })).toBeNull();
+  });
+
+  it("says nothing changed instead of a success when a triage changes no signal", async () => {
+    const signals = [signal(1)];
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 1, counts: { changed: 0, skipped: 1 } });
+    renderPage("/ctem/signals?state=to_validate", { total: 1, counts: { to_validate: 1 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    fireEvent.click(await screen.findByTestId("ctem-signals-recheck"));
+    expect(await screen.findByText("No signal changed")).toBeTruthy();
+    expect(screen.queryByText(/checked again/)).toBeNull();
+    post.mockReset();
+  });
+
   it("says the sources are connected and nothing was seen when one is", async () => {
     renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] });
     await waitFor(() =>
