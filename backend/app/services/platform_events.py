@@ -216,6 +216,9 @@ _CTEM_CASE_KEYS = (
     "vertical",
     "state",
     "trigger_path",
+    # The fleet that runs the case (#1390, services/ctem_case_routing.py): the CTEM loop
+    # unless an active use-case fleet takes the case's path.
+    "owner_fleet",
 )
 #: ctem_case.validation_finished adds the OpenAEV delivery it reports (#918).
 _CTEM_CASE_VALIDATION_KEYS = (*_CTEM_CASE_KEYS, "openaev.event", "openaev.resource_type", "openaev.resource_id")
@@ -430,7 +433,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     "ctem_case.opened": {
         "description": (
             "A CTEM case was opened from a confirmed, in-scope exposure signal (services/ctem_case_loop.py): "
-            "start a fleet run from the case. Payload: case_id, vertical, state, trigger_path; read the "
+            "start a fleet run from the case. Payload: case_id, vertical, state, trigger_path, owner_fleet "
+            "(the fleet that runs it); read the "
             "case with get_ctem_case. Heard only when the user the subscription runs as sees the case "
             "(an administrator's scope all assignment running as itself hears every case)."
         ),

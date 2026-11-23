@@ -31,6 +31,7 @@ from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_case_loop as case_loop
+from app.services import ctem_case_routing as case_routing
 from app.services import ctem_case_versions as case_versions
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
@@ -408,6 +409,8 @@ async def get_ctem_case(
         # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
         "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
         "ticketing": await ticketing.ticketing_target(db),
+        # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
+        "owner_fleet": await case_routing.owner_view(db, case),
     }
 
 

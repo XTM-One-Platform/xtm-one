@@ -63,7 +63,7 @@ CTEM_LOOP_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **Case opened or reopened**: a CTEM case opens, reopens on a failed re-test or breaches "
-        "its SLA; one loop per case (vulnerability cases go to the Vulnerability management fleet).\n"
+        "its SLA; one loop per case, on every trigger path (a use-case fleet takes the cases of its paths only while its own case automation is on). Cases opened before the fleet was enabled are taken on enable and on the hourly case sweep.\n"
         "- **Gate answered**: a person answers a gate a case waits on; the loop goes on from that step, "
         "or stops on a rejection.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: OpenCTI events, kept "
@@ -117,8 +117,8 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
         "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR; the run starts when its live PIR score reaches the policy threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
-        "- **Case opened or reopened**: a CTEM case on a threat, credential leak or third-party path is "
-        "opened, reopened by a failed re-test, or past its SLA; the case is the record of the loop.\n"
+        "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
+        "re-test, or past its SLA, unless an active use-case fleet owns its path; the case is the record of the loop.\n"
         "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
         "case and the loop goes on, or stops on a rejection."
     ),
@@ -156,8 +156,9 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
         "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
-        "- **Case opened or reopened**: a CTEM case on any other path is opened, reopened by a failed "
-        "re-test, past its SLA, or an OpenAEV result it waits on arrived; the case is the record of the loop.\n"
+        "- **Case opened or reopened**: while this automation is on, a CTEM case on the new vulnerability "
+        "path is opened, reopened by a failed re-test, past its SLA, or an OpenAEV result it waits on arrived; "
+        "the case is the record of the loop. Off, the CTEM loop runs those cases.\n"
         "- **OpenAEV results into cases**: listens to OpenAEV with no run of its own; a finished "
         "simulation or a changed finding moves the case it concerns, a degraded scenario score records "
         "a regression signal, an attack path reaching a critical asset records a proven-exploitable signal.\n"
