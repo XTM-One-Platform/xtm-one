@@ -11,7 +11,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
@@ -20,6 +20,7 @@ import { Icon } from "@filigran/design-system";
 import {
   useAssetFacets,
   useCanonicalAssets,
+  useDeleteAssetRecords,
   useRecordAssetDecision,
   useTechStackInventory,
   type AssetFilterKey,
@@ -29,36 +30,32 @@ import {
 import { useTabParam } from "@/hooks/useTabParam";
 import { useAuth } from "@/hooks/useAuth";
 import { OrganizationSection } from "@/pages/settings/OrganizationSection";
-import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
-import type { AssetRow } from "@/lib/organization-profile";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AssetFacetSidebar, AssetFacetsButton, FACETS_BESIDE_QUERY, SIDEBAR_FACETS } from "./ctem/AssetFacetSidebar";
-import { useMediaQuery } from "@/hooks/useCompactToolbar";
-import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
-import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
+import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
+import { deletableRows, recordRefs, type RowRef } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, type InventoryTab } from "./ctem/inventory-tabs";
 
-/**
- * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
- * Assets tab filtered on that category, so a bookmark or a fleet link keeps working.
- */
-const RETIRED_AI_SYSTEMS_TAB = "ai-systems";
-
 const ASSETS_URL_KEY = "a_";
-const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?${ASSETS_URL_KEY}f_category=ai_target`;
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
 const TECH_URL_KEY = "t_";
 const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
+/** The server filters of the asset list, in the order the toolbar shows them. */
+const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
+  { key: "category", label: "Category" },
+  { key: "criticality", label: "Criticality" },
+  { key: "internet_facing", label: "Internet facing" },
+  { key: "source", label: "Source" },
+];
 
 /**
  * The query parameter of the former Asset matching view (UX round 2 on #1254, B7). Asset matching now sits under the syncs
@@ -78,40 +75,36 @@ function AssetsTab({ add }: { add: AddRequest }) {
     sort: NAME_SORT,
     pageSize: storedPageSize(ASSETS_STORAGE_KEY, PAGE_SIZE),
   });
-  // The sidebar's facets (#1501): OR within one, AND across them; the counts follow the search and the other picks.
-  const picked = Object.fromEntries(SIDEBAR_FACETS.map((key) => [key, table.filters[key] ?? []])) as Record<AssetFilterKey, string[]>;
+  const picked = Object.fromEntries(ASSET_FILTERS.map((f) => [f.key, table.filters[f.key] ?? []]));
   const { data, isLoading, isError, refetch } = useCanonicalAssets({
     q: table.search,
     offset: table.page * table.pageSize,
     limit: table.pageSize,
     filters: picked,
   });
-  const facets = useAssetFacets({ q: table.search, filters: picked });
-  // Beside the table only where both fit (UX r4 B1); below, the same facets behind a Filters button of the toolbar.
-  const facetsBeside = useMediaQuery(FACETS_BESIDE_QUERY, true);
+  const facets = useAssetFacets();
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
-  // Entity management (#1367, point 2): Add, the row menu and the bulk actions write the profile's asset rows.
-  const { data: context } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
-  // The API type leaves the #11543 sections out; the profile carries them (lib/organization-profile ProfileForm).
-  const profileRows = ((context?.profile as { assets_exposure?: AssetRow[] } | undefined)?.assets_exposure ?? []) as AssetRow[];
+  // Entity management (#1367, point 2; row APIs since #1543): Add, the row menu and the bulk actions write the asset
+  // records behind each canonical asset, one row API call each, never the whole profile.
+  const remove = useDeleteAssetRecords();
   const [dialog, setDialog] = useState<EntryDialogMode | null>(null);
-  const [toDelete, setToDelete] = useState<number[] | null>(null);
-  const indexesOf = (assets: readonly CanonicalAssetSummary[]) => assetRowIndexes(profileRows, assets.flatMap((a) => a.records ?? []));
+  const [toDelete, setToDelete] = useState<{ ids: string[]; assetIds: string[] } | null>(null);
   // An asset whose every record a sync owns cannot be deleted here.
-  const handIndexes = (a: CanonicalAssetSummary) => indexesOf([a]).filter((i) => !isSyncedRow(profileRows[i]));
+  const handIds = (a: CanonicalAssetSummary) => deletableRows(recordRefs([a])).ids;
+  const updateMode = (refs: RowRef[]): EntryDialogMode => (refs.length === 1 ? { kind: "update", id: refs[0].id } : { kind: "bulk", rows: refs });
   const selectedAssets = (data?.items ?? []).filter((a) => selected.includes(a.id));
+  const askDelete = (assets: readonly CanonicalAssetSummary[]) =>
+    setToDelete({ ids: assets.flatMap(handIds), assetIds: assets.filter((a) => recordRefs([a]).every((r) => handIds(a).includes(r.id))).map((a) => a.id) });
   const onDelete = () => {
-    if (!context || !toDelete) return;
-    const out = deleteRows(profileRows, toDelete);
-    save.mutate(
-      { profile: { ...context.profile, assets_exposure: out.rows } as typeof context.profile, source: "form" },
+    if (!toDelete) return;
+    remove.mutate(
+      toDelete,
       {
-        onSuccess: () => {
+        onSuccess: (out) => {
           setSelected([]);
-          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.changed }), variant: "success" });
+          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.removed.length }), variant: "success" });
         },
         onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
       },
@@ -119,8 +112,20 @@ function AssetsTab({ add }: { add: AddRequest }) {
   };
   const syncedReason = t_i18n("Synced from its source: exclude it from the sync to remove it.");
 
+  const filters: DataTableFilter<CanonicalAssetSummary>[] = ASSET_FILTERS.map(({ key, label }) => ({
+    key,
+    label,
+    options: (facets.data?.[key] ?? []).map((value) => ({
+      value,
+      label: key === "source" ? sourceLabel(t_i18n, value) : assetFieldLabel(t_i18n, key, value),
+    })),
+  }));
+
   const rows = data?.items ?? [];
-  const mergeRecords = rows.filter((a) => selected.includes(a.id)).flatMap((a) => a.records ?? []);
+  const mergeRecords = rows
+    .filter((a) => selected.includes(a.id))
+    .flatMap((a) => a.records ?? [])
+    .map((r) => ({ source: r.source, external_id: r.external_id }));
   const canMerge = selected.length >= 2 && mergeRecords.length >= 2 && mergeRecords.length <= MAX_MERGE_RECORDS;
   const onMerge = () => {
     decide.mutate(
@@ -159,8 +164,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
     {
       key: "criticality",
       header: "Criticality",
-      // One line at every width: the short "Unknown" under the heading, never wrapped (#1501 UX r1 B2).
-      cell: (a) => <span className="whitespace-nowrap">{criticalityShortLabel(t_i18n, a.criticality)}</span>,
+      cell: (a) => assetFieldLabel(t_i18n, "criticality", a.criticality),
       csv: (a) => a.criticality,
       hideable: true,
     },
@@ -223,11 +227,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
 
   return (
     <>
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      {facetsBeside && <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} fitBeside />}
-      <div className="min-w-0 flex-1">
       <DataTable<CanonicalAssetSummary>
-        toolbarLead={facetsBeside ? undefined : <AssetFacetsButton facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} />}
         rows={rows}
         columns={columns}
         rowKey={(a) => a.id}
@@ -238,6 +238,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
         defaultSort={NAME_SORT}
         defaultPageSize={PAGE_SIZE}
         searchPlaceholder={t_i18n("Search assets by name")}
+        filters={filters}
         exportName="ctem-inventory-assets"
         isLoading={isLoading && !data}
         isError={isError}
@@ -248,8 +249,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
         rowActions={
           isAdmin
             ? (a) => {
-                const indexes = indexesOf([a]);
-                const deletable = handIndexes(a);
+                const refs = recordRefs([a]);
+                const deletable = handIds(a);
                 return (
                   <OverflowMenu
                     label={t_i18n("Actions on {name}", { name: a.name })}
@@ -259,8 +260,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
                         id: "update",
                         label: t_i18n("Update"),
                         glyph: "pencil",
-                        disabled: indexes.length === 0,
-                        onSelect: () => setDialog(indexes.length === 1 ? { kind: "update", index: indexes[0] } : { kind: "bulk", indexes }),
+                        disabled: refs.length === 0,
+                        onSelect: () => setDialog(updateMode(refs)),
                       },
                       {
                         id: "delete",
@@ -268,7 +269,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
                         destructive: true,
                         disabled: deletable.length === 0,
                         disabledReason: deletable.length === 0 ? syncedReason : undefined,
-                        onSelect: () => setToDelete(deletable),
+                        onSelect: () => askDelete([a]),
                       },
                     ]}
                   />
@@ -284,15 +285,16 @@ function AssetsTab({ add }: { add: AddRequest }) {
                 onChange: setSelected,
                 actions: (
                   <>
-                    <Button size="sm" variant="secondary" className={BULK_ACTION} onClick={() => setDialog({ kind: "bulk", indexes: indexesOf(selectedAssets) })}>
+                    <Button size="sm" variant="secondary" className={BULK_ACTION} disabled={recordRefs(selectedAssets).length === 0}
+                      onClick={() => setDialog({ kind: "bulk", rows: recordRefs(selectedAssets) })}>
                       {t_i18n("Update")}
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
                       className={BULK_ACTION}
-                      disabled={save.isPending || selectedAssets.every((a) => handIndexes(a).length === 0)}
-                      onClick={() => setToDelete(selectedAssets.flatMap(handIndexes))}
+                      disabled={remove.isPending || selectedAssets.every((a) => handIds(a).length === 0)}
+                      onClick={() => askDelete(selectedAssets)}
                     >
                       {t_i18n("Delete")}
                     </Button>
@@ -305,8 +307,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
             : undefined
         }
       />
-      </div>
-      </div>
       <InventoryEntryDialog
         section="assets_exposure"
         mode={dialog ?? (add.open ? { kind: "add" } : null)}
@@ -428,12 +428,6 @@ function TechStackTab() {
 }
 
 export default function CtemInventory() {
-  const [tab] = useTabParam<InventoryTab>("assets");
-  if ((tab as string) === RETIRED_AI_SYSTEMS_TAB) return <Navigate to={AI_TARGET_ASSETS_HREF} replace />;
-  return <InventoryPage />;
-}
-
-function InventoryPage() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
@@ -516,6 +510,8 @@ function InventoryPage() {
         <AssetGroupsTab add={add} />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
+      ) : tab === "ai-systems" ? (
+        <AiSystemsTab />
       ) : (
         <AssetsTab add={add} />
       )}

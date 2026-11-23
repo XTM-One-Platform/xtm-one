@@ -47,6 +47,7 @@ from app.services.organization_context import (
     ASSET_TAXONOMY,
     INTERNET_FACING,
     LEGACY_ASSET_TYPES,
+    AiSystem,
     AssetEntry,
     AssetGroupEntry,
     CrownJewel,
@@ -69,14 +70,11 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     "crown_jewels": ("opencrq",),
     "pirs": ("opencti",),
 }
-#: Deprecated since #1501 (kept one release): ``ai_systems`` reads and writes the assets of category
-#: ``ai_target``; an import of it touches no other asset.
-AI_SYSTEMS_ALIAS = "ai_systems"
 #: section -> the profile field it writes.
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "ai_systems": "assets_exposure",
+    "ai_systems": "ai_systems",
     "tech_stack": "tech_stack",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
@@ -238,6 +236,21 @@ class ImportPlan:
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Name and identity key per repository id; dependencies matched to OpenCTI after the save.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: Assets and asset groups since #1543: the organization whose records the plan was made on. Applied
+    #: by :func:`apply_record_import` as row writes (``writes``) and removals (``remove_refs``) by
+    #: ``(source, external_id)``, never a profile version; ``profile`` stays ``None``.
+    organization_id: uuid.UUID | None = None
+    writes: list[dict[str, Any]] = field(default_factory=list)
+    remove_refs: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def on_records(self) -> bool:
+        return self.organization_id is not None
+
+    @property
+    def has_writes(self) -> bool:
+        """A record plan that writes or removes at least one row."""
+        return bool(self.writes or self.remove_refs)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -358,30 +371,7 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         os_family=openaev_os_family(asset.get("endpoint_platform")),
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
-        **openaev_ai_target_fields(asset) if category == "ai_target" else {},
     )
-
-
-#: OpenAEV ``ai_target_modality`` values an asset keeps, lower-cased.
-_AI_MODALITIES: frozenset[str] = frozenset({"text", "vision", "audio", "multimodal"})
-
-
-def openaev_ai_target_fields(asset: dict[str, Any]) -> dict[str, Any]:
-    """The ``ai_target_*`` fields of an OpenAEV AI target an asset row keeps (#1501).
-
-    Provider, endpoint, model and modality; the token, the configuration and the system
-    prompt are never read (they may carry a credential).
-    """
-    from app.services.organization_context import AI_TARGET_PROVIDERS
-
-    provider = _lower(asset.get("ai_target_provider"))
-    modality = _lower(asset.get("ai_target_modality"))
-    return {
-        "ai_target_provider": provider if provider in AI_TARGET_PROVIDERS else "",
-        "ai_target_endpoint": str(asset.get("ai_target_endpoint") or "").strip()[:500],
-        "ai_target_model": str(asset.get("ai_target_model") or "").strip()[:200],
-        "ai_target_modality": modality if modality in _AI_MODALITIES else "",
-    }
 
 
 #: OpenAEV ``endpoint_platform`` values that name no operating system.
@@ -431,14 +421,14 @@ def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
     )
 
 
-def openaev_ai_system(asset: dict[str, Any]) -> AssetEntry | None:
-    """An OpenAEV AI target as an asset of category ``ai_target``, every field kept (#1501; no forced kind)."""
-    if not _lower(asset.get("asset_category")):
-        asset = {**asset, "asset_category": "ai_target"}
-    row = openaev_asset(asset)
-    if row is None or row.category != "ai_target":
+def openaev_ai_system(asset: dict[str, Any]) -> AiSystem | None:
+    """An OpenAEV AI target asset as an AI system linked to it by ``openaev_asset_id``."""
+    name = str(asset.get("asset_name") or "").strip()
+    asset_id = str(asset.get("asset_id") or "").strip()
+    if not name or not asset_id:
         return None
-    return row
+    exposure = "public" if asset.get("asset_internet_facing") is True else "internal"
+    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, source="openaev", external_id=asset_id[:200])  # type: ignore[arg-type]
 
 
 def _lower(value: Any) -> str:
@@ -526,14 +516,13 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
-    # #1501: the AI target assets, read and written like assets (the alias touches no other asset).
-    "ai_systems": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
+    "ai_systems": ("ai_systems", "name", 200, ("owner",)),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
     "tech_stack": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
-MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets", "ai_systems"})
+MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets"})
 #: Fields kept from the stored row whatever the source sends: the source never owns them.
 _ALWAYS_LOCAL: frozenset[str] = frozenset({"business_service", "asset_names"})
 
@@ -601,12 +590,6 @@ def _merge_sourced(
     """
     attr, name_key, cap, local = SOURCED_FIELDS[section]
     current: list[Any] = list(getattr(draft, attr))
-    if section == AI_SYSTEMS_ALIAS:
-        # The alias merges into the assets and must never treat the other assets of the source as gone.
-        others = [r for r in current if r.category != "ai_target"]
-        current = [r for r in current if r.category == "ai_target"]
-    else:
-        others = []
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if r.external_id}
     multi = section in MULTI_SOURCE_SECTIONS
     names = {getattr(r, name_key).casefold() for r in current if not multi or r.source == source}
@@ -660,7 +643,118 @@ def _merge_sourced(
             dropped |= {id(r) for r in owned}
     if dropped:
         current = [r for r in current if id(r) not in dropped]
-    setattr(draft, attr, (others + current)[:cap])
+    setattr(draft, attr, current[:cap])
+
+
+#: Sections whose rows are asset records since #1543 (planned and written by ``(source, external_id)``).
+RECORD_SECTIONS: frozenset[str] = frozenset({"assets", "asset_groups"})
+
+
+@dataclass
+class StoredRow:
+    """A stored record of the import's source, as :func:`plan_record_import` needs it."""
+
+    external_id: str
+    name: str
+    sync_id: str = ""
+
+
+def plan_record_import(
+    section: str,
+    source: str,
+    read: ReadResult,
+    *,
+    validate: Any,
+    stored: dict[tuple[str, str], dict[str, Any]],
+    names: dict[str, str],
+    source_rows: list[StoredRow],
+    remove_gone: bool = False,
+    excluded_ids: list[str] | None = None,
+    sync_id: str = "",
+    organization_id: uuid.UUID,
+) -> ImportPlan:
+    """What importing *read* into the asset or group records does (no I/O, #1543).
+
+    The merge rules of :func:`_merge_sourced`, against the records instead of
+    the profile: *stored* holds the records the read rows address, by
+    ``(source, external_id)``, as profile rows; *names* the name keys a new row
+    would clash with (for assets, the records of *source* only); *source_rows*
+    every record of *source* (read only when gone rows can be known: a
+    complete read, or a sync's exclusion list). *validate* is the record
+    service's validation, so a row equal to its record is ``unchanged`` and
+    never written. No cap: the tables hold what the profile could not.
+    """
+    from app.services.organization_context_rows import name_key
+
+    plan = ImportPlan(
+        section=section,
+        source=source,
+        source_total=read.total,
+        read=len(read.rows),
+        truncated=read.truncated,
+        error=read.error,
+        remove_gone=remove_gone and not read.truncated and not read.error,
+        batch_typed=read.batch_typed,
+        sync_id=sync_id[:64],
+        software=read.software,
+        software_rows=read.software_rows,
+        software_unread=read.software_unread,
+        software_error=read.software_error,
+        findings=read.findings,
+        repositories=read.repositories,
+        organization_id=organization_id,
+    )
+    excluded = {str(i) for i in excluded_ids or [] if str(i)}
+    _attr, name_attr, _cap, local = SOURCED_FIELDS[section]
+    taken = dict(names)
+    read_ids: set[str] = set()
+    seen: set[str] = set()
+    for row in read.rows:
+        value = row.model_dump(mode="json") if hasattr(row, "model_dump") else dict(row)
+        name = str(value.get(name_attr) or "")
+        external_id = str(value.get("external_id") or "")
+        read_ids.add(external_id)
+        if external_id in excluded:
+            plan.excluded.append(name)
+            continue
+        if external_id in seen:
+            continue  # a source answering one id twice: the first row counts, as in the profile merge
+        seen.add(external_id)
+        before = stored.get((source, external_id))
+        if before is not None:
+            kept = {f: before.get(f) for f in local if f in _ALWAYS_LOCAL or (not value.get(f) and before.get(f))}
+            merged = validate({**value, **kept, "sync_id": plan.sync_id or before.get("sync_id") or ""})
+            if merged == before:
+                plan.unchanged.append(name)
+            else:
+                plan.writes.append(merged)
+                plan.updated.append(name)
+            continue
+        if name_key(name) in taken:
+            plan.skipped.append(name)
+            continue
+        taken[name_key(name)] = source
+        plan.writes.append(validate({**value, **({"sync_id": plan.sync_id} if plan.sync_id else {})}))
+        plan.new.append(name)
+    dropped: set[str] = set()
+    if excluded:
+        gone_excluded = [r for r in source_rows if r.external_id in excluded]
+        plan.excluded_removed = [r.name for r in gone_excluded]
+        dropped = {r.external_id for r in gone_excluded}
+    if not plan.truncated and not plan.error:
+        gone = [r for r in source_rows if r.external_id not in read_ids and r.external_id not in dropped]
+        plan.gone = [r.name for r in gone]
+        if plan.remove_gone:
+            # A sync removes only the rows it wrote itself (#1473), as the profile merge does.
+            owned = [r for r in gone if not plan.sync_id or r.sync_id == plan.sync_id]
+            owned_ids = {r.external_id for r in owned}
+            plan.gone_kept = [r.name for r in gone if r.external_id not in owned_ids]
+            dropped |= owned_ids
+    plan.remove_refs = [(source, e) for e in sorted(dropped)]
+    plan.sample = [
+        row.model_dump(mode="json") if hasattr(row, "model_dump") else row for row in read.rows[:SAMPLE_SIZE]
+    ]
+    return plan
 
 
 def _merge_pirs(draft: OrganizationProfile, rows: list[dict[str, str]], plan: ImportPlan) -> None:
@@ -825,17 +919,6 @@ async def _openaev_search(
     return result
 
 
-def _reads_ai_targets(filters: dict[str, Any], batch_type: str) -> bool:
-    """Whether an OpenAEV assets read includes the AI targets: no endpoint-only filter, no other batch type."""
-    picked = batch_taxonomy(batch_type) if batch_type else None
-    if picked and picked[0] != "ai_target":
-        return False
-    if _values(filters, "platform"):
-        return False
-    categories = [c.lower() for c in _values(filters, "category")]
-    return not categories or "ai_target" in categories
-
-
 #: OpenAEV ``asset_type`` values another read already serves whole: the endpoints (``/api/endpoints/search``,
 #: hostname, IPs and MACs included) and the AI targets (their own section).
 _OPENAEV_TYPES_READ_ELSEWHERE: frozenset[str] = frozenset({"endpoint", "ai_target"})
@@ -917,18 +1000,6 @@ async def _read_openaev(
             endpoints_only=bool(_values(filters, "platform")),
         )
         read.rows = [r for r in (openaev_asset(a, batch_type) for a in read.rows) if r]
-        if read.error or not _reads_ai_targets(filters, batch_type):
-            return read
-        # #1501: OpenAEV's AI targets are assets too; an assets sync keeps them (and never drops them as gone).
-        targets = await _openaev_search(
-            base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters, asset_ids=asset_ids)
-        )
-        if targets.error:
-            return ReadResult(error=targets.error)
-        read.rows += [r for r in (openaev_ai_system(a) for a in targets.rows) if r]
-        read.truncated = read.truncated or targets.truncated
-        if read.total is not None and targets.total is not None:
-            read.total += targets.total
         return read
     if section == "asset_groups":
         tags = _values(filters, "tags")
@@ -943,10 +1014,9 @@ async def _read_openaev(
         read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
         read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
         return read
-    if section == AI_SYSTEMS_ALIAS:
-        # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
-        read = await _openaev_search(base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters), text)
-        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows) if r]
+    if section == "ai_systems":
+        read = await _openaev_search(base_url, headers, "/api/endpoints/search", openaev_filter_group(filters), text)
+        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows if a.get("ai_target_provider")) if r]
         return read
     if section == "tech_stack":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
@@ -1456,16 +1526,112 @@ async def preview_import(
     excluded_ids: list[str] | None = None,
     sync_id: str = "",
 ) -> tuple[ImportPlan, int | None]:
-    """The import plan over the current profile, and the version it starts from (writes nothing)."""
+    """The import plan, and the profile version it starts from (writes nothing).
+
+    Assets and asset groups are planned against the records (#1543) when the
+    organization exists: :func:`apply_import` then writes them row by row. The
+    other sections, and a platform with no profile yet, plan on the profile.
+    """
     from app.services import organization_context as org_context
 
     current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
     read = await read_source(
         db, user_id=user_id, section=section, source=source, filters=filters, batch_type=batch_type
     )
+    if section in RECORD_SECTIONS and current is not None:
+        plan = await _plan_on_records(
+            db, section, source, read, remove_gone=remove_gone, excluded_ids=excluded_ids, sync_id=sync_id
+        )
+        if plan is not None:
+            return plan, current.version
+    base = org_context.parse_profile(current.profile if current else {})
     plan = plan_import(base, section, source, read, remove_gone=remove_gone, excluded_ids=excluded_ids, sync_id=sync_id)
     return plan, (current.version if current else None)
+
+
+async def _plan_on_records(
+    db: AsyncSession,
+    section: str,
+    source: str,
+    read: ReadResult,
+    *,
+    remove_gone: bool,
+    excluded_ids: list[str] | None,
+    sync_id: str,
+) -> ImportPlan | None:
+    """The record plan of an asset or group import (``None``: no organization yet)."""
+    from app.services import organization_asset_records as records
+
+    org = await records.ensure_records(db)
+    if org is None:
+        return None
+    refs = [
+        (source, str(getattr(r, "external_id", "") or ""))
+        for r in read.rows
+        if str(getattr(r, "external_id", "") or "")
+    ]
+    stored = await records.rows_by_ref(db, org, section, refs)
+    _attr, name_attr, _cap, _local = SOURCED_FIELDS[section]
+    names = await records.name_owners(
+        db, org, section, [str(getattr(r, name_attr, "") or "") for r in read.rows], source=source
+    )
+    gone_known = bool(excluded_ids) or (not read.truncated and not read.error)
+    source_rows = (
+        [StoredRow(e, n, s) for e, n, s in await records.source_refs(db, org, section, source)] if gone_known else []
+    )
+    validate = records.validate_asset if section == "assets" else records.validate_group
+
+    def checked(value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return validate(value)
+        except records.RecordError:
+            return value  # the source's own row model validated it; the write reports a bad field
+
+    return plan_record_import(
+        section,
+        source,
+        read,
+        validate=checked,
+        stored=stored,
+        names=names,
+        source_rows=source_rows,
+        remove_gone=remove_gone,
+        excluded_ids=excluded_ids,
+        sync_id=sync_id,
+        organization_id=org,
+    )
+
+
+async def apply_record_import(db: AsyncSession, plan: ImportPlan, *, actor: str) -> int:
+    """Write a record plan (#1543): its rows in batches, then its removals; answers the rows written or removed.
+
+    Origin ``sync:<id>`` for a sync (it owns its rows), else ``import``; each
+    changed row is in the change log, its identity cluster re-matched. No
+    profile version is saved (the caller commits).
+    """
+    from app.services import organization_asset_records as records
+
+    if plan.organization_id is None or plan.error:
+        return 0
+    origin = f"sync:{plan.sync_id}" if plan.sync_id else "import"
+    count = 0
+    for start in range(0, len(plan.writes), records.MAX_BATCH):
+        result = await records.write_rows(
+            db,
+            plan.organization_id,
+            plan.section,
+            plan.writes[start : start + records.MAX_BATCH],
+            origin=origin,
+            actor=actor,
+        )
+        count += len(result.created) + len(result.updated)
+    if plan.remove_refs:
+        count += len(
+            await records.remove_rows(
+                db, plan.organization_id, plan.section, plan.remove_refs, origin=origin, actor=actor
+            )
+        )
+    return count
 
 
 def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str, str]]:

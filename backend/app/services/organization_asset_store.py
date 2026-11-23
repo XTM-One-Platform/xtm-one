@@ -19,14 +19,14 @@ persists its answer in ``models/organization_asset.py`` and answers the reads:
 - :func:`record_decision` and :func:`remove_decision` keep an administrator's
   merge (records that are one asset) or split (two records never one asset);
   every rebuild applies them (``organization_asset_decisions``, S3).
-- :func:`refresh_after_save` rebuilds the store in the transaction that saved a
-  new profile version (a sync run, an agent's row upsert), so a read never pays
-  for a sync's rows.
+- :func:`ensure_built` makes sure the store is built (since #1543 every
+  row write of ``organization_asset_records`` refreshes its own identity
+  clusters, so this is one indexed probe after the first build).
 - :func:`tech_stack_inventory` is the tech stack built from the software of the
   assets (S4): one item per vendor and product with the versions seen and the
   number of assets running each, plus the typed rows no source sees.
 
-The profile stays the source of the rows; the store is its canonical view.
+Since #1543 the asset records are the source of the rows; the store is their canonical view.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import (
@@ -149,59 +149,53 @@ async def _current(db: AsyncSession, organization_id: uuid.UUID | None) -> Organ
 
 
 async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | None = None) -> int:
-    """Replace the store of *organization_id* (the primary when ``None``) with its profile's canonical assets.
+    """Rebuild the whole store of *organization_id* (the primary when ``None``) from its asset records.
 
-    Answers the number of canonical assets written (the caller commits). No
-    profile yet: the store is emptied and 0 is answered.
+    Since #1543 the records are the source of truth; the name is kept for its
+    callers (a merge or split decision, an identity settings change, an admin
+    rebuild). Answers the number of canonical assets written (the caller
+    commits). No profile yet: the store is emptied and 0 is answered.
     """
-    version = await _current(db, organization_id)
-    if version is None:
-        if organization_id is not None:
-            await db.execute(delete(OrganizationAsset).where(OrganizationAsset.organization_id == organization_id))
+    from app.services import organization_asset_records as records
+
+    org = await records.ensure_records(db, organization_id)
+    if org is None:
         return 0
-    org = version.organization_id
-    # Two first reads racing would both rebuild: the second waits for the first's transaction.
-    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"organization_assets:{org}"})
-    rows = [row for row in (version.profile or {}).get("assets_exposure") or [] if isinstance(row, Mapping)]
-    key_order, precedence = identity_settings(version.profile)
-    things = canonical_rows(
-        rows,
-        key_order=key_order,
-        precedence=precedence,
-        decisions=await load_decisions(db, org),
-        sboms=await load_sboms(db, org),
-    )
-    # An asset whose canonical key is unchanged keeps its id across rebuilds, so an id
-    # read from the API before an unrelated profile save still answers afterwards.
-    known: dict[str, uuid.UUID] = {
-        key: asset_id
-        for key, asset_id in (
-            await db.execute(
-                select(OrganizationAsset.canonical_key, OrganizationAsset.id).where(
-                    OrganizationAsset.organization_id == org
-                )
-            )
-        ).all()
-    }
-    # Children go with their asset (ON DELETE CASCADE).
-    await db.execute(delete(OrganizationAsset).where(OrganizationAsset.organization_id == org))
+    return await records.rebuild_from_records(db, org)
+
+
+async def write_canonical(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    things: Sequence[Mapping[str, Any]],
+    known: Mapping[str, uuid.UUID],
+    *,
+    profile_version: int,
+) -> dict[identity.RecordRef, uuid.UUID]:
+    """Write *things* (:func:`canonical_rows`) as assets with their sources and installations; flushed.
+
+    The caller deleted the assets they replace. An asset whose canonical key is in
+    *known* keeps that id. Answers the asset id of every source record written.
+    """
+    held: dict[identity.RecordRef, uuid.UUID] = {}
     for thing in things:
         asset = OrganizationAsset(
             id=known.get(thing["canonical_key"]) or uuid.uuid4(),
-            organization_id=org,
+            organization_id=organization_id,
             canonical_key=thing["canonical_key"],
             name=thing["name"],
             name_key=_key(thing["name"])[:300],
             fields=_jsonable(thing["fields"]),
             merged_on=thing["merged_on"],
             possible_matches=thing["possible_matches"],
-            profile_version=int(version.version),
+            profile_version=profile_version,
         )
         db.add(asset)
         for rec in thing["sources"]:
+            held[identity.RecordRef(rec["source"], rec["external_id"])] = asset.id
             db.add(
                 OrganizationAssetSource(
-                    organization_id=org,
+                    organization_id=organization_id,
                     asset_id=asset.id,
                     source=_cut(rec["source"], 80),
                     external_id=_cut(rec["external_id"], 200),
@@ -213,7 +207,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
         for soft in thing["software"]:
             db.add(
                 OrganizationAssetSoftware(
-                    organization_id=org,
+                    organization_id=organization_id,
                     asset_id=asset.id,
                     vendor=_cut(soft["vendor"], 200),
                     product=_cut(soft["product"], 200),
@@ -230,12 +224,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
                 )
             )
     await db.flush()
-    # Software as an entity (#1495): what the installations install, kept across rebuilds.
-    from app.services import organization_software_store as software_store
-
-    edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
-    await software_store.sync_software(db, org, edges)
-    return len(things)
+    return held
 
 
 # ── Administrator decisions: merge and split (S3) ──────────────────────
@@ -324,10 +313,15 @@ def check_decision(kind: str, records: Sequence[Mapping[str, Any]]) -> list[iden
 
 
 async def _known_refs(db: AsyncSession, organization_id: uuid.UUID) -> set[identity.RecordRef]:
+    """The records of *organization_id* (since #1543 the asset records, imported on first touch)."""
+    from app.models.organization_asset_record import OrganizationAssetRecord
+    from app.services import organization_asset_records as records
+
+    await records.ensure_records(db, organization_id)
     rows = (
         await db.execute(
-            select(OrganizationAssetSource.source, OrganizationAssetSource.external_id).where(
-                OrganizationAssetSource.organization_id == organization_id
+            select(OrganizationAssetRecord.source, OrganizationAssetRecord.external_id).where(
+                OrganizationAssetRecord.organization_id == organization_id
             )
         )
     ).all()
@@ -658,24 +652,6 @@ async def import_sbom(
     }
 
 
-async def refresh_after_save(db: AsyncSession, organization_id: uuid.UUID | None = None) -> uuid.UUID | None:
-    """Rebuild the store after a new profile version was saved in this transaction.
-
-    Only an organization with assets (now or in its store) is rebuilt, as
-    :func:`ensure_built` decides. A store failure never fails the save: the
-    next read rebuilds it. Answers the organization id, ``None`` when nothing
-    ran or the refresh failed.
-    """
-    import logging
-
-    try:
-        async with db.begin_nested():
-            return await ensure_built(db, organization_id)
-    except Exception:  # the profile save stands; the store catches up on its next read
-        logging.getLogger(__name__).warning("Organization asset store refresh failed", exc_info=True)
-        return None
-
-
 def _jsonable(value: Any) -> Any:
     """*value* with datetimes as ISO strings, for a JSONB column."""
     if isinstance(value, datetime):
@@ -688,22 +664,19 @@ def _jsonable(value: Any) -> Any:
 
 
 async def ensure_built(db: AsyncSession, organization_id: uuid.UUID | None = None) -> uuid.UUID | None:
-    """Build the store when it lags the current profile; answer the organization id (``None``: no profile)."""
-    version = await _current(db, organization_id)
-    if version is None:
-        return None
-    org: uuid.UUID = version.organization_id
-    built = (
-        await db.execute(
-            select(func.max(OrganizationAsset.profile_version)).where(OrganizationAsset.organization_id == org)
-        )
-    ).scalar()
-    has_rows = bool((version.profile or {}).get("assets_exposure"))
-    if (built or 0) != int(version.version) and (has_rows or built is not None):
-        await rebuild_from_profile(db, org)
-    elif await _unlinked_installation(db, org):
+    """Make sure the store is built from the asset records; answer the organization id (``None``: no profile).
+
+    Since #1543 the records (``organization_asset_records``) are the source of
+    truth and every row write refreshes its identity clusters itself: the first
+    call for an organization imports its profile rows and builds the store
+    once, later calls cost one indexed probe.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await records.ensure_records(db, organization_id)
+    if org is not None and await _unlinked_installation(db, org):
         # A store built before software was an entity (#1495): one rebuild links it.
-        await rebuild_from_profile(db, org)
+        await records.rebuild_from_records(db, org)
     return org
 
 
@@ -730,6 +703,33 @@ class Page:
 
 def _limit(limit: int) -> int:
     return max(1, min(int(limit or 50), MAX_PAGE))
+
+
+async def _attach_record_ids(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    asset_ids: Sequence[uuid.UUID],
+    refs: Mapping[uuid.UUID, list[dict[str, str]]],
+) -> None:
+    """Add ``id`` (the asset record a row API writes, #1543) to each ``(source, external_id)`` ref of *refs*."""
+    from app.models.organization_asset_record import OrganizationAssetRecord
+
+    rec = OrganizationAssetRecord
+    found = {
+        (asset_id, source, external_id): str(record_id)
+        for record_id, asset_id, source, external_id in (
+            await db.execute(
+                select(rec.id, rec.asset_id, rec.source, rec.external_id).where(
+                    rec.organization_id == organization_id, rec.asset_id.in_(list(asset_ids))
+                )
+            )
+        ).all()
+    }
+    for asset_id, items in refs.items():
+        for ref in items:
+            record_id = found.get((asset_id, ref["source"], ref["external_id"]))
+            if record_id:
+                ref["id"] = record_id
 
 
 def _summary(
@@ -763,100 +763,38 @@ def _summary(
 
 
 #: The asset fields the list filters on (``fields.<name>.value``), in the order the facets answer them.
-FILTER_FIELDS: tuple[str, ...] = ("category", "subcategory", "criticality", "internet_facing")
+FILTER_FIELDS: tuple[str, ...] = ("category", "criticality", "internet_facing")
 
 
 def _field_value(name: str) -> Any:
     return OrganizationAsset.fields[name]["value"].astext
 
 
-def _asset_where(
-    organization_id: uuid.UUID,
-    *,
-    q: str = "",
-    filters: Mapping[str, Sequence[str]] | None = None,
-    skip: str | None = None,
-) -> list[Any]:
-    """The clauses of the asset list: a name substring, then each filter but *skip* (OR within, AND across)."""
-    where: list[Any] = [OrganizationAsset.organization_id == organization_id]
-    if q.strip():
-        where.append(OrganizationAsset.name_key.contains(_key(q)))
-    for name, values in (filters or {}).items():
-        wanted = [str(v) for v in values if str(v).strip()]
-        if not wanted or name == skip:
-            continue
-        if name == "source":
-            where.append(
-                OrganizationAsset.id.in_(
-                    select(OrganizationAssetSource.asset_id).where(
-                        OrganizationAssetSource.organization_id == organization_id,
-                        OrganizationAssetSource.source.in_(wanted),
-                    )
-                )
-            )
-        elif name in FILTER_FIELDS:
-            where.append(_field_value(name).in_(wanted))
-    return where
-
-
-async def asset_facets(
-    db: AsyncSession,
-    organization_id: uuid.UUID,
-    *,
-    q: str = "",
-    filters: Mapping[str, Sequence[str]] | None = None,
-) -> dict[str, list[dict[str, Any]]]:
-    """Each filter's values with their asset count, for the faceted sidebar of the asset list (#1501).
-
-    A facet's counts apply the search and every OTHER facet's picked values, so a count says how many
-    assets picking that value would add (OR within a facet, AND across). A subcategory names its category.
-    """
-    facets: dict[str, list[dict[str, Any]]] = {}
+async def asset_facets(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, list[str]]:
+    """The values the list can be filtered on: each filter field's distinct values, and the sources."""
+    facets: dict[str, list[str]] = {}
     for name in FILTER_FIELDS:
         column = _field_value(name)
-        where = [*_asset_where(organization_id, q=q, filters=filters, skip=name), column.is_not(None), column != ""]
-        if name == "subcategory":
-            parent = _field_value("category")
-            rows = (
-                await db.execute(
-                    select(parent, column, func.count())
-                    .select_from(OrganizationAsset)
-                    .where(*where)
-                    .group_by(parent, column)
-                    .order_by(parent, column)
-                    .limit(MAX_PAGE)
-                )
-            ).all()
-            facets[name] = [
-                {"value": str(value), "count": int(count), "category": str(category or "")}
-                for category, value, count in rows
-            ]
-            continue
         rows = (
             await db.execute(
-                select(column, func.count())
-                .select_from(OrganizationAsset)
-                .where(*where)
-                .group_by(column)
+                select(column)
+                .where(OrganizationAsset.organization_id == organization_id, column.is_not(None), column != "")
+                .distinct()
                 .order_by(column)
                 .limit(MAX_PAGE)
             )
         ).all()
-        facets[name] = [{"value": str(value), "count": int(count)} for value, count in rows]
-    kept = select(OrganizationAsset.id).where(*_asset_where(organization_id, q=q, filters=filters, skip="source"))
+        facets[name] = [str(value) for (value,) in rows]
     sources = (
         await db.execute(
-            select(OrganizationAssetSource.source, func.count(func.distinct(OrganizationAssetSource.asset_id)))
-            .where(
-                OrganizationAssetSource.organization_id == organization_id,
-                OrganizationAssetSource.asset_id.in_(kept),
-            )
-            .group_by(OrganizationAssetSource.source)
+            select(OrganizationAssetSource.source)
+            .where(OrganizationAssetSource.organization_id == organization_id)
+            .distinct()
             .order_by(OrganizationAssetSource.source)
             .limit(MAX_PAGE)
         )
     ).all()
-    facets["source"] = [{"value": str(value), "count": int(count)} for value, count in sources]
+    facets["source"] = [str(value) for (value,) in sources]
     return facets
 
 
@@ -876,7 +814,24 @@ async def list_assets(
     one of the sources given; an empty list filters nothing.
     """
     limit, offset = _limit(limit), max(0, int(offset or 0))
-    where = _asset_where(organization_id, q=q, filters=filters)
+    where: list[Any] = [OrganizationAsset.organization_id == organization_id]
+    if q.strip():
+        where.append(OrganizationAsset.name_key.contains(_key(q)))
+    for name, values in (filters or {}).items():
+        wanted = [str(v) for v in values if str(v).strip()]
+        if not wanted:
+            continue
+        if name == "source":
+            where.append(
+                OrganizationAsset.id.in_(
+                    select(OrganizationAssetSource.asset_id).where(
+                        OrganizationAssetSource.organization_id == organization_id,
+                        OrganizationAssetSource.source.in_(wanted),
+                    )
+                )
+            )
+        elif name in FILTER_FIELDS:
+            where.append(_field_value(name).in_(wanted))
     total = (await db.execute(select(func.count()).select_from(OrganizationAsset).where(*where))).scalar() or 0
     assets = (
         (
@@ -911,6 +866,7 @@ async def list_assets(
             if source not in names:
                 names.append(source)
             refs.setdefault(asset_id, []).append({"source": source, "external_id": external_id})
+        await _attach_record_ids(db, organization_id, ids, refs)
         for asset_id, count in (
             await db.execute(
                 select(OrganizationAssetSoftware.asset_id, func.count())
@@ -996,6 +952,8 @@ async def get_asset(
         .all()
     )
     names = list(dict.fromkeys(r.source for r in records))
+    detail_refs = {asset.id: [{"source": r.source, "external_id": r.external_id} for r in records]}
+    await _attach_record_ids(db, organization_id, [asset.id], detail_refs)
     return {
         **_summary(asset, names, int(soft_total)),
         "fields": asset.fields or {},
@@ -1005,13 +963,12 @@ async def get_asset(
         "possible_matches": asset.possible_matches or [],
         "records": [
             {
-                "source": r.source,
-                "external_id": r.external_id,
+                **ref,
                 "identifiers": r.identifiers or {},
                 "fields": r.fields or {},
                 "last_seen": r.last_seen_at.isoformat() if r.last_seen_at else None,
             }
-            for r in records
+            for r, ref in zip(records, detail_refs[asset.id], strict=True)
         ],
         "software": {
             "items": [_software_dict(s) for s in software],
