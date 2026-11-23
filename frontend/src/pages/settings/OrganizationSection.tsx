@@ -63,7 +63,6 @@ import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
-  type OpenCrqLevel,
   type OpenCrqSyncResponse,
   type OrganizationDraftResponse,
   type OrganizationProfile,
@@ -110,7 +109,6 @@ import { ProviderLogo } from "@/components/ui/provider-logo";
 import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
 import { OrganizationContextInjectionCard } from "./OrganizationContextInjectionCard";
-import { OrganizationCrownJewelsRestoreDialog } from "./OrganizationCrownJewelsRestoreDialog";
 import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
@@ -124,7 +122,6 @@ import {
   type ProfileTab,
   changedTabs,
   isInventoryTab,
-  profileCardHref,
   profileFieldHref,
   groupByTab,
   parseProfileCard,
@@ -161,6 +158,7 @@ type ListKey = (typeof LIST_KEYS)[number];
 const EXPOSURE_TITLES = {
   assets_exposure: "Assets and exposure",
   asset_groups: "Asset groups",
+  prioritization_policy: "Prioritization policy",
   accepted_risks: "Accepted risks",
   enterprise_knowledge: "Enterprise knowledge",
 } as const;
@@ -190,14 +188,6 @@ const JEWEL_STEP_ASIDE = "6xl" as const;
 
 /** The values of the crown jewels' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
-/** The OpenCRQ assets read, counted by criticality, when none reaches the check's threshold (#1558). @i18n-keys */
-const OPENCRQ_COUNT_LABELS = {
-  unknown: "{count, plural, one {# unrated} other {# unrated}}",
-  low: "{count, plural, one {# low} other {# low}}",
-  medium: "{count, plural, one {# medium} other {# medium}}",
-  high: "{count, plural, one {# high} other {# high}}",
-  very_high: "{count, plural, one {# very high} other {# very high}}",
-} as const;
 /**
  * An amount field: the room for its unit goes on the inner input element (the
  * library's className lands on the wrapper), so the field keeps the column
@@ -205,15 +195,16 @@ const OPENCRQ_COUNT_LABELS = {
  */
 const AMOUNT_INPUT_CLASS = "[&_input]:pr-36";
 
-/** CTEM > Inventory, where the technology and exposure cards live (#1178). */
-const INVENTORY_HOME = "/ctem/inventory";
-
 /**
  * The cards of the profile one page mounts alone (#1178, Sam 22 Nov 2026): CTEM > Inventory edits the tech stack,
  * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
-export type OrganizationEmbed = { cards: readonly ProfileCard[] };
+export type OrganizationEmbed = {
+  cards: readonly ProfileCard[];
+  /** A reader's view (#1511): the cards at rest, no Edit (the outside lens and evidence health cards gate theirs too). */
+  readOnly?: boolean;
+};
 
 export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
   const { t_i18n, locale, intl } = useFormatter();
@@ -228,7 +219,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const fieldId = useId();
   const nf = useNumberFormat();
   const { toast } = useToast();
-  const synced = useSyncedRemoval();
+  // A reader (embed.readOnly) never reads an administrators-only route: a 403 would reach the page's error
+  // boundary and replace the whole Inventory page (UX r1 B1 on #1540).
+  const reader = embed?.readOnly === true;
+  const synced = useSyncedRemoval(!reader);
   const { data, isLoading } = useOrganizationContext();
   // In the reader's locale, as every date next to a DataTable (data-table-locale-dates gate).
   const savedAt = data?.created_at ? intl.formatDate(new Date(data.created_at), { dateStyle: "medium", timeStyle: "short" }) : "";
@@ -236,7 +230,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const sync = useOpenCrqSync();
   // One mechanism for OpenCRQ (#1134 S2): once crown jewels sync from OpenCRQ, the card's OpenCRQ
   // button runs that sync (its filters, links and direction), never a second set of rules.
-  const { data: profileSyncs } = useOrganizationSyncs("profile");
+  const { data: profileSyncs } = useOrganizationSyncs("profile", !reader);
   const opencrqJewelSync = (Array.isArray(profileSyncs) ? profileSyncs : []).find((entry) => entry.section === "crown_jewels" && entry.source === "opencrq");
   const runSyncNow = useRunOrganizationSync();
   const drafting = useDraftOrganizationContext();
@@ -245,8 +239,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
   const [draftFailed, setDraftFailed] = useState(false);
   const [plan, setPlan] = useState<OpenCrqSyncResponse | null>(null);
-  // "Restore from a past version" on the crown-jewel card (#1558).
-  const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
   const [invalidField, setInvalidField] = useState<AmountField | null>(null);
   // The exposure rows are checked live once a Save was refused for them (UX B3), and the API's refusal is drawn on its row.
@@ -269,13 +261,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // returns to the previous one; the query (?setup=1) is kept.
   const location = useLocation();
   const navigate = useNavigate();
-  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : profileTabOfPath(location.pathname);
-  // An old link to the Technology or Exposure tab of Settings opens CTEM > Inventory, where those cards live (#1178).
-  useEffect(() => {
-    if (embed || !isInventoryTab(tab)) return;
-    const card = parseProfileCard(new URLSearchParams(location.search).get(PROFILE_CARD_PARAM));
-    navigate(card ? profileCardHref(card) : tab === "technology" ? `${INVENTORY_HOME}/tech-stack` : INVENTORY_HOME, { replace: true });
-  }, [embed, tab, location.search, navigate]);
+  // Settings draws its own tabs only: a tab whose cards live on CTEM > Inventory reads as an unknown tab, the first one.
+  const pathTab = profileTabOfPath(location.pathname);
+  const tab = embed ? PROFILE_CARD_TAB[embed.cards[0]] : isInventoryTab(pathTab) ? PROFILE_TABS[0] : pathTab;
   const [focusRetry, setFocusRetry] = useState(0);
   // The card landing in progress (landOnCard), ended by the next landing or when the page unmounts.
   const endCardLanding = useRef<(() => void) | null>(null);
@@ -367,7 +355,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   }, [locale]);
   const countryName = (code: string) => regionNames?.of(code) ?? code;
   // Read in view mode too (#9615): a saved PIR is named, never shown by its id; cached 5 minutes.
-  const pirs = useOrganizationPirs(true);
+  const pirs = useOrganizationPirs(!reader);
   const pirText = usePirText();
   const savedPirs = useMemo(
     () => pirLabels(current?.pir_ids ?? [], current?.pir_names ?? {}, pirs.data, pirs.isLoading),
@@ -605,6 +593,18 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   useEffect(() => {
     if (!requestedCard || !data || !show(requestedCard)) return;
     const cardTab = PROFILE_CARD_TAB[requestedCard];
+    // A card Settings does not draw reads as an unknown card: the parameter is dropped, nothing opens.
+    if (!embed && isInventoryTab(cardTab)) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete(PROFILE_CARD_PARAM);
+          return next;
+        },
+        { replace: true },
+      );
+      return;
+    }
     if (!embed && cardTab !== tab) {
       navigate({ pathname: profileTabPath(cardTab), search: location.search }, { replace: true });
       return;
@@ -741,10 +741,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     });
   };
 
-  // The threshold of the check (#1558): the one the last plan answered (the saved sync's filter by default), or the level picked.
-  const runSync = (apply: boolean, level?: OpenCrqLevel) =>
+  const runSync = (apply: boolean) =>
     sync.mutate(
-      { apply, ...((level ?? plan?.plan.min_criticality) ? { min_criticality: level ?? plan?.plan.min_criticality } : {}) },
+      { apply },
       {
         onSuccess: (result) => {
           setPlan(result.applied ? null : result);
@@ -1383,7 +1382,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     ) : null;
   /** An exposure card's Edit (read mode, #12256 slice 2), or nothing while the whole form or this card is open. */
   const exposureEditAction = (card: ExposureCard) =>
-    !editing && exposureEdit?.card !== card ? (
+    !embed?.readOnly && !editing && exposureEdit?.card !== card ? (
       <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
         <Button
           variant="secondary"
@@ -1463,14 +1462,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     !plan.plan.pulled_from_opencrq.length &&
     !plan.plan.ambiguous.length &&
     !plan.plan.not_in_opencrq.length;
-  // Nothing to link and no asset at the threshold (#1558): the plan says so with the counts, never "already agree".
-  const noneRated = !!planEmpty && (current?.crown_jewels.length ?? 0) === 0 && plan?.plan.assets_read !== undefined;
-  const ratedCounts = plan?.plan.by_criticality
-    ? (Object.entries(plan.plan.by_criticality) as [keyof typeof OPENCRQ_COUNT_LABELS, number][])
-        .filter(([level]) => level in OPENCRQ_COUNT_LABELS)
-        .map(([level, count]) => t_i18n(OPENCRQ_COUNT_LABELS[level], { count }))
-        .join(", ")
-    : "";
 
   const missing = data?.missing_fields ?? [];
   // Per tab (#12329): the unsaved changes (the whole form, or the card in edit alone), the fields
@@ -1537,6 +1528,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     current && (
       <OrganizationExposureCards
         cards={cards}
+        readOnly={reader}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1552,7 +1544,13 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         editAction={exposureEditAction}
         saveBar={(card) =>
           !editing && exposureEdit?.card === card ? (
-            <SettingsSaveBar dirty={exposureDirty(exposureEdit)} saving={save.isPending} saveDisabled={!exposureDirty(exposureEdit)} onSave={saveExposure} onCancel={stopExposureEdit} />
+            <SettingsSaveBar
+              dirty={exposureDirty(exposureEdit)}
+              saving={save.isPending}
+              saveDisabled={!exposureDirty(exposureEdit) || scoreInvalid}
+              onSave={saveExposure}
+              onCancel={stopExposureEdit}
+            />
           ) : null
         }
         fold={(section) =>
@@ -1773,15 +1771,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           >
             <DetailTabs tabs={SETTINGS_PROFILE_TABS.filter((key) => key !== "knowledge").map(profileTab)} active={tab} ariaLabel={t_i18n("Organization profile")} testId="settings.organization.tabs" />
           </div>
-          )}
-          {/* The Technology and Exposure cards moved to CTEM > Inventory (#1178, Sam 22 Nov 2026): one line points there. */}
-          {full && tab !== "knowledge" && (
-            <div data-testid="settings.organization.inventory-pointer" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
-              <p>{t_i18n("The tech stack, AI systems, assets, asset groups and exposure now live in CTEM > Inventory.")}</p>
-              <Button variant="secondary" onClick={() => navigate(INVENTORY_HOME)}>
-                {t_i18n("Open the inventory")}
-              </Button>
-            </div>
           )}
           {tab === "identity" && (
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.identity)} className="space-y-4" data-testid="settings.organization.panel-identity">
@@ -2106,21 +2095,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                     </Button>
                   )}
                 </Tip>
-                {!listOpen("crown_jewels") && (
-                  // An icon button: a third labelled action wraps the card title at 1080 (UX round 1 B1, #1567).
-                  <Tip content={editing || cardOpen ? t_i18n("Save or cancel the edit first.") : t_i18n("Restore from a past version")} wrap="auto">
-                    <Button
-                      variant="secondary"
-                      size="icon"
-                      aria-label={t_i18n("Restore from a past version")}
-                      data-testid="settings.organization.crown-jewels-restore"
-                      disabled={editing || cardOpen !== null}
-                      onClick={() => setRestoreOpen(true)}
-                    >
-                      <Icon name="rotate-ccw" size={16} aria-hidden />
-                    </Button>
-                  </Tip>
-                )}
                 {listEditAction("crown_jewels")}
                 {pasteAction("crown_jewels")}
                 {listOpen("crown_jewels") && (
@@ -2165,17 +2139,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               ))}
             {plan && (
               <div data-testid="settings.organization.opencrq-plan" className="mt-3 space-y-1.5 rounded-sm border border-elevation-subtle p-3">
-                {noneRated ? (
-                  <div className="space-y-1" data-testid="settings.organization.opencrq-none-rated">
-                    <p>
-                      {t_i18n("{count, plural, =0 {No OpenCRQ supporting asset is rated {threshold} or above: no asset read.} one {No OpenCRQ supporting asset is rated {threshold} or above: # asset read.} other {No OpenCRQ supporting asset is rated {threshold} or above: # assets read.}}", {
-                        count: plan.plan.assets_read ?? 0,
-                        threshold: t_i18n(MIN_CRITICALITY_LABELS[plan.plan.min_criticality ?? "high"]),
-                      })}
-                    </p>
-                    {ratedCounts && <p className="text-default-secondary">{t_i18n("By criticality: {counts}", { counts: ratedCounts })}</p>}
-                  </div>
-                ) : planEmpty ? (
+                {planEmpty ? (
                   <p>{t_i18n("The crown jewels and OpenCRQ already agree.")}</p>
                 ) : (
                   <ul className="list-disc space-y-1 pl-5">
@@ -2199,31 +2163,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 {plan.errors.map((error) => (
                   <p key={error} className="text-default-secondary">{error}</p>
                 ))}
-                {plan.plan.min_criticality && (
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <span id={`${fieldId}-opencrq-threshold`} className="content-compact text-default-secondary">
-                      {t_i18n("Pull OpenCRQ assets rated")}
-                    </span>
-                    <div className="w-40">
-                      <Select
-                        value={plan.plan.min_criticality}
-                        disabled={editing || sync.isPending}
-                        onValueChange={(value) => runSync(false, value as OpenCrqLevel)}
-                      >
-                        <SelectTrigger aria-labelledby={`${fieldId}-opencrq-threshold`} data-testid="settings.organization.opencrq-threshold">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(MIN_CRITICALITY_LABELS) as OpenCrqLevel[]).map((level) => (
-                            <SelectItem key={level} value={level}>
-                              {t_i18n("{level} or above", { level: t_i18n(MIN_CRITICALITY_LABELS[level]) })}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
                 <div className="flex gap-2 pt-1">
                   {!planEmpty && (
                     <Button className="gap-1.5" disabled={editing || sync.isPending} onClick={() => runSync(true)}>
@@ -2236,7 +2175,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                 </div>
               </div>
             )}
-            <OrganizationCrownJewelsRestoreDialog open={restoreOpen} onOpenChange={setRestoreOpen} currentVersion={data?.version ?? null} />
           </SettingsCard>
 
           {/* What the organization ships (#1432), apart from the tech stack it runs: CTEM resolves a vulnerability on one to its repositories. */}

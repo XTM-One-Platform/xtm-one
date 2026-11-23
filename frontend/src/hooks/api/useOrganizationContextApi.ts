@@ -105,15 +105,7 @@ interface OpenCrqSyncPlan {
   not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
   /** Whether the profile and OpenCRQ agree (#1134 S2): the only answer that may say so; absent from an older backend. */
   in_sync?: boolean;
-  /** The lowest OpenCRQ criticality the plan pulled (#1558). */
-  min_criticality?: OpenCrqLevel;
-  /** The supporting assets read, and their count per OpenCRQ criticality ("unknown" first) (#1558). */
-  assets_read?: number;
-  by_criticality?: Partial<Record<"unknown" | OpenCrqLevel, number>>;
 }
-
-/** OpenCRQ's criticality levels, lowest first: the thresholds the crown-jewel check accepts (#1558). */
-export type OpenCrqLevel = "low" | "medium" | "high" | "very_high";
 
 export interface OpenCrqSyncResponse {
   applied: boolean;
@@ -603,10 +595,12 @@ const SYNCS = [...KEY, "syncs"] as const;
 /** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
 export type OrganizationSyncScope = "profile" | "inventory" | "";
 
-export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
+/** `enabled` false for a reader: the syncs API is for administrators only (403 otherwise, UX r1 B1 on #1540). */
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "", enabled = true) {
   return useQuery<OrganizationSync[]>({
     queryKey: [...SYNCS, scope],
     queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
+    enabled,
     // The list says its own failure with a retry; it never takes the page down.
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
@@ -861,57 +855,10 @@ export function useCreateOrganizationFillAgent() {
 
 export function useOpenCrqSync() {
   const qc = useQueryClient();
-  // min_criticality left out: the saved crown-jewel sync's filter, else high (#1558).
-  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean; min_criticality?: OpenCrqLevel }>({
+  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean }>({
     mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
     onSuccess: (result) => {
       if (result.applied) qc.invalidateQueries({ queryKey: KEY });
-    },
-  });
-}
-
-/** A saved version of the profile, as the history lists it (#1473, #1558). */
-export interface OrganizationContextVersionSummary {
-  version: number;
-  source: string;
-  created_at: string;
-  author_user_id: string | null;
-  missing_fields: string[];
-  /** The crown jewels the version holds; absent from an older backend. */
-  crown_jewels?: number;
-}
-
-/** The saved versions, newest first (administrators); read only while the restore dialog is open. */
-export function useOrganizationContextVersions(enabled: boolean) {
-  return useQuery<OrganizationContextVersionSummary[]>({
-    queryKey: [...KEY, "versions"],
-    queryFn: () => api.get("/organization-context/versions?limit=100"),
-    enabled,
-  });
-}
-
-/** One saved version whole, for the preview of what a restore brings back. */
-export function useOrganizationContextVersion(version: number | null) {
-  return useQuery<OrganizationContextResponse>({
-    queryKey: [...KEY, "versions", version],
-    queryFn: () => api.get(`/organization-context/versions/${version}`),
-    enabled: version !== null,
-  });
-}
-
-/**
- * Restores *fields* of a past version as a new version (#1473): the other fields stay as they are,
- * and a version saved since *based_on_version* answers 409, nothing written.
- */
-export function useRestoreOrganizationContextVersion() {
-  const qc = useQueryClient();
-  return useMutation<OrganizationContextResponse, Error, { version: number; fields: string[]; based_on_version: number | null }>({
-    mutationFn: ({ version, ...body }) => api.post(`/organization-context/versions/${version}/restore`, body),
-    // The dialog shows the refusal inline (a 409 offers a reload of the versions): no global toast.
-    meta: { suppressGlobalErrorToast: true },
-    onSuccess: (saved) => {
-      qc.setQueryData(KEY, saved);
-      qc.invalidateQueries({ queryKey: KEY });
     },
   });
 }
