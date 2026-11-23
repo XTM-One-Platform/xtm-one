@@ -38,6 +38,11 @@ describe("asset facet value order (#1501 UX r1 B3)", () => {
     expect(orderFacetValues("criticality", values, identity).map((v) => v.value)).toEqual(["very_high", "high", "medium", "low", "unknown"]);
   });
 
+  test("lists internet facing as Yes, No, Unknown, never by key (UX r2 B1)", () => {
+    const values = ["no", "unknown", "yes"].map((value) => ({ value, count: 1 }));
+    expect(orderFacetValues("internet_facing", values, identity).map((v) => v.value)).toEqual(["yes", "no", "unknown"]);
+  });
+
   test("sorts categories by their translated label and keeps the unclassified one last", () => {
     const labels: Record<string, string> = { host: "Host", generic_asset: "Other asset (to classify)", ai_target: "AI system", web_application: "Web application" };
     const values = ["generic_asset", "web_application", "host", "ai_target"].map((value) => ({ value, count: 1 }));

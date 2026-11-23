@@ -108,20 +108,30 @@ export function criticalityShortLabel(t: Translate, value: string | null | undef
 /** OpenAEV's criticality scale, most severe first: the order a reader expects (#1501 UX r1 B3). */
 const CRITICALITY_ORDER: readonly string[] = ["very_high", "high", "medium", "low", "unknown"];
 
+/** Internet facing as a reader asks it: Yes, No, then Unknown last, as Criticality ends (#1501 UX r2 B1). */
+const INTERNET_FACING_ORDER: readonly string[] = ["yes", "no", "unknown"];
+
+/** The enum facets listed on their own scale, never by key. */
+const SCALE_ORDERS: Readonly<Record<string, readonly string[]>> = {
+  criticality: CRITICALITY_ORDER,
+  internet_facing: INTERNET_FACING_ORDER,
+};
+
 /** The category a facet lists last, whatever its translated label: the assets still to classify. */
 const UNCLASSIFIED_CATEGORY = "generic_asset";
 
 /**
- * Facet values in the order a first-time reader expects, never by key (#1501 UX r1 B3): criticality on its scale,
- * most severe first; categories by their translated label with "Other asset" last; a value outside the scale
- * after the known ones. Every other facet keeps the order it came in.
+ * Facet values in the order a first-time reader expects, never by key (#1501 UX r1 B3, r2 B1): criticality on its
+ * scale, most severe first; internet facing Yes, No, Unknown; categories by their translated label with "Other
+ * asset" last; a value outside a scale after the known ones. Every other facet keeps the order it came in.
  */
 export function orderFacetValues<T extends { value: string }>(facet: string, values: readonly T[], label: (value: string) => string): T[] {
   const out = [...values];
-  if (facet === "criticality") {
+  const scale = SCALE_ORDERS[facet];
+  if (scale) {
     const rank = (v: string) => {
-      const i = CRITICALITY_ORDER.indexOf(v.toLowerCase());
-      return i === -1 ? CRITICALITY_ORDER.length : i;
+      const i = scale.indexOf(v.toLowerCase());
+      return i === -1 ? scale.length : i;
     };
     return out.sort((a, b) => rank(a.value) - rank(b.value));
   }
