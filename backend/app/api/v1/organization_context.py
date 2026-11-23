@@ -303,7 +303,8 @@ async def save_organization_context(
     """Save *body.profile* as the next version (administrators); 422 names the bad field."""
     submitted = dict(body.profile or {})
     # #1383: the reference exchange rates are set by API or by an agent, not by the
-    # settings form; #1432: the shipped products likewise until a form sends them.
+    # settings form; #1432: the form sends the shipped products (an empty list clears
+    # them), and a client that leaves the key out keeps the stored ones.
     # A save that does not send one keeps the stored value.
     kept = [key for key in ("fx_rates", "shipped_products") if key not in submitted]
     if kept:
@@ -672,6 +673,95 @@ async def list_tech_stack_inventory(
         return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
     page = await tech_stack_inventory(db, org, q=q, offset=offset, limit=limit)
     return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/software", response_model=CanonicalAssetsPage)
+async def list_organization_software(
+    q: str = Query("", max_length=200),
+    type: str = Query("", max_length=30),
+    vendor: str = Query("", max_length=200),
+    source: str = Query("", max_length=80),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
+    unknown_version: bool | None = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> CanonicalAssetsPage:
+    """The organization's software (#1495): per software its type, CPE and its state, version and asset counts."""
+    from app.services.organization_software_store import list_software
+
+    org = await _built_store(db)
+    if org is None:
+        return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
+    page = await list_software(
+        db,
+        org,
+        q=q,
+        software_type=type,
+        vendor=vendor,
+        source=source,
+        origin=origin,
+        cpe_state=cpe_state,
+        unknown_version=unknown_version,
+        offset=offset,
+        limit=limit,
+    )
+    return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/software/versions/{version_id}/assets", response_model=CanonicalAssetsPage)
+async def list_assets_of_software_version(
+    version_id: uuid.UUID,
+    through_dependencies: bool = Query(True),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> CanonicalAssetsPage:
+    """The assets where a software version is present, directly or through a software that depends on it."""
+    from app.services.organization_software_store import assets_of_version
+
+    org = await _built_store(db)
+    page = (
+        await assets_of_version(
+            db, org, version_id, through_dependencies=through_dependencies, offset=offset, limit=limit
+        )
+        if org is not None
+        else None
+    )
+    if page is None:
+        raise HTTPException(status_code=404, detail="Software version not found")
+    return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/software/{software_id}")
+async def get_organization_software(
+    software_id: uuid.UUID,
+    installations_offset: int = Query(0, ge=0),
+    installations_limit: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One software: its versions with asset counts, its installations, what it depends on and what uses it."""
+    from app.services.organization_software_store import get_software
+
+    org = await _built_store(db)
+    found = (
+        await get_software(
+            db,
+            org,
+            software_id,
+            installations_offset=installations_offset,
+            installations_limit=installations_limit,
+        )
+        if org is not None
+        else None
+    )
+    if found is None:
+        raise HTTPException(status_code=404, detail="Software not found")
+    return found
 
 
 class AssetDecisionRecord(BaseModel):
