@@ -21219,7 +21219,7 @@
   "It is off and not set up.": "It is off and not set up.",
   "The fleet was not reset": "The fleet was not reset",
   "Reset {name} to its factory state?": "Reset {name} to its factory state?",
-  "The fleet goes back to what a fresh install ships: off, not set up, with no integration bound to its agents.": "The fleet goes back to what a fresh install ships: off, not set up, with no integration bound to its agents.",
+  "The fleet goes back to what a fresh install ships: off, not set up, its agents bound only to the integrations it ships with.": "The fleet goes back to what a fresh install ships: off, not set up, its agents bound only to the integrations it ships with.",
   "Reading what will be reset…": "Reading what will be reset…",
   "The fleet is already in its factory state.": "The fleet is already in its factory state.",
   "Run history, cases and findings, the audit trail and the workspace.": "Run history, cases and findings, the audit trail and the workspace.",

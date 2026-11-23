@@ -21219,7 +21219,7 @@
   "It is off and not set up.": "Está desactivada y sin configurar.",
   "The fleet was not reset": "La flota no se restableció",
   "Reset {name} to its factory state?": "¿Restablecer {name} a su estado de fábrica?",
-  "The fleet goes back to what a fresh install ships: off, not set up, with no integration bound to its agents.": "La flota vuelve a lo que entrega una instalación nueva: desactivada, sin configurar y sin ninguna integración vinculada a sus agentes.",
+  "The fleet goes back to what a fresh install ships: off, not set up, its agents bound only to the integrations it ships with.": "La flota vuelve a lo que entrega una instalación nueva: desactivada, sin configurar y con sus agentes vinculados solo a las integraciones que incluye.",
   "Reading what will be reset…": "Leyendo lo que se restablecerá…",
   "The fleet is already in its factory state.": "La flota ya está en su estado de fábrica.",
   "Run history, cases and findings, the audit trail and the workspace.": "El historial de ejecuciones, los casos y hallazgos, el registro de auditoría y el espacio de trabajo.",

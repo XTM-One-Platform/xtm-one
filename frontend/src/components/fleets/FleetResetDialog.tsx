@@ -14,17 +14,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Reset a built-in fleet to its factory state (#1508): the header menu's
- * "Reset to factory state" opens this dialog. It reads the dry run's counts
- * (what will be reset), says what is kept, and enables Reset once the fleet's
- * name is typed exactly. Administrators only; the backend refuses a custom
- * fleet and a reset during an emergency stop (the refusal is shown).
+ * Reset a built-in fleet to its factory state (#1508): the header's
+ * "Reset to factory state" opens this dialog. It is the shared typed-name
+ * destructive confirmation (`ConfirmDeleteDialog`, UX round 1 B2) with the dry
+ * run's counts (what will be reset) and what is kept in its body; the reset
+ * enables once the fleet's name is typed exactly. A refusal or a failure is
+ * shown inline under the field, never in a toast alone (UX round 1 B3).
+ * Administrators only; the backend refuses a custom fleet and a reset during
+ * an emergency stop.
  */
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { useToast } from "@/components/ui/toast";
 import { useFleetReset, useFleetResetPlan } from "@/hooks/api/useFleetApi";
 import { useFormatter } from "@/i18n";
@@ -45,91 +46,72 @@ export function FleetResetDialog({
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const plan = useFleetResetPlan(fleetId, open);
   const reset = useFleetReset(fleetId);
   const lines = plan.data ? resetPlanLines(plan.data, t_i18n) : [];
   const nothing = !!plan.data && lines.length === 0;
-  const matches = typed.trim() === fleetName;
 
   const close = (next: boolean) => {
-    if (!next) setTyped("");
+    if (!next) setError(null);
     onOpenChange(next);
   };
 
   const confirm = async () => {
+    setError(null);
     try {
-      await reset.mutateAsync(typed.trim());
+      await reset.mutateAsync(fleetName);
       toast({ title: t_i18n("Fleet reset to its factory state"), description: t_i18n("It is off and not set up."), variant: "success" });
       close(false);
     } catch (err) {
-      toast({ title: t_i18n("The fleet was not reset"), description: fleetRefusalMessage(err, t_i18n), variant: "error" });
+      // Inline, under the field: the reason stays on screen until the next try or the close.
+      setError(`${t_i18n("The fleet was not reset")}: ${fleetRefusalMessage(err, t_i18n)}`);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-w-lg" data-testid="fleet-reset-dialog">
-        <DialogHeader>
-          <DialogTitle>{t_i18n("Reset {name} to its factory state?", { name: fleetName })}</DialogTitle>
-          <DialogDescription>
-            {t_i18n("The fleet goes back to what a fresh install ships: off, not set up, with no integration bound to its agents.")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          {plan.isLoading ? (
-            <p className="content-compact text-default-secondary">{t_i18n("Reading what will be reset…")}</p>
-          ) : plan.isError ? (
-            <p role="alert" className="content-compact text-feedback-error-primary">
-              {fleetRefusalMessage(plan.error, t_i18n)}
-            </p>
-          ) : nothing ? (
-            <p className="content-compact text-default-secondary">{t_i18n("The fleet is already in its factory state.")}</p>
-          ) : (
-            <div>
-              <p className="content-compact font-medium text-default-primary">{t_i18n("What is reset")}</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5 content-compact text-default-secondary" data-testid="fleet-reset-plan">
-                {lines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+    <ConfirmDeleteDialog
+      open={open}
+      onOpenChange={close}
+      name={fleetName}
+      title={t_i18n("Reset {name} to its factory state?", { name: fleetName })}
+      description={t_i18n("The fleet goes back to what a fresh install ships: off, not set up, its agents bound only to the integrations it ships with.")}
+      inputLabel={t_i18n("Type {name} to confirm", { name: fleetName })}
+      inputAriaLabel={t_i18n("Type {name} to confirm", { name: fleetName })}
+      confirmLabel={t_i18n("Reset fleet")}
+      cancelLabel={t_i18n("Cancel")}
+      confirmDisabled={plan.isLoading || plan.isError || nothing}
+      pending={reset.isPending}
+      error={error}
+      closeOnConfirm={false}
+      onConfirm={() => void confirm()}
+    >
+      <div className="space-y-3" data-testid="fleet-reset-dialog">
+        {plan.isLoading ? (
+          <p className="content-compact text-default-secondary">{t_i18n("Reading what will be reset…")}</p>
+        ) : plan.isError ? (
+          <p role="alert" className="content-compact text-feedback-error-primary">
+            {fleetRefusalMessage(plan.error, t_i18n)}
+          </p>
+        ) : nothing ? (
+          <p className="content-compact text-default-secondary">{t_i18n("The fleet is already in its factory state.")}</p>
+        ) : (
           <div>
-            <p className="content-compact font-medium text-default-primary">{t_i18n("What is kept")}</p>
-            <p className="mt-1 content-compact text-default-secondary">
-              {t_i18n("Run history, cases and findings, the audit trail and the workspace.")}
-            </p>
+            <p className="content-compact font-medium text-default-primary">{t_i18n("What is reset")}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 content-compact text-default-secondary" data-testid="fleet-reset-plan">
+              {lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
           </div>
-          <div className="space-y-1.5">
-            <label htmlFor="fleet-reset-confirm" className="content-compact text-default-secondary">
-              {t_i18n("Type {name} to confirm", { name: fleetName })}
-            </label>
-            <Input
-              id="fleet-reset-confirm"
-              aria-label={t_i18n("Type {name} to confirm", { name: fleetName })}
-              autoComplete="off"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={fleetName}
-            />
-          </div>
+        )}
+        <div>
+          <p className="content-compact font-medium text-default-primary">{t_i18n("What is kept")}</p>
+          <p className="mt-1 content-compact text-default-secondary">
+            {t_i18n("Run history, cases and findings, the audit trail and the workspace.")}
+          </p>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => close(false)}>
-            {t_i18n("Cancel")}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={!matches || plan.isLoading || plan.isError || nothing || reset.isPending}
-            onClick={confirm}
-            data-testid="fleet-reset-confirm"
-          >
-            {t_i18n("Reset fleet")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </ConfirmDeleteDialog>
   );
 }

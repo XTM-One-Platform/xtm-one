@@ -452,6 +452,9 @@ export default function FleetPage() {
       disabledReason: aiOffReason ?? undefined,
     }]),
     { id: "settings", label: t_i18n("Settings"), icon: Settings2, onSelect: openSettings },
+  ];
+  // Rows with no button in the wide row: the menu keeps them at 1280 px and above too (#1508 UX r1 B1, A4).
+  const menuOnlyActions: OverflowMenuItem[] = [
     // The header's primary is "Set up" while nothing is on; once something runs, the setup stays here (#1151).
     ...(canControlFleet(fleet, isAdmin) && (health?.automations?.enabled ?? 0) > 0
       ? [{ id: "run-setup-again", label: t_i18n("Run setup again"), icon: ListChecks, onSelect: () => setSetupOpen(true) }]
@@ -598,7 +601,7 @@ export default function FleetPage() {
                 </Button>
               </EntityHeaderWideOnly>
             )}
-            <EntityHeaderMoreActions items={moreActions} always={aiOpen} />
+            <EntityHeaderMoreActions items={moreActions} menuOnly={menuOnlyActions} always={aiOpen} />
             {/* One setup per fleet (#1151): the primary opens it, the CTEM loop fleet's own guided setup included. */}
             <FleetHeaderActions
               fleetId={fleet.id}
