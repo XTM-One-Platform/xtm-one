@@ -1312,13 +1312,15 @@ def stub_opencrq_sync(environ: dict) -> bool:
 
     agreed = [False]
 
-    async def run_sync(db, *, user_id, apply, tenant_id=""):
+    async def run_sync(db, *, user_id, apply, tenant_id="", min_criticality=""):
         profile = organization_context.parse_profile({"crown_jewels": LAB_OPENCRQ_JEWELS})
         if not apply and agreed[0]:
             agreed[0] = False
             return organization_context_opencrq.SyncPlan(profile=profile), []
         agreed[0] = bool(apply)
-        return organization_context_opencrq.plan_sync(profile, [dict(a) for a in LAB_OPENCRQ_ASSETS]), []
+        threshold = min_criticality or organization_context_opencrq.DEFAULT_MIN_CRITICALITY
+        assets = [dict(a) for a in LAB_OPENCRQ_ASSETS]
+        return organization_context_opencrq.plan_sync(profile, assets, threshold), []
 
     organization_context_opencrq.run_sync = run_sync
     return True
