@@ -110,11 +110,6 @@ export function testSignal(now: Date): CtemSignalCreate {
   };
 }
 
-/** The command center with the loop trace of one signal open (`?loop=signal:<id>`). */
-export function signalTracePath(signalId: string): string {
-  return `/?loop=${encodeURIComponent(`signal:${signalId}`)}`;
-}
-
 /**
  * Whether the CTEM loop runs: at least one automation of the fleet is on, as
  * the enable step reads it (`automations_enabled`). The end of the setup says

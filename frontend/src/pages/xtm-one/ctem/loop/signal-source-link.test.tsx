@@ -55,7 +55,7 @@ describe("signal source link", () => {
   it("an OpenAEV regression signal links its source run, not an evidence row", async () => {
     get.mockResolvedValue(regression);
     renderWithProviders(
-      <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+      <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
         <SignalTraceBody id={ID} />
       </MemoryRouter>,
     );
@@ -85,7 +85,7 @@ describe("signal source link", () => {
       ),
     );
     renderWithProviders(
-      <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+      <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
         <SignalTraceBody id={ID} />
       </MemoryRouter>,
     );
@@ -99,7 +99,7 @@ describe("signal source link", () => {
   it("draws no pivot when OpenCTI is not connected", async () => {
     get.mockImplementation((path: string) => Promise.resolve(path.startsWith("/ctem-metrics/posture") ? { products: {} } : cti));
     renderWithProviders(
-      <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+      <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
         <SignalTraceBody id={ID} />
       </MemoryRouter>,
     );

@@ -9,9 +9,6 @@ import type { CtemSignalPath, CtemSignalPathSource, CtemSignalPathStatus } from 
 import type { SignalSourcesSettings } from "@/lib/organization-profile";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
-/** The URL query parameter that opens the dialog, on any page that mounts it. */
-export const SIGNAL_SOURCES_PARAM = "signal-sources";
-
 /** The status labels. @i18n-keys */
 export const PATH_STATUS_LABEL = {
   connected: "Connected",

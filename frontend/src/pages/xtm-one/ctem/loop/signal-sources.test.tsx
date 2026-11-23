@@ -84,7 +84,7 @@ describe("signal source rules", () => {
   });
 
   it("sends the OpenCRQ pass to the evidence health card, never to a new OpenCRQ integration (#1344)", () => {
-    expect(connectHref({ provider: "opencrq", kind: "pass" })).toBe("/ctem/inventory?card=evidence_health");
+    expect(connectHref({ provider: "opencrq", kind: "pass" })).toBe("/ctem/inventory/exposure?card=evidence_health");
     expect(connectHref({ provider: "opencrq", kind: "listener" })).toBe("/integrations/new?provider=opencrq");
     const off = { provider: "opencrq", kind: "pass" as const, event: "", bound: false, off: true };
     expect(connectTarget({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }, off] })).toBe(off);
