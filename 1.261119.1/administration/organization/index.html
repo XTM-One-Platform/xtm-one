@@ -3366,6 +3366,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#what-each-platform-feeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each platform feeds
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4197,6 +4208,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#what-each-platform-feeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each platform feeds
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4607,6 +4629,63 @@
 </tr>
 </tbody>
 </table>
+<h3 id="what-each-platform-feeds">What each platform feeds</h3>
+<p>The source x section x direction matrix, read from the platform APIs the syncs call:</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Section</th>
+<th>What a run reads</th>
+<th>Directions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAEV</td>
+<td>Assets</td>
+<td>Endpoints (<code>POST /api/endpoints/search</code>): name, category and subcategory, criticality, exposure, and since #1134 S4 the freshness: <strong>last seen</strong> (<code>asset_last_seen</code>) and <strong>status</strong> (<code>asset_status</code>: active, inactive, agentless, or stale when unseen past the tenant's threshold)</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenAEV</td>
+<td>Asset groups</td>
+<td>Asset groups (<code>POST /api/asset_groups/search</code>)</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenAEV</td>
+<td>AI systems</td>
+<td>Endpoints that name an AI target provider</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenAEV</td>
+<td>Tech stack</td>
+<td>Security platforms (<code>POST /api/security_platforms/search</code>)</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenCTI</td>
+<td>Assets</td>
+<td>Systems, with the OpenAEV taxonomy when OpenCTI carries it</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenCTI</td>
+<td>PIRs</td>
+<td>Priority intelligence requirements</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenCRQ</td>
+<td>Crown jewels</td>
+<td>Supporting assets at or above the minimum criticality</td>
+<td>Inbound, Outbound</td>
+</tr>
+</tbody>
+</table>
+<p>The freshness of an asset is the source's: it is read-only in XTM One and follows each run. When several sources describe one asset, the most recently seen record wins a field the precedence leaves tied. Not synced yet: an OpenAEV per-asset software inventory (OpenAEV exposes no software list on an endpoint today), OpenCTI organizations into tracked organizations (linked one by one from the tracked organization), and OpenCRQ risk tolerances (no profile field holds them).</p>
 <p>In <strong>Syncs</strong>, the <strong>Direction</strong> column shows each sync's master, and <strong>Edit</strong> sets it: <strong>Outbound</strong> is offered only where the platform can be written, otherwise it is greyed out with the reason. Changing the direction shows that the new direction starts clean before you save.</p>
 <p><code>GET /api/v1/organization-context/syncs/directions</code> lists, per section and platform, the directions a sync may take and why outbound is not offered.</p>
 <p>The syncs run on the platform's scheduler, with no model call, AI on or off. The API is <code>GET</code>, <code>POST /api/v1/organization-context/syncs</code>, <code>PUT</code> and <code>DELETE /syncs/{id}</code>, and <code>POST /syncs/{id}/run</code>; <code>direction</code> is <code>inbound</code> or <code>outbound</code>.</p>
@@ -4661,7 +4740,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 22, 2026 20:21:41 UTC"><span class="timeago" datetime="2026-11-22T20:21:41+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 22, 2026 20:21:41 UTC">2026-11-22</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 23, 2026 00:14:09 UTC"><span class="timeago" datetime="2026-11-23T00:14:09+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 23, 2026 00:14:09 UTC">2026-11-23</span>
   </span>
 
     
