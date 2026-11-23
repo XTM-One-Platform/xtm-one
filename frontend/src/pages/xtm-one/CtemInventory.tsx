@@ -236,6 +236,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
         defaultSort={NAME_SORT}
         defaultPageSize={PAGE_SIZE}
         searchPlaceholder={t_i18n("Search assets by name")}
+        noFilters="the asset facets beside the table (or behind the Facets button) are the filter"
         exportName="ctem-inventory-assets"
         isLoading={isLoading && !data}
         isError={isError}
