@@ -6,7 +6,10 @@
  */
 import type { ProfileCard } from "@/lib/organization-profile-tabs";
 
-export type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "exposure" | "sources";
+export type InventoryTab = "assets" | "asset-groups" | "software" | "exposure" | "sources";
+
+/** The tab the Software tab replaced (#1495): an old link lands on Software. */
+export const RETIRED_TABS: Record<string, InventoryTab> = { "tech-stack": "software" };
 
 /**
  * The profile cards that are settings, not rows (#1178 slice 2b): owned domains, address ranges and the outside lens
@@ -20,6 +23,6 @@ export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "evi
 export const INVENTORY_TABS = [
   { key: "assets", label: "Assets" },
   { key: "asset-groups", label: "Asset groups" },
-  { key: "tech-stack", label: "Tech stack" },
+  { key: "software", label: "Software" },
   { key: "exposure", label: "Exposure policy" },
 ] as const satisfies readonly { key: InventoryTab; label: string }[];
