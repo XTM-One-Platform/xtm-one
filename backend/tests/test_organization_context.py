@@ -47,6 +47,7 @@ FULL = {
 
 def _row(profile: dict, version: int = 3, source: str = "form"):
     return SimpleNamespace(
+        organization_id=None,  # no asset records read: the session is a stub
         version=version,
         profile=profile,
         source=source,

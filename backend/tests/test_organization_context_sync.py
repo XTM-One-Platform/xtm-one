@@ -131,8 +131,12 @@ def stubs(monkeypatch):
     async def current(_db):
         return SimpleNamespace(profile={}, version=7)
 
+    async def no_records(*_a: object, **_k: object) -> None:
+        return None  # no organization records: the profile path these runs test
+
     from app.services import audit
 
+    monkeypatch.setattr(imp, "_plan_on_records", no_records)
     monkeypatch.setattr(osync, "_take_lock", take)
     monkeypatch.setattr(osync, "_release_lock", release)
     monkeypatch.setattr(oc, "save_version", save_version)
