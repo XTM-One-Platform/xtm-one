@@ -21,6 +21,14 @@ describe("CTEM sub page headers", () => {
     expect(text).not.toMatch(/<h1\b/);
   });
 
+  it("CtemSignals.tsx, a row of the CTEM menu group since #1401, renders the standard ListPageHeader with no back link", () => {
+    const text = readFileSync(join(process.cwd(), "src", "pages", "xtm-one", "CtemSignals.tsx"), "utf8");
+    expect(text).toMatch(/<ListPageHeader\b/);
+    expect(text).not.toMatch(/CtemPageHeader/);
+    expect(text).not.toMatch(/Back to Command Center/);
+    expect(text).not.toMatch(/<h1\b/);
+  });
+
   it.each(PAGES)("%s renders CtemPageHeader with a back link and no BackButton or h1 of its own", (file) => {
     const text = readFileSync(join(process.cwd(), "src", "pages", "xtm-one", file), "utf8");
     expect(text).toMatch(/<CtemPageHeader\b/);

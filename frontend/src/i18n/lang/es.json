@@ -21141,5 +21141,8 @@
   "A reversible mark, label or draft outside XTM One.": "Una marca, etiqueta o borrador reversible fuera de XTM One.",
   "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} está conectada pero no gestionada por la empresa: los miembros de esta flota solo usan integraciones gestionadas por la empresa. Un administrador puede hacerla gestionada por la empresa.",
   "{name} is not connected yet: finish its sign-in on the integration page.": "{name} aún no está conectada: termine su inicio de sesión en la página de la integración.",
-  "{name} · {reason}": "{name} · {reason}"
+  "{name} · {reason}": "{name} · {reason}",
+  "Not connected on this platform": "No conectado en esta plataforma",
+  "{count, plural, other {+# possible}}": "{count, plural, one {+# posible} other {+# posibles}}",
+  "Trigger paths": "Rutas de activación"
 }
