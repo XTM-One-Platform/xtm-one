@@ -9,7 +9,16 @@ import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { SignalSourcesPanel } from "./SignalSourcesPanel";
 import { TriggerPathsCard } from "./TriggerPathsCard";
-import { connectHref, connectNeedsAdmin, connectTarget, connectedCount, pathStatus } from "./signal-sources";
+import {
+  connectHref,
+  connectNeedsAdmin,
+  connectTarget,
+  connectedCount,
+  connectedProviders,
+  pathStatus,
+  sourceState,
+  splitSources,
+} from "./signal-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -141,6 +150,91 @@ describe("SignalSourcesPanel", () => {
     const statusOf = (rows: HTMLElement[]) => Object.fromEntries(rows.map((r) => [r.getAttribute("data-path"), r.getAttribute("data-status")]));
     expect(statusOf(cardRows)).toEqual(statusOf(panelRows));
     expect(statusOf(cardRows)).toEqual({ code_flaw: "not_connected", third_party_event: "connected", blind_spot: "agents_api" });
+  });
+
+  it("lists only what feeds a path here: an unconnected provider is folded into +N possible, never beside a bound one (#1401)", async () => {
+    const outside = path({
+      id: "new_exposure",
+      label: "New exposure",
+      default_lens: "outside",
+      status: "connected",
+      sources: [
+        { provider: "shodan", kind: "pass", event: "A new host or port", bound: true },
+        { provider: "gti", kind: "pass", event: "A new host or port", bound: false },
+      ],
+    });
+    const leak = path({
+      id: "credential_leak",
+      label: "Credential or secret leak",
+      default_lens: "world",
+      status: "connected",
+      sources: [
+        { provider: "aikido", kind: "listener", event: "A leaked secret issue", bound: false },
+        { provider: "opencti", kind: "listener", event: "A leak", bound: true },
+      ],
+    });
+    const decay = path({
+      id: "control_decay",
+      label: "Control or evidence decay",
+      status: "off",
+      sources: [{ provider: "opencrq", kind: "pass", event: "", bound: false, off: true }],
+    });
+    // OpenCTI is connected (its listener is bound): its PIR playbook not provisioned is "Not set up", never possible.
+    const vuln = path({
+      id: "new_vulnerability",
+      label: "New vulnerability on a running version",
+      default_lens: "world",
+      status: "connected",
+      sources: [
+        { provider: "opencti", kind: "listener", event: "A new vulnerability", bound: true },
+        { provider: "opencti", kind: "pir_playbook", event: "A PIR match", bound: false },
+      ],
+    });
+    const all = [outside, leak, decay, vuln, PATHS[1]];
+    const connected = connectedProviders(all);
+    expect(sourceState(vuln.sources![1], connected)).toBe("not_set_up");
+    expect(sourceState(outside.sources![1], connected)).toBe("not_connected");
+    expect(splitSources(outside, connected).live.map((s) => s.provider)).toEqual(["shodan"]);
+    expect(splitSources(outside, connected).possible.map((s) => s.provider)).toEqual(["gti"]);
+    expect(splitSources(vuln, connected).possible).toHaveLength(0);
+    expect(splitSources(decay, connected).live).toHaveLength(1);
+    get.mockResolvedValue({ paths: all });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = (id: string) => rows.find((r) => r.getAttribute("data-path") === id) as HTMLElement;
+    const listed = (id: string) => within(row(id)).getAllByTestId("ctem-signal-source").map((s) => s.getAttribute("data-provider"));
+
+    expect(listed("new_exposure")).toEqual(["shodan"]);
+    expect(within(row("new_exposure")).getByTestId("ctem-signal-sources-possible").getAttribute("data-providers")).toBe("gti");
+    expect(within(row("new_exposure")).getByTestId("ctem-signal-sources-possible").textContent).toBe("+1 possible");
+    expect(listed("credential_leak")).toEqual(["opencti"]);
+    expect(within(row("credential_leak")).getByTestId("ctem-signal-sources-possible").getAttribute("data-providers")).toBe("aikido");
+    // The compact line under 4xl says the same: the bound source, then the count of possible ones.
+    expect(within(row("credential_leak")).getByTestId("ctem-signal-sources-compact").textContent).not.toContain("Aikido");
+    expect(within(row("credential_leak")).getByTestId("ctem-signal-sources-compact-possible").textContent).toBe("+1 possible");
+
+    // A pass turned off is kept, marked Off, with its Turn on.
+    const off = within(row("control_decay")).getByTestId("ctem-signal-source");
+    expect(off.getAttribute("data-off")).toBe("true");
+    expect(off.textContent).toContain("Off");
+    expect(within(row("control_decay")).queryByTestId("ctem-signal-sources-possible")).toBeNull();
+
+    // A source of a connected provider not set up is listed with its own words, never folded as "Not connected".
+    const vulnSources = within(row("new_vulnerability")).getAllByTestId("ctem-signal-source");
+    expect(vulnSources.map((s) => s.getAttribute("data-state"))).toEqual(["bound", "not_set_up"]);
+    expect(vulnSources[1].textContent).toContain("Not set up");
+    expect(within(row("new_vulnerability")).queryByTestId("ctem-signal-sources-possible")).toBeNull();
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-compact").textContent).not.toContain("possible");
+
+    // Nothing live: the possible sources stay listed, muted, under Not connected, with Connect on the first.
+    const code = within(row("code_flaw")).getByTestId("ctem-signal-source");
+    expect(code.getAttribute("data-possible")).toBe("true");
+    expect(within(row("code_flaw")).getByText("Not connected")).toBeTruthy();
+    expect(within(row("code_flaw")).getByRole("button", { name: "Connect" })).toBeTruthy();
   });
 
   it("opens the Signals tab on the path clicked, never the whole list (davidloiret review on #1194)", async () => {

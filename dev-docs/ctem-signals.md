@@ -56,6 +56,20 @@ a first patched version the case is an upgrade in that repository, keyed
 <version> in <repository>". `fixed`, `dismissed` and `auto_dismissed` close its
 members as Aikido's `issue.closed` does. Read-only: nothing is written to GitHub.
 
+A GitLab dependency vulnerability (#1331, slice 3) comes with the GitLab asset
+source, not from a webhook: the project's dependency list
+(`GET /projects/:id/dependencies`, GitLab Ultimate) names the vulnerabilities
+of each dependency when the token may read the security dashboard
+(`organization_context_code.gitlab_dependency_findings`). After the sync saved,
+`ctem_code_findings.record_findings` records each one as a path 3 signal keyed
+`<project id>:<vulnerability id>`, provider `gitlab`, with the package,
+installed version, PURL, manifest, severity and link, and the repository's
+path, id and identity key (`<host>:repository:<id>`) in `evidence.assets`. The
+dependency list names no fixed version, so the case keys on the path and the
+package (`ctem_case_loop.fix_of`), never a guessed version. A vulnerability
+a project read whole no longer lists closes its members (a cut, refused or
+off-tier list closes nothing). Read-only: nothing is written to GitLab.
+
 A GitHub repository security advisory the organization published on one of its
 repositories (#1410) is a vulnerability in a product it ships: a path 1 signal
 (`new_vulnerability`, lens `inside`, subject kind `vulnerability`) keyed
@@ -107,10 +121,20 @@ are read on the platform's connected integrations
 organization-wide: a reader who cannot see the administrator's Shodan or
 OpenCRQ integration reads the same `connected` or `off` as the administrator.
 
-The Sources tab of the Signals page (`/ctem/signals/sources`,
-`SignalSourcesPanel.tsx`) is a compact table grouped by lens: trigger path,
-sources (the event sentence in a tooltip), status, signals in 30 days, last
-signal, action; rows of at most two lines. Connect sends a listener to
+The Signals page (`/ctem/signals`) is a row of the CTEM menu group, between
+Cases and Inventory (#1401), with the standard list header. Its Sources tab
+(`/ctem/signals/sources`, `SignalSourcesPanel.tsx`) is a compact table grouped
+by lens: trigger path, sources (the event sentence in a tooltip), status,
+signals in 30 days, last signal, action; rows of at most two lines. The
+Sources column lists what feeds the path on this platform: every source of a
+connected provider (a provider with a bound source or a pass `off` on any
+path, `connectedProviders`), each with its state: bound, Off, or Not set up
+(the provider is connected, this source is not, e.g. the PIR playbook of a
+connected OpenCTI). A source whose provider has no integration here is folded
+into one muted "+N possible" whose tooltip lists them with "Not connected on
+this platform" (`splitSources`, `sourceState`); a path with no source of a
+connected provider lists them muted inline, under its Not connected status.
+Connect sends a listener to
 `/integrations/new?provider=`; Connect or Turn on sends a pass and the
 playbook to their card in Settings > Organization (attack surface: outside
 lens; evidence health: its card beside it on CTEM > Inventory, whose `?card=`

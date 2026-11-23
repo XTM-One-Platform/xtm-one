@@ -220,6 +220,71 @@ def test_gitlab_dependency_list_off_tier_degrades_gracefully() -> None:
     assert read.software_unavailable == {"77": code.SBOM_TIER}
 
 
+GITLAB_DEPS = [
+    {
+        "name": "lodash",
+        "version": "4.17.20",
+        "package_manager": "yarn",
+        "dependency_file_path": "yarn.lock",
+        "vulnerabilities": [
+            {"id": 9001, "name": "Prototype pollution", "severity": "High", "url": "https://g/v/9001"},
+            {"id": 9001, "name": "duplicate", "severity": "high"},
+            {"name": "no id"},
+        ],
+    },
+    {"name": "pako", "version": "2.2.0", "package_manager": "yarn", "vulnerabilities": []},
+]
+
+
+def test_gitlab_dependency_vulnerabilities_become_findings_on_the_repository() -> None:
+    row = code.gitlab_project_row({**GITLAB_PROJECT, "archived": False}, host="gitlab.acme.io")
+    findings = code.gitlab_dependency_findings(GITLAB_DEPS, project=row, host="gitlab.acme.io")
+    assert len(findings) == 1  # one per vulnerability id, an id-less one skipped
+    f = findings[0]
+    assert f["external_id"] == "77:9001" and f["package"] == "lodash" and f["version"] == "4.17.20"
+    assert f["severity"] == "high" and f["purl"] == "pkg:npm/lodash@4.17.20"
+    assert f["repository"] == "acme/platform/web" and f["identity_key"] == "gitlab.acme.io:repository:77"
+
+
+def test_gitlab_read_carries_the_findings_of_a_whole_list_only() -> None:
+    api = "https://gitlab.acme.io/api/v4"
+    project = {**GITLAB_PROJECT, "archived": False}
+    client = _Client(
+        {
+            f"{api}/groups/acme%2Fplatform/projects": _Resp(200, [project]),
+            f"{api}/projects/77/dependencies": _Resp(200, GITLAB_DEPS),
+        }
+    )
+    read = asyncio.run(
+        code.read_repositories("gitlab", "t", api, {"groups": ["acme/platform"]}, limit=100, client=client)
+    )
+    assert [f["external_id"] for f in read.findings["77"]] == ["77:9001"]
+    off_tier = _Client(
+        {
+            f"{api}/groups/acme%2Fplatform/projects": _Resp(200, [project]),
+            f"{api}/projects/77/dependencies": _Resp(403, {}),
+        }
+    )
+    read = asyncio.run(
+        code.read_repositories("gitlab", "t", api, {"groups": ["acme/platform"]}, limit=100, client=off_tier)
+    )
+    assert read.findings == {}  # not read: nothing closes
+
+
+def test_github_reads_no_findings_from_the_sbom() -> None:
+    api = code.GITHUB_API
+    client = _Client(
+        {
+            f"{api}/orgs/acme/repos": _Resp(200, [GITHUB_REPO]),
+            f"{api}/repos/acme/api/dependency-graph/sbom": _Resp(200, GITHUB_SBOM),
+        }
+    )
+    read = asyncio.run(
+        code.read_repositories("github", "t", api, {"organizations": ["acme"]}, limit=100, client=client)
+    )
+    assert read.findings == {}  # Dependabot alerts come as deliveries (slice 2)
+
+
 def test_a_refused_listing_names_the_scope_to_grant() -> None:
     api = code.GITHUB_API
     client = _Client({f"{api}/user/repos": _Resp(403, {})})
