@@ -58,6 +58,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.fleet_health_signals import (
     FAILING_RUNS,
     SILENT_AFTER,
@@ -76,7 +77,7 @@ MODULE = "agents"
 #: How often the agent checks run (section 3, "Scheduling").
 AGENT_CHECK_INTERVAL = timedelta(minutes=15)
 #: Where a finding of these checks is explained.
-DOC_LINK = "/docs/administration/platform-health#agent-checks"
+DOC_LINK = docs_url("administration/health", "agent-checks")
 
 
 AgentRead = Callable[[AsyncSession, datetime, list[uuid.UUID]], Awaitable[list[CheckResult]]]

@@ -144,6 +144,26 @@ In XTM One mode, AI switched off included, every registered OpenCRQ is checked e
 | Heartbeat | Critical | OpenCRQ has not registered for 15 minutes |
 | Job failing | Warning | The last run of a background job ended in the dead-letter queue (one finding per job) |
 
+## Agent checks
+
+Every 15 minutes, in every mode, the health pass checks the agents enrolled in Platform Health, and them alone: after an upgrade no agent is enrolled. These checks read counts, statuses and ids, never conversation content, and call no model. With AI switched off agents do not run, so they record nothing and an open finding is kept as it was.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Assignment failing | Warning | The last 3 judged runs of an enabled assignment failed |
+| Schedule silent | Info | An enabled schedule has not run for 14 days |
+| Cost spike | Warning | A day's tokens are over 3 times the agent's daily average |
+| Owner disabled | Warning | The agent's owner account is deactivated |
+| Failure spike | Warning | Over 5 % of an assignment's last 20 settled runs failed |
+| Feedback drop | Warning | The agent's weighted feedback score is 10 points under the window before |
+| Cost drift | Info | The cost per run is up 20 % on the window before |
+| Model change | Info | The last day's runs used a model the 7 days before did not |
+| Integration broken | Warning | An integration bound to the agent is in error, must be re-authorized, or failed its last connection test |
+| Orphaned claims | Warning | A work item the agent owns is held by a run that ended |
+| Blocked without blocker | Info | A blocked work item the agent owns names nothing it waits for |
+
+The feedback drop, failure spike and cost drift checks read the thresholds of the [signals](#signals). A finding resolves by itself after two passes in a row without its cause; pausing or deleting the assignment, or unenrolling the agent, resolves it too.
+
 ## Analysis
 
 The checks above are deterministic and never call a model. The **analysis** is an optional layer on top of them: one call to the platform routing model per module, which reads that module's open findings (check ids, severities, categories, subject ids and measured values; no conversation content) and writes a short explanation and the order in which to apply the fixes.

@@ -87,6 +87,7 @@ from typing import Any, cast
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.health.engine import (
     Check,
     CheckResult,
@@ -128,7 +129,7 @@ CERTIFICATE_EXPIRY_WARNING = timedelta(days=21)
 #: The dependencies probed, in the order findings are recorded.
 PROBED_DEPENDENCIES = ("redis", "object_storage")
 #: Where a finding of these checks is explained.
-DOC_LINK = "/docs/administration/health#platform-checks"
+DOC_LINK = docs_url("administration/health", "platform-checks")
 
 PlatformRead = Callable[[AsyncSession, datetime], Awaitable[list[CheckResult]]]
 
