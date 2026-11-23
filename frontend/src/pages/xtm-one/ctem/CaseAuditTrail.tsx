@@ -207,7 +207,6 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
                 <button
                   type="button"
                   aria-pressed={selected}
-                  aria-current={p.phase === current ? "step" : undefined}
                   disabled={!reached}
                   onClick={() => setPhase(selected ? null : key)}
                   className={cn(
