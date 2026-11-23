@@ -5568,6 +5568,7 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "Webhook URLは作成後にアサインメントIDを使って自動生成されます。",
   "The whole request body is passed to the agent as the trigger payload.": "リクエストボディ全体がトリガーのペイロードとしてエージェントに渡されます。",
   "Theme": "テーマ",
+  "Pastel colours": "パステルカラー",
   "Theme Color": "テーマカラー",
   "Theme configuration": "テーマ設定",
   "There are no objects on the platform yet.": "プラットフォームにはまだオブジェクトがありません。",
@@ -20949,5 +20950,6 @@
   "Read-only checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.": "ケースの優先順位付け後、露出が実在するかを証明する OpenAEV の読み取り専用チェック。",
   "The remediation options with their cost and the one approved, once the case is validated.": "ケースの検証後、コスト付きの修復オプションと承認されたもの。",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "承認された修復が OpenCRQ に書き込む対応計画 (コストと見込まれる損失削減を含む)。",
-  "Work CTEM cases": "CTEM ケースを処理"
+  "Work CTEM cases": "CTEM ケースを処理",
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "重大度、ステータス、マーキングの色を柔らかい色調にします。オフ: すべての製品で共通の標準色。"
 }

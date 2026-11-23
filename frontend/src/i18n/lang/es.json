@@ -5568,6 +5568,7 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "La URL del webhook se generará automáticamente tras la creación usando el ID de la asignación.",
   "The whole request body is passed to the agent as the trigger payload.": "Todo el cuerpo de la solicitud se pasa al agente como carga útil del disparador.",
   "Theme": "Tema",
+  "Pastel colours": "Colores pastel",
   "Theme Color": "Color del tema",
   "Theme configuration": "Configuración del tema",
   "There are no objects on the platform yet.": "Todavía no hay objetos en la plataforma.",
@@ -20949,5 +20950,6 @@
   "Read-only checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.": "Comprobaciones de solo lectura en OpenAEV que prueban si la exposición es real, una vez priorizado el caso.",
   "The remediation options with their cost and the one approved, once the case is validated.": "Las opciones de remediación con su coste y la aprobada, una vez validado el caso.",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "El plan de tratamiento que la remediación aprobada redacta en OpenCRQ, con su coste y la reducción de pérdida prometida.",
-  "Work CTEM cases": "Trabajar casos CTEM"
+  "Work CTEM cases": "Trabajar casos CTEM",
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tonos suaves para los colores de gravedad, estado y marcado. Desactivado: colores estándar, iguales en todos los productos."
 }
