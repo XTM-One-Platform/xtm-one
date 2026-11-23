@@ -627,11 +627,11 @@ export default function CtemCaseDetail() {
 
         <CaseAttackPath reading={kase.attack_path} />
 
-        <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} personName={personName} />
+        <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
+        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
+        <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
       </CaseLoopProvider>

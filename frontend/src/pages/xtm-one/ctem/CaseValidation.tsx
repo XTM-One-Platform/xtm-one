@@ -11,7 +11,7 @@
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
-import type { CtemCaseEvent, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
@@ -27,6 +27,7 @@ import {
   validationDecisionKey,
 } from "./case-validation";
 import { CaseSectionReason } from "./CaseSectionReason";
+import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
 
 /** The result word of a validation reference, translated where drawn. @i18n-keys */
 const RESULT_LABEL = {
@@ -43,11 +44,14 @@ export function CaseValidation({
   caseId,
   validations,
   history,
+  gates,
   personName,
 }: {
   caseId: string;
   validations: CtemCaseSummary["validations"];
   history: readonly CtemCaseEvent[];
+  /** The resolved decision records of the case (#1518); absent on an older API. */
+  gates?: readonly CtemCaseGateRecord[];
   /** The directory name of a person id, as the case page resolves it. */
   personName?: (id: string) => string | null;
 }) {
@@ -55,8 +59,10 @@ export function CaseValidation({
   const { isAdmin } = useAuth();
   const rows = latestValidations(validations);
   const gate = latestGate(history, VALIDATION_GATE);
-  const waiting = gate?.to === "waited";
-  const answered = gate?.to === "answered";
+  // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
+  const record = gateRecordOf(gates, VALIDATION_GATE);
+  const waiting = record ? record.status === "waiting" : gate?.to === "waited";
+  const answered = !record && gate?.to === "answered";
   // The decision item, read with the viewer's own work-item visibility: the
   // open one while it waits, the closed one once answered (its option labels).
   const items = useWorkItems(
@@ -66,7 +72,7 @@ export function CaseValidation({
   const item = waiting ? ((items.data ?? []).find(waitsForAnswer) ?? null) : null;
   const chosen = answered ? chosenOptionLabel(items.data?.[0], gate?.evidence) : null;
   const auto = autoPassReason(gate?.to, rows[0]);
-  const who = gate?.to === "answered" ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
+  const who = answered && gate ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
 
   return (
     <Card data-testid="ctem-case-validation">
@@ -74,14 +80,21 @@ export function CaseValidation({
         <CardTitle>{t_i18n("Validation")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
-        {rows.length === 0 && !gate && (
+        {rows.length === 0 && !gate && !record && (
           <CaseSectionReason
             own={t_i18n("Read-only checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.")}
             source="openaev"
             testId="ctem-case-validation-empty"
           />
         )}
-        {gate && (
+        {record && (
+          <GateDecisionRecord
+            record={auto === "safe_mode" && record.status === "passed_automatically" ? { ...record, reason: { kind: "safe_mode" } } : record}
+            byLabel={record.answered_by ? personName?.(record.answered_by.id) : null}
+            testId="ctem-case-validation-record"
+          />
+        )}
+        {gate && !record && (
           <div className="flex flex-wrap items-baseline gap-x-2" data-testid="ctem-case-validation-gate">
             <span className="font-medium">
               {auto === "safe_mode"
