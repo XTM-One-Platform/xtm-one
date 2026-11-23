@@ -128,6 +128,17 @@ agents' tool calls). A listener's signal (`system`) is an administrator's
 read only. Two organizations never share a row (the unique key holds the
 organization).
 
+An agent tool takes the administrator's reach through
+`agent_tool_admin_bypass`: strict admin access for agent tools and the
+Platform Health reach keep an administrator to their own signals. Every
+`list_ctem_signals` answer says which rule applied (#1359), so an empty page
+is never read as an empty organization: `scope` holds `applied` (`own` or
+`organization`), `acting_user`, `is_admin` and `reason` (`administrator`,
+`not an administrator`, `strict admin access for agent tools`, `Platform
+Health reach`); under `own`, `hidden_by_scope` counts the signals the same
+filters match beyond the person's own (a count only, no content) and `note`
+is the line the agent repeats. Who reads what is unchanged.
+
 ## 6. Agents
 
 The tools are offered to the built-in `ctem-assistant`,

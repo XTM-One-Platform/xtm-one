@@ -312,7 +312,11 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             result["software_changed"] = await imp.store_endpoint_software(db, plan)
         if plan.software_rows:
             result["software_rows"] = plan.software_rows
-        if result["version"] is not None or result["error"]:
+        if plan.software_error:
+            # Devices synced but their software could not be read: said, never a silent zero (#1251).
+            result["software_unread"] = len(plan.software_unread)
+            result["software_error"] = plan.software_error[:500]
+        if result["version"] is not None or result["error"] or result.get("software_error"):
             await log_audit(
                 db,
                 user=owner,
@@ -327,6 +331,11 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                         if result["error"]
                         else f"{result['added']} added, {result['updated']} updated, {result['removed']} removed, "
                         f"version {result['version']}"
+                        + (
+                            f"; software of {result['software_unread']} device(s) unreadable: {result['software_error']}"
+                            if result.get("software_error")
+                            else ""
+                        )
                     )
                 )[:500],
                 details={**result, "trigger": trigger},

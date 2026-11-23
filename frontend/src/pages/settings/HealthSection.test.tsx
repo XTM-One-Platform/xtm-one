@@ -10,6 +10,12 @@ import { MemoryRouter } from "react-router-dom";
 import { HealthSection } from "@/pages/settings/HealthSection";
 import { renderWithProviders } from "@/testing/providers";
 
+// XTM One mode: the "Run checks as" block renders (Copilot mode has no module).
+vi.mock("@/hooks/usePlatformConfig", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useIsXtmOne: () => true,
+}));
+
 const { get, put, post } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn() }));
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<object>()), api: { get, put, post } }));
 
@@ -232,6 +238,47 @@ describe("HealthSection read view", () => {
     expect(within(spend).queryAllByRole("spinbutton")).toHaveLength(0);
     expect(within(spend).getByRole("switch", { name: "Analyse the findings" })).toBeInTheDocument();
     expect(within(spend).getByTestId("health.analysis")).toHaveTextContent("100K");
+  });
+
+  it("shows a refused run-as user under its field, marked invalid, with no toast (UX r1 B1)", async () => {
+    put.mockRejectedValue(
+      Object.assign(new Error("server English line"), {
+        status: 400,
+        detail: { code: "run_as_missing_module_access", modules: ["OpenCRQ"], message: "server English line" },
+      }),
+    );
+    renderSection();
+    await screen.findByTestId("health.analysis");
+    act(() => {
+      screen.getByRole("button", { name: "Edit" }).click();
+    });
+    await act(async () => {
+      screen.getByRole("button", { name: "Save" }).click();
+    });
+    const block = screen.getByTestId("health.run-as");
+    expect(await within(block).findByText(/This user has no access to OpenCRQ/)).toBeInTheDocument();
+    expect(within(block).getByRole("combobox", { name: "Run checks as" }).getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByText("Platform Health settings were not saved")).toBeNull();
+    expect(screen.queryByText("server English line")).toBeNull();
+  });
+
+  it("lands a link to the run-as block on that block once the settings render (UX r1 B2)", async () => {
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    try {
+      renderWithProviders(
+        <MemoryRouter initialEntries={["/settings/automations/health#health-settings-run-as"]}>
+          <HealthSection />
+        </MemoryRouter>,
+      );
+      await screen.findByTestId("health.run-as");
+      expect(scrolled).toContain("health-settings-run-as");
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 
   it("shows the alert emails block, off by default", async () => {

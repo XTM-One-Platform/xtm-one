@@ -4738,7 +4738,8 @@ def seed_kb_activity(token: str, base: str) -> dict[str, dict[str, str]]:
 
 #: The second administrator who owns a sync, with an address long enough to wrap in the Runs as column (#65).
 ORG_SYNC_OWNER_EMAIL = "lab-organization-sync-owner-with-a-long-address@lab-sample-subsidiary.filigran.io"
-ORG_SYNC_OWNER_PASSWORD = "lab-only-password-sync-owner"
+#: Passes ``check_password_policy`` (a letter and a digit): a password it refuses skips the whole seed (#1368).
+ORG_SYNC_OWNER_PASSWORD = "lab-only-password-sync-owner-1"
 
 
 def seed_org_syncs(token: str, base: str) -> dict[str, dict[str, str]]:

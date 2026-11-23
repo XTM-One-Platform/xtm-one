@@ -450,7 +450,7 @@ _OCTI_TOP_VULNS = """
 query CtemTopVulns {
   vulnerabilities(first: 10, orderBy: x_opencti_cvss_base_score, orderMode: desc) {
     edges { node {
-      name x_opencti_cvss_base_score x_opencti_cvss_base_severity
+      id name x_opencti_cvss_base_score x_opencti_cvss_base_severity
       x_opencti_epss_score x_opencti_cisa_kev
     } }
   }
@@ -1376,6 +1376,8 @@ async def _collect_opencti_cyber(
     severity = [{"label": label, "value": value} for (label, value) in severity_rows]
     top_vulns = [
         {
+            # The OpenCTI id: the "Open in OpenCTI" pivot of each row (#1357).
+            "id": n.get("id"),
             "name": n.get("name"),
             "cvss": n.get("x_opencti_cvss_base_score"),
             "severity": n.get("x_opencti_cvss_base_severity"),

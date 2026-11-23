@@ -220,7 +220,10 @@ inventory by asset name (`organization_assets.name_key`) and adds
 and, with a fixed version known, its worst `status`; `version_source` is then
 `inventory`. Any other case, or an inventory that cannot be read, answers
 `version_source` `none` and the page says "Version source: none yet", never a
-version to type in the tech stack.
+version to type in the tech stack. A row with `in_inventory` and an `asset_id`
+opens the asset overview (`/ctem/inventory/assets/:id`: its software with every
+version and source, SBOM included, its source records and its cases); a row
+outside the inventory is no link (CTEM-20-UI).
 
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
@@ -785,7 +788,14 @@ a case they see none of does not exist. A built-in CTEM agent that already
 carries a function keeps its own; the group adds only what it lacks.
 `get_ctem_case` there also answers `opened_by` (actor, time and how, from the
 oldest `created` event), `history_total` and `empty_sections` (the reason each
-empty section is empty). Tests: `tests/test_ctem_read_tools.py`.
+empty section is empty). `list_ctem_cases` and `get_ctem_case` answer the
+same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
+section 5, #1359) for the signal members of a case, read by the case view's
+rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
+`hidden_by_scope` counts the case-bound signals the person does not see:
+across the organization for `list_ctem_cases`, bound to that case alone for
+`get_ctem_case` (its note then says "on this case").
+Tests: `tests/test_ctem_read_tools.py`.
 
 ## 9. UX decisions (round 1, 13 Nov 2026)
 

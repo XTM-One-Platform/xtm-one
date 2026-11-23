@@ -20,8 +20,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * each block is its own component so later levels add theirs (schedule,
  * signal thresholds, dry-run) as new blocks of the same draft.
  */
-import { useId, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useId, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Check, Compass, Gauge, Pencil, Power, Radar, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
   SettingsField,
   SettingsFieldGrid,
   SettingsSwitchField,
+  focusFirstInvalidField,
   settingsFieldHintId,
   settingsFieldLabelId,
 } from "@/components/ui/settings-form";
@@ -51,6 +52,7 @@ import { BlockTitle, SpendLockNotice, useSpendLock, type BlockProps } from "./he
 import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
 import { ModuleAnalystBlock, moduleAnalystValid } from "./HealthModuleAnalystBlock";
 import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
+import { HEALTH_RUN_AS_FIELD_ID, HealthRunAsBlock, runAsRefusalText } from "./HealthRunAsBlock";
 import { HealthPetLibrary } from "./HealthPetLibrary";
 import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
 import { Spinner } from "@filigran/design-system";
@@ -493,7 +495,8 @@ const GROUPS: readonly { key: GroupKey; blocks: readonly Block[] }[] = [
   // #101 S14d-2: the Module Analyst row, its own ceilings next to the analysis (XTM One modes only).
   { key: "spend", blocks: [BudgetBlock, AnalysisBlock, ModuleAnalystBlock] },
   // Level 8 (#8261) schedule, signals, durations and dry-run; #101 S10c module thresholds.
-  { key: "checks", blocks: [ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
+  // "Run checks as" (dev-docs 12.3) first: no module check runs without it.
+  { key: "checks", blocks: [HealthRunAsBlock, ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
   // #101 S12b: the alert emails, off by default.
   { key: "alerts", blocks: [AlertEmailsBlock] },
 ];
@@ -507,9 +510,24 @@ export function HealthSection() {
   const { data: stored, isLoading } = useHealthSettings();
   const healthName = useHealthName();
   const save = useSaveHealthSettings();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraftState] = useState<Draft | null>(null);
+  // A refused "Run checks as" user, shown under its field (UX r1 B1); any edit of the draft clears it.
+  const [runAsError, setRunAsError] = useState<string | null>(null);
+  const setDraft = (next: Draft | null) => {
+    setDraftState(next);
+    setRunAsError(null);
+  };
   const editing = draft !== null;
   const shown = draft ?? stored;
+  // A link to a block of this long page (the module cards' "Set the run-as user") lands on it once
+  // the groups render: the browser's own jump runs before the settings load (UX r1 B2).
+  const { hash } = useLocation();
+  const landedHash = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shown || !hash || landedHash.current === hash) return;
+    landedHash.current = hash;
+    document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.({ block: "start" });
+  }, [hash, shown]);
   const entries = (Object.keys(GROUP_TITLES) as (keyof typeof GROUP_TITLES)[]).map((key) => ({ id: anchor(key), title: GROUP_TITLES[key] }));
   const valid =
     !!draft &&
@@ -526,12 +544,20 @@ export function HealthSection() {
         setDraft(null);
         toast({ title: t_i18n("Platform Health settings saved"), variant: "success" });
       },
-      onError: (err) =>
+      onError: (err) => {
+        // A refused run-as user is said under its field, not in a toast (UX r1 B1).
+        const refusal = runAsRefusalText(err, t_i18n);
+        if (refusal) {
+          setRunAsError(refusal);
+          focusFirstInvalidField([HEALTH_RUN_AS_FIELD_ID]);
+          return;
+        }
         toast({
           title: t_i18n("Platform Health settings were not saved"),
           description: err instanceof Error ? err.message : undefined,
           variant: "error",
-        }),
+        });
+      },
     });
   };
 
@@ -584,7 +610,7 @@ export function HealthSection() {
             data-testid={`settings.health.group.${group.key}`}
           >
             {group.blocks.map((Block, index) => (
-              <Block key={index} draft={shown} editing={editing} onChange={setDraft} />
+              <Block key={index} draft={shown} editing={editing} onChange={setDraft} runAsError={runAsError} />
             ))}
           </section>
         ))}

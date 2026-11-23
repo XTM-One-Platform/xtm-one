@@ -585,6 +585,7 @@ export default function CtemStageDetail() {
             opencrq: Boolean(posture?.products?.opencrq?.present),
           }}
           onConnect={() => navigate("/")}
+          openctiUrl={posture?.products?.opencti?.present ? posture.products.opencti.url : null}
         />
       )}
       {/* Validation's mixed views and gap fillers (#11998), under the outcome matrix. */}

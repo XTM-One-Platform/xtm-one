@@ -766,3 +766,64 @@ async def test_the_tool_refuses_a_bad_field_and_scopes_the_list_to_the_user(tool
     )
     assert json.loads(await bob("list_ctem_signals"))["total"] == 0
     assert json.loads(await admin("list_ctem_signals"))["total"] == 1
+
+
+async def _two_signals_of_alice(tools) -> None:
+    _, alice = tools(ALICE)
+    for ref in ("a", "b"):
+        await alice(
+            "record_ctem_signal", trigger_path="blind_spot", source_provider="m", subject_kind="asset", subject_ref=ref
+        )
+
+
+async def test_a_person_with_no_own_signal_is_told_how_many_the_scope_hides(tools):
+    """#1359: never a silent zero; a count only, no content of the hidden signals."""
+    await _two_signals_of_alice(tools)
+    defs, bob = tools(BOB)
+    body = json.loads(await bob("list_ctem_signals"))
+    assert body["total"] == 0 and body["signals"] == []
+    assert body["scope"]["applied"] == "own"
+    assert body["scope"]["acting_user"] == BOB and body["scope"]["is_admin"] is False
+    assert body["scope"]["reason"] == "not an administrator"
+    assert body["scope"]["hidden_by_scope"] == 2
+    assert body["scope"]["note"].startswith("2 signals exist that this run's person did not record")
+    listing = next(d for d in defs if d.name == "list_ctem_signals")
+    assert "acting person's" in listing.description and "admin" in listing.description
+    # The same filters count the hidden ones: another path hides nothing.
+    other_path = json.loads(await bob("list_ctem_signals", trigger_path="credential_leak"))
+    assert "hidden_by_scope" not in other_path["scope"] and "note" not in other_path["scope"]
+
+
+async def test_an_admin_with_strict_agent_access_reads_their_own_and_is_told_why(tools, monkeypatch):
+    await _two_signals_of_alice(tools)
+    monkeypatch.setattr(
+        "app.core.security_options.security_option", lambda key: key == "agent_tools_strict_admin_access"
+    )
+    _, admin = tools(ADMIN)
+    body = json.loads(await admin("list_ctem_signals"))
+    assert body["total"] == 0
+    assert body["scope"]["applied"] == "own" and body["scope"]["is_admin"] is True
+    assert body["scope"]["reason"] == "strict admin access for agent tools"
+    assert body["scope"]["hidden_by_scope"] == 2
+
+
+async def test_an_admin_in_a_platform_health_reach_is_told_why(tools, monkeypatch):
+    await _two_signals_of_alice(tools)
+    monkeypatch.setattr("app.services.health.identity.in_health_reach", lambda: True)
+    _, admin = tools(ADMIN)
+    body = json.loads(await admin("list_ctem_signals"))
+    assert body["scope"]["applied"] == "own" and body["scope"]["reason"] == "Platform Health reach"
+
+
+async def test_an_admin_reads_the_organization_and_nothing_is_hidden(tools, monkeypatch):
+    await _two_signals_of_alice(tools)
+    monkeypatch.setattr("app.core.security_options.security_option", lambda _key: False)
+    _, admin = tools(ADMIN)
+    body = json.loads(await admin("list_ctem_signals"))
+    assert body["total"] == 2
+    assert body["scope"] == {
+        "applied": "organization",
+        "acting_user": ADMIN,
+        "is_admin": True,
+        "reason": "administrator",
+    }

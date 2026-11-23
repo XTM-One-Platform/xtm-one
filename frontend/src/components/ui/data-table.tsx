@@ -400,8 +400,8 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** With `onRowClick`: whether this row opens anything; a row that does not is neither a target nor a tab stop. */
   rowOpens?: (row: T) => boolean;
-  /** Detail route of a row: the first non-interactive cell becomes a real link, the row opens it. */
-  rowHref?: (row: T) => string;
+  /** Detail route of a row: the first non-interactive cell becomes a real link, the row opens it. Undefined: that row opens nothing. */
+  rowHref?: (row: T) => string | undefined;
   rowClassName?: (row: T) => string | undefined;
   /** Rows kept above the others whatever the sort (favourites). */
   pinFirst?: (row: T) => boolean;

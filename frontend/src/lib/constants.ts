@@ -35,6 +35,7 @@ import {
   Network, Scan, ScanSearch, TrendingUp,
 } from "lucide-react";
 import { BASE_PATH, withBasePath } from "@/lib/base-path";
+import type { HotTone } from "@/components/ui/tone-badge";
 import { HEADLINE_LABELS } from "@/lib/evaluation-headlines";
 import { ALL_HANDOVER_TYPES } from "@/lib/handover-types";
 import { providerLogoSrcFrom } from "@/lib/provider-logo-src";
@@ -2632,13 +2633,16 @@ export const CTEM_BAND_CONFIG: Record<
 export const CTEM_BAND_SCALE_TEXT =
   "0-100, higher is better: under 40 Critical, 40-59 At risk, 60-74 Fair, 75-89 Good, 90+ Strong.";
 
-/** Priority badge styling for CTEM briefing next-steps / recommended actions.
- *  Shared by the Exposure Briefing page and the dashboard Recommended actions
- *  card so the High / Medium / Low badge looks identical in both places. */
-export const CTEM_PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
-  high: { label: "High", cls: "bg-feedback-error-primary/15 text-feedback-error-primary" },
-  medium: { label: "Medium", cls: "bg-feedback-alert-primary/15 text-feedback-warning-tertiary" },
-  low: { label: "Low", cls: "bg-elevation-hover text-default-secondary" },
+/** Priority of a CTEM briefing next step or recommended action: its label and
+ *  the ToneBadge tone it is drawn in (#1354), so the High / Medium / Low chip
+ *  follows the pastel preference like every other CTEM chip (plain when pastel,
+ *  outlined when standard) and looks identical on the Exposure Briefing page,
+ *  the briefing card, Act now and Recommended actions. The labels are context
+ *  keys: the bare "Medium" key means "medium term" in fr, es and ja. */
+export const CTEM_PRIORITY_CONFIG: Record<string, { label: string; tone: HotTone }> = {
+  high: { label: "High (priority)", tone: "red" },
+  medium: { label: "Medium (priority)", tone: "orange" },
+  low: { label: "Low (priority)", tone: "neutral" },
 };
 
 /** Products that feed the CTEM command center. OpenCRQ is registration-driven
