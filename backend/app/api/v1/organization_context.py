@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -673,6 +673,348 @@ async def list_tech_stack_inventory(
         return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
     page = await tech_stack_inventory(db, org, q=q, offset=offset, limit=limit)
     return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/software", response_model=CanonicalAssetsPage)
+async def list_organization_software(
+    q: str = Query("", max_length=200),
+    type: str = Query("", max_length=30),
+    vendor: str = Query("", max_length=200),
+    source: str = Query("", max_length=80),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
+    unknown_version: bool | None = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> CanonicalAssetsPage:
+    """The organization's software (#1495): per software its type, CPE and its state, version and asset counts."""
+    from app.services.organization_software_store import list_software
+
+    org = await _built_store(db)
+    if org is None:
+        return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
+    page = await list_software(
+        db,
+        org,
+        q=q,
+        software_type=type,
+        vendor=vendor,
+        source=source,
+        origin=origin,
+        cpe_state=cpe_state,
+        unknown_version=unknown_version,
+        offset=offset,
+        limit=limit,
+    )
+    return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/software/versions/{version_id}/assets", response_model=CanonicalAssetsPage)
+async def list_assets_of_software_version(
+    version_id: uuid.UUID,
+    through_dependencies: bool = Query(True),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> CanonicalAssetsPage:
+    """The assets where a software version is present, directly or through a software that depends on it."""
+    from app.services.organization_software_store import assets_of_version
+
+    org = await _built_store(db)
+    page = (
+        await assets_of_version(
+            db, org, version_id, through_dependencies=through_dependencies, offset=offset, limit=limit
+        )
+        if org is not None
+        else None
+    )
+    if page is None:
+        raise HTTPException(status_code=404, detail="Software version not found")
+    return CanonicalAssetsPage(**vars(page))
+
+
+@router.get("/software/export.csv")
+async def export_organization_software(
+    q: str = Query("", max_length=200),
+    type: str = Query("", max_length=30),
+    vendor: str = Query("", max_length=200),
+    source: str = Query("", max_length=80),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
+    unknown_version: bool | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> Response:
+    """The organization's software as CSV, with the filters of the list (#1495); formula cells neutralised."""
+    from app.core.utils import build_content_disposition
+    from app.services.organization_software_store import CSV_COLUMNS, software_csv
+
+    org = await _built_store(db)
+    if org is not None:
+        body = await software_csv(
+            db,
+            org,
+            q=q,
+            software_type=type,
+            vendor=vendor,
+            source=source,
+            origin=origin,
+            cpe_state=cpe_state,
+            unknown_version=unknown_version,
+        )
+    else:
+        body = ",".join(CSV_COLUMNS) + "\n"
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": build_content_disposition("software.csv"),
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+class SoftwareCreateRequest(BaseModel):
+    vendor: str = Field(default="", max_length=200)
+    product: str = Field(min_length=1, max_length=200)
+    #: The name shown; empty: ``vendor product``.
+    name: str = Field(default="", max_length=300)
+    type: str = Field(default="application", max_length=30)
+    description: str = Field(default="", max_length=2000)
+    #: A CPE 2.3 the administrator sets; it wins over every source.
+    cpe: str = Field(default="", max_length=300)
+    purl: str = Field(default="", max_length=500)
+
+
+class SoftwareUpdateRequest(BaseModel):
+    """The fields to change; a synced software takes ``cpe_override`` only (an empty one clears it)."""
+
+    name: str | None = Field(default=None, max_length=300)
+    type: str | None = Field(default=None, max_length=30)
+    description: str | None = Field(default=None, max_length=2000)
+    purl: str | None = Field(default=None, max_length=500)
+    cpe_override: str | None = Field(default=None, max_length=300)
+
+
+class SoftwareAttachRequest(BaseModel):
+    asset_id: uuid.UUID
+    #: The version installed; empty is ``unknown``.
+    version: str = Field(default="", max_length=100)
+
+
+def _software_http_error(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=getattr(exc, "status", 422), detail=str(exc))
+
+
+async def _audit_software(
+    db: AsyncSession, admin: User, action: str, entity_id: Any, summary: str, details: dict[str, Any]
+) -> None:
+    from app.services.audit import log_audit
+
+    await log_audit(
+        db,
+        user=admin,
+        action=action,
+        entity_type="organization_context",
+        entity_id=entity_id,
+        entity_name="software",
+        summary=summary,
+        details=details,
+    )
+
+
+@router.post("/software", status_code=201)
+async def create_organization_software(
+    body: SoftwareCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Type a software by hand (administrators, audited); 409 when the vendor and product exist, 422 a bad CPE or type."""
+    from app.services.organization_software_store import SoftwareError, create_software
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="No organization profile yet")
+    try:
+        soft = await create_software(
+            db,
+            org,
+            vendor=body.vendor,
+            product=body.product,
+            name=body.name,
+            software_type=body.type,
+            description=body.description,
+            cpe=body.cpe,
+            purl=body.purl,
+        )
+    except SoftwareError as exc:
+        await db.rollback()
+        raise _software_http_error(exc) from None
+    await _audit_software(
+        db,
+        admin,
+        "create",
+        soft["id"],
+        f"Software {soft['name']} typed by hand",
+        {k: soft[k] for k in ("vendor", "product", "type", "cpe_override")},
+    )
+    await db.commit()
+    return soft
+
+
+@router.patch("/software/{software_id}")
+async def update_organization_software(
+    software_id: uuid.UUID,
+    body: SoftwareUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Change a software (administrators, audited); a synced one takes its CPE override only (422 otherwise)."""
+    from app.services.organization_software_store import SoftwareError, update_software
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Software not found")
+    try:
+        soft, changed = await update_software(db, org, software_id, body.model_dump(exclude_none=True))
+    except SoftwareError as exc:
+        await db.rollback()
+        raise _software_http_error(exc) from None
+    if changed:
+        await _audit_software(
+            db, admin, "update", software_id, f"Software {soft['name']} changed: " + ", ".join(changed), changed
+        )
+    await db.commit()
+    return soft
+
+
+@router.delete("/software/{software_id}", status_code=204)
+async def delete_organization_software(
+    software_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> None:
+    """Delete a hand-typed software and its hand attachments (administrators, audited); 422 for a synced one."""
+    from app.services.organization_asset_store import rebuild_from_profile
+    from app.services.organization_software_store import SoftwareError, delete_software
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Software not found")
+    try:
+        gone = await delete_software(db, org, software_id)
+    except SoftwareError as exc:
+        await db.rollback()
+        raise _software_http_error(exc) from None
+    if gone["detached"]:
+        await rebuild_from_profile(db, org)
+    await _audit_software(
+        db,
+        admin,
+        "delete",
+        software_id,
+        f"Software {gone['name']} deleted",
+        {"vendor": gone["vendor"], "product": gone["product"], "detached": gone["detached"]},
+    )
+    await db.commit()
+
+
+@router.post("/software/{software_id}/installations", status_code=201)
+async def attach_organization_software(
+    software_id: uuid.UUID,
+    body: SoftwareAttachRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Attach a hand-typed software to an asset at a version (administrators, audited); kept across rebuilds."""
+    from app.services.organization_asset_store import rebuild_from_profile
+    from app.services.organization_software_store import SoftwareError, attach_software
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Software not found")
+    try:
+        result = await attach_software(
+            db, org, software_id, body.asset_id, version=body.version, author_user_id=admin.id
+        )
+    except SoftwareError as exc:
+        await db.rollback()
+        raise _software_http_error(exc) from None
+    if result["added"]:
+        await rebuild_from_profile(db, org)
+        await _audit_software(
+            db,
+            admin,
+            "configure",
+            software_id,
+            f"Software attached to an asset at version {result['version']}",
+            result,
+        )
+    await db.commit()
+    return result
+
+
+@router.delete("/software/{software_id}/installations/{asset_id}", status_code=204)
+async def detach_organization_software(
+    software_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    version: str = Query("", max_length=100),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> None:
+    """Remove a hand attachment from an asset (every version when ``version`` is empty; administrators, audited)."""
+    from app.services.organization_asset_store import rebuild_from_profile
+    from app.services.organization_software_store import SoftwareError, detach_software
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Software not found")
+    try:
+        removed = await detach_software(db, org, software_id, asset_id, version=version)
+    except SoftwareError as exc:
+        await db.rollback()
+        raise _software_http_error(exc) from None
+    await rebuild_from_profile(db, org)
+    await _audit_software(
+        db,
+        admin,
+        "configure",
+        software_id,
+        f"Software detached from an asset: {removed} installation(s)",
+        {"asset_id": str(asset_id), "version": version or None, "removed": removed},
+    )
+    await db.commit()
+
+
+@router.get("/software/{software_id}")
+async def get_organization_software(
+    software_id: uuid.UUID,
+    installations_offset: int = Query(0, ge=0),
+    installations_limit: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One software: its versions with asset counts, its installations, what it depends on and what uses it."""
+    from app.services.organization_software_store import get_software
+
+    org = await _built_store(db)
+    found = (
+        await get_software(
+            db,
+            org,
+            software_id,
+            installations_offset=installations_offset,
+            installations_limit=installations_limit,
+        )
+        if org is not None
+        else None
+    )
+    if found is None:
+        raise HTTPException(status_code=404, detail="Software not found")
+    return found
 
 
 class AssetDecisionRecord(BaseModel):

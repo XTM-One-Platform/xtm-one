@@ -4219,6 +4219,13 @@ async def update_assignment(
         and stored_cron is not None
     ):
         body.trigger_config = {**body.trigger_config, "cron": stored_cron}
+    # A batch window as it will be saved: judged against the type the row keeps.
+    if body.trigger_config is not None:
+        from app.services.event_batching import window_error
+
+        batch_error = window_error(saved_type, body.trigger_config)
+        if batch_error is not None:
+            raise HTTPException(status_code=422, detail=batch_error)
     # A platform_event trigger as it will be saved: a config sent alone
     # is judged against the stored type, which the request schema cannot see.
     if saved_type == "platform_event" and body.trigger_config is not None:

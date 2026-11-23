@@ -428,6 +428,7 @@ ee:
   - backend/app/services/event_enrichment*.py
   - backend/app/services/event_run_dedup.py
   - backend/app/services/event_coalescing.py
+  - backend/app/services/event_batching.py
   - backend/app/services/inbound_claims.py
   - backend/app/services/ci_red_claims.py
   - backend/app/services/mail_send_guard.py
