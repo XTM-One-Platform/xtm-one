@@ -72,7 +72,7 @@ def _case(severity: str | None, due_hours: float | None, path: str = "new_vulner
         severity=severity,
         sla_due_at=None if due_hours is None else now + timedelta(hours=due_hours),
         trigger_path=path,
-        state="needs_attention",
+        state="new",
         vertical="cyber",
     )
 

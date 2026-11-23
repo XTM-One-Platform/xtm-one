@@ -228,7 +228,7 @@ def _case(**kw: Any) -> SimpleNamespace:
         "id": uuid.uuid4(),
         "organization_id": uuid.uuid4(),
         "vertical": "cyber",
-        "state": "in_progress",
+        "state": "remediating",
         "remediation_kind": "patch",
         "trigger_path": "new_vulnerability",
         "severity": "P1",
@@ -302,10 +302,10 @@ def test_one_live_frame_per_case_moved_ids_and_states_only() -> None:
     pending = [
         (
             aev.CASE_VALIDATION_FINISHED,
-            {"case_id": "c1", "state": "in_progress", "openaev": {"resource_id": "x"}},
+            {"case_id": "c1", "state": "remediating", "openaev": {"resource_id": "x"}},
             "e1",
         ),
-        (aev.CASE_VALIDATION_FINISHED, {"case_id": "c1", "state": "in_progress"}, "e2"),
+        (aev.CASE_VALIDATION_FINISHED, {"case_id": "c1", "state": "remediating"}, "e2"),
         (aev.CASE_VALIDATION_FINISHED, {"case_id": "c2", "state": "resolved"}, "e3"),
         (aev.CASE_VALIDATION_FINISHED, {"state": "resolved"}, "e4"),
     ]
@@ -314,7 +314,7 @@ def test_one_live_frame_per_case_moved_ids_and_states_only() -> None:
         {
             "type": "ctem_case_update",
             "case_id": "c1",
-            "state": "in_progress",
+            "state": "remediating",
             "event_kind": aev.HISTORY_KIND,
             "at": at.isoformat(),
         },

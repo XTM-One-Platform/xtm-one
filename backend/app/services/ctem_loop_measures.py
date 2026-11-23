@@ -35,8 +35,8 @@ from app.services import ctem_cases as rules
 
 #: The measures, in the order the page draws them.
 DURATION_MEASURES = ("signal_to_case", "case_to_validation", "case_to_decision", "case_to_passing_retest")
-#: State events that commit a case: someone took it on, or accepted its risk.
-DECISION_STATES = ("in_progress", "accepted_risk")
+#: State events that commit a case: the remediation is under way (``in_progress`` in old history), or its risk accepted.
+DECISION_STATES = ("remediating", "in_progress", "accepted_risk")
 
 
 def _hours(start: datetime | None, end: datetime | None) -> float | None:

@@ -126,7 +126,7 @@ def _case(**kw) -> CtemCase:
         remediation_kind="close_exposure",
         keys=["close_exposure:asset/admin.example.com"],
         pinned_issues=[],
-        state="needs_attention",
+        state="new",
         state_since=NOW,
         trigger_path="new_exposure",
         risk_scenario_ids=[],
@@ -315,7 +315,7 @@ async def test_closed_at_source_keeps_the_case_open_while_other_members_are():
     member = CtemCaseIssue(case_id=case.id, source="signal", external_id=str(signal.id), open=True)
     db = CloseSession([signal], [member], [(uuid.uuid4(),)], case)
     closed = await loop.close_signal_members(db, organization_id=ORG, provider="aikido", external_id="42", now=NOW)
-    assert closed == 1 and case.state == "needs_attention" and case.validations == []
+    assert closed == 1 and case.state == "new" and case.validations == []
     assert await loop.close_signal_members(db, organization_id=ORG, provider="aikido", external_id="") == 0
 
 
@@ -369,7 +369,7 @@ def test_severity_defaults_to_the_policy_sla_when_the_record_has_none():
 
 def _check(target: str, **kw) -> None:
     rules.check_transition(
-        current=kw.pop("current", "in_progress"),
+        current=kw.pop("current", "remediating"),
         target=target,
         actor_kind="user",
         owner_user_id=uuid.uuid4(),
@@ -403,7 +403,7 @@ def test_unknown_resolution_kind_is_refused():
 
 def test_a_case_with_a_plan_never_resolves_on_absence_at_source():
     snap = rules.CaseSnapshot(
-        id="c1", keys=["k"], state="in_progress", members={"openaev:f1": True}, validation_plan=True
+        id="c1", keys=["k"], state="remediating", members={"openaev:f1": True}, validation_plan=True
     )
     plans = rules.plan_recompute([snap], [], closed=["openaev:f1"])
     assert plans[0].resolve == ["openaev:f1"] and plans[0].new_state is None
@@ -415,7 +415,7 @@ def test_a_case_with_a_plan_never_resolves_on_absence_at_source():
 @pytest.mark.asyncio
 async def test_a_passing_validation_resolves_the_case_and_raises_one_event():
     db, events = FakeSession(), loop.PendingEvents()
-    case = _case(state="in_progress")
+    case = _case(state="remediating")
     await loop.record_validation(
         db, case, provider="openaev", kind="simulation", ref="sim-1", result="passed", events=events, now=NOW
     )
@@ -435,7 +435,7 @@ async def test_not_exposed_closes_as_not_exposed():
 
 @pytest.mark.asyncio
 async def test_a_mitigation_pass_keeps_the_case_watched():
-    case = _case(state="in_progress")
+    case = _case(state="remediating")
     events = loop.PendingEvents()
     await loop.record_validation(
         FakeSession(),
@@ -460,18 +460,18 @@ async def test_a_failed_retest_reopens_and_raises_one_event(state):
     await loop.record_validation(
         db, case, provider="openaev", kind="retest", ref="r2", result="failed", events=events, now=NOW
     )
-    assert case.state == "needs_attention" and case.resolution_kind is None
+    assert case.state == "new" and case.resolution_kind is None
     assert [n for n, _, _ in events.items] == [loop.CASE_REOPENED]
     assert db.events("state")[0].reason.startswith("re-test failed")
 
 
 @pytest.mark.asyncio
 async def test_a_failed_validation_on_an_open_case_only_records_it():
-    case = _case(state="needs_attention")
+    case = _case(state="new")
     await loop.record_validation(
         FakeSession(), case, provider="openaev", kind="check", ref="r", result="failed", now=NOW
     )
-    assert case.state == "needs_attention" and case.validations[-1]["result"] == "failed"
+    assert case.state == "new" and case.validations[-1]["result"] == "failed"
 
 
 @pytest.mark.asyncio

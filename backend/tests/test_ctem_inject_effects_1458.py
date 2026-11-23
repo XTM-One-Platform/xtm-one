@@ -205,7 +205,7 @@ class _Session:
         self.added.append(row)
 
 
-def _case(state: str = "needs_attention") -> CtemCase:
+def _case(state: str = "new") -> CtemCase:
     return CtemCase(
         id=uuid.uuid4(),
         organization_id=uuid.uuid4(),
@@ -237,7 +237,7 @@ async def test_a_negative_intrusive_validation_leaves_the_case_open(result: str)
         now=NOW,
     )
     entry = case.validations[-1]
-    assert case.state == "needs_attention" and case.resolution_kind is None
+    assert case.state == "new" and case.resolution_kind is None
     assert entry["conclusive"] is False and entry["safe_mode"] is False and entry["inject_class"] == "intrusive"
     assert loop.CASE_RESOLVED not in [n for n, _, _ in events.items]
     assert rules.passing(entry) is False

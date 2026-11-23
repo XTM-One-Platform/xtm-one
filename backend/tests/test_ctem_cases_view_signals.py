@@ -22,7 +22,7 @@ def _case() -> CtemCase:
         remediation_kind="close_exposure",
         keys=["close_exposure:portal-edge-01"],
         pinned_issues=[],
-        state="needs_attention",
+        state="new",
         state_since=NOW,
         severity="P1",
     )

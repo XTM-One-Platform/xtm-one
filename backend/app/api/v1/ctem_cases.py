@@ -45,7 +45,16 @@ from app.services.organizations import get_primary
 
 router = APIRouter()
 
-CaseState = Literal["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"]
+CaseState = Literal[
+    "new",
+    "analyzing",
+    "waiting_decision",
+    "remediating",
+    "validating",
+    "mitigated_watching",
+    "resolved",
+    "accepted_risk",
+]
 
 
 class CaseValidation(BaseModel):

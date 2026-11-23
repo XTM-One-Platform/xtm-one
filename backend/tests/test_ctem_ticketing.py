@@ -83,7 +83,7 @@ def _case(**kw) -> CtemCase:
         remediation_kind="close_exposure",
         keys=["close_exposure:asset/admin.example.com"],
         pinned_issues=[],
-        state="in_progress",
+        state="remediating",
         state_since=NOW,
         trigger_path="new_exposure",
         risk_scenario_ids=[],
@@ -245,7 +245,7 @@ async def test_ticket_done_asks_the_retest_once_and_never_resolves_the_case():
     adapter.tickets["ITS-1"] = tk.RemoteTicket(key="ITS-1", url="u", status="done", external_status="Done")
     outcome = await tk.pull_ticket_status(db, case, adapter, SYNC, now=NOW)
     assert outcome.retest_requested
-    assert case.state == "in_progress"
+    assert case.state == "validating"  # the ticket done hands the case to its re-test (#1503)
     assert case.tickets[0]["status"] == "done"
     again = await tk.pull_ticket_status(db, case, adapter, SYNC, now=NOW)
     assert not again.retest_requested
@@ -263,7 +263,7 @@ async def test_resolved_case_closes_the_ticket_and_a_failed_retest_reopens_it():
     case.state = "resolved"
     await tk.push_case_state(db, case, adapter, SYNC, now=NOW)
     assert adapter.tickets["ITS-1"].status == "done"
-    case.state = "needs_attention"
+    case.state = "new"
     await tk.push_case_state(db, case, adapter, SYNC, now=NOW)
     assert adapter.tickets["ITS-1"].status == "open"
     assert case.tickets[-1]["status"] == "open"
@@ -275,7 +275,7 @@ async def test_reopen_can_open_a_linked_ticket_instead():
     await tk.ensure_ticket(db, case, adapter, SYNC, integration="jira", now=NOW)
     case.state = "resolved"
     await tk.push_case_state(db, case, adapter, SYNC, now=NOW)
-    case.state = "needs_attention"
+    case.state = "new"
     outcome = await tk.push_case_state(db, case, adapter, TicketingSync(on_reopen="linked"), now=NOW)
     assert outcome.created and adapter.created == 2
     assert [t["key"] for t in case.tickets] == ["ITS-1", "ITS-2"]
@@ -336,7 +336,7 @@ async def test_scheduled_pass_never_creates_then_pulls_pushes_and_raises_the_ret
 
     org = uuid.uuid4()
     mobilized = _case(organization_id=org, severity="P1")
-    waiting = _case(organization_id=org, severity="P1", state="needs_attention")
+    waiting = _case(organization_id=org, severity="P1", state="new")
     low = _case(organization_id=org, severity="P3")
     adapter = FakeAdapter()
     row = type("V", (), {"organization_id": org, "profile": {"ticketing": {"integration": "i", "project": "ITS"}}})()
@@ -371,7 +371,7 @@ async def test_scheduled_pass_never_creates_then_pulls_pushes_and_raises_the_ret
     counts = await tk.sync_cases(db, events=events, now=NOW)
     assert counts["pushed"] == 0  # already done: nothing to push
     # The re-test failed after the ticket was done: the case reopens, so does the ticket.
-    mobilized.state = "needs_attention"
+    mobilized.state = "new"
     mobilized.validations = [{"result": "failed", "at": (NOW + timedelta(minutes=5)).isoformat()}]
     later = NOW + timedelta(minutes=10)
     counts = await tk.sync_cases(db, events=events, now=later)
@@ -379,7 +379,7 @@ async def test_scheduled_pass_never_creates_then_pulls_pushes_and_raises_the_ret
 
 
 def test_a_done_ticket_waiting_for_its_retest_is_not_reopened():
-    case = _case(state="in_progress")
+    case = _case(state="remediating")
     done = {"key": "ITS-1", "status": "done", "at": NOW.isoformat(), "sync": {"state": "in_sync"}}
     assert not tk.needs_reopen(case, done)
     closed_by_case = {**done, "sync": {"state": "in_sync", "closed_by_case": True}}
@@ -406,7 +406,7 @@ async def test_the_mobilization_tool_path_opens_one_ticket_on_create_and_needs_t
     from app.services import organization_context as oc
 
     org = uuid.uuid4()
-    case = _case(organization_id=org, severity="P3", state="needs_attention")
+    case = _case(organization_id=org, severity="P3", state="new")
     adapter = FakeAdapter()
     row = type("V", (), {"organization_id": org, "profile": {"ticketing": {"integration": "i", "project": "ITS"}}})()
 
@@ -483,7 +483,7 @@ async def test_a_jira_status_event_moves_its_case_at_once_and_asks_the_retest_on
     done = await tk.apply_inbound_status(
         db, integration_id="jira-1", key="ITS-1", status_name="Done", category="done", events=events
     )
-    assert done.retest_requested and case.state == "in_progress"  # the case closes on the re-test, never on the ticket
+    assert done.retest_requested and case.state == "validating"  # the case closes on the re-test, never on the ticket
     again = await tk.apply_inbound_status(
         db, integration_id="jira-1", key="ITS-1", status_name="Done", category="done", events=events
     )

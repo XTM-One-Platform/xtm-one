@@ -25,7 +25,7 @@ def _case(title: str) -> CtemCase:
         remediation_kind="upgrade",
         keys=[f"upgrade:{title}"],
         pinned_issues=[],
-        state="needs_attention",
+        state="new",
         state_since=NOW,
     )
 
@@ -48,7 +48,7 @@ def test_a_case_whose_seen_issue_names_the_asset_is_listed_whatever_the_case_and
     view = _view(WEB, DB)
     rows, counts = view_of.list_for_viewer([(web, _rows(web, WEB)), (db, _rows(db, DB))], view, asset="  web-01 ")
     assert [r["id"] for r in rows] == [str(web.id)]
-    assert counts == {"needs_attention": 1}
+    assert counts == {"new": 1}
 
 
 def test_an_issue_the_viewer_cannot_see_never_lists_the_case() -> None:

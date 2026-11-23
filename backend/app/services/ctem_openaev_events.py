@@ -34,7 +34,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ CASE_EVENT_KEYS: frozenset[str] = frozenset(
     {"simulation_finished", "finding_updated", "finding_deleted", "critical_asset_reached"}
 )
 #: The states in which a case still waits on a result (a resolved case reopens through a failed re-test).
-WAITING_STATES: tuple[str, ...] = ("needs_attention", "in_progress", "mitigated_watching", "resolved")
+WAITING_STATES: tuple[str, ...] = (*OPEN_STATES, "mitigated_watching", "resolved")
 #: Most cases one delivery is matched against.
 SCAN_LIMIT = 500
 #: The history kind of the entry (``ctem_case_events.kind`` is 20 characters).
