@@ -23,8 +23,11 @@ export const LOOP_STAGES = [
 ] as const;
 
 type LoopStageKey = (typeof LOOP_STAGES)[number]["key"];
-/** passed: done; current: the object waits here; stopped: the loop ends here, with its reason. */
-type LoopStageStatus = "passed" | "current" | "stopped" | "not_reached";
+/**
+ * passed: done; current: the object waits here; stopped: the loop ends here, with its reason;
+ * parked: an unmatched signal rests here until the inventory holds its subject, no fault (#1505).
+ */
+type LoopStageStatus = "passed" | "current" | "stopped" | "parked" | "not_reached";
 
 export interface LoopStageView {
   key: LoopStageKey;
@@ -35,10 +38,10 @@ export interface LoopStageView {
 }
 
 /** The stage index each state has passed, and the one it waits at or stopped at. */
-const STATE_PLACE: Record<CtemSignalState, { passed: number; at: number; stopped: boolean }> = {
+const STATE_PLACE: Record<CtemSignalState, { passed: number; at: number; stopped: boolean; parked?: boolean }> = {
   new: { passed: 0, at: 1, stopped: false },
   confirmed: { passed: 1, at: 2, stopped: false },
-  to_validate: { passed: 0, at: 1, stopped: true },
+  to_validate: { passed: 0, at: 1, stopped: true, parked: true },
   discarded: { passed: 0, at: 1, stopped: true },
   watchlist: { passed: 1, at: 2, stopped: true },
   case_opened: { passed: 3, at: 4, stopped: false },
@@ -52,11 +55,12 @@ export function signalLoop(signal: Pick<CtemSignal, "state" | "first_seen_at" | 
     signal.state === "confirmed" && signal.decision?.outcome === "case"
       ? { passed: 2, at: 3, stopped: false }
       : (STATE_PLACE[signal.state] ?? STATE_PLACE.new);
+  const stopStatus: LoopStageStatus = "parked" in place && place.parked ? "parked" : "stopped";
   const decidedAt = signal.decision?.decided_at ?? null;
   return LOOP_STAGES.map((stage, index) => {
     let status: LoopStageStatus = "not_reached";
     if (index <= place.passed) status = "passed";
-    else if (index === place.at) status = place.stopped ? "stopped" : "current";
+    else if (index === place.at) status = place.stopped ? stopStatus : "current";
     let at: string | null = null;
     if (index === 0) at = signal.first_seen_at;
     else if (status !== "not_reached" && status !== "current" && index <= place.at) at = decidedAt;
@@ -66,6 +70,6 @@ export function signalLoop(signal: Pick<CtemSignal, "state" | "first_seen_at" | 
 
 /** The stage a signal waits at or stopped at, for its one-line summary. */
 export function currentStage(stages: LoopStageView[]): LoopStageView | undefined {
-  return stages.find((s) => s.status === "current" || s.status === "stopped");
+  return stages.find((s) => s.status === "current" || s.status === "stopped" || s.status === "parked");
 }
 
