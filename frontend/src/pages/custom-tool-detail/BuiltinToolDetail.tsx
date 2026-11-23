@@ -18,6 +18,7 @@ import { useTabParam } from "@/hooks/useTabParam";
 import { Wrench, Sparkles, Bot, ArrowRight, Settings2, BarChart3, Activity, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import { PageSkeleton } from "@/components/ui/skeleton";
@@ -177,7 +178,7 @@ export function BuiltinToolDetail({ toolId }: { toolId: string }) {
             <CardHeader className="pb-3">
               <CardTitle className="content-base flex items-center gap-2">
                 <Bot className="h-4 w-4 text-accent" /> {t_i18n("Agents Using This Tool")}
-                <Badge variant="cyan" className="content-caption ml-auto">{boundAgents.length}</Badge>
+                <CountBadge variant="cyan" className="ml-auto">{boundAgents.length}</CountBadge>
               </CardTitle>
             </CardHeader>
             <CardContent>

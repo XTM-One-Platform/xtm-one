@@ -36,6 +36,7 @@ import {
 } from "@/hooks/api/useEvaluationApi";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { FallbackEntryBadge, RunModeBadge } from "@/components/evaluation/run-mode-badge";
 import { PromptGuardBadge } from "@/components/evaluation/prompt-guard-badge";
 import { MetricName } from "@/components/evaluation/metric-name";
@@ -1679,7 +1680,7 @@ export function RunMetricsPanel({ run }: { run: EvaluationRun }) {
         {open ? <ChevronDown className="h-4 w-4 text-default-secondary" /> : <ChevronRight className="h-4 w-4 text-default-secondary" />}
         <BarChart3 className="h-4 w-4 text-accent" />
         {t_i18n("Metrics")}
-        <Badge variant="outline" className="text-[9px]">{aggregates.length}</Badge>
+        <CountBadge variant="outline">{aggregates.length}</CountBadge>
       </button>
       {open && (
         <CardContent className="pt-0 space-y-5">
@@ -1803,7 +1804,7 @@ function RunTagsPanel({
           {open ? <ChevronDown className="h-4 w-4 text-default-secondary" /> : <ChevronRight className="h-4 w-4 text-default-secondary" />}
           <Tag className="h-4 w-4 text-accent" />
           {t_i18n("Run Tags")}
-          <Badge variant="outline" className="text-[9px]">{entries.length + inheritedEntries.length}</Badge>
+          <CountBadge variant="outline">{entries.length + inheritedEntries.length}</CountBadge>
         </button>
         <InfoTip content={t_i18n(EVALUATION_TERMS.runTags)} label={t_i18n("What run tags are")} />
         {/* Baseline stays in the collapsed header: it qualifies the run
@@ -2308,7 +2309,7 @@ function RunParametersPanel({ runId }: { runId: string }) {
           {open ? <ChevronDown className="h-4 w-4 text-default-secondary" /> : <ChevronRight className="h-4 w-4 text-default-secondary" />}
           <Wrench className="h-4 w-4 text-accent" />
           {t_i18n("Parameters")}
-          <Badge variant="outline" className="text-[9px]">{params.length}</Badge>
+          <CountBadge variant="outline">{params.length}</CountBadge>
         </button>
         <InfoTip content={t_i18n(RUN_PAGE_NOTES.parameters)} label={t_i18n("What run parameters are")} />
       </div>

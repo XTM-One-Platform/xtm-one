@@ -22,6 +22,7 @@ import {
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, BadgeFocusTrigger } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Switch } from "@/components/ui/switch";
 import { DisclosureSummary } from "@/components/ui/disclosure";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
@@ -295,7 +296,7 @@ export function ToolingSection({
           <div>
             <CardTitle className="content-base flex items-center gap-2">
               <Cog className="h-4 w-4 text-accent" /> {t_i18n("Integrations")}
-              {(() => { const ids = Object.values(agent.integration_bindings || {}).flat(); const count = (integrations ? ids.filter(id => integrations.some(i => i.id === id)).length : ids.length) + getAgentRequiredTemplateProviders(agent).length; return count > 0 && !editingIntegrations ? <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{count}</Badge> : null; })()}
+              {(() => { const ids = Object.values(agent.integration_bindings || {}).flat(); const count = (integrations ? ids.filter(id => integrations.some(i => i.id === id)).length : ids.length) + getAgentRequiredTemplateProviders(agent).length; return count > 0 && !editingIntegrations ? <CountBadge variant="secondary">{count}</CountBadge> : null; })()}
             </CardTitle>
             {companyManaged && !agent.is_builtin && <p className="content-caption text-feedback-warning-primary mt-0.5 flex items-center gap-1"><Building2 className="h-3 w-3" /> {isXtmOne ? t_i18n("Instance bindings are limited to company-managed integrations. Use dynamic templates for per-user integrations.") : t_i18n("Only company-managed integrations are shown.")}</p>}
           </div>
@@ -667,7 +668,7 @@ export function ToolingSection({
               <CardTitle className="content-base flex items-center gap-2">
                 <Hash className="h-4 w-4 text-filigran-ia-primary" /> {t_i18n("Scope(s)")}
                 {totalBound > 0 && (
-                  <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{totalBound}</Badge>
+                  <CountBadge variant="secondary">{totalBound}</CountBadge>
                 )}
               </CardTitle>
               <CardEditActions editing={editingElements} canEdit={canManageIntegrations && providersWithElements.length > 0} onEdit={onStartEditElements} onCancel={onCancelEditElements} onSave={() => onSaveElements(elementDraft)} />
@@ -756,7 +757,7 @@ export function ToolingSection({
             <CardTitle className="content-base flex items-center gap-2">
               <Terminal className="h-4 w-4 text-accent" /> {t_i18n("MCP Tool Servers")}
               {(agent.mcp_server_ids || []).length > 0 && !editingMcp && (
-                <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{(agent.mcp_server_ids || []).length}</Badge>
+                <CountBadge variant="secondary">{(agent.mcp_server_ids || []).length}</CountBadge>
               )}
             </CardTitle>
             {companyManaged && !agent.is_builtin && <p className="content-caption text-feedback-warning-primary mt-0.5 flex items-center gap-1"><Building2 className="h-3 w-3" /> {t_i18n("Only company-managed MCP servers are shown.")}</p>}
@@ -860,7 +861,7 @@ export function ToolingSection({
           <CardTitle className="content-base flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-accent" /> {t_i18n("Built-in Tools")}
             {(agent.builtin_tool_ids || []).length > 0 && !editingBuiltinTools && (
-              <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{canonicalBuiltinIds(agent.builtin_tool_ids).length}</Badge>
+              <CountBadge variant="secondary">{canonicalBuiltinIds(agent.builtin_tool_ids).length}</CountBadge>
             )}
           </CardTitle>
           <CardEditActions editing={editingBuiltinTools} canEdit={canManage} onEdit={onStartEditBuiltinTools} onCancel={onCancelBuiltinTools} onSave={onSaveBuiltinTools} saveDisabled={isPending} testIds={{ edit: "builtin-tools-edit", cancel: "builtin-tools-cancel", save: "builtin-tools-save" }} />
@@ -1166,7 +1167,7 @@ export function ToolingSection({
           <CardTitle className="content-base flex items-center gap-2">
             <Wrench className="h-4 w-4 text-accent" /> {t_i18n("Custom Tools")}
             {(agent.custom_tool_ids || []).length > 0 && !editingCustomTools && (
-              <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{(agent.custom_tool_ids || []).length}</Badge>
+              <CountBadge variant="secondary">{(agent.custom_tool_ids || []).length}</CountBadge>
             )}
           </CardTitle>
           <CardEditActions editing={editingCustomTools} canEdit={canManage} onEdit={onStartEditCustomTools} onCancel={onCancelCustomTools} onSave={onSaveCustomTools} saveDisabled={isPending} />
