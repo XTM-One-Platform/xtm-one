@@ -98,6 +98,39 @@ SEED_SIMULATION = {
     "exercise_category": "attack-scenario",
     "exercise_severity": "high",
 }
+#: The agent the atomic testing targets, registered as an OpenAEV agent would (``/endpoints/register``).
+SEED_AGENT = {
+    "asset_name": "lab-agent-01",
+    "asset_external_reference": "lab-agent-01-ref",
+    "asset_hostname": "lab-agent-01.lab.local",
+    "asset_ips": ["10.0.0.21"],
+    "asset_mac_addresses": ["02:00:00:00:00:21"],
+    "endpoint_platform": "Linux",
+    "endpoint_arch": "x86_64",
+    "agent_is_service": True,
+    "agent_is_elevated": True,
+    "agent_executed_by_user": "root",
+    "agent_installation_mode": "service",
+    "agent_installation_directory": "/opt/openaev-agent",
+    "agent_service_name": "openaev-agent",
+}
+#: A manual command payload: creating it creates its injector contract, the one the atomic testing runs.
+SEED_PAYLOAD = {
+    "payload_type": "Command",
+    "payload_name": "Lab whoami",
+    "payload_description": "Seeded by the xtm-one OpenAEV lab.",
+    "payload_source": "MANUAL",
+    "payload_status": "VERIFIED",
+    "payload_platforms": ["Linux"],
+    "command_executor": "sh",
+    "command_content": "whoami",
+    "payload_domains": [],
+}
+SEED_ATOMIC_TESTING = {
+    "inject_title": "Lab whoami on lab-agent-01",
+    "inject_description": "Seeded by the xtm-one OpenAEV lab; launched, no implant answers, so it stays running.",
+    "inject_content": {},
+}
 STATE: dict[str, str] = {}
 #: The seed steps the database holds (step name: created id), written after each step: a kept database seeds only
 #: the steps this record lacks, so a step that failed or was cut on the first start lands on the next one.
@@ -404,9 +437,38 @@ def seed_call(method: str, path: str, body: object) -> object:
     raise SeedError("no attempt")
 
 
-def seed_steps() -> list[tuple[str, str, object, str | None, str | None]]:
-    """The seed in order: (step name, tenant resource, body, id field of the answer, STATE key of that id)."""
-    steps: list[tuple[str, str, object, str | None, str | None]] = [
+def platform_version() -> str:
+    """The backend's own version (``GET /api/settings`` platform_version): an agent registered with any other
+    version gets an upgrade job, whose installer lookup answers 500 'Agent installer version ... not found' in a
+    build from source (gap lab-openaev-no-running-atomic-testing-seed)."""
+    settings = api("GET", "/api/settings") or {}
+    version = settings.get("platform_version") if isinstance(settings, dict) else None
+    if not version:
+        raise SeedError("GET /api/settings answered no platform_version")
+    return str(version)
+
+
+def agent_body() -> dict:
+    return {**SEED_AGENT, "endpoint_agent_version": platform_version()}
+
+
+def atomic_testing_body() -> dict:
+    return {**SEED_ATOMIC_TESTING, "inject_injector_contract": STATE["contract"], "inject_assets": [STATE["agent"]]}
+
+
+def first_contract_id(answer: object) -> str:
+    """The contract the payload created, from the contract search (its labels carry the payload name)."""
+    rows = answer.get("content") if isinstance(answer, dict) else None
+    if not rows:
+        raise KeyError(f"no injector contract labelled {SEED_PAYLOAD['payload_name']!r}")
+    return str(rows[0]["injector_contract_id"])
+
+
+def seed_steps() -> list[tuple[str, object, object, object, str | None]]:
+    """The seed in order: (step name, tenant resource, body, id field of the answer, STATE key of that id). A
+    resource or body may be a callable, called when the step runs (it reads the ids the earlier steps put in STATE);
+    the id field may be a callable reading the answer."""
+    steps: list[tuple[str, object, object, object, str | None]] = [
         (f"asset {asset['asset_name']}", "endpoints/agentless", asset, "asset_id", None) for asset in SEED_ASSETS
     ]
     steps.append(("asset group Lab servers", "asset_groups",
@@ -414,6 +476,17 @@ def seed_steps() -> list[tuple[str, str, object, str | None, str | None]]:
     steps.append((f"scenario {SEED_SCENARIO['scenario_name']}", "scenarios", SEED_SCENARIO, "scenario_id", "scenario"))
     steps.append((f"simulation {SEED_SIMULATION['exercise_name']}", "exercises", SEED_SIMULATION, "exercise_id",
                   "simulation"))
+    # A registered agent and an atomic testing launched on it, so the running and pending states render with no
+    # hand SQL (gap lab-openaev-no-running-atomic-testing-seed). No implant ever answers: the testing stays running.
+    steps.append((f"agent {SEED_AGENT['asset_name']}", "endpoints/register", agent_body, "asset_id", "agent"))
+    steps.append((f"payload {SEED_PAYLOAD['payload_name']}", "payloads", SEED_PAYLOAD, "payload_id", "payload"))
+    steps.append((f"contract of {SEED_PAYLOAD['payload_name']}", "injector_contracts/search",
+                  {"page": 0, "size": 1, "textSearch": SEED_PAYLOAD["payload_name"], "include_full_details": False},
+                  first_contract_id, "contract"))
+    steps.append((f"atomic testing {SEED_ATOMIC_TESTING['inject_title']}", "atomic-testings", atomic_testing_body,
+                  "inject_id", "atomic_testing"))
+    steps.append((f"launch of {SEED_ATOMIC_TESTING['inject_title']}",
+                  lambda: f"atomic-testings/{STATE['atomic_testing']}/launch", None, None, None))
     return steps
 
 
@@ -438,9 +511,13 @@ def seed() -> list[str]:
             lab.log(f"openaev seed: {name} kept from the previous run")
             continue
         try:
-            created = seed_call("POST", tenant_path(resource), body)
-            created_id = str(created[id_field]) if id_field else ""  # type: ignore[index]
-        except (SeedError, KeyError, TypeError) as exc:
+            path = tenant_path(resource() if callable(resource) else str(resource))
+            created = seed_call("POST", path, body() if callable(body) else body)
+            if callable(id_field):
+                created_id = id_field(created)
+            else:
+                created_id = str(created[id_field]) if id_field else ""  # type: ignore[index]
+        except (SeedError, KeyError, TypeError, IndexError, urllib.error.URLError) as exc:
             lab.log(f"openaev seed: {name} failed: {exc}")
             missing.append(f"{name} ({exc})")
             continue

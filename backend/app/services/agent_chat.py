@@ -9141,6 +9141,14 @@ async def run_agent_chat(
                 loop_outcome_out["stop_reason"] = getattr(
                     response, "stop_reason", None
                 )
+                # A deadline stop no model call wrote a token of: the caller
+                # (a delegated task) fails it instead of completing on the
+                # forced-answer notice.
+                from app.tools.agent_loop import deadline_stop_without_output
+
+                loop_outcome_out["deadline_stop_without_output"] = (
+                    deadline_stop_without_output(response)
+                )
                 loop_outcome_out["pending_task_ids"] = list(
                     getattr(response, "pending_task_ids", None) or []
                 )

@@ -225,6 +225,8 @@ def test_a_change_to_the_selection_runs_every_suite_it_decides(graph, frontend, 
     assert selection.migrations_reason(change, graph, tmp_path / "backend" / "alembic")
     assert select_frontend_unit(change, frontend).mode == "full"
     assert selection.frontend_build_reason(change)
+    # And the select job's own answer carries it: the graph is the small tree's, not the repository's.
+    assert selection.run_ci(change, None, tmp_path / "out", graph=graph)["frontend-build"] == "true"
 
 
 def test_a_file_of_tests_itself_selects_by_its_name_not_by_the_folder_every_test_imports(graph):
@@ -239,6 +241,34 @@ def test_a_file_marked_integration_as_a_whole_takes_no_unit_shard(graph):
     assert selection.plan_backend(marked, graph)["integration"] == ["1/1"]
     mixed = selection.Selection(reasons={"tests/test_mixed.py": "changed"})
     assert selection.plan_backend(mixed, graph)["unit"] == ["1/1"]
+
+
+def test_the_browser_tool_takes_the_share_of_its_seconds_selected(graph, tmp_path):
+    # Its files are dealt by seconds: one slow file selected takes the shards its seconds are worth.
+    weights = tmp_path / "weights"
+    weights.mkdir()
+    (weights / "unit.json").write_text("{}", encoding="utf-8")
+    (weights / "chromium.json").write_text('{"tests/test_slow_chromium.py": 900}', encoding="utf-8")
+    marked = "import pytest\npytestmark = pytest.mark.chromium\n"
+    backend = _tree(
+        tmp_path / "chromium-tree",
+        {
+            "app/__init__.py": "",
+            "tests/__init__.py": "",
+            "tests/test_slow_chromium.py": marked,
+            **{f"tests/test_quick_{i}_chromium.py": marked for i in range(99)},
+        },
+    )
+    tree = Graph.read(backend)
+    slow = selection.Selection(reasons={"tests/test_slow_chromium.py": "changed"})
+    quick = selection.Selection(reasons={"tests/test_quick_0_chromium.py": "changed"})
+    # One file is one shard whatever it weighs; the whole suite takes five.
+    assert selection.plan_backend(slow, tree, weights)["chromium"] == ["1/1"]
+    assert selection.plan_backend(selection.Selection(full="all"), tree, weights)["chromium"] == shard_list(5)
+    # Three files holding 900 s of the 999 take three shards; by file count (3 of 100) they took one.
+    assert selection._shards(900, 999, "chromium", files=3) == 3
+    assert selection._shards(3, 100, "chromium") == 1
+    assert selection.plan_backend(quick, tree, weights)["chromium"] == ["1/1"]
 
 
 def test_a_file_that_does_not_parse_runs_everything(tmp_path):

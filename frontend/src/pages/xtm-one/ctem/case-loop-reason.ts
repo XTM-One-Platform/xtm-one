@@ -8,7 +8,7 @@
 import { CTEM_LOOP_FLEET_SLUG as CTEM_LOOP_SLUG } from "@/components/fleets/CtemLoopSetupEntry";
 
 /** The fields of a fleet the reason reads. */
-interface LoopFleet {
+export interface LoopFleet {
   id: string;
   slug?: string;
   is_builtin?: boolean;
@@ -28,6 +28,20 @@ export function loopFleetOf<F extends LoopFleet>(fleets: readonly F[] | undefine
     active.find((f) => !!f.forked_from?.is_builtin && f.forked_from.slug === CTEM_LOOP_SLUG) ??
     null
   );
+}
+
+/**
+ * The fleet page of a case's owner (#1390) the reader sees: the seeded fleet
+ * with that slug first, then any fleet with it, then a fork of the seeded one;
+ * `null` when the reader sees none.
+ */
+export function ownerFleetId(slug: string, fleets: readonly LoopFleet[] | undefined): string | null {
+  const live = (fleets ?? []).filter((f) => !f.is_archived);
+  const found =
+    live.find((f) => f.is_builtin && f.slug === slug) ??
+    live.find((f) => f.slug === slug) ??
+    live.find((f) => !!f.forked_from?.is_builtin && f.forked_from.slug === slug);
+  return found?.id ?? null;
 }
 
 /**

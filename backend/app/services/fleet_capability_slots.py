@@ -39,13 +39,19 @@ and in-app delivery (bell, decisions, work items) for notification, which is
 always on so an external channel only adds to it. Notification also takes the
 ``email`` type: the built-in Platform email and mail integrations fill it.
 
+A connected integration of the right type is never hidden (#1373): one the
+member cannot take (not company-managed for a company-managed agent, or not
+connected yet) is listed in ``blocked`` with its reason, and a type with
+nothing bound or bindable but something blocked reads ``not_usable``, never
+``none_connected``.
+
 Pure functions only: the router loads the rows and writes the agent.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 #: Capability key -> label and the catalog ``integration_types`` that fill it.
@@ -80,11 +86,18 @@ SLOT_EMPTY = "empty"
 SLOT_UNAVAILABLE = "unavailable"
 
 #: The state of a capability type across the members that use it (#1201).
-TypeStateName = Literal["connected", "partial", "not_bound", "none_connected"]
+TypeStateName = Literal["connected", "partial", "not_bound", "not_usable", "none_connected"]
 TYPE_CONNECTED: TypeStateName = "connected"
 TYPE_PARTIAL: TypeStateName = "partial"
 TYPE_NOT_BOUND: TypeStateName = "not_bound"
+#: Nothing bound or bindable, but an integration of the type exists that the members cannot take (#1373).
+TYPE_NOT_USABLE: TypeStateName = "not_usable"
 TYPE_NONE_CONNECTED: TypeStateName = "none_connected"
+
+#: Why an integration of the right type is not a candidate (#1373).
+BlockedReason = Literal["not_company_managed", "not_connected"]
+BLOCKED_NOT_COMPANY_MANAGED: BlockedReason = "not_company_managed"
+BLOCKED_NOT_CONNECTED: BlockedReason = "not_connected"
 
 
 @dataclass(frozen=True)
@@ -150,6 +163,10 @@ class IntegrationRef:
     provider: str
     name: str
     company_managed: bool = False
+    #: Usable now (status ``connected``); a visible integration that is not is only ever ``blocked``.
+    connected: bool = True
+    #: Set on a blocked integration: why the slot cannot take it.
+    reason: BlockedReason | None = None
 
 
 @dataclass
@@ -160,6 +177,8 @@ class SlotState:
     bound: list[IntegrationRef] = field(default_factory=list)
     candidates: list[IntegrationRef] = field(default_factory=list)
     builtin: BuiltinOption | None = None
+    #: Integrations of the capability the member cannot take, each with its ``reason`` (#1373).
+    blocked: list[IntegrationRef] = field(default_factory=list)
 
 
 def bound_ids(bindings: Mapping[str, Any] | None) -> dict[str, set[str]]:
@@ -181,14 +200,17 @@ def slot_states(
 ) -> list[SlotState]:
     """Each slot of *role_label* for an agent holding *bindings*.
 
-    *connected* are the connected integrations the reader can see. A
-    company-managed agent takes company-managed integrations only
+    *connected* are the integrations the reader can see; one whose
+    ``connected`` flag is off is never a candidate. A company-managed agent
+    takes company-managed integrations only
     (``agent_bindings.validate_company_managed_bindings``), so its candidates
-    are narrowed to them.
+    are narrowed to them. What the narrowing drops is ``blocked``, with its
+    reason, so a connected integration of the type is never hidden (#1373).
     """
     held = bound_ids(bindings)
-    pool = [i for i in connected if i.company_managed or not company_managed_only]
-    by_id = {i.integration_id: i for i in connected}
+    visible = list(connected)
+    pool = [i for i in visible if i.connected and (i.company_managed or not company_managed_only)]
+    by_id = {i.integration_id: i for i in visible}
     states: list[SlotState] = []
     for capability in slots_for_role(role_label):
         providers = providers_for(capability, catalog)
@@ -199,6 +221,12 @@ def slot_states(
         ]
         bound_set = {b.integration_id for b in bound}
         candidates = [i for i in pool if i.provider in providers and i.integration_id not in bound_set]
+        candidate_set = {c.integration_id for c in candidates}
+        blocked = [
+            replace(i, reason=_blocked_reason(i, company_managed_only))
+            for i in visible
+            if i.provider in providers and i.integration_id not in bound_set and i.integration_id not in candidate_set
+        ]
         builtin = builtin_for(capability)
         # A built-in option fills the slot by itself: never "None connected".
         if bound or builtin is not None:
@@ -215,9 +243,17 @@ def slot_states(
                 bound=bound,
                 candidates=candidates,
                 builtin=builtin,
+                blocked=blocked,
             )
         )
     return states
+
+
+def _blocked_reason(integration: IntegrationRef, company_managed_only: bool) -> BlockedReason:
+    """Why *integration* is not a candidate: not connected first, it is the one a person fixes by signing in."""
+    if not integration.connected:
+        return BLOCKED_NOT_CONNECTED
+    return BLOCKED_NOT_COMPANY_MANAGED
 
 
 def _check_slot(role_label: str | None, capability: str) -> None:
@@ -315,6 +351,8 @@ class TypeState:
     candidates: list[IntegrationRef]
     members: list[TypeMember]
     builtin: BuiltinOption | None = None
+    #: What no member can take, with its reason (#1373), first seen first.
+    blocked: list[IntegrationRef] = field(default_factory=list)
 
 
 def _ids(refs: Iterable[IntegrationRef]) -> frozenset[str]:
@@ -340,7 +378,8 @@ def type_states(members: Sequence[tuple[TypeMember, Sequence[SlotState]]]) -> li
     here per capability) with its :func:`slot_states`. The state reads
     ``connected`` when every member's slot is filled (a built-in option fills
     it), ``partial`` when some are, ``not_bound`` when none is but a connected
-    integration can be bound, ``none_connected`` otherwise.
+    integration can be bound, ``not_usable`` when none can but an integration
+    of the type is blocked (#1373), ``none_connected`` otherwise.
     """
     order: list[str] = []
     per_cap: dict[str, list[tuple[TypeMember, SlotState]]] = {}
@@ -367,8 +406,14 @@ def type_states(members: Sequence[tuple[TypeMember, Sequence[SlotState]]]) -> li
             state = TYPE_PARTIAL
         elif any(slot.state == SLOT_EMPTY for _, slot in rows):
             state = TYPE_NOT_BOUND
+        elif any(slot.blocked for _, slot in rows):
+            state = TYPE_NOT_USABLE
         else:
             state = TYPE_NONE_CONNECTED
+        blocked: dict[str, IntegrationRef] = {}
+        for _, slot in rows:
+            for ref in slot.blocked:
+                blocked.setdefault(ref.integration_id, ref)
         out.append(
             TypeState(
                 capability=capability,
@@ -389,6 +434,7 @@ def type_states(members: Sequence[tuple[TypeMember, Sequence[SlotState]]]) -> li
                     for member, slot in rows
                 ],
                 builtin=builtin_for(capability),
+                blocked=list(blocked.values()),
             )
         )
     return out

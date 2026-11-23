@@ -211,6 +211,17 @@ class FleetSlotIntegration(BaseModel):
     name: str = ""
 
 
+class FleetSlotBlockedIntegration(FleetSlotIntegration):
+    """An integration of the capability the member cannot take, and why (#1373).
+
+    ``not_company_managed``: connected, but the member agent is company-managed
+    and takes company-managed integrations only. ``not_connected``: visible to
+    the reader but not connected yet (a sign-in to finish).
+    """
+
+    reason: Literal["not_company_managed", "not_connected"]
+
+
 class FleetSlotBuiltin(BaseModel):
     """A capability's built-in option (#1201): served by XTM One, never stored as a binding."""
 
@@ -232,6 +243,8 @@ class FleetCapabilitySlot(BaseModel):
     candidates: list[FleetSlotIntegration] = Field(default_factory=list)
     #: The built-in option, when the capability has one: it fills the slot by itself.
     builtin: FleetSlotBuiltin | None = None
+    #: Integrations of the capability this member cannot take, with the reason (#1373).
+    blocked: list[FleetSlotBlockedIntegration] = Field(default_factory=list)
 
 
 class FleetMemberSlots(BaseModel):
@@ -265,13 +278,16 @@ class FleetCapabilityType(BaseModel):
     capability: str
     label: str
     #: ``connected`` (every member filled), ``partial`` (some), ``not_bound``
-    #: (none, a connected one can be bound) or ``none_connected``.
-    state: Literal["connected", "partial", "not_bound", "none_connected"]
+    #: (none, a connected one can be bound), ``not_usable`` (none can be bound,
+    #: one of the type exists but is ``blocked``, #1373) or ``none_connected``.
+    state: Literal["connected", "partial", "not_bound", "not_usable", "none_connected"]
     #: The fleet choice: the bound set most members share.
     choice: list[FleetSlotIntegration] = Field(default_factory=list)
     candidates: list[FleetSlotIntegration] = Field(default_factory=list)
     members: list[FleetCapabilityTypeMember] = Field(default_factory=list)
     builtin: FleetSlotBuiltin | None = None
+    #: What no member can take, with the reason (#1373): the row says it instead of "Connect one".
+    blocked: list[FleetSlotBlockedIntegration] = Field(default_factory=list)
 
 
 class FleetCapabilitySlotsResponse(BaseModel):

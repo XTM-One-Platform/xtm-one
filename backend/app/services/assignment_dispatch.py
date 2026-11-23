@@ -52,6 +52,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
+import math
 import time
 import uuid
 from collections import deque
@@ -475,6 +476,92 @@ def select_runs(
 def throttled_cap(cap: int) -> int:
     """The cap an assignment backs off to while a provider answers 429."""
     return max(1, cap // 2)
+
+
+# ---------------------------------------------------------------------------
+# Fair share of the worker pool across fleets
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ClaimCandidate:
+    """One due assignment execution as the fair-share deal reads it.
+
+    ``group``: the agent's home fleet, else the agent itself (an agent outside
+    any fleet is its own group). ``child_of_live_parent``: a delegated run whose
+    parent run still holds a slot, waiting for it.
+    """
+
+    key: Any
+    group: str
+    agent: str
+    run_at: datetime
+    child_of_live_parent: bool = False
+
+
+def share_cap(pool: int, share: float) -> int:
+    """The slots one group (or agent) may hold while another waits: at least 1, at most the pool."""
+    pool = max(1, int(pool))
+    if share <= 0 or share >= 1:
+        return pool
+    return max(1, min(pool, math.ceil(pool * share)))
+
+
+def fair_share_order(
+    candidates: Iterable[ClaimCandidate],
+    *,
+    running_by_group: dict[str, int],
+    running_by_agent: dict[str, int],
+    pool: int,
+    fleet_share: float,
+    agent_share: float,
+) -> list[Any]:
+    """The order a free slot claims the due *candidates* in (their keys).
+
+    1. Delegated children of a live parent first, oldest first: the parent holds
+       a slot until its child ends, so the child never queues behind the
+       backlog its parent's slot is part of.
+    2. Then one candidate per group in turn, the group whose oldest due run is
+       oldest first, each group's runs oldest first. A storm of one fleet
+       therefore never delays another fleet's run by more than one slot.
+    3. A group already holding its share of the pool (``fleet_share``), or a
+       run whose agent holds its share (``agent_share``), goes after every
+       group still under its share, in the same turn order: work-conserving, an
+       otherwise idle pool still runs it.
+
+    Pure and linear in the candidates; claims taken in this order count against
+    the shares as they are dealt.
+    """
+    items = sorted(candidates, key=lambda c: (c.run_at, str(c.key)))
+    first = [c for c in items if c.child_of_live_parent]
+    rest = [c for c in items if not c.child_of_live_parent]
+    group_cap = share_cap(pool, fleet_share)
+    agent_cap = share_cap(pool, agent_share)
+    held_group = dict(running_by_group)
+    held_agent = dict(running_by_agent)
+    for child in first:
+        held_group[child.group] = held_group.get(child.group, 0) + 1
+        held_agent[child.agent] = held_agent.get(child.agent, 0) + 1
+
+    queues: dict[str, deque[ClaimCandidate]] = {}
+    for candidate in rest:
+        queues.setdefault(candidate.group, deque()).append(candidate)
+    groups = deque(queues)
+    under: list[ClaimCandidate] = []
+    over: list[ClaimCandidate] = []
+    while groups:
+        group = groups.popleft()
+        queue = queues[group]
+        candidate = queue.popleft()
+        if held_group.get(group, 0) >= group_cap or held_agent.get(candidate.agent, 0) >= agent_cap:
+            over.append(candidate)
+        else:
+            under.append(candidate)
+            held_group[group] = held_group.get(group, 0) + 1
+            held_agent[candidate.agent] = held_agent.get(candidate.agent, 0) + 1
+        if queue:
+            groups.append(group)
+    return [c.key for c in (*first, *under, *over)]
 
 
 # ---------------------------------------------------------------------------

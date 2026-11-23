@@ -713,6 +713,12 @@ async def create_agent(
         db, user, body.browser_profile_ids, baseline=None, company_managed=bool(body.is_company_managed)
     )
     _admin_bound_or_403(user, body.builtin_tool_ids)
+    _created_allowlist = _builtin_allowed_or_422(body.builtin_allowed_tools)
+    _created_ids = body.builtin_tool_ids if body.builtin_tool_ids is not None else template_default_builtin_tool_ids
+    from app.services.builtin_allowed_tools import allowlisted_groups_not_enabled, not_enabled_refusal
+
+    if _not_enabled := allowlisted_groups_not_enabled(_created_ids, _created_allowlist):
+        raise HTTPException(status_code=422, detail=not_enabled_refusal(_not_enabled))
 
     agent = Agent(
         **agent_kwargs,
@@ -776,7 +782,7 @@ async def create_agent(
         browser_profile_ids=browser_profile_ids,
         browser_profile_read_only=normalize_read_only(body.browser_profile_read_only, browser_profile_ids),
         mcp_allowed_tools=body.mcp_allowed_tools,
-        builtin_allowed_tools=_builtin_allowed_or_422(body.builtin_allowed_tools),
+        builtin_allowed_tools=_created_allowlist,
         # Empty = no denials, stored as NULL like the agent builder does.
         tool_deny_list=body.tool_deny_list or None,
         knowledge_base_ids=kb_ids,
@@ -1514,7 +1520,7 @@ def _admin_bound_or_403(user, requested, before=()) -> None:
         )
 
 
-def _builtin_allowed_or_422(value):
+def _builtin_allowed_or_422(value: Any) -> dict[str, list[str]] | None:
     """``builtin_allowed_tools`` normalised, or a 422 naming the valid functions."""
     from app.services.builtin_allowed_tools import (
         BuiltinAllowedToolsError,
@@ -1525,6 +1531,22 @@ def _builtin_allowed_or_422(value):
         return normalize_builtin_allowed_tools(value)
     except BuiltinAllowedToolsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _builtin_allowed_enabled_or_422(agent: Any, before_allowed: Any) -> None:
+    """An allow list for a group the agent does not enable grants nothing (#1428).
+
+    An entry this write adds or changes for such a group is refused (422); an
+    entry it leaves as stored (a group switched off, a form sending the list
+    back unchanged) goes with its group.
+    """
+    from app.services.builtin_allowed_tools import not_enabled_written_or_pruned
+    from app.services.builtin_tool_aliases import canonical_builtin_selection
+
+    before = canonical_builtin_selection(list(agent.builtin_tool_ids or []), before_allowed)[1]
+    refusal = not_enabled_written_or_pruned(agent, before)
+    if refusal:
+        raise HTTPException(status_code=422, detail=refusal)
 
 
 def _canonical_builtin(agent) -> tuple[list[str], dict[str, list[str]] | None]:
@@ -2112,6 +2134,8 @@ async def update_agent(
 
     # These fields accept null as a meaningful value (null = "no scoping, all tools"),
     # so we must use model_fields_set to distinguish "not provided" from "explicitly null".
+    # The allow list as stored before this write: what a person did not touch (#1428).
+    allowed_before_write = getattr(agent, "builtin_allowed_tools", None)
     for nullable_field in _NULLABLE_SCOPING_FIELDS:
         if nullable_field in body.model_fields_set:
             raw = getattr(body, nullable_field)
@@ -2137,6 +2161,7 @@ async def update_agent(
         from app.services.builtin_tool_aliases import fold_builtin_selection
 
         fold_builtin_selection(agent)
+        _builtin_allowed_enabled_or_422(agent, allowed_before_write)
 
     # An allow-list under the shared ``openapi`` provider is split per
     # OpenAPI integration (each one is its own API) - also when the bindings

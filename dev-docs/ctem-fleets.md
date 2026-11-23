@@ -174,7 +174,9 @@ Common rules:
   hourly case sweep, `catch_up` hands every open case its owner never ran
   (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
   that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
-  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active}.
+  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active};
+  the case page header shows "Owned by <fleet>" linked to the fleet page, or
+  "No active fleet owns this case" when it is null or inactive.
   The run owns one work item `ctem:<fleet>:case:<case id>` (an open
   one gets a note, never a second loop), writes owner, state, validation
   (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the
@@ -1706,6 +1708,16 @@ schedule from `?view=` today), so the link and a reload land on Members
 estimate, on top of the table. Before a default is saved the bar says
 what it rewrites ("Applies to 12 members, 3 keep their override", A3);
 the save gives the same Undo toast as a bulk action.
+
+**One Members fold (#1387).** Under the Capabilities card (open first),
+the fleet defaults, the toolbar, the selection bar and the table sit in
+one "Members" section, folded by default: folded, one bar reads the home
+and connected member counts and the current defaults (context, scope,
+instruction) with a Show / Hide toggle; open, the defaults form shows
+whole (no nested toggle), then the toolbar and the table. An unsaved
+defaults edit or a selection keeps it open. A link with a members search,
+filter or sort (`mq`, `mrole`, `mstate`, `msort`, `mdir`) or `mopen=1`
+opens it; Hide over such a link writes `mopen=0`. No localStorage.
 
 **Selection and bulk actions (B1).** The table uses the shared selection
 of the product, never a page-local bar or a native checkbox:

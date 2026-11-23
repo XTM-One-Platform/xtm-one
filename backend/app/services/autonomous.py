@@ -3275,6 +3275,37 @@ def _fanout_dedup_days(cron_expr: str, now: datetime) -> int:
         return _FANOUT_RECENT_DAYS
 
 
+#: ``trigger_config.fanout_audience`` of a fan-out that only concerns the
+#: people who use the CTEM command center (the seeded stage analysts): a user
+#: is in it when the command center built a posture for them within
+#: ``_CTEM_AUDIENCE_DAYS`` (one ``ctem_posture_snapshots`` row per user,
+#: vertical and day, written by each live build). Without the key every
+#: active user is targeted, as before.
+FANOUT_AUDIENCE_KEY = "fanout_audience"
+FANOUT_AUDIENCE_CTEM_USERS = "ctem_users"
+_CTEM_AUDIENCE_DAYS = 30
+
+
+async def _fanout_audience_user_ids(db: AsyncSession, assignment, now: datetime) -> set | None:
+    """The users a fan-out is limited to, or ``None`` for every active user."""
+    config = getattr(assignment, "trigger_config", None)
+    audience = config.get(FANOUT_AUDIENCE_KEY) if isinstance(config, dict) else None
+    if audience != FANOUT_AUDIENCE_CTEM_USERS:
+        return None
+    from app.models.ctem_posture_snapshot import CtemPostureSnapshot
+
+    since = now - timedelta(days=_CTEM_AUDIENCE_DAYS)
+    return set(
+        (
+            await db.execute(
+                select(CtemPostureSnapshot.user_id).where(CtemPostureSnapshot.updated_at >= since).distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 def _fanout_spread_delay_seconds(index: int, total: int) -> int:
     """Evenly spread *total* fan-out runs across the configured window.
 
@@ -3335,6 +3366,14 @@ async def _fanout_assignment_to_users(
             select(User.id, User.ctem_vertical).where(User.is_active.is_(True))
         )
     ).all()
+    # A fan-out that concerns CTEM users only makes no run for a user who
+    # never opened the command center: N active users with one CTEM user
+    # is one run, not N heavy runs queued behind every other fleet.
+    audience = await _fanout_audience_user_ids(db, assignment, now)
+    if audience is not None:
+        rows = [row for row in rows if row[0] in audience]
+        if not rows:
+            return 0
 
     # Prefetch — in ONE query — the set of user_ids that already have a recent
     # run for this assignment, so dedup is an in-memory lookup instead of a
