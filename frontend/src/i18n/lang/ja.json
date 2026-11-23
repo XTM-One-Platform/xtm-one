@@ -21176,5 +21176,10 @@
   "What this reply suggestion setting does": "この返信候補の設定について",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "オンにすると、プラットフォームのルーティングモデルが各回答を読み取り、次のメッセージを 1 つメッセージ欄にグレー表示で提案します。Tab キーで欄に入力され、入力を始めるか Esc キーで消えます。Enter キーを押すまで何も送信されません。オフにすると、提案は生成されません。",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "エージェントが回答すると、ルーティングモデルがチャットのメッセージ欄にユーザーの次のメッセージを提案します (Tab キーで使用)。各ユーザーはプロフィールでオフにできます。",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "ルーティングモデルが必要です。設定されていない場合、返信候補は生成されません。"
+  "Needs a routing model: with none set, no reply suggestion is generated.": "ルーティングモデルが必要です。設定されていない場合、返信候補は生成されません。",
+  "Add a Sync all schedule": "「すべて同期」のスケジュールを追加",
+  "Back to Organization Profile": "組織プロファイルに戻る",
+  "Inventory sources": "インベントリのソース",
+  "About the inventory sources": "インベントリのソースについて",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。"
 }
