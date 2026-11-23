@@ -15479,6 +15479,8 @@
   "Fleet default saved": "Fleet default saved",
   "Fleet default: {field}": "Fleet default: {field}",
   "Fleet defaults": "Fleet defaults",
+  "{count, plural, =0 {No home member} one {# home member} other {# home members}}": "{count, plural, =0 {No home member} one {# home member} other {# home members}}",
+  "{count, plural, =0 {no connected member} one {# connected} other {# connected}}": "{count, plural, =0 {no connected member} one {# connected} other {# connected}}",
   "Full conversation": "Full conversation",
   "Home member": "Home member",
   "Instruction overridden": "Instruction overridden",

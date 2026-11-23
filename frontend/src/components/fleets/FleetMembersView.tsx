@@ -40,7 +40,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * The hierarchy stays on the Graph view.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Boxes, Building2, Crown, Layers, Lock, MessagesSquare, PanelRight, Pencil, RotateCcw, Users } from "lucide-react";
@@ -99,9 +99,12 @@ import {
   toggleSelection,
   undoBulkCalls,
   RESET_SETTING_LABELS,
+  membersCounts,
+  readMembersSectionOpen,
   readMembersTableState,
   settleAll,
   visibleMembersRows,
+  writeMembersSectionOpen,
   writeMembersTableState,
   type MembersRoleFilter,
   type MembersSortKey,
@@ -129,6 +132,8 @@ const DEFAULTS_HELP = {
 const FIELD_HELP_CLASS = "content-compact text-default-secondary";
 /** One label row for the three fleet defaults: the Label's own 14 px type (no size class, Forms rule), same 16 px line with or without an info bubble. */
 const DEFAULTS_LABEL_CLASS = "flex h-4 items-center gap-1 text-default-secondary";
+/** The Members section (defaults, toolbar, table) opens folded, as the fleet defaults did since #1128 (#1387). */
+const MEMBERS_SECTION_OPEN_BY_DEFAULT = FLEET_DEFAULTS_OPEN_BY_DEFAULT;
 /** A toast with an Undo stays 10 s, paused on hover and focus. */
 const UNDO_TOAST_MS = 10_000;
 
@@ -180,6 +185,8 @@ export function FleetMembersView({
   // A selection only ever holds rows that are still selectable.
   const selection = new Set([...selected].filter((id) => selectableIds.includes(id)));
   const [contextDialog, setContextDialog] = useState(false);
+  // The fleet defaults form holds an unsaved edit: the Members section stays open over it (#1387).
+  const [defaultsDirty, setDefaultsDirty] = useState(false);
   const [contextValue, setContextValue] = useState<FleetContextInclusion>("summary");
   // The scope dialog: the selection (`bulk`) or one row (its member).
   const [scopeTarget, setScopeTarget] = useState<{ kind: "bulk" } | { kind: "row"; member: FleetMember } | null>(null);
@@ -409,6 +416,11 @@ export function FleetMembersView({
 
   const hasConnected = allRows.some((m) => m.role === "connected");
   const hasRows = rows.length > 0;
+  // Folded by default (#1387); a link with a members search, filter or sort (or mopen=1) opens it.
+  const membersPinned = defaultsDirty || selection.size > 0;
+  const membersOpen = readMembersSectionOpen(searchParams, MEMBERS_SECTION_OPEN_BY_DEFAULT) || membersPinned;
+  const setMembersOpen = (open: boolean) =>
+    setSearchParams((params) => writeMembersSectionOpen(params, open, MEMBERS_SECTION_OPEN_BY_DEFAULT), { replace: true });
 
   return (
     <div className="space-y-4" data-testid="fleet-members-view">
@@ -422,6 +434,34 @@ export function FleetMembersView({
       {/* Capability slots (#914): bindings are the customer layer, open on a built-in fleet too. */}
       <FleetCapabilitySlotsCard fleet={fleet} />
 
+      {/* One fold for the whole members part (#1387): fleet defaults, toolbar, selection bar and table. */}
+      <Card data-testid="fleet-members-section" data-open={membersOpen ? "true" : "false"}>
+        <CardContent className="flex items-start gap-2 p-4">
+          <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-default-secondary" aria-hidden />
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+            <h2 className="shrink-0 whitespace-nowrap content-compact font-medium">{t_i18n("Members")}</h2>
+            {!membersOpen && <MembersSectionSummary fleet={fleet} members={members} organizations={organizations} />}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto shrink-0 gap-1.5"
+            aria-expanded={membersOpen}
+            aria-controls="fleet-members-section-body"
+            // An unsaved defaults edit or a selection keeps the section open (#1128 guard, #1387).
+            disabled={membersPinned}
+            onClick={() => setMembersOpen(!membersOpen)}
+            data-testid="fleet-members-toggle"
+          >
+            {membersOpen ? t_i18n("Hide") : t_i18n("Show")}
+            <Icon name="chevron-down" size={16} className={cn("transition-transform", membersOpen && "rotate-180")} aria-hidden />
+          </Button>
+        </CardContent>
+      </Card>
+
+      {membersOpen && (
+      <div id="fleet-members-section-body" className="space-y-4">
       <FleetDefaultsBar
         fleet={fleet}
         members={members}
@@ -430,6 +470,7 @@ export function FleetMembersView({
         saving={updateFleet.isPending}
         onSave={saveDefaults}
         onApplyPreset={() => setPresetTarget("defaults")}
+        onDirtyChange={setDefaultsDirty}
       />
 
       {allRows.length > 0 && (
@@ -561,6 +602,8 @@ export function FleetMembersView({
           )}
         </CardContent>
       </Card>
+      </div>
+      )}
 
       <MemberInstructionPanel
         fleet={fleet}
@@ -683,6 +726,8 @@ interface FleetDefaultsBarProps {
   onSave: (patch: FleetMembersBulkSet, previous: FleetMembersBulkSet) => void;
   /** Opens "Apply a preset" on the fleet defaults. */
   onApplyPreset: () => void;
+  /** Told whether the form holds an unsaved edit, so the Members section stays open over it (#1387). */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -692,9 +737,33 @@ interface FleetDefaultsBarProps {
  * (UX round 1 of #9422, B1).
  */
 export function FleetDefaultsBar(props: FleetDefaultsBarProps) {
-  // Open or folded is held above the keyed form, so a save (which remounts it) keeps it open (#1128).
-  const [expanded, setExpanded] = useState(FLEET_DEFAULTS_OPEN_BY_DEFAULT);
-  return <FleetDefaultsForm key={JSON.stringify(props.fleet.member_defaults ?? null)} {...props} expanded={expanded} onExpandedChange={setExpanded} />;
+  // Open or folded is the Members section's (#1387): the form shows whole once the section is open.
+  return <FleetDefaultsForm key={JSON.stringify(props.fleet.member_defaults ?? null)} {...props} />;
+}
+
+/** The folded Members bar's line: the member counts, then the current fleet defaults (#1133, #1387). */
+function MembersSectionSummary({ fleet, members, organizations }: { fleet: Fleet; members: FleetMember[]; organizations: readonly Organization[] }) {
+  const { t_i18n } = useFormatter();
+  const counts = membersCounts(members);
+  const context = (fleet.member_defaults?.context_inclusion ?? "none") as FleetContextInclusion;
+  const scope = scopeTags(fleet.member_defaults?.organization_scope ?? PRIMARY_SCOPE, organizations)
+    .map((tag) => (tag.translate ? t_i18n(tag.text) : tag.text))
+    .join(", ");
+  return (
+    <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-members-summary">
+      {t_i18n("{count, plural, =0 {No home member} one {# home member} other {# home members}}", { count: counts.home })}
+      {", "}
+      {t_i18n("{count, plural, =0 {no connected member} one {# connected} other {# connected}}", { count: counts.connected })}
+      {" · "}
+      <span data-testid="fleet-defaults-summary">
+        {t_i18n("Context: {value}", { value: t_i18n(CONTEXT_INCLUSION_SHORT_LABELS[context]) })}
+        {" · "}
+        {t_i18n("Scope: {value}", { value: scope })}
+        {" · "}
+        {t_i18n(DEFAULTS_INSTRUCTION_SUMMARY[instructionSummaryKey(fleet.member_defaults?.collaboration_instruction ?? "")])}
+      </span>
+    </span>
+  );
 }
 
 function FleetDefaultsForm({
@@ -705,9 +774,8 @@ function FleetDefaultsForm({
   saving,
   onSave,
   onApplyPreset,
-  expanded,
-  onExpandedChange,
-}: FleetDefaultsBarProps & { expanded: boolean; onExpandedChange: (expanded: boolean) => void }) {
+  onDirtyChange,
+}: FleetDefaultsBarProps) {
   const { t_i18n } = useFormatter();
   const [scopeDialog, setScopeDialog] = useState(false);
   const currentScope = fleet.member_defaults?.organization_scope ?? PRIMARY_SCOPE;
@@ -725,56 +793,31 @@ function FleetDefaultsForm({
   if (instruction !== current.collaboration_instruction) dirty.collaboration_instruction = instruction;
   const changed = Object.keys(dirty) as (keyof typeof current)[];
   const impact = changed.includes("context_inclusion") ? contextImpact : instructionImpact;
-  // Folded by default (#1128): Capabilities is what a fleet setup needs first. An edit in
-  // progress keeps the form open, so a fold never hides unsaved values.
-  const open = expanded || changed.length > 0;
-  const scopeSummary = scopeTags(currentScope, organizations)
-    .map((tag) => (tag.translate ? t_i18n(tag.text) : tag.text))
-    .join(", ");
+  // An edit in progress keeps the Members section open, so a fold never hides unsaved values (#1128, #1387).
+  const isDirty = changed.length > 0;
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   return (
-    <Card data-testid="fleet-defaults-bar" data-open={open ? "true" : "false"}>
+    <Card data-testid="fleet-defaults-bar">
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start gap-2">
           <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-default-secondary" aria-hidden />
           {/* The title stays on one line; the description moves under it and wraps when the row is short
-              (es at 1024), never cut (UX round 2 of #9422, B2). Folded, the line says the current values. */}
+              (es at 1024), never cut (UX round 2 of #9422, B2). */}
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
             <h3 className="shrink-0 whitespace-nowrap content-compact font-medium">{t_i18n("Fleet defaults")}</h3>
-            {open ? (
-              <span className="min-w-0 content-compact text-default-secondary">{t_i18n("What a member inherits while it does not override the setting")}</span>
-            ) : (
-              <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-defaults-summary">
-                {t_i18n("Context: {value}", { value: t_i18n(CONTEXT_INCLUSION_SHORT_LABELS[current.context_inclusion]) })}
-                {" · "}
-                {t_i18n("Scope: {value}", { value: scopeSummary })}
-                {" · "}
-                {t_i18n(DEFAULTS_INSTRUCTION_SUMMARY[instructionSummaryKey(current.collaboration_instruction)])}
-              </span>
-            )}
+            <span className="min-w-0 content-compact text-default-secondary">{t_i18n("What a member inherits while it does not override the setting")}</span>
           </div>
-          {canEdit && open && (
+          {canEdit && (
             <Button type="button" variant="outline" size="sm" className="ml-auto shrink-0 gap-1.5" disabled={saving} onClick={onApplyPreset}>
               <Layers className="h-3.5 w-3.5" aria-hidden />
               {t_i18n("Apply a preset")}
             </Button>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={cn("shrink-0 gap-1.5", !(canEdit && open) && "ml-auto")}
-            aria-expanded={open}
-            aria-controls="fleet-defaults-form"
-            disabled={changed.length > 0}
-            onClick={() => onExpandedChange(!expanded)}
-            data-testid="fleet-defaults-toggle"
-          >
-            {open ? t_i18n("Hide") : canEdit ? t_i18n("Edit") : t_i18n("Show")}
-            <Icon name="chevron-down" size={16} className={cn("transition-transform", open && "rotate-180")} aria-hidden />
-          </Button>
         </div>
-        {open && (
         <div id="fleet-defaults-form" className="space-y-3">
         <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)_minmax(0,260px)]">
           <div className="space-y-1.5">
@@ -870,7 +913,6 @@ function FleetDefaultsForm({
           </div>
         )}
         </div>
-        )}
       </CardContent>
     </Card>
   );
