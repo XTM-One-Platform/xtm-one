@@ -181,8 +181,9 @@ export function GateDecisionRecord({
       : null;
   const surface = record.surface ? t_i18n(GATE_SURFACE_LABEL[record.surface] ?? "XTM One") : null;
   const askedOf = recipient(record.asked_of);
-  // A waiting gate shows its asked time and wait in the grid alone: one reading of one time.
-  const statusAt = answered ? record.answered_at : passed ? record.passed_at : status === "waiting" ? null : record.asked_at;
+  // The header time is the time of the status itself: answered, passed, or the deadline an expired gate ran out at.
+  // A waiting gate shows its asked time and wait in the grid alone; a cancelled gate has no known time of its own.
+  const statusAt = answered ? record.answered_at : passed ? record.passed_at : status === "expired" ? record.deadline : null;
   const next = record.next;
   const nextGate = next?.kind === "gate" && next.from ? next.from : null;
 

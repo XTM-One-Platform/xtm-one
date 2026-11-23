@@ -172,6 +172,25 @@ describe("GateDecisionRecord", () => {
     expect(screen.queryByTestId("ctem-gate-record-option")).toBeNull();
   });
 
+  it("dates an expired gate by its deadline and keeps the asked time", () => {
+    render(
+      <GateDecisionRecord record={rec({ status: "expired", answered_at: null, answered_by: null, option: null, comment: null, surface: null, wait_seconds: null, next: null, asked_at: "2026-11-22T08:17:00Z", deadline: "2026-11-23T08:17:00Z" })} />,
+    );
+    // The header carries the expiry (the deadline), never the ask time again.
+    expect(screen.getAllByText(/Nov 23, 2026/)).toHaveLength(1);
+    expect(screen.getByTestId("ctem-gate-record-asked-at").textContent).toContain("Nov 22, 2026");
+    expect(screen.getAllByText(/Nov 22, 2026/)).toHaveLength(1);
+  });
+
+  it("shows no header time on a cancelled gate", () => {
+    render(
+      <GateDecisionRecord record={rec({ status: "cancelled", answered_at: null, answered_by: null, option: null, comment: null, surface: null, wait_seconds: null, next: null, asked_at: "2026-11-22T08:17:00Z", deadline: "2026-11-23T08:17:00Z" })} />,
+    );
+    // Only the asked time, in the grid: the cancellation time is not known.
+    expect(screen.getAllByText(/Nov 22, 2026/)).toHaveLength(1);
+    expect(screen.queryByText(/Nov 23, 2026/)).toBeNull();
+  });
+
   it("shows a policy pass with its reason and no person", () => {
     render(
       <GateDecisionRecord record={rec({ status: "passed_automatically", answered_at: null, answered_by: null, option: null, comment: null, surface: null, wait_seconds: null, asked_of: null, reason: { kind: "runbook", runbook: "RB-FW-12" }, passed_at: "2026-11-23T11:00:00Z" })} />,
