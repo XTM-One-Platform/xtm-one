@@ -7164,6 +7164,7 @@
   "Checked revision {revision}": "リビジョン {revision} をチェック済み",
   "Render the presentation again and measure it": "プレゼンテーションを再描画して計測",
   "Check again": "再チェック",
+  "No signal changed": "変更されたシグナルはありません",
   "Open the studio with these findings ready to send": "この結果を送信できる状態でスタジオを開く",
   "Fix with my assistant": "アシスタントで修正",
   "This slide is no longer in the presentation": "このスライドはプレゼンテーションに含まれていません",
