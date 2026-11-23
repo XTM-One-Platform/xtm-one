@@ -120,7 +120,7 @@ export function ConfirmDeleteDialog({
             onChange={(e) => setValue(e.target.value)}
           />
           {error ? (
-            <p role="alert" className="content-compact text-feedback-error-primary" data-testid="confirm-delete-error">
+            <p role="alert" className="content-compact text-feedback-error-tertiary" data-testid="confirm-delete-error">
               {error}
             </p>
           ) : null}

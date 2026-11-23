@@ -59,6 +59,18 @@ describe("ConfirmDeleteDialog", () => {
     expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  // UX round 3 B1: error text reads 4.5:1 in both themes with error-tertiary;
+  // error-primary reads only 4.26:1 on the dark dialog surface (as agent-flow.test.tsx pins).
+  it("draws every error text line in the error tone that reads 4.5:1, never error-primary", () => {
+    const reset = readFileSync(resolve(process.cwd(), "src/components/fleets/FleetResetDialog.tsx"), "utf8");
+    expect(reset).toContain("text-feedback-error-tertiary");
+    expect(reset).not.toMatch(/(^|[\s:])text-feedback-error-primary/);
+    const dialog = readFileSync(resolve(process.cwd(), "src/components/ui/confirm-delete-dialog.tsx"), "utf8");
+    const errorLine = dialog.split("\n").find((line) => line.includes('data-testid="confirm-delete-error"')) ?? "";
+    expect(errorLine).toContain("text-feedback-error-tertiary");
+    expect(errorLine).not.toContain("text-feedback-error-primary");
+  });
+
   // One component per pattern: the fleet reset renders through it, no second
   // typed-name destructive dialog is drawn under components/fleets.
   it("is the only typed-name confirmation of the fleet components", () => {

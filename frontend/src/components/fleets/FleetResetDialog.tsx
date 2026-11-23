@@ -93,12 +93,12 @@ export function FleetResetDialog({
         {plan.isLoading ? (
           <p className="content-compact text-default-secondary">{t_i18n("Reading what will be reset…")}</p>
         ) : plan.isError ? (
-          <p role="alert" className="content-compact text-feedback-error-primary">
+          <p role="alert" className="content-compact text-feedback-error-tertiary">
             {fleetRefusalMessage(plan.error, t_i18n)}
           </p>
         ) : held.length > 0 ? (
           <div role="alert" data-testid="fleet-reset-held">
-            <p className="content-compact font-medium text-feedback-error-primary">
+            <p className="content-compact font-medium text-feedback-error-tertiary">
               {t_i18n("{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}", { count: held.length })}
             </p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 content-compact text-default-secondary">
