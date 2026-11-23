@@ -21219,7 +21219,7 @@
   "It is off and not set up.": "オフで未設定の状態です。",
   "The fleet was not reset": "フリートはリセットされませんでした",
   "Reset {name} to its factory state?": "{name} を出荷時の状態にリセットしますか?",
-  "The fleet goes back to what a fresh install ships: off, not set up, with no integration bound to its agents.": "フリートは新規インストール時の状態に戻ります。オフ、未設定で、エージェントに連携は何もバインドされません。",
+  "The fleet goes back to what a fresh install ships: off, not set up, its agents bound only to the integrations it ships with.": "フリートは新規インストール時の状態に戻ります。オフ、未設定で、エージェントは同梱の連携にのみバインドされます。",
   "Reading what will be reset…": "リセットされる内容を読み込んでいます…",
   "The fleet is already in its factory state.": "フリートはすでに出荷時の状態です。",
   "Run history, cases and findings, the audit trail and the workspace.": "実行履歴、ケースと検出結果、監査証跡、ワークスペース。",
