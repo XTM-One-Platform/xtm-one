@@ -56,6 +56,20 @@ a first patched version the case is an upgrade in that repository, keyed
 <version> in <repository>". `fixed`, `dismissed` and `auto_dismissed` close its
 members as Aikido's `issue.closed` does. Read-only: nothing is written to GitHub.
 
+A GitLab dependency vulnerability (#1331, slice 3) comes with the GitLab asset
+source, not from a webhook: the project's dependency list
+(`GET /projects/:id/dependencies`, GitLab Ultimate) names the vulnerabilities
+of each dependency when the token may read the security dashboard
+(`organization_context_code.gitlab_dependency_findings`). After the sync saved,
+`ctem_code_findings.record_findings` records each one as a path 3 signal keyed
+`<project id>:<vulnerability id>`, provider `gitlab`, with the package,
+installed version, PURL, manifest, severity and link, and the repository's
+path, id and identity key (`<host>:repository:<id>`) in `evidence.assets`. The
+dependency list names no fixed version, so the case keys on the path and the
+package (`ctem_case_loop.fix_of`), never a guessed version. A vulnerability
+a project read whole no longer lists closes its members (a cut, refused or
+off-tier list closes nothing). Read-only: nothing is written to GitLab.
+
 A GitHub repository security advisory the organization published on one of its
 repositories (#1410) is a vulnerability in a product it ships: a path 1 signal
 (`new_vulnerability`, lens `inside`, subject kind `vulnerability`) keyed
