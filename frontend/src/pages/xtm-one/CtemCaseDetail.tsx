@@ -34,13 +34,17 @@ import {
   useCtemCaseRuns,
   useSplitCtemCase,
   useUpdateCtemCase,
+  type CtemCaseEvent,
   type CtemCaseIssue,
+  type CtemCaseRun,
   type CtemCaseUpdate,
   type CtemCaseVisibleIssue,
 } from "@/hooks/api/useCtemCasesApi";
 import { useAgenticAIEnabled } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
-import { CASE_RUN_LINE, caseActivity, caseRunLine } from "@/lib/ctem-case-activity";
+import { CASE_RUN_LINE, caseRunLine } from "@/lib/ctem-case-activity";
+import { auditChange, auditRows, personReason, reasonLabel, type AuditRow } from "@/lib/ctem-case-audit";
+import { CaseAuditTrail } from "./ctem/CaseAuditTrail";
 import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
@@ -150,7 +154,7 @@ const EVENT_LABEL: Record<string, string> = {
 
 /** The status word of a `ticket` history row, translated where drawn (#1032). */
 const TICKET_EVENT_STATUS: Record<string, string> = {
-  open: "Open",
+  open: "Open (status)",
   in_progress: "In progress",
   done: "Done",
   cancelled: "Cancelled",
@@ -176,9 +180,21 @@ const SOURCE_EVENT_LABEL: Record<string, string> = {
 const VALIDATION_RESULT_LABEL: Record<string, string> = {
   passed: "Passed",
   not_exposed: "Not exposed",
+  exposed: "Exposed",
   failed: "Failed",
   pending: "Pending",
 };
+
+/**
+ * The word of one side of an event's from -> to, through the labels its action uses
+ * (UX round 1 on #1520, B3): never a raw key such as `needs_attention`; null when the
+ * value has no label (UX round 2, B1), so the row shows no change rather than a key.
+ */
+function changeWord(kind: string, value: string): string | null {
+  if (kind === "ticket") return TICKET_EVENT_STATUS[value] ?? null;
+  if (kind === "validation") return VALIDATION_RESULT_LABEL[value] ?? null;
+  return CASE_STATE_LABEL[value as keyof typeof CASE_STATE_LABEL] ?? null;
+}
 
 /**
  * The badge of a fleet run on the case history, the keys the fleet timeline
@@ -249,7 +265,8 @@ export default function CtemCaseDetail() {
   const { data: kase, isLoading, error, isError, refetch } = useCtemCase(id);
   const agenticLicensed = useAgenticAIEnabled();
   const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
-  const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
+  // The History as an audit trail grouped by CTEM phase (#1490): events and fleet runs, each with its phase and autonomy class.
+  const activity = useMemo(() => auditRows(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
   // Who works the case (#1266): every automation on the case events, whatever fleet or agent
   // owns it, and the runs those events started here; the products each section is written from.
   const fleets = useFleets({ optional: true, enabled: agenticLicensed });
@@ -291,12 +308,116 @@ export default function CtemCaseDetail() {
       if (/^[0-9a-f-]{36}$/i.test(e.actor)) ids.add(e.actor);
       // A gate answered by a person names them by id in its reason.
       if (e.kind === "gate" && e.to === "answered" && isUserId(e.reason)) ids.add(e.reason);
+      // An owner change names both owners by id (UX round 2 on #1520, B1).
+      if (e.kind === "owner") for (const v of [e.from, e.to]) if (v && isUserId(v)) ids.add(v);
     }
     return [...ids];
   }, [kase]);
   const { data: people } = useUserDirectoryByIds(actorIds);
   const personName = (personId: string | null | undefined) =>
     personId ? (people?.find((p) => p.id === personId)?.full_name ?? null) : null;
+
+  // The audit trail's words (#1490): who acted, and what each event or run did, the long body of a note left to its expand.
+  const actorNameOf = (row: AuditRow): string => {
+    if (row.kind === "run") return row.run.agent_name ?? t_i18n("Agent");
+    const e = row.event;
+    if (row.actorType === "system") return t_i18n("System");
+    return personName(e.actor) ?? e.actor_name ?? t_i18n(row.actorType === "person" ? "A person" : "Agent");
+  };
+  const eventLabel = (e: CtemCaseEvent) =>
+    e.kind === "ticket" && !e.from ? t_i18n("Ticket created") : t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case");
+  // The from -> to in words (UX round 2 on #1520, B1): the owner by name, the due date in
+  // the user's locale on screen and as an ISO date in the CSV, a state by its label.
+  const changeTextOf = (e: CtemCaseEvent, forCsv = false) =>
+    auditChange(e, {
+      word: (kind, value) => {
+        const word = changeWord(kind, value);
+        return word === null ? null : t_i18n(word);
+      },
+      person: (personId) => personName(personId) ?? t_i18n("a person"),
+      date: (iso) => (forCsv ? iso.slice(0, 10) : intl.formatDate(iso, { dateStyle: "medium" })),
+    });
+  const actionTextOf = (row: AuditRow): string => {
+    if (row.kind === "run") return t_i18n(CASE_RUN_LINE[caseRunLine(timelineOutcome(row.run.outcome, row.run.status))]);
+    const e = row.event;
+    // "Changed the state to" carries its target, as the Timeline does, so the Action
+    // reads whole when the Change column is hidden (UX round 2 on #1520, B3).
+    if (e.kind === "state" && e.to) {
+      const target = changeWord("state", e.to);
+      return target ? `${eventLabel(e)} ${t_i18n(target)}` : eventLabel(e);
+    }
+    const said = reasonLabel(e);
+    const detail =
+      e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : said ? t_i18n(said) : e.kind === "note" ? (e.headline ?? "") : "";
+    return detail ? `${eventLabel(e)}: ${detail}` : eventLabel(e);
+  };
+  const renderRun = (run: CtemCaseRun) => {
+    const outcome = timelineOutcome(run.outcome, run.status);
+    return (
+      <>
+        <span className="font-medium">{run.agent_name ?? t_i18n("Agent")}</span>
+        <Link
+          to={`/operations/executions/${run.id}`}
+          state={{ backTo: `/ctem/cases/${id}`, backLabel: "Back to Case" }}
+          aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
+          className="hover:underline"
+        >
+          {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
+        </Link>
+        {outcome && (
+          <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">
+            {t_i18n(RUN_OUTCOME_LABELS[outcome])}
+          </Badge>
+        )}
+      </>
+    );
+  };
+  const renderEvent = (e: CtemCaseEvent) => {
+    const why = e.kind === "gate" ? gateReason(e.reason, e.to) : null;
+    return (
+      <>
+        <span>{eventLabel(e)}</span>
+        {(e.kind === "ticket" || e.kind === "retest_requested") && ticketKeyOf(e.evidence) && (
+          <span className="font-medium" data-testid="ctem-case-ticket-event">{ticketKeyOf(e.evidence)}</span>
+        )}
+        {e.kind === "ticket" && e.from && e.to && (
+          <span>
+            {t_i18n("{from} to {to}", {
+              from: t_i18n(TICKET_EVENT_STATUS[e.from] ?? e.from),
+              to: t_i18n(TICKET_EVENT_STATUS[e.to] ?? e.to),
+            })}
+          </span>
+        )}
+        {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
+        {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
+        {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
+        {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
+        {e.to && e.kind === "source_event" && (
+          <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
+        )}
+        {e.kind === "gate" && e.from && <span data-testid="ctem-case-gate">{t_i18n(GATE_LABEL[e.from] ?? e.from)}</span>}
+        {e.kind === "gate" && isGateOutcome(e.to) && <span className="font-medium">{t_i18n(GATE_OUTCOME_LABEL[e.to])}</span>}
+        {e.kind === "gate" && e.to === "answered" && (
+          <span className="text-default-secondary">
+            {t_i18n("by {name}", { name: (e.reason && personName(e.reason)) || t_i18n("a person") })}
+          </span>
+        )}
+        {why && <span className="text-default-secondary">{t_i18n(GATE_REASON_LABEL[why.kind], { runbook: why.runbook ?? "" })}</span>}
+        {/* A note reads its headline, its body behind "Show more" (#1490); any other reason is short. */}
+        {e.kind === "note"
+          ? (e.headline ?? e.reason) && <span className="text-default-secondary" data-testid="ctem-audit-headline">{e.headline ?? e.reason}</span>
+          : e.kind !== "gate" &&
+            (reasonLabel(e) || personReason(e)) && (
+              <span className="text-default-secondary" data-testid="ctem-audit-reason">
+                {reasonLabel(e) ? t_i18n(reasonLabel(e) ?? "") : personReason(e)}
+              </span>
+            )}
+        {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && (
+          <span className="text-default-secondary">{e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}</span>
+        )}
+      </>
+    );
+  };
 
   const issueRows: IssueRow[] = useMemo(
     () => (kase?.issues ?? []).map((issue, i) => ({ key: isRestrictedIssue(issue) ? `restricted-${i}` : `${issue.source}:${issue.external_id}`, issue })),
@@ -482,7 +603,7 @@ export default function CtemCaseDetail() {
       header: "State",
       cell: (r) => {
         if (isRestrictedIssue(r.issue)) return null;
-        if (r.issue.open) return t_i18n("Open");
+        if (r.issue.open) return t_i18n("Open (status)");
         const version = notAffectedOf(r);
         return version ? (
           <span className="flex min-w-0 flex-col" data-testid="ctem-case-not-affected">
@@ -690,93 +811,17 @@ export default function CtemCaseDetail() {
           <CardTitle>{t_i18n("History")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <ol className="space-y-3" data-testid="ctem-case-history">
-            {activity.map((item) => {
-              if (item.kind === "run") {
-                const run = item.run;
-                const outcome = timelineOutcome(run.outcome, run.status);
-                return (
-                  <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base" data-testid="ctem-case-run">
-                    <span className="font-medium">{run.agent_name ?? t_i18n("Agent")}</span>
-                    <Link
-                      to={`/operations/executions/${run.id}`}
-                      state={{ backTo: `/ctem/cases/${id}`, backLabel: "Back to Case" }}
-                      aria-label={t_i18n("Open run of {agent}", { agent: run.agent_name ?? t_i18n("Agent") })}
-                      className="hover:underline"
-                    >
-                      {t_i18n(CASE_RUN_LINE[caseRunLine(outcome)])}
-                    </Link>
-                    {outcome && (
-                      <Badge variant={RUN_OUTCOME_VARIANTS[outcome] ?? "secondary"} className="shrink-0">
-                        {t_i18n(RUN_OUTCOME_LABELS[outcome])}
-                      </Badge>
-                    )}
-                    <span className="ml-auto whitespace-nowrap text-default-secondary">
-                      {intl.formatDate(run.created_at, { dateStyle: "medium", timeStyle: "short" })}
-                    </span>
-                  </li>
-                );
-              }
-              const e = item.event;
-              return (
-              <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 content-base">
-                <span className="font-medium">
-                  {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
-                </span>
-                <span>
-                  {e.kind === "ticket" && !e.from ? t_i18n("Ticket created") : t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}
-                </span>
-                {(e.kind === "ticket" || e.kind === "retest_requested") && ticketKeyOf(e.evidence) && (
-                  <span className="font-medium" data-testid="ctem-case-ticket-event">{ticketKeyOf(e.evidence)}</span>
-                )}
-                {e.kind === "ticket" && e.from && e.to && (
-                  <span>
-                    {t_i18n("{from} to {to}", {
-                      from: t_i18n(TICKET_EVENT_STATUS[e.from] ?? e.from),
-                      to: t_i18n(TICKET_EVENT_STATUS[e.to] ?? e.to),
-                    })}
-                  </span>
-                )}
-                {e.issue === "Restricted" && <span className="text-default-secondary">{t_i18n("Restricted")}</span>}
-                {e.to && e.kind === "state" && <span>{t_i18n(CASE_STATE_LABEL[e.to as keyof typeof CASE_STATE_LABEL] ?? e.to)}</span>}
-                {e.kind === "retargeted" && keyVersion(e.to) && <span>{keyVersion(e.to)}</span>}
-                {e.to && e.kind === "validation" && <span>{t_i18n(VALIDATION_RESULT_LABEL[e.to] ?? e.to)}</span>}
-                {e.to && e.kind === "source_event" && (
-                  <span data-testid="ctem-case-source-event">{t_i18n(SOURCE_EVENT_LABEL[e.to] ?? e.to)}</span>
-                )}
-                {e.kind === "gate" && e.from && (
-                  <span data-testid="ctem-case-gate">{t_i18n(GATE_LABEL[e.from] ?? e.from)}</span>
-                )}
-                {e.kind === "gate" && isGateOutcome(e.to) && (
-                  <span className="font-medium">{t_i18n(GATE_OUTCOME_LABEL[e.to])}</span>
-                )}
-                {e.kind === "gate" && e.to === "answered" && (
-                  <span className="text-default-secondary">
-                    {t_i18n("by {name}", { name: (e.reason && personName(e.reason)) || t_i18n("a person") })}
-                  </span>
-                )}
-                {e.kind === "gate" &&
-                  (() => {
-                    const why = gateReason(e.reason, e.to);
-                    return why ? (
-                      <span className="text-default-secondary">{t_i18n(GATE_REASON_LABEL[why.kind], { runbook: why.runbook ?? "" })}</span>
-                    ) : null;
-                  })()}
-                {e.reason && e.kind !== "gate" && <span className="text-default-secondary">{e.reason}</span>}
-                {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && (
-                  <span className="text-default-secondary">
-                    {e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}
-                  </span>
-                )}
-                {e.at && (
-                  <span className="ml-auto whitespace-nowrap text-default-secondary">
-                    {intl.formatDate(e.at, { dateStyle: "medium", timeStyle: "short" })}
-                  </span>
-                )}
-              </li>
-              );
-            })}
-          </ol>
+          <CaseAuditTrail
+            rows={activity}
+            phases={kase.phases}
+            currentPhase={kase.current_phase}
+            personName={personName}
+            actorName={actorNameOf}
+            actionText={actionTextOf}
+            changeText={changeTextOf}
+            renderRun={renderRun}
+            renderEvent={renderEvent}
+          />
         </CardContent>
       </Card>
 
