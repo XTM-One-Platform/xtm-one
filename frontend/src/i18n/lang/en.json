@@ -21245,5 +21245,6 @@
   "Fixed version per platform: {list}": "Fixed version per platform: {list}",
   "{version} names no platform while the assets run several: an asset not below it is not read as fixed.": "{version} names no platform while the assets run several: an asset not below it is not read as fixed.",
   "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}": "{count, plural, one {# asset is on a platform with no known fix} other {# assets are on a platform with no known fix}}",
-  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}"
+  "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}": "{count, plural, one {# asset runs several versions and is counted in each of its rows} other {# assets run several versions and are counted in each of their rows}}",
+  "Not known": "Not known"
 }

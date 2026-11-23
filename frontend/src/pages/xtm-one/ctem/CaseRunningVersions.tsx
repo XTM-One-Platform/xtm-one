@@ -120,7 +120,7 @@ export function CaseRunningVersions({
           {
             key: "platform",
             header: "Platform",
-            cell: (r: CtemCaseRunningVersion) => r.platform ?? t_i18n("Unknown"),
+            cell: (r: CtemCaseRunningVersion) => r.platform ?? t_i18n("Not known"),
             sortValue: (r: CtemCaseRunningVersion) => r.platform ?? "",
             csv: (r: CtemCaseRunningVersion) => r.platform ?? "",
           } satisfies DataTableColumn<CtemCaseRunningVersion>,
@@ -131,7 +131,7 @@ export function CaseRunningVersions({
           {
             key: "fixed",
             header: "Fixed version",
-            cell: (r: CtemCaseRunningVersion) => r.fixed_version ?? t_i18n("Unknown"),
+            cell: (r: CtemCaseRunningVersion) => r.fixed_version ?? t_i18n("Not known"),
             sortValue: (r: CtemCaseRunningVersion) => r.fixed_version ?? "",
             csv: (r: CtemCaseRunningVersion) => r.fixed_version ?? "",
             hideable: true,

@@ -29,11 +29,12 @@ const WITH_FIX: CtemCaseRunningVersions = {
   assets_not_comparable: 1,
 };
 
-function draw(props: Parameters<typeof CaseRunningVersions>[0]) {
+function draw(props: Parameters<typeof CaseRunningVersions>[0], locale = "en") {
   return renderWithProviders(
     <MemoryRouter>
       <CaseRunningVersions {...props} />
     </MemoryRouter>,
+    { locale },
   );
 }
 
@@ -188,6 +189,26 @@ describe("CaseRunningVersions (#1252)", () => {
     );
     expect(screen.getByTestId("ctem-case-fix-not-known-for-platform").textContent).toBe("2 assets are on a platform with no known fix");
     expect(screen.queryByTestId("ctem-case-running-versions-multi")).toBeNull();
+  });
+
+  it("names a missing platform and fixed version in the feminine in French (UX r1 B1 on #1588)", () => {
+    draw(
+      {
+        productLabel: "Google Chrome",
+        fixedVersion: "36.0",
+        versions: {
+          ...PER_PLATFORM,
+          versions: [
+            ...PER_PLATFORM.versions,
+            { version: "34.0", asset_count: 1, sources: ["intune"], status: "not_comparable", status_reason: "fix not known for this platform" },
+          ],
+        },
+      },
+      "fr",
+    );
+    const row = screen.getAllByTestId("ctem-case-running-version-row").find((r) => within(r).queryByText("34.0"))!;
+    expect(within(row).getAllByText("Inconnue")).toHaveLength(2);
+    expect(within(row).queryByText("Inconnu")).toBeNull();
   });
 
   it("draws no platform column when the inventory names no platform", () => {
