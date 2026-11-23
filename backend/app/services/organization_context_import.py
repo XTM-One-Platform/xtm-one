@@ -107,6 +107,8 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("asset_groups", "openaev"): ("tags", "search"),
     ("ai_systems", "openaev"): ("tags", "search"),
     ("tech_stack", "openaev"): ("type",),
+    # The sync's filter link_supporting_assets (#1591, on unless "false") is read by the link import; its
+    # switch in the import dialog comes with the primary-assets UI slice.
     ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id"),
     ("pirs", "opencti"): ("pir_ids",),
 }

@@ -315,6 +315,15 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
+        if not plan.error and sync.section == "crown_jewels" and sync.source == "opencrq" and plan.profile is not None:
+            # Supporting asset -> primary asset links (#1591), on unless the sync's filter says "false".
+            from app.services import organization_context_opencrq_links as opencrq_links
+
+            links = await opencrq_links.sync_links_for(
+                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.crown_jewels)
+            )
+            if links is not None:
+                result["links"] = links
         if not plan.error and plan.software:
             # An endpoint source (#1251): the software follows its devices even when no device row changed.
             result["software_changed"] = await imp.store_endpoint_software(db, plan, user_id=owner.id)
