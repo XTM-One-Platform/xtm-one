@@ -28,6 +28,21 @@ describe("CaseOwnedBy", () => {
     expect(screen.queryByText("No active fleet owns this case")).toBeNull();
   });
 
+  it("keeps the linked label and its icon in the product primary, visited included", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseOwnedBy owner={{ slug: "ctem-loop", name: "CTEM loop", active: true }} fleets={[LOOP]} caseId="c-1" />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "Owned by CTEM loop" });
+    expect(link.className).toContain("text-filigran-brand-primary");
+    expect(link.className).toContain("visited:text-filigran-brand-primary");
+    // The library's visited colour is the tonic accent (turquoise): never in the header.
+    expect(link.className).not.toContain("visited:text-filigran-tonic-accent");
+    const icon = screen.getByTestId("ctem-case-owner-fleet").querySelector("svg");
+    expect(icon?.getAttribute("class") ?? "").toContain("text-filigran-brand-primary");
+  });
+
   it("gives the fleet page a way back to the case", () => {
     renderWithProviders(
       <MemoryRouter initialEntries={["/ctem/cases/c-1"]}>
