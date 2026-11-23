@@ -795,6 +795,15 @@ def test_python_uv_poetry_and_requirements():
     assert reqs["python-lint"] == ("flake8", ".") and "python-unit" in reqs
 
 
+def test_a_django_project_without_pytest_gets_its_manage_py_test_check() -> None:
+    django = _argv(_detect({}, extra=("requirements.txt", "manage.py", "app/tests.py")))
+    assert django["python-unit"] == ("python", "manage.py", "test", "--noinput")
+    with_pytest = _argv(_detect({}, extra=("requirements.txt", "manage.py", "conftest.py")))
+    assert with_pytest["python-unit"][:3] == ("python", "-m", "pytest")
+    assert detect.classify(["python", "manage.py", "test", "--noinput"]) == ("python", "unit")
+    assert detect.classify(["python", "manage.py", "makemigrations", "--check"]) is None
+
+
 def test_python_reports_are_parsed():
     found = _detect({"pyproject.toml": "[tool.ruff]\n"}, extra=("tests/test_a.py",))
     assert found.checks["python-lint"].report == "sarif" and found.checks["python-lint"].report_path == ".xtm/ruff.sarif"
