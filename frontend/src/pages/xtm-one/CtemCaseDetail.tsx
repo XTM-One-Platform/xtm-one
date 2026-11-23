@@ -58,6 +58,7 @@ import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { loopFleetOf } from "./ctem/case-loop-reason";
 import { caseAutomations, caseSources, caseWork } from "./ctem/case-workers";
@@ -539,6 +540,7 @@ export default function CtemCaseDetail() {
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
+            <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />
             <CaseTicketChip tickets={kase.tickets} ticketing={kase.ticketing} showNotConnected />
           </>

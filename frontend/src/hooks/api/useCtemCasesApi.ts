@@ -292,6 +292,15 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   running_versions?: CtemCaseRunningVersions | null;
   /** Absent on an API older than #1176 slice 3b. */
   affected_assets?: CtemCaseAffectedAssets;
+  /** The fleet that runs the case (#1390); absent on an API older than #1396. */
+  owner_fleet?: CtemCaseOwnerFleet | null;
+}
+
+/** `owner_fleet` of a case: `active` false when no active fleet owns it (#1390). */
+export interface CtemCaseOwnerFleet {
+  slug: string;
+  name: string;
+  active: boolean;
 }
 
 /**
