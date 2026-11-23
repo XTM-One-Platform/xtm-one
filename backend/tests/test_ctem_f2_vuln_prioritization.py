@@ -84,6 +84,7 @@ def test_the_assignments_are_on_the_orchestrator() -> None:
         "OpenAEV results into cases",
         "Analyst review mark",
         "Case opened or reopened",
+        "Gate answered",
     }
     assert {a["agent_slug"] for a in CTEM_F2_ASSIGNMENTS} == {_ORCH}
     assert croniter.is_valid(by_name["Daily backlog pass"]["trigger_config"]["cron"])

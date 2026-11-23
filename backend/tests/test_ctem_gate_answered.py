@@ -1,0 +1,99 @@
+"""A person's answer to a waiting CTEM gate resumes the case (#1388)."""
+
+from __future__ import annotations
+
+import pathlib
+import re
+from typing import Any
+
+import pytest
+
+from app.agents.builtin_agents import (
+    BUILTIN_ASSIGNMENTS,
+    CTEM_F1_GATE_PREFIXES,
+    CTEM_F2_GATE_PREFIXES,
+    CTEM_GATE_ANSWERED,
+    INHERIT_SWITCH_FROM_KEY,
+)
+from app.services.integration_event_filters import payload_filter_reason
+
+_PERSONAS = pathlib.Path(__file__).resolve().parents[1] / "app" / "agents" / "seed_data" / "agent_persona"
+_FLEETS = {
+    "ctem-threat-response-orchestrator": CTEM_F1_GATE_PREFIXES,
+    "ctem-vuln-prioritization-orchestrator": CTEM_F2_GATE_PREFIXES,
+}
+#: Keys the personas name that are not gates: the case loop, the re-test and the counters.
+_NOT_GATES = re.compile(r"^ctem:f[12]:((case|retest|state):)?$")
+
+
+def _gate_assignment(slug: str) -> dict[str, Any]:
+    found = [a for a in BUILTIN_ASSIGNMENTS if a["agent_slug"] == slug and a["name"] == CTEM_GATE_ANSWERED]
+    assert len(found) == 1, slug
+    return found[0]
+
+
+def _persona_keys(slug: str) -> set[str]:
+    text = (_PERSONAS / f"{slug}.md").read_text(encoding="utf-8")
+    return {k for k in re.findall(r"`(ctem:[a-z0-9:-]*:)", text) if not _NOT_GATES.match(k)}
+
+
+@pytest.mark.parametrize("slug", sorted(_FLEETS))
+def test_every_gate_key_the_persona_names_is_covered_by_the_trigger(slug: str) -> None:
+    prefixes = tuple(_gate_assignment(slug)["trigger_config"]["filter"]["correlation_key"]["starts_with"])
+    assert prefixes == _FLEETS[slug]
+    named = _persona_keys(slug)
+    assert named, slug
+    uncovered = {k for k in named if not k.startswith(prefixes)}
+    assert uncovered == set(), (slug, uncovered)
+    # And the trigger takes no key the persona never files.
+    assert set(prefixes) <= named, (slug, set(prefixes) - named)
+
+
+@pytest.mark.parametrize("slug", sorted(_FLEETS))
+def test_the_trigger_hears_the_answer_only(slug: str) -> None:
+    config = _gate_assignment(slug)["trigger_config"]
+    assert config["event"] == "work_item.status_changed"
+    assert config["scope"] == "own"
+    answered = {"previous_status": "blocked", "status": "open", "correlation_key": "ctem:validation:abc"}
+    assert payload_filter_reason(answered, config["filter"]) is None
+    for other in (
+        {**answered, "previous_status": "open", "status": "claimed"},
+        {**answered, "status": "done"},
+        {**answered, "correlation_key": "ctem:f1:retest:abc"},
+        {**answered, "correlation_key": "ctem:f2:case:abc"},
+    ):
+        assert payload_filter_reason(other, config["filter"]) is not None, other
+
+
+@pytest.mark.parametrize("slug", sorted(_FLEETS))
+def test_the_run_claims_before_acting_and_stops_on_a_rejection(slug: str) -> None:
+    a = _gate_assignment(slug)
+    prompt = a["prompt"]
+    assert prompt.index("claim_work_item") < prompt.index("update_ctem_case")
+    assert "refused" in prompt and "stop there" in prompt
+    assert "Rejected" in prompt and "run nothing the gate covered" in prompt
+    assert a["enabled"] is False and a["admin_opt_in"] is True
+    assert a[INHERIT_SWITCH_FROM_KEY] == "Case opened or reopened"
+    assert any(b["agent_slug"] == slug and b["name"] == a[INHERIT_SWITCH_FROM_KEY] for b in BUILTIN_ASSIGNMENTS)
+
+
+def test_the_re_test_keeps_its_single_path() -> None:
+    for prefixes in _FLEETS.values():
+        assert not any("retest" in p for p in prefixes)
+
+
+def test_the_case_page_keys_are_gate_keys() -> None:
+    # The case page reads ctem:validation:<case> (case-validation.ts) and ctem:review:<case>.
+    for prefixes in _FLEETS.values():
+        assert "ctem:validation:" in prefixes and "ctem:review:" in prefixes
+
+
+def test_the_seed_gives_a_new_listener_its_siblings_switch() -> None:
+    import inspect
+
+    from app.agents import seed
+
+    src = inspect.getsource(seed.seed_builtin_assignments)
+    assert 'data.get("inherit_switch_from")' in src
+    assert "seeded.run_as_user_id = sibling.run_as_user_id" in src
+    assert "is_emergency_stopped(sibling)" in src

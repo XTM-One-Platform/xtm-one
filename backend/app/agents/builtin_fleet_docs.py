@@ -64,6 +64,8 @@ CTEM_LOOP_DOC: dict[str, str] = {
     "triggers": (
         "- **Case opened or reopened**: a CTEM case opens, reopens on a failed re-test or breaches "
         "its SLA; one loop per case (vulnerability cases go to the Vulnerability management fleet).\n"
+        "- **Gate answered**: a person answers a gate a case waits on; the loop goes on from that step, "
+        "or stops on a rejection.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: OpenCTI events, kept "
         "when relevant to the profile or at the PIR threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
@@ -116,7 +118,9 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
         "- **Case opened or reopened**: a CTEM case on a threat, credential leak or third-party path is "
-        "opened, reopened by a failed re-test, or past its SLA; the case is the record of the loop."
+        "opened, reopened by a failed re-test, or past its SLA; the case is the record of the loop.\n"
+        "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
+        "case and the loop goes on, or stops on a rejection."
     ),
     "flow": (
         "1. Relevance: below the threshold the case closes as not relevant, with the reason.\n"
@@ -158,7 +162,9 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
         "simulation or a changed finding moves the case it concerns, a degraded scenario score records "
         "a regression signal, an attack path reaching a critical asset records a proven-exploitable signal.\n"
         "- **Analyst review mark**: listens to OpenCTI with no run of its own; when the review gate "
-        "waits, the analyst's label on the drafted Grouping approves its coverage request and resumes the run."
+        "waits, the analyst's label on the drafted Grouping approves its coverage request and resumes the run.\n"
+        "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
+        "case and the loop goes on, or stops on a rejection."
     ),
     "flow": (
         "1. Asset match from the organization context: no matching asset closes the case, with the reason.\n"
@@ -636,6 +642,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "filter": "A threat, credential leak or third-party CTEM case opens, reopens or breaches its SLA",
             "detail": "One loop per case",
         },
+        {
+            "module": "platform",
+            "name": "Gate answered",
+            "filter": "A person answers a gate a case waits on",
+            "detail": "The loop goes on from that step",
+        },
     ],
     "steps": [
         {
@@ -685,6 +697,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly threat sweep", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
         {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
+        {"trigger": "Gate answered", "basis": "One run per gate answered", "runs_min": 0, "runs_max": 40},
     ],
 }
 

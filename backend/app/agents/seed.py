@@ -978,6 +978,26 @@ async def seed_builtin_assignments(
             hide_runs=data.get("hide_runs"),
         )
         _sync_seeded_gates(seeded, data)
+        sibling_name = data.get("inherit_switch_from")
+        if sibling_name and data.get("admin_opt_in"):
+            # A listener added to a fleet an administrator already switched on
+            # (#1388): born with its sibling's switch and run-as, or the fleet
+            # would run without it until someone found it off.
+            sibling = (
+                (
+                    await db.execute(
+                        select(Assignment)
+                        .where(Assignment.agent_id == agent.id, Assignment.name == sibling_name)
+                        .order_by(Assignment.created_at)
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if sibling is not None and sibling.enabled and not is_emergency_stopped(sibling):
+                seeded.enabled = True
+                seeded.run_as_user_id = sibling.run_as_user_id
         if not seeded.enabled:
             # A seed row defined as disabled is born paused, and gets the same
             # stamp as the update branch above — otherwise a fresh install

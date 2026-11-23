@@ -30,6 +30,9 @@ _FLEET_ASSIGNMENTS = {
     # The loop fleets run on cases (#891): seeded off, after migration c9160fleetoptin1.
     ("ctem-threat-response-orchestrator", "Case opened or reopened"),
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
+    # A gate answer resumes the case (#1388): seeded off, takes the case listener's switch.
+    ("ctem-threat-response-orchestrator", "Gate answered"),
+    ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
     # CTEM-08 (#919): the trigger rule on software we run, seeded off, after migration c9160fleetoptin1.
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
     # CTEM-08 (#919): the PIR score thresholds of the policy, seeded off, after migration c9160fleetoptin1.
@@ -77,6 +80,8 @@ _SEEDED_AFTER_C9160 = {
     ("ctem-third-party-risk-orchestrator", "Weekly third-party review"),
     ("ctem-threat-response-orchestrator", "Case opened or reopened"),
     ("ctem-vuln-prioritization-orchestrator", "Case opened or reopened"),
+    ("ctem-threat-response-orchestrator", "Gate answered"),
+    ("ctem-vuln-prioritization-orchestrator", "Gate answered"),
     ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
     ("ctem-vuln-prioritization-orchestrator", "Analyst review mark"),
     ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
