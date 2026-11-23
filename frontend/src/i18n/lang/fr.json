@@ -16789,10 +16789,6 @@
   "Human approval was not changed": "La validation humaine n'a pas été modifiée",
   "No action of this fleet is gated by this control yet.": "Aucune action de cette flotte n'est encore soumise à ce contrôle.",
   "Review actions": "Examiner les actions",
-  "Waits:": "Attend :",
-  "Runs alone:": "S'exécute seule :",
-  "Show what waits at each level": "Afficher ce qui attend à chaque niveau",
-  "Hide what waits at each level": "Masquer ce qui attend à chaque niveau",
   "Reduce human approval to {level}?": "Réduire la validation humaine à {level} ?",
   "Reduce to {level}": "Réduire à {level}",
   "{count, plural, =0 {No action of this fleet changes. Every action stays logged and reported in Operations.} one {# action will run without approval:} other {# actions will run without approval:}}": "{count, plural, =0 {Aucune action de cette flotte ne change. Chaque action reste journalisée et rapportée dans Opérations.} one {# action s'exécutera sans validation :} other {# actions s'exécuteront sans validation :}}",
@@ -21176,5 +21172,12 @@
   "What this reply suggestion setting does": "À quoi sert ce réglage des suggestions de réponse",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "Activé, le modèle de routage de la plateforme lit chaque réponse et propose un prochain message, grisé dans la zone de message. Tab le place dans la zone, taper ou Échap le fait disparaître, et rien n'est envoyé avant que vous appuyiez sur Entrée. Désactivé, aucune suggestion n'est générée pour vous.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Une fois qu'un agent a répondu, le modèle de routage propose le prochain message de l'utilisateur dans la zone de message du chat (Tab pour l'utiliser). Chaque utilisateur peut le désactiver dans son profil.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Nécessite un modèle de routage : sans lui, aucune suggestion de réponse n'est générée."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Nécessite un modèle de routage : sans lui, aucune suggestion de réponse n'est générée.",
+  "Work item decision": "Décision sur un élément de travail",
+  "What to decide": "Ce qu'il faut décider",
+  "No waiting decision matches the search and filters.": "Aucune décision en attente ne correspond à la recherche et aux filtres.",
+  "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# décision attend une personne} other {# décisions attendent une personne}}",
+  "oldest asked {age}": "la plus ancienne demandée {age}",
+  "Read only: this decision is addressed to someone else.": "Lecture seule : cette décision est adressée à quelqu'un d'autre.",
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Décisions des membres de cette flotte en attente d'une personne : exécutions en pause et éléments de travail. Ouvrir cet onglet ne lance aucune exécution et ne consomme aucun quota."
 }

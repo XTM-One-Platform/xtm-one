@@ -16789,10 +16789,6 @@
   "Human approval was not changed": "人による承認は変更されませんでした",
   "No action of this fleet is gated by this control yet.": "このフリートの操作は、まだこの設定の対象になっていません。",
   "Review actions": "操作を確認",
-  "Waits:": "承認待ち:",
-  "Runs alone:": "自動実行:",
-  "Show what waits at each level": "各レベルで承認待ちになる操作を表示",
-  "Hide what waits at each level": "各レベルで承認待ちになる操作を隠す",
   "Reduce human approval to {level}?": "人による承認を{level}に減らしますか?",
   "Reduce to {level}": "{level}に減らす",
   "{count, plural, =0 {No action of this fleet changes. Every action stays logged and reported in Operations.} one {# action will run without approval:} other {# actions will run without approval:}}": "{count, plural, =0 {このフリートの操作は変わりません。すべての操作は記録され、運用に報告されます。} other {# 件の操作が承認なしで実行されます:}}",
@@ -21176,5 +21172,12 @@
   "What this reply suggestion setting does": "この返信候補の設定について",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "オンにすると、プラットフォームのルーティングモデルが各回答を読み取り、次のメッセージを 1 つメッセージ欄にグレー表示で提案します。Tab キーで欄に入力され、入力を始めるか Esc キーで消えます。Enter キーを押すまで何も送信されません。オフにすると、提案は生成されません。",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "エージェントが回答すると、ルーティングモデルがチャットのメッセージ欄にユーザーの次のメッセージを提案します (Tab キーで使用)。各ユーザーはプロフィールでオフにできます。",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "ルーティングモデルが必要です。設定されていない場合、返信候補は生成されません。"
+  "Needs a routing model: with none set, no reply suggestion is generated.": "ルーティングモデルが必要です。設定されていない場合、返信候補は生成されません。",
+  "Work item decision": "作業項目の判断",
+  "What to decide": "判断する内容",
+  "No waiting decision matches the search and filters.": "検索とフィルターに一致する保留中の判断はありません。",
+  "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, other {# 件の判断が担当者を待っています}}",
+  "oldest asked {age}": "最も古い依頼 {age}",
+  "Read only: this decision is addressed to someone else.": "読み取り専用: この判断は他の担当者宛てです。",
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "担当者を待っているこのフリートのメンバーの判断: 一時停止中の実行と作業項目。このタブを開いても実行は開始されず、クォータも消費されません。"
 }
