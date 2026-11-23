@@ -101,7 +101,9 @@ _BY_NAME = {category.name: category for category in CATEGORIES}
 
 
 #: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
-AI_SYSTEMS_ALIAS = Category("ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)")
+AI_SYSTEMS_ALIAS = Category(
+    "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
+)
 
 
 def get(name: str) -> Category | None:

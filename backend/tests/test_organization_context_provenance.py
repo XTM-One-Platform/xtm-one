@@ -146,7 +146,9 @@ def test_the_ai_systems_alias_import_never_drops_the_other_assets_of_the_source(
     """#1501: an ai_systems import of OpenAEV writes the AI targets only; its endpoints stay."""
     endpoint = oc.AssetEntry(name="web-1", category="host", source="openaev", external_id="e-1")
     read = imp.ReadResult(rows=[imp.openaev_ai_system({"asset_id": "t-1", "asset_name": "Bot"})], total=1)
-    plan = imp.plan_import(oc.OrganizationProfile(assets_exposure=[endpoint]), "ai_systems", "openaev", read, remove_gone=True)
+    plan = imp.plan_import(
+        oc.OrganizationProfile(assets_exposure=[endpoint]), "ai_systems", "openaev", read, remove_gone=True
+    )
     result = _result(plan)
     assert plan.gone == [] and [a.name for a in result.assets_exposure] == ["web-1", "Bot"]
 

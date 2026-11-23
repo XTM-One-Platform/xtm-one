@@ -1078,7 +1078,10 @@ def _carried(assets: list[Any], row: dict[str, Any]) -> bool:
         source = str(data.get("source") or "manual").strip().lower()
         if row["external_id"] and source == row["source"] and str(data.get("external_id") or "") == row["external_id"]:
             return True
-        if data.get("category") == "ai_target" and str(data.get("name") or "").strip().casefold() == row["name"].casefold():
+        if (
+            data.get("category") == "ai_target"
+            and str(data.get("name") or "").strip().casefold() == row["name"].casefold()
+        ):
             return True
     return False
 
