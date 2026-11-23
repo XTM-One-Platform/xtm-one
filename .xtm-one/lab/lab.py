@@ -1704,6 +1704,30 @@ LAB_ORG_SETUP_PROMPT_STATES = ("off", "on")
 #: the lab profile (name and sector); ``complete`` saves ``LAB_ORG_COMPLETE_PROFILE``. Each but ``default`` is
 #: read back as ``context.state`` of ``GET /ctem-metrics/posture`` (``seed_org_context``).
 LAB_ORG_CONTEXT_STATES = ("default", "missing", "partial", "complete")
+#: ``LAB_ORG_SYNCED`` values (#1345): ``on`` saves the profile with rows a platform sync wrote next to typed rows
+#: (``seed_org_synced``), so the Source column, locked rows, bulk Set and the synced-removal dialog render natively.
+LAB_ORG_SYNCED_STATES = ("off", "on")
+#: The rows ``LAB_ORG_SYNCED=on`` saves, per section: the platform whose disabled sync writes them (a source of
+#: ``organization_context_import.SECTION_SOURCES``) and the rows, synced ones carrying an ``external_id``; a row
+#: without one is typed. Each synced row gets the ``sync_id`` of its section's sync at seed time.
+LAB_ORG_SYNCED_ROWS = {
+    "crown_jewels": ("opencrq", (
+        {"name": "Payments platform", "business_service": "Card payments", "criticality": "critical",
+         "external_id": "lab-opencrq-asset-1"},
+        {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},
+        {"name": "Internal wiki", "criticality": "low"},
+    )),
+    "tech_stack": ("openaev", (
+        {"vendor": "Microsoft", "product": "Exchange Server", "external_id": "lab-openaev-software-1"},
+        {"vendor": "Fortinet", "product": "FortiOS", "external_id": "lab-openaev-software-2"},
+        {"vendor": "Atlassian", "product": "Confluence Data Center"},
+    )),
+    "ai_systems": ("openaev", (
+        {"name": "Customer support assistant", "kind": "assistant", "exposure": "public",
+         "external_id": "lab-openaev-ai-1"},
+        {"name": "Code review agent", "kind": "agent", "exposure": "internal"},
+    )),
+}
 #: ``LAB_PERF_THREAD`` values: ``on`` seeds a 200-message conversation and a short one for the administrator
 #: (``seed_perf_thread.py``), so long-thread scroll, open and switch timings need no hand-edited seed.
 LAB_PERF_THREAD_STATES = ("off", "on")
@@ -7495,6 +7519,12 @@ def seed_entities() -> None:
             seeded["org setup prompt"] = seed_org_setup_prompt(token, base)
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["org setup prompt"] = str(exc)[:600]
+    if lab_switch("LAB_ORG_SYNCED", LAB_ORG_SYNCED_STATES) == "on":
+        # After seed_org_ai_draft_stub: the lab profile is kept, the three sections are replaced.
+        try:
+            seeded["org synced rows"] = seed_org_synced(token, base)
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["org synced rows"] = str(exc)[:600]
     try:
         seeded["OpenCRQ sync stub"] = seed_opencrq_sync_stub(token, base)
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
@@ -8070,6 +8100,51 @@ def seed_stale_build_notice(token: str, base: str) -> dict[str, str]:
     if answered != server_build or answered == page_build:
         raise RuntimeError(f"GET /auth/config answers build_id {answered!r}, expected {server_build!r}")
     return {"id": f"page {page_build}, server {server_build}", "url": f"{base}/"}
+
+
+def seed_org_synced(token: str, base: str) -> dict[str, str]:
+    """``LAB_ORG_SYNCED=on``: profile rows a platform sync wrote, next to typed rows, on the real API (#1345).
+
+    Saves one disabled sync per section of :data:`LAB_ORG_SYNCED_ROWS` (kept when one exists for that section and
+    source), then the next profile version: the saved profile with those sections replaced by the rows, each synced
+    row carrying ``source`` and ``sync_id`` of its section's sync. Read back: ``GET /organization-context`` lists,
+    per section, every synced row with its ``sync_id``. Logged ``seeded org synced rows: <base>/settings/organization``.
+    May raise: the caller logs it as not seeded.
+    """
+    existing = api("GET", "/organization-context/syncs", token)
+    syncs = {
+        (r.get("section"), r.get("source")): str(r.get("id"))
+        for r in (existing if isinstance(existing, list) else [])
+        if isinstance(r, dict) and r.get("id")
+    }
+    current = api("GET", "/organization-context", token)
+    profile = dict((current.get("profile") if isinstance(current, dict) else None) or LAB_ORG_PROFILE)
+    expected: dict[str, set[tuple[str, str]]] = {}
+    for section, (source, rows) in LAB_ORG_SYNCED_ROWS.items():
+        sync = syncs.get((section, source)) or _created(api("POST", "/organization-context/syncs", token, {
+            "section": section, "source": source, "frequency": "daily", "hour": 6, "minute": 0,
+            "timezone": "UTC", "enabled": False,
+        }))
+        profile[section] = [
+            {**row, "source": source, "sync_id": sync} if row.get("external_id") else dict(row) for row in rows
+        ]
+        expected[section] = {(str(row["external_id"]), sync) for row in rows if row.get("external_id")}
+    saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
+    version = saved.get("version") if isinstance(saved, dict) else None
+    read = api("GET", "/organization-context", token)
+    stored = (read.get("profile") if isinstance(read, dict) else None) or {}
+    for section, wanted in expected.items():
+        got = {
+            (str(r.get("external_id")), str(r.get("sync_id")))
+            for r in stored.get(section) or []
+            if isinstance(r, dict) and r.get("external_id")
+        }
+        if not wanted <= got:
+            raise RuntimeError(f"saved, but GET /organization-context answers {section} {sorted(got)[:5]}")
+    url = f"{base}/settings/organization"
+    log(f"seeded org synced rows: {url}")
+    total = sum(len(rows) for rows in expected.values())
+    return {"id": f"version {version}, {total} synced rows in {len(expected)} sections", "url": url}
 
 
 def seed_org_setup_prompt(token: str, base: str) -> dict[str, str]:
