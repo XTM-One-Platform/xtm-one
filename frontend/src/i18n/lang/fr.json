@@ -16791,10 +16791,6 @@
   "Human approval was not changed": "La validation humaine n'a pas été modifiée",
   "No action of this fleet is gated by this control yet.": "Aucune action de cette flotte n'est encore soumise à ce contrôle.",
   "Review actions": "Examiner les actions",
-  "Waits:": "Attend :",
-  "Runs alone:": "S'exécute seule :",
-  "Show what waits at each level": "Afficher ce qui attend à chaque niveau",
-  "Hide what waits at each level": "Masquer ce qui attend à chaque niveau",
   "Reduce human approval to {level}?": "Réduire la validation humaine à {level} ?",
   "Reduce to {level}": "Réduire à {level}",
   "{count, plural, =0 {No action of this fleet changes. Every action stays logged and reported in Operations.} one {# action will run without approval:} other {# actions will run without approval:}}": "{count, plural, =0 {Aucune action de cette flotte ne change. Chaque action reste journalisée et rapportée dans Opérations.} one {# action s'exécutera sans validation :} other {# actions s'exécuteront sans validation :}}",
@@ -21205,5 +21201,12 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Les produits que votre organisation livre, avec leurs dépôts de code : une vulnérabilité sur l'un d'eux est rattachée à ses dépôts dans CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aucun produit livré : une vulnérabilité sur un produit que vous livrez reste non résolue.",
-  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom"
+  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom",
+  "Work item decision": "Décision sur un élément de travail",
+  "What to decide": "Ce qu'il faut décider",
+  "No waiting decision matches the search and filters.": "Aucune décision en attente ne correspond à la recherche et aux filtres.",
+  "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# décision attend une personne} other {# décisions attendent une personne}}",
+  "oldest asked {age}": "la plus ancienne demandée {age}",
+  "Read only: this decision is addressed to someone else.": "Lecture seule : cette décision est adressée à quelqu'un d'autre.",
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Décisions des membres de cette flotte en attente d'une personne : exécutions en pause et éléments de travail. Ouvrir cet onglet ne lance aucune exécution et ne consomme aucun quota."
 }
