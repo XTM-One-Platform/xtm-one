@@ -1370,20 +1370,32 @@ def restored_profile(
 ) -> tuple[dict[str, Any], list[str]]:
     """*current* with *fields* taken from *past* (every field of *past* when empty); ``(profile, fields)``.
 
-    ``ValueError`` names a field the profile does not have.
+    ``ValueError`` names a field the profile does not have. ``ai_systems`` (#1501, a derived field)
+    restores the ``ai_target`` assets of *past* in place of the current ones, the other assets kept;
+    *past* is a parsed profile, so a version saved before #1501 already carries them as assets.
     """
     known = set(OrganizationProfile.model_fields)
     wanted = [f for f in dict.fromkeys(str(f).strip() for f in fields) if f] or sorted(known)
-    unknown = [f for f in wanted if f not in known]
+    unknown = [f for f in wanted if f not in known and f not in DERIVED_FIELDS]
     if unknown:
         raise ValueError(f"not a field of the organization profile: {', '.join(unknown)}")
     restored = dict(current)
     for name in wanted:
-        if name in past:
+        if name == "ai_systems":
+            restored["assets_exposure"] = [
+                *(a for a in restored.get("assets_exposure") or [] if not _is_ai_target_row(a)),
+                *(a for a in past.get("assets_exposure") or [] if _is_ai_target_row(a)),
+            ]
+        elif name in past:
             restored[name] = past[name]
         else:
             restored.pop(name, None)
     return restored, wanted
+
+
+def _is_ai_target_row(row: Any) -> bool:
+    """Whether a dumped asset row is an AI system (category ``ai_target``, #1501)."""
+    return isinstance(row, dict) and row.get("category") == "ai_target"
 
 
 async def save_version(
