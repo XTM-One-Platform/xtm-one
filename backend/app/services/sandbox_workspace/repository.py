@@ -43,11 +43,13 @@ from app.services.sandbox_workspace.detect import (
     command_named_files,
     install_lifecycle_paths,
     is_companion_name,
+    is_lint_config,
     is_referencing_config,
     is_referencing_file,
     is_relay_source,
     is_requirements,
     is_workflow,
+    lint_config_member_dirs,
     maven_reactor_paths,
     package_local_files,
     referenced_files,
@@ -84,7 +86,8 @@ class ExtractedTree:
     #: root above them builds there (``cd packages/core && tsup``, ``detect.install_lifecycle_paths``).
     lifecycle: list[str] = field(default_factory=list)
     #: The workspace member directories added to the sub_paths because a package under them links it by the
-    #: ``workspace:`` protocol (``detect.workspace_dependency_dirs``): its checks import the sibling's source.
+    #: ``workspace:`` protocol (``detect.workspace_dependency_dirs``) or an ESLint configuration in or above them
+    #: imports by name (``detect.lint_config_member_dirs``): its checks import the sibling's source.
     workspace_links: list[str] = field(default_factory=list)
     #: The Relay ``src`` directories added to the sub_paths because a ``relay.config.*`` in or above them names
     #: it (``detect.relay_source_dirs``): the compiler reads every fragment there.
@@ -237,11 +240,20 @@ def extract_tree(
         others: dict[str, bytes] = {}
         yarnrcs: dict[str, bytes] = {}
         poms: dict[str, bytes] = {}
+        # The ESLint configurations in or above a sub_path: a bare import of a workspace member's name links it.
+        lint_configs: dict[str, bytes] = {}
         above = {directory for sub in wanted for directory in (["", *_parents(sub + "/x")])}
         for member, read in _members(data):
             path = _relative(_clean(member.name), root) if member.is_file else ""
             if path and member.size <= MAX_REQUIREMENTS_BYTES and path.rsplit("/", 1)[-1] == "pom.xml":
                 poms[path] = read()
+            if (
+                path
+                and member.size <= MAX_REQUIREMENTS_BYTES
+                and is_lint_config(path)
+                and (path.rpartition("/")[0] in above or any(is_under(path, sub) for sub in wanted))
+            ):
+                lint_configs[path] = read()
             if path and member.size <= MAX_REQUIREMENTS_BYTES and is_workflow(path):
                 workflows[path] = read()
             elif (
@@ -299,8 +311,12 @@ def extract_tree(
         wanted = [*wanted, *tree.reactor]
         tree.lifecycle, lifecycle_files = install_lifecycle_paths(workspace_roots, sizes, wanted)
         wanted = [*wanted, *tree.lifecycle]
-        tree.workspace_links = workspace_dependency_dirs({**others, **workspace_roots, **manifests}, wanted)
+        every_manifest = {**others, **workspace_roots, **manifests}
+        tree.workspace_links = workspace_dependency_dirs(every_manifest, wanted)
         wanted = [*wanted, *tree.workspace_links]
+        lint_links = lint_config_member_dirs(lint_configs, every_manifest, wanted)
+        tree.workspace_links = [*tree.workspace_links, *lint_links]
+        wanted = [*wanted, *lint_links]
         tree.relay_sources = relay_source_dirs(referencing, sizes, wanted)
         wanted = [*wanted, *tree.relay_sources]
         tree.release_notes = release_note_dirs(sizes, wanted)

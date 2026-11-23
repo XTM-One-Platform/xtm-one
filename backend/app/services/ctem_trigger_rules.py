@@ -228,8 +228,8 @@ async def _primary_profile(db: Any) -> Any:
     primary = await get_primary(db)
     if primary is None:
         return None
-    row = await org_context.current_version(db, primary.id)
-    return org_context.parse_profile(row.profile) if row else None
+    row, profile = await org_context.current_profile(db, primary.id)  # assets from the records (#1543)
+    return profile if row else None
 
 
 async def pir_filter_reason(

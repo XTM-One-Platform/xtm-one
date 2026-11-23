@@ -86,8 +86,9 @@ def build_timer_tools(
             else f"Armed timer `{timer['correlation_key']}` for {timer['due_at']} (id `{timer['id']}`)."
         )
         text = (
-            f"{head} At that time the platform raises timer.due once to the platform_event "
-            "assignments whose filter matches (e.g. correlation_key starts_with the prefix)"
+            f"{head} At that time the platform raises timer.due once; a run of yours starts only if one "
+            "of your own platform_event assignments on timer.due takes the key (e.g. correlation_key "
+            "starts_with the prefix)"
             + (", unless its condition is met first." if (unless_work_item_id or unless_shared_state_key) else ".")
         )
         # Armed either way: a key no listener takes is warned about, never refused.

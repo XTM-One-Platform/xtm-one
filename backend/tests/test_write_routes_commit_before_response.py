@@ -78,16 +78,21 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
         "dict _user_creds builds (setattr on a non-ORM object), never a row of "
         "the request session",
     ),
-    # The profile import (#11780) reads OpenCTI the same way; apply commits its save itself.
-    "POST /api/v1/organization-context/import/preview": (
-        frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),
-        "the import preview's OpenCTI read: _drop_dead_draft marks the plain headers "
-        "dict _user_creds builds, never a row of the request session",
+    # The draft and the rows previews plan on current_profile (#1543): a pydantic copy of the profile, never a row.
+    "POST /api/v1/organization-context/draft": (
+        frozenset({"app.services.organization_context_draft.merge_draft.<_fill>"}),
+        "merge_draft fills a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the draft route saves nothing",
     ),
-    "POST /api/v1/organization-context/import/apply": (
-        frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),
-        "the import's OpenCTI read: _drop_dead_draft marks the plain headers "
-        "dict _user_creds builds; the profile save commits before the response",
+    "GET /api/v1/organization-context/syncs/{sync_id}/rows-preview": (
+        frozenset({"app.services.organization_context_sources.plan_rows"}),
+        "plan_rows edits a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the preview saves nothing",
+    ),
+    "GET /api/v1/organization-context/sources/{source}/rows-preview": (
+        frozenset({"app.services.organization_context_sources.plan_rows"}),
+        "plan_rows edits a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the preview saves nothing",
     ),
     # The import filter picker (#11886) lists the platform's values with the same read.
     "GET /api/v1/organization-context/import/options": (

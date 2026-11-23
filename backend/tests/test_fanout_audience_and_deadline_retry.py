@@ -1,5 +1,6 @@
-"""The CTEM stage analysts fan out to the command center's users only, and a
-run whose deadline expired before any model call returned is not retried.
+"""The CTEM stage analysts and the monthly exposure briefing fan out to the
+command center's users only, and a run whose deadline expired before any
+model call returned is not retried.
 
 Instance with seven active users, one of them using the CTEM command center:
 the weekly stage-analyst fan-out makes one run per analyst, not seven, and a
@@ -58,6 +59,14 @@ class _FakeDB:
 
 def _stage_assignment(trigger_config):
     return SimpleNamespace(id=uuid.uuid4(), name="Weekly discovery assessment", trigger_config=trigger_config)
+
+
+def _seeded_monthly_briefing():
+    return next(
+        data
+        for data in BUILTIN_ASSIGNMENTS
+        if data["agent_slug"] == "exposure-briefing-analyst" and data["name"] == "Monthly exposure briefing"
+    )
 
 
 async def test_ctem_audience_fans_out_to_command_center_users_only(monkeypatch):
@@ -151,8 +160,41 @@ def test_seeded_stage_analysts_fan_out_to_ctem_users_only():
         and str(data["name"]).endswith(" assessment")
     ]
     assert len(weekly) == 5
-    for data in weekly:
+    for data in [*weekly, _seeded_monthly_briefing()]:
         assert data["trigger_config"].get("fanout_audience") == "ctem_users", data["name"]
+
+
+async def test_monthly_briefing_skips_a_user_without_a_recent_posture(monkeypatch):
+    monkeypatch.setattr(settings, "fanout_spread_window_seconds", 0)
+    chatbot_only_user, ctem_user = uuid.uuid4(), uuid.uuid4()
+    seen: list[uuid.UUID] = []
+
+    async def fake_trigger(**kwargs):
+        seen.append(kwargs["triggered_by_user_id"])
+        return "run-id"
+
+    stub_agentic_gate(monkeypatch)
+    monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", fake_trigger)
+    db = _FakeDB(
+        [
+            _RowsResult([(chatbot_only_user, "cyber"), (ctem_user, "cyber")]),
+            _ScalarsResult([ctem_user]),  # postures built within 30 days
+            _ScalarsResult([]),  # no recent run
+        ]
+    )
+    seeded = _seeded_monthly_briefing()
+    cron = seeded["trigger_config"]["cron"]
+
+    triggered = await autonomous._fanout_assignment_to_users(
+        db,
+        SimpleNamespace(id=uuid.uuid4(), name=seeded["name"], trigger_config=dict(seeded["trigger_config"])),
+        SimpleNamespace(name="exposure-briefing-analyst"),
+        datetime.now(UTC),
+        cron,
+    )
+
+    assert triggered == 1
+    assert seen == [ctem_user]
 
 
 def test_deadline_failure_before_any_model_call_is_not_retried():
