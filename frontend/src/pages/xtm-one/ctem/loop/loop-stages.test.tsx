@@ -90,9 +90,8 @@ describe("decisionSentence", () => {
     expect(decisionSentence({ outcome: "discarded", reason_code: "contradicted_by_evidence", reason_params: {} }, t)).toBe(
       "Contradicted by the verdict of its own source",
     );
-    expect(decisionSentence({ outcome: "to_validate", reason_code: "subject_unresolved", reason_params: {} }, t)).toBe(
-      "Not resolved to an asset, a crown jewel or the tech stack",
-    );
+    expect(decisionSentence({ outcome: "to_validate", reason_code: "subject_unresolved", reason_params: {} }, t)).toBe("Not in your inventory");
+    expect(decisionSentence({ outcome: "discarded", reason_code: "dismissed_by_user", reason_params: { by: "Ana" } }, t)).toBe("Dismissed by {by}");
     const watch = { outcome: "watchlist", reason_code: "below_scope_threshold", reason_params: { criticality: "low", threshold: "high" } };
     const seen: Record<string, string | number>[] = [];
     const capture = (id: string, values?: Record<string, string | number>) => {
@@ -167,7 +166,14 @@ describe("decided signals in the trace and the row", () => {
     expect(currentStage(signalLoop(decided("watchlist", "below_scope_threshold")))).toMatchObject({ key: "scope", status: "stopped" });
     const toCase = signal({ state: "confirmed", decision: { outcome: "case", reason_code: "in_scope", decided_at: "2026-11-21T08:06:00Z" } });
     expect(currentStage(signalLoop(toCase))).toMatchObject({ key: "case", status: "current" });
-    expect(currentStage(signalLoop(decided("to_validate", "subject_unresolved")))).toMatchObject({ key: "reconcile", status: "stopped" });
+    // #1505: an unmatched signal is parked at reconcile, no fault, never "Stopped".
+    expect(currentStage(signalLoop(decided("to_validate", "subject_unresolved")))).toMatchObject({ key: "reconcile", status: "parked" });
+  });
+
+  it("labels an unmatched signal as such, never as a task to validate (#1505)", () => {
+    renderWithProviders(<DecisionReason state="to_validate" decision={decided("to_validate", "subject_unresolved").decision} />);
+    expect(screen.getByText("Unmatched")).toBeInTheDocument();
+    expect(screen.queryByText(/To validate/)).toBeNull();
   });
 
   it("lists the decision inputs with labels", () => {
@@ -215,7 +221,7 @@ describe("what would make it a case", () => {
   it("names the next step of each stopped outcome, none for a case or an unknown code", () => {
     expect(nextStepSentence(below, t)).toBe("Becomes a case if criticality rises to {threshold}");
     expect(nextStepSentence({ outcome: "to_validate", reason_code: "subject_unresolved" }, t)).toBe(
-      "Becomes a case once it is matched to an asset, a crown jewel or the tech stack",
+      "It stays here until your inventory holds it",
     );
     expect(nextStepSentence({ outcome: "case", reason_code: "in_scope" }, t)).toBeNull();
     expect(nextStepSentence({ outcome: "watchlist", reason_code: "later_code" }, t)).toBeNull();

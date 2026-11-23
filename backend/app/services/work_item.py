@@ -1638,21 +1638,35 @@ def _origin_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
     return safe_uuid(value)
 
 
-async def _check_blockers(db, user_id: str | None, blockers: Sequence[str]) -> None:
+async def _check_blockers(
+    db: Any,
+    user_id: str | None,
+    blockers: Sequence[str],
+    reader: CompanyManagedWriter | None = None,
+) -> None:
     """Refuse a ``blocked_on`` naming an item the caller cannot see, or a cancelled one.
 
     A cancelled item never completes: waiting on it would be surfaced back to
     the owner at the next tick, again and again (#762).
+
+    *reader* is the writing agent: an item it reads with its own
+    ``get_work_item`` (the owner-agent and hand-off tiers, then its creator's
+    narrowing) is one it may wait on (#1593). Without it an agent could read a
+    gate filed for it and still be refused when blocking on it.
     """
     uid = safe_uuid(user_id) if user_id else None
     readable, _ = await _workspace_tiers(db, user_id)
     ids = [safe_uuid(b) for b in blockers]
-    rows = (
-        await db.execute(
-            select(WorkItem.id, WorkItem.status).where(WorkItem.id.in_(ids), _visible_clause(uid, readable))
-        )
-    ).all()
-    found = {str(row[0]): row[1] for row in rows}
+    actor = reader if reader is not None and reader.agent_id is not None else None
+    items = list(
+        (await db.execute(select(WorkItem).where(WorkItem.id.in_(ids), _visible_clause(uid, readable, actor))))
+        .scalars()
+        .all()
+    )
+    if actor is not None and items:
+        policies = await _policies_for(db, actor, items)
+        items = [i for i in items if _admits(access_of(policies, i.created_by_agent_id), actor, i, READ)]
+    found = {str(i.id): i.status for i in items}
     missing = [b for b in blockers if b not in found]
     if missing:
         raise ValueError(
@@ -2201,7 +2215,7 @@ async def create_work_item(
                 if found is not None:
                     return {**found, "deduplicated": True, "dedupe_by": dedupe_mode}
         if blockers:
-            await _check_blockers(db, user_id, blockers)
+            await _check_blockers(db, user_id, blockers, writer)
             status = "blocked"
         if status == "blocked":
             # A new item can close a cycle through the pull request it gates (#606).
@@ -2533,7 +2547,7 @@ async def update_work_item(
             if list(blocked_on) and not blockers:
                 raise ValueError("blocked_on must list work item ids (UUIDs) other than the item itself")
             if blockers:
-                await _check_blockers(db, user_id, blockers)
+                await _check_blockers(db, user_id, blockers, writer)
         refs = None if blocked_on_refs is None else normalize_blocked_on_refs(blocked_on_refs)
         refuse_unobserved_deployment_refs(refs)
         stored_reason = getattr(item, "blocked_reason", None)

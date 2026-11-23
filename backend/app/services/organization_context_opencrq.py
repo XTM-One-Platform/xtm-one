@@ -62,6 +62,10 @@ class SyncPlan:
     stale: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id OpenCRQ lacks)
     #: Synced jewels whose pushed criticality falls below the sync's threshold: kept as typed rows (#1473).
     released: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id)
+    #: The threshold the plan pulled with, and the assets read by OpenCRQ criticality (#1558): an empty
+    #: plan over assets none of which reaches the threshold says so, never "already agree".
+    min_criticality: str = DEFAULT_MIN_CRITICALITY
+    by_criticality: dict[str, int] = field(default_factory=dict)
 
     @property
     def profile_changed(self) -> bool:
@@ -81,11 +85,27 @@ class SyncPlan:
             "not_in_opencrq": [{"crown_jewel": j, "opencrq_asset_id": a} for j, a in self.stale],
             "kept_below_sync_threshold": [{"crown_jewel": j, "opencrq_asset_id": a} for j, a in self.released],
             "in_sync": self.in_sync,
+            "min_criticality": self.min_criticality,
+            "assets_read": sum(self.by_criticality.values()),
+            "by_criticality": dict(self.by_criticality),
         }
 
 
 def _asset_name(asset: dict) -> str:
     return str(asset.get("name") or asset.get("derivedName") or "").strip()
+
+
+def count_by_criticality(assets: list[dict[str, Any]]) -> dict[str, int]:
+    """The supporting assets per OpenCRQ criticality, lowest first; any other value counts as ``unknown`` (#1558)."""
+    from app.services.organization_context_import import OPENCRQ_LEVELS
+
+    counts: dict[str, int] = {}
+    for asset in assets:
+        level = str(asset.get("criticality") or "").lower()
+        key = level if level in OPENCRQ_LEVELS else "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    order = ("unknown", *OPENCRQ_LEVELS)
+    return {key: counts[key] for key in order if key in counts}
 
 
 def plan_sync(
@@ -108,7 +128,9 @@ def plan_sync(
             by_name.setdefault(name, []).append(asset)
 
     updated = profile.model_copy(deep=True)
-    plan = SyncPlan(profile=updated)
+    plan = SyncPlan(
+        profile=updated, min_criticality=min_criticality, by_criticality=count_by_criticality(list(by_id.values()))
+    )
     jewels: list[CrownJewel] = []
     claimed: set[str] = set()
     for jewel in updated.crown_jewels:
@@ -244,7 +266,8 @@ async def run_sync(
     """Plan the sync, and with *apply* write both sides; ``(plan, errors)``.
 
     *min_criticality* empty reads the saved OpenCRQ crown-jewel sync's filter, so the
-    reconcile and the sync pull the same assets.
+    reconcile and the sync pull the same assets; an administrator may pick another
+    level on the check (#1558), an unknown one falls back to the default.
     """
     from app.integrations.providers.opencrq._common import _resolve_tenant, _trpc
     from app.services import organization_context as org_context
