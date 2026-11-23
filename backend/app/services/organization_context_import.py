@@ -211,6 +211,8 @@ class ImportPlan:
     gone: list[str] = field(default_factory=list)
     #: True when the administrator chose to remove the ``gone`` rows (default: they are kept).
     remove_gone: bool = False
+    #: ``gone`` rows a sync kept because another writer wrote them (#1473): only its own rows go.
+    gone_kept: list[str] = field(default_factory=list)
     #: Rows the source returned that the sync excludes (its ``excluded_external_ids``, #1134).
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
@@ -253,6 +255,7 @@ class ImportPlan:
             "updated": self.updated[:SAMPLE_SIZE],
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
+            "gone_kept": self.gone_kept[:SAMPLE_SIZE],
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
@@ -617,7 +620,12 @@ def _merge_sourced(
         ]
         plan.gone = [getattr(r, name_key) for r in gone]
         if plan.remove_gone:
-            dropped |= {id(r) for r in gone}
+            # A sync removes only the rows it wrote itself (#1473): a row another
+            # writer keyed on this source (a reconcile pull, a one-off import, a
+            # row read as a platform row) is reported gone and kept.
+            owned = [r for r in gone if not plan.sync_id or r.sync_id == plan.sync_id]
+            plan.gone_kept = [getattr(r, name_key) for r in gone if id(r) not in {id(o) for o in owned}]
+            dropped |= {id(r) for r in owned}
     if dropped:
         current = [r for r in current if id(r) not in dropped]
     setattr(draft, attr, current[:cap])
@@ -1370,7 +1378,8 @@ def provenance(plan: ImportPlan, filters: dict[str, Any]) -> dict[str, dict[str,
     used = ", ".join(f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "", [], {}))
     basis = f"import of {plan.section}: {len(plan.new)} new, {len(plan.updated)} updated"
     if plan.gone:
-        basis += f", {len(plan.gone)} no longer in the source ({'removed' if plan.remove_gone else 'kept'})"
+        removed = len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0
+        basis += f", {len(plan.gone)} no longer in the source ({removed} removed, {len(plan.gone) - removed} kept)"
     if plan.excluded:
         basis += f", {len(plan.excluded)} excluded by the sync"
     basis += f"; read {datetime.now(UTC).strftime('%Y-%m-%dT%H:%MZ')}"

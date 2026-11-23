@@ -162,6 +162,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "asset_identity",
     # Cases attention weights (#1176): read by the Cases list and case page, never dumped into the always-on block.
     "case_attention",
+    # Per path source exclusions (#1445): read where a signal is recorded, never dumped into the always-on block.
+    "signal_sources",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -197,16 +199,23 @@ def is_platform_source(source: str) -> bool:
 
 
 def _legacy_platform_id(data: Any, legacy_key: str, platform: str) -> Any:
-    """A row saved before #1134 with only *legacy_key* reads as a row of *platform* keyed on that id."""
+    """A row saved before #1134 with only *legacy_key* reads as a row of *platform* keyed on that id.
+
+    Only a row with no ``source`` at all is such a row: a row a person typed
+    (``manual``, ``csv``, ``api``) or an agent wrote keeps its source and
+    carries *legacy_key* as a link only, so a link set by the OpenCRQ
+    reconcile never hands a typed row to a sync that may remove it (#1473).
+    """
     if not isinstance(data, dict):
         return data
     legacy = str(data.get(legacy_key) or "").strip()
     if not legacy or str(data.get("external_id") or "").strip():
         return data
+    if str(data.get("source") or "").strip():
+        return data
     data = dict(data)
     data["external_id"] = legacy
-    if str(data.get("source") or "manual").strip().lower() in (*HAND_SOURCES, ""):
-        data["source"] = platform
+    data["source"] = platform
     return data
 
 
@@ -214,8 +223,9 @@ class CrownJewel(BaseModel):
     """A crown jewel; ``source`` / ``external_id`` / ``sync_id`` say where it came from (#1134).
 
     ``opencrq_asset_id`` is the id before #1134, kept readable for one release:
-    a row carrying it alone reads as an OpenCRQ row, and an OpenCRQ row keeps
-    it equal to ``external_id``.
+    a row carrying it with no ``source`` reads as an OpenCRQ row, an OpenCRQ
+    row keeps it equal to ``external_id``, and on a typed row it is the link
+    the OpenCRQ reconcile set, never a change of owner (#1473).
     """
 
     model_config = _Strict
@@ -733,6 +743,46 @@ class EvidenceHealthPass(BaseModel):
     cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
 
 
+#: One source of a trigger path as ``provider:kind`` (``ctem_signal_sources.source_key``).
+_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)$")
+
+
+class SignalSourcesSettings(BaseModel):
+    """Which connected source feeds which CTEM trigger path (#1445, ``dev-docs/ctem-signals.md`` s.2bis).
+
+    Every connected source feeds every path it can by default. ``excluded``
+    names, per trigger path, the sources (``provider:kind``) an administrator
+    took off that path alone: an excluded source records nothing on it and is
+    not bound on it, while it keeps feeding its other paths. Set from the
+    Sources tab of CTEM > Signals.
+    """
+
+    model_config = _Strict
+
+    excluded: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("excluded")
+    @classmethod
+    def _clean_excluded(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        from app.services.ctem_signal_sources import PATH_SOURCES, source_key
+
+        out: dict[str, list[str]] = {}
+        for path, keys in value.items():
+            known = {source_key(s.provider, s.kind) for s in PATH_SOURCES.get(path, ())}
+            if not known:
+                raise ValueError(f"{path!r} is not a trigger path with a source")
+            cleaned: list[str] = []
+            for key in keys:
+                key = str(key).strip()
+                if not _SOURCE_KEY.match(key) or key not in known:
+                    raise ValueError(f"{key!r} is not a source of the trigger path {path!r}")
+                if key not in cleaned:
+                    cleaned.append(key)
+            if cleaned:
+                out[path] = sorted(cleaned)
+        return out
+
+
 class CasesRecompute(BaseModel):
     """How often the shared CTEM cases are recomputed from the source products (``dev-docs/ctem-cases.md`` s.4.3).
 
@@ -888,6 +938,8 @@ class OrganizationProfile(BaseModel):
     evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
     #: How often the shared CTEM cases are recomputed with no user action.
     cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
+    #: The sources an administrator took off one trigger path (#1445).
+    signal_sources: SignalSourcesSettings = Field(default_factory=SignalSourcesSettings)
     #: How one asset is matched across sources and which source each field shows (#1178).
     asset_identity: AssetIdentity = Field(default_factory=AssetIdentity)
     #: The points of the Cases attention score (#1176): what needs attention first.
@@ -1174,6 +1226,40 @@ async def list_versions(
     )
 
 
+async def get_version(
+    db: AsyncSession, version: int, organization_id: uuid.UUID | None = None
+) -> OrganizationContextVersion | None:
+    """Version *version* of *organization_id* (the primary when ``None``), or ``None`` (#1473)."""
+    return (
+        await db.execute(
+            select(OrganizationContextVersion)
+            .where(_of_organization(organization_id), OrganizationContextVersion.version == version)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+def restored_profile(
+    current: dict[str, Any], past: dict[str, Any], fields: list[str]
+) -> tuple[dict[str, Any], list[str]]:
+    """*current* with *fields* taken from *past* (every field of *past* when empty); ``(profile, fields)``.
+
+    ``ValueError`` names a field the profile does not have.
+    """
+    known = set(OrganizationProfile.model_fields)
+    wanted = [f for f in dict.fromkeys(str(f).strip() for f in fields) if f] or sorted(known)
+    unknown = [f for f in wanted if f not in known]
+    if unknown:
+        raise ValueError(f"not a field of the organization profile: {', '.join(unknown)}")
+    restored = dict(current)
+    for name in wanted:
+        if name in past:
+            restored[name] = past[name]
+        else:
+            restored.pop(name, None)
+    return restored, wanted
+
+
 async def save_version(
     db: AsyncSession,
     profile: BaseModel,
@@ -1323,6 +1409,43 @@ async def scoped_tracked_blocks(db: AsyncSession, scope: dict | None) -> list[st
         render_tracked_for_agent(organization, await current_version(db, organization.id))
         for organization in await scoped_organizations(db, scope)
     ]
+
+
+def _row_identity(row: dict[str, Any]) -> tuple[str, str]:
+    """How a list row of the profile is told apart: its source key when synced, else its name."""
+    external_id = str(row.get("external_id") or "").strip()
+    if external_id:
+        return str(row.get("source") or "").strip().lower(), external_id
+    name = row.get("name") or row.get("product") or row.get("id") or ""
+    return "", str(name).strip().casefold()
+
+
+def _row_label(row: dict[str, Any]) -> str:
+    return str(row.get("name") or row.get("product") or row.get("external_id") or row.get("id") or "?")[:200]
+
+
+def removed_rows(before: dict[str, Any] | None, after: dict[str, Any]) -> dict[str, list[str]]:
+    """List field -> the names of the rows *before* held that *after* no longer holds (#1473).
+
+    Both are dumped profiles. Rows are matched on ``source`` + ``external_id``
+    when synced, else on their name, so a save that drops a crown jewel (a
+    stale form, an API client sending an old copy) says which ones, never
+    silently. A list field absent from *after* is not judged.
+    """
+    if not before:
+        return {}
+    out: dict[str, list[str]] = {}
+    for key, rows in before.items():
+        if not isinstance(rows, list) or key not in after or not isinstance(after.get(key), list):
+            continue
+        old = [r for r in rows if isinstance(r, dict)]
+        if not old:
+            continue
+        kept = {_row_identity(r) for r in after[key] if isinstance(r, dict)}
+        lost = [_row_label(r) for r in old if _row_identity(r) not in kept]
+        if lost:
+            out[key] = lost[:100]
+    return out
 
 
 def _drop_typed_provenance(row: dict[str, Any]) -> None:

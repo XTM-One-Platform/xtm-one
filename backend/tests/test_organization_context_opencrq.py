@@ -73,6 +73,7 @@ def test_the_plan_leaves_the_input_profile_untouched_and_summarizes():
         "pulled_from_opencrq",
         "ambiguous",
         "not_in_opencrq",
+        "kept_below_sync_threshold",
         "in_sync",
     }
     assert summary["in_sync"] is False
