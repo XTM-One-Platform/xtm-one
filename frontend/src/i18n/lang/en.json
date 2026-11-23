@@ -21208,5 +21208,17 @@
   "Still waiting since {date}": "Still waiting since {date}",
   "Answered by {name} on {date}": "Answered by {name} on {date}",
   "Waited since {date}": "Waited since {date}",
-  "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}"
+  "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}",
+  "Package URL": "Package URL",
+  "Dependencies": "Dependencies",
+  "No dependency known in this repository yet.": "No dependency known in this repository yet.",
+  "Shipped products": "Shipped products",
+  "Source repositories": "Source repositories",
+  "owner/name, Enter to add": "owner/name, Enter to add",
+  "Add a shipped product": "Add a shipped product",
+  "Paste shipped products": "Paste shipped products",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
+  "A repository is not owner/name": "A repository is not owner/name"
 }
