@@ -564,7 +564,9 @@ def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: st
         out: dict[str, Any] = {"key": key, "action": action, "module": module, "approver": "Fleet manager"}
         out["impact"] = impact
         if tools:
-            out["tools"] = [{**t, "when": {k: list(v) for k, v in t["when"].items()}} if "when" in t else dict(t) for t in tools]
+            out["tools"] = [
+                {**t, "when": {k: list(v) for k, v in t["when"].items()}} if "when" in t else dict(t) for t in tools
+            ]
         return out
 
     validation = gate(
@@ -731,7 +733,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
         # Each step names the gate it stands for (#1074): the About response badges it when that gate
         # waits at the fleet's live level and pins; the static flag is the seeded level's (Low).
-        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate_key": "ctem.validation.non_readonly"},
+        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True, "gate_key": CTEM_VALIDATION_GATE},
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
         {
             "title": "Ticket",
@@ -798,7 +800,8 @@ CTEM_AI_SECURITY_STRUCTURED: dict[str, Any] = {
         {
             "title": "AI tests",
             "detail": "Prompt injection, jailbreak, excessive agency, tool misuse, MCP tool poisoning.",
-            "gate_key": "ctem.validation.non_readonly",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
         },
         {
             "title": "Exposure",
@@ -1199,11 +1202,12 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
         {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
         # Each step names its gate (#1074): the About response badges it when that gate waits at the
-        # live level and pins. The static flag is the seeded level's (Low): ctem.mobilize alone waits.
+        # live level and pins. The static flag is the seeded level's (Low): the validation and ctem.mobilize wait.
         {
             "title": "Validate",
-            "detail": "An OpenAEV check, read-only by default.",
-            "gate_key": "ctem.validation.non_readonly",
+            "detail": "An OpenAEV scenario or atomic test, after your approval.",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
         },
         {
             "title": "Decide",

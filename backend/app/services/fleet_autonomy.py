@@ -339,7 +339,8 @@ def gated_tool_rules(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> l
         for tool in gate.get("tools") or ():
             if not isinstance(tool, Mapping) or not tool.get("name"):
                 continue
-            when = tool.get("when") if isinstance(tool.get("when"), Mapping) else {}
+            raw_when = tool.get("when")
+            when: Mapping[str, Any] = raw_when if isinstance(raw_when, Mapping) else {}
             rule: dict[str, Any] = {
                 "name": str(tool["name"]),
                 "when": {str(k): [str(v) for v in (vals or ())] for k, vals in when.items()},
@@ -479,7 +480,7 @@ def make_fleet_autonomy_gate(inner, rules: list[dict[str, Any]], *, approved_cal
         if inner is not None:
             inner(call)
 
-    def _observe(call, result) -> None:
+    def _observe(call: Any, result: Any) -> None:
         grants.observe(rules, call, result, approved)
 
     # Read by the composite after each dispatch (``CompositeToolExecutor``): the
