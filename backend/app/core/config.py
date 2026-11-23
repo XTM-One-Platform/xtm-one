@@ -927,6 +927,13 @@ class Settings(BaseSettings):
     orchestration_default_max_attempts: int = 3  # Claims before a crashed execution dead-letters
     orchestration_claim_batch: int = 20  # Max executions/outbox events claimed per adapter per tick
     orchestration_grace_seconds: int = 120  # Extra slack added to job timeout when computing deadline_at
+    # How long an assignment run or a background task may wait in the queue for a
+    # free worker before it is failed with ``deadline_exceeded_before_start``
+    # (no model call, no ``run.failed``). Its execution budget (timeout + grace)
+    # counts from the moment a worker starts it, never from its creation, so a
+    # saturated queue no longer eats the time it may run. 0 = no queue bound.
+    # An assignment overrides it with ``trigger_config.max_queue_wait_seconds``.
+    orchestration_max_queue_wait_seconds: int = 3600
     # How long background AI work that came due while agentic AI is unavailable
     # (Community Edition, or the AI switch off) - or while the quota store
     # cannot be reached and quotas fail closed - is HELD before it is

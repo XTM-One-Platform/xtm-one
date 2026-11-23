@@ -972,7 +972,7 @@ async def create_sub_agent_task(
             )
 
         from app.services import background_checkpoint
-        from app.services.orchestration_engine import create_execution
+        from app.services.orchestration_engine import create_execution, queued_deadline
 
         # Effective wall-clock budget: inherited from the parent assignment
         # run when provided; chat spawns (``timeout_seconds is None``) derive
@@ -989,13 +989,15 @@ async def create_sub_agent_task(
                 evaluation_chain=bool((extra_metadata or {}).get(EVALUATION_CHAIN_KEY)),
             )
         _effective_timeout = resolve_sub_agent_timeout(timeout_seconds)
-        deadline_at = (
+        # Counted from the task's START (``queued_deadline``): until a worker
+        # claims it, ``deadline_at`` is the queue-wait bound; the claim sets it
+        # to start + budget, so a task queued behind a saturated pool keeps its
+        # whole budget. None (timeout disabled): no deadline at all.
+        deadline_at, start_budget = queued_deadline(
+            datetime.now(UTC),
             None
             if _effective_timeout is None
-            else datetime.now(UTC)
-            + timedelta(
-                seconds=_effective_timeout + settings.orchestration_grace_seconds
-            )
+            else _effective_timeout + settings.orchestration_grace_seconds,
         )
         await create_execution(
             own_db,
@@ -1034,6 +1036,7 @@ async def create_sub_agent_task(
                 # And the partner it answers: the run history the task may
                 # read is that partner's own (``a2a.partner_runs``).
                 PARTNER_PRINCIPAL_PAYLOAD_KEY: partner_principal_payload(),
+                **start_budget,
             },
             deadline_at=deadline_at,
             dedup_key=f"sub_agent_task:{task.id}",
