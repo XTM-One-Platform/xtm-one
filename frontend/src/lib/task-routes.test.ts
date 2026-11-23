@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  VALUE_METHODOLOGY_PATH, WORKSPACES_PATH, operationsPath, valuePath, workItemPath, workItemsPath, workspacePath,
+  VALUE_METHODOLOGY_PATH, WORKSPACES_PATH, operationsPath, valuePath, waitingForMePath, workItemPath, workItemsPath, workspacePath,
 } from "./task-routes";
 
 describe("task routes", () => {
@@ -17,6 +17,15 @@ describe("task routes", () => {
     expect(workItemsPath()).toBe("/tasks/work-items");
     expect(workItemsPath({ view: "waiting" })).toBe("/tasks/work-items?view=waiting");
     expect(workItemsPath("?vis=mine")).toBe("/tasks/work-items?vis=mine");
+  });
+
+  it("open Waiting for me on the All segment, the scope its counts are read on", () => {
+    // The Home notice and the CTEM cards count every segment; a link without `vis` lands on
+    // Mine and hides the company and shared items they counted.
+    const url = new URL(waitingForMePath(), "http://x");
+    expect(url.pathname).toBe("/tasks/work-items");
+    expect(url.searchParams.get("view")).toBe("waiting");
+    expect(url.searchParams.get("vis")).toBe("all");
   });
 
   it("put Value, its tables and its methodology under Tasks", () => {

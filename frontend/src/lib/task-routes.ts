@@ -30,6 +30,19 @@ export function workItemsPath(params?: string | URLSearchParams | Record<string,
   return `${TASKS_PATH}/work-items${query(params)}`;
 }
 
+/**
+ * The "Waiting for me" list every entry to it opens (the Home notice, the CTEM
+ * Act now and Value band cards): the quick filter on the All segment, named in
+ * the URL. The count these entries show is read over every segment
+ * (`/work-items/waiting-for-me`), so the list they open is too; without `vis`
+ * the list would land on the first segment holding an item (Mine) and hide the
+ * company and shared items the count holds. A bookmarked link reopens the same
+ * list. The reader narrows to Mine from there.
+ */
+export function waitingForMePath(): string {
+  return workItemsPath({ view: "waiting", vis: "all" });
+}
+
 /** One work item open over the list: the decision card, the bell, a notification. */
 export function workItemPath(id: string, params?: string | URLSearchParams | Record<string, string>): string {
   return `${TASKS_PATH}/work-items/${encodeURIComponent(id)}${query(params)}`;
