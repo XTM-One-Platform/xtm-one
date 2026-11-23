@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import CtemSignals from "../../CtemSignals";
 import { LegacySignalLinks } from "./LegacySignalLinks";
-import { legacySignalsHref, readSignalsView, signalsHref } from "./signals-route";
+import { legacySignalsHref, readSignalsView, selectAllScope, signalsHref } from "./signals-route";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -178,6 +178,45 @@ describe("Signals page", () => {
       expect(post).toHaveBeenCalledWith("/ctem-signals/triage", { action: "dismiss", filter: { state: "to_validate" } }),
     );
     post.mockReset();
+  });
+
+  // Review on #1521: "select all" covers what the table shows, never rows its filters hide.
+  it("sends the trigger path filter with select all, and offers no select all under a search or a source filter", async () => {
+    expect(selectAllScope(new URLSearchParams("state=to_validate"))).toEqual({});
+    expect(selectAllScope(new URLSearchParams("s_f_path=new_exposure"))).toEqual({ trigger_path: "new_exposure" });
+    expect(selectAllScope(new URLSearchParams("s_f_path=new_exposure&s_f_path=code_flaw"))).toBeNull();
+    expect(selectAllScope(new URLSearchParams("s_f_source=shodan"))).toBeNull();
+    expect(selectAllScope(new URLSearchParams("s_q=host-1"))).toBeNull();
+
+    // 30 signals of the path, 2 of another: the page shows 25, "select all 30" names the path.
+    const signals = [
+      ...Array.from({ length: 30 }, (_, i) => signal(i + 1)),
+      ...Array.from({ length: 2 }, (_, i) => signal(i + 31, { trigger_path: "code_flaw", trigger_path_label: "Code flaw" })),
+    ];
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 30, counts: { changed: 30, skipped: 0, discarded: 30 } });
+    renderPage("/ctem/signals?state=to_validate&s_f_path=new_exposure", { total: 32, counts: { to_validate: 32 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    fireEvent.click(within(bar).getByRole("button", { name: /select all 30/ }));
+    fireEvent.click(within(screen.getByTestId("ctem-signals-bulk-actions")).getByTestId("ctem-signals-dismiss"));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/ctem-signals/triage", {
+        action: "dismiss",
+        filter: { state: "to_validate", trigger_path: "new_exposure" },
+      }),
+    );
+    post.mockReset();
+  });
+
+  it("offers no select all while the table is searched", async () => {
+    const signals = Array.from({ length: 3 }, (_, i) => signal(i + 1));
+    renderPage("/ctem/signals?state=to_validate&s_q=host", { total: 3, counts: { to_validate: 120 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    expect(within(bar).queryByRole("button", { name: /select all/ })).toBeNull();
   });
 
   it("checks the selected rows again by id", async () => {

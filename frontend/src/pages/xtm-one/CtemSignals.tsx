@@ -54,7 +54,7 @@ import { SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
 import { SignalTraceBody, signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
 import { connectedCount } from "./ctem/loop/signal-sources";
-import { readSignalsView, SIGNAL_SOURCES_PATH, SIGNALS_PARAMS, SIGNALS_PATH, SIGNALS_TABLE_URL_KEY } from "./ctem/loop/signals-route";
+import { readSignalsView, SIGNAL_SOURCES_PATH, SIGNALS_PARAMS, SIGNALS_PATH, SIGNALS_TABLE_URL_KEY, selectAllScope } from "./ctem/loop/signals-route";
 
 type Tab = "signals" | "sources";
 type StateFilter = CtemSignalState | "all";
@@ -151,16 +151,26 @@ function SignalsTab() {
   const busy = triage.isPending || addToInventory.isPending;
   const [selected, setSelected] = useState<string[]>([]);
   const [allMatching, setAllMatching] = useState(false);
-  const stateTotal = view.state && counts ? (counts[view.state] ?? 0) : 0;
+  // "Select all" covers what the table shows (review on #1521): the state and at most one trigger
+  // path, both read by the server; a search or a source filter offers no "select all".
+  const scope = selectAllScope(params);
+  const scopeKey = JSON.stringify(scope);
+  const stateTotal =
+    view.state && counts && scope
+      ? scope.trigger_path
+        ? signals.filter((s) => s.trigger_path === scope.trigger_path).length
+        : (counts[view.state] ?? 0)
+      : 0;
+  const matchingFilter = view.state && scope ? { state: view.state, ...scope } : null;
   useEffect(() => {
     setSelected([]);
     setAllMatching(false);
-  }, [view.state]);
+  }, [view.state, scopeKey]);
   const selectedRows = signals.filter((s) => selected.includes(s.id));
   const anyDismissed = selectedRows.some((s) => s.decision?.reason_code === "dismissed_by_user");
   const anyOpen = allMatching ? view.state !== "discarded" : selectedRows.some((s) => s.decision?.reason_code !== "dismissed_by_user");
   const runTriage = (action: CtemSignalTriageAction) => {
-    const body: CtemSignalTriage = allMatching && view.state ? { action, filter: { state: view.state } } : { action, ids: selected };
+    const body: CtemSignalTriage = allMatching && matchingFilter ? { action, filter: matchingFilter } : { action, ids: selected };
     triage.mutate(body, {
       onSuccess: (result) => {
         setSelected([]);
@@ -186,7 +196,7 @@ function SignalsTab() {
   const compactToolbar = useCompactToolbar();
   const anyUnmatched = allMatching ? view.state === "to_validate" : selectedRows.some((s) => s.state === "to_validate");
   const runAddToInventory = () => {
-    const body = allMatching && view.state ? { filter: { state: view.state } } : { ids: selected };
+    const body = allMatching && matchingFilter ? { filter: matchingFilter } : { ids: selected };
     addToInventory.mutate(body, {
       onSuccess: (result) => {
         setSelected([]);
@@ -200,7 +210,7 @@ function SignalsTab() {
       onError: () => toast({ title: t_i18n("The signals could not be updated"), variant: "error" }),
     });
   };
-  const canSelectAllMatching = !!view.state && !allMatching && selected.length > 0 && stateTotal > selected.length;
+  const canSelectAllMatching = !!matchingFilter && !allMatching && selected.length > 0 && stateTotal > selected.length;
   // The bulk actions the selection allows, most frequent first. Check again is offered only
   // for a selection that holds a signal not dismissed: a dismissed one stays dismissed on a
   // re-check (UX round 1 on #1521, B2). Two show as toolbar buttons (one below 1440 px), the
