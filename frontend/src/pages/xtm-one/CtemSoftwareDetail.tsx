@@ -55,9 +55,15 @@ function SourcesCell({ sources }: { sources: readonly string[] }) {
   );
 }
 
+// The route renders one element: following Depends on or Used by to another software keeps this
+// component mounted, so the page is keyed by id to start each software on a fresh Installed on state.
 export default function CtemSoftwareDetail() {
-  const { t_i18n, intl } = useFormatter();
   const { id } = useParams<{ id: string }>();
+  return <SoftwareDetailPage key={id} id={id} />;
+}
+
+function SoftwareDetailPage({ id }: { id: string | undefined }) {
+  const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
   // Page, page size and search all reach the API: the Installed on search narrows the server page by asset name.
   const [page, setPage] = useState({ index: 0, size: INSTALLATIONS_PAGE_SIZE, search: "" });
