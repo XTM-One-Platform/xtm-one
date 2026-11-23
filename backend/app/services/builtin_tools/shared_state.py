@@ -1915,7 +1915,7 @@ def build_shared_state_tools(
                     "append_json": {"type": "string", "description": "Top-level keys to lists of items to append (list created when missing; an item present is not added twice), e.g. {\"prs\": [{\"number\": 12}]}"},
                     "remove_json": {"type": "string", "description": "Top-level keys to lists of matches: drops each item equal to a match or carrying all its fields (where_json operators). Before append_json"},
                     "keep_last_json": {"type": "string", "description": "List keys to a count N: after removals and appends, only the newest N items stay, e.g. {\"runs\": 30}. Trimming more than appended needs confirm_trim"},
-                    "confirm_trim": {"type": "boolean", "description": "Allow keep_last_json to drop more items than this call appends (default false)"},
+                    "confirm_trim": {"type": "boolean", "description": "Let keep_last_json or an unarchived retention roll drop more items than appended"},
                     "unique_by_json": {"type": "string", "description": "List keys to identity field(s), e.g. {\"prs\": \"number\"}: an append replaces the item with the same values"},
                     "update_json": {"type": "string", "description": "Patch matched list items in place: {\"gaps\": {\"match\": {\"slug\": \"x\"}, \"set\": {}, \"increment\": {\"count\": 1}, \"append\": {\"runs\": []}, \"unset\": [\"f\"]}}; match may be a list (any matches; one matching nothing refuses all). Applied after the removals, before the appends"},
                     "fold_json": {"type": "string", "description": "List keys to identity field(s) or {by, sum}: duplicates merge in the first"},

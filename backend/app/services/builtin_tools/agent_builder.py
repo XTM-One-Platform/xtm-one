@@ -4791,6 +4791,18 @@ def build_agent_builder_tool(
                     return "None"
                 return "; ".join(f"{group}: {', '.join(names)}" for group, names in outside.items())
 
+            def _fmt_allowlist_not_enabled() -> str:
+                # An entry for a group the agent does not enable grants
+                # nothing: flagged, never shown as a grant (#1428).
+                from app.services.builtin_allowed_tools import allowlisted_groups_not_enabled
+
+                groups = allowlisted_groups_not_enabled(
+                    _g("builtin_tool_ids", None) or [], _g("builtin_allowed_tools", None)
+                )
+                if not groups:
+                    return "None"
+                return ", ".join(groups) + " (add the group to builtin_tool_ids, or drop the entry)"
+
             def _fmt_integration_bindings() -> str:
                 if not raw_bindings:
                     return "None"
@@ -4989,6 +5001,7 @@ def build_agent_builder_tool(
                 f"  • MCP allowed tools: {_fmt_json(_g('mcp_allowed_tools', None))}",
                 f"  • Built-in allowed tools: {_fmt_json(_g('builtin_allowed_tools', None))}",
                 f"  • Built-in tools outside the allowlist: {_fmt_outside_builtin_allowlist()}",
+                f"  • Built-in allowlist for groups not enabled (granted nothing): {_fmt_allowlist_not_enabled()}",
                 f"  • Integration element bindings: {_fmt_json(_g('integration_element_bindings', None))}",
                 f"  • Integration element enforcement: {_fmt_list(_g('integration_element_enforcement', None))}",
                 f"  • Prompts: {_fmt_named(prompt_ids, prompt_names)}",
@@ -6588,6 +6601,9 @@ def build_agent_builder_tool(
                     setattr(agent, _sf_name, _sv)
                     updated.append(_sf_name)
 
+            # The stored allow list before this write: an entry it leaves as
+            # is for a group not enabled is dropped, a new one refused (#1428).
+            _ba_stored = getattr(agent, "builtin_allowed_tools", None)
             # builtin_allowed_tools: built-in group id -> function
             # names, validated against the group's functions like REST (the
             # error names the valid ones); null or {} = no scoping.
@@ -6614,9 +6630,15 @@ def build_agent_builder_tool(
 
             # A [DEPRECATED] built-in id is stored as its group.
             if {"builtin_tool_ids", "builtin_allowed_tools"}.intersection(updated):
-                from app.services.builtin_tool_aliases import fold_builtin_selection
+                from app.services.builtin_allowed_tools import not_enabled_written_or_pruned
+                from app.services.builtin_tool_aliases import canonical_builtin_selection, fold_builtin_selection
 
                 fold_builtin_selection(agent)
+                _ba_refusal = not_enabled_written_or_pruned(
+                    agent, canonical_builtin_selection(list(agent.builtin_tool_ids or []), _ba_stored)[1]
+                )
+                if _ba_refusal:
+                    return f"Error: {_ba_refusal}"
 
             # An allow-list under the shared ``openapi`` provider is split per
             # OpenAPI integration (mirrors REST), also when the bindings change.

@@ -987,6 +987,23 @@ def _drop_indexes(items: list[Any], indexes: set[int]) -> list[Any]:
     return [item for i, item in enumerate(items) if i not in indexes]
 
 
+def _refuse_unarchived_roll(rolled: dict[str, list], appended: dict[str, int]) -> None:
+    """Refuse a retention roll that drops, with no ``archive_key``, more items than the call appends.
+
+    Without an archive the rolled items are gone: a policy set on a list
+    already over its bound would drop its oldest items in one write, as
+    ``keep_last_json`` would without ``confirm_trim``. Nothing is written.
+    """
+    for name, items in rolled.items():
+        added = appended.get(name, 0)
+        if len(items) > added:
+            raise ValueError(
+                f"retention would roll {len(items)} item(s) out of {name!r} with no archive_key while "
+                f"this call appends {added}: they would be dropped. Set archive_key in the policy, "
+                "or pass confirm_trim=true to drop them; nothing was written"
+            )
+
+
 def roll_lists(
     value: dict[str, Any],
     policy: dict[str, Any],
@@ -2680,6 +2697,8 @@ async def upsert_state(
                 name: (list_changes.get(name) or {}).get("appended", 0) for name in (append or {}) if not path_list_ops
             }
             rolled_out.update(roll_lists(new_value, policy, appended, held_open))
+            if guard_trim and not policy.get("archive_key"):
+                _refuse_unarchived_roll(rolled_out, appended)
             compacted = compact_open_items(new_value, policy)
             if compacted:
                 for list_name, moved_items in compacted.items():

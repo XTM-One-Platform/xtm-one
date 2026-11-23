@@ -1061,6 +1061,18 @@ class Settings(BaseSettings):
     # the pool ahead of the others (the drain is round-robin across agents and
     # assignments). 0 (default) = ``max_concurrent_runs``.
     assignment_dispatch_max_pending_runs: int = 0
+    # Fair share of the worker pool when its slots claim due assignment runs
+    # (``assignment_dispatch.fair_share_order``): delegated children of a live
+    # parent first, then one run per fleet in turn (an agent outside any fleet
+    # is its own group), oldest first within a fleet. A fleet holding
+    # ``assignment_fleet_max_share`` of the pool (``max_concurrent_runs`` x the
+    # workers claiming assignment runs), or an agent holding
+    # ``assignment_agent_max_share`` of it, goes after every other fleet's due
+    # work - never refused: an otherwise idle pool still runs it. A share of 0
+    # or 1 lifts that cap. False restores the strict oldest-first claim.
+    assignment_fair_share_enabled: bool = True
+    assignment_fleet_max_share: float = 0.5
+    assignment_agent_max_share: float = 0.5
     # Once an assignment's oldest queued delivery has waited this long, the
     # drain alternates its newest and oldest deliveries so fresh work is not
     # delayed by the whole backlog (nothing is dropped), and a WARNING says so

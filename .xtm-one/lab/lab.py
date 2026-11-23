@@ -6081,6 +6081,28 @@ def seed_video_ready_render(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"video ready render": {"id": written["render"], "url": url}}
 
 
+def seed_report(token: str, base: str) -> dict[str, dict[str, str]]:
+    """One generated report with every block kind, found again on a restart. May raise.
+
+    No API creates a report and the lab's stub model cannot call ``generate_report``: ``seed_report.py`` writes it
+    through the platform's own ``save_report`` (the tool's validation), with the backend's interpreter and
+    environment. Read back on ``GET /reports/{id}``.
+    """
+    admin = _created(api("GET", "/auth/me", token))
+    out = ROOT / "report.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_report.py"), admin, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(f"seed_report.py exited with {process.returncode}: {stderr_summary(process.stderr)}")
+    written = json.loads(out.read_text())
+    report = api("GET", f"/reports/{written['report']}", token)
+    if not isinstance(report, dict) or str(report.get("id") or "") != written["report"]:
+        raise RuntimeError(f"the report read back without its id: {str(report)[:300]}")
+    return {"report": {"id": written["report"], "url": f"{base}/reports/{written['report']}"}}
+
+
 def seed_ctem_posture_history(token: str, base: str) -> dict[str, str]:
     """Ninety days of recorded CTEM posture of the administrator before today. May raise.
 
@@ -7388,6 +7410,13 @@ def seed_entities() -> None:
             raise SystemExit(f"lab: video ready render not seeded: {str(exc)[:600]}") from None
     else:
         skipped["video ready render"] = "LAB_EDITION=community: the Video Studio is Enterprise Edition"
+    if lab_switch("LAB_EDITION", LAB_EDITIONS) != "community":
+        try:
+            seeded.update(seed_report(token, base))
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["report"] = str(exc)[:600]
+    else:
+        skipped["report"] = "LAB_EDITION=community: reports are Enterprise Edition"
     try:
         seeded.update(seed_github_integration(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal

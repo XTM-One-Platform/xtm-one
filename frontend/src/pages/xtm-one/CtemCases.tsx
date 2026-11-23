@@ -31,7 +31,7 @@ import {
 } from "@/hooks/api/useCtemCasesApi";
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
 import { CasesFreshness } from "./ctem/CasesFreshness";
-import { CtemPageHeader } from "./ctem/CtemPageHeader";
+import { ListPageHeader } from "@/components/ui/list-page-header";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import {
@@ -291,14 +291,13 @@ export default function CtemCases() {
 
   return (
     <div className="space-y-6">
-      {/* The one CTEM header band (#11660): the definition behind the "i".
-          Cases is a row of the CTEM menu group, titled like Agents or Fleets:
-          no eyebrow, no back link, no refresh button (cases recompute by
-          themselves, dev-docs/ctem-cases.md s.4.3); the freshness line says when. */}
-      <CtemPageHeader
+      {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border): the
+          definition behind the "i", no refresh button (cases recompute by themselves, dev-docs/ctem-cases.md
+          s.4.3); the freshness line says when. */}
+      <ListPageHeader
         title={t_i18n("Cases")}
-        hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
-        hintLabel={t_i18n("About cases")}
+        info={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
+        infoLabel={t_i18n("About cases")}
         actions={<CasesFreshness freshness={data?.freshness} now={now} />}
       />
 
