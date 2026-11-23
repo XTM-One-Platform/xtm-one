@@ -388,6 +388,16 @@ def build_organization_context_write_tools(
                 }
                 if plan.error or not apply:
                     return json.dumps(answer, default=str)
+                if plan.on_records:
+                    # Assets and asset groups (#1543): row writes on the records, never a profile version.
+                    written = await imp.apply_record_import(
+                        db, plan, actor=(f"agent:{agent_name}" if agent_name else f"agent:{person.id}")[:120]
+                    )
+                    if plan.software:
+                        written += await imp.store_endpoint_software(db, plan, user_id=person.id)
+                    await db.commit()
+                    answer.update(applied=bool(written))
+                    return json.dumps(answer, default=str)
                 if not (plan.new or plan.updated) or plan.profile is None:
                     # An endpoint source (#1251) may change only the software of known devices.
                     if plan.software and await imp.store_endpoint_software(db, plan, user_id=person.id):

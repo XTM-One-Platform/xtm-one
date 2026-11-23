@@ -1594,6 +1594,23 @@ async def name_owners(
     return out
 
 
+async def source_refs(
+    db: AsyncSession, organization_id: uuid.UUID, section: str, source: str
+) -> list[tuple[str, str, str]]:
+    """``(external_id, name, sync_id)`` of every row of *section* from *source* (an import's gone rows).
+
+    Three short columns per row, read by index: a sync of a million rows never
+    loads their fields.
+    """
+    model, _ = _section_model(section)
+    rows = await db.execute(
+        select(model.external_id, model.name, model.sync_id).where(
+            model.organization_id == organization_id, model.source == source
+        )
+    )
+    return [(str(e), str(n), str(s or "")) for e, n, s in rows.all()]
+
+
 async def write_rows(
     db: AsyncSession,
     organization_id: uuid.UUID,

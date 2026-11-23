@@ -331,6 +331,16 @@ one audit entry per call. A row of another source with the same name is added be
 them); a row of the same source with the name of another record is refused. Tech stack and AI systems rows
 stay on the profile path until they move to records (#1514, the Software entity).
 
+Imports and syncs of `assets` and `asset_groups` are planned on the records too
+(`organization_context_import.preview_import` -> `plan_record_import`, the merge rules of `_merge_sourced`:
+local fields a person set are kept, a new row named like another record of the source is skipped, a sync removes
+only the rows its own `sync_id` wrote, a truncated or failed read removes nothing) and applied by
+`apply_record_import` in batches of `MAX_BATCH` with origin `sync:<id>` or `import`. The stored rows are read by
+ref (`rows_by_ref`) and the gone rows by three indexed columns (`source_refs`): no profile version, no 5,000 cap,
+only the changed rows logged and re-matched. The sync result says `rows_written` instead of `version`; the
+one-off import (`POST /organization-context/import/apply`) and the agent's import tool answer `applied`
+without a version. The other sections keep the profile plan.
+
 ### 9.3 Tech stack from asset software (S4)
 
 `organization_asset_store.tech_stack_inventory` builds the tech stack from `organization_asset_software`: one

@@ -78,17 +78,6 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
         "dict _user_creds builds (setattr on a non-ORM object), never a row of "
         "the request session",
     ),
-    # The profile import (#11780) reads OpenCTI the same way; apply commits its save itself.
-    "POST /api/v1/organization-context/import/preview": (
-        frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),
-        "the import preview's OpenCTI read: _drop_dead_draft marks the plain headers "
-        "dict _user_creds builds, never a row of the request session",
-    ),
-    "POST /api/v1/organization-context/import/apply": (
-        frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),
-        "the import's OpenCTI read: _drop_dead_draft marks the plain headers "
-        "dict _user_creds builds; the profile save commits before the response",
-    ),
     # The import filter picker (#11886) lists the platform's values with the same read.
     "GET /api/v1/organization-context/import/options": (
         frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),

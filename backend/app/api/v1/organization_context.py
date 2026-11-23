@@ -1983,6 +1983,8 @@ async def preview_organization_import(
         batch_type=body.batch_type,
         remove_gone=body.remove_gone,
     )
+    # The plan of assets and groups reads the records; their first touch imports the profile rows (#1543).
+    await db.commit()
     return ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
 
 
@@ -2009,11 +2011,32 @@ async def apply_organization_import(
         batch_type=body.batch_type,
         remove_gone=body.remove_gone,
     )
+    # The records' first-touch import (#1543) lands whatever the answer below.
+    await db.commit()
     if plan.error:
         raise HTTPException(status_code=422, detail=plan.error)
     if body.based_on_version is not None and body.based_on_version != version:
         raise HTTPException(status_code=409, detail="The profile changed since the preview. Preview again.")
     response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
+    if plan.on_records:
+        # Assets and asset groups (#1543): row writes on the records, no profile version, no 5,000 cap.
+        from app.services.audit import log_audit
+
+        written = await imp.apply_record_import(db, plan, actor=f"import:{admin.id}") if plan.has_writes else 0
+        changed = await imp.store_endpoint_software(db, plan, user_id=admin.id) if plan.software else 0
+        await log_audit(
+            db,
+            user=admin,
+            action="update",
+            entity_type="organization_context",
+            entity_id=str(plan.organization_id),
+            entity_name=plan.section,
+            summary=imp.provenance(plan, body.filters)[imp.SECTION_FIELD[plan.section]]["basis"],
+            details={"section": plan.section, "source": plan.source, "rows_written": written},
+        )
+        await db.commit()
+        response.applied = bool(written or changed)
+        return response
     removes = plan.remove_gone and len(plan.gone) > len(plan.gone_kept)
     if not (plan.new or plan.updated or removes) or plan.profile is None:
         if not plan.error and plan.software:

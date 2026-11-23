@@ -232,3 +232,48 @@ async def test_the_agent_row_path_writes_and_removes_groups() -> None:
         after = await records.rows_by_ref(session, org, "asset_groups", [("intune", "g-1")])
     assert stored[("intune", "g-1")]["name"] == "Paris office"
     assert len(removed) == 1 and after == {}
+
+
+async def test_a_sync_writes_rows_and_removes_its_gone_rows_without_a_profile_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import organization_context_import as imp
+
+    def read(*rows: tuple[str, str]) -> imp.ReadResult:
+        found = [imp.openaev_asset({"asset_id": i, "asset_name": n}) for i, n in rows]
+        return imp.ReadResult(rows=found, total=len(found))
+
+    async def plan(session: AsyncSession, result: imp.ReadResult) -> imp.ImportPlan:
+        async def fake_read(*_a: object, **_k: object) -> imp.ReadResult:
+            return result
+
+        monkeypatch.setattr(imp, "read_source", fake_read)
+        found, _version = await imp.preview_import(
+            session,
+            user_id=uuid.uuid4(),
+            section="assets",
+            source="openaev",
+            filters={},
+            remove_gone=True,
+            sync_id="s1",
+        )
+        return found
+
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        first = await plan(session, read(("a1", "web-01"), ("a2", "db-01")))
+        assert first.on_records and first.new == ["web-01", "db-01"]
+        assert await imp.apply_record_import(session, first, actor="sync:s1") == 2
+        await session.commit()
+        second = await plan(session, read(("a1", "web-01")))
+        assert (second.unchanged, second.gone, second.remove_refs) == (["web-01"], ["db-01"], [("openaev", "a2")])
+        assert await imp.apply_record_import(session, second, actor="sync:s1") == 1
+        await session.commit()
+        left = sorted(r.name for r in await records.asset_rows(session, org, source="openaev"))
+        versions = (await session.execute(select(OrganizationContextVersion.version))).scalars().all()
+        names = [a for a, _n in await _assets(session)]
+        log = await records.changes(session, org)
+    assert left == ["web-01"]
+    assert versions == [1]  # no profile version: rows only
+    assert names == ["laptop-01", "web-01"]
+    assert {c["origin"] for c in log if c["op"] in ("create", "delete")} >= {"sync:s1"}
