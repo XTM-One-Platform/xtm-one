@@ -304,6 +304,12 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             result["error"] = plan.error[:500]
             if _pausing(plan.error):
                 sync.paused_reason = plan.error[:500]
+        elif plan.on_records:
+            # Assets and asset groups (#1543): row writes by (source, external_id), no profile version.
+            if plan.has_writes:
+                result["rows_written"] = await imp.apply_record_import(
+                    db, plan, actor=f"sync:{sync.id}:{owner.id}"[:120]
+                )
         elif (plan.new or plan.updated or result["removed"]) and plan.profile is not None:
             saved = await org_context.save_version(
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
@@ -318,7 +324,12 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             # Devices synced but their software could not be read: said, never a silent zero (#1251).
             result["software_unread"] = len(plan.software_unread)
             result["software_error"] = plan.software_error[:500]
-        if result["version"] is not None or result["error"] or result.get("software_error"):
+        if (
+            result["version"] is not None
+            or result.get("rows_written")
+            or result["error"]
+            or result.get("software_error")
+        ):
             await log_audit(
                 db,
                 user=owner,
@@ -332,7 +343,11 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                         f"failed: {result['error']}"
                         if result["error"]
                         else f"{result['added']} added, {result['updated']} updated, {result['removed']} removed, "
-                        f"version {result['version']}"
+                        + (
+                            f"version {result['version']}"
+                            if result["version"] is not None
+                            else "written to the asset records"
+                        )
                         + (
                             f"; software of {result['software_unread']} device(s) unreadable: {result['software_error']}"
                             if result.get("software_error")

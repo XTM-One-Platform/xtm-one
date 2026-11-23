@@ -183,6 +183,9 @@ def opencti_issues(
       that ``remediates`` the vulnerability (*fixes*), above the declared
       version; else the version a course of action names when it is a plain
       upgrade; else it stays unknown (``fixed version unknown``);
+    - a remediating Software built for one platform (CPE ``target_sw``, or an
+      operating system its name or version names) also gives the fix of that
+      platform (``fixed_versions``, #1572);
     - with a declared version whose Software node exists, a vulnerability that
       node has no ``has`` to is not affected; when no Software of that version
       exists the issue is kept and says ``version not known to OpenCTI``.
@@ -214,6 +217,8 @@ def opencti_issues(
         if current is None or (name or coa_id) < (current[1] or current[0]):
             coa_of[vuln] = (coa_id, name)
     fixed_of: dict[tuple[str, str], list[str]] = {}
+    # The platform each remediating Software is built for (#1572): CPE target, else its name or version.
+    platform_fixes: dict[tuple[str, str], list[tuple[str, str | None]]] = {}
     # The remediating Software named per version, so the case says which node gave the fix (#928).
     fixed_name: dict[tuple[str, str, str], str] = {}
     for rel in fixes or []:
@@ -223,6 +228,9 @@ def opencti_issues(
         version = (node.get("version") or "").strip()
         if vuln and label and version:
             fixed_of.setdefault((vuln, label), []).append(version)
+            platform_fixes.setdefault((vuln, label), []).append(
+                (version, fixed_versions.platform_of_software(node.get("name"), version, node.get("cpe")))
+            )
             software = (node.get("name") or "").strip() or entry_by_label[label]["product"]
             fixed_name.setdefault((vuln, label, version), f"{software} {version}"[:300])
     holders: dict[tuple[str, str], set[str]] = {}
@@ -257,6 +265,7 @@ def opencti_issues(
                     f"{fixed_versions.NOT_AFFECTED_PREFIX} {installed} has no 'has' relation to {name} in OpenCTI"
                 )
         fixed = fixed_versions.smallest_fix_above(fixed_of.get((vuln_id, label), ()), installed)
+        per_platform = fixed_versions.fixes_by_platform(platform_fixes.get((vuln_id, label), ()), installed)
         fixed_by = fixed_name.get((vuln_id, label, fixed)) if fixed else None
         if fixed is None:
             fixed = fixed_versions.version_from_course_of_action(coa[1] if coa else None)
@@ -282,6 +291,7 @@ def opencti_issues(
                 not_affected=not_affected,
                 version_note="; ".join(notes) or None,
                 fixed_by=fixed_by,
+                fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
                 declared_version_known=bool(declared_ids.get(label)) if installed else None,
             )
         )

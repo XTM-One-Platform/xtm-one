@@ -173,6 +173,30 @@ async def test_get_answers_the_case_with_who_opened_it_and_the_empty_reasons(rea
     assert body["scope"]["reason"] == "not an administrator"
 
 
+async def test_get_carries_the_running_versions_per_platform(
+    read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1572: the read tool answers the platform rows and the per-platform fix as the store gives them."""
+    running = ctem_case_versions.running_versions(
+        [{"vendor": "Acme", "product": "Browser", "version": "36.0", "asset_ids": ["m1", "w1"], "sources": ["intune"]}],
+        product_label="Acme Browser",
+        fixed_version="36.0",
+        asset_platforms={"m1": "macOS", "w1": "Windows"},
+    )
+
+    async def _versions(_db: Any, _case: Any) -> Any:
+        return running
+
+    monkeypatch.setattr(ctem_case_versions, "for_case", _versions)
+    body = json.loads(await read.read_for(str(read.user_id))("get_ctem_case", case_id=str(read.case.id)))
+    rows = {v["platform"]: v for v in body["running_versions"]["versions"]}
+    assert set(rows) == {"Windows", "macOS"}
+    assert rows["macOS"]["asset_ids"] == ["m1"]
+    assert rows["macOS"]["status_reason"] == ctem_case_versions.FIX_NOT_KNOWN_FOR_PLATFORM
+    assert body["running_versions"]["platform_unverified"] is True
+    assert "running_versions" not in body["empty_sections"]
+
+
 async def test_the_case_list_counts_the_case_bound_signals_the_scope_hides(
     read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:

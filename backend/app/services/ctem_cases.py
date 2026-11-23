@@ -35,7 +35,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.models.ctem_case import CASE_STATES, RESOLUTION_KINDS
-from app.services.ctem_fixed_version import smallest_fixing_every
+from app.services.ctem_fixed_version import fold_by_platform, smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -80,6 +80,8 @@ class SourceIssue:
     version_note: str | None = None
     #: The OpenCTI Software ("<name> <version>") whose ``remediates`` gave ``fixed_version`` (#928), else ``None``.
     fixed_by: str | None = None
+    #: ``((platform, version), ...)`` when the remediating Software names its platform (#1572), else ``()``.
+    fixed_versions: tuple[tuple[str, str], ...] = ()
     #: With a declared version: whether OpenCTI holds a Software of it (#928); ``None`` when none is declared.
     declared_version_known: bool | None = None
     #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
@@ -104,6 +106,8 @@ class Remediation:
     title: str
     product_label: str | None = None
     fixed_version: str | None = None
+    #: ``((platform, version), ...)``: the fix of each platform the remediation names (#1572), else ``()``.
+    fixed_versions: tuple[tuple[str, str], ...] = ()
 
 
 def _norm(value: str | None) -> str:
@@ -128,6 +132,7 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
             title=name,
             # A course of action that is a plain upgrade names its version (CTEM-11).
             fixed_version=(issue.fixed_version or "").strip() or None,
+            fixed_versions=issue.fixed_versions,
         )
     if issue.product and issue.product.strip():
         label = _product_label(issue.vendor, issue.product)
@@ -142,6 +147,7 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
                 title=f"Upgrade {label} to {fixed}",
                 product_label=label,
                 fixed_version=fixed,
+                fixed_versions=issue.fixed_versions,
             )
         return Remediation(
             key=f"upgrade:{vendor}/{product}@latest",
@@ -177,12 +183,20 @@ def _fold_upgrades(issues: list[SourceIssue]) -> list[SourceIssue]:
         if issue.fixed_version:
             targets.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(issue.fixed_version.strip())
     target = {k: smallest_fixing_every(v) for k, v in targets.items()}
+    # The per-platform fixes fold the same way (#1572); one member without them makes the fold generic.
+    per_platform: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for issue in issues:
+        if issue.course_of_action_id or not (issue.product or "").strip() or not issue.installed_version:
+            continue
+        if issue.fixed_version:
+            per_platform.setdefault((_norm(issue.vendor), _norm(issue.product)), []).append(dict(issue.fixed_versions))
+    platform_target = {k: tuple(sorted(fold_by_platform(v).items())) for k, v in per_platform.items()}
     out: list[SourceIssue] = []
     for issue in issues:
         key = (_norm(issue.vendor), _norm(issue.product))
         fixed = target.get(key)
         if fixed and issue.installed_version and issue.fixed_version and not issue.course_of_action_id:
-            issue = replace(issue, fixed_version=fixed)
+            issue = replace(issue, fixed_version=fixed, fixed_versions=platform_target.get(key, ()))
         out.append(issue)
     return out
 
