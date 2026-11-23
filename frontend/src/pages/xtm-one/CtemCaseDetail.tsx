@@ -50,6 +50,7 @@ import { CaseTicketChip } from "./ctem/case-ticket";
 import { keyVersion } from "./ctem/case-version";
 import { CaseAttackPath } from "./ctem/CaseAttackPath";
 import { CaseExploitation } from "./ctem/CaseExploitation";
+import { CASE_EVENT_LABEL } from "./ctem/case-events";
 import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, gateReason, isGateOutcome, isUserId } from "./ctem/case-gates";
 import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
@@ -110,43 +111,6 @@ function RestrictedCell() {
     </span>
   );
 }
-
-/** History lines, English, translated where drawn. */
-const EVENT_LABEL: Record<string, string> = {
-  created: "Created the case",
-  issue_added: "Added an issue",
-  issue_closed: "Closed an issue",
-  // The folded upgrade target moved (CTEM-11, #894; shown by #928).
-  retargeted: "Changed the target version",
-  state: "Changed the state to",
-  owner: "Changed the owner",
-  due: "Changed the due date",
-  note: "Added a note",
-  split: "Split an issue out",
-  merged: "Merged cases",
-  // The store writes `merge` (ctem_cases_store.merge_cases, S5c).
-  merge: "Merged cases",
-  // The loop (CTEM-03, #857; shown by CTEM-03-UI, #892).
-  signal: "A signal joined the case",
-  validation: "Recorded a validation",
-  sla_breached: "Escalated: SLA breached",
-  // How the CVE would be exploited, read from OpenCRQ by triage (CTEM-24-UI, #936).
-  exploitation: "Recorded how it would be exploited",
-  // The attack-path reach of the affected asset, read from OpenCRQ by triage (CTEM-23-UI, #1289).
-  attack_path: "Recorded the attack path",
-  // An OpenAEV result a case waits on arrived (CTEM-15, #918; shown by CTEM-15-UI, #956).
-  source_event: "OpenAEV result received",
-  // The case ticket (CTEM-19, #917; shown by CTEM-19-UI, #1032): created, or its status moved.
-  ticket: "Ticket status",
-  // The ticket reached done and the sync asked for the re-test (CTEM-19-UI, #1032).
-  retest_requested: "Re-test started: the ticket is done",
-  // A loop gate of the fleet's catalog (CTEM-34, #975; shown by CTEM-17-UI).
-  gate: "Gate",
-  // The OpenCRQ treatment plan of the remediation decision (CTEM-18-UI, #1068).
-  treatment_plan: "Attached the treatment plan",
-  // The OpenCTI Grouping and coverage of the review step (CTEM-16-UI, #1115).
-  threat_package: "Drafted the threat package",
-};
 
 /** The status word of a `ticket` history row, translated where drawn (#1032). */
 const TICKET_EVENT_STATUS: Record<string, string> = {
@@ -626,11 +590,11 @@ export default function CtemCaseDetail() {
 
         <CaseAttackPath reading={kase.attack_path} />
 
-        <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} personName={personName} />
+        <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} personName={personName} />
+        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseRemediationDecision caseId={kase.id} history={kase.history} personName={personName} />
+        <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
       </CaseLoopProvider>
@@ -724,7 +688,7 @@ export default function CtemCaseDetail() {
                   {e.actor === "system" ? t_i18n("System") : (personName(e.actor) ?? t_i18n("Agent"))}
                 </span>
                 <span>
-                  {e.kind === "ticket" && !e.from ? t_i18n("Ticket created") : t_i18n(EVENT_LABEL[e.kind] ?? "Changed the case")}
+                  {e.kind === "ticket" && !e.from ? t_i18n("Ticket created") : t_i18n(CASE_EVENT_LABEL[e.kind] ?? "Changed the case")}
                 </span>
                 {(e.kind === "ticket" || e.kind === "retest_requested") && ticketKeyOf(e.evidence) && (
                   <span className="font-medium" data-testid="ctem-case-ticket-event">{ticketKeyOf(e.evidence)}</span>
