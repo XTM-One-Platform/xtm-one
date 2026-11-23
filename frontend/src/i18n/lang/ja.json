@@ -21126,5 +21126,8 @@
   "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster.": "GitHub: 依存関係グラフの SBOM。GitLab: 依存関係リスト (GitLab Ultimate のみ)。オン: リポジトリのみで高速。",
   "Resource ID": "リソース ID",
   "Hide from the command center. The setup stays on the CTEM loop fleet page.": "コマンドセンターから非表示にします。設定は CTEM ループフリートのページに残ります。",
-  "Hide the CTEM loop setup from the command center": "CTEM ループの設定をコマンドセンターから非表示にする"
+  "Hide the CTEM loop setup from the command center": "CTEM ループの設定をコマンドセンターから非表示にする",
+  "Not connected on this platform": "このプラットフォームでは未接続",
+  "{count, plural, other {+# possible}}": "{count, plural, other {ほか#件の候補}}",
+  "Trigger paths": "トリガーパス"
 }
