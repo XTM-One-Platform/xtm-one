@@ -57,6 +57,8 @@ class OrganizationContextVersionSummary(BaseModel):
     created_at: datetime
     author_user_id: str | None
     missing_fields: list[str]
+    #: The crown jewels the version holds (#1558): the restore picker shows which version still has them.
+    crown_jewels: int = 0
     #: An ``ai_draft`` version's accepted proposals: field -> ``{source, basis}``.
     sources: dict[str, Any] | None = None
 
@@ -82,6 +84,9 @@ class OpenCrqSyncRequest(BaseModel):
     #: False (default) answers the plan and writes nothing.
     apply: bool = False
     tenant_id: str = ""
+    #: The lowest OpenCRQ criticality the check pulls (low, medium, high, very_high, #1558);
+    #: empty: the saved crown-jewel sync's filter, else high.
+    min_criticality: Literal["", "low", "medium", "high", "very_high"] = ""
 
 
 class OpenCrqSyncResponse(BaseModel):
@@ -270,6 +275,7 @@ async def list_organization_context_versions(
             created_at=row.created_at,
             author_user_id=str(row.author_user_id) if row.author_user_id else None,
             missing_fields=org_context.missing_fields(org_context.parse_profile(row.profile)),
+            crown_jewels=len((row.profile or {}).get("crown_jewels") or []),
             sources=row.sources,
         )
         for row in rows
@@ -1593,7 +1599,9 @@ async def sync_organization_context_with_opencrq(
     from app.services.organization_context_opencrq import run_sync
 
     try:
-        plan, errors = await run_sync(db, user_id=admin.id, apply=body.apply, tenant_id=body.tenant_id)
+        plan, errors = await run_sync(
+            db, user_id=admin.id, apply=body.apply, tenant_id=body.tenant_id, min_criticality=body.min_criticality
+        )
         if plan is None:
             raise HTTPException(status_code=409, detail="; ".join(errors))
         await db.commit()
@@ -1902,9 +1910,7 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal[
-        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-    ]
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1969,9 +1975,7 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal[
-        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-    ],
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -2089,19 +2093,7 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal[
-        "openaev",
-        "opencti",
-        "opencrq",
-        "intune",
-        "defender",
-        "tanium",
-        "crowdstrike",
-        "servicenow",
-        "github",
-        "gitlab",
-        "",
-    ] = ""
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).
