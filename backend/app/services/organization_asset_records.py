@@ -811,8 +811,14 @@ async def _remove(
         )
     await db.execute(delete(OrganizationAssetRecord).where(OrganizationAssetRecord.id.in_(ids)))
     await db.flush()
+    if not closure.assets and len(closure) > MAX_CLOSURE:
+        # An oversized closure carries no assets: rebuild the organization, so the
+        # canonical assets and sources of the deleted records do not stay behind.
+        await rebuild_from_records(db, organization_id, locked=True)
+        return ids
+    removed = set(ids)
     await refresh_clusters(
-        db, organization_id, [], closure=[i for i in closure if i not in set(ids)], gone=closure.assets
+        db, organization_id, [], closure=[i for i in closure if i not in removed], gone=closure.assets
     )
     return ids
 
@@ -892,11 +898,14 @@ async def upsert_records(
         _log(db, organization_id, "record", record.id, "update", origin=origin, actor=actor, before=old, after=new)
         changed.append(record)
         result.updated.append(record.id)
-    fresh = [
-        v
-        for i, v in enumerate(fresh)
-        if (v["source"], v["external_id"]) not in {(w["source"], w["external_id"]) for w in fresh[:i]}
-    ]
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, Any]] = []
+    for v in fresh:
+        ref = (v["source"], v["external_id"])
+        if ref not in seen:
+            seen.add(ref)
+            unique.append(v)
+    fresh = unique
     await db.flush()
     if changed:
         await _write_identifiers(db, organization_id, changed)
@@ -1677,18 +1686,28 @@ async def remove_rows(
     model, _ = _section_model(section)
     if not refs:
         return []
-    ids = list(
-        (
-            await db.execute(
-                select(model.id).where(
-                    model.organization_id == organization_id,
-                    tuple_(model.source, model.external_id).in_(list(dict.fromkeys(refs))),
+    unique = list(dict.fromkeys(refs))
+    ids: list[uuid.UUID] = []
+    for start in range(0, len(unique), 1000):
+        ids.extend(
+            (
+                await db.execute(
+                    select(model.id).where(
+                        model.organization_id == organization_id,
+                        tuple_(model.source, model.external_id).in_(unique[start : start + 1000]),
+                    )
                 )
-            )
-        ).scalars()
-    )
+            ).scalars()
+        )
     if section == "assets":
-        return await delete_records(db, organization_id, ids, origin=origin, actor=actor)
+        # Removals are chunked like writes: an import or sync whose gone set passes
+        # MAX_BATCH deletes in batches instead of failing on every run.
+        removed: list[uuid.UUID] = []
+        for start in range(0, len(ids), MAX_BATCH):
+            removed.extend(
+                await delete_records(db, organization_id, ids[start : start + MAX_BATCH], origin=origin, actor=actor)
+            )
+        return removed
     for group_id in ids:
         await delete_group(db, organization_id, group_id, origin=origin, actor=actor)
     return ids

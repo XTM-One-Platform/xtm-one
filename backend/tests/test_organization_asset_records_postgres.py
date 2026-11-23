@@ -167,6 +167,33 @@ async def test_a_bulk_delete_removes_the_rows_and_the_store_equals_a_full_rebuil
     assert sum(1 for c in log if c["op"] == "delete") == 2
 
 
+async def test_a_delete_past_the_closure_cap_rebuilds_and_leaves_no_asset_behind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED, {**HAND, "external_id": "h-1"}, {"name": "db-01", "category": "host"}])
+        ids = [r.id for r in await records.asset_rows(session, org) if r.name != "laptop-01"]
+        monkeypatch.setattr(records, "MAX_CLOSURE", 1)
+        await records.delete_records(session, org, ids, origin="sync", actor="sync:s")
+        await session.commit()
+        left = await _assets(session)
+        sources = (await session.execute(select(OrganizationAssetSource))).scalars().all()
+    assert [name for name, _n in left] == ["laptop-01"]
+    assert len(sources) == 1
+
+
+async def test_remove_rows_past_max_batch_deletes_in_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED, {**HAND, "external_id": "h-1"}, {"name": "db-01", "category": "host"}])
+        refs = [(r.source, r.external_id) for r in await records.asset_rows(session, org)]
+        monkeypatch.setattr(records, "MAX_BATCH", 1)
+        removed = await records.remove_rows(session, org, "assets", refs, origin="sync", actor="sync:s")
+        await session.commit()
+        left = await _assets(session)
+    assert len(removed) == 3
+    assert left == []
+
+
 async def test_a_deleted_record_comes_back_on_restore() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _primary(session, [SYNCED, {**HAND, "external_id": "h-1"}])
