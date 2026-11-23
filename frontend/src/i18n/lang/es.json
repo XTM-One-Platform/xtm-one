@@ -21001,5 +21001,13 @@
   "Search asset": "Buscar activo",
   "Assets not listed": "Activos no listados",
   "No asset": "Ningún activo",
-  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# activo más no listado} other {# activos más no listados}}"
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# activo más no listado} other {# activos más no listados}}",
+  "Run checks as": "Ejecutar las comprobaciones como",
+  "Set the run-as user": "Definir el usuario de ejecución",
+  "Checks need a run-as user with {module} access.": "Las comprobaciones necesitan un usuario de ejecución con acceso a {module}.",
+  "The XTM One administrator often has no access to the modules: choose a user who has.": "El administrador de XTM One a menudo no tiene acceso a los módulos: elija un usuario que lo tenga.",
+  "The module checks read OpenCTI, OpenAEV and OpenCRQ as this user. Pick a user with access to every registered module: the save is refused otherwise. Not set: no module check runs.": "Las comprobaciones de los módulos leen OpenCTI, OpenAEV y OpenCRQ como este usuario. Elija un usuario con acceso a cada módulo registrado: de lo contrario se rechaza el guardado. Sin definir: no se ejecuta ninguna comprobación de módulo.",
+  "Platform Health reads the modules as this user to check them. Pick a user with access to every connected module.": "Platform Health lee los módulos como este usuario para comprobarlos. Elija un usuario con acceso a cada módulo conectado.",
+  "The run-as user was not saved.": "El usuario de ejecución no se guardó.",
+  "Saved. The next check round reads the modules as this user.": "Guardado. La próxima ronda de comprobaciones lee los módulos como este usuario."
 }

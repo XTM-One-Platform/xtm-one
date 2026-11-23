@@ -51,6 +51,7 @@ import { BlockTitle, SpendLockNotice, useSpendLock, type BlockProps } from "./he
 import { AlertEmailsBlock, alertEmailsValid } from "./HealthAlertEmailsBlock";
 import { ModuleAnalystBlock, moduleAnalystValid } from "./HealthModuleAnalystBlock";
 import { ModuleThresholdsBlock, moduleThresholdsValid } from "./HealthModuleThresholdsBlock";
+import { HealthRunAsBlock } from "./HealthRunAsBlock";
 import { HealthPetLibrary } from "./HealthPetLibrary";
 import { DryRunBlock, DurationsBlock, ScheduleBlock, SignalsBlock } from "./HealthTriggerBlocks";
 import { Spinner } from "@filigran/design-system";
@@ -493,7 +494,8 @@ const GROUPS: readonly { key: GroupKey; blocks: readonly Block[] }[] = [
   // #101 S14d-2: the Module Analyst row, its own ceilings next to the analysis (XTM One modes only).
   { key: "spend", blocks: [BudgetBlock, AnalysisBlock, ModuleAnalystBlock] },
   // Level 8 (#8261) schedule, signals, durations and dry-run; #101 S10c module thresholds.
-  { key: "checks", blocks: [ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
+  // "Run checks as" (dev-docs 12.3) first: no module check runs without it.
+  { key: "checks", blocks: [HealthRunAsBlock, ScheduleBlock, SignalsBlock, ModuleThresholdsBlock, DurationsBlock, DryRunBlock] },
   // #101 S12b: the alert emails, off by default.
   { key: "alerts", blocks: [AlertEmailsBlock] },
 ];

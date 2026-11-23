@@ -21,14 +21,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Stored reports only (`GET /health/modules/{module}/checks`), no
  * model call: readable with AI off. Administrators only, as the card's AI block.
  */
+import { Link } from "react-router-dom";
+
 import { Badge } from "@/components/ui/badge";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { useHealthModuleChecks } from "@/hooks/api/useHealthApi";
 import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
+import { HEALTH_SETTINGS_PATH } from "@/pages/settings/settings-routes";
 import { useFormatter } from "@/i18n";
 import { HEALTH_MODULE_LABELS, checkTitle } from "@/lib/health-modules";
 import type { HealthCheckVerdict, HealthModule, HealthModuleCheckEntry, HealthModuleCheckReport } from "@/types";
+
+/** The "Run checks as" block of Settings > Platform Health (its Health checks group anchor). */
+const HEALTH_RUN_AS_SETTINGS_PATH = `${HEALTH_SETTINGS_PATH}#health-settings-checks`;
 
 /** A check's verdict in plain words. @i18n-keys */
 const VERDICT_LABELS = {
@@ -127,6 +133,24 @@ function CheckGroup({ module, group, name }: { module: HealthModule; group: Chec
   );
 }
 
+/** The card's one state when the checks have no run-as user with this module's access (dev-docs 12.3). */
+function RunAsNeeded({ module }: { module: HealthModule }) {
+  const { t_i18n } = useFormatter();
+  return (
+    <section className="space-y-1" aria-labelledby={`health-checks-heading-${module}`} data-testid={`health-checks-${module}`}>
+      <h4 id={`health-checks-heading-${module}`} className="content-caption font-medium uppercase tracking-wider text-default-secondary">
+        {t_i18n("Agentic checks")}
+      </h4>
+      <p className="content-compact text-default-primary" data-testid="health-checks-run-as">
+        {t_i18n("Checks need a run-as user with {module} access.", { module: t_i18n(HEALTH_MODULE_LABELS[module]) })}{" "}
+        <Link to={HEALTH_RUN_AS_SETTINGS_PATH} className="rounded-sm text-accent underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-focus">
+          {t_i18n("Set the run-as user")}
+        </Link>
+      </p>
+    </section>
+  );
+}
+
 /**
  * The agentic checks line of a module card: nothing while loading or on a read error. With `hideEmpty`
  * (the card's Last check round block already shows the round status), nothing either when no round
@@ -144,6 +168,8 @@ export function ModuleCheckReportLine({ module, hideEmpty = false }: { module: H
     return registration?.platform_title || registration?.platform_url || t_i18n(HEALTH_MODULE_LABELS[module]);
   };
   const hasChecks = totals?.groups.some((group) => group.checks.length > 0) ?? false;
+  // No usable "Run checks as" user (dev-docs 12.3): one state and its setting, never a "not run" line per check.
+  if (data.run_as === "not_set" || data.run_as === "no_access") return <RunAsNeeded module={module} />;
   if (!totals && hideEmpty) return null;
   return (
     <section className="space-y-1" aria-labelledby={`health-checks-heading-${module}`} data-testid={`health-checks-${module}`}>

@@ -140,6 +140,21 @@ export function useSaveHealthSettings() {
   });
 }
 
+/**
+ * Set the "Run checks as" user alone (dev-docs 12.3), from the onboarding step. A user who cannot read a
+ * registered module is refused (400) with the modules named; nothing is written then.
+ */
+export function useSaveHealthRunAs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.put<{ module_run_as_user_id: string | null }>("/health/settings/run-as", { user_id: userId }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+      void qc.invalidateQueries({ queryKey: ["health-overview"] });
+    },
+  });
+}
+
 /** Whether the spend ceilings are locked at their defaults (#1202) and the variable that unlocks them. */
 export function useHealthSpendLimits(enabled = true) {
   return useQuery<HealthSpendLimits>({

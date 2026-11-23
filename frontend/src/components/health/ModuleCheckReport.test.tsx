@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { HealthModuleCheckReport } from "@/types";
@@ -67,6 +68,20 @@ describe("ModuleCheckReportLine", () => {
     renderWithProviders(<ModuleCheckReportLine module="opencti" />);
     expect(await screen.findByText("No check round yet")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith("/health/modules/opencti/checks");
+  });
+
+  it.each(["not_set", "no_access"])("shows one run-as state and its setting link when run_as is %s (dev-docs 12.3)", async (state) => {
+    api.get.mockImplementation(answer({ module: "openaev", items: [report()], run_as: state }));
+    renderWithProviders(
+      <MemoryRouter>
+        <ModuleCheckReportLine module="openaev" hideEmpty />
+      </MemoryRouter>,
+    );
+    const line = await screen.findByTestId("health-checks-run-as");
+    expect(line).toHaveTextContent("Checks need a run-as user with OpenAEV access.");
+    expect(screen.getByRole("link", { name: "Set the run-as user" }).getAttribute("href")).toBe("/settings/automations/health#health-settings-checks");
+    expect(screen.queryByTestId("health-checks-counts")).toBeNull();
+    expect(screen.queryByText(/not run/)).toBeNull();
   });
 
   it("renders nothing with no round under the Last check round block (UX round 1 B1 on #1269)", async () => {
