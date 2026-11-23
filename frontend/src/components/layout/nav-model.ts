@@ -233,6 +233,9 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ["Exposure management"],
         children: [
           { ...leaf("/ctem/cases", "clipboard-check", "Cases", (f) => f.ctemCases), keywords: ["CTEM", "Exposure cases"] },
+          /* The signals and their sources (#1263), a menu page since Sam, 23 Nov 2026 (#1401): /ctem/signals/sources and
+             /ctem/signals?signal= light it as their own route's prefix. */
+          { ...leaf("/ctem/signals", "satellite-dish", "Signals", (f) => f.ctemCases), keywords: ["CTEM", "Trigger paths", "Signal sources"] },
           /* The inventory (#1178, Sam 22 Nov 2026): assets and the tech stack built from their software. */
           { ...leaf("/ctem/inventory", "layers", "Inventory", (f) => f.ctemCases), keywords: ["CTEM", "Assets", "Tech stack"] },
         ],
