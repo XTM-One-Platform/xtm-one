@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SettingsSwitchField } from "@/components/ui/settings-form";
@@ -348,7 +349,7 @@ export function ChannelsSection({
           <div>
             <CardTitle className="content-base flex items-center gap-2">
               <Bot className="h-4 w-4 text-accent" /> {t_i18n("Channels & Bots")}
-              {(() => { const count = Object.keys(agent.channel_config || {}).length; return count > 0 && !editingChannels ? <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{count}</Badge> : null; })()}
+              {(() => { const count = Object.keys(agent.channel_config || {}).length; return count > 0 && !editingChannels ? <CountBadge variant="secondary">{count}</CountBadge> : null; })()}
               <Badge className="text-[9px] bg-feedback-error-primary/10 text-feedback-error-primary border border-feedback-error-primary/20 gap-1 ml-1"><AlertTriangle className="h-3 w-3" /> {t_i18n("Danger Zone")}</Badge>
             </CardTitle>
             <p className="content-caption text-default-secondary mt-0.5">

@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
 import { Input } from "@/components/ui/input";
@@ -1175,7 +1176,7 @@ export function GeneralSection({
           <CardTitle className="content-base flex items-center gap-2">
             <ArrowLeftRight className="h-4 w-4 text-accent" /> {t_i18n("Agent Handover")}
             {(agent.handover_agent_ids || []).length > 0 && !editingHandover && (
-              <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{(agent.handover_agent_ids || []).length}</Badge>
+              <CountBadge variant="secondary">{(agent.handover_agent_ids || []).length}</CountBadge>
             )}
           </CardTitle>
           <CardEditActions editing={editingHandover} canEdit={canManage} onEdit={onStartEditHandover} onCancel={onCancelHandover} onSave={onSaveHandover} saveDisabled={isPending} />

@@ -269,6 +269,12 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     ua_defs, _ = build_user_admin_tools(user_id=None, caller_is_admin=False)
     catalog["user_admin"] = _extract(ua_defs)
 
+    # Read-only CTEM signals and cases (#1337), from the real builder.
+    from app.services.builtin_tools import build_ctem_read_tools
+
+    cr_defs, _ = build_ctem_read_tools(user_id="", agent_id="")
+    catalog["ctem_read"] = _extract(cr_defs)
+
     # Memory Steward (#8258): every call checks the work is Platform Health's.
     from app.services.builtin_tools import build_memory_steward_tools
 

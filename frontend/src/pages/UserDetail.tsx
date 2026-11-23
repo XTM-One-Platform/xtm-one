@@ -43,6 +43,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Tip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { CompanyManagedBadge } from "@/components/ui/company-managed-badge";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { EntityHeaderMoreActions, EntityHeaderWideOnly, EntityPageHeader } from "@/components/ui/entity-page-header";
@@ -645,7 +646,7 @@ function UserGroupsCard({ userId }: { userId: string }) {
         <CardTitle className="text-base flex items-center gap-2">
           <UsersRound className="h-4 w-4 text-accent" /> {t_i18n("Groups")}
           {userGroups && userGroups.length > 0 && (
-            <Badge variant="outline" className="content-caption ml-1">{userGroups.length}</Badge>
+            <CountBadge variant="outline" className="ml-1">{userGroups.length}</CountBadge>
           )}
         </CardTitle>
         {!showAdd && (
@@ -1052,7 +1053,7 @@ function ApiKeysTab({ userId }: { userId: string }) {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Key className="h-4 w-4 text-accent" /> {t_i18n("API Keys")}
-            <Badge variant="outline" className="content-caption ml-1">{total}</Badge>
+            <CountBadge variant="outline" className="ml-1">{total}</CountBadge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">

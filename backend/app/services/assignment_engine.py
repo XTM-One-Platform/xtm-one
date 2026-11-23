@@ -6182,6 +6182,14 @@ async def execute_assignment_run(
 
             if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
+            # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
+            from app.services.builtin_tools import ctem_read_tools_for
+
+            _ctem_read = (
+                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+            )
+            if _ctem_read is not None:
+                composite.add_tools(*_ctem_read)
             # --- Learned skill (#914): a built-in agent records durable lessons ---
             from app.services.builtin_tools import build_learned_lesson_tool, offers_learned_lesson_tool
 

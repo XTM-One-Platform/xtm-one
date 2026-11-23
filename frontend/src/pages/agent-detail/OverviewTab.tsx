@@ -28,6 +28,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { isEmergencyStopped } from "@/lib/emergency-stop";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -494,7 +495,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><Cog className="h-4 w-4 text-accent" /> {t_i18n("Integrations")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{totalIntegrationCount}</Badge>
+            <CountBadge variant="outline">{totalIntegrationCount}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {totalIntegrationCount > 0 ? (
@@ -543,7 +544,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><Terminal className="h-4 w-4 text-accent" /> {t_i18n("MCP Servers")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundMCPs.length}</Badge>
+            <CountBadge variant="outline">{boundMCPs.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundMCPs.length > 0 ? (
@@ -573,7 +574,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><Code2 className="h-4 w-4 text-accent" /> {t_i18n("Custom Tools")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundTools.length}</Badge>
+            <CountBadge variant="outline">{boundTools.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundTools.length > 0 ? (
@@ -603,7 +604,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><GraduationCap className="h-4 w-4 text-accent" /> {t_i18n("Skills")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundSkills.length}</Badge>
+            <CountBadge variant="outline">{boundSkills.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundSkills.length > 0 ? (
@@ -633,7 +634,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
         <Card className="flex flex-col">
           <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-3">
             <CardTitle className="content-base flex items-center gap-2"><BookOpen className="h-4 w-4 text-accent" /> {t_i18n("Knowledge Bases")}</CardTitle>
-            <Badge variant="outline" className="text-[9px]">{boundKBs.length}</Badge>
+            <CountBadge variant="outline">{boundKBs.length}</CountBadge>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">
             {boundKBs.length > 0 ? (
@@ -678,7 +679,7 @@ export function OverviewTab({ agent, assignments, canManage }: { agent: Agent; a
                 <ExternalLink className="h-3 w-3" />
                 {t_i18n("View in flow")}
               </Button>
-              <Badge variant="outline" className="text-[9px]">{handoverAgents.length}</Badge>
+              <CountBadge variant="outline">{handoverAgents.length}</CountBadge>
             </div>
           </CardHeader>
           <CardContent className="flex-1 px-4 pb-4 pt-0">

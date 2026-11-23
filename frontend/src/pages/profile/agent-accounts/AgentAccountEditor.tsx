@@ -22,6 +22,7 @@ import { useMemo, useState } from "react";
 import { Bot, CalendarClock, FlaskConical, ListChecks, Plus, Send, Settings2, Trash2, UserRound } from "lucide-react";
 import { ReactionFeedbackSettings } from "@/components/feedback/ReactionFeedbackSettings";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -337,7 +338,7 @@ export function AgentAccountEditor({ account, onClose }: EditorProps) {
                 >
                   <Icon className="h-3.5 w-3.5" />
                   {label}
-                  {key === "rules" && <Badge variant="secondary" className="ml-1 content-caption">{draft.rules.length}</Badge>}
+                  {key === "rules" && <CountBadge variant="secondary" className="ml-1">{draft.rules.length}</CountBadge>}
                 </button>
               ))}
             </div>

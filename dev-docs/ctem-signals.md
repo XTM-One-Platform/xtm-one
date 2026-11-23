@@ -137,6 +137,11 @@ The tools are offered to the built-in `ctem-assistant`,
 for. No persona or seeded assignment uses them yet: the fleets are rewired on
 signals and cases in a later step of the loop.
 
+Any other agent reads the signals through the read-only built-in group
+`ctem_read` (`list_ctem_signals` with the same visibility as section 5, plus
+the case reads; `dev-docs/ctem-cases.md` section 8.1). It never records a
+signal.
+
 ## 7. Tests
 
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:

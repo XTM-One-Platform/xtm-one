@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Bot } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountBadge } from "@/components/ui/count-badge";
 import { ICON_MAP } from "@/lib/constants";
 import { useFormatter } from "@/i18n";
 import type { Agent } from "@/types";
@@ -40,7 +41,7 @@ export function AgentsUsingCard({ agents, entityLabel, emptyHint }: AgentsUsingC
         <CardTitle className="content-base flex items-center gap-2">
           <Bot className="h-4 w-4 text-accent" />
           {t_i18n("Agents Using This {entity}", { entity: t_i18n(entityLabel) })}
-          <Badge variant="cyan" className="content-caption ml-auto">{agents.length}</Badge>
+          <CountBadge variant="cyan" className="ml-auto">{agents.length}</CountBadge>
         </CardTitle>
       </CardHeader>
       <CardContent>
