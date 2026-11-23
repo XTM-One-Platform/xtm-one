@@ -101,5 +101,38 @@ def test_dependency_edges_of_one_asset_resolve_labels_to_versions_with_bundling(
     assert len(edges) == 4
 
 
+def test_sbom_component_types_map_to_software_types() -> None:
+    assert sbom_parser.software_type_of("library") == "library"
+    assert sbom_parser.software_type_of("Framework") == "library"
+    assert sbom_parser.software_type_of("operating-system") == "operating_system"
+    assert sbom_parser.software_type_of("OPERATING_SYSTEM") == "operating_system"
+    assert sbom_parser.software_type_of("firmware") == "firmware"
+    assert sbom_parser.software_type_of("container") == "container_image"
+    assert sbom_parser.software_type_of("application") == "application"
+    assert sbom_parser.software_type_of("file") == "application"
+    assert sbom_parser.software_type_of(None) == "application"
+    spdx = sbom_parser.parse(
+        {"spdxVersion": "SPDX-2.3", "packages": [{"SPDXID": "a", "name": "z", "primaryPackagePurpose": "LIBRARY"}]}
+    )
+    assert spdx.components[0].software_type == "library"
+    rows = sbom_components(
+        sbom_parser.parse({"bomFormat": "CycloneDX", "components": [{"name": "z", "type": "library"}]})
+    )
+    assert rows[0]["type"] == "library"
+
+
+def test_software_types_keep_a_declared_type_over_application_and_drop_unknown_values() -> None:
+    types = sw.software_types(
+        [
+            {"vendor": "", "product": "zlib", "type": "application"},
+            {"vendor": "", "product": "ZLIB", "type": "library"},
+            {"vendor": "", "product": "zlib", "type": "application"},
+            {"vendor": "Google", "product": "Chrome"},
+            {"vendor": "", "product": "odd", "type": "widget"},
+        ]
+    )
+    assert types == {("", "zlib"): "library"}
+
+
 def test_a_label_naming_nothing_on_the_asset_gives_no_edge() -> None:
     assert sw.dependency_edges([{"product": "a", "version": "1", "depends_on": ["b 2"], "bundled_in": "c"}]) == []

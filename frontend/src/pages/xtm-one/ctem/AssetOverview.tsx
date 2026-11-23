@@ -66,8 +66,8 @@ export function AssetSection({
   );
 }
 
-/** One fact of the overview card: its mark, its label above, its value (several values on their own lines). */
-function Fact({ icon, mark, label, values, hint }: { icon?: IconName; mark?: ReactNode; label: string; values: ReactNode[]; hint?: string }) {
+/** One fact of an overview card (asset or software page): its mark, its label above, its value (several values on their own lines). */
+export function Fact({ icon, mark, label, values, hint }: { icon?: IconName; mark?: ReactNode; label: string; values: ReactNode[]; hint?: string }) {
   const body = (
     <div className="flex min-w-0 items-start gap-2" data-testid="ctem-asset-fact">
       <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-default-secondary">

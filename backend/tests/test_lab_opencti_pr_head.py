@@ -132,6 +132,48 @@ def test_a_pr_adds_its_own_seed_and_a_malformed_file_stops_the_start(tmp_path):
         module.extra_seed(tmp_path, {module.SEED_ENV: "bad.json"})
 
 
+def test_a_pr_seed_script_runs_with_the_pinned_node_against_the_pr_head_backend(tmp_path, monkeypatch):
+    module = _module()
+    (tmp_path / "demo").mkdir()
+    (tmp_path / "demo" / "seed.mjs").write_text("process.exit(0)", encoding="utf-8")
+    (tmp_path / "outside.mjs").write_text("", encoding="utf-8")
+    entries = [{"label": "Demo", "script": "demo/seed.mjs", "path": "/dashboard/analyses/reports"}]
+    (tmp_path / module.SEED_FILE).write_text(json.dumps(entries), encoding="utf-8")
+    [extra] = module.extra_seed(tmp_path, {})
+    assert extra["script"] == str((tmp_path / "demo" / "seed.mjs").resolve())
+    # A script outside the checkout, missing, or not a Node file stops the start.
+    demo = tmp_path / "demo"
+    for bad in ("../outside.mjs", "missing.mjs", "seed.py"):
+        (demo / "bad.json").write_text(json.dumps([{"label": "x", "script": bad}]), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            module.extra_seed(demo, {module.SEED_ENV: "bad.json"})
+
+    calls: list[dict] = []
+    logged: list[str] = []
+
+    class _Process:
+        def __init__(self, code):
+            self.code = code
+
+        def wait(self, timeout=None):
+            return self.code
+
+    def fake_spawn(name, argv, *, cwd=None, env=None, daemon=True):
+        calls.append({"argv": argv, "cwd": cwd, "env": env, "daemon": daemon})
+        return _Process(len(calls) - 1)
+
+    monkeypatch.setattr(module.lab, "spawn", fake_spawn)
+    monkeypatch.setattr(module.lab, "log", logged.append)
+    monkeypatch.setattr(module, "graphql", lambda *a, **k: pytest.fail("a script entry sends no GraphQL"))
+    pages = module.run_seed([extra, {**extra, "label": "Broken"}], "http://localhost:3500")
+    assert pages == [("Demo", "http://localhost:3500/dashboard/analyses/reports")]
+    first = calls[0]
+    assert first["argv"] == [str(module.node_binary()), extra["script"]] and first["daemon"] is False
+    assert first["env"]["OPENCTI_URL"] == module.BACKEND_URL and first["env"]["OPENCTI_TOKEN"] == module.ADMIN_TOKEN
+    assert first["env"]["LAB_PREVIEW_URL"] == "http://localhost:3500"
+    assert any("seed script Broken failed: exit 1" in line for line in logged)
+
+
 def test_the_playbook_fixture_is_the_twelve_step_fifteen_link_report_pipeline():
     module = _module()
     playbook = module.PLAYBOOK

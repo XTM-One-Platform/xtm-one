@@ -292,11 +292,11 @@ describe("Signals summary strip", () => {
     { ...PATHS[1], count_30d: 1, total: 1 },
   ];
 
-  it("sits above the tabs on both tabs, with the key row's counts and the connected sources' logos", async () => {
-    renderPage("/ctem/signals/sources", { total: 10, counts: { to_validate: 3, new: 2, case_opened: 1, watchlist: 4 }, signals: [] }, paths);
+  it("sits under the header, above the list, with the key row's counts and the connected sources' logos", async () => {
+    renderPage("/ctem/signals", { total: 10, counts: { to_validate: 3, new: 2, case_opened: 1, watchlist: 4 }, signals: [] }, paths);
     const strip = await screen.findByTestId("ctem-signals-summary");
-    const tabs = screen.getByTestId("ctem-signals-tabs");
-    expect(strip.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const sourcesButton = screen.getByTestId("ctem-signals-sources");
+    expect(sourcesButton.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => expect(within(strip).getByText("5")).toBeTruthy());
     expect(within(strip).getByText("10 signals in all")).toBeTruthy();
     expect(within(strip).getByText("3")).toBeTruthy();
@@ -317,17 +317,44 @@ describe("Signals summary strip", () => {
     expect(within(sources).getByTestId("ctem-signals-summary-sources-link").textContent).toBe("Sources");
   });
 
-  it("opens the Signals tab on the state a card names", async () => {
-    renderPage("/ctem/signals/sources", { total: 3, counts: { to_validate: 3 }, signals: [] }, paths);
+  it("opens the signals on the state a card names", async () => {
+    renderPage("/ctem/signals", { total: 3, counts: { to_validate: 3 }, signals: [] }, paths);
     const strip = await screen.findByTestId("ctem-signals-summary");
     const card = await within(strip).findByRole("button", { name: /Unmatched/ });
     fireEvent.click(card);
     await waitFor(() => expect(location()).toBe("/ctem/signals?state=to_validate"));
   });
 
-  it("links the Sources tab from the connected sources card", async () => {
+  it("links the Sources page from the connected sources card", async () => {
     renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] }, paths);
     fireEvent.click(await screen.findByTestId("ctem-signals-summary-sources-link"));
     await waitFor(() => expect(location()).toBe("/ctem/signals/sources"));
+  });
+});
+
+describe("Signal sources page (#1519)", () => {
+  it("draws no tabs on the list and opens the sources from the header button, with the connected count", async () => {
+    renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] });
+    expect(screen.queryByRole("tablist")).toBeNull();
+    const button = await screen.findByTestId("ctem-signals-sources");
+    expect(button.textContent).toContain("Sources");
+    await waitFor(() => expect(screen.getByTestId("ctem-signals-sources-count").textContent).toBe("1/2"));
+    fireEvent.click(button);
+    await waitFor(() => expect(location()).toBe("/ctem/signals/sources"));
+    expect(await screen.findByTestId("ctem-signal-sources-page")).toBeTruthy();
+  });
+
+  it("draws its own page: the back link first, the title, the sources, no summary strip and no tabs", async () => {
+    renderPage("/ctem/signals/sources", { total: 0, counts: {}, signals: [] });
+    const page = await screen.findByTestId("ctem-signal-sources-page");
+    const back = within(page).getByRole("button", { name: "Back to Signals" });
+    expect(page.firstElementChild).toBe(back);
+    expect(within(page).getByRole("heading", { name: "Signal sources" })).toBeTruthy();
+    expect(screen.queryByTestId("ctem-signals-summary")).toBeNull();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByTestId("ctem-signals-page")).toBeNull();
+    fireEvent.click(back);
+    await waitFor(() => expect(location()).toBe("/ctem/signals"));
+    expect(await screen.findByTestId("ctem-signals-page")).toBeTruthy();
   });
 });
