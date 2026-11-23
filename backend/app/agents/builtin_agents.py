@@ -3213,7 +3213,7 @@ CTEM_F1_ASSIGNMENTS.append(
         **_F1_RUN,
         "name": CTEM_LOOP_REMINDER,
         "description": (
-            "A reminder the loop armed with arm_timer (key `ctem-loop-reminder:<case id>`) "
+            "A reminder the loop armed with arm_timer (key `ctem-loop-reminder:CASE_ID`) "
             "reached its due time: the case and its open gates are re-read and the deciding person is "
             "reminded once when a gate is still unanswered."
         ),
@@ -3233,10 +3233,10 @@ CTEM_F1_ASSIGNMENTS.append(
         "timeout_seconds": 600,
         "prompt": (
             "A reminder you armed is due: the timer.due event below carries its correlation_key "
-            "(`ctem-loop-reminder:<case id>`) and its payload. Read the case with "
+            "(`ctem-loop-reminder:CASE_ID`) and its payload. Read the case with "
             "get_ctem_case and its open gates. When a gate still waits on a person, remind that person "
             "once on the gate's decision item (one note naming the decision and the SLA), and arm the "
-            "next reminder only if the case's SLA has not passed, always as `ctem-loop-reminder:<case id>`. When "
+            "next reminder only if the case's SLA has not passed, always as `ctem-loop-reminder:CASE_ID`. When "
             "nothing waits any more (the gate is answered, the case closed or moved on), do nothing and "
             "end with one line saying so. Never remind twice for the same gate in one run."
         ),
