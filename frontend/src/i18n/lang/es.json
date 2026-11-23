@@ -16911,10 +16911,6 @@
   "Human approval was not changed": "La aprobación humana no se ha cambiado",
   "No action of this fleet is gated by this control yet.": "Ninguna acción de esta flota está sujeta todavía a este control.",
   "Review actions": "Revisar acciones",
-  "Waits:": "Espera:",
-  "Runs alone:": "Se ejecuta sola:",
-  "Show what waits at each level": "Mostrar qué espera en cada nivel",
-  "Hide what waits at each level": "Ocultar qué espera en cada nivel",
   "Reduce human approval to {level}?": "¿Reducir la aprobación humana a {level}?",
   "Reduce to {level}": "Reducir a {level}",
   "{count, plural, =0 {No action of this fleet changes. Every action stays logged and reported in Operations.} one {# action will run without approval:} other {# actions will run without approval:}}": "{count, plural, =0 {Ninguna acción de esta flota cambia. Cada acción queda registrada e informada en Operaciones.} one {# acción se ejecutará sin aprobación:} other {# acciones se ejecutarán sin aprobación:}}",
@@ -21193,5 +21189,12 @@
   "The switch is organization-wide. Also feeds: {paths}": "El interruptor se aplica a toda la organización. También alimenta: {paths}",
   "A live listener runs while its integration is connected.": "Un oyente en vivo funciona mientras su integración está conectada.",
   "Only an administrator can change the sources of a trigger path.": "Solo un administrador puede cambiar las fuentes de una ruta de activación.",
-  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración."
+  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración.",
+  "Work item decision": "Decisión sobre un elemento de trabajo",
+  "What to decide": "Qué decidir",
+  "No waiting decision matches the search and filters.": "Ninguna decisión pendiente coincide con la búsqueda y los filtros.",
+  "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decisión espera a una persona} other {# decisiones esperan a una persona}}",
+  "oldest asked {age}": "la más antigua solicitada {age}",
+  "Read only: this decision is addressed to someone else.": "Solo lectura: esta decisión está dirigida a otra persona.",
+  "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisiones de los miembros de esta flota que esperan a una persona: ejecuciones en pausa y elementos de trabajo. Abrir esta pestaña no inicia ninguna ejecución ni consume cuota."
 }
