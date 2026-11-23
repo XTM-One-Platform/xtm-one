@@ -7,7 +7,7 @@
  * answer. A stage the signal's state cannot tell yet is "not reached", never
  * guessed.
  */
-import { CTEM_SIGNAL_STATES, type CtemSignal, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import type { CtemSignal, CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
 
 export const LOOP_STAGES = [
   { key: "signal", label: "Signal received" },
@@ -23,11 +23,8 @@ export const LOOP_STAGES = [
 ] as const;
 
 type LoopStageKey = (typeof LOOP_STAGES)[number]["key"];
-/**
- * passed: done; current: the object waits here; stopped: the loop ends here, with its reason;
- * parked: an unmatched signal rests here until the inventory holds its subject, no fault (#1505).
- */
-type LoopStageStatus = "passed" | "current" | "stopped" | "parked" | "not_reached";
+/** passed: done; current: the object waits here; stopped: the loop ends here, with its reason. */
+type LoopStageStatus = "passed" | "current" | "stopped" | "not_reached";
 
 export interface LoopStageView {
   key: LoopStageKey;
@@ -38,10 +35,10 @@ export interface LoopStageView {
 }
 
 /** The stage index each state has passed, and the one it waits at or stopped at. */
-const STATE_PLACE: Record<CtemSignalState, { passed: number; at: number; stopped: boolean; parked?: boolean }> = {
+const STATE_PLACE: Record<CtemSignalState, { passed: number; at: number; stopped: boolean }> = {
   new: { passed: 0, at: 1, stopped: false },
   confirmed: { passed: 1, at: 2, stopped: false },
-  to_validate: { passed: 0, at: 1, stopped: true, parked: true },
+  to_validate: { passed: 0, at: 1, stopped: true },
   discarded: { passed: 0, at: 1, stopped: true },
   watchlist: { passed: 1, at: 2, stopped: true },
   case_opened: { passed: 3, at: 4, stopped: false },
@@ -55,12 +52,11 @@ export function signalLoop(signal: Pick<CtemSignal, "state" | "first_seen_at" | 
     signal.state === "confirmed" && signal.decision?.outcome === "case"
       ? { passed: 2, at: 3, stopped: false }
       : (STATE_PLACE[signal.state] ?? STATE_PLACE.new);
-  const stopStatus: LoopStageStatus = "parked" in place && place.parked ? "parked" : "stopped";
   const decidedAt = signal.decision?.decided_at ?? null;
   return LOOP_STAGES.map((stage, index) => {
     let status: LoopStageStatus = "not_reached";
     if (index <= place.passed) status = "passed";
-    else if (index === place.at) status = place.stopped ? stopStatus : "current";
+    else if (index === place.at) status = place.stopped ? "stopped" : "current";
     let at: string | null = null;
     if (index === 0) at = signal.first_seen_at;
     else if (status !== "not_reached" && status !== "current" && index <= place.at) at = decidedAt;
@@ -70,33 +66,6 @@ export function signalLoop(signal: Pick<CtemSignal, "state" | "first_seen_at" | 
 
 /** The stage a signal waits at or stopped at, for its one-line summary. */
 export function currentStage(stages: LoopStageView[]): LoopStageView | undefined {
-  return stages.find((s) => s.status === "current" || s.status === "stopped" || s.status === "parked");
+  return stages.find((s) => s.status === "current" || s.status === "stopped");
 }
 
-/**
- * The `?loop=` value of the signal list, in one state or every state
- * (CTEM-01-UI), optionally on one trigger path (#1189: a path card of the
- * signal sources dialog opens that path's signals, never the whole list).
- */
-export function signalsParam(state: CtemSignalState | null, path: string | null = null): string {
-  const base = `signals:${state ?? "all"}`;
-  return path ? `${base}:${path}` : base;
-}
-
-type LoopTarget =
-  | { kind: "signal" | "case"; id: string }
-  | { kind: "signals"; state: CtemSignalState | null; path: string | null };
-
-/** The object a `?loop=` value names, or null when it names none. */
-export function parseLoopParam(value: string | null): LoopTarget | null {
-  if (!value) return null;
-  const list = /^signals:([a-z_]+)(?::([a-z0-9_]+))?$/.exec(value);
-  if (list) {
-    const path = list[2] ?? null;
-    if (list[1] === "all") return { kind: "signals", state: null, path };
-    const state = CTEM_SIGNAL_STATES.find((s) => s === list[1]);
-    return state ? { kind: "signals", state, path } : null;
-  }
-  const match = /^(signal|case):([0-9a-fA-F-]{36})$/.exec(value);
-  return match ? { kind: match[1] as "signal" | "case", id: match[2] } : null;
-}
