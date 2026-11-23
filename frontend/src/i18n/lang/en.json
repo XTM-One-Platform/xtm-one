@@ -20080,6 +20080,7 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.",
   "Opened by": "Opened by",
   "The signals of this case could not be read.": "The signals of this case could not be read.",
+  "No signal opened this case: it groups open issues read from the products.": "No signal opened this case: it groups open issues read from the products.",
   "See the loop trace": "See the loop trace",
   "A signal joined the case": "A signal joined the case",
   "Recorded a validation": "Recorded a validation",
@@ -20713,6 +20714,8 @@
   "Not computed yet": "Not computed yet",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}",
   "Open the {product} integration": "Open the {product} integration",
+  "Opened from OpenCTI vulnerabilities matched to your inventory": "Opened from OpenCTI vulnerabilities matched to your inventory",
+  "Opened from OpenAEV findings on your assets": "Opened from OpenAEV findings on your assets",
   "Add a sync": "Add a sync",
   "Start with your sources": "Start with your sources",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.",
@@ -21206,6 +21209,11 @@
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
   "A repository is not owner/name": "A repository is not owner/name",
-  "Opened by a source read before signals (legacy)": "Opened by a source read before signals (legacy)",
-  "Split into its own case by a person or an agent": "Split into its own case by a person or an agent"
+  "Add a Sync all schedule": "Add a Sync all schedule",
+  "Back to Organization Profile": "Back to Organization Profile",
+  "Inventory sources": "Inventory sources",
+  "About the inventory sources": "About the inventory sources",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
+  "About the knowledge and sources": "About the knowledge and sources",
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs."
 }
