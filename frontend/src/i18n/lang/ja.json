@@ -21210,6 +21210,7 @@
   "Nothing happened on this case yet": "このケースではまだ何も起きていません",
   "Still waiting since {date}": "{date} から待機中",
   "Answered by {name} on {date}": "{name} が {date} に回答",
+  "Validated by policy on {date}": "{date} にポリシーで承認",
   "Waited since {date}": "{date} から待っていた",
   "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, other {# 件の承認待ち}}",
   "Shipped products": "出荷製品",
