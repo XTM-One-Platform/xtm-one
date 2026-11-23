@@ -591,7 +591,14 @@ categories preloaded after the block come from the same cascade on
 `organization_context_categories` (platform JSON list, default `[]`; agent
 and assignment NULL = inherit, a list, empty included, wins;
 `resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. A run of a fleet member keeps the fuller
+with the call that reads the rest. The brief notice of an incomplete
+profile ("Organization context incomplete: missing ...", #11586) and the
+CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
+loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
+the fleet block and the tool reading name them only when
+`organization_context.ctem_work_for` holds (the agent holds CTEM tools, a
+built-in CTEM case or signal agent or the `ctem_read` group, or its home
+fleet is a seeded CTEM fleet or a fork of one). A run of a fleet member keeps the fuller
 fleet block above instead, so the profile appears once; resolved off,
 neither block. An explicit `off` on the agent or the assignment also removes
 the tool (`tools_enabled_for`, in `agent_chat` and `assignment_engine`);
