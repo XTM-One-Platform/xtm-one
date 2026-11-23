@@ -1458,6 +1458,40 @@ async def delete_asset_group(
     return Response(status_code=204)
 
 
+@router.get("/asset-groups/{group_id}/members")
+async def list_asset_group_members(
+    group_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=1000),
+    after_name: str | None = Query(default=None, max_length=200),
+    after_id: uuid.UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One keyset page of a group's member records (#1556), each with who put it there (``via``).
+
+    Pass the last item's ``name_key`` and ``id`` as ``after_name`` and ``after_id``
+    for the next page; ``next`` is null on the last one.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="No asset group with this id")
+    try:
+        group = await records.get_group(db, org, group_id)
+    except records.RecordError as exc:
+        raise _record_http_error(exc) from None
+    after = (after_name, after_id) if after_name is not None and after_id is not None else None
+    page = await records.group_members(db, org, group.id, limit=limit + 1, after=after)
+    items = [{**records.record_out(r), "name_key": r.name_key, "via": via} for r, via in page[:limit]]
+    last = items[-1] if len(page) > limit and items else None
+    return {
+        "group": records.group_out(group),
+        "items": items,
+        "next": {"after_name": last["name_key"], "after_id": last["id"]} if last else None,
+    }
+
+
 @router.put("/crown-jewels/{crown_jewel}/links")
 async def set_crown_jewel_asset_links(
     crown_jewel: str,
