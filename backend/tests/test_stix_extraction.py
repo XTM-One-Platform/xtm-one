@@ -532,7 +532,18 @@ def _tool(llm: object | None):
     return definitions[0], executor.handler("extract_stix_from_document")
 
 
-def test_the_tool_returns_the_payload_the_agent_loop_finalizes_on() -> None:
+def test_the_tool_returns_the_payload_the_agent_loop_finalizes_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ATT&CK comes from a stub, never the network: with the live download down, the
+    # behaviours call is skipped and the count would follow GitHub raw's availability.
+    from app.services.stix_extraction import knowledge as attack
+
+    async def names(_: list[str]) -> dict[str, list[object]]:
+        return {}
+
+    async def catalogue() -> list[object]:
+        return list(_CATALOGUE)
+
+    monkeypatch.setattr(attack, "attack_functions", lambda _source=None: (names, catalogue))
     definition, handler = _tool(_Llm())
     assert definition.name == "extract_stix_from_document"
     payload = _payload(asyncio.run(handler(text=TEXT, document_name="report")))
