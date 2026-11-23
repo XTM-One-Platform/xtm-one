@@ -80,9 +80,9 @@ describe("PrioritizationFunnel", () => {
     // A not configured exclusion removes nothing: its branch has no thickness.
     expect(screen.getByTestId("ctem-flow-branch-exposed").getAttribute("data-branch")).toBe("0");
     // Each call to action opens the tab and card of its field (Exposure for assets, Business for crown jewels...), never the first tab.
-    expect(screen.getByRole("link", { name: "Add your assets and exposure" }).getAttribute("href")).toBe("/settings/organization/profile/exposure?card=assets_exposure");
+    expect(screen.getByRole("link", { name: "Add your assets and exposure" }).getAttribute("href")).toBe("/ctem/inventory?card=assets_exposure");
     expect(screen.getByRole("link", { name: "Map crown jewels to assets" }).getAttribute("href")).toBe("/settings/organization/profile/business?card=crown_jewels");
-    expect(screen.getByRole("link", { name: "Set a prioritization policy" }).getAttribute("href")).toBe("/settings/organization/profile/exposure?card=prioritization_policy");
+    expect(screen.getByRole("link", { name: "Set a prioritization policy" }).getAttribute("href")).toBe("/ctem/inventory?card=prioritization_policy");
     expect(screen.getByTestId("ctem-funnel-count-open_issues").textContent).toBe("Not available yet");
   });
 
@@ -153,10 +153,10 @@ describe("PrioritizationFunnel", () => {
     expect(tooltip.textContent).not.toContain("Read now");
   });
 
-  it("says a not configured layer opens Settings > Organization", async () => {
+  it("says a not configured layer opens CTEM > Inventory, where the assets live (#1178)", async () => {
     draw(<PrioritizationFunnel variant="stage" funnel={SAMPLE_FUNNEL} openctiUrl="https://cti.example" />);
     fireEvent.focus(screen.getByRole("link", { name: /^Exposed, Not configured/ }));
-    expect((await screen.findByRole("tooltip")).textContent).toContain("Opens Settings > Organization");
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Opens CTEM > Inventory");
   });
 
   it("opens the exact value on keyboard focus of a sample bar, which is not a link", async () => {

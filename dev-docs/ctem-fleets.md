@@ -1902,7 +1902,7 @@ risk) declare one gate per loop stage, from
 
 | Key | Stage | Impact | Tools paused |
 |---|---|---|---|
-| `ctem.validation.non_readonly` | Validate: an OpenAEV test that is not read-only | high | the OpenAEV launches |
+| `ctem.validation.non_readonly` | Validate: create or launch an OpenAEV scenario or atomic test | destructive (high on third-party risk, which has no OpenAEV step) | every call that creates or starts a validation: scenario create, import, duplicate, launch, schedule_recurrence; simulation create, duplicate, status RUNNING; inject create, duplicate, trigger (and `add_openaev_inject_to_scenario`); atomic test create, duplicate, launch, relaunch, recurrence; the coverage request |
 | `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low | the coverage request (`manage_opencti_security_coverage` action `create`) |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high | the four treatment plan writes (CTEM-18) |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive | the Jira and ServiceNow ticket tools |
@@ -1910,8 +1910,20 @@ risk) declare one gate per loop stage, from
 | `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high | none |
 | `ctem.close_without_retest` | A case closed with no passing re-test | high | none |
 
-At the seeded level (Low) only `ctem.mobilize` waits; every other gate runs
-and the case records it as passed automatically. Full human gates: every gate
+At the seeded level (Low) two gates wait per case (Sam, 23 Nov 2026): the
+OpenAEV validation (on the three fleets with the OpenAEV validation step) and
+`ctem.mobilize`; every other gate runs and the case records it as passed
+automatically. The reads (list, get, results, healthcheck, status reads) stay
+free. One decision per validation: the validation gate carries a grant
+(`DocGate.grant`, `fleet_autonomy._ValidationGrants`): the call a person
+approved covers the later calls of the same gate on the objects it named or
+created (scenario, simulation, inject or atomic test id, read from its
+arguments and its answer) within the turn, so the creation and the launch of
+that validation do not pause twice; a call that names a new target
+(`asset_ids`, `asset_group_ids`, `team_ids`), a new schedule (`recurrence*`,
+`start_date`) or another object asks again. The coverage request is under both
+`ctem.analyst_review` and the validation gate on these fleets, since OpenAEV
+builds and schedules a scenario from it. Full human gates: every gate
 waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
@@ -1985,7 +1997,7 @@ same effective catalog it returns as `autonomy_catalog`
 page and the Approval tab never disagree at any level or pin. A step without a
 key, or naming a gate the catalog does not hold, keeps its stored flag. The
 built-in steps name their keys and their stored flags equal the seeded level
-(Low: `ctem.mobilize` alone waits), checked for every built-in fleet by
+(Low: the OpenAEV validation and `ctem.mobilize` wait), checked for every built-in fleet by
 `test_builtin_fleet_docs.py`.
 
 **Set by instructions (#10168, B2-I).** A fleet whose approvals live in its

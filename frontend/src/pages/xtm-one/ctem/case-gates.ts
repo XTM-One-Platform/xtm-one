@@ -28,7 +28,7 @@ export function caseIdOfDecisionKey(key: string | null | undefined): string | nu
 
 /** The CTEM gates in plain words, the catalog's own actions (`builtin_fleet_docs._ctem_gates`). @i18n-keys */
 const GATE_LABELS = {
-  "ctem.validation.non_readonly": "Validate: run an OpenAEV test that is not read-only",
+  "ctem.validation.non_readonly": "Validate: create or launch an OpenAEV scenario or atomic test",
   "ctem.analyst_review": "Review: an analyst checks the threat package",
   "ctem.remediation.decision": "Decide: choose the remediation option",
   "ctem.mobilize": "Mobilize: create the tickets, notify the owners, hand over the prepared change",

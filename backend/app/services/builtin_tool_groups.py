@@ -269,6 +269,17 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         aliases=("stix_bundle_validator", "fimi_analytics"),
     ),
     BuiltinToolGroup(
+        # Read-only CTEM signals and cases for any agent (#1337), as the person
+        # the turn or run acts for, with the CTEM routes' permission model.
+        id="ctem_read",
+        name="CTEM Read",
+        tagline="Read the CTEM signals and cases the person you act for can see, read-only",
+        detail="Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.",
+        category="security",
+        icon="ScanEye",
+        agent_keyed=True,
+    ),
+    BuiltinToolGroup(
         id="stix_extractor",
         # Off by default and never reached through Threat Intelligence: one call reads a
         # report through hundreds of model calls (up to 30 min), so an agent carries it

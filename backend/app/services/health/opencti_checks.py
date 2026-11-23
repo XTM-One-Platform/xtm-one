@@ -53,6 +53,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.health.engine import RESTART_GRACE, Check, CheckResult, apply_grace, close_out, register_check
 from app.services.health.platform_checks import PLATFORM_CHECK_INTERVAL, _platform_check
 from app.services.health.settings import HealthOpenCTIThresholds, load_health_settings
@@ -63,7 +64,7 @@ PLATFORM_IDENTIFIER = "opencti"
 SNAPSHOT_FRESH_FOR = timedelta(minutes=15)
 #: The thresholds when none is stored (Settings > Platform Health, #101 S10b).
 DEFAULTS = HealthOpenCTIThresholds()
-DOC_LINK = "/docs/administration/health#opencti-checks"
+DOC_LINK = docs_url("administration/health", "opencti-checks")
 
 Read = Callable[[Any, dict[str, Any] | None, datetime, HealthOpenCTIThresholds], list[CheckResult]]
 

@@ -79,8 +79,8 @@ def test_a_simulation_launch_pauses_until_autonomous_and_a_read_never_does():
     assert gates, "the threat response fleet declares the validation gate"
     for level in AUTONOMY_LEVELS:
         gate = make_fleet_autonomy_gate(None, gated_tool_rules(level, gates))
-        # A validation is high impact (#916, CTEM-34): it runs from Low, the seeded level.
-        assert _paused(gate, _LAUNCH) is (level in ("full_gates", "medium"))
+        # A validation is destructive (#1339): it waits until Full autonomous.
+        assert _paused(gate, _LAUNCH) is (level != "autonomous")
         assert _paused(gate, _READ) is False
 
 

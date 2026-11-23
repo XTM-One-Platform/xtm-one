@@ -71,6 +71,7 @@ import {
   funnelRows,
   funnelSettingsHref,
   isCasesLayer,
+  isInventoryHref,
   isOrganizationSettingsHref,
   withCasesLayer,
   type FlowStep,
@@ -319,6 +320,7 @@ export function PrioritizationFunnel({ funnel, variant, openctiUrl, sample = fal
     const href = hrefOf(layer);
     if (!href) return null;
     if (isOrganizationSettingsHref(href)) return t_i18n("Opens Settings > Organization");
+    if (isInventoryHref(href)) return t_i18n("Opens CTEM > Inventory");
     if (/^https?:\/\//.test(href)) return t_i18n("Opens in OpenCTI, Arsenal > Vulnerabilities");
     return t_i18n("Opens the Cases list");
   };

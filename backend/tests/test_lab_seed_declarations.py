@@ -88,6 +88,9 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
         "lab-group-ai-off": {"LAB_PEER_GROUP_AI": "off"},
         "lab-org-setup-prompt": {"LAB_ORG_SETUP_PROMPT": "on"},
         "lab-org-setup-prompt-light": {"LAB_ORG_SETUP_PROMPT": "on", "LAB_THEME": "light"},
+        # Organization rows written by platform syncs next to typed rows (#1345).
+        "lab-org-synced": {"LAB_ORG_SYNCED": "on"},
+        "lab-org-synced-light": {"LAB_ORG_SYNCED": "on", "LAB_THEME": "light"},
         "lab-perf-thread": {"LAB_PERF_THREAD": "on"},
         "lab-langfuse-env": {"LAB_LANGFUSE": "env"},
         "lab-db-license": {"LAB_LICENSE_SOURCE": "database"},
@@ -103,8 +106,16 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
             k: v for k, v in lab.items() if k not in ("env", "description")
         }, name
     assert not {
-        "LAB_EDITION", "LAB_DEFAULT_MODEL", "LAB_AI", "LAB_PEER_GROUP_AI", "LAB_LANGFUSE", "LAB_LICENSE_SOURCE",
-        "LAB_ORG_SETUP_PROMPT", "LAB_PERF_THREAD", "LAB_WORKER",
+        "LAB_EDITION",
+        "LAB_DEFAULT_MODEL",
+        "LAB_AI",
+        "LAB_PEER_GROUP_AI",
+        "LAB_LANGFUSE",
+        "LAB_LICENSE_SOURCE",
+        "LAB_ORG_SETUP_PROMPT",
+        "LAB_ORG_SYNCED",
+        "LAB_PERF_THREAD",
+        "LAB_WORKER",
     } & set(lab["env"])
 
 

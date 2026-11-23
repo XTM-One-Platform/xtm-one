@@ -82,6 +82,8 @@ const REACHABILITY: readonly Reach[] = [
   { to: "/chat", roles: EVERYONE, gate: "chat", lock: "ai", guard: "none" },
   // The record of the CTEM loop (#1135): every user, open with AI off; the route sits behind XtmOneRoute, a mode guard.
   { to: "/ctem/cases", roles: EVERYONE, guard: "none", xtmOneOnly: true },
+  // The inventory (#1178): read by every user; editing stays with administrators on the API.
+  { to: "/ctem/inventory", roles: EVERYONE, guard: "none", xtmOneOnly: true },
   { to: "/flows", roles: EVERYONE, guard: "none" },
   { to: "/fleets", roles: EVERYONE, lock: "license", guard: "none" },
   { to: "/agents", roles: EVERYONE, lock: "ai", guard: "none" },

@@ -242,6 +242,14 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
   source that set it and every source's value, the merge explanation, its records and a page of its software.
 - `GET /api/v1/organization-context/assets/by-software?product=&vendor=&version=`: the assets running a software,
   with the version each runs.
+- `POST /api/v1/organization-context/assets/lookup` `{keys: [...]}` (at most 200): the cross-product pivot of
+  OpenCTI, OpenAEV and OpenCRQ (contract v3, the XTM One emblem). Each key is read as an FQDN and its hostname, a
+  hostname, a MAC or an IP address (never a serial or a cloud id), normalised as the identity engine compares them,
+  and matched against every source record of the primary organization, then the asset's name. The answer holds one
+  item per key found: `{key, id, name, category, criticality, internet_facing, owner, matches, url}`, `url` the
+  asset's page `/ctem/inventory/assets/{id}`, `matches` the number of assets holding a weak key (the first by name
+  answers). The platforms call it with the user's own cross-platform token, so a user reads what the inventory list
+  answers him.
 
 ### 9.2 Writes through the store, merge and split (S3)
 
