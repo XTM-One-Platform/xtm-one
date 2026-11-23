@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { filterValueLabel, filtersSummary } from "@/lib/organization-import-filters";
+import { filterValueLabel, filtersSummary, keepsSourceOrder } from "@/lib/organization-import-filters";
 import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER, PLATFORM_NAMES, importSourcesOfProvider } from "@/lib/organization-profile";
 
 const t = (text: string, values?: Record<string, string | number>) =>
@@ -38,5 +38,21 @@ describe("Intune and Defender as import sources (#1251)", () => {
     expect(filterValueLabel(t, "operating_system", "Windows")).toBe("Windows");
     expect(filterValueLabel(t, "last_seen_days", "30")).toBe("within 30 days");
     expect(filtersSummary(t, "en", { compliance: ["compliant"], exposure_level: ["High"] })).toBe("Compliance: Compliant; Exposure level: High");
+  });
+
+  it("keeps ServiceNow's operational status in its own order, Operational first and Retired last, in every language", () => {
+    expect(keepsSourceOrder("operational_status")).toBe(true);
+    expect(keepsSourceOrder("criticality")).toBe(true);
+    expect(keepsSourceOrder("operating_system")).toBe(false);
+    expect(keepsSourceOrder("ci_class")).toBe(false);
+    // The backend sends the choice values 1 to 6 (FILTER_VALUES); unsorted, the picker shows them in this order.
+    expect(["1", "2", "3", "4", "5", "6"].map((value) => filterValueLabel(t, "operational_status", value))).toEqual([
+      "Operational",
+      "Non-operational",
+      "Repair in progress",
+      "DR standby",
+      "Ready",
+      "Retired (ServiceNow status)",
+    ]);
   });
 });
