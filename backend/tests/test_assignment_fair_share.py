@@ -137,7 +137,7 @@ class _Result:
 
 class _Session:
     """Answers the four reads of ``fair_share_deal`` in order: the runs, the live parents, the running counts and
-    the home fleets."""
+    the home fleets; then the two of ``fleet_run_budget.hold_over_budget``: the runs and the budgeted fleets."""
 
     def __init__(self, answers):
         self._answers = list(answers)
@@ -162,12 +162,16 @@ async def test_the_adapter_deals_children_first_then_one_per_fleet(monkeypatch):
     agent_a, agent_b, parent = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     fleet_a, fleet_b = uuid.uuid4(), uuid.uuid4()
     a0, a1, b0, child = (_Execution(uuid.uuid4(), at) for at in (0, 1, 50, 90))
+    runs = [(a0.id, agent_a, None), (a1.id, agent_a, None), (b0.id, agent_b, None), (child.id, agent_a, parent)]
     session = _Session(
         [
-            [(a0.id, agent_a, None), (a1.id, agent_a, None), (b0.id, agent_b, None), (child.id, agent_a, parent)],
+            runs,
             [parent],
             [(agent_a, 1)],
             [(agent_a, fleet_a), (agent_b, fleet_b)],
+            # No fleet has a run budget (#1526): nothing is held.
+            runs,
+            [],
         ]
     )
     ordered = await assignment_adapter.AssignmentAdapter().deal_claims(session, [a0, a1, b0, child], "w1")

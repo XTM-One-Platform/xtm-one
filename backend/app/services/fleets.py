@@ -253,6 +253,8 @@ BUILTIN_FLEET_WRITABLE_FIELDS: frozenset[str] = frozenset(
         "is_archived",
         "budget_config",
         "max_iterations",
+        # The fleet's run budget (#1526): the deployment's choice, never seeded.
+        "run_budget",
         "autonomy_level",
         # Per-gate pins (#916, CTEM-34): the customer's choice, never written by the seed, so it survives an upgrade.
         "approval_pins",

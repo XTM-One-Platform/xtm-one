@@ -149,6 +149,11 @@ class Fleet(VisibilityColumns, Base):
     #: Iteration cap default of the HOME members; an agent's own
     #: ``max_iterations`` wins, the platform ceiling clamps. NULL = none.
     max_iterations: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    #: Optional run budget of the fleet (#1526, ``services/fleet_run_budget``):
+    #: ``{runs_per_hour, tokens_per_hour}``, each optional, over the home
+    #: members' runs of the last rolling hour. Over it, new runs are held in the
+    #: queue (never failed) and the owner is told once an hour. NULL = none.
+    run_budget: Mapped[dict[str, int] | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
     #: Member defaults (dev-docs/ctem-fleets.md section 10.3): what a connected
     #: row inherits while its own field is NULL. Read through
     #: ``app.services.fleets.effective_member_settings``, never raw.
