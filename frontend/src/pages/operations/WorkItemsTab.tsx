@@ -469,8 +469,9 @@ export default function WorkItemsTab({
   // "Waiting for me" counts every open item waiting for the caller (#1499): every segment, no
   // status, search, owner or picked fleet, so the chip reads the same number wherever the list
   // stands and a click (which resets those filters) shows exactly that many rows. A host page's
-  // workspace or locked fleet is not a filter and stays.
-  const waitingFilters = { open_only: true, waiting_for_me: true, workspace, fleet: lockedFleet ? fleet : undefined };
+  // workspace or locked fleet is not a filter and stays: the lock is counted whatever `?scope=` an
+  // administrator set, since the click clears that scope and lists inside the lock.
+  const waitingFilters = { open_only: true, waiting_for_me: true, workspace, fleet: lockedFleet };
   const { data: waitingCountData } = useWorkItemCount(waitingFilters, false, !fleetPending);
   const { data: staleViewCountData } = useWorkItemCount({ ...quickBase, stale_only: true }, false, !landing);
   const quickOptions = [

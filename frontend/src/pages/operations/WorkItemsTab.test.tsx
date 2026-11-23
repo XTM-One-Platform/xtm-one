@@ -17,8 +17,10 @@ import { renderWithProviders } from "@/testing/providers";
 import { blockedReason, cancelledBlockers } from "@/lib/work-item-context";
 import type { WorkItem } from "@/types";
 
+// An administrator in the test that reads a fleet tab with `?scope=all`; a reader elsewhere.
+let IS_ADMIN = false;
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "u1", timezone: "Europe/Paris" }, isAdmin: false }),
+  useAuth: () => ({ user: { id: "u1", timezone: "Europe/Paris" }, isAdmin: IS_ADMIN }),
 }));
 
 // The wide toolbar (pills): happy-dom's 1024 px window would select the
@@ -1106,6 +1108,21 @@ describe("Work Items quick filters", () => {
     expect(read?.status).toBeUndefined();
     expect(read?.owner_agent_id).toBeUndefined();
     expect(read?.search).toBeUndefined();
+  });
+
+  it("counts inside a locked fleet when an administrator reads scope=all (#1499)", () => {
+    IS_ADMIN = true;
+    try {
+      COUNT_READS.length = 0;
+      renderWithProviders(
+        <MemoryRouter initialEntries={["/operations?scope=all"]}>
+          <WorkItemsTab fleet="fleet-1" />
+        </MemoryRouter>,
+      );
+      expect(lastWaitingCountRead()).toMatchObject({ open_only: true, waiting_for_me: true, fleet: "fleet-1" });
+    } finally {
+      IS_ADMIN = false;
+    }
   });
 
   it("resets every other filter and lands on All when turned on (#1499)", () => {
