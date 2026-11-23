@@ -91,6 +91,21 @@ describe("cases quick filters (#1503)", () => {
     expect(fr["Closed (case scope)"]).toBe("Fermés");
   });
 
+  it("keeps the chip labels of every locale within one toolbar row at 1080 px", () => {
+    // Width budget in Latin-character units, a CJK glyph counting two: FR at 87
+    // units wrapped the toggles to a second row at 1080 px (UX round 3, #1515),
+    // EN at 71 and ES at 74 fit.
+    const BUDGET = 76;
+    const width = (text: string) => [...text].reduce((sum, ch) => sum + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 2 : 1), 0);
+    const catalogs = { en, es, fr, ja } as Record<string, Record<string, string>>;
+    for (const [locale, catalog] of Object.entries(catalogs)) {
+      const total = Object.values(CASE_QUICK_FILTER_LABEL).reduce((sum, key) => sum + width(catalog[key] ?? key), 0);
+      expect(total, `${locale} chip labels take ${total} units`).toBeLessThanOrEqual(BUDGET);
+    }
+    expect(fr[CASE_QUICK_FILTER_LABEL.waiting_decision]).toBe("En attente");
+    expect(fr["Waiting for decision"]).toBe("En attente de décision");
+  });
+
   it("writes the toggles in chip order and reads unknown ones as absent", () => {
     expect(writeCaseToggles(["overdue", "mine"])).toBe("mine,overdue");
     expect(readCaseToggles("overdue,nope,mine")).toEqual(["mine", "overdue"]);

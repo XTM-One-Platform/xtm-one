@@ -22,11 +22,13 @@ export type CaseToggle = (typeof CASE_TOGGLES)[number];
  * English labels, translated where drawn. @i18n-keys
  * The open and closed scopes have their own keys: the bare "Open" is the verb
  * buttons use ("Ouvrir") and a scope names the cases it holds, plural adjective
- * ("Ouverts", "Fermés").
+ * ("Ouverts", "Fermés"). The waiting scope has its own key too: the status
+ * label stays "En attente de décision" where a case shows it, and the chip reads
+ * "En attente" so the toolbar keeps one row at 1080 px in every locale.
  */
 export const CASE_QUICK_FILTER_LABEL = {
   open: "Open (case scope)",
-  waiting_decision: "Waiting for decision",
+  waiting_decision: "Waiting (case scope)",
   closed: "Closed (case scope)",
   all: "All",
   mine: "Mine",
