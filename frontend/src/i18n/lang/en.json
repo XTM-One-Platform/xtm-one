@@ -21176,5 +21176,10 @@
   "What this reply suggestion setting does": "What this reply suggestion setting does",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Needs a routing model: with none set, no reply suggestion is generated.",
+  "Add a Sync all schedule": "Add a Sync all schedule",
+  "Back to Organization Profile": "Back to Organization Profile",
+  "Inventory sources": "Inventory sources",
+  "About the inventory sources": "About the inventory sources",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset."
 }

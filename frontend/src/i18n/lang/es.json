@@ -21176,5 +21176,10 @@
   "What this reply suggestion setting does": "Qué hace este ajuste de sugerencias de respuesta",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "Activado, el modelo de enrutamiento de la plataforma lee cada respuesta y propone un próximo mensaje, en gris en el cuadro de mensaje. Tab lo coloca en el cuadro, escribir o Escape lo descarta, y no se envía nada hasta que pulse Intro. Desactivado, no se genera ninguna sugerencia para usted.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Cuando un agente ha respondido, el modelo de enrutamiento propone el próximo mensaje del usuario en el cuadro de mensaje del chat (Tab para usarlo). Cada usuario puede desactivarlo en su perfil.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Requiere un modelo de enrutamiento: sin él, no se genera ninguna sugerencia de respuesta.",
+  "Add a Sync all schedule": "Añadir una programación Sincronizar todo",
+  "Back to Organization Profile": "Volver al perfil de la organización",
+  "Inventory sources": "Fuentes del inventario",
+  "About the inventory sources": "Acerca de las fuentes del inventario",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Las plataformas que cada sincronización lee según una programación, los agentes y socios que escriben a través de la API, las importaciones CSV y las filas introducidas a mano. La correspondencia de activos fusiona los registros de varias fuentes en un solo activo."
 }
