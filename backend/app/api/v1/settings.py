@@ -824,6 +824,12 @@ async def _ensure_platform_default_model(
         ps.embedding_provider = provider
         ps.embedding_provider_id = uuid.UUID(provider_id) if provider_id else None
         ps.embedding_model = EMBEDDING_DEFAULTS[provider]
+    elif not ps.embedding_model and provider == FiligranGatewayProvider.provider_name and provider_id:
+        # Its catalog differs per deployment: the gateway's flagged model, where it re-embeds nothing.
+        from app.llm.gateway_embedding_default import fill_from_gateway
+
+        if config := await db.get(LLMProviderConfig, uuid.UUID(provider_id)):
+            await fill_from_gateway(db, ps, [config])
 
     if not ps.image_model and provider in IMAGE_DEFAULTS:
         ps.image_provider = provider
