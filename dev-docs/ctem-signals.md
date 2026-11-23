@@ -276,10 +276,55 @@ Any other agent reads the signals through the read-only built-in group
 the case reads; `dev-docs/ctem-cases.md` section 8.1). It never records a
 signal.
 
+## 6bis. Signal events and the CTEM signal trigger (#1409)
+
+Two platform events (`services/platform_events.PLATFORM_EVENTS`, listed by
+`list_platform_events`), never one per sighting:
+
+| Event | Raised when | Raised by |
+|---|---|---|
+| `ctem_signal.recorded` | the first sighting of a signal, after the scope gate gave its first verdict (or none when the gate did not run) | `ctem_scope_gate_store.evaluate_after_record` |
+| `ctem_signal.triaged` | a later evaluation changes a verdict the signal already had (`confirmed`, `to_validate`, `watchlist`, `discarded`) | `ctem_scope_gate_store.evaluate` with `events`, from `POST /ctem-signals/{id}/evaluate` and `POST /ctem-signals/evaluate` |
+
+A re-sighting raises nothing; the first verdict of a new signal is carried by
+`recorded`, never a `triaged`. Both are queued in `ctem_case_loop.PendingEvents`
+and published after the commit, `recorded` ahead of the case events of the
+same sighting. Event ids are stable (one per signal for `recorded`, one per
+verdict change for `triaged`).
+
+**Payload: ids and routing only.** `signal_id`, `trigger_path`, `lens`,
+`source_provider`, `subject_kind`, `verdict`, `case_id`, plus
+`previous_verdict` on `triaged`. These are the filter keys. The agent reads the
+signal itself with `list_ctem_signals signal_id=...` under the run's
+permissions.
+
+**Visibility.** Both events are viewer-checked (`VIEWER_CHECKED_EVENTS`), the
+case events' delivery check: a subscription hears one only when the user its
+run executes as reads the signal (`ctem_signals.user_reads_signal`: an
+administrator, or the signal's recorder). A listener-recorded signal
+(`recorded_by = system`) reaches only an assignment that runs as an
+administrator.
+
+**The trigger.** The assignment form shows a "CTEM signal" tile next to
+"Platform event" (XTM One mode). It saves a `platform_event` trigger: `event`
+is one of the two events or both, and `filter` holds an any-of list for each
+of `trigger_path`, `lens`, `source_provider`, `subject_kind` and `verdict`
+that is filled (empty: every signal). A stored `platform_event` trigger on the
+signal events alone, with those filter keys only and no one-off watch,
+deadline or scope, reopens on the tile (`frontend/src/lib/ctem-signal-trigger.ts`).
+`create_assignment` and `update_assignment` set the same trigger with
+`trigger_type="platform_event"`; no new trigger type.
+
+**Bursts.** One run per signal, under the assignment's `max_concurrent_runs`
+(the platform-event queue). Platform events have no batching today, so the
+trigger offers no "batch every N minutes" setting.
+
 ## 7. Tests
 
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:
 one signal per path through each, idempotence, filters, recorder scope,
 Copilot mode), `tests/test_ctem_signals_postgres.py` (the upsert, a new
 sighting keeps the next steps' writes, organization isolation, filters, the
-check constraints).
+check constraints), `tests/test_ctem_signal_events.py` (section 6bis: first
+sighting raises `recorded`, re-sighting nothing, a verdict change `triaged`,
+a non-admin subscriber does not hear an admin-only signal, filters match).
