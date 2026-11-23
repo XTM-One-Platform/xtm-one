@@ -193,6 +193,34 @@ export function useProposeSignalScope() {
   });
 }
 
+/** What a person may do to signals from the Signals page (#1505; `TRIAGE_ACTIONS` in ctem_scope_gate_store.py). */
+export type CtemSignalTriageAction = "dismiss" | "restore" | "recheck";
+
+/** The body of `POST /ctem-signals/triage`: the selected ids, or every signal one state and path match. */
+export interface CtemSignalTriage {
+  action: CtemSignalTriageAction;
+  ids?: string[];
+  filter?: { state?: CtemSignalState; trigger_path?: string };
+}
+
+export interface CtemSignalTriageResult {
+  matched: number;
+  counts: Partial<Record<CtemSignalState | "changed" | "skipped", number>>;
+}
+
+/**
+ * Dismiss, restore or re-check signals in one call (#1505): the selected ones,
+ * or every signal the state filter matches. The lists and counters read again.
+ */
+export function useTriageCtemSignals() {
+  const qc = useQueryClient();
+  return useMutation<CtemSignalTriageResult, Error, CtemSignalTriage>({
+    mutationFn: (body) => api.post("/ctem-signals/triage", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 /** The body of `POST /ctem-signals` (`SignalCreate` in backend/app/api/v1/ctem_signals.py). */
 export interface CtemSignalCreate {
   trigger_path: string;
