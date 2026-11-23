@@ -212,8 +212,9 @@ rows add none), names folded on case and spaces, with `issue_count`,
 (`more_assets` counts the rest). `kev` and `max_cvss` fold the facts of the
 same CVE across every visible source: an asset named by an OpenAEV finding of a
 CVE that OpenCTI marks known exploited reads `kev` true. The page cuts the
-version, status and sources cells on one line with a tooltip, and hides Status
-and Sources below a 56 rem card (back from the Columns pill). On an upgrade case each row is joined to the
+version and status cells on one line with a tooltip, hides Status below a 56 rem
+card (back from the Columns pill), and draws Sources with the same `SourceMark`
+as the Running versions card (logo or glyph, name in the tooltip). On an upgrade case each row is joined to the
 inventory by asset name (`organization_assets.name_key`) and adds
 `in_inventory`, the `versions` of the case's product it runs, their `sources`
 and, with a fixed version known, its worst `status`; `version_source` is then

@@ -47,7 +47,10 @@ describe("CaseAffectedAssets (#1176 slice 3b)", () => {
     const web = rows.find((r) => within(r).queryByText("web-01"))!;
     expect(within(web).getByText("8.0.1, Unknown")).toBeInTheDocument();
     expect(within(web).getByText("Below the fixed version")).toBeInTheDocument();
-    expect(within(web).getByText("Microsoft Intune, SBOM")).toBeInTheDocument();
+    // Sources as the shared marks of the Running versions card, names for screen readers (UX r2 B1 on #1324).
+    const marks = within(web).getAllByTestId("ctem-case-version-source");
+    expect(marks.map((m) => m.textContent)).toEqual(["Microsoft Intune", "SBOM"]);
+    expect(within(web).queryByText("Microsoft Intune, SBOM")).toBeNull();
     const db = rows.find((r) => within(r).queryByText("db-01"))!;
     expect(within(db).getByText("Not in the inventory")).toBeInTheDocument();
     expect(screen.queryByTestId("ctem-case-affected-assets-no-version")).toBeNull();

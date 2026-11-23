@@ -16,7 +16,7 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCaseAffectedAsset, CtemCaseAffectedAssets } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
-import { versionSourceName } from "./CaseRunningVersions";
+import { SourceMark, versionSourceName } from "./CaseRunningVersions";
 
 const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string> = {
   below_fixed: "Below the fixed version",
@@ -25,9 +25,10 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string>
 };
 
 /**
- * Status and Sources step aside below a 896 px card (the case page at 1080), back from the
- * Columns pill: every row keeps one height and the table never scrolls sideways (design
- * standards s.3, UX r1 B2 on #1324). The text cells are cut on one line with a tooltip.
+ * Status steps aside below a 896 px card (the case page at 1080), back from the Columns pill:
+ * every row keeps one height and the table never scrolls sideways (design standards s.3, UX r1
+ * B2 on #1324). Sources stay: as 16 px marks they take about 60 px (UX r2 B1 on #1324). The
+ * text cells are cut on one line with a tooltip.
  */
 const SECONDARY_HIDE_BELOW = "4xl" as const;
 
@@ -112,12 +113,16 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
           {
             key: "sources",
             header: "Sources",
+            // The same marks as the Running versions card next to it: one implementation per pattern (UX r2 B1 on #1324).
             cell: (a: CtemCaseAffectedAsset) => (
-              <TruncatedText text={(a.sources ?? []).map((s) => t_i18n(versionSourceName(s))).join(", ")} className="max-w-[12rem]" />
+              <span className="flex items-center gap-1.5">
+                {(a.sources ?? []).map((s) => (
+                  <SourceMark key={s} source={s} />
+                ))}
+              </span>
             ),
             csv: (a: CtemCaseAffectedAsset) => (a.sources ?? []).map(versionSourceName).join("; "),
             hideable: true,
-            hideBelow: SECONDARY_HIDE_BELOW,
           } satisfies DataTableColumn<CtemCaseAffectedAsset>,
         ]
       : []),
