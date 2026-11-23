@@ -42,7 +42,7 @@ export function reviewStage(pkg: { coverage_requested?: boolean } | null | undef
 
 /** The headline of each stage, translated where drawn. @i18n-keys */
 export const REVIEW_STAGE_LABEL = {
-  not_started: "No threat package yet: the fleet drafts one in OpenCTI once the case is triaged.",
+  not_started: "The threat package an analyst reviews in OpenCTI before any validation, once the case is triaged.",
   drafted: "Threat package drafted, coverage not requested yet",
   coverage_requested: "Coverage requested in OpenCTI",
 } as const satisfies Record<ReviewStage, string>;

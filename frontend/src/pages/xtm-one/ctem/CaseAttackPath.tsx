@@ -88,7 +88,7 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
           <div className="content-base">
             <CaseSectionReason
               own={t_i18n("No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.")}
-              needsOpencrq
+              source="opencrq"
               testId="ctem-case-attack-path-empty"
             />
           </div>

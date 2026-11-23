@@ -114,6 +114,6 @@ describe("CaseAnalystReview", () => {
 
   it("says a case with no package yet, never blank", () => {
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={null} history={[]} />);
-    expect(screen.getByText(/No threat package yet/)).toBeTruthy();
+    expect(screen.getByText(/read from OpenCRQ|reviews in OpenCTI/)).toBeTruthy();
   });
 });

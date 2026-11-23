@@ -61,7 +61,7 @@ export function CaseRemediationDecision({
       <CardContent className="space-y-3 content-base">
         {!gate ? (
           <CaseSectionReason
-            own={t_i18n("Not decided yet: the fleet decides the remediation once the case is validated.")}
+            own={t_i18n("The remediation options with their cost and the one approved, once the case is validated.")}
             testId="ctem-case-remediation-empty"
           />
         ) : (
