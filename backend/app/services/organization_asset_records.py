@@ -624,7 +624,8 @@ async def set_crown_jewel_links(
 
 
 def _is_hand(origin: str) -> bool:
-    return not origin.startswith("sync:") and origin not in ("import", "profile")
+    """A person's write (the form, the API): a sync, an import or an agent writing its source's rows owns them."""
+    return not origin.startswith(("sync:", "agent:")) and origin not in ("import", "profile")
 
 
 def _local_fields() -> frozenset[str]:
@@ -1536,6 +1537,122 @@ async def _apply_profile_groups(
         if hasattr(row, "external_id") and not getattr(row, "external_id", ""):
             row.external_id = group.external_id
     return [g.id for g in stored if g.id not in kept]
+
+
+# ── The agent row tools (upsert_organization_rows, remove_organization_rows) ──
+
+
+def _section_model(section: str) -> tuple[Any, Any]:
+    if section == "assets":
+        return OrganizationAssetRecord, record_row
+    if section == "asset_groups":
+        return OrganizationAssetGroup, group_row
+    raise RecordError("section must be assets or asset_groups")
+
+
+async def rows_by_ref(
+    db: AsyncSession, organization_id: uuid.UUID, section: str, refs: Sequence[tuple[str, str]]
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """The stored rows of *section* that *refs* ``(source, external_id)`` name, as profile rows."""
+    model, as_row = _section_model(section)
+    await ensure_records(db, organization_id)
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    unique = list(dict.fromkeys(refs))
+    for start in range(0, len(unique), 1000):
+        chunk = unique[start : start + 1000]
+        for item in (
+            await db.execute(
+                select(model).where(
+                    model.organization_id == organization_id,
+                    tuple_(model.source, model.external_id).in_(chunk),
+                )
+            )
+        ).scalars():
+            out[(item.source, item.external_id)] = as_row(item)
+    return out
+
+
+async def name_owners(
+    db: AsyncSession, organization_id: uuid.UUID, section: str, names: Iterable[str], *, source: str
+) -> dict[str, str]:
+    """The name keys among *names* a stored row already holds, mapped to its source.
+
+    An asset of another source with the same name is a second record of the
+    same thing (the store merges them): only *source*'s own records clash.
+    Any group with the name clashes (one group per name).
+    """
+    model, _ = _section_model(section)
+    keys = list({_key(n)[:200] for n in names if _key(n)})
+    out: dict[str, str] = {}
+    for start in range(0, len(keys), 1000):
+        query = select(model.name_key, model.source).where(
+            model.organization_id == organization_id, model.name_key.in_(keys[start : start + 1000])
+        )
+        if section == "assets":
+            query = query.where(model.source == source)
+        out.update(_as_map((await db.execute(query)).all()))
+    return out
+
+
+async def write_rows(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    section: str,
+    values: Sequence[Mapping[str, Any]],
+    *,
+    origin: str,
+    actor: str,
+) -> WriteResult:
+    """Write validated rows of *section* by ``(source, external_id)``: the records or the groups they name."""
+    if section == "assets":
+        return await upsert_records(db, organization_id, values, origin=origin, actor=actor)
+    _section_model(section)
+    result = WriteResult()
+    refs = list({(str(v["source"]), str(v["external_id"])) for v in values})
+    stored: dict[tuple[str, str], OrganizationAssetGroup] = {}
+    if refs:
+        query = select(OrganizationAssetGroup).where(
+            OrganizationAssetGroup.organization_id == organization_id,
+            tuple_(OrganizationAssetGroup.source, OrganizationAssetGroup.external_id).in_(refs),
+        )
+        stored = {(g.source, g.external_id): g for g in (await db.execute(query)).scalars()}
+    for value in values:
+        found = stored.get((str(value["source"]), str(value["external_id"])))
+        group = await upsert_group(
+            db, organization_id, value, origin=origin, actor=actor, group_id=found.id if found is not None else None
+        )
+        (result.updated if found is not None else result.created).append(group.id)
+    return result
+
+
+async def remove_rows(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    section: str,
+    refs: Sequence[tuple[str, str]],
+    *,
+    origin: str,
+    actor: str,
+) -> list[uuid.UUID]:
+    """Delete the rows of *section* that *refs* ``(source, external_id)`` name (an unknown ref is skipped)."""
+    model, _ = _section_model(section)
+    if not refs:
+        return []
+    ids = list(
+        (
+            await db.execute(
+                select(model.id).where(
+                    model.organization_id == organization_id,
+                    tuple_(model.source, model.external_id).in_(list(dict.fromkeys(refs))),
+                )
+            )
+        ).scalars()
+    )
+    if section == "assets":
+        return await delete_records(db, organization_id, ids, origin=origin, actor=actor)
+    for group_id in ids:
+        await delete_group(db, organization_id, group_id, origin=origin, actor=actor)
+    return ids
 
 
 # ── Reads ─────────────────────────────────────────────────────────────

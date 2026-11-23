@@ -273,8 +273,8 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 ### 9.2 Writes through the store, merge and split (S3)
 
 - **Every save refreshes the store.** `organization_context.save_version` calls
-  `organization_asset_store.refresh_after_save` in the same transaction: a sync run, an import, the form, the
-  agent row tools (`upsert_organization_rows`, `remove_organization_rows`) and a proposal all rebuild the store
+  `organization_asset_store.refresh_after_save` in the same transaction: a sync run, an import, the form and a
+  proposal all rebuild the store (the agent row tools write the records since #1543, section 9.2bis)
   with the rows they saved. A refresh failure is logged and never fails the save; the next read rebuilds
   (`ensure_built`).
 - **One asset, several records.** In the `assets` section only (`MULTI_SOURCE_SECTIONS` of
@@ -321,6 +321,15 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
 - `GET /api/v1/organization-context/changes?entity_id=&since=&before_id=&limit=`: the change log, newest first;
   `POST /api/v1/organization-context/changes/restore` `{change_ids}`: a delete comes back, an update gets its
   `before` fields, a create goes.
+
+The agent row tools write the records too: `upsert_organization_rows` and `remove_organization_rows` on
+`assets` or `asset_groups` plan against the records the call addresses (`organization_context_rows.
+plan_record_upsert` / `plan_record_remove`, keyed on `(source, external_id)`, a field the source does not send
+kept from the record) and write through `organization_asset_records.write_rows` / `remove_rows` with origin
+`agent:<source>`: no profile version, no 5,000 cap, each changed row in the change log with the agent as actor,
+one audit entry per call. A row of another source with the same name is added beside it (the store merges
+them); a row of the same source with the name of another record is refused. Tech stack and AI systems rows
+stay on the profile path until they move to records (#1514, the Software entity).
 
 ### 9.3 Tech stack from asset software (S4)
 

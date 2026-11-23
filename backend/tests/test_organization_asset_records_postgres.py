@@ -175,3 +175,60 @@ async def test_deleting_a_group_keeps_its_assets_without_the_group() -> None:
         await session.commit()
         after = await records.get_record(session, org, record.id)
     assert records.record_row(after).get("group") in ("", None)
+
+
+async def test_the_agent_row_path_plans_writes_and_removes_records_only_where_they_differ() -> None:
+    from app.services import organization_context_rows as org_rows
+
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED, HAND])
+        sent = [
+            {"name": "laptop-01", "category": "host", "external_id": "d-1", "serial": "SN-778"},
+            {"name": "laptop-02", "category": "host", "external_id": "d-2"},
+            {"name": "web-02", "category": "host", "external_id": "d-3"},
+        ]
+        refs = [("intune", r["external_id"]) for r in sent]
+        stored = await records.rows_by_ref(session, org, "assets", refs)
+        names = await records.name_owners(session, org, "assets", [r["name"] for r in sent], source="intune")
+        for row in stored.values():
+            names.pop(org_rows.name_key(row.get("name")), None)
+        plan = org_rows.plan_record_upsert(
+            "assets", "intune", sent, validate=records.validate_asset, stored=stored, names=names
+        )
+        # web-02 is a hand record of another source: a second record of the same thing, added beside it.
+        assert (plan.unchanged, plan.added) == (["laptop-01"], ["laptop-02", "web-02"])
+        result = await records.write_rows(session, org, "assets", plan.writes, origin="agent:intune", actor="agent:A")
+        await session.commit()
+        stored = await records.rows_by_ref(session, org, "assets", [("intune", "d-2"), ("intune", "x")])
+        gone = org_rows.plan_record_remove("assets", "intune", ["d-2", "x"], stored=stored)
+        removed = await records.remove_rows(
+            session, org, "assets", gone.remove_refs, origin="agent:intune", actor="agent:A"
+        )
+        await session.commit()
+        log = await records.changes(session, org, entity_id=removed[0])
+        left = await records.rows_by_ref(session, org, "assets", refs)
+    assert result.as_dict()["created"] == 2
+    assert [name for name, _ in gone.refused] == ["x"]
+    assert [c["op"] for c in log][:1] == ["delete"] and log[0]["actor"] == "agent:A"
+    assert sorted(left) == [("intune", "d-1"), ("intune", "d-3")]
+
+
+async def test_the_agent_row_path_writes_and_removes_groups() -> None:
+    from app.services import organization_context_rows as org_rows
+
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        sent = [{"name": "Paris office", "external_id": "g-1"}]
+        plan = org_rows.plan_record_upsert(
+            "asset_groups", "intune", sent, validate=records.validate_group, stored={}, names={}
+        )
+        await records.write_rows(session, org, "asset_groups", plan.writes, origin="agent:intune", actor="agent:A")
+        await session.commit()
+        stored = await records.rows_by_ref(session, org, "asset_groups", [("intune", "g-1")])
+        removed = await records.remove_rows(
+            session, org, "asset_groups", [("intune", "g-1")], origin="agent:intune", actor="agent:A"
+        )
+        await session.commit()
+        after = await records.rows_by_ref(session, org, "asset_groups", [("intune", "g-1")])
+    assert stored[("intune", "g-1")]["name"] == "Paris office"
+    assert len(removed) == 1 and after == {}
