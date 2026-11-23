@@ -21,6 +21,7 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { AiLockedFooter, EditionBadge } from "@/components/ui/enterprise-upsell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SampleBadge } from "@/components/ui/sample-badge";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { cn, formatCompactNumber, safeExternalUrl, saveBlobAs } from "@/lib/utils";
 import { csvBlob } from "@/lib/csv";
 import { BUTTON_ROLE_FOCUS_RING, buttonRoleProps } from "@/lib/button-role";
@@ -1498,14 +1499,9 @@ export default function CtemCommandCenter({
                       <div className="flex items-center gap-1.5 min-w-0">
                         <p className="content-base font-medium truncate">{r.title}</p>
                         {r.priorityLabel && CTEM_PRIORITY_CONFIG[r.priorityLabel] && (
-                          <span
-                            className={cn(
-                              "text-[9px] font-semibold uppercase tracking-wider rounded-sm px-1.5 py-0.5 shrink-0",
-                              CTEM_PRIORITY_CONFIG[r.priorityLabel].cls,
-                            )}
-                          >
-                            {CTEM_PRIORITY_CONFIG[r.priorityLabel].label}
-                          </span>
+                          <ToneBadge tone={CTEM_PRIORITY_CONFIG[r.priorityLabel].tone}>
+                            {t_i18n(CTEM_PRIORITY_CONFIG[r.priorityLabel].label)}
+                          </ToneBadge>
                         )}
                       </div>
                       {/* Two lines, full text on hover: a truncated reason loses its
