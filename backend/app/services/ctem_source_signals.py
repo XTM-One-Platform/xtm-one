@@ -46,6 +46,7 @@ def signal_of(issue: rules.SourceIssue, fix: rules.Remediation) -> SignalInput |
             "kind": fix.kind,
             "title": fix.title,
             "fixed_version": fix.fixed_version,
+            **({"fixed_versions": dict(fix.fixed_versions)} if fix.fixed_versions else {}),
             "product_label": fix.product_label,
         },
         "software": [software] if software else [],

@@ -1431,6 +1431,53 @@ def test_a_narrow_checkout_of_a_member_keeps_the_sibling_it_links_by_workspace()
     assert "platform/graphql/package.json" in written and "platform/graphql/src/index.ts" not in written
 
 
+def test_an_eslint_config_import_by_member_name_adds_that_member() -> None:
+    manifests = {
+        "package.json": json.dumps({"name": "app", "workspaces": ["eslint-rules", "front", "back"]}).encode(),
+        "eslint-rules/package.json": _pkg("eslint-rules"),
+        "front/package.json": _pkg("@app/front"),
+        "back/package.json": _pkg("@app/back"),
+    }
+    configs = {
+        "eslint.config.ts": b"import json from '@eslint/json';\nimport { x } from 'eslint-rules/src/rules';",
+        "front/local.eslint.config.ts": b"import { linguiRules } from \"eslint-rules/src/rules\";\nimport('./local.ts');",
+    }
+    assert detect.is_lint_config("front/local.eslint.config.ts") and detect.is_lint_config("eslint.config.mjs")
+    assert not detect.is_lint_config("front/eslint.config.test.ts")
+    assert detect.lint_config_member_dirs(configs, manifests, ["front"]) == ["eslint-rules"]
+    assert detect.lint_config_member_dirs(configs, manifests, ["front/src"]) == ["eslint-rules"]
+    assert detect.lint_config_member_dirs(configs, manifests, ["front", "eslint-rules"]) == [], "already kept"
+    assert detect.lint_config_member_dirs(configs, manifests, ["eslint-rules/src"]) == [], "the member holding it"
+    assert detect.lint_config_member_dirs({"eslint.config.ts": b"import x from 'react';"}, manifests, ["front"]) == []
+
+
+def test_a_narrow_checkout_keeps_the_member_its_eslint_config_imports() -> None:
+    import io
+    import tarfile
+
+    from app.services.sandbox_workspace.repository import extract_tree
+
+    members = {
+        "r-sha/package.json": json.dumps({"name": "app", "workspaces": ["eslint-rules", "front"]}).encode(),
+        "r-sha/yarn.lock": b"",
+        "r-sha/eslint.config.ts": b"import { rules } from 'eslint-rules/src/rules';",
+        "r-sha/eslint-rules/package.json": _pkg("eslint-rules"),
+        "r-sha/eslint-rules/src/rules.ts": b"export const rules = [];",
+        "r-sha/front/package.json": _pkg("@app/front"),
+        "r-sha/front/src/a.ts": b"",
+    }
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+    tree = extract_tree(buffer.getvalue(), sub_paths=["front"], max_bytes=10 * 1024 * 1024)
+    written = {path for path, _ in tree.files}
+    assert tree.workspace_links == ["eslint-rules"]
+    assert "eslint-rules/src/rules.ts" in written
+
+
 def test_a_patch_resolution_keeps_the_patch_file_it_names():
     sizes = {
         "package.json": 10,
