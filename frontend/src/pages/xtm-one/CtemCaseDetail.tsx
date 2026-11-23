@@ -56,8 +56,12 @@ import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
-import { caseLoopWorker, loopFleetOf, opencrqConnected } from "./ctem/case-loop-reason";
-import { useFleetHealth, useFleets } from "@/hooks/api/useFleetApi";
+import { loopFleetOf } from "./ctem/case-loop-reason";
+import { caseAutomations, caseSources, caseWork } from "./ctem/case-workers";
+import { CaseWorkCard } from "./ctem/CaseWorkCard";
+import { useFleets } from "@/hooks/api/useFleetApi";
+import { useAssignments } from "@/hooks/api/useAssignmentApi";
+import { useAgents } from "@/hooks/api/useAgentApi";
 import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
@@ -241,24 +245,27 @@ export default function CtemCaseDetail() {
   const agenticLicensed = useAgenticAIEnabled();
   const { data: caseRuns } = useCtemCaseRuns(id, agenticLicensed);
   const activity = useMemo(() => caseActivity(kase?.history ?? [], caseRuns?.runs), [kase, caseRuns]);
-  // Why an empty section is empty (#1206): the CTEM loop fleet, the runs on the case, OpenCRQ.
+  // Who works the case (#1266): every automation on the case events, whatever fleet or agent
+  // owns it, and the runs those events started here; the products each section is written from.
   const fleets = useFleets({ optional: true, enabled: agenticLicensed });
   const loopFleet = loopFleetOf(fleets.data);
-  const loopHealth = useFleetHealth(loopFleet?.id, { optional: true });
+  const assignments = useAssignments();
+  const agents = useAgents();
   const { data: registrations } = usePlatformRegistrations();
-  const loopState = useMemo(
-    () => ({
-      worker: caseLoopWorker({
+  const work = useMemo(
+    () =>
+      caseWork({
         licensed: agenticLicensed,
-        fleets: fleets.data,
-        fleetsError: fleets.isError || loopHealth.isError,
-        automations: loopFleet ? loopHealth.data?.automations : null,
+        // Only the automations that can start on THIS case: its events and its filter (UX round 1 on #1275, B1).
+        automations:
+          assignments.isError || assignments.data === undefined || !kase
+            ? undefined
+            : caseAutomations(assignments.data, agents.data, { id: kase.id, trigger_path: kase.trigger_path }),
         runs: caseRuns?.runs,
       }),
-      opencrq: opencrqConnected(registrations),
-    }),
-    [agenticLicensed, fleets.data, fleets.isError, loopFleet, loopHealth.data, loopHealth.isError, caseRuns, registrations],
+    [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns, kase],
   );
+  const loopState = useMemo(() => ({ sources: caseSources(registrations) }), [registrations]);
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -581,6 +588,14 @@ export default function CtemCaseDetail() {
         <p className="content-compact text-default-secondary">
           {t_i18n("{products} did not answer: details of its issues are unavailable.", { products: kase.details_unavailable.join(", ") })}
         </p>
+      )}
+
+      {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
+        <CaseWorkCard
+          work={work}
+          loopFleetId={loopFleet?.id ?? null}
+          onStart={kase.state === "needs_attention" ? () => open("start") : undefined}
+        />
       )}
 
       <CaseLoopProvider value={loopState}>

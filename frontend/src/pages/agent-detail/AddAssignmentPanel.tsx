@@ -47,7 +47,15 @@ const ALL_PLATFORMS = "__all__";
 // ---------------------------------------------------------------------------
 // Add Assignment Panel (simplified for the detail page)
 // ---------------------------------------------------------------------------
-export function AddAssignmentPanel({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+/** What a caller presets in a new assignment: the CTEM case page opens it on the case events (#1266). */
+export interface AssignmentPreset {
+  name?: string;
+  triggerType: TriggerType;
+  /** The platform events subscribed to, with `triggerType` `platform_event`. */
+  platformEvents?: string[];
+}
+
+export function AddAssignmentPanel({ agent, onClose, preset }: { agent: Agent; onClose: () => void; preset?: AssignmentPreset }) {
   const { t_i18n, t_text } = useFormatter();
   const create = useCreateAssignment();
   const [consentElement, confirmSharing] = useCredentialSharingConfirm();
@@ -72,8 +80,8 @@ export function AddAssignmentPanel({ agent, onClose }: { agent: Agent; onClose: 
   const showRunAs = agent.is_company_managed && isAdmin;
   const { data: users } = useUsers(showRunAs);
   const { toast } = useToast();
-  const [name, setName] = useState("");
-  const [triggerType, setTriggerType] = useState<TriggerType>("manual");
+  const [name, setName] = useState(preset?.name ?? "");
+  const [triggerType, setTriggerType] = useState<TriggerType>(preset?.triggerType ?? "manual");
   const [prompt, setPrompt] = useState("");
   const [runAsUserId, setRunAsUserId] = useState<string | null>(null);
   const [cron, setCron] = useState("0 8 * * 1-5");
@@ -81,7 +89,9 @@ export function AddAssignmentPanel({ agent, onClose }: { agent: Agent; onClose: 
   const [eventProvider, setEventProvider] = useState("");
   const [eventType, setEventType] = useState("");
   const [scopeBindings, setScopeBindings] = useState<Record<string, string[]>>({});
-  const [platformDraft, setPlatformDraft] = useState<PlatformEventDraft>(() => platformEventDraft(undefined));
+  const [platformDraft, setPlatformDraft] = useState<PlatformEventDraft>(() =>
+    platformEventDraft(preset?.platformEvents?.length ? ({ event: preset.platformEvents } as unknown as TriggerConfig) : undefined),
+  );
 
   // Platform scope: detect scoped template bindings (from integration scope_config)
   const { data: platformRegistrations } = usePlatformRegistrations();

@@ -35,6 +35,6 @@ describe("CaseTreatmentPlan", () => {
 
   it("says when a plan appears when there is none", () => {
     renderWithProviders(<CaseTreatmentPlan plan={null} />);
-    expect(screen.getByText(/No treatment plan yet/)).toBeInTheDocument();
+    expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeInTheDocument();
   });
 });

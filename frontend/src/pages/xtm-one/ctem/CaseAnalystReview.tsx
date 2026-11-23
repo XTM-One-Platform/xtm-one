@@ -87,7 +87,7 @@ export function CaseAnalystReview({
         )}
         <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-threat-package">
           {stage === "not_started" && !gate ? (
-            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} testId="ctem-case-analyst-review-empty" />
+            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" testId="ctem-case-analyst-review-empty" />
           ) : (
             <span className={stage === "not_started" ? "text-default-secondary" : undefined}>{t_i18n(REVIEW_STAGE_LABEL[stage])}</span>
           )}

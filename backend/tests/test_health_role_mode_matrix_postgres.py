@@ -16,6 +16,9 @@ opens like the list it filters, the last investigation of a module card is an
 administrator's in the XTM One modes only, and "Investigate now" answers each
 role in each mode as section 8.1 says.
 
+Module checks (#101 S15f-2, section 13.8): ``GET /modules/{module}/checks`` is an
+administrator's in every mode, 404 in Copilot mode, readable with AI off.
+
 ``integration``-marked; skips when PostgreSQL is unreachable.
 """
 
@@ -257,6 +260,28 @@ async def test_investigate_now_answers_each_role_as_the_matrix_says(mode: str) -
         assert answers["admin"].json()["detail"]["code"] == ai_state.AI_DISABLED_CODE
     if mode == "xtm_one":
         assert answers["admin"].json()["detail"]["code"] == "module_analyst_off"
+    others = {role: answers[role].status_code for role in ROLES if role != "admin"}
+    assert others == dict.fromkeys(others, 403), f"{mode}: {others}"
+
+
+#: The module check reports on OpenCTI per mode for an administrator (#101 S15f-2, section 8.1):
+#: stored rows, no model, so readable with AI off; Copilot has no OpenCTI (404).
+CHECKS_ADMIN = {"copilot": 404, "xtm_one": 200, "ai_disabled": 200}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", MODES, indirect=True)
+async def test_the_module_check_reports_answer_each_role_as_the_matrix_says(mode: str) -> None:
+    async with health_database() as sessions:
+        people = await _people(sessions)
+        answers: dict[str, httpx.Response] = {}
+        for role in ROLES:
+            async with _client(sessions, people[role]) as client:
+                answers[role] = await client.get("/api/v1/health/modules/opencti/checks")
+
+    assert answers["admin"].status_code == CHECKS_ADMIN[mode]
+    if CHECKS_ADMIN[mode] == 200:
+        assert answers["admin"].json() == {"module": "opencti", "items": []}
     others = {role: answers[role].status_code for role in ROLES if role != "admin"}
     assert others == dict.fromkeys(others, 403), f"{mode}: {others}"
 
