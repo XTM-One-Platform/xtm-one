@@ -232,15 +232,18 @@ async def apply_recompute(
             source, external_id = _split_member(member_id)
             db.add(CtemCaseIssue(case_id=case.id, source=source, external_id=external_id, open=True))
             db.add(_event(case.id, actor, "issue_added", issue=member_id, at=now))
-            # The issue is a signal too, joined to the case that holds its fix (#1529).
+        # Every issue of the case this read sees is a signal too, joined to the case that holds its fix
+        # (#1529); a re-read moves the signal's last sighting, never adds one.
+        for member_id in sorted({*plan.add, *plan.reopen, *(m for m, r in rows.items() if r.open)}):
             fix = rules.remediation_of(seen[member_id]) if member_id in seen else None
-            if fix is not None:
-                signal, created = await _source_signal(db, organization_id, seen[member_id], fix, now)
-                counts["signals"] += int(created)
-                if signal is not None:
-                    from app.services import ctem_case_loop as loop
+            if fix is None:
+                continue
+            signal, created = await _source_signal(db, organization_id, seen[member_id], fix, now)
+            counts["signals"] += int(created)
+            if signal is not None:
+                from app.services import ctem_case_loop as loop
 
-                    loop.join_case(db, signal, case, events=events, now=now)
+                loop.join_case(db, signal, case, events=events, now=now)
         for member_id in plan.reopen:
             rows[member_id].open = True
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
@@ -572,6 +575,10 @@ async def merge_cases(
             await db.delete(row)
         # The merged case's history moves to the survivor: nothing of it is lost.
         await db.execute(update(CtemCaseEvent).where(CtemCaseEvent.case_id == source_id).values(case_id=target_id))
+        # So do the signals that opened or joined it (#1529): a signal never outlives its case.
+        from app.models.ctem_signal import CtemSignal
+
+        await db.execute(update(CtemSignal).where(CtemSignal.case_id == source_id).values(case_id=target_id))
         db.add(
             _event(
                 target_id,

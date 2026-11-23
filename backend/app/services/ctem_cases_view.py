@@ -193,7 +193,33 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
     are found by id. The signal members are read fresh on every call.
     """
     view = await _product_view(db, user_id, vertical, fresh=fresh)
-    return replace(view, signals=await signal_members(db, user_id))
+    seen = set(view.issues) | set(view.unavailable)
+    return replace(view, signals=await signal_members(db, user_id) | await source_signal_members(db, seen))
+
+
+async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
+    """The ``signal:<id>`` members a source reader recorded for issues this viewer sees (#1529).
+
+    A signal of an OpenCTI or OpenAEV issue is recorded by the system; it is
+    as visible as its issue (``evidence.source_issue``), never more.
+    """
+    if not seen:
+        return set()
+    from app.services.ctem_source_signals import SOURCE_PATHS
+
+    query = select(CtemSignal.id, CtemSignal.evidence).where(
+        CtemSignal.case_id.is_not(None), CtemSignal.source_provider.in_(tuple(SOURCE_PATHS))
+    )
+    try:
+        rows = (await db.execute(query)).all()
+    except Exception:
+        logger.info("CTEM cases: source signal members unreadable", exc_info=True)
+        return set()
+    return {
+        f"{SIGNAL_SOURCE}:{signal_id}"
+        for signal_id, evidence in rows
+        if isinstance(evidence, dict) and evidence.get("source_issue") in seen
+    }
 
 
 async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
