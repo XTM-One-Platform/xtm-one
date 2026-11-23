@@ -270,6 +270,47 @@ def gitlab_dependency_software(dependencies: list[dict[str, Any]]) -> list[dict[
     return list(out.values())[:MAX_DEPENDENCIES]
 
 
+def gitlab_dependency_findings(
+    dependencies: list[dict[str, Any]], *, project: dict[str, Any], host: str
+) -> list[dict[str, Any]]:
+    """The vulnerabilities GitLab lists on a project's dependencies, one finding each (#1331, slice 3).
+
+    The dependency list answers them when the token may read the project's
+    security dashboard; each one becomes a path 3 signal on the repository
+    asset (:mod:`app.services.ctem_code_findings`). Keyed ``<project id>:<vulnerability id>``.
+    """
+    project_id = _text(project.get("external_id"), 40)
+    if not project_id:
+        return []
+    out: dict[str, dict[str, Any]] = {}
+    for dep in dependencies:
+        package = _text(dep.get("name"), 300)
+        vulns = dep.get("vulnerabilities")
+        if not package or not isinstance(vulns, list):
+            continue
+        for vuln in vulns:
+            if not isinstance(vuln, dict) or vuln.get("id") in (None, ""):
+                continue
+            external_id = f"{project_id}:{_text(vuln.get('id'), 40)}"
+            out.setdefault(
+                external_id,
+                {
+                    "external_id": external_id,
+                    "package": package,
+                    "version": _text(dep.get("version"), 100) or "unknown",
+                    "purl": gitlab_purl(dep),
+                    "manifest_path": _text(dep.get("dependency_file_path"), 300),
+                    "name": _text(vuln.get("name"), 300),
+                    "severity": _text(vuln.get("severity"), 20).lower(),
+                    "url": _text(vuln.get("url"), 500),
+                    "repository": _text(project.get("name"), 300),
+                    "repository_id": project_id,
+                    "identity_key": repository_key(host, project_id),
+                },
+            )
+    return list(out.values())
+
+
 def next_link(link_header: str) -> str | None:
     """The ``rel="next"`` URL of an RFC 8288 ``Link`` header, else ``None``."""
     for part in (link_header or "").split(","):
@@ -356,6 +397,8 @@ class CodeRead:
     software_unread: set[str] = field(default_factory=set)
     #: Repositories with no dependency list on the source, by reason code (:data:`SBOM_NOT_ENABLED`, ...).
     software_unavailable: dict[str, str] = field(default_factory=dict)
+    #: Dependency vulnerabilities per repository (GitLab), for :mod:`app.services.ctem_code_findings`.
+    findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 def _headers(source: str, token: str) -> dict[str, str]:
@@ -417,7 +460,8 @@ async def _paged(
 
 
 _Listed = tuple[list[dict[str, Any]], bool, str]
-_Dependencies = tuple[list[dict[str, Any]], str, str]
+#: ``(software, unavailable_reason, error, findings)``; findings ``None`` when the list was not read whole.
+_Dependencies = tuple[list[dict[str, Any]], str, str, list[dict[str, Any]] | None]
 
 
 async def _list_github(client: Any, api: str, headers: dict[str, str], filters: dict[str, Any], limit: int) -> _Listed:
@@ -464,30 +508,36 @@ async def _list_gitlab(client: Any, api: str, headers: dict[str, str], filters: 
 
 
 async def _github_dependencies(client: Any, api: str, headers: dict[str, str], row: dict[str, Any]) -> _Dependencies:
-    """``(software, unavailable_reason, error)`` of one GitHub repository."""
+    """``(software, unavailable_reason, error, findings)`` of one GitHub repository.
+
+    GitHub findings come as Dependabot alert deliveries (``ctem_signal_listeners``), not here.
+    """
     from app.services import sbom_parser
 
     path = "/".join(quote(part, safe="") for part in row["name"].split("/", 1))
     resp = await _get(client, f"{api}/repos/{path}/dependency-graph/sbom", headers)
     if resp.status_code == 404:
-        return [], SBOM_NOT_ENABLED, ""
+        return [], SBOM_NOT_ENABLED, "", None
     if resp.status_code >= 400:
-        return [], "", f"HTTP {resp.status_code}"
+        return [], "", f"HTTP {resp.status_code}", None
     try:
-        return github_sbom_software(resp.json(), repository=row["name"]), "", ""
+        return github_sbom_software(resp.json(), repository=row["name"]), "", "", None
     except (sbom_parser.SbomError, ValueError) as exc:
-        return [], "", str(exc)[:200]
+        return [], "", str(exc)[:200], None
 
 
 async def _gitlab_dependencies(client: Any, api: str, headers: dict[str, str], row: dict[str, Any]) -> _Dependencies:
-    """``(software, unavailable_reason, error)`` of one GitLab project (dependency list: GitLab Ultimate)."""
+    """``(software, unavailable_reason, error, findings)`` of one GitLab project (dependency list: GitLab Ultimate)."""
     url = f"{api}/projects/{quote(row['external_id'], safe='')}/dependencies?per_page={_PAGE}"
-    deps, _cut, err = await _paged(client, url, headers, GITLAB, MAX_DEPENDENCIES)
+    deps, cut, err = await _paged(client, url, headers, GITLAB, MAX_DEPENDENCIES)
     if err and ("HTTP 403" in err or "HTTP 404" in err):
-        return [], SBOM_TIER, ""
+        return [], SBOM_TIER, "", None
     if err:
-        return [], "", err
-    return gitlab_dependency_software(deps), "", ""
+        return [], "", err, None
+    # A cut list is not the project's whole list: its findings wait for a whole read,
+    # so a vulnerability past the cut never reads as closed.
+    findings = None if cut else gitlab_dependency_findings(deps, project=row, host=gitlab_host(api))
+    return gitlab_dependency_software(deps), "", "", findings
 
 
 async def read_repositories(
@@ -521,7 +571,7 @@ async def read_repositories(
 
         async def deps_of(row: dict[str, Any]) -> None:
             async with sem:
-                software, unavailable, dep_err = await reader(http, api, headers, row)
+                software, unavailable, dep_err, findings = await reader(http, api, headers, row)
             if dep_err:
                 logger.info("%s dependencies of %s unreadable: %s", LABELS[source], row["external_id"], dep_err)
                 result.software_unread.add(row["external_id"])
@@ -530,6 +580,9 @@ async def read_repositories(
                 result.software_unavailable[row["external_id"]] = unavailable
             result.software[row["external_id"]] = software
             result.software_rows += len(software)
+            if findings is not None:
+                # Read whole: the findings it lists are the project's current ones (an empty list closes).
+                result.findings[row["external_id"]] = findings
 
         await asyncio.gather(*(deps_of(r) for r in result.rows))
         return result

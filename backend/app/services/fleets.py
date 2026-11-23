@@ -40,6 +40,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -809,6 +810,7 @@ async def set_orchestrator(db: AsyncSession, fleet: Fleet, agent_id: uuid.UUID |
         grant_program_status(agent)
         await grant_fleet_health_advisory(db, agent)
         await ensure_fleet_health_check(db, fleet, agent)
+        await ensure_fleet_health_answered(db, fleet, agent)
 
 
 #: The live program reads every fleet orchestrator carries (#10979): a fleet's
@@ -862,7 +864,8 @@ def grant_group_functions(agent: Agent, group: str, functions: Sequence[str]) ->
 
 
 #: What every fleet orchestrator carries to advise on its fleet's health (#11700).
-FLEET_HEALTH_FUNCTIONS: tuple[str, ...] = ("get_fleet_health",)
+#: ``dismiss_fleet_health_findings`` applies an owner's "ignore" answer (#1406).
+FLEET_HEALTH_FUNCTIONS: tuple[str, ...] = ("get_fleet_health", "dismiss_fleet_health_findings")
 FLEET_HEALTH_SKILL_SLUG = "fleet-health-advisory"
 #: The suggested practices of a fleet (#11948), worded as recommendations.
 FLEET_DESIGN_SKILL_SLUG = "fleet-design-practices"
@@ -901,6 +904,13 @@ FLEET_HEALTH_CHECK_NAME = "Weekly fleet health check"
 FLEET_HEALTH_CHECK_CRON = "0 7 * * 1"
 FLEET_HEALTH_CHECK_MAX_ITERATIONS = 25
 FLEET_HEALTH_CHECK_DETAILS = "Fleet health check: off until the fleet is enabled."
+#: Key prefix of the owner's decision items the health check files (``fleet-health:<fleet id>``,
+#: suffixes allowed), taken by the "Fleet health answered" listener (#1406).
+FLEET_HEALTH_KEY_PREFIX = "fleet-health:"
+#: The listener that applies an owner's answer to a fleet health decision item (#1406).
+FLEET_HEALTH_ANSWERED_NAME = "Fleet health answered"
+#: The fleet service's own assignments of an orchestrator: never seed rows, never exported.
+FLEET_HEALTH_ASSIGNMENT_NAMES: frozenset[str] = frozenset({FLEET_HEALTH_CHECK_NAME, FLEET_HEALTH_ANSWERED_NAME})
 
 
 def fleet_health_check_gate(fleet_id: uuid.UUID) -> dict[str, object]:
@@ -920,8 +930,108 @@ def fleet_health_check_prompt(fleet: Fleet) -> str:
         "get_fleet_health yourself first; when it does not answer for this fleet, stop and file nothing. "
         "Otherwise apply the safe fixes once "
         "(apply_safe_fixes=true), then send the fleet owner one deduplicated advisory for the owner "
-        "findings, with a recommendation and the evidence ids per finding. Nothing else."
+        "findings, with a recommendation and the evidence ids per finding. A decision item for the "
+        f"owner is keyed {FLEET_HEALTH_KEY_PREFIX}{fleet.id} (a suffix after it when there are several). "
+        "Nothing else."
     )
+
+
+def fleet_health_answered_trigger() -> dict[str, object]:
+    """The answered decision items of the health check: blocked back to open, own items, its key."""
+    return {
+        "event": "work_item.status_changed",
+        "filter": {
+            "previous_status": "blocked",
+            "status": "open",
+            "correlation_key": {"starts_with": [FLEET_HEALTH_KEY_PREFIX]},
+        },
+        "scope": "own",
+    }
+
+
+def fleet_health_answered_prompt(fleet: Fleet) -> str:
+    return (
+        f"The owner of the fleet '{fleet.name}' (fleet_id {fleet.id}) answered a fleet health decision: "
+        "the work item in the trigger below went from blocked to open. Claim it first with "
+        "claim_work_item; when the claim is refused another run already applies this answer: stop there. "
+        "Read it with get_work_item: payload.answer holds the option chosen or a free text. An ignore "
+        "(the finding needs nothing): dismiss each finding the item names once with "
+        "dismiss_fleet_health_findings(fleet_id, ids, reason), the owner's words as the reason. A fix: "
+        "apply it only when it is a safe fix of the skill 'Fleet health advisory' (section 3); an owner "
+        "fix is the owner's to make, so record it as theirs. Complete the item with the decision and "
+        "what was applied. Nothing else."
+    )
+
+
+def is_fleet_health_answered(assignment: object) -> bool:
+    """Whether *assignment* is a fleet's seeded "Fleet health answered" listener."""
+    config = getattr(assignment, "trigger_config", None)
+    return (
+        getattr(assignment, "name", None) == FLEET_HEALTH_ANSWERED_NAME
+        and getattr(assignment, "trigger_type", None) == "platform_event"
+        and isinstance(config, dict)
+        and config.get("event") == "work_item.status_changed"
+    )
+
+
+async def ensure_fleet_health_answered(db: AsyncSession, fleet: Fleet, agent: Agent, check: Any = None) -> bool:
+    """Give the orchestrator *agent* the listener of its health decisions; whether it was created.
+
+    Born with the switch and run-as of the orchestrator's seeded health check,
+    so a fleet whose check already runs gets it running on upgrade, and one not
+    set up lists both in Enable fleet (off, ``created_disabled``). An existing
+    one keeps its switch and follows *fleet*. The Platform Health fleet gets
+    none, as it gets no check. Idempotent.
+    """
+    from app.services.health.read_only import is_health_fleet
+
+    if is_health_fleet(fleet):
+        return False
+    from app.models.assignment import Assignment
+    from app.services.assignment_pause import CREATED_DISABLED_REASON, is_emergency_stopped, pause_assignment
+
+    existing = (
+        (
+            await db.execute(
+                select(Assignment).where(Assignment.agent_id == agent.id, Assignment.name == FLEET_HEALTH_ANSWERED_NAME)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found = next((row for row in existing if is_fleet_health_answered(row)), None)
+    if found is not None:
+        found.prompt = fleet_health_answered_prompt(fleet)
+        return False
+    if check is None:
+        check = next(iter(await _seeded_health_checks(db, agent.id)), None)
+    if check is None:
+        # No seeded check (the fleet opted out): nothing files the decision items it would take.
+        return False
+    listener = Assignment(
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        is_company_managed=bool(agent.is_company_managed),
+        name=FLEET_HEALTH_ANSWERED_NAME,
+        description="Applies the owner's answer to a fleet health decision: dismiss, or record the fix.",
+        trigger_type="platform_event",
+        trigger_config=fleet_health_answered_trigger(),
+        prompt=fleet_health_answered_prompt(fleet),
+        enabled=bool(getattr(check, "enabled", False)) and not is_emergency_stopped(check),
+        max_iterations=FLEET_HEALTH_CHECK_MAX_ITERATIONS,
+        run_as_all_users=False,
+    )
+    listener.run_as_user_id = getattr(check, "run_as_user_id", None)
+    if not listener.enabled:
+        pause_assignment(
+            listener,
+            reason=CREATED_DISABLED_REASON,
+            details=FLEET_HEALTH_CHECK_DETAILS,
+            actor_user_id=None,
+            actor_label="Fleet health",
+        )
+    db.add(listener)
+    return True
 
 
 def is_fleet_health_check(assignment: object) -> bool:
@@ -971,6 +1081,21 @@ async def _seeded_health_checks(db: AsyncSession, agent_id: uuid.UUID) -> list[o
     return [row for row in rows if is_fleet_health_check(row)]
 
 
+async def _seeded_health_listeners(db: AsyncSession, agent_id: uuid.UUID) -> list[Any]:
+    from app.models.assignment import Assignment
+
+    rows = (
+        (
+            await db.execute(
+                select(Assignment).where(Assignment.agent_id == agent_id, Assignment.name == FLEET_HEALTH_ANSWERED_NAME)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [row for row in rows if is_fleet_health_answered(row)]
+
+
 async def set_fleet_health_check(
     db: AsyncSession, fleet: Fleet, choice: str, *, actor: str | None
 ) -> dict[str, object] | None:
@@ -992,6 +1117,7 @@ async def set_fleet_health_check(
             agent = await db.get(Agent, fleet.orchestrator_agent_id)
             if agent is not None:
                 await ensure_fleet_health_check(db, fleet, agent)
+                await ensure_fleet_health_answered(db, fleet, agent)
         return None
     if lowered == HEALTH_CHECK_OFF:
         record = _health_check_record(HEALTH_CHECK_OFF, actor)
@@ -1021,7 +1147,10 @@ async def set_fleet_health_check(
         record = _health_check_record(HEALTH_CHECK_OWN, actor, assignment_id)
     fleet.health_check = record
     if fleet.orchestrator_agent_id is not None:
-        for seeded in await _seeded_health_checks(db, fleet.orchestrator_agent_id):
+        for seeded in [
+            *await _seeded_health_checks(db, fleet.orchestrator_agent_id),
+            *await _seeded_health_listeners(db, fleet.orchestrator_agent_id),
+        ]:
             await db.execute(detach_runs_clause(seeded.id))
             await db.delete(seeded)
     return record
@@ -1129,8 +1258,10 @@ async def drop_fleet_health_check(db: AsyncSession, agent_id: uuid.UUID) -> bool
         .all()
     )
     dropped = False
-    for assignment in rows:
-        if is_fleet_health_check(assignment) and not assignment.enabled and has_never_run(assignment):
+    candidates: list[Any] = [*rows, *await _seeded_health_listeners(db, agent_id)]
+    for assignment in candidates:
+        seeded = is_fleet_health_check(assignment) or is_fleet_health_answered(assignment)
+        if seeded and not assignment.enabled and has_never_run(assignment):
             await db.delete(assignment)
             dropped = True
     return dropped
@@ -1288,7 +1419,8 @@ async def backfill_fleet_health_advisory(db: AsyncSession) -> int:
             continue
         granted = await grant_fleet_health_advisory(db, agent)
         created = await ensure_fleet_health_check(db, fleet, agent)
-        if granted or created:
+        listening = await ensure_fleet_health_answered(db, fleet, agent)
+        if granted or created or listening:
             changed += 1
     if changed:
         await db.commit()

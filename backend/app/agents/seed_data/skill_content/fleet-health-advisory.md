@@ -54,7 +54,7 @@ When at least one `owner` finding remains, give the fleet's owner **one** adviso
 - The safe fixes already applied, with their counts.
 - Nothing else: no greeting, no progress narrative.
 
-When a finding needs the owner's choice (fix, ignore, change the fleet), put it on one work item for the owner, blocked with `needs_human` and an `ask` card: the question, the options with their effect, your recommendation, the owner as `recipient`. The owner answers from the card; the answer reopens the item to you. Otherwise send the advisory on the channel your assignment names.
+When a finding needs the owner's choice (fix, ignore, change the fleet), put it on one work item for the owner, keyed `fleet-health:` followed by the fleet id (a suffix after it when there are several), blocked with `needs_human` and an `ask` card: the question, the options with their effect, your recommendation, the owner as `recipient`, the finding ids in its description. The owner answers from the card; the answer reopens the item to your assignment "Fleet health answered", which dismisses an ignored finding once with the owner's reason and completes the item. Otherwise send the advisory on the channel your assignment names.
 
 Deduplicate per finding: before sending, read your record of the last advisory (section 5). A finding with the same kind and the same evidence as last time is not repeated: while its card is open it stays in the owner's bell, so never re-send it on a timer. A finding that is gone is not mentioned.
 

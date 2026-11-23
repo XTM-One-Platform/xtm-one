@@ -99,6 +99,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.services.fleet_autonomy import AUTONOMY_LEVELS, effective_level, is_raise
 from app.services.fleets import (
+    FLEET_HEALTH_ANSWERED_NAME,
     FLEET_HEALTH_CHECK_NAME,
     MEMBER_SETTING_FIELDS,
     FleetActionRefusedError,
@@ -282,7 +283,8 @@ def _portable_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
     out["agent"] = agent
     if isinstance(out.get("assignments"), list):
         # The weekly fleet health check (#11700) names the exporting fleet's id and
-        # is re-created on the orchestrator by the apply: it never travels.
+        # is re-created on the orchestrator by the apply: it never travels, nor its
+        # answer listener (#1406).
         out["assignments"] = [a for a in out["assignments"] if not _is_fleet_health_check_entry(a)]
     return out
 
@@ -291,6 +293,8 @@ def _is_fleet_health_check_entry(entry: object) -> bool:
     """Whether a bundle's assignment entry is a fleet's weekly built-in health check."""
     if not isinstance(entry, dict):
         return False
+    if entry.get("name") == FLEET_HEALTH_ANSWERED_NAME and entry.get("trigger_type") == "platform_event":
+        return True
     check = entry.get("activation_check")
     return (
         entry.get("name") == FLEET_HEALTH_CHECK_NAME
