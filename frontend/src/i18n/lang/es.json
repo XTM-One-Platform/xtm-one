@@ -20626,6 +20626,7 @@
   "Left for later: Members screen": "Dejado para más tarde: pantalla Miembros",
   "Complete on the Members screen": "Completar en la pantalla Miembros",
   "Run estimate": "Estimación de ejecuciones",
+  "Expected load": "Carga prevista",
   "I will do it later": "Lo haré más tarde",
   "Autonomy": "Autonomía",
   "Run as and automations": "Ejecutar como y automatizaciones",
@@ -21369,5 +21370,13 @@
   "The team or person who fixes its exposures, for example Payments team.": "El equipo o la persona que corrige sus exposiciones, por ejemplo Equipo de pagos.",
   "A team name or an email address. CTEM cases on this row name the owner as the one to act. Left empty, the cases name no owner.": "Un nombre de equipo o una dirección de correo. Los casos CTEM de esta fila designan a este propietario para actuar. Si se deja vacío, los casos no designan propietario.",
   "The group of the business service this asset serves.": "El grupo del servicio de negocio al que sirve este activo.",
-  "Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.": "Los grupos reúnen los activos de un mismo servicio de negocio, para leer los casos y los informes por grupo. Si se deja vacío, el activo no pertenece a ningún grupo."
+  "Groups gather the assets of one business service, so cases and briefings can be read per group. Left empty, the asset belongs to no group.": "Los grupos reúnen los activos de un mismo servicio de negocio, para leer los casos y los informes por grupo. Si se deja vacío, el activo no pertenece a ningún grupo.",
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {Ninguna ejecución programada al día.} one {Unas # ejecución programada al día.} other {Unas # ejecuciones programadas al día.}}",
+  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {Unas # ejecución programada al mes.} other {Unas # ejecuciones programadas al mes.}}",
+  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {Unas # ejecución programada al año.} other {Unas # ejecuciones programadas al año.}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automatización se ejecuta una vez por evento, tan a menudo como lleguen sus eventos.} other {# automatizaciones se ejecutan una vez por evento, tan a menudo como lleguen sus eventos.}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "Aún sin coste: estas automatizaciones no se han ejecutado {days, plural, one {en el último # día} other {en los últimos # días}}.",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Unos {cost} al día para las ejecuciones programadas, según el coste medio de sus ejecuciones {days, plural, one {del último # día} other {de los últimos # días}}.",
+  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Unos {cost} al mes para las ejecuciones programadas, según el coste medio de sus ejecuciones {days, plural, one {del último # día} other {de los últimos # días}}.",
+  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "Unos {cost} al año para las ejecuciones programadas, según el coste medio de sus ejecuciones {days, plural, one {del último # día} other {de los últimos # días}}."
 }
