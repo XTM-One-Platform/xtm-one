@@ -22,14 +22,23 @@ claimed again by the first claim after the fleet's usage falls back under its
 budget. A delegated child of a live parent is never held (its parent holds a
 slot waiting for it).
 
+A held run's queue-wait bound (``deadline_at`` of an execution no worker has
+started yet, ``orchestration_engine.queued_deadline``) counts from its latest
+hold, never from its first due time: each claim that holds it pushes that
+bound to the claim time plus the run's own queue window (recorded once under
+:data:`QUEUE_WINDOW_PAYLOAD_KEY`), so ``sweep_deadlines`` never fails a run
+for the time the budget held it (``deadline_exceeded_before_start``). Once the
+fleet is back under budget, the ordinary bound applies from the last hold.
+
 The fleet's owner gets one notification-bell entry per fleet and per hour (a
 Redis ``SET NX`` key; a Redis that cannot answer sends nothing, so a claim
 storm is never a notification storm), the durable record of the hold.
 
 Usage counts the runs of the home members started in the last hour and the
 tokens of those runs written so far (a run still running adds its tokens when
-it ends). A fleet with no budget costs one indexed read per claim and nothing
-else.
+it ends). ``AssignmentRun.started_at`` is set when a worker starts the run, so a
+queued or held run never counts toward its own fleet's budget. A fleet with no
+budget costs one indexed read per claim and nothing else.
 """
 
 from __future__ import annotations
@@ -40,7 +49,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message, safe_uuid
@@ -55,6 +65,73 @@ NOTICE_TTL_SECONDS = 3600
 NOTIFICATION_SOURCE = "fleet_run_budget"
 SOURCE_LABEL = "Fleet run budget"
 _REDIS_TIMEOUT_SECONDS = 0.5
+#: Where a held execution records its queue window (seconds from due to queue-wait bound) at its first hold.
+QUEUE_WINDOW_PAYLOAD_KEY = "run_budget_queue_window_seconds"
+
+
+def _aware(moment: datetime) -> datetime:
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def held_queue_deadline(execution: Any, now: datetime) -> tuple[datetime, float] | None:
+    """The queue-wait bound a held *execution* gets at *now*, with its queue window; ``None``: nothing to move.
+
+    Only for work no worker started yet whose ``deadline_at`` is its queue-wait bound (a pending execution
+    carrying the start budget and no start). The window is the one recorded at its first hold, else its
+    ``deadline_at - run_at``. The bound never moves back.
+    """
+    from app.services.orchestration_engine import START_BUDGET_PAYLOAD_KEY, STARTED_AT_PAYLOAD_KEY
+
+    payload = getattr(execution, "payload", None) or {}
+    deadline = getattr(execution, "deadline_at", None)
+    if (
+        deadline is None
+        or (getattr(execution, "state", None) or "pending") != "pending"
+        or payload.get(STARTED_AT_PAYLOAD_KEY)
+        or not isinstance(payload.get(START_BUDGET_PAYLOAD_KEY), (int, float))
+    ):
+        return None
+    window = payload.get(QUEUE_WINDOW_PAYLOAD_KEY)
+    if isinstance(window, bool) or not isinstance(window, (int, float)):
+        run_at = getattr(execution, "run_at", None)
+        if run_at is None:
+            return None
+        window = (_aware(deadline) - _aware(run_at)).total_seconds()
+    if window <= 0:
+        return None
+    return max(_aware(deadline), now + timedelta(seconds=float(window))), float(window)
+
+
+async def keep_queue_clock(db: AsyncSession, held: list[Any], now: datetime) -> int:
+    """Push the queue-wait bound of each *held* execution to *now* plus its queue window; how many moved.
+
+    One guarded ``UPDATE`` per execution (still pending, still not started), so a row a worker claimed or the
+    sweep dead-lettered meanwhile is left as it is.
+    """
+    from app.models.orchestration import OrchestrationExecution
+    from app.services.orchestration_engine import STARTED_AT_PAYLOAD_KEY
+
+    moved = 0
+    for execution in held:
+        fresh = held_queue_deadline(execution, now)
+        if fresh is None:
+            continue
+        deadline, window = fresh
+        await db.execute(
+            update(OrchestrationExecution)
+            .where(
+                OrchestrationExecution.id == execution.id,
+                OrchestrationExecution.state == "pending",
+                ~OrchestrationExecution.payload.has_key(STARTED_AT_PAYLOAD_KEY),
+            )
+            .values(
+                deadline_at=func.greatest(OrchestrationExecution.deadline_at, deadline),
+                payload=OrchestrationExecution.payload.op("||")(literal({QUEUE_WINDOW_PAYLOAD_KEY: window}, JSONB)),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        moved += 1
+    return moved
 
 
 def normalized_budget(budget: Any) -> dict[str, int]:
@@ -173,6 +250,7 @@ async def hold_over_budget(db: AsyncSession, ordered: list[Any], *, now: datetim
         return ordered
     kept: list[Any] = []
     held: dict[uuid.UUID, int] = {}
+    held_executions: list[Any] = []
     for execution in ordered:
         run = runs.get(run_of.get(execution.id))
         if run is None or run[1] is not None:
@@ -183,6 +261,9 @@ async def hold_over_budget(db: AsyncSession, ordered: list[Any], *, now: datetim
             kept.append(execution)
             continue
         held[home[0]] = held.get(home[0], 0) + 1
+        held_executions.append(execution)
+    # The hold is not queue time: a held run is never failed by its queue-wait bound.
+    await keep_queue_clock(db, held_executions, now)
     for fleet, count in held.items():
         await notify_over_budget_once(fleet, over[fleet], held=count, now=now)
     return kept
