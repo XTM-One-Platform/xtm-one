@@ -6547,6 +6547,16 @@ async def _build_integration_tools_inner(
                         read_only=is_read_only_binding(integration_id, _read_only_ids),
                     ):
                         _builder_kwargs["live_writes"] = True
+                    # A fleet gate naming apply_opencti_draft (the CTEM analyst
+                    # review, #1480) offers it with Live writes off: the gate,
+                    # not the setting, decides the validation. Never on a
+                    # read-only binding.
+                    from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY
+
+                    if "apply_opencti_draft" in (
+                        context.get(FLEET_GATED_TOOLS_CONTEXT_KEY) or ()
+                    ) and not is_read_only_binding(integration_id, _read_only_ids):
+                        _builder_kwargs["gated_draft_validation"] = True
                 # When HITL is on, give OpenCTI a way to VERIFY a human approved
                 # an irreversible action (entity merge) rather than trusting the
                 # model's word for it. The run's ``human_input_history`` is the
