@@ -7,7 +7,7 @@
  * asset record or the group, by id), never the whole profile. A field a platform sync sends is locked on its rows
  * (point 3): it renders disabled with the reason, and the backend refuses the same change.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Textarea } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,8 +21,10 @@ import {
   useAssetRecord,
   useCreateAssetGroup,
   useCreateAssetRecord,
+  useRefreshAssets,
   useUpdateAssetGroups,
   useUpdateAssetRecords,
+  isAssetNotFound,
   type RowsOutcome,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
@@ -109,15 +111,24 @@ export function InventoryEntryDialog({ section, mode, onOpenChange, onSaved }: I
   );
 }
 
-/** Reads the row an update starts from (one record, or the group from the group list), then mounts the form. */
+/**
+ * Reads the row an update starts from (one record, or the group from the group list), then mounts the form. A read
+ * that fails stays in the dialog (UX round 1 on #1551, B1): a row removed since the list loaded (404, or a group no
+ * longer in the list) says so and refreshes the list; any other failure offers Retry. Both offer Close.
+ */
 function EntryLoader({ section, mode, onClose, onSaved }: { section: InventorySection; mode: EntryDialogMode; onClose: () => void; onSaved?: () => void }) {
   const { t_i18n } = useFormatter();
   const isGroup = section === "asset_groups";
-  const groups = useAssetGroups();
+  const groups = useAssetGroups({ throwOnError: false });
   const record = useAssetRecord(!isGroup && mode.kind === "update" ? mode.id : undefined);
   let row: RowValues | undefined;
   if (mode.kind === "update") {
     row = isGroup ? (groups.data?.items.find((g) => g.id === mode.id) as RowValues | undefined) : (record.data as RowValues | undefined);
+    const read = isGroup ? groups : record;
+    const gone = isGroup ? Boolean(groups.data) && !row : record.isError && isAssetNotFound(record.error);
+    if (!row && (gone || read.isError)) {
+      return <EntryReadFailure section={section} mode={mode} gone={gone} onRetry={() => void read.refetch()} onClose={onClose} />;
+    }
     if (!row) {
       return (
         <DialogContent size="md" data-testid="ctem-entry-dialog">
@@ -133,6 +144,46 @@ function EntryLoader({ section, mode, onClose, onSaved }: { section: InventorySe
     }
   }
   return <EntryForm section={section} mode={mode} row={row} groups={groups.data?.items ?? []} onClose={onClose} onSaved={onSaved} />;
+}
+
+/** The dialog's own error state when the row it updates cannot be read: the list behind it stays on screen. */
+function EntryReadFailure({
+  section,
+  mode,
+  gone,
+  onRetry,
+  onClose,
+}: {
+  section: InventorySection;
+  mode: EntryDialogMode;
+  gone: boolean;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const { t_i18n } = useFormatter();
+  const refreshAssets = useRefreshAssets();
+  // Once per failure: the list behind the dialog drops the row that no longer exists.
+  useEffect(() => {
+    if (gone) refreshAssets();
+  }, [gone, refreshAssets]);
+  return (
+    <DialogContent size="md" data-testid="ctem-entry-dialog">
+      <DialogHeader>
+        <DialogTitle>{t_i18n(dialogTitle(section, mode))}</DialogTitle>
+      </DialogHeader>
+      <DialogBody>
+        <p role="alert" className="content-compact text-feedback-error-primary" data-testid="ctem-entry-read-failure">
+          {gone ? t_i18n("This entry no longer exists. The list is refreshed.") : t_i18n("This entry could not be loaded.")}
+        </p>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          {t_i18n("Close")}
+        </Button>
+        {!gone && <Button onClick={onRetry}>{t_i18n("Retry")}</Button>}
+      </DialogFooter>
+    </DialogContent>
+  );
 }
 
 function EntryForm({

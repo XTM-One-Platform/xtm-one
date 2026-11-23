@@ -6,6 +6,7 @@
  * Read by the CTEM > Inventory page; every list is paginated on the server (`limit` at most 200).
  */
 
+import { useCallback } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -265,11 +266,15 @@ export interface AssetGroupRecord {
 
 const GROUPS_KEY = [...KEY, "groups"] as const;
 
-/** Every asset group of the organization (`GET /asset-groups`). */
-export function useAssetGroups() {
+/**
+ * Every asset group of the organization (`GET /asset-groups`). `throwOnError: false` keeps a failed read with the
+ * consumer that draws its own error state (the entry dialog), instead of the section error boundary.
+ */
+export function useAssetGroups(options: { throwOnError?: false } = {}) {
   return useQuery<{ items: AssetGroupRecord[] }>({
     queryKey: GROUPS_KEY,
     queryFn: () => api.get("/organization-context/asset-groups"),
+    ...options,
   });
 }
 
@@ -279,6 +284,11 @@ export function useAssetRecord(id: string | undefined) {
     queryKey: [...KEY, "record", id],
     queryFn: () => api.get(`/organization-context/assets/records/${id}`),
     enabled: Boolean(id),
+    // A record a sync or another admin removed since the list loaded answers 404: the update dialog draws its own
+    // error state (Retry, Close), never the section error boundary, and a retry would not bring it back (UX round 1
+    // on #1551, B1).
+    retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
+    throwOnError: false,
   });
 }
 
@@ -294,6 +304,13 @@ export interface RowsOutcome {
 /** The asset lists and pages read again after a row write (never the whole profile). */
 function invalidateAssets(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: KEY });
+}
+
+/** Reads the asset lists and pages again: a dialog that found its row gone refreshes the list behind it. */
+export function useRefreshAssets(): () => void {
+  const qc = useQueryClient();
+  // The record the dialog failed to read is left out: reading it again would only fail again.
+  return useCallback(() => void qc.invalidateQueries({ queryKey: KEY, predicate: (q) => q.queryKey[1] !== "record" }), [qc]);
 }
 
 /** Add one asset by hand (`POST /assets`). */
