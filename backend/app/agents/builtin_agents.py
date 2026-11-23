@@ -391,7 +391,12 @@ def _stage_persona(d: dict) -> str:
         "permissions; report only what the tools return.\n"
         "3. Compute the 1-3 metrics that matter for this stage, a posture read "
         "(score_read), and ONE concrete recommended action. Ground every number "
-        "in retrieved data; never invent figures.\n\n"
+        "in retrieved data; never invent figures.\n"
+        "4. An OpenAEV answer that starts with Scope: was read by an identity "
+        "that does not see everything: a zero there is not assessable (coverage "
+        "unknown), never no activity. Set score_read to unknown for the OpenAEV "
+        "part, coverage.openaev to false, and write: OpenAEV not readable with "
+        "full scope for this user.\n\n"
         "Lead with what the organization HAS: the headline and the start of the "
         "assessment must surface the strongest finding from the CONNECTED "
         "product's data. A product that is not connected is a coverage gap, not "
@@ -474,7 +479,11 @@ _STAGE_ASSIGNMENTS: list[dict] = [
                 "vertical). Powers the command-center stage card."
             ),
             "trigger_type": "schedule",
-            "trigger_config": {"cron": "0 8 * * 1"},  # Mondays 08:00
+            # Mondays 08:00, for the users of the CTEM command center only
+            # (a posture built for them within 30 days): a user who never
+            # opens it gets no weekly run. The seed sync rewrites the trigger
+            # config on every boot, so seeded instances get it too.
+            "trigger_config": {"cron": "0 8 * * 1", "fanout_audience": "ctem_users"},
             "run_as_all_users": True,
             "prompt": _stage_prompt(d),
             "enabled": True,
@@ -487,7 +496,8 @@ _STAGE_ASSIGNMENTS: list[dict] = [
             "timeout_seconds": 600,
             # Fan-out runs fail transiently (LLM rate limits, timeouts) far
             # more often than single runs — retry so a blip doesn't leave a
-            # user without an assessment until next week's tick.
+            # user without an assessment until next week's tick. A run whose
+            # deadline expired before any model call returned is not retried.
             "retry_on_failure": True,
             "max_retries": 2,
         },
@@ -2835,9 +2845,7 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "case_id). Read the case with get_ctem_case and re-run the validation its "
             "validations list names (launching it needs the approval the work item "
             "carries). Write the result on the case with record_ctem_case_validation "
-            "(kind retest, inject_class as assess_ctem_validation_inject answered): a negative "
-            "validation is inconclusive unless it proves the fixed version (conclusive true), so "
-            "the case stays open; failed reopens it. Record the "
+            "(kind retest): passed resolves the case, failed reopens it. Record the "
             "OpenCRQ expected-loss delta in a case note."
         ),
     },
@@ -2934,9 +2942,7 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "and to the case naming the breach and the next step, and raise its priority. "
             "On ctem_case.validation_finished: an OpenAEV result the case waits on arrived "
             "(the openaev block names the simulation or finding); read it in OpenAEV, write it "
-            "on the case with record_ctem_case_validation (passed, not_exposed or failed, with the "
-            "inject_class assess_ctem_validation_inject answered; a negative exploit attempt is "
-            "inconclusive unless it proves the fixed version) and "
+            "on the case with record_ctem_case_validation (passed, not_exposed or failed) and "
             "move the case's work item to its next step. "
             "On ctem_case.retest_requested (its ticket reached done): add a note to that work "
             "item and run the case's re-test; write it with record_ctem_case_validation (kind "
@@ -3176,9 +3182,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "followed by the case_id). Propose the re-run of its validated scenario as a "
             "needs_human work item with an ask card (approve or reject, your "
             "recommendation), read the result once it ran, write it on the case with "
-            "record_ctem_case_validation (kind retest, inject_class as assess_ctem_validation_inject "
-            "answered): a negative validation is inconclusive unless it proves the fixed version, "
-            "failed reopens it. Ask the Risk Quantifier for the loss after and note the delta on "
+            "record_ctem_case_validation (kind retest): passed resolves the case, failed "
+            "reopens it. Ask the Risk Quantifier for the loss after and note the delta on "
             "the case; bump the counters in ctem:f1:state."
         ),
     },
