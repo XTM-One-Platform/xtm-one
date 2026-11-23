@@ -26,7 +26,7 @@ export interface ProfileLike {
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
   tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
-  ai_systems: ({ name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string } & Provenance)[];
+  // No `ai_systems` list since #1501: an AI system is an asset of category `ai_target` (assets_exposure).
   /**
    * What the organization ships, apart from what it runs (#1432): a vulnerability on one of these products (by CPE,
    * then product and vendor) resolves to its source repositories (`owner/name`). Absent on a profile that declares none.
@@ -553,9 +553,6 @@ export const IMPORT_SOURCE_NAMES: Record<string, string> = {
   ...PLATFORM_NAMES,
   intune: "Microsoft Intune",
   defender: "Microsoft Defender for Endpoint",
-  tanium: "Tanium",
-  crowdstrike: "CrowdStrike Falcon",
-  servicenow: "ServiceNow",
   github: "GitHub",
   gitlab: "GitLab",
 };
@@ -565,15 +562,7 @@ export const IMPORT_SOURCE_NAMES: Record<string, string> = {
  * reads with): Intune through an `intune` integration, Defender for Endpoint through a `defender` one,
  * never the `microsoft` (Outlook, Teams) integration, whose token carries no device permission.
  */
-export const IMPORT_SOURCE_PROVIDER: Record<string, string> = {
-  intune: "intune",
-  defender: "defender",
-  tanium: "tanium",
-  crowdstrike: "crowdstrike",
-  servicenow: "servicenow",
-  github: "github",
-  gitlab: "gitlab",
-};
+export const IMPORT_SOURCE_PROVIDER: Record<string, string> = { intune: "intune", defender: "defender", github: "github", gitlab: "gitlab" };
 
 /** The import sources a connected integration provider opens (an Intune integration opens Intune, a Defender one Defender). */
 export function importSourcesOfProvider(provider: string): string[] {
@@ -636,7 +625,6 @@ export function toForm(profile: ProfileLike): ProfileForm {
     pir_names: { ...(profile.pir_names ?? {}) },
     crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
     tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
-    ai_systems: profile.ai_systems.map((system) => ({ ...system })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
@@ -724,7 +712,6 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         tech_stack: form.tech_stack
           .filter((entry) => entry.product.trim())
           .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
-        ai_systems: form.ai_systems.filter((system) => system.name.trim()),
         // Always sent, an empty list included, so removing the last row clears it: the server keeps the stored list
         // only for a save that leaves the key out (#1432).
         shipped_products: shippedOf(form.shipped_products),

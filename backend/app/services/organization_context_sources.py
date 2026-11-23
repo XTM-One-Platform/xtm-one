@@ -38,7 +38,6 @@ from app.services.organization_context import AGENT_SOURCE_PREFIX, PLATFORM_SOUR
 SOURCED_FIELDS: dict[str, str] = {
     "crown_jewels": "crown_jewels",
     "tech_stack": "tech_stack",
-    "ai_systems": "ai_systems",
     "assets_exposure": "assets",
     "asset_groups": "asset_groups",
 }
@@ -46,7 +45,6 @@ SOURCED_FIELDS: dict[str, str] = {
 FIELD_SCOPES: dict[str, str] = {
     "crown_jewels": "profile",
     "tech_stack": "inventory",
-    "ai_systems": "inventory",
     "assets_exposure": "inventory",
     "asset_groups": "inventory",
 }
@@ -60,7 +58,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "github": "GitHub",
     "gitlab": "GitLab",
     "crowdstrike": "CrowdStrike",
-    "tanium": "Tanium",
     "sentinelone": "SentinelOne",
     "servicenow": "ServiceNow",
 }

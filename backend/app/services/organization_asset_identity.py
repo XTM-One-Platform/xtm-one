@@ -477,15 +477,7 @@ DEFAULT_PRECEDENCE: dict[str, tuple[str, ...]] = {
     "subcategory": (HAND_CLASS, "openaev", "opencrq", "opencti", "mdm", "edr", "*"),
 }
 #: The class each endpoint source is registered under (#1251): what ``DEFAULT_PRECEDENCE`` ranks.
-BUILTIN_SOURCE_CLASSES: dict[str, str] = {
-    "intune": "mdm",
-    "tanium": "mdm",
-    "defender": "edr",
-    "crowdstrike": "edr",
-    "servicenow": "cmdb",
-    "github": "scm",
-    "gitlab": "scm",
-}
+BUILTIN_SOURCE_CLASSES: dict[str, str] = {"intune": "mdm", "defender": "edr", "github": "scm", "gitlab": "scm"}
 #: Precedence of a field not listed above: a person first, then the suite, then anything.
 FALLBACK_PRECEDENCE: tuple[str, ...] = (HAND_CLASS, "openaev", "opencrq", "opencti", "*")
 #: Fields a person sets on a synced thing (local enrichment, #1134): a hand record's value wins; without one, the
@@ -890,7 +882,6 @@ SECTION_IDENTITY: dict[
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
     "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
     "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
-    "ai_systems": (("platform_id", "name"), _platform_ids("openaev_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),
 }

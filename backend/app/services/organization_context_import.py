@@ -47,7 +47,6 @@ from app.services.organization_context import (
     ASSET_TAXONOMY,
     INTERNET_FACING,
     LEGACY_ASSET_TYPES,
-    AiSystem,
     AssetEntry,
     AssetGroupEntry,
     CrownJewel,
@@ -59,24 +58,25 @@ from app.services.organization_context_microsoft import os_family
 logger = logging.getLogger(__name__)
 
 Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-Source = Literal[
-    "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-]
+Source = Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
 
 #: section -> the platforms that can feed it, in the order the dialog lists them.
 SECTION_SOURCES: dict[str, tuple[str, ...]] = {
-    "assets": ("openaev", "opencti", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"),
+    "assets": ("openaev", "opencti", "intune", "defender", "github", "gitlab"),
     "asset_groups": ("openaev",),
     "ai_systems": ("openaev",),
     "tech_stack": ("openaev",),
     "crown_jewels": ("opencrq",),
     "pirs": ("opencti",),
 }
+#: Deprecated since #1501 (kept one release): ``ai_systems`` reads and writes the assets of category
+#: ``ai_target``; an import of it touches no other asset.
+AI_SYSTEMS_ALIAS = "ai_systems"
 #: section -> the profile field it writes.
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "ai_systems": "ai_systems",
+    "ai_systems": "assets_exposure",
     "tech_stack": "tech_stack",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
@@ -101,10 +101,6 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     # Microsoft endpoint sources (#1251): devices, OS and software with versions.
     ("assets", "intune"): ("operating_system", "compliance", "ownership", "last_seen_days", "include_owner"),
     ("assets", "defender"): ("os_platform", "health_status", "exposure_level", "last_seen_days"),
-    # Endpoint and CMDB sources (#1556): devices with their identity keys, Tanium software with versions.
-    ("assets", "tanium"): ("operating_system", "last_seen_days", "skip_software"),
-    ("assets", "crowdstrike"): ("platform", "last_seen_days", "filter_query"),
-    ("assets", "servicenow"): ("ci_class", "operational_status", "query"),
     # Code sources: repositories as source_code assets, their SBOM as software.
     ("assets", "github"): ("organizations", "include_archived", "include_forks", "skip_dependencies"),
     ("assets", "gitlab"): ("groups", "include_archived", "include_forks", "skip_dependencies"),
@@ -377,7 +373,30 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         os_family=openaev_os_family(asset.get("endpoint_platform")),
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
+        **openaev_ai_target_fields(asset) if category == "ai_target" else {},
     )
+
+
+#: OpenAEV ``ai_target_modality`` values an asset keeps, lower-cased.
+_AI_MODALITIES: frozenset[str] = frozenset({"text", "vision", "audio", "multimodal"})
+
+
+def openaev_ai_target_fields(asset: dict[str, Any]) -> dict[str, Any]:
+    """The ``ai_target_*`` fields of an OpenAEV AI target an asset row keeps (#1501).
+
+    Provider, endpoint, model and modality; the token, the configuration and the system
+    prompt are never read (they may carry a credential).
+    """
+    from app.services.organization_context import AI_TARGET_PROVIDERS
+
+    provider = _lower(asset.get("ai_target_provider"))
+    modality = _lower(asset.get("ai_target_modality"))
+    return {
+        "ai_target_provider": provider if provider in AI_TARGET_PROVIDERS else "",
+        "ai_target_endpoint": str(asset.get("ai_target_endpoint") or "").strip()[:500],
+        "ai_target_model": str(asset.get("ai_target_model") or "").strip()[:200],
+        "ai_target_modality": modality if modality in _AI_MODALITIES else "",
+    }
 
 
 #: OpenAEV ``endpoint_platform`` values that name no operating system.
@@ -427,14 +446,14 @@ def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
     )
 
 
-def openaev_ai_system(asset: dict[str, Any]) -> AiSystem | None:
-    """An OpenAEV AI target asset as an AI system linked to it by ``openaev_asset_id``."""
-    name = str(asset.get("asset_name") or "").strip()
-    asset_id = str(asset.get("asset_id") or "").strip()
-    if not name or not asset_id:
+def openaev_ai_system(asset: dict[str, Any]) -> AssetEntry | None:
+    """An OpenAEV AI target as an asset of category ``ai_target``, every field kept (#1501; no forced kind)."""
+    if not _lower(asset.get("asset_category")):
+        asset = {**asset, "asset_category": "ai_target"}
+    row = openaev_asset(asset)
+    if row is None or row.category != "ai_target":
         return None
-    exposure = "public" if asset.get("asset_internet_facing") is True else "internal"
-    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, source="openaev", external_id=asset_id[:200])  # type: ignore[arg-type]
+    return row
 
 
 def _lower(value: Any) -> str:
@@ -522,13 +541,14 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
-    "ai_systems": ("ai_systems", "name", 200, ("owner",)),
+    # #1501: the AI target assets, read and written like assets (the alias touches no other asset).
+    "ai_systems": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
     "tech_stack": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
-MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets"})
+MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets", "ai_systems"})
 #: Fields kept from the stored row whatever the source sends: the source never owns them.
 _ALWAYS_LOCAL: frozenset[str] = frozenset({"business_service", "asset_names"})
 
@@ -596,6 +616,12 @@ def _merge_sourced(
     """
     attr, name_key, cap, local = SOURCED_FIELDS[section]
     current: list[Any] = list(getattr(draft, attr))
+    if section == AI_SYSTEMS_ALIAS:
+        # The alias merges into the assets and must never treat the other assets of the source as gone.
+        others = [r for r in current if r.category != "ai_target"]
+        current = [r for r in current if r.category == "ai_target"]
+    else:
+        others = []
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if r.external_id}
     multi = section in MULTI_SOURCE_SECTIONS
     names = {getattr(r, name_key).casefold() for r in current if not multi or r.source == source}
@@ -649,7 +675,7 @@ def _merge_sourced(
             dropped |= {id(r) for r in owned}
     if dropped:
         current = [r for r in current if id(r) not in dropped]
-    setattr(draft, attr, current[:cap])
+    setattr(draft, attr, (others + current)[:cap])
 
 
 #: Sections whose rows are asset records since #1543 (planned and written by ``(source, external_id)``).
@@ -879,15 +905,6 @@ async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, 
             logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
             available, reason, code = False, "unreadable", ""
         statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
-    from app.services import organization_context_endpoints as endpoints
-
-    for source in endpoints.SOURCES:
-        try:
-            available, reason, code = await endpoints.connection_status(db, str(user_id), source)
-        except Exception as exc:
-            logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
-            available, reason, code = False, "unreadable", ""
-        statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
     from app.services import organization_context_code as code_sources
 
     for source in code_sources.SOURCES:
@@ -932,6 +949,17 @@ async def _openaev_search(
     result.truncated = result.total is not None and result.total > MAX_ROWS
     result.rows = items[:MAX_ROWS]
     return result
+
+
+def _reads_ai_targets(filters: dict[str, Any], batch_type: str) -> bool:
+    """Whether an OpenAEV assets read includes the AI targets: no endpoint-only filter, no other batch type."""
+    picked = batch_taxonomy(batch_type) if batch_type else None
+    if picked and picked[0] != "ai_target":
+        return False
+    if _values(filters, "platform"):
+        return False
+    categories = [c.lower() for c in _values(filters, "category")]
+    return not categories or "ai_target" in categories
 
 
 #: OpenAEV ``asset_type`` values another read already serves whole: the endpoints (``/api/endpoints/search``,
@@ -1015,6 +1043,18 @@ async def _read_openaev(
             endpoints_only=bool(_values(filters, "platform")),
         )
         read.rows = [r for r in (openaev_asset(a, batch_type) for a in read.rows) if r]
+        if read.error or not _reads_ai_targets(filters, batch_type):
+            return read
+        # #1501: OpenAEV's AI targets are assets too; an assets sync keeps them (and never drops them as gone).
+        targets = await _openaev_search(
+            base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters, asset_ids=asset_ids)
+        )
+        if targets.error:
+            return ReadResult(error=targets.error)
+        read.rows += [r for r in (openaev_ai_system(a) for a in targets.rows) if r]
+        read.truncated = read.truncated or targets.truncated
+        if read.total is not None and targets.total is not None:
+            read.total += targets.total
         return read
     if section == "asset_groups":
         tags = _values(filters, "tags")
@@ -1029,9 +1069,10 @@ async def _read_openaev(
         read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
         read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
         return read
-    if section == "ai_systems":
-        read = await _openaev_search(base_url, headers, "/api/endpoints/search", openaev_filter_group(filters), text)
-        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows if a.get("ai_target_provider")) if r]
+    if section == AI_SYSTEMS_ALIAS:
+        # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
+        read = await _openaev_search(base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters), text)
+        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows) if r]
         return read
     if section == "tech_stack":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
@@ -1199,28 +1240,6 @@ async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: 
     return result
 
 
-async def _read_endpoint(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
-    """Devices from Tanium, CrowdStrike Falcon or ServiceNow CMDB (#1556), read with the source's integration."""
-    from app.services import organization_context_endpoints as endpoints
-
-    token, reason = await endpoints.credential(db, user_id, source)
-    if not token:
-        return ReadResult(error=f"{source}: {reason}")
-    read = await endpoints.READERS[source](token, filters, limit=MAX_ROWS)
-    result = ReadResult(total=read.total, truncated=read.truncated, error=read.error)
-    if read.error:
-        return result
-    for row in read.rows:
-        try:
-            result.rows.append(AssetEntry.model_validate(row))
-        except ValueError as exc:  # one bad device never stops the others
-            logger.info("Organization import: %s device %s refused: %s", source, row.get("external_id"), exc)
-    kept = {r.external_id for r in result.rows}
-    result.software = {k: v for k, v in read.software.items() if k in kept}
-    result.software_rows = sum(len(v) for v in result.software.values())
-    return result
-
-
 async def _read_code(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
     """Repositories (and their dependencies) from GitHub or GitLab, read-only."""
     from app.services import organization_context_code as code_sources
@@ -1302,8 +1321,6 @@ async def read_source(
             return await _read_opencti(db, str(user_id), section, filters, batch_type)
         if source in ("intune", "defender"):
             return await _read_microsoft(db, str(user_id), source, filters)
-        if source in ("tanium", "crowdstrike", "servicenow"):
-            return await _read_endpoint(db, str(user_id), source, filters)
         if source in ("github", "gitlab"):
             return await _read_code(db, str(user_id), source, filters)
         return await _read_opencrq(db, str(user_id), filters)
@@ -1528,12 +1545,6 @@ async def _code_options(db: AsyncSession, user_id: str, source: str) -> FilterOp
         return FilterOptions(options=switches, unavailable={owners: "unreadable"})
 
 
-def _endpoint_options(source: str) -> FilterOptions:
-    from app.services.organization_context_endpoints import FILTER_VALUES
-
-    return FilterOptions(options={key: [_option(v) for v in values] for key, values in FILTER_VALUES[source].items()})
-
-
 def _microsoft_options(source: str) -> FilterOptions:
     return FilterOptions(
         options={key: [_option(v) for v in values] for key, values in MICROSOFT_FILTER_VALUES[source].items()}
@@ -1551,8 +1562,6 @@ async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, 
             return await _openaev_options(db, str(user_id), section)
         if source in ("intune", "defender"):
             return _microsoft_options(source)
-        if source in ("tanium", "crowdstrike", "servicenow"):
-            return _endpoint_options(source)
         if source in ("github", "gitlab"):
             return await _code_options(db, str(user_id), source)
         return await _opencrq_options(db, str(user_id))

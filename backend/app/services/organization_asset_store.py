@@ -461,7 +461,7 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
 
 #: Software documents an endpoint source writes on its own device records (#1251): ``format`` is the
 #: source, so the software ranks by that source's class (``mdm``, ``edr``), not as an SBOM.
-ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "tanium", "github", "gitlab"})
+ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "github", "gitlab"})
 
 
 #: The format of the hand document that carries an administrator's software attachments on an asset (#1495).
@@ -763,38 +763,100 @@ def _summary(
 
 
 #: The asset fields the list filters on (``fields.<name>.value``), in the order the facets answer them.
-FILTER_FIELDS: tuple[str, ...] = ("category", "criticality", "internet_facing")
+FILTER_FIELDS: tuple[str, ...] = ("category", "subcategory", "criticality", "internet_facing")
 
 
 def _field_value(name: str) -> Any:
     return OrganizationAsset.fields[name]["value"].astext
 
 
-async def asset_facets(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, list[str]]:
-    """The values the list can be filtered on: each filter field's distinct values, and the sources."""
-    facets: dict[str, list[str]] = {}
+def _asset_where(
+    organization_id: uuid.UUID,
+    *,
+    q: str = "",
+    filters: Mapping[str, Sequence[str]] | None = None,
+    skip: str | None = None,
+) -> list[Any]:
+    """The clauses of the asset list: a name substring, then each filter but *skip* (OR within, AND across)."""
+    where: list[Any] = [OrganizationAsset.organization_id == organization_id]
+    if q.strip():
+        where.append(OrganizationAsset.name_key.contains(_key(q)))
+    for name, values in (filters or {}).items():
+        wanted = [str(v) for v in values if str(v).strip()]
+        if not wanted or name == skip:
+            continue
+        if name == "source":
+            where.append(
+                OrganizationAsset.id.in_(
+                    select(OrganizationAssetSource.asset_id).where(
+                        OrganizationAssetSource.organization_id == organization_id,
+                        OrganizationAssetSource.source.in_(wanted),
+                    )
+                )
+            )
+        elif name in FILTER_FIELDS:
+            where.append(_field_value(name).in_(wanted))
+    return where
+
+
+async def asset_facets(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    q: str = "",
+    filters: Mapping[str, Sequence[str]] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Each filter's values with their asset count, for the faceted sidebar of the asset list (#1501).
+
+    A facet's counts apply the search and every OTHER facet's picked values, so a count says how many
+    assets picking that value would add (OR within a facet, AND across). A subcategory names its category.
+    """
+    facets: dict[str, list[dict[str, Any]]] = {}
     for name in FILTER_FIELDS:
         column = _field_value(name)
+        where = [*_asset_where(organization_id, q=q, filters=filters, skip=name), column.is_not(None), column != ""]
+        if name == "subcategory":
+            parent = _field_value("category")
+            rows = (
+                await db.execute(
+                    select(parent, column, func.count())
+                    .select_from(OrganizationAsset)
+                    .where(*where)
+                    .group_by(parent, column)
+                    .order_by(parent, column)
+                    .limit(MAX_PAGE)
+                )
+            ).all()
+            facets[name] = [
+                {"value": str(value), "count": int(count), "category": str(category or "")}
+                for category, value, count in rows
+            ]
+            continue
         rows = (
             await db.execute(
-                select(column)
-                .where(OrganizationAsset.organization_id == organization_id, column.is_not(None), column != "")
-                .distinct()
+                select(column, func.count())
+                .select_from(OrganizationAsset)
+                .where(*where)
+                .group_by(column)
                 .order_by(column)
                 .limit(MAX_PAGE)
             )
         ).all()
-        facets[name] = [str(value) for (value,) in rows]
+        facets[name] = [{"value": str(value), "count": int(count)} for value, count in rows]
+    kept = select(OrganizationAsset.id).where(*_asset_where(organization_id, q=q, filters=filters, skip="source"))
     sources = (
         await db.execute(
-            select(OrganizationAssetSource.source)
-            .where(OrganizationAssetSource.organization_id == organization_id)
-            .distinct()
+            select(OrganizationAssetSource.source, func.count(func.distinct(OrganizationAssetSource.asset_id)))
+            .where(
+                OrganizationAssetSource.organization_id == organization_id,
+                OrganizationAssetSource.asset_id.in_(kept),
+            )
+            .group_by(OrganizationAssetSource.source)
             .order_by(OrganizationAssetSource.source)
             .limit(MAX_PAGE)
         )
     ).all()
-    facets["source"] = [str(value) for (value,) in sources]
+    facets["source"] = [{"value": str(value), "count": int(count)} for value, count in sources]
     return facets
 
 
@@ -814,24 +876,7 @@ async def list_assets(
     one of the sources given; an empty list filters nothing.
     """
     limit, offset = _limit(limit), max(0, int(offset or 0))
-    where: list[Any] = [OrganizationAsset.organization_id == organization_id]
-    if q.strip():
-        where.append(OrganizationAsset.name_key.contains(_key(q)))
-    for name, values in (filters or {}).items():
-        wanted = [str(v) for v in values if str(v).strip()]
-        if not wanted:
-            continue
-        if name == "source":
-            where.append(
-                OrganizationAsset.id.in_(
-                    select(OrganizationAssetSource.asset_id).where(
-                        OrganizationAssetSource.organization_id == organization_id,
-                        OrganizationAssetSource.source.in_(wanted),
-                    )
-                )
-            )
-        elif name in FILTER_FIELDS:
-            where.append(_field_value(name).in_(wanted))
+    where = _asset_where(organization_id, q=q, filters=filters)
     total = (await db.execute(select(func.count()).select_from(OrganizationAsset).where(*where))).scalar() or 0
     assets = (
         (
