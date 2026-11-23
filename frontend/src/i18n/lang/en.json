@@ -21087,5 +21087,7 @@
   "The run-as user was not saved.": "The run-as user was not saved.",
   "Saved. The next check round reads the modules as this user.": "Saved. The next check round reads the modules as this user.",
   "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.",
-  "The run-as user does not exist or is deactivated.": "The run-as user does not exist or is deactivated."
+  "The run-as user does not exist or is deactivated.": "The run-as user does not exist or is deactivated.",
+  "Hide from the command center. The setup stays on the CTEM loop fleet page.": "Hide from the command center. The setup stays on the CTEM loop fleet page.",
+  "Hide the CTEM loop setup from the command center": "Hide the CTEM loop setup from the command center"
 }

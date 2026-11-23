@@ -21087,5 +21087,7 @@
   "The run-as user was not saved.": "El usuario de ejecución no se guardó.",
   "Saved. The next check round reads the modules as this user.": "Guardado. La próxima ronda de comprobaciones lee los módulos como este usuario.",
   "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "Este usuario no tiene acceso a {modules}: Platform Health ejecuta las comprobaciones de los módulos como este usuario. Dale acceso a {modules} o elige un usuario que lo tenga.",
-  "The run-as user does not exist or is deactivated.": "El usuario de ejecución no existe o está desactivado."
+  "The run-as user does not exist or is deactivated.": "El usuario de ejecución no existe o está desactivado.",
+  "Hide from the command center. The setup stays on the CTEM loop fleet page.": "Ocultar del centro de mando. La configuración sigue en la página de la flota del bucle CTEM.",
+  "Hide the CTEM loop setup from the command center": "Ocultar la configuración del bucle CTEM del centro de mando"
 }
