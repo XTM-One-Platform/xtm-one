@@ -727,37 +727,43 @@ async def poll_integration_events(db: AsyncSession) -> int:
                 if not agent or not agent.enabled:
                     continue
 
-                # Get the integration — prefer explicit binding from trigger config
-                integration_id = trigger_integration_id(config, agent)
+                # Get the integration — prefer explicit binding from trigger config,
+                # else the agent's binding, else its template binding resolved for
+                # the user the automation runs as (#1378).
+                integration_id, reader_id, skip = await _poll_integration(db, wf, agent, config)
                 if not integration_id:
+                    await note_poll_skip(redis, wf.id, skip)
                     continue
 
-                # OAuth tokens are personal to whoever connected them:
-                # this poll runs on behalf of the agent, so the
-                # agent's owner is the acting identity for the ownership check.
+                # OAuth tokens are personal to whoever connected them: a bound
+                # integration is polled on behalf of the agent, its owner the
+                # acting identity for the ownership check; a template-resolved one
+                # on behalf of the user it was resolved for.
                 int_result = await db.execute(
                     select(Integration).where(
                         Integration.id == integration_id,
-                        connected_for_clause(agent_acting_user_id(agent)),
-                        reader_clause(agent_acting_user_id(agent)),
+                        connected_for_clause(reader_id),
+                        reader_clause(reader_id),
                     )
                 )
                 integration = int_result.scalar_one_or_none()
                 # The owner's own account on a per_user integration.
-                holder = (
-                    await resolve_token_holder(db, integration, agent_acting_user_id(agent))
-                    if integration is not None
-                    else None
-                )
+                holder = await resolve_token_holder(db, integration, reader_id) if integration is not None else None
                 access_token = (
-                    await _poll_credential(
-                        provider, integration, holder, db=db, user_id=agent_acting_user_id(agent)
-                    )
-                    if holder is not None
+                    await _poll_credential(provider, integration, holder, db=db, user_id=reader_id)
+                    if integration is not None and holder is not None
                     else None
                 )
                 if not access_token:
+                    await note_poll_skip(
+                        redis,
+                        wf.id,
+                        f"no usable credential on integration {integration_id} for its reader"
+                        if integration is not None
+                        else f"integration {integration_id} is not connected or not readable for its reader",
+                    )
                     continue
+                await note_poll_skip(redis, wf.id, None)
                 # The events go to a run acting as this user: delivered even
                 # when they cannot see the integration they come from, and
                 # said so. No acting user (an owner-less
@@ -897,6 +903,55 @@ async def _poll_provider(
     # Unsupported provider/event — return empty
     logger.debug("No poller for %s/%s", provider, event_type)
     return []
+
+
+#: Why the last poll of an assignment read nothing (a key per assignment, a day).
+POLL_SKIP_KEY_PREFIX = "event_poll_skip:"
+_POLL_SKIP_TTL_SECONDS = 86400
+
+
+async def note_poll_skip(redis: Any, assignment_id: Any, reason: str | None) -> None:
+    """Record (or clear, *reason* ``None``) why the poller skipped the assignment.
+
+    ``graph_event_subscriptions.delivery_mode`` shows it next to the last poll,
+    so a poll that never runs says why instead of "Last poll: never" alone.
+    """
+    key = f"{POLL_SKIP_KEY_PREFIX}{assignment_id}"
+    try:
+        if reason:
+            await redis.set(key, reason[:300], ex=_POLL_SKIP_TTL_SECONDS)
+        else:
+            await redis.delete(key)
+    except Exception as exc:
+        logger.debug("Could not record the poll skip of assignment %s: %r", assignment_id, exc)
+
+
+async def _poll_integration(db: Any, wf: Any, agent: Any, config: dict[str, Any]) -> tuple[Any, Any, str]:
+    """``(integration_id, reader_id, "")`` the assignment is polled through, else ``(None, None, reason)``.
+
+    The trigger's pinned integration or the agent's binding is read as the
+    agent's owner, as before. An agent that reaches the provider only by
+    template binding (the seeded agents) is polled through the integration
+    its run-as user resolves at run time, read as that user; a seeded fleet
+    automation with no run-as is never polled as the seed owner (#9188).
+    """
+    integration_id = trigger_integration_id(config, agent)
+    if integration_id:
+        return integration_id, agent_acting_user_id(agent), ""
+    provider = str(config.get("provider") or "")
+    from app.services.fleet_run_as import NO_RUN_AS_REASON, provisioning_user_id
+    from app.services.trigger_provisioning import template_integration_id, uses_template
+
+    if not uses_template(agent, provider):
+        return None, None, f"no {provider} integration bound to the trigger or its agent"
+    user_id = provisioning_user_id(wf, agent)
+    if user_id is None:
+        return None, None, NO_RUN_AS_REASON
+    label = {"opencti": "OpenCTI", "openaev": "OpenAEV", "opencrq": "OpenCRQ"}.get(provider, provider)
+    resolved, reason = await template_integration_id(db, agent, provider, label, user_id)
+    if not resolved:
+        return None, None, reason
+    return resolved, user_id, ""
 
 
 async def _poll_credential(

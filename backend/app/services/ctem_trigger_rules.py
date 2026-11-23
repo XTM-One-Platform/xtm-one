@@ -183,6 +183,13 @@ async def _live_gql(db: Any, trigger_config: object, agent: Any, receiver_integr
     from app.services.trigger_integration_access import trigger_integration_id
 
     integration_id = receiver_integration_id or trigger_integration_id(trigger_config, agent)
+    if not integration_id and isinstance(trigger_config, dict):
+        # A template-bound agent binds no id: the provisioner's resolved one is
+        # the integration the trigger was provisioned on and delivers through.
+        from app.services.opencti_trigger_provisioning import STATE_KEY
+
+        state = trigger_config.get(STATE_KEY)
+        integration_id = state.get("integration_id") if isinstance(state, dict) else None
     if isinstance(integration_id, list):
         integration_id = integration_id[0] if integration_id else None
     try:
