@@ -75,15 +75,42 @@ export function assetCategory(asset: { category?: string | null; subcategory?: s
 /** Whether an asset is reachable from the internet, in the column's words. @i18n-keys */
 const INTERNET_FACING_LABELS = { yes: "Yes", no: "No", unknown: "Unknown" } as const;
 
-/** How the tech stack holds a product (`installed`, `saas`, `cloud_service`). @i18n-keys */
-const TECH_KIND_LABELS = { installed: "Installed software", saas: "SaaS application", cloud_service: "Cloud service" } as const;
+/** The type of a software (organization_software_store.SOFTWARE_TYPES, #1495). @i18n-keys */
+export const SOFTWARE_TYPE_LABELS = {
+  application: "Application",
+  operating_system: "Operating system",
+  library: "Library",
+  firmware: "Firmware",
+  container_image: "Container image",
+  saas: "SaaS application",
+} as const;
+
+/** How sure a software's CPE is (organization_asset_identity.CPE_CONFIDENCES). @i18n-keys */
+export const CPE_STATE_LABELS = {
+  override: "Set by hand",
+  reported: "Reported by a source",
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+  unresolved: "Not resolved",
+} as const;
+
+/** Who owns a software: a source (read-only) or an administrator. @i18n-keys */
+export const SOFTWARE_ORIGIN_LABELS = { synced: "Synced", manual: "Entered by hand" } as const;
 
 const FIELD_LABELS: Record<string, Record<string, string>> = {
   criticality: ASSET_CRITICALITY_LABELS,
   internet_facing: INTERNET_FACING_LABELS,
   environment: ENVIRONMENT_LABELS,
-  kind: TECH_KIND_LABELS,
+  software_type: SOFTWARE_TYPE_LABELS,
+  cpe_state: CPE_STATE_LABELS,
+  origin: SOFTWARE_ORIGIN_LABELS,
 };
+
+/** A software's page. */
+export function softwarePath(id: string): string {
+  return `${INVENTORY_PATH}/software/${id}`;
+}
 
 /**
  * The translated words of one stored value of an inventory field (`host`, `very_high`, `yes`, `production`), the

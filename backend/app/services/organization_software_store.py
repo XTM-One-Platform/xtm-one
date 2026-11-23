@@ -407,21 +407,30 @@ def _software_dict(
     }
 
 
+def _values(value: str | Sequence[str]) -> list[str]:
+    """One filter value or several, stripped, the empty ones dropped."""
+    items = [value] if isinstance(value, str) else list(value)
+    return [v.strip() for v in items if v and v.strip()]
+
+
 async def list_software(
     db: AsyncSession,
     organization_id: uuid.UUID,
     *,
     q: str = "",
-    software_type: str = "",
+    software_type: str | Sequence[str] = "",
     vendor: str = "",
     source: str = "",
-    origin: str = "",
-    cpe_state: str = "",
+    origin: str | Sequence[str] = "",
+    cpe_state: str | Sequence[str] = "",
     unknown_version: bool | None = None,
     offset: int = 0,
     limit: int = 50,
 ) -> Page:
-    """The software of *organization_id*, by name, with its version and asset counts, filtered and paginated."""
+    """The software of *organization_id*, by name, with its version and asset counts, filtered and paginated.
+
+    *software_type*, *origin* and *cpe_state* take one value or several (any of them, the Software tab's filters).
+    """
     limit, offset = _limit(limit), max(0, int(offset or 0))
     soft = OrganizationSoftware
     ver = OrganizationSoftwareVersion
@@ -430,14 +439,14 @@ async def list_software(
     if q.strip():
         needle = f"%{_key(q)}%"
         where.append(or_(soft.name_key.like(needle), soft.vendor_key.like(needle), soft.product_key.like(needle)))
-    if software_type.strip():
-        where.append(soft.software_type == software_type.strip())
+    if types := _values(software_type):
+        where.append(soft.software_type.in_(types))
     if vendor.strip():
         where.append(soft.vendor_key == _key(vendor))
-    if origin.strip():
-        where.append(soft.origin == origin.strip())
-    if cpe_state.strip():
-        where.append(soft.cpe_state == cpe_state.strip())
+    if origins := _values(origin):
+        where.append(soft.origin.in_(origins))
+    if states := _values(cpe_state):
+        where.append(soft.cpe_state.in_(states))
     if source.strip():
         where.append(soft.sources.contains([source.strip()]))
     unknown_ids = select(ver.software_id).where(

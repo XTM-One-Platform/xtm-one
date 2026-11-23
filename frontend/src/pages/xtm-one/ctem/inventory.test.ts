@@ -40,7 +40,9 @@ describe("assetCategoryLabel and assetFieldLabel", () => {
     expect(assetCategoryLabel(tEn, { category: "saas_application", subcategory: "saas_app" })).toBe("SaaS application > SaaS app");
     expect(assetCategoryLabel(tEn, { category: "web_application", subcategory: "" })).toBe("Web application");
     expect(assetFieldLabel(tEn, "criticality", "very_high")).toBe("Very high");
-    expect(assetFieldLabel(tEn, "kind", "installed")).toBe("Installed software");
+    expect(assetFieldLabel(tEn, "software_type", "operating_system")).toBe("Operating system");
+    expect(assetFieldLabel(tEn, "cpe_state", "unresolved")).toBe("Not resolved");
+    expect(assetFieldLabel(tEn, "origin", "manual")).toBe("Entered by hand");
     expect(assetFieldLabel(tEn, "environment", "production")).toBe("Production");
   });
 

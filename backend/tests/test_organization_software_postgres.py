@@ -133,6 +133,16 @@ async def test_a_rebuild_creates_software_with_versions_and_links_every_installa
     assert detail["installations"]["total"] == 3
 
 
+async def test_the_asset_page_names_the_software_of_every_row() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        chrome = (await sw.list_software(session, org)).items[0]
+        asset_id = (await session.execute(select(OrganizationAsset.id))).scalar_one()
+        detail = await store.get_asset(session, org, asset_id)
+    assert detail is not None
+    assert {s["software_id"] for s in detail["software"]["items"]} == {chrome["id"]}
+
+
 async def test_the_software_id_survives_a_rebuild_and_unused_synced_software_goes() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _setup(session, [HOST])
@@ -205,6 +215,19 @@ async def test_a_hand_typed_software_takes_its_cpe_override_and_survives_a_rebui
     assert made["cpe"] == PORTAL_CPE and made["cpe_state"] == "override"
     assert kept is not None and kept["name"] == "Portal" and kept["cpe"] == PORTAL_CPE
     assert twice.value.status == 409 and bad_cpe.value.status == 422
+
+
+async def test_a_filter_with_several_values_answers_any_of_them() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        await sw.create_software(session, org, vendor="Acme", product="Portal", software_type="saas", cpe=PORTAL_CPE)
+        await session.commit()
+        both = await sw.list_software(session, org, origin=["manual", "synced"])
+        hand = await sw.list_software(session, org, origin=["manual"], cpe_state=["override", "reported"])
+        none = await sw.list_software(session, org, software_type=["firmware", "library"])
+    assert both.total == 2
+    assert [s["product"] for s in hand.items] == ["Portal"]
+    assert none.total == 0
 
 
 async def test_a_synced_software_is_read_only_but_for_its_cpe_override() -> None:

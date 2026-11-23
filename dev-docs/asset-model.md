@@ -362,6 +362,7 @@ Reads (any signed-in user):
 
 - `GET /api/v1/organization-context/software?q=&type=&vendor=&source=&origin=&cpe_state=&unknown_version=&offset=&limit=`:
   one item per software with `version_count`, `asset_count` (distinct assets), `has_unknown_version`, `editable`.
+  `type`, `origin` and `cpe_state` repeat for several values (any of them), as the Software tab's filters send them.
 - `GET /api/v1/organization-context/software/{id}`: the software, its versions with asset counts, its
   installations (paginated), `depends_on` and `used_by` (one level, each edge with its version and kind).
 - `GET /api/v1/organization-context/software/versions/{id}/assets?through_dependencies=`: the assets where a
@@ -389,7 +390,13 @@ Writes (administrators, audited `entity_type organization_context`, `entity_name
 - `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
   attachment (every version when `version` is empty); 404 when the asset holds none.
 
-Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
+UI (slice 2): CTEM > Inventory has a Software tab (`/ctem/inventory/software`, the old `tech-stack` tab redirects
+there) listing every software with its type, asset and version counts, CPE or its state, and sources, filtered on
+type, origin and CPE state; each row opens `/ctem/inventory/software/{id}`: the identity and CPE card, versions with
+asset counts (`unknown` named), the assets it is installed on (server paged), depends on and used by. Each row of
+an asset page's Software section carries `software_id` and opens that page.
+
+Next slice: the `tech_stack` profile rows migrated to manual software
 and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
 (`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
 events for software writes are not raised yet: no subscriber needs them before slice 3.

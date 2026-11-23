@@ -678,11 +678,12 @@ async def list_tech_stack_inventory(
 @router.get("/software", response_model=CanonicalAssetsPage)
 async def list_organization_software(
     q: str = Query("", max_length=200),
-    type: str = Query("", max_length=30),
+    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
+    type: list[str] = Query(default_factory=list, max_length=10),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: str = Query("", max_length=10),
-    cpe_state: str = Query("", max_length=20),
+    origin: list[str] = Query(default_factory=list, max_length=10),
+    cpe_state: list[str] = Query(default_factory=list, max_length=10),
     unknown_version: bool | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -739,11 +740,12 @@ async def list_assets_of_software_version(
 @router.get("/software/export.csv")
 async def export_organization_software(
     q: str = Query("", max_length=200),
-    type: str = Query("", max_length=30),
+    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
+    type: list[str] = Query(default_factory=list, max_length=10),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: str = Query("", max_length=10),
-    cpe_state: str = Query("", max_length=20),
+    origin: list[str] = Query(default_factory=list, max_length=10),
+    cpe_state: list[str] = Query(default_factory=list, max_length=10),
     unknown_version: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
