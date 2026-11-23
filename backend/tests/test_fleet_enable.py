@@ -215,6 +215,53 @@ async def test_partial_enable_refuses_an_empty_pick_and_an_id_that_is_not_off():
 
 
 @pytest.mark.asyncio
+async def test_estimate_counts_the_picked_schedules_and_events_and_prices_a_day():
+    """#1538: the plan answers the runs a day and an order-of-magnitude cost of the pick."""
+    agent = _agent()
+    hourly = _assignment("Hourly", enabled=False, reason="created_disabled")
+    hourly.trigger_config = {"cron": "0 * * * *"}
+    daily = _assignment("Daily", enabled=False, reason="created_disabled")
+    daily.trigger_config = {"cron": "0 9 * * *"}
+    observer = _assignment("Observer", enabled=False, reason="created_disabled")
+    observer.trigger_type, observer.trigger_config = "platform_event", {"event": "run.failed"}
+    on = _assignment("On", enabled=True)
+    on.trigger_config = {"cron": "* * * * *"}
+    rows = [(a, agent) for a in (hourly, daily, observer, on)]
+    cost = AsyncMock(return_value=0.05)
+    with (
+        patch.object(fleet_control, "_fleet_automation_rows", AsyncMock(return_value=rows)),
+        patch.object(fleet_control, "average_run_cost", cost),
+    ):
+        everything = await fleet_control.estimate_fleet_enable(SimpleNamespace(), _fleet())
+        picked = await fleet_control.estimate_fleet_enable(SimpleNamespace(), _fleet(), assignment_ids=[daily.id])
+
+    # The automation already on is not part of the plan.
+    assert everything.scheduled_runs_per_day == 25.0
+    assert everything.event_automations == 1
+    assert everything.avg_cost_per_run == 0.05 and everything.cost_per_day == 1.25
+    assert set(cost.await_args_list[0].args[1]) == {hourly.id, daily.id, observer.id}
+    assert picked.scheduled_runs_per_day == 1.0 and picked.event_automations == 0
+
+
+@pytest.mark.asyncio
+async def test_estimate_without_history_gives_no_cost():
+    rows = [(_assignment("Manual", enabled=False, reason="user_toggle"), _agent())]
+    with (
+        patch.object(fleet_control, "_fleet_automation_rows", AsyncMock(return_value=rows)),
+        patch.object(fleet_control, "average_run_cost", AsyncMock(return_value=None)),
+    ):
+        estimate = await fleet_control.estimate_fleet_enable(SimpleNamespace(), _fleet())
+    assert estimate.scheduled_runs_per_day == 0.0
+    assert estimate.avg_cost_per_run is None and estimate.cost_per_day is None
+    assert estimate.cost_days == fleet_control.ESTIMATE_COST_DAYS
+
+
+@pytest.mark.asyncio
+async def test_average_run_cost_reads_nothing_for_an_empty_pick():
+    assert await fleet_control.average_run_cost(SimpleNamespace(), [], days=30) is None
+
+
+@pytest.mark.asyncio
 async def test_only_an_admin_picks_another_run_as_user():
     user = _actor(admin=False)
     assert await fleets_api._enable_run_as(SimpleNamespace(), user, None) == user.id

@@ -112,6 +112,7 @@ from app.api.v1.schemas.fleet import (
     FleetDocumentationResponse,
     FleetDocumentationRestoreRequest,
     FleetDocumentationVersion,
+    FleetEnableEstimateResponse,
     FleetEnableItemResponse,
     FleetEnableRequest,
     FleetEnableResponse,
@@ -178,6 +179,7 @@ from app.services.fleet_autonomy import (
 )
 from app.services.fleet_control import (
     enable_fleet,
+    estimate_fleet_enable,
     fleet_control_audit_details,
     pausable_count,
     pause_fleet,
@@ -3149,6 +3151,17 @@ async def enable_fleet_automations(
     except FleetActionRefusedError as exc:
         raise _refused(exc) from None
     changed = plan.changed
+    estimate = None
+    if body.dry_run:
+        # The expected runs a day and cost of the pick (#1538), read before anything else.
+        load = await estimate_fleet_enable(db, fleet, assignment_ids=picked)
+        estimate = FleetEnableEstimateResponse(
+            scheduled_runs_per_day=load.scheduled_runs_per_day,
+            event_automations=load.event_automations,
+            avg_cost_per_run=load.avg_cost_per_run,
+            cost_per_day=load.cost_per_day,
+            cost_days=load.cost_days,
+        )
     if not body.dry_run:
         try:
             outcome = await enable_fleet(
@@ -3189,13 +3202,20 @@ async def enable_fleet_automations(
         missing=plan.missing,
         items=[
             FleetEnableItemResponse(
-                id=str(i.id), name=i.name, providers=list(i.providers), missing=list(i.missing), selected=i.selected
+                id=str(i.id),
+                name=i.name,
+                providers=list(i.providers),
+                missing=list(i.missing),
+                selected=i.selected,
+                runs_per_day=i.runs_per_day,
+                event_driven=i.event_driven,
             )
             for i in plan.items
         ],
         automations=FleetAutomationsResponse(
             total=counts.total, enabled=counts.enabled, paused=counts.paused, fleet_paused=counts.fleet_paused
         ),
+        estimate=estimate,
     )
 
 

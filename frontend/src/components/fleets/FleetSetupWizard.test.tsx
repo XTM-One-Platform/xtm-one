@@ -13,6 +13,7 @@ import { FleetSetupWizard } from "./FleetSetupWizard";
 import {
   initiallyLeftOut,
   openingWizardStep,
+  pickedLoad,
   pickedPlan,
   providerName,
   readWizardProgress,
@@ -148,6 +149,39 @@ describe("FleetSetupWizard", () => {
     expect(api.mutateAsync).toHaveBeenCalledWith({ runAs: null, assignmentIds: ["a1"] });
   });
 
+  it("shows the expected runs a day and cost of the pick, and follows the pick (#1538)", () => {
+    api.plan = plan({
+      items: [
+        { id: "a1", name: "Daily exposure review", providers: ["opencti"], missing: [], selected: true, runs_per_day: 24, event_driven: false },
+        { id: "a2", name: "Weekly simulation", providers: ["openaev"], missing: [], selected: true, runs_per_day: 1, event_driven: false },
+        { id: "a3", name: "Failure observer", providers: [], missing: [], selected: true, runs_per_day: 0, event_driven: true },
+      ],
+      estimate: { scheduled_runs_per_day: 25, event_automations: 1, avg_cost_per_run: 0.05, cost_per_day: 1.25, cost_days: 30 },
+    });
+    open("automations");
+    const load = screen.getByTestId("fleet-enable-load");
+    expect(load).toHaveTextContent("About 25 scheduled runs a day.");
+    expect(load).toHaveTextContent("1 automation runs once per event, as often as its events arrive.");
+    expect(load).toHaveTextContent("About $1.25 a day for the scheduled runs, from the mean cost of their runs over the last 30 days.");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Switch on Daily exposure review" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Switch on Failure observer" }));
+    expect(screen.getByTestId("fleet-enable-load")).toHaveTextContent("About 1 scheduled run a day.");
+    expect(screen.getByTestId("fleet-enable-load")).not.toHaveTextContent("once per event");
+    next();
+    expect(screen.getByTestId("fleet-setup-review-load")).toHaveTextContent("About $0.05 a day for the scheduled runs");
+  });
+
+  it("says there is no cost yet without a run history, and no scheduled run at 0", () => {
+    api.plan = plan({
+      items: [{ id: "a3", name: "Failure observer", providers: [], missing: [], selected: true, runs_per_day: 0, event_driven: true }],
+      estimate: { scheduled_runs_per_day: 0, event_automations: 1, avg_cost_per_run: null, cost_per_day: null, cost_days: 30 },
+    });
+    open("automations");
+    const load = screen.getByTestId("fleet-enable-load");
+    expect(load).toHaveTextContent("No scheduled run a day.");
+    expect(load).toHaveTextContent("No cost yet: these automations have not run in the last 30 days.");
+  });
+
   it("keeps Confirm disabled with nothing picked", () => {
     open("automations");
     fireEvent.click(screen.getByRole("checkbox", { name: "Select every automation that is off" }));
@@ -257,6 +291,16 @@ describe("fleet-setup-wizard rules", () => {
     expect(pickedPlan(items, new Set()).missing).toEqual(["openaev", "opencti", "opencrq"]);
     expect(pickedPlan(items, new Set(["a1"]))).toMatchObject({ assignmentIds: ["a2"], missing: ["opencrq"] });
     expect([...initiallyLeftOut(items)]).toEqual(["a1", "a2"]);
+  });
+
+  it("sums the load of a pick and prices it from the plan's mean run cost", () => {
+    const items = [
+      { id: "a1", name: "A", providers: [], missing: [], selected: true, runs_per_day: 0.3 },
+      { id: "a2", name: "B", providers: [], missing: [], selected: true, runs_per_day: 4, event_driven: true },
+    ];
+    const estimate = { scheduled_runs_per_day: 4.3, event_automations: 1, avg_cost_per_run: 0.1, cost_per_day: 0.43, cost_days: 30 };
+    expect(pickedLoad(items, estimate)).toEqual({ runsPerDay: 4.3, eventDriven: 1, costPerDay: 0.1 * 4.3, costDays: 30 });
+    expect(pickedLoad([], null)).toEqual({ runsPerDay: 0, eventDriven: 0, costPerDay: null, costDays: 30 });
   });
 
   it("counts the slots bound and still to bind", () => {

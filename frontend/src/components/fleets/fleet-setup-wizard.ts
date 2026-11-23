@@ -23,7 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * no endpoint, no migration). The CTEM loop fleet keeps its versioned
  * server-side setup (`GET /fleets/setup/ctem-loop`, #1087).
  */
-import type { FleetEnableItem } from "@/hooks/api/useFleetApi";
+import type { FleetEnableEstimate, FleetEnableItem } from "@/hooks/api/useFleetApi";
 
 export type WizardStepKey = "about" | "integrations" | "autonomy" | "automations" | "review";
 
@@ -151,6 +151,19 @@ export function pickedPlan(items: readonly FleetEnableItem[], left: ReadonlySet<
     /** The ids to send: none when every row is picked (the server picks every one). */
     assignmentIds: picked.length === items.length ? undefined : picked.map((item) => item.id),
   };
+}
+
+/**
+ * The expected load of a pick (#1538): the runs a day its schedules start, how
+ * many of its automations run once per event, and a cost a day from the mean
+ * cost of one run the plan read (null without a run in its window). An order
+ * of magnitude, never a quote.
+ */
+export function pickedLoad(picked: readonly FleetEnableItem[], estimate: FleetEnableEstimate | null | undefined) {
+  const runsPerDay = Math.round(picked.reduce((sum, item) => sum + (item.runs_per_day ?? 0), 0) * 10) / 10;
+  const eventDriven = picked.filter((item) => item.event_driven).length;
+  const avg = estimate?.avg_cost_per_run ?? null;
+  return { runsPerDay, eventDriven, costPerDay: avg === null ? null : avg * runsPerDay, costDays: estimate?.cost_days ?? 30 };
 }
 
 /**

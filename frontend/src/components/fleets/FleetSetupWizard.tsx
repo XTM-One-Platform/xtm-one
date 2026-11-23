@@ -63,6 +63,7 @@ import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { fleetViewPath } from "@/lib/fleet-operations";
+import { exactCost, formatCost } from "@/lib/trace-utils";
 
 import { quotaRange } from "./fleet-about-showcase";
 import { fleetRefusalMessage } from "./fleet-refusals";
@@ -72,6 +73,7 @@ import {
   initiallyLeftOut,
   nextWizardStep,
   openingWizardStep,
+  pickedLoad,
   pickedPlan,
   previousWizardStep,
   providerName,
@@ -107,7 +109,7 @@ export function FleetSetupWizard({
   /** The parent flow's title, kept when the wizard finishes another setup (UX r1 B1). */
   title?: string;
 }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const fleet = useFleet(open ? fleetId : null);
@@ -151,6 +153,8 @@ export function FleetSetupWizard({
   const pick = useMemo(() => pickedPlan(items, leftOut), [items, leftOut]);
   const count = pick.picked.length;
   const ready = count > 0 && pick.missing.length === 0;
+  // The expected runs a day and cost of the pick (#1538): an order of magnitude, read from the plan.
+  const load = useMemo(() => pickedLoad(pick.picked, plan.data?.estimate), [pick.picked, plan.data]);
 
   // A step the fleet no longer walks (its slots read after opening) falls back to the next one.
   const step: WizardStepKey = current && steps.includes(current) ? current : (current === "integrations" ? "autonomy" : current) ?? steps[0];
@@ -195,6 +199,16 @@ export function FleetSetupWizard({
   };
 
   const close = () => onOpenChange(false);
+  // One sentence each, never joined: their order and punctuation stay each locale's own.
+  const loadLines = [
+    t_i18n("{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}", { count: load.runsPerDay }),
+    load.eventDriven > 0
+      ? t_i18n("{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}", { count: load.eventDriven })
+      : null,
+    load.costPerDay === null
+      ? t_i18n("No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.", { days: load.costDays })
+      : t_i18n("About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.", { cost: formatCost(load.costPerDay, intl.locale), days: load.costDays }),
+  ].filter((line): line is string => Boolean(line));
   const range = quotaRange(documentation.data?.structured);
   const estimate = documentation.isError
     ? t_i18n("The run estimate could not be read.")
@@ -383,6 +397,13 @@ export function FleetSetupWizard({
                     </DashboardNotice>
                   </div>
                 )}
+                {plan.data && count > 0 && (
+                  <div className="content-compact text-default-secondary tabular-nums" data-testid="fleet-enable-load">
+                    {loadLines.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                )}
                 {plan.error && (
                   <p role="alert" className="content-compact text-default-primary">
                     {fleetRefusalMessage(plan.error, t_i18n) ?? t_i18n("Try again in a moment.")}
@@ -416,6 +437,18 @@ export function FleetSetupWizard({
                 <span className="w-40 shrink-0 font-medium">{t_i18n("Run estimate")}</span>
                 <span className="tabular-nums">{estimate}</span>
               </li>
+              {plan.data && count > 0 && (
+                <li className="flex flex-wrap items-center gap-2" data-testid="fleet-setup-review-load">
+                  <span className="w-40 shrink-0 font-medium">{t_i18n("Expected load")}</span>
+                  <span className="min-w-0 flex-1 space-y-0.5 tabular-nums" title={load.costPerDay === null ? undefined : exactCost(load.costPerDay, intl.locale)}>
+                    {loadLines.map((line) => (
+                      <span key={line} className="block">
+                        {line}
+                      </span>
+                    ))}
+                  </span>
+                </li>
+              )}
             </ul>
           )}
         </DialogBody>
