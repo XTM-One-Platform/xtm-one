@@ -107,9 +107,29 @@ def _serial(value: str) -> str:
     return "" if compact in _PLACEHOLDER_SERIALS or len(set(compact)) == 1 else compact
 
 
+#: MAC prefixes of virtual interfaces (container bridges, hypervisors): the same value sits on many
+#: machines, so it never names one and never merges two (Docker, VMware, VirtualBox, Hyper-V,
+#: QEMU/KVM, Parallels, Xen).
+_VIRTUAL_MAC_PREFIXES: tuple[str, ...] = (
+    "0242",
+    "005056",
+    "000c29",
+    "000569",
+    "001c14",
+    "080027",
+    "0a0027",
+    "00155d",
+    "525400",
+    "001c42",
+    "00163e",
+)
+
+
 def _mac(value: str) -> str:
     digits = re.sub(r"[^0-9a-fA-F]", "", value).lower()
     if not _HEX.match(digits) or digits in ("000000000000", "ffffffffffff"):
+        return ""
+    if digits.startswith(_VIRTUAL_MAC_PREFIXES):
         return ""
     return ":".join(digits[i : i + 2] for i in range(0, 12, 2))
 
@@ -746,7 +766,9 @@ def _group_ids(row: Mapping[str, Any]) -> dict[str, list[str]]:
 
 
 def _asset_ids(row: Mapping[str, Any]) -> dict[str, list[str]]:
-    ids = {kind: list(_as_list(row.get(kind))) for kind in IDENTIFIER_KINDS}
+    # An empty value names nothing: a row stored with ``hostname=""`` still takes its name as hostname,
+    # else its record carries no key and never merges with the same machine of another source.
+    ids = {kind: [v for v in _as_list(row.get(kind)) if v.strip()] for kind in IDENTIFIER_KINDS}
     if not ids["hostname"] and row.get("name"):
         ids["hostname"] = [str(row["name"])]
     return ids

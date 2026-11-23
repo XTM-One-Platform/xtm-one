@@ -254,6 +254,10 @@ async def note_event(event: str, payload: Mapping[str, Any], *, verified: bool) 
             await db.commit()
         # The case page, the board and Act now re-read at once (live, no poll).
         await publish_case_updates(case_frames(pending, now))
+        from app.services.ctem_case_routing import stamp_owners
+
+        # Exactly one fleet hears each case event: its owner (#1390).
+        await stamp_owners(data for _name, data, _eid in pending)
         raised = 0
         for name, data, eid in pending:
             if await publish(name, data, event_id=eid):

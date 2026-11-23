@@ -445,7 +445,9 @@ async def test_update_delegation_pending_to_failed():
 
 
 @pytest.mark.asyncio
-async def test_update_delegation_truncates_long_fields():
+async def test_update_delegation_keeps_the_whole_answer_and_bounds_the_error():
+    """A 60,000-character answer is stored whole (it used to be cut at 50,000
+    with no marker); only the error stays bounded."""
     delegation = _make_delegation()
     db = _FakeDb(scalar=delegation)
 
@@ -457,7 +459,7 @@ async def test_update_delegation_truncates_long_fields():
         error="e" * 6_000,
     )
 
-    assert len(delegation.result) == 50_000
+    assert delegation.result == "r" * 60_000
     assert len(delegation.error) == 5_000
 
 

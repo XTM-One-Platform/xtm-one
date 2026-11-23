@@ -1119,8 +1119,11 @@ async def publish_pending(events: PendingEvents | None) -> int:
         await publish_case_updates(frames)
     if not events.items:
         return 0
+    from app.services.ctem_case_routing import stamp_owners
     from app.services.platform_events import publish
 
+    # Exactly one fleet hears each case event: its owner, computed now (#1390).
+    await stamp_owners(data for _name, data, _eid in events.items)
     published = 0
     for name, data, event_id in events.items:
         if await publish(name, data, event_id=event_id):

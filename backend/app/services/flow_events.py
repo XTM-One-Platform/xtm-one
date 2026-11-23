@@ -61,6 +61,7 @@ from app.models.flow_event import (
     FlowEvent,
     FlowEventType,
 )
+from app.services.sub_agent_result_text import clipped
 
 logger = logging.getLogger(__name__)
 
@@ -563,7 +564,12 @@ async def emit_delegation_completion_events(
         "task": (task.task_description or "")[:500],
         "task_id": str(task.id),
         "target_agent_id": str(task.target_agent_id),
-        "result": (task.result or task.error or "")[:4000],
+        # A cut result says so and names the call that reads it whole (#1394).
+        "result": clipped(
+            task.result or task.error or "",
+            4000,
+            read_call=f'get_full_task_result(task_id="{task.id}")',
+        ),
         "status": status,
     }
 

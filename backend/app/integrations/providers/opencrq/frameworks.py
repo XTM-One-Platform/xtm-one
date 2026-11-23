@@ -443,9 +443,19 @@ def register(
             ]
         if not capabilities:
             return "No control capabilities matched."
-        shown, more = _page(capabilities, offset, 40)
+        size = 40
+        shown, more = _page(capabilities, offset, size)
+        total = len(capabilities)
+        header = f"Control capabilities ({total}):"
+        if shown and total > size:
+            # Said before the rows, so a reader that stops at the first page knows it did.
+            pages = -(-total // size)
+            end = offset + len(shown)
+            header = f"Control capabilities ({total}; page {offset // size + 1} of {pages}, " + (
+                f"next offset {end}):" if end < total else "last page):"
+            )
         return _quarantined(
-            f"Control capabilities ({len(capabilities)}):",
+            header,
             "\n\n".join(_fmt_control(c, base_url, tenant) for c in shown),
             "control capabilities",
             more,

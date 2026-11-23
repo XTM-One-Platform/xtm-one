@@ -97,6 +97,31 @@ def test_openaev_endpoint_without_subcategory_takes_its_platform():
     assert (unknown.category, unknown.subcategory) == ("host", "")
 
 
+def _aev_row(asset: dict[str, object]) -> oc.AssetEntry:
+    row = imp.openaev_asset(asset)
+    assert row is not None
+    return row
+
+
+def test_openaev_endpoint_carries_its_os_family_and_addresses() -> None:
+    """An OpenAEV Windows endpoint reads os_family Windows, the name Intune gives, with its MACs and IPs as keys."""
+    row = _aev_row(
+        _aev_asset(
+            "w1",
+            "lapt-0002",
+            endpoint_platform="Windows",
+            asset_mac_addresses=["40-D1-33-98-4F-63", "", None, "40-D1-33-98-4F-63"],
+            asset_ips=["10.0.0.5"],
+        )
+    )
+    assert (row.os_family, row.mac, row.ip) == ("Windows", ["40-D1-33-98-4F-63"], ["10.0.0.5"])
+    assert _aev_row(_aev_asset("m1", "m", endpoint_platform="MacOS")).os_family == "macOS"
+    assert _aev_row(_aev_asset("l1", "l", endpoint_platform="Linux")).os_family == "Linux"
+    # A platform that names no operating system leaves the family empty.
+    for platform in ("Unknown", "Generic", None):
+        assert _aev_row(_aev_asset("u1", "u", endpoint_platform=platform)).os_family == ""
+
+
 def test_batch_taxonomy_reads_a_category_a_pair_or_a_legacy_type():
     assert imp.batch_taxonomy("identity") == ("identity", "")
     assert imp.batch_taxonomy("host/server") == ("host", "server")

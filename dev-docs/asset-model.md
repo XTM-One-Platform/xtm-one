@@ -95,6 +95,14 @@ endpoints, rule 2), Linux is `host` / `server`, iOS and Android are `mobile_devi
 is `container_workload` / `container`; OpenAEV's own subcategory wins, and `internet_facing` keeps OpenAEV's
 value.
 
+The same endpoint carries its identity and OS for the asset store: `endpoint_platform` becomes `os_family`
+through the Microsoft sources' `os_family` helper (Windows, macOS, Linux: the names Intune and Defender give, so
+one machine reads one family whatever its source; `Unknown` and `Generic` give none), `asset_mac_addresses`
+becomes the strong `mac` key and `asset_ips` the weak `ip` key. A MAC of a virtual interface (Docker bridge,
+VMware, VirtualBox, Hyper-V, QEMU/KVM, Parallels, Xen) names no machine and is dropped by the normaliser. A row
+with no hostname takes its name as hostname, so an OpenAEV endpoint named `lapt-0002` and the Intune device
+`LAPT-0002` are one asset.
+
 ## 3. Criticality
 
 | OpenAEV `asset_criticality` | OpenCRQ `criticality` | OpenCTI | XTM One asset `criticality` |

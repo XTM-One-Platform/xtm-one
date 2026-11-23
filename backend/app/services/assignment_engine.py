@@ -164,6 +164,7 @@ from app.tools.wait_policy import WaitPolicy
 
 if TYPE_CHECKING:
     from app.services.agentic_gate import AgenticVerdict
+    from app.services.assignment_activation_check import ActivationCheckOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -2638,6 +2639,16 @@ async def _activation_check_executor(
         )
     if composite.resolve_canonical_name(tool) is not None:
         return composite
+    # The fleet reads (get_fleet_health, #1400), as the run wires them: the
+    # agent holds them through its platform group, an on-demand one included.
+    if "fleets" in builtin_ids and effective_user_id:
+        from app.services.builtin_tools import build_fleet_tools
+
+        composite.add_tools(
+            *build_fleet_tools(str(effective_user_id), assignment_run_id=str(run.id), agent_id=str(agent.id))
+        )
+        if composite.resolve_canonical_name(tool) is not None:
+            return composite
     bindings = flatten_bindings(
         agent.integration_bindings or {}
         if assignment.integration_bindings is None
@@ -2824,6 +2835,8 @@ async def _skip_by_activation_check(
         outcome = await _evaluate_one_gate_check(
             db, check, run=run, agent=agent, assignment=assignment, effective_user_id=effective_user_id
         )
+        if outcome is not None and outcome.misconfigured:
+            await _record_misconfigured_gate_check(run, assignment, check, outcome)
         if outcome is None or (outcome.passed and outcome.error):
             # Passed over: named on the run and counted on the assignment (#10724).
             passed_over.append(
@@ -2894,6 +2907,8 @@ async def _skip_by_any_of_checks(
         outcome = await _evaluate_one_gate_check(
             db, check, run=run, agent=agent, assignment=assignment, effective_user_id=effective_user_id
         )
+        if outcome is not None and outcome.misconfigured:
+            await _record_misconfigured_gate_check(run, assignment, check, outcome)
         if outcome is None or (outcome.passed and outcome.error):
             reason = outcome.error if outcome is not None else "the check could not run"
             await _record_unevaluated_gate_checks(
@@ -3003,6 +3018,32 @@ async def _hold_event_for_lease(run: AssignmentRun, assignment: Assignment, hold
     except Exception as exc:
         logger.info("Assignment '%s': event not held for the lease: %s", assignment.name, format_exception_message(exc))
         return False
+
+
+async def _record_misconfigured_gate_check(
+    run: AssignmentRun, assignment: Assignment, check: dict[str, Any], outcome: ActivationCheckOutcome
+) -> None:
+    """Name a gate check that can never pass as configured (#1400): a friction and a drop reason.
+
+    The run is skipped by it (no model call); the friction under the run's
+    scope and the reason counted on the assignment make the configuration
+    error visible to the owner and to the fleet's health read.
+    """
+    from app.services.assignment_activation_check import check_tool_label
+    from app.services.frictions import note_friction, run_scope
+    from app.services.integration_event_filters import record_filter_reasons
+
+    tool = check_tool_label(check)
+    note_friction(
+        "tool_error",
+        tool,
+        f"gate check misconfigured on assignment '{assignment.name}' ({assignment.id}): {outcome.error}",
+        scope=run_scope(run, assignment),
+    )
+    context = dict(getattr(run, "trigger_context", None) or {})
+    context["gate_check_misconfigured"] = {"tool": tool, "reason": (outcome.error or "")[:300]}
+    run.trigger_context = context
+    await record_filter_reasons(assignment.id, {f"gate check misconfigured: {tool}": 1})
 
 
 async def _record_unevaluated_gate_checks(run: AssignmentRun, assignment: Assignment, passed_over: list[dict]) -> None:
