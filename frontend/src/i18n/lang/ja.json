@@ -21087,5 +21087,16 @@
   "The run-as user was not saved.": "実行ユーザーは保存されませんでした。",
   "Saved. The next check round reads the modules as this user.": "保存しました。次回のチェックでは、このユーザーとしてモジュールを読み取ります。",
   "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "このユーザーは {modules} にアクセスできません。Platform Health はこのユーザーとしてモジュールのチェックを実行します。{modules} へのアクセス権を付与するか、アクセス権を持つユーザーを選択してください。",
-  "The run-as user does not exist or is deactivated.": "実行ユーザーが存在しないか、無効化されています。"
+  "The run-as user does not exist or is deactivated.": "実行ユーザーが存在しないか、無効化されています。",
+  "Waits for approval": "承認待ち",
+  "Not usable": "使用不可",
+  "Not company-managed": "会社管理外",
+  "Sign-in not finished": "サインイン未完了",
+  "At {level}": "{level} の場合",
+  "Gated actions at {level}": "{level} で承認が必要なアクション",
+  "Deletes data or speaks in a person's name outside XTM One; it cannot be taken back.": "XTM One の外でデータを削除するか、個人の名前で発信します。元に戻せません。",
+  "Creates or changes content outside XTM One that other people and systems act on.": "他の人やシステムが利用するコンテンツを XTM One の外で作成または変更します。",
+  "A reversible mark, label or draft outside XTM One.": "XTM One の外での元に戻せるマーク、ラベル、または下書き。",
+  "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} は接続済みですが会社管理ではありません。このフリートのメンバーは会社管理の連携のみを使用します。管理者が会社管理に変更できます。",
+  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} はまだ接続されていません。連携ページでサインインを完了してください。"
 }
