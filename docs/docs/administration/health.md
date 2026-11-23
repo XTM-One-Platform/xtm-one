@@ -105,12 +105,6 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
-## Run checks as
-
-The agentic checks of OpenCTI, OpenAEV and OpenCRQ read each module through its integration, as one user: the **Run checks as** user. The XTM One administrator often has no access to the modules, so an administrator picks a user who has, in **Settings > Agents and automations > Platform Health > Health checks > Run checks as**, or on the **Modules** step of the guided **Set up the CTEM loop** setup. The user must reach every registered module's integration (granted to them and connected for them): otherwise the save is refused and the message names the modules the user cannot read.
-
-There is no other identity: while no user is set, or when the user loses access to a module, no agentic check of that module runs and its card on the Platform Health page reads **Checks need a run-as user with <Module> access**, with a link to the setting. Set the user, then **Run checks now**: the card shows the checks passed, warned and failed.
-
 ## OpenCTI checks
 
 In XTM One mode, AI switched off included, every registered OpenCTI is checked every 5 minutes, with no enrolment. The heartbeat check reads the registration; the others read the health snapshot OpenCTI sends with its registration, as long as it is under 15 minutes old. An OpenCTI release that sends no snapshot is only checked for its heartbeat. Nothing is stored while `PLATFORM_REGISTRATION_TOKEN` is the published default value.
@@ -149,6 +143,26 @@ In XTM One mode, AI switched off included, every registered OpenCRQ is checked e
 |---|---|---|
 | Heartbeat | Critical | OpenCRQ has not registered for 15 minutes |
 | Job failing | Warning | The last run of a background job ended in the dead-letter queue (one finding per job) |
+
+## Agent checks
+
+Every 15 minutes, in every mode, the health pass checks the agents enrolled in Platform Health, and them alone: after an upgrade no agent is enrolled. These checks read counts, statuses and ids, never conversation content, and call no model. With AI switched off agents do not run, so they record nothing and an open finding is kept as it was.
+
+| Check | Severity | Fails when |
+|---|---|---|
+| Assignment failing | Warning | The last 3 judged runs of an enabled assignment failed |
+| Schedule silent | Info | An enabled schedule has not run for 14 days |
+| Cost spike | Warning | A day's tokens are over 3 times the agent's daily average |
+| Owner disabled | Warning | The agent's owner account is deactivated |
+| Failure spike | Warning | Over 5 % of an assignment's last 20 settled runs failed |
+| Feedback drop | Warning | The agent's weighted feedback score is 10 points under the window before |
+| Cost drift | Info | The cost per run is up 20 % on the window before |
+| Model change | Info | The last day's runs used a model the 7 days before did not |
+| Integration broken | Warning | An integration bound to the agent is in error, must be re-authorized, or failed its last connection test |
+| Orphaned claims | Warning | A work item the agent owns is held by a run that ended |
+| Blocked without blocker | Info | A blocked work item the agent owns names nothing it waits for |
+
+The feedback drop, failure spike and cost drift checks read the thresholds of the [signals](#signals). A finding resolves by itself after two passes in a row without its cause; pausing or deleting the assignment, or unenrolling the agent, resolves it too.
 
 ## Analysis
 
