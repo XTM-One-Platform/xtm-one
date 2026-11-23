@@ -21227,5 +21227,7 @@
   "Reset fleet": "フリートをリセット",
   "Reset to factory state": "出荷時の状態にリセット",
   "What is kept": "保持されるもの",
-  "What is reset": "リセットされるもの"
+  "What is reset": "リセットされるもの",
+  "{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}": "{count, plural, other {緊急停止により、このフリートの # 件の自動化が保留されています}}",
+  "Resume them from the emergency stop before resetting the fleet.": "フリートをリセットする前に、緊急停止から再開してください。"
 }

@@ -21227,5 +21227,7 @@
   "Reset fleet": "Réinitialiser la flotte",
   "Reset to factory state": "Réinitialiser à l’état d’origine",
   "What is kept": "Ce qui est conservé",
-  "What is reset": "Ce qui est réinitialisé"
+  "What is reset": "Ce qui est réinitialisé",
+  "{count, plural, one {An emergency stop holds # automation of this fleet} other {An emergency stop holds # automations of this fleet}}": "{count, plural, one {Un arrêt d'urgence bloque # automatisation de cette flotte} other {Un arrêt d'urgence bloque # automatisations de cette flotte}}",
+  "Resume them from the emergency stop before resetting the fleet.": "Reprenez-les depuis l'arrêt d'urgence avant de réinitialiser la flotte."
 }
