@@ -20565,6 +20565,8 @@
   "Threat package drafted, coverage not requested yet": "Threat package drafted, coverage not requested yet",
   "Threat package drafted, not validated: coverage not sent to OpenAEV": "Threat package drafted, not validated: coverage not sent to OpenAEV",
   "Threat package validated, coverage not requested yet": "Threat package validated, coverage not requested yet",
+  "Review answered without approval: the package waits for a new plan, coverage not sent to OpenAEV": "Review answered without approval: the package waits for a new plan, coverage not sent to OpenAEV",
+  "Review refused the package: not published, coverage not sent to OpenAEV": "Review refused the package: not published, coverage not sent to OpenAEV",
   "Coverage requested in OpenCTI": "Coverage requested in OpenCTI",
   "Still in a draft past the case SLA: validate it in OpenCTI or answer the review": "Still in a draft past the case SLA: validate it in OpenCTI or answer the review",
   "Context: {value}": "Context: {value}",
@@ -21237,5 +21239,6 @@
   "Subject kind": "Subject kind",
   "Every signal": "Every signal",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.",
-  "Subcategories of {category}": "Subcategories of {category}"
+  "This entry no longer exists. The list is refreshed.": "This entry no longer exists. The list is refreshed.",
+  "This entry could not be loaded.": "This entry could not be loaded."
 }

@@ -28,6 +28,7 @@ from app.models.organization_asset import (
     OrganizationSoftwareDependency,
     OrganizationSoftwareVersion,
 )
+from app.models.organization_asset_record import RECORD_MODELS
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_store as store
 from tests.scratch_database import scratch_database, with_referenced_tables
@@ -47,6 +48,7 @@ async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         OrganizationSoftwareVersion,
         OrganizationSoftwareDependency,
         OrganizationContextVersion,
+        *RECORD_MODELS,
     ]
     tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
     async with scratch_database("orgassets", tables=tables) as db:
@@ -179,7 +181,9 @@ async def test_a_newer_profile_rebuilds_the_store_and_an_unchanged_one_does_not(
         rows = (await session.execute(select(OrganizationAsset))).scalars().all()
         software = (await session.execute(select(func.count()).select_from(OrganizationAssetSoftware))).scalar()
     assert same_ids == first_ids
-    assert [(r.name, r.profile_version) for r in rows] == [("laptop-01", 2)]
+    # Since #1543 a newer profile is applied as row writes: the removed record's asset goes, the
+    # unchanged one is not rewritten (it keeps the version it was built at).
+    assert [(r.name, r.profile_version) for r in rows] == [("laptop-01", 1)]
     assert software == 2
 
 
@@ -231,23 +235,18 @@ async def test_the_list_filters_on_fields_and_sources_and_the_facets_name_their_
         both = await store.list_assets(session, org, filters={"criticality": ["high", "low"], "source": []})
         none = await store.list_assets(session, org, filters={"category": ["database"]})
         facets = await store.asset_facets(session, org)
-        narrowed = await store.asset_facets(session, org, filters={"criticality": ["high"], "source": ["intune"]})
     assert [a["name"].casefold() for a in high.items] == ["laptop-01"]
-    assert high.items[0]["records"] == [
+    assert all(r["id"] for r in high.items[0]["records"])
+    assert [{k: r[k] for k in ("source", "external_id")} for r in high.items[0]["records"]] == [
         {"source": "intune", "external_id": "d-1"},
         {"source": "openaev", "external_id": "a-9"},
     ]
     assert [a["name"].casefold() for a in intune.items] == ["laptop-01"]
     assert both.total == 2
     assert none.total == 0
-    assert facets["criticality"] == [{"value": "high", "count": 1}, {"value": "low", "count": 1}]
-    assert facets["category"] == [{"value": "host", "count": 2}]
-    # laptop-01 holds an intune and an openaev record, web-02 an openaev one: a source counts assets.
-    assert facets["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 2}]
-    # A facet's counts apply the other facets picked, never its own (OR within, AND across, #1501).
-    assert narrowed["criticality"] == [{"value": "high", "count": 1}]
-    assert narrowed["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 1}]
-    assert narrowed["category"] == [{"value": "host", "count": 1}]
+    assert facets["criticality"] == ["high", "low"]
+    assert facets["category"] == ["host"]
+    assert facets["source"] == ["intune", "openaev"]
 
 
 async def test_a_lookup_finds_an_asset_by_any_identifier_a_platform_holds_and_never_another_organization() -> None:

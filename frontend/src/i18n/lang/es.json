@@ -20565,6 +20565,8 @@
   "Threat package drafted, coverage not requested yet": "Paquete de amenaza redactado, cobertura aún no solicitada",
   "Threat package drafted, not validated: coverage not sent to OpenAEV": "Paquete de amenaza redactado, no validado: cobertura no enviada a OpenAEV",
   "Threat package validated, coverage not requested yet": "Paquete de amenaza validado, cobertura aún no solicitada",
+  "Review answered without approval: the package waits for a new plan, coverage not sent to OpenAEV": "Revisión respondida sin aprobación: el paquete espera un nuevo plan, cobertura no enviada a OpenAEV",
+  "Review refused the package: not published, coverage not sent to OpenAEV": "La revisión rechazó el paquete: no publicado, cobertura no enviada a OpenAEV",
   "Coverage requested in OpenCTI": "Cobertura solicitada en OpenCTI",
   "Still in a draft past the case SLA: validate it in OpenCTI or answer the review": "Sigue en un borrador pasado el SLA del caso: valídelo en OpenCTI o responda a la revisión",
   "Context: {value}": "Contexto: {value}",
@@ -21237,5 +21239,6 @@
   "Subject kind": "Tipo de sujeto",
   "Every signal": "Todas las señales",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Una ejecución empieza por cada señal que coincide, dentro de las ejecuciones en paralelo de la tarea. El agente lee la señal con list_ctem_signals y sus propios permisos: una señal registrada por un oyente de integración solo llega a una tarea que se ejecuta como administrador.",
-  "Subcategories of {category}": "Subcategorías de {category}"
+  "This entry no longer exists. The list is refreshed.": "Esta entrada ya no existe. La lista se actualiza.",
+  "This entry could not be loaded.": "No se pudo cargar esta entrada."
 }
