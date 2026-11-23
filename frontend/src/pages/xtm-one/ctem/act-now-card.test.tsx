@@ -97,8 +97,8 @@ beforeEach(() => {
 describe("ActNowCard", () => {
   it("says on a case row that its remediation decision waits (CTEM-17-UI)", () => {
     state.cases = [
-      { id: "c1", title: "Upgrade nginx to 1.27.4", state: "needs_attention", severity: "P1", sla_due_at: null },
-      { id: "c2", title: "Patch a P2", state: "needs_attention", severity: "P2", sla_due_at: null },
+      { id: "c1", title: "Upgrade nginx to 1.27.4", state: "new", severity: "P1", sla_due_at: null },
+      { id: "c2", title: "Patch a P2", state: "new", severity: "P2", sla_due_at: null },
     ];
     state.decisions = [
       { id: "w1", correlation_key: "ctem:remediation:c1", needs_human: true, status: "blocked" },
@@ -122,8 +122,8 @@ describe("ActNowCard", () => {
   it("puts an open P1 case of the loop first, as Do first, with its SLA (#892)", () => {
     state.waiting = { count: 1, oldest: { id: "w1", title: "Approve the patch window", reason: null, since: null } };
     state.cases = [
-      { id: "c1", title: "Close the exposure of edge-01", state: "needs_attention", severity: "P1", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
-      { id: "c2", title: "Patch a P2", state: "needs_attention", severity: "P2", sla_due_at: null },
+      { id: "c1", title: "Close the exposure of edge-01", state: "new", severity: "P1", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      { id: "c2", title: "Patch a P2", state: "new", severity: "P2", sla_due_at: null },
     ];
     card([row("kev", 95)]);
     // Since CTEM-30 (#937) a P2 case is listed too, below what waits on the reader.
@@ -136,7 +136,7 @@ describe("ActNowCard", () => {
 
   it("shows a case row's own urgency, the P1 chip of the case, never a High band (UX round 2 on #897, B3)", () => {
     state.cases = [
-      { id: "c1", title: "Close the exposure of edge-01", state: "needs_attention", severity: "P1", priority: "critical", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      { id: "c1", title: "Close the exposure of edge-01", state: "new", severity: "P1", priority: "critical", sla_due_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
     ];
     card([row("kev", 95)]);
     const first = items()[0];

@@ -151,8 +151,8 @@ export function CasesBulkActions({
     const unowned = cases.filter((c) => !c.owner_user_id).map((c) => c.id);
     const owned = cases.filter((c) => c.owner_user_id).map((c) => c.id);
     const runs: Promise<CtemCaseBulkResult>[] = [];
-    if (unowned.length) runs.push(bulk.mutateAsync({ case_ids: unowned, state: "in_progress", owner_user_id: me?.id }));
-    if (owned.length) runs.push(bulk.mutateAsync({ case_ids: owned, state: "in_progress" }));
+    if (unowned.length) runs.push(bulk.mutateAsync({ case_ids: unowned, state: "remediating", owner_user_id: me?.id }));
+    if (owned.length) runs.push(bulk.mutateAsync({ case_ids: owned, state: "remediating" }));
     Promise.all(runs)
       .then((results) =>
         report({ updated: results.flatMap((r) => r.updated), failed: results.flatMap((r) => r.failed) }, false),
@@ -276,7 +276,7 @@ export function CasesBulkActions({
                 <SettingsField
                   id="bulk-expiry"
                   label={t_i18n("Expires on")}
-                  helper={t_i18n("The cases return to Needs attention on that day.")}
+                  helper={t_i18n("The cases return to New on that day.")}
                   required
                 >
                   <DateFilterInput

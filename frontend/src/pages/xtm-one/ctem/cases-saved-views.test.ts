@@ -18,12 +18,12 @@ describe("cases saved views", () => {
   });
 
   it("opens a view over the current parameters, other keys kept", () => {
-    const next = applyCaseView(new URLSearchParams("tab=x&c_group=owner&c_page=4&state=all"), "c_f_kev=yes&state=in_progress");
+    const next = applyCaseView(new URLSearchParams("tab=x&c_group=owner&c_page=4&state=all"), "c_f_kev=yes&state=remediating");
     expect(next.get("tab")).toBe("x");
     expect(next.get("c_page")).toBeNull();
     expect(next.get("c_group")).toBeNull();
     expect(next.get("c_f_kev")).toBe("yes");
-    expect(next.get("state")).toBe("in_progress");
+    expect(next.get("state")).toBe("remediating");
   });
 
   it("reads malformed storage as no view", () => {

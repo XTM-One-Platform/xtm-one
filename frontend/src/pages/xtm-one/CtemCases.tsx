@@ -2,33 +2,41 @@
 
 /**
  * The CTEM Cases list `/ctem/cases` (dev-docs/ctem-cases.md section 7.2): the
- * open exposures grouped by the fix they share, as the caller sees them. The
- * API returns only the cases the caller sees at least one issue of, with
- * counts computed on those (#11613), so the tabs and the total never count a
- * case the caller cannot open.
+ * exposures grouped by the fix they share, as the caller sees them. The API
+ * returns only the cases the caller sees at least one issue of, with counts
+ * computed on those (#11613), so the chips never count a case the caller
+ * cannot open. One full list (#1503): no state tabs and no "Act on this first"
+ * band; quick filter chips above the table (`?state=` scope, `?c_q=` toggles),
+ * open cases by default, so a case paused on a person shows on landing.
  */
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useNow } from "@/hooks/useTick";
 import { caseDueFlags } from "./ctem/cases-due";
 import { CASE_CREATED_RANGES, CASE_CREATED_RANGE_LABEL, caseCreatedRanges } from "./ctem/cases-created-range";
-import { caseAttention, caseOpenedAt } from "./ctem/case-attention";
-import { CasesAttentionBand } from "./ctem/CasesAttentionBand";
-import { useCaseAttentionWeights } from "./ctem/useCaseAttentionWeights";
+import { caseOpenedAt } from "./ctem/case-attention";
+import {
+  CASE_QUICK_FILTER_LABEL,
+  CASE_SCOPES,
+  CASE_TOGGLES,
+  applyCaseQuickFilters,
+  caseQuickFilterCount,
+  readCaseScope,
+  readCaseToggles,
+  writeCaseToggles,
+  type CaseScope,
+  type CaseScopeChip,
+  type CaseToggle,
+} from "./ctem/cases-quick-filters";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTable, type DataTableColumn, type DataTableGroupBy } from "@/components/ui/data-table";
 import { caseGroupLabel, caseGroupRank, caseGroupValue, readCaseGroupBy, type CaseGroupBy } from "./ctem/cases-grouping";
 import { CasesGroupByPill } from "./ctem/CasesGroupByPill";
 import { CasesViewsPill } from "./ctem/CasesViewsPill";
-import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { QuickFilterChips } from "@/components/ui/quick-filter-chips";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
-import {
-  CTEM_CASE_STATES,
-  useCtemCases,
-  type CtemCaseState,
-  type CtemCaseSummary,
-} from "@/hooks/api/useCtemCasesApi";
+import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
+import { CTEM_CASE_STATES, useCtemCases, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
 import { CasesFreshness } from "./ctem/CasesFreshness";
 import { ListPageHeader } from "@/components/ui/list-page-header";
@@ -44,57 +52,50 @@ import {
   useCasesEmptyLabel,
 } from "./ctem/cases-shared";
 
-type StateTab = CtemCaseState | "all";
-
-/** The tab a `?state=` opens; an unknown or absent value opens Needs attention. */
-function initialStateTab(param: string | null): StateTab {
-  if (param === "all") return "all";
-  return (CTEM_CASE_STATES as readonly string[]).includes(param ?? "") ? (param as CtemCaseState) : "needs_attention";
-}
-
 export default function CtemCases() {
   const { t_i18n, intl } = useFormatter();
   const { data, isLoading, isError, refetch } = useCtemCases();
+  const { data: me } = useMe();
   const [searchParams, setSearchParams] = useSearchParams();
-  // The tab is in the URL (`?state=`): the command center widget opens the list on a state,
-  // and a saved view (CasesViewsPill) sets it.
-  const tab = initialStateTab(searchParams.get("state"));
-  const setTab = (next: StateTab) => {
+  const setParam = (key: string, value: string | null) =>
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
-        params.set("state", next);
+        if (value) params.set(key, value);
+        else params.delete(key);
         return params;
       },
       { replace: true },
     );
-  };
+  // The scope is in the URL (`?state=`): the command center opens the list on a status, a saved view
+  // (CasesViewsPill) sets it; absent, an unknown or a first-model value, it is the open cases.
+  const scope = readCaseScope(searchParams.get("state"));
+  const toggles = readCaseToggles(searchParams.get("c_q"));
   const [selected, setSelected] = useState<string[]>([]);
+  const setScope = (next: CaseScope) => {
+    setParam("state", next === "open" ? null : next);
+    setSelected([]);
+  };
+  const flipToggle = (key: CaseToggle) => {
+    const next = toggles.includes(key) ? toggles.filter((t) => t !== key) : [...toggles, key];
+    setParam("c_q", writeCaseToggles(next) || null);
+    setSelected([]);
+  };
   // The grouping is in the URL too (`?c_group=`), so a link keeps it.
   const groupKey = readCaseGroupBy(searchParams.get("c_group"));
-  const setGroupKey = (next: CaseGroupBy) =>
-    setSearchParams(
-      (prev) => {
-        const params = new URLSearchParams(prev);
-        if (next === "none") params.delete("c_group");
-        else params.set("c_group", next);
-        return params;
-      },
-      { replace: true },
-    );
+  const setGroupKey = (next: CaseGroupBy) => setParam("c_group", next === "none" ? null : next);
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const now = useNow();
-  const weights = useCaseAttentionWeights();
+  const meId = me?.id ?? null;
   const ownerIds = useMemo(() => [...new Set(cases.map((c) => c.owner_user_id).filter((id): id is string => Boolean(id)))], [cases]);
   const { data: owners } = useUserDirectoryByIds(ownerIds);
   const ownerName = (id: string | null) => (id ? (owners?.find((o) => o.id === id)?.full_name ?? null) : null);
 
   // A product that could not be read never yields the all-clear sentence (#12139).
   const empty = useCasesEmptyLabel(data?.details_unavailable);
-  const counts = data?.counts;
-  const total = counts ? CTEM_CASE_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
-  const rows = tab === "all" ? cases : cases.filter((c) => c.state === tab);
+  const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
+  const countOf = (chip: CaseScopeChip | CaseToggle) => (data ? caseQuickFilterCount(chip, cases, scope, toggles, now, meId) : undefined);
   const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
     if (groupKey === "none") return undefined;
     return {
@@ -117,18 +118,7 @@ export default function CtemCases() {
 
   const columns: DataTableColumn<CtemCaseSummary>[] = [
     {
-      // The default sort (#1176): one explained score, the band above names its reasons.
-      key: "attention",
-      header: "Attention",
-      align: "right",
-      hint: t_i18n("Priority, KEV, crown jewels touched, due date, owner and age, added up. Resolved cases and accepted risks score 0."),
-      cell: (c) => formatCount(intl.locale, caseAttention(c, now, weights).score),
-      sortValue: (c) => caseAttention(c, now, weights).score,
-      csv: (c) => caseAttention(c, now, weights).score,
-      firstSort: "desc",
-      hideable: true,
-    },
-    {
+      // The default sort (#1503): priority, critical first; the attention score and its band are gone.
       key: "priority",
       header: "Priority",
       cell: (c) => <CasePriorityChip priority={c.priority} />,
@@ -165,7 +155,7 @@ export default function CtemCases() {
       sortValue: (c) => c.open_issue_count,
       csv: (c) => c.open_issue_count,
       firstSort: "desc",
-      // The Attention score already carries it: off by default at every width so the
+      // Off by default at every width so the
       // default columns fit at 1728 in FR and ES (UX round 1 on #1243, B1);
       // the Columns picker brings it back.
       hideBelow: "6xl",
@@ -279,7 +269,7 @@ export default function CtemCases() {
     },
     {
       key: "state",
-      header: "State",
+      header: "Status",
       // The chip sets the width (never cut, never a fixed 14rem that scrolls the
       // table at 1080 in FR): UX round 1 on #897, B1.
       className: "whitespace-nowrap",
@@ -301,27 +291,16 @@ export default function CtemCases() {
         actions={<CasesFreshness freshness={data?.freshness} now={now} />}
       />
 
-      <CasesAttentionBand cases={cases} now={now} weights={weights} />
-
-      <SegmentedFilter<StateTab>
-        selection="radio"
-        overflow="menu"
-        ariaLabel={t_i18n("Case state")}
-        value={tab}
-        onChange={(next) => {
-          setTab(next);
-          setSelected([]);
-        }}
-        options={[
-          ...CTEM_CASE_STATES.map((s) => ({
-            key: s as StateTab,
-            label: t_i18n(CASE_STATE_LABEL[s]),
-            count: counts?.[s],
-            countPending: !counts,
-            hint: s === "resolved" ? "All time" : undefined,
-          })),
-          { key: "all", label: t_i18n("All"), count: total, countPending: total === undefined },
-        ]}
+      <QuickFilterChips<CaseScopeChip, CaseToggle>
+        testId="ctem-cases-quick-filters"
+        scopeLabel={t_i18n("Cases shown")}
+        toggleLabel={t_i18n("Narrow the cases")}
+        scopes={CASE_SCOPES.map((key) => ({ key, label: t_i18n(CASE_QUICK_FILTER_LABEL[key]), count: countOf(key) }))}
+        scope={(CASE_SCOPES as readonly string[]).includes(scope) ? (scope as CaseScopeChip) : null}
+        onScope={setScope}
+        toggles={CASE_TOGGLES.map((key) => ({ key, label: t_i18n(CASE_QUICK_FILTER_LABEL[key]), count: countOf(key) }))}
+        active={toggles}
+        onToggle={flipToggle}
       />
 
       <DataTable
@@ -346,12 +325,21 @@ export default function CtemCases() {
             <CasesViewsPill />
           </>
         }
-        defaultSort={{ key: "attention", direction: "desc" }}
+        defaultSort={{ key: "priority", direction: "desc" }}
         defaultPageSize={25}
         searchFields={(c) => [c.title, c.product_label, c.fixed_version]}
         searchPlaceholder={t_i18n("Search fix, product or version")}
         filtersInPill
         filters={[
+          {
+            // One status among the eight (#1503), beside the scope chips: the Kanban's columns, as a filter.
+            key: "status",
+            label: "Status",
+            values: (c) => [c.state],
+            options: CTEM_CASE_STATES.map((s) => ({ value: s, label: t_i18n(CASE_STATE_LABEL[s]) })),
+            // Ordinal scale: the lifecycle order, new to accepted risk, never alphabetical.
+            ordered: true,
+          },
           {
             key: "priority",
             label: "Priority",

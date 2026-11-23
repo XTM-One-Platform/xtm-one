@@ -10,7 +10,7 @@ function kase(id: string, priority: CtemCaseSummary["priority"], ageDays: number
     id,
     title: id,
     priority,
-    state: "needs_attention",
+    state: "new",
     state_since: ageDays === null ? null : new Date(NOW - ageDays * DAY).toISOString(),
   } as CtemCaseSummary;
 }

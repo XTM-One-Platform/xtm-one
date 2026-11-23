@@ -9,7 +9,7 @@
 // Start chatting, never a row. Pure: no model, no run, no endpoint.
 
 import type { LucideIcon } from "lucide-react";
-import type { CtemCasePriority, CtemCaseSeverity } from "@/hooks/api/useCtemCasesApi";
+import { isOpenCaseState, type CtemCasePriority, type CtemCaseSeverity } from "@/hooks/api/useCtemCasesApi";
 import { CTEM_STAGE_KEYS } from "@/lib/constants";
 
 /** Where a row comes from: it ranks the rows, decides Ask AI and the generic
@@ -344,7 +344,7 @@ export function actNowCases<T extends { id: string; state: string; severity?: st
 ): T[] {
   const crit = (c: T) => CRITICALITY_RANK[scopes.get(c.id)?.criticality ?? ""] ?? 9;
   return cases
-    .filter((c) => c.severity && c.severity in SEVERITY_RANK && (c.state === "needs_attention" || c.state === "in_progress"))
+    .filter((c) => c.severity && c.severity in SEVERITY_RANK && isOpenCaseState(c.state))
     .sort(
       (a, b) =>
         SEVERITY_RANK[a.severity as string] - SEVERITY_RANK[b.severity as string] ||

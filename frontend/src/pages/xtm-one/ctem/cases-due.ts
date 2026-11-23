@@ -7,7 +7,7 @@
  * command center row and the Cases list filter it links to, so the figure
  * and the filtered list always agree.
  */
-import type { CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { isOpenCaseState, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 
 /** How far ahead an accepted risk counts as expiring. */
 export const EXPIRING_DAYS = 14;
@@ -19,7 +19,7 @@ export type CaseDueFlag = "overdue" | "expiring";
 /** The flags of one case at `now` (ms since the epoch). */
 export function caseDueFlags(c: Pick<CtemCaseSummary, "state" | "due_at" | "accepted_until">, now: number): CaseDueFlag[] {
   const flags: CaseDueFlag[] = [];
-  const open = c.state === "needs_attention" || c.state === "in_progress";
+  const open = isOpenCaseState(c.state);
   if (open && c.due_at && Date.parse(c.due_at) < now) flags.push("overdue");
   if (c.state === "accepted_risk" && c.accepted_until) {
     const until = Date.parse(c.accepted_until);

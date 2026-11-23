@@ -40,7 +40,7 @@ const entry = (over: Partial<TimelineEntry> = {}): TimelineEntry => ({
 const CASE = {
   id: "c-1",
   title: "Patch nginx",
-  state: "in_progress",
+  state: "remediating",
 } as unknown as CtemCaseSummary;
 
 // The real catalogs, English included: the run-outcome and run-source keys
@@ -96,7 +96,7 @@ describe("FleetTimelineCard", () => {
 
   it("names the case of a case run and opens it (#915)", () => {
     page([entry({ caseId: "c-1" })], "en", undefined, { "c-1": CASE });
-    expect(screen.getByText("In progress", { exact: false })).toBeTruthy();
+    expect(screen.getByText("Remediating", { exact: false })).toBeTruthy();
     fireEvent.click(screen.getByRole("link", { name: "Open case Patch nginx" }));
     expect(screen.getByText("Case page")).toBeTruthy();
   });

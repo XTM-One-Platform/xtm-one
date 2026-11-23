@@ -11,8 +11,28 @@ import { api, notFoundIsOrdinary } from "@/lib/api";
 import { REFETCH_INTERVAL_SLOW } from "@/lib/constants";
 import { isNetworkError, retryQuery } from "@/lib/query-outage-policy";
 
-export const CTEM_CASE_STATES = ["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"] as const;
+/**
+ * The statuses of a case in lifecycle order (backend models/ctem_case.CASE_STATES, #1503): the
+ * loop moves a case through the open ones itself; a person accepts risk.
+ */
+export const CTEM_CASE_STATES = [
+  "new",
+  "analyzing",
+  "waiting_decision",
+  "remediating",
+  "validating",
+  "mitigated_watching",
+  "resolved",
+  "accepted_risk",
+] as const;
 export type CtemCaseState = (typeof CTEM_CASE_STATES)[number];
+/** The statuses a case is still worked in (an SLA runs, a new signal joins it): backend OPEN_STATES. */
+export const CTEM_OPEN_CASE_STATES = ["new", "analyzing", "waiting_decision", "remediating", "validating"] as const;
+
+/** True for a status the case is still worked in. */
+export function isOpenCaseState(state: string | null | undefined): boolean {
+  return (CTEM_OPEN_CASE_STATES as readonly string[]).includes(state ?? "");
+}
 export type CtemCasePriority = "critical" | "high" | "medium" | "low";
 
 /** A case as one list row (`summary` in backend/app/services/ctem_cases_view.py). */

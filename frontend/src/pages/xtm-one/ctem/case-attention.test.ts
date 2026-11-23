@@ -14,7 +14,7 @@ function kase(over: Partial<CtemCaseSummary> = {}): CtemCaseSummary {
     remediation_kind: "upgrade",
     product_label: null,
     fixed_version: null,
-    state: "needs_attention",
+    state: "new",
     state_since: null,
     owner_user_id: "u1",
     due_at: new Date(NOW + 30 * DAY).toISOString(),

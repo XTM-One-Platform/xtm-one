@@ -12,7 +12,7 @@ import { Chip, Icon } from "@filigran/design-system";
 import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
-import { isRestrictedIssue, type CtemCaseIssue, type CtemCasePriority, type CtemCaseSeverity, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_OPEN_CASE_STATES, isRestrictedIssue, type CtemCaseIssue, type CtemCasePriority, type CtemCaseSeverity, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ import { CasePriorityChip } from "./cases-shared";
 
 type Translate = (id: string, values?: Record<string, string | number>) => string;
 
-const OPEN_STATES: ReadonlySet<string> = new Set(["needs_attention", "in_progress"]);
+const OPEN_STATES: ReadonlySet<string> = new Set(CTEM_OPEN_CASE_STATES);
 
 /** The loop severity in the hot tones of a priority (#1267): P1 red, P2 orange, P3 yellow. */
 const SEVERITY_TONE: Record<CtemCaseSeverity, HotTone> = { P1: "red", P2: "orange", P3: "yellow" };
