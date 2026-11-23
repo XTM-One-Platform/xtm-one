@@ -103,7 +103,6 @@ export function useUpdateProfile() {
       title?: string;
       timezone?: string | null;
       theme?: string;
-      pastel_colours?: boolean;
       language?: string;
       ctem_vertical?: User["ctem_vertical"];
       ctem_splash_seen?: boolean;

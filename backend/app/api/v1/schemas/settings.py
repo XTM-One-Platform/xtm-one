@@ -542,8 +542,6 @@ class UserPreferencesRequest(BaseModel):
     title: str | None = None
     timezone: str | None = None
     theme: str | None = None
-    # "Pastel colours" profile preference (#1305); null leaves it as it is.
-    pastel_colours: bool | None = None
     # UI language override: "auto" or a supported locale code (e.g. "fr-fr").
     language: str | None = None
     # CTEM command center (XTM One home) per-user preferences.
