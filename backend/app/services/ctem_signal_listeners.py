@@ -189,6 +189,10 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     for key in ("x_opencti_cvss_base_score", "x_opencti_epss_score", "x_opencti_cisa_kev", "source_ref"):
         if data.get(key) not in (None, ""):
             evidence[key.removeprefix("x_opencti_")] = data[key]
+    cpes = _cpes_of(data)
+    if cpes:
+        # #1432: the CPEs a vulnerability names, so the scope gate resolves it to a shipped product.
+        evidence["cpe"] = cpes
     if kind.startswith("relationship:"):
         # CTEM-08: the software or asset the relationship starts from, so the scope
         # gate resolves the signal to the tech stack product it names.
@@ -204,6 +208,20 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
     return {"external_id": external_id or None, "ref": ref, "label": label, "evidence": evidence}
+
+
+#: The fields of an OpenCTI object that may carry CPE strings (#1432), read when present.
+_CPE_FIELDS: tuple[str, ...] = ("x_opencti_cpe", "x_opencti_cpes", "cpe", "cpes")
+
+
+def _cpes_of(data: Mapping[str, Any]) -> list[str]:
+    """The CPE strings an object carries in :data:`_CPE_FIELDS`, each once (at most 20)."""
+    found: list[str] = []
+    for key in _CPE_FIELDS:
+        value = data.get(key)
+        values = [value] if isinstance(value, str) else value if isinstance(value, list) else []
+        found += [v.strip()[:300] for v in values if isinstance(v, str) and v.strip().lower().startswith("cpe:")]
+    return list(dict.fromkeys(found))[:20]
 
 
 def _pir_matches(data: Mapping[str, Any], payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -551,12 +569,6 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             primary = await get_primary(db)
             if primary is None:
                 return False
-            from app.services.ctem_signal_sources import excluded_sources, is_excluded
-
-            # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
-            kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
-            if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind):
-                return False
             signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
@@ -611,11 +623,6 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
         async with async_session() as db:
             primary = await get_primary(db)
             if primary is None:
-                return 0
-            from app.services.ctem_signal_sources import excluded_sources, is_excluded
-
-            # Path 11 excluded for the OpenCTI listener by an administrator (#1445): nothing is recorded.
-            if is_excluded(await excluded_sources(db, primary.id), "third_party_event", "opencti", "listener"):
                 return 0
             for raw in organization_ids:
                 try:

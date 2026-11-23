@@ -162,8 +162,6 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
     "asset_identity",
     # Cases attention weights (#1176): read by the Cases list and case page, never dumped into the always-on block.
     "case_attention",
-    # Per path source exclusions (#1445): read where a signal is recorded, never dumped into the always-on block.
-    "signal_sources",
 )
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
@@ -264,6 +262,46 @@ class TechStackEntry(BaseModel):
     source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
     sync_id: str = Field(default="", max_length=64)
+
+
+class ShippedProduct(BaseModel):
+    """A product the organization ships (#1432), apart from the tech stack it runs.
+
+    ``repositories`` are the ``owner/name`` of its source repositories: a
+    vulnerability on the product (matched by CPE, then by product and vendor)
+    resolves to them in the CTEM scope gate, so it joins the case of the
+    repository advisory for the same CVE.
+    """
+
+    model_config = _Strict
+
+    product: str = Field(min_length=1, max_length=200)
+    vendor: str = Field(default="", max_length=200)
+    cpe: str = Field(default="", max_length=300)
+    repositories: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("product", "vendor", "cpe")
+    @classmethod
+    def _stripped(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("repositories")
+    @classmethod
+    def _repositories(cls, value: list[str]) -> list[str]:
+        """``owner/name`` each once; a GitHub URL is read as its ``owner/name``."""
+        out: list[str] = []
+        for raw in value:
+            text = str(raw or "").strip().removesuffix(".git").strip("/")
+            for prefix in ("https://github.com/", "http://github.com/", "github.com/"):
+                if text.lower().startswith(prefix):
+                    text = text[len(prefix) :]
+            if not text:
+                continue
+            parts = text.split("/")
+            if len(parts) != 2 or not all(parts) or len(text) > 200:
+                raise ValueError(f"repository {raw!r} is not owner/name")
+            out.append(text)
+        return list(dict.fromkeys(out))
 
 
 class AiSystem(BaseModel):
@@ -695,46 +733,6 @@ class EvidenceHealthPass(BaseModel):
     cadence_hours: int = Field(default=24, ge=1, le=24 * 30)
 
 
-#: One source of a trigger path as ``provider:kind`` (``ctem_signal_sources.source_key``).
-_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)$")
-
-
-class SignalSourcesSettings(BaseModel):
-    """Which connected source feeds which CTEM trigger path (#1445, ``dev-docs/ctem-signals.md`` s.2bis).
-
-    Every connected source feeds every path it can by default. ``excluded``
-    names, per trigger path, the sources (``provider:kind``) an administrator
-    took off that path alone: an excluded source records nothing on it and is
-    not bound on it, while it keeps feeding its other paths. Set from the
-    Sources tab of CTEM > Signals.
-    """
-
-    model_config = _Strict
-
-    excluded: dict[str, list[str]] = Field(default_factory=dict)
-
-    @field_validator("excluded")
-    @classmethod
-    def _clean_excluded(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        from app.services.ctem_signal_sources import PATH_SOURCES, source_key
-
-        out: dict[str, list[str]] = {}
-        for path, keys in value.items():
-            known = {source_key(s.provider, s.kind) for s in PATH_SOURCES.get(path, ())}
-            if not known:
-                raise ValueError(f"{path!r} is not a trigger path with a source")
-            cleaned: list[str] = []
-            for key in keys:
-                key = str(key).strip()
-                if not _SOURCE_KEY.match(key) or key not in known:
-                    raise ValueError(f"{key!r} is not a source of the trigger path {path!r}")
-                if key not in cleaned:
-                    cleaned.append(key)
-            if cleaned:
-                out[path] = sorted(cleaned)
-        return out
-
-
 class CasesRecompute(BaseModel):
     """How often the shared CTEM cases are recomputed from the source products (``dev-docs/ctem-cases.md`` s.4.3).
 
@@ -853,6 +851,9 @@ class OrganizationProfile(BaseModel):
     size: Literal["", "1-50", "51-250", "251-1000", "1001-5000", "5001-20000", "20000+"] = ""
     crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
     tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
+    #: What the organization ships, with its source repositories (#1432). Not a contract
+    #: field: a vendor-free organization ships nothing; the tech stack is what it runs.
+    shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
     ai_systems: list[AiSystem] = Field(default_factory=list, max_length=200)
     pir_ids: list[str] = Field(default_factory=list, max_length=100)
     #: The last known OpenCTI name of each PIR in ``pir_ids``, saved with it so the
@@ -887,8 +888,6 @@ class OrganizationProfile(BaseModel):
     evidence_health: EvidenceHealthPass = Field(default_factory=EvidenceHealthPass)
     #: How often the shared CTEM cases are recomputed with no user action.
     cases_recompute: CasesRecompute = Field(default_factory=CasesRecompute)
-    #: The sources an administrator took off one trigger path (#1445).
-    signal_sources: SignalSourcesSettings = Field(default_factory=SignalSourcesSettings)
     #: How one asset is matched across sources and which source each field shows (#1178).
     asset_identity: AssetIdentity = Field(default_factory=AssetIdentity)
     #: The points of the Cases attention score (#1176): what needs attention first.
@@ -1359,6 +1358,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     if not dumped.get("fx_rates"):
         # #1383: a profile with no reference rate dumps as before.
         dumped.pop("fx_rates", None)
+    if not dumped.get("shipped_products"):
+        # #1432: a profile that ships nothing dumps as before.
+        dumped.pop("shipped_products", None)
     ticketing = dumped.get("ticketing")
     if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
         ticketing.pop("sync", None)
