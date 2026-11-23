@@ -247,6 +247,53 @@ async def triage_ctem_signals(
     return {"matched": len(rows), "counts": counts}
 
 
+class SignalInventoryAdd(BaseModel):
+    """Add the subjects of unmatched signals to the inventory (#1505): by id, or every signal a filter matches."""
+
+    ids: list[uuid.UUID] = Field(default_factory=list, max_length=scope_gate.MAX_BULK)
+    filter: TriageFilter | None = None
+
+
+@router.post("/add-to-inventory")
+async def add_ctem_signals_to_inventory(
+    body: SignalInventoryAdd,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Declare the subjects of the selected unmatched signals in the organization profile, then decide them again.
+
+    An administrator only: it writes one profile version (a host becomes an
+    asset, a software a tech stack product, an identity its email domain as an
+    owned domain). Only unmatched (``to_validate``) signals count; the others
+    are left as they are. A signal the gate confirms opens its case at the
+    next sweep, never one case per signal here. 422 when the profile would
+    not validate.
+    """
+    _require_xtm_one()
+    if bool(body.ids) == (body.filter is not None):
+        raise HTTPException(status_code=422, detail="Give either ids or a filter")
+    organization_id = await _organization_id(db)
+    rows = await signals.select_signals(
+        db,
+        organization_id=organization_id,
+        recorded_by=None,
+        ids=body.ids or None,
+        state=body.filter.state if body.filter else None,
+        trigger_path=body.filter.trigger_path if body.filter else None,
+        limit=scope_gate.MAX_BULK,
+    )
+    actor = (getattr(admin, "name", None) or getattr(admin, "email", None) or str(admin.id))[:200]
+    try:
+        result = await scope_gate.add_to_inventory(
+            db, rows, organization_id=organization_id, admin_id=admin.id, actor=actor
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    await db.commit()
+    return {"matched": len(rows), **result}
+
+
 #: The scope gate outcomes a scope proposal answers: the subject's criticality was known and below the threshold.
 SCOPE_PROPOSAL_CODES = frozenset({"below_scope_threshold"})
 

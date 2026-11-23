@@ -374,6 +374,99 @@ async def recheck_parked(
     return counts
 
 
+#: Where a profile row added from the Signals page says it came from (#1505).
+INVENTORY_SOURCE = "ctem-signal"
+
+
+def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
+    """#1505: the profile rows "Add to inventory" writes for the unmatched *rows*, nothing already there.
+
+    A host or asset becomes an asset (``host`` when it is a hostname or an IP),
+    a software subject a tech stack product, an identity its email domain as
+    an owned domain. Any other subject kind (a vulnerability, a threat, a third
+    party, code) is not an inventory row: it is left out. Only ``to_validate``
+    signals count.
+    """
+    have_assets = {gate.stable_key(a.name) for a in profile.assets_exposure}
+    have_products = {e.product.strip().lower() for e in profile.tech_stack}
+    have_domains = {d.lower() for d in profile.owned_domains}
+    assets: list[str] = []
+    products: list[str] = []
+    domains: list[str] = []
+    for row in rows:
+        if row.state != "to_validate":
+            continue
+        if row.subject_kind == "asset":
+            key = gate.stable_key(row.subject_ref)[:200]
+            if key and key not in have_assets:
+                have_assets.add(key)
+                assets.append(key)
+        elif row.subject_kind == "software":
+            name = str(row.subject_label or row.subject_ref).strip()[:200]
+            if name and name.lower() not in have_products:
+                have_products.add(name.lower())
+                products.append(name)
+        elif row.subject_kind == "identity":
+            domain = gate.identity_domain(row.subject_ref)
+            if domain and domain not in have_domains:
+                have_domains.add(domain)
+                domains.append(domain)
+    return {"assets": assets, "products": products, "domains": domains}
+
+
+async def add_to_inventory(
+    db: AsyncSession, rows: list[CtemSignal], *, organization_id: uuid.UUID, admin_id: uuid.UUID, actor: str
+) -> dict[str, Any]:
+    """#1505: declare the subjects of the unmatched *rows* in the profile, then decide *rows* again.
+
+    One new profile version holds every addition (``source`` ``ctem-signal`` on
+    each row); the gate then runs on *rows* with it. A signal the gate confirms
+    opens its case at the next sweep, grouped by case key, never one per row
+    here. ``ValueError`` when the profile would not validate (a list full).
+    The caller commits.
+    """
+    from app.services import organization_context as org_context
+
+    current = await org_context.current_version(db, organization_id)
+    profile = org_context.parse_profile(current.profile if current else {})
+    added = inventory_additions(profile, rows)
+    version: int | None = None
+    if any(added.values()):
+        data = profile.model_dump(mode="json")
+        data["assets_exposure"] = list(data.get("assets_exposure") or []) + [
+            {
+                "name": name,
+                "category": "host" if "." in name else "generic_asset",
+                "source": INVENTORY_SOURCE,
+            }
+            for name in added["assets"]
+        ]
+        data["tech_stack"] = list(data.get("tech_stack") or []) + [
+            {"product": name, "source": INVENTORY_SOURCE} for name in added["products"]
+        ]
+        data["owned_domains"] = list(data.get("owned_domains") or []) + added["domains"]
+        updated = org_context.parse_profile(data)
+        basis = f"added from the CTEM Signals page by {actor}"[:500]
+        touched = [
+            f
+            for f, key in (("assets_exposure", "assets"), ("tech_stack", "products"), ("owned_domains", "domains"))
+            if added[key]
+        ]
+        saved = await org_context.save_version(
+            db,
+            updated,
+            source="api",
+            author_user_id=admin_id,
+            organization_id=organization_id,
+            sources={field: {"source": INVENTORY_SOURCE, "basis": basis} for field in touched},
+        )
+        version = saved.version
+    parked = [row for row in rows if row.state == "to_validate"]
+    counts = await triage(db, parked, action="recheck", actor=actor, evaluator_id=admin_id)
+    counts["skipped"] = counts.get("skipped", 0) + len(rows) - len(parked)
+    return {"added": added, "version": version, "counts": counts}
+
+
 def dismissal_record(row: CtemSignal, *, by: str, at: datetime) -> dict[str, Any]:
     """The decision record of a dismissal (#1505): who and when, the state it left, the reconcile kept."""
     previous = dict(row.decision or {})

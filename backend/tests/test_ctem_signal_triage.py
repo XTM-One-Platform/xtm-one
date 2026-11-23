@@ -227,6 +227,113 @@ async def test_a_profile_change_checks_the_unmatched_signals_again(fake_io):
     assert "organization_context_versions" in sql and "ctem_signals.updated_at <" in sql
 
 
+def _subject(kind: str, ref: str, state: str = "to_validate", label: str | None = None):
+    row = _row(state=state, ref=ref)
+    row.subject_kind = kind
+    row.subject_label = label
+    return row
+
+
+def test_add_to_inventory_writes_one_row_per_subject_and_nothing_already_there():
+    profile = oc.parse_profile(
+        {
+            "assets_exposure": [{"name": "vpn.corp.example"}],
+            "tech_stack": [{"product": "Jira"}],
+            "owned_domains": ["corp.example"],
+        }
+    )
+    rows = [
+        _subject("asset", "https://Langfuse.One.Example.com/login"),
+        _subject("asset", "langfuse.one.example.com"),  # the same host twice: one row
+        _subject("asset", "vpn.corp.example"),  # already an asset
+        _subject("software", "cpe:2.3:a:grafana:grafana", label="Grafana"),
+        _subject("software", "jira"),  # already in the tech stack
+        _subject("identity", "ana@partner.example"),
+        _subject("identity", "bob@corp.example"),  # already owned
+        _subject("vulnerability", "CVE-2026-1"),  # never an inventory row
+        _subject("asset", "seen.example.com", state="watchlist"),  # not unmatched
+    ]
+    added = store.inventory_additions(profile, rows)
+    assert added == {
+        "assets": ["langfuse.one.example.com"],
+        "products": ["Grafana"],
+        "domains": ["partner.example"],
+    }
+
+
+async def test_add_to_inventory_saves_one_version_then_checks_the_signals_again(fake_io, monkeypatch):
+    saved: list = []
+
+    async def _current(_db, _org):
+        return None
+
+    async def _save(_db, profile, **kw):
+        saved.append((profile, kw))
+        fake_io.extend(a.name for a in profile.assets_exposure)
+        return SimpleNamespace(version=7)
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(oc, "save_version", _save)
+    rows = [_row(ref=f"h{i}.example.com") for i in range(120)] + [_row(state="watchlist", ref="w.example.com")]
+    result = await store.add_to_inventory(None, rows, organization_id="org", admin_id=None, actor="Ana")
+    assert len(saved) == 1
+    profile, kw = saved[0]
+    assert len(profile.assets_exposure) == 120
+    assert {a.source for a in profile.assets_exposure} == {store.INVENTORY_SOURCE}
+    assert {a.category for a in profile.assets_exposure} == {"host"}
+    assert kw["sources"] == {
+        "assets_exposure": {"source": store.INVENTORY_SOURCE, "basis": "added from the CTEM Signals page by Ana"}
+    }
+    assert result["version"] == 7
+    assert result["counts"]["confirmed"] == 120 and result["counts"]["skipped"] == 1
+    assert rows[-1].state == "watchlist"
+
+
+async def test_add_to_inventory_saves_nothing_when_every_subject_is_there(fake_io, monkeypatch):
+    async def _current(_db, _org):
+        return SimpleNamespace(profile={"assets_exposure": [{"name": "langfuse.example.com"}]})
+
+    async def _save(*_a, **_kw):
+        raise AssertionError("no version to save")
+
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(oc, "save_version", _save)
+    result = await store.add_to_inventory(None, [_row()], organization_id="org", admin_id=None, actor="Ana")
+    assert result["version"] is None and result["added"]["assets"] == []
+
+
+async def test_the_add_to_inventory_route_is_for_administrators(monkeypatch):
+    import uuid
+
+    import httpx
+    from fastapi import FastAPI
+
+    from app.api.deps import get_current_user
+    from app.api.v1 import ctem_signals as api_module
+    from app.core.config import settings
+    from app.core.database import get_db
+
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    app = FastAPI()
+    app.include_router(api_module.router, prefix="/api/v1/ctem-signals")
+
+    class _Db:
+        async def commit(self):
+            return None
+
+    async def _db():
+        yield _Db()
+
+    async def _user():
+        return SimpleNamespace(id=uuid.uuid4(), is_admin=False, is_active=True, name="Bob")
+
+    app.dependency_overrides[get_db] = _db
+    app.dependency_overrides[get_current_user] = _user
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http:
+        refused = await http.post("/api/v1/ctem-signals/add-to-inventory", json={"ids": [str(uuid.uuid4())]})
+    assert refused.status_code == 403
+
+
 class _Nested:
     async def __aenter__(self):
         return self

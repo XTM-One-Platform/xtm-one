@@ -32,8 +32,10 @@ import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { SlideOver } from "@/components/ui/slide-over";
 import { SourceBadge } from "@/components/ui/source-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { useAuth } from "@/hooks/useAuth";
 import {
   CTEM_SIGNAL_STATES,
+  useAddCtemSignalsToInventory,
   useCtemSignalList,
   useTriageCtemSignals,
   type CtemSignalTriage,
@@ -134,6 +136,9 @@ function SignalsTab() {
   // restored or checked again in one call. A signal that opened a case cannot be selected.
   const { toast } = useToast();
   const triage = useTriageCtemSignals();
+  const addToInventory = useAddCtemSignalsToInventory();
+  const { isAdmin } = useAuth();
+  const busy = triage.isPending || addToInventory.isPending;
   const [selected, setSelected] = useState<string[]>([]);
   const [allMatching, setAllMatching] = useState(false);
   const stateTotal = view.state && counts ? (counts[view.state] ?? 0) : 0;
@@ -162,6 +167,23 @@ function SignalsTab() {
       onError: () => toast({ title: t_i18n("The signals could not be updated"), variant: "error" }),
     });
   };
+  // Add to inventory (#1505, administrators): only an unmatched signal has a subject to declare.
+  const anyUnmatched = allMatching ? view.state === "to_validate" : selectedRows.some((s) => s.state === "to_validate");
+  const runAddToInventory = () => {
+    const body = allMatching && view.state ? { filter: { state: view.state } } : { ids: selected };
+    addToInventory.mutate(body, {
+      onSuccess: (result) => {
+        setSelected([]);
+        setAllMatching(false);
+        const added = result.added.assets.length + result.added.products.length + result.added.domains.length;
+        toast({
+          title: t_i18n("{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}", { count: added }),
+          variant: "success",
+        });
+      },
+      onError: () => toast({ title: t_i18n("The signals could not be updated"), variant: "error" }),
+    });
+  };
   const canSelectAllMatching = !!view.state && !allMatching && selected.length > 0 && stateTotal > selected.length;
   const selectionActions = (
     <span className="flex flex-wrap items-center gap-2" data-testid="ctem-signals-bulk-actions">
@@ -170,18 +192,24 @@ function SignalsTab() {
           {t_i18n("select all {count}", { count: stateTotal })}
         </Button>
       )}
-      <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={triage.isPending} onClick={() => runTriage("recheck")} data-testid="ctem-signals-recheck">
+      {isAdmin && anyUnmatched && (
+        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={runAddToInventory} data-testid="ctem-signals-add-to-inventory">
+          <Icon name="plus" size={16} aria-hidden />
+          {t_i18n("Add to inventory")}
+        </Button>
+      )}
+      <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={() => runTriage("recheck")} data-testid="ctem-signals-recheck">
         <Icon name="refresh-cw" size={16} aria-hidden />
         {t_i18n("Check again")}
       </Button>
       {anyOpen && (
-        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={triage.isPending} onClick={() => runTriage("dismiss")} data-testid="ctem-signals-dismiss">
+        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={() => runTriage("dismiss")} data-testid="ctem-signals-dismiss">
           <Icon name="eye-off" size={16} aria-hidden />
           {t_i18n("Dismiss signals")}
         </Button>
       )}
       {(anyDismissed || (allMatching && view.state === "discarded")) && (
-        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={triage.isPending} onClick={() => runTriage("restore")} data-testid="ctem-signals-restore">
+        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={busy} onClick={() => runTriage("restore")} data-testid="ctem-signals-restore">
           <Icon name="rotate-ccw" size={16} aria-hidden />
           {t_i18n("Restore")}
         </Button>
