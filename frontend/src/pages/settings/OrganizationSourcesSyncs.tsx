@@ -187,7 +187,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
     if (row.source.kind === "manual") return t_i18n(SOURCE_KIND_NAMES.manual);
     if (row.source.kind === "api") return t_i18n(SOURCE_KIND_NAMES.api);
     if (row.source.kind === "csv") return t_i18n(SOURCE_KIND_NAMES.csv);
-    return row.source.written_by_agent || row.source.display_name;
+    // An agent or a partner row is named by the source it writes for (Microsoft Intune), its
+    // agent on the subline; the agent names the row only when the source has no name of its own.
+    const named = row.source.display_name && row.source.display_name !== row.source.key;
+    return named ? row.source.display_name : row.source.written_by_agent || row.source.display_name;
   };
 
   const kindOf = (row: Row): OrganizationSource["kind"] => (row.sync ? "platform" : row.source.kind);
@@ -295,7 +298,8 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       // The Kind filter and the source's icon keep the kind readable when the column steps aside.
       hideable: true,
       hideBelow: "4xl",
-      cell: (row) => <span className="whitespace-nowrap">{row.sync?.section === "all" ? t_i18n("Sync all") : t_i18n(SOURCE_KIND_NAMES[kindOf(row)])}</span>,
+      // Wraps on two lines: a long translation (es "Agente o socio") never widens the table.
+      cell: (row) => <span className="block max-w-[8rem]">{row.sync?.section === "all" ? t_i18n("Sync all") : t_i18n(SOURCE_KIND_NAMES[kindOf(row)])}</span>,
       sortValue: (row) => kindOf(row),
       csv: (row) => kindOf(row),
     },
@@ -350,7 +354,9 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       key: "filters",
       header: "Filters",
       hideable: true,
-      hideBelow: "6xl",
+      // Behind Columns by default: at 1728 the fr, es and ja headers pushed Actions out of the
+      // 1458 px card (UX lab retest of #1294). Still searched and exported.
+      defaultHidden: true,
       cell: (row) => (row.sync ? <TruncatedText text={filtersLine(row.sync)} lines={2} className="w-max max-w-[14rem] content-compact text-default-secondary" /> : null),
       csv: (row) => (row.sync ? filtersLine(row.sync) : ""),
     },
@@ -378,12 +384,12 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         const sync = row.sync;
         return sync.last_result?.error ? (
           <Tip content={sync.last_result.error}>
-            <span className="block w-max max-w-[14rem] line-clamp-2 text-feedback-error-primary" tabIndex={0} data-testid="organization-sources.last-error">
+            <span className="block w-max max-w-[12rem] line-clamp-2 text-feedback-error-primary" tabIndex={0} data-testid="organization-sources.last-error">
               {lastRunLine(sync)}
             </span>
           </Tip>
         ) : (
-          <TruncatedText text={lastRunLine(sync)} lines={2} className="w-max max-w-[14rem] text-default-secondary" />
+          <TruncatedText text={lastRunLine(sync)} lines={2} className="w-max max-w-[12rem] text-default-secondary" />
         );
       },
       sortValue: (row) => row.sync?.last_run_at ?? "",
