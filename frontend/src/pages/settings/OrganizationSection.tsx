@@ -82,14 +82,11 @@ import {
   CURRENCIES,
   FIELD_HELP,
   FIELD_LABELS,
-  IMPORT_SOURCE_NAMES,
-  IMPORT_SOURCE_PROVIDER,
   PLATFORM_NAMES,
   type ProfileForm,
   SIZE_BANDS,
   TICKETING_PROJECT_ELEMENT,
   formatAmount,
-  importSourcesOfProvider,
   isSupportedRecordType,
   fromForm,
   toForm,
@@ -103,8 +100,7 @@ import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
 import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
-import { OrganizationSyncsCard } from "./OrganizationSyncsCard";
-import { OrganizationSourcesPanel } from "./OrganizationSourcesPanel";
+import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { MIN_CRITICALITY_LABELS } from "@/lib/organization-import-filters";
@@ -614,15 +610,6 @@ export function OrganizationSection() {
     navigate("/chat");
   };
   const connectedPlatforms = [...new Set(integrations.map((integration) => integration.provider).filter((provider) => provider in PLATFORM_NAMES))];
-  // The Sources panel also lists Intune and Defender once their own integration (intune, defender) is connected (#1251):
-  // a row created but never authorized, or disconnected, cannot be read, so it does not list them (UX round 1 B1).
-  const connectedSources = [
-    ...new Set(
-      integrations.flatMap((integration) =>
-        integration.provider in PLATFORM_NAMES || integration.status === "connected" ? importSourcesOfProvider(integration.provider) : [],
-      ),
-    ),
-  ];
   const draftMenuItems: OverflowMenuItem[] = [
     { id: "draft-platforms", label: t_i18n("From the platforms"), icon: Import, onSelect: () => setPlatformImportOpen(true) },
     {
@@ -798,13 +785,13 @@ export function OrganizationSection() {
   /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
   const sourceLabel = (value: Provenance) => {
     const kind = sourceKind(value.source);
-    return kind === "platform" ? (IMPORT_SOURCE_NAMES[sourcePlatform(value.source)] ?? value.source ?? "") : t_i18n(SOURCE_KIND_LABELS[kind]);
+    return kind === "platform" ? (PLATFORM_NAMES[sourcePlatform(value.source)] ?? value.source ?? "") : t_i18n(SOURCE_KIND_LABELS[kind]);
   };
   const sourceCell = (value: Provenance) => {
     const platform = sourcePlatform(value.source);
     return (
       <span className="flex min-w-0 items-center gap-2">
-        {platform && <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[platform] ?? platform} decorative className="h-4 w-4 shrink-0" />}
+        {platform && <ProviderLogo provider={platform} decorative className="h-4 w-4 shrink-0" />}
         <TruncatedText text={sourceLabel(value)} />
       </span>
     );
@@ -1616,13 +1603,6 @@ export function OrganizationSection() {
         // Five real tabs (#12329): the URL holds the active one, only its panel is rendered, and the
         // bar sticks under the top bar (the tables' sticky heads stop under it).
         <div className="space-y-4">
-          {/* Sources first (#1134 S2): who feeds which section, before what the tabs hold. */}
-          <OrganizationSourcesPanel
-            profile={current}
-            connected={connectedSources}
-            onAddSync={() => setPlatformImportOpen(true)}
-            disabled={editing || cardOpen !== null || drafting.isPending}
-          />
           {/* The bar is a row of links (UX r1 B1): the shared DetailTabs, so a tab opens in a new tab
               and Back returns to the previous one. It sits on the content grid, transparent at rest;
               stuck under the top bar it takes the page surface and the separator of the sticky bars
@@ -2171,10 +2151,11 @@ export function OrganizationSection() {
           <div role="tabpanel" aria-label={t_i18n(PROFILE_TAB_LABELS.knowledge)} className="space-y-4" data-testid="settings.organization.panel-knowledge">
             {missingIn("knowledge")}
             {exposureCards(["enterprise_knowledge"])}
-            {/* The imports saved with a schedule (#11913): no model, so they stay with AI off too. */}
-            <OrganizationSyncsCard />
             {/* The platform default of the organization summary cascade (#11533). */}
             <OrganizationContextInjectionCard />
+            {/* Sources and syncs (#1276), the tab's last block so the table fits the window under the
+                tab bar: one scroller, nothing below the list (UX r1 B1, B2 on #1294). */}
+            <OrganizationSourcesSyncs onAddSource={() => setPlatformImportOpen(true)} disabled={editing || cardOpen !== null || drafting.isPending} />
           </div>
           )}
 
