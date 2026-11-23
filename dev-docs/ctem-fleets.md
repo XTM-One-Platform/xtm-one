@@ -2331,6 +2331,17 @@ the header's "Set up" and the menu's "Run setup again" (`FleetSetupDialog`),
 for an XTM One administrator only, never while impersonating
 (`showsCtemLoopSetupEntry`).
 
+On the command center the entry is a nudge (#1379, `dashboardSetupEntryShown`
+in `ctem-loop-setup.ts`, `useDashboardSetupEntry`): it is drawn only while no
+CTEM work runs, that is the loop fleet's enable step reads
+`automations_enabled` 0 and every fleet the page shows (the CTEM fleets, or the
+person's choice, custom fleets included) reads 0 automations on in its health;
+it is not drawn while either is loading. Its close control writes
+`entry:ctem-loop-setup` into `users.organization_context_notice_dismissed`, so it
+never comes back on its own for that person. The fleet page entries and the
+case card's "Set up the CTEM loop" choice (a case no automation works) are
+contextual and always shown.
+
 ### One guided setup for every fleet
 
 A fleet has one setup path: "Set up" on its card and on its page header while
