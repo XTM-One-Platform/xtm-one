@@ -47,7 +47,6 @@ from app.services.organization_context import (
     ASSET_TAXONOMY,
     INTERNET_FACING,
     LEGACY_ASSET_TYPES,
-    AiSystem,
     AssetEntry,
     AssetGroupEntry,
     CrownJewel,
@@ -70,11 +69,14 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     "crown_jewels": ("opencrq",),
     "pirs": ("opencti",),
 }
+#: Deprecated since #1501 (kept one release): ``ai_systems`` reads and writes the assets of category
+#: ``ai_target``; an import of it touches no other asset.
+AI_SYSTEMS_ALIAS = "ai_systems"
 #: section -> the profile field it writes.
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "ai_systems": "ai_systems",
+    "ai_systems": "assets_exposure",
     "tech_stack": "tech_stack",
     "crown_jewels": "crown_jewels",
     "pirs": "pir_ids",
@@ -193,9 +195,6 @@ class ReadResult:
     findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     #: Name and identity key per repository id (#1331, slice 4): the asset a dependency match lands on.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
-    #: Ids of this source whose stored rows belong to another layer (#1591: OpenCRQ supporting assets an older
-    #: build imported as crown jewels): removed by the import whoever wrote them, never kept as gone.
-    superseded: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -220,9 +219,6 @@ class ImportPlan:
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
     excluded_removed: list[str] = field(default_factory=list)
-    #: Stored rows of a superseded layer (#1591: crown jewels an older build imported from OpenCRQ supporting
-    #: assets), removed by this plan whatever ``remove_gone`` says.
-    superseded: list[str] = field(default_factory=list)
     #: The sync writing the plan, stamped as ``sync_id`` on its rows (empty: a one-off import).
     sync_id: str = ""
     #: Rows that took the batch type (no category in the source).
@@ -277,7 +273,6 @@ class ImportPlan:
             "skipped": self.skipped[:SAMPLE_SIZE],
             "gone": self.gone[:SAMPLE_SIZE],
             "gone_kept": self.gone_kept[:SAMPLE_SIZE],
-            "superseded": self.superseded[:SAMPLE_SIZE],
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
@@ -378,7 +373,30 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         os_family=openaev_os_family(asset.get("endpoint_platform")),
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
+        **openaev_ai_target_fields(asset) if category == "ai_target" else {},
     )
+
+
+#: OpenAEV ``ai_target_modality`` values an asset keeps, lower-cased.
+_AI_MODALITIES: frozenset[str] = frozenset({"text", "vision", "audio", "multimodal"})
+
+
+def openaev_ai_target_fields(asset: dict[str, Any]) -> dict[str, Any]:
+    """The ``ai_target_*`` fields of an OpenAEV AI target an asset row keeps (#1501).
+
+    Provider, endpoint, model and modality; the token, the configuration and the system
+    prompt are never read (they may carry a credential).
+    """
+    from app.services.organization_context import AI_TARGET_PROVIDERS
+
+    provider = _lower(asset.get("ai_target_provider"))
+    modality = _lower(asset.get("ai_target_modality"))
+    return {
+        "ai_target_provider": provider if provider in AI_TARGET_PROVIDERS else "",
+        "ai_target_endpoint": str(asset.get("ai_target_endpoint") or "").strip()[:500],
+        "ai_target_model": str(asset.get("ai_target_model") or "").strip()[:200],
+        "ai_target_modality": modality if modality in _AI_MODALITIES else "",
+    }
 
 
 #: OpenAEV ``endpoint_platform`` values that name no operating system.
@@ -428,14 +446,14 @@ def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:
     )
 
 
-def openaev_ai_system(asset: dict[str, Any]) -> AiSystem | None:
-    """An OpenAEV AI target asset as an AI system linked to it by ``openaev_asset_id``."""
-    name = str(asset.get("asset_name") or "").strip()
-    asset_id = str(asset.get("asset_id") or "").strip()
-    if not name or not asset_id:
+def openaev_ai_system(asset: dict[str, Any]) -> AssetEntry | None:
+    """An OpenAEV AI target as an asset of category ``ai_target``, every field kept (#1501; no forced kind)."""
+    if not _lower(asset.get("asset_category")):
+        asset = {**asset, "asset_category": "ai_target"}
+    row = openaev_asset(asset)
+    if row is None or row.category != "ai_target":
         return None
-    exposure = "public" if asset.get("asset_internet_facing") is True else "internal"
-    return AiSystem(name=name[:200], kind="model_api", exposure=exposure, source="openaev", external_id=asset_id[:200])  # type: ignore[arg-type]
+    return row
 
 
 def _lower(value: Any) -> str:
@@ -501,50 +519,18 @@ def opencti_system(node: dict[str, Any], batch_type: str) -> AssetEntry | None:
     )
 
 
-#: The four security needs of an OpenCRQ primary asset (``SECURITY_NEED_CRITERIA``), rated on :data:`OPENCRQ_LEVELS`.
-OPENCRQ_SECURITY_NEEDS: tuple[str, ...] = ("availability", "integrity", "confidentiality", "traceability")
+def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
+    """An OpenCRQ supporting asset at or above *min_level* as a crown jewel."""
+    from app.services.organization_context_opencrq import _asset_name
 
-
-def primary_asset_level(asset: dict[str, Any]) -> str:
-    """The highest security need of an OpenCRQ primary asset; ``""`` when none is rated (#1591)."""
-    rated = [str(asset.get(need) or "").lower() for need in OPENCRQ_SECURITY_NEEDS]
-    levels = [OPENCRQ_LEVELS.index(level) for level in rated if level in OPENCRQ_LEVELS]
-    return OPENCRQ_LEVELS[max(levels)] if levels else ""
-
-
-def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> CrownJewel | None:
-    """An OpenCRQ PRIMARY asset (a business asset) as a profile primary asset row (#1591).
-
-    The criticality is the highest of its four security needs (``very_high`` ->
-    ``critical``); a primary asset with no need rated yet is ``high``, since
-    OpenCRQ lists only what the business named as a primary asset. Its business
-    function is the row's business service and its owner the owner. A
-    *min_level* drops a primary asset whose rated needs all fall below it;
-    one with no need rated is always kept. Supporting assets (the IT under a
-    primary asset) are never rows of this section: they are inventory assets,
-    linked to their primary asset by the link sync.
-    """
-    name = str(asset.get("name") or "").strip()
-    asset_id = str(asset.get("id") or "").strip()
+    level = str(asset.get("criticality") or "").lower()
+    if level not in OPENCRQ_LEVELS or OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
+        return None
+    name = _asset_name(asset)
+    asset_id = str(asset.get("id") or "")
     if not name or not asset_id:
         return None
-    level = primary_asset_level(asset)
-    if level and min_level in OPENCRQ_LEVELS and OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
-        return None
-    owner = asset.get("owner") if isinstance(asset.get("owner"), dict) else {}
-    return CrownJewel(
-        name=name[:200],
-        business_service=str(asset.get("businessFunction") or "").strip()[:200],
-        owner=str((owner or {}).get("name") or "").strip()[:200],
-        criticality=FROM_OPENCRQ[level] if level else "high",  # type: ignore[arg-type]
-        source="opencrq",
-        external_id=asset_id[:200],
-    )
-
-
-def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
-    """Alias of :func:`opencrq_primary_asset` kept for one release (#1591): it reads PRIMARY assets now."""
-    return opencrq_primary_asset(asset, min_level)
+    return CrownJewel(name=name[:200], criticality=FROM_OPENCRQ[level], source="opencrq", external_id=asset_id[:200])  # type: ignore[arg-type]
 
 
 # ── Merge (no I/O) ────────────────────────────────────────────────────
@@ -555,13 +541,14 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
     "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
-    "ai_systems": ("ai_systems", "name", 200, ("owner",)),
+    # #1501: the AI target assets, read and written like assets (the alias touches no other asset).
+    "ai_systems": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
     "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
     "tech_stack": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
-MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets"})
+MULTI_SOURCE_SECTIONS: frozenset[str] = frozenset({"assets", "ai_systems"})
 #: Fields kept from the stored row whatever the source sends: the source never owns them.
 _ALWAYS_LOCAL: frozenset[str] = frozenset({"business_service", "asset_names"})
 
@@ -603,8 +590,6 @@ def plan_import(
         repositories=read.repositories,
     )
     draft = profile.model_copy(deep=True)
-    if section in SOURCED_FIELDS and read.superseded and not read.error:
-        _drop_superseded(draft, section, source, read.superseded, plan)
     if section in SOURCED_FIELDS:
         _merge_sourced(draft, section, read.rows, source, plan, {str(i) for i in excluded_ids or [] if str(i)})
     elif section == "pirs":
@@ -614,24 +599,6 @@ def plan_import(
     ]
     plan.profile = draft
     return plan
-
-
-def _drop_superseded(
-    draft: OrganizationProfile, section: str, source: str, superseded: set[str], plan: ImportPlan
-) -> None:
-    """Remove the rows of *source* keyed on a *superseded* id (#1591), listed in ``superseded`` of the plan.
-
-    A typed row merely linked to such an id (``source`` manual) is not a row of
-    *source* and stays.
-    """
-    attr, name_key, _cap, _local = SOURCED_FIELDS[section]
-    current: list[Any] = list(getattr(draft, attr))
-    dropped = [r for r in current if r.source == source and r.external_id and r.external_id in superseded]
-    if not dropped:
-        return
-    plan.superseded = [getattr(r, name_key) for r in dropped]
-    gone = {id(r) for r in dropped}
-    setattr(draft, attr, [r for r in current if id(r) not in gone])
 
 
 def _merge_sourced(
@@ -649,6 +616,12 @@ def _merge_sourced(
     """
     attr, name_key, cap, local = SOURCED_FIELDS[section]
     current: list[Any] = list(getattr(draft, attr))
+    if section == AI_SYSTEMS_ALIAS:
+        # The alias merges into the assets and must never treat the other assets of the source as gone.
+        others = [r for r in current if r.category != "ai_target"]
+        current = [r for r in current if r.category == "ai_target"]
+    else:
+        others = []
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if r.external_id}
     multi = section in MULTI_SOURCE_SECTIONS
     names = {getattr(r, name_key).casefold() for r in current if not multi or r.source == source}
@@ -702,7 +675,7 @@ def _merge_sourced(
             dropped |= {id(r) for r in owned}
     if dropped:
         current = [r for r in current if id(r) not in dropped]
-    setattr(draft, attr, current[:cap])
+    setattr(draft, attr, (others + current)[:cap])
 
 
 #: Sections whose rows are asset records since #1543 (planned and written by ``(source, external_id)``).
@@ -978,6 +951,17 @@ async def _openaev_search(
     return result
 
 
+def _reads_ai_targets(filters: dict[str, Any], batch_type: str) -> bool:
+    """Whether an OpenAEV assets read includes the AI targets: no endpoint-only filter, no other batch type."""
+    picked = batch_taxonomy(batch_type) if batch_type else None
+    if picked and picked[0] != "ai_target":
+        return False
+    if _values(filters, "platform"):
+        return False
+    categories = [c.lower() for c in _values(filters, "category")]
+    return not categories or "ai_target" in categories
+
+
 #: OpenAEV ``asset_type`` values another read already serves whole: the endpoints (``/api/endpoints/search``,
 #: hostname, IPs and MACs included) and the AI targets (their own section).
 _OPENAEV_TYPES_READ_ELSEWHERE: frozenset[str] = frozenset({"endpoint", "ai_target"})
@@ -1059,6 +1043,18 @@ async def _read_openaev(
             endpoints_only=bool(_values(filters, "platform")),
         )
         read.rows = [r for r in (openaev_asset(a, batch_type) for a in read.rows) if r]
+        if read.error or not _reads_ai_targets(filters, batch_type):
+            return read
+        # #1501: OpenAEV's AI targets are assets too; an assets sync keeps them (and never drops them as gone).
+        targets = await _openaev_search(
+            base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters, asset_ids=asset_ids)
+        )
+        if targets.error:
+            return ReadResult(error=targets.error)
+        read.rows += [r for r in (openaev_ai_system(a) for a in targets.rows) if r]
+        read.truncated = read.truncated or targets.truncated
+        if read.total is not None and targets.total is not None:
+            read.total += targets.total
         return read
     if section == "asset_groups":
         tags = _values(filters, "tags")
@@ -1073,9 +1069,10 @@ async def _read_openaev(
         read = await _openaev_search(base_url, headers, "/api/asset_groups/search", group, text)
         read.rows = [r for r in (openaev_asset_group(g) for g in read.rows) if r]
         return read
-    if section == "ai_systems":
-        read = await _openaev_search(base_url, headers, "/api/endpoints/search", openaev_filter_group(filters), text)
-        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows if a.get("ai_target_provider")) if r]
+    if section == AI_SYSTEMS_ALIAS:
+        # #1501: OpenAEV's AI targets (``/api/ai_targets``), as assets of category ai_target.
+        read = await _openaev_search(base_url, headers, "/api/ai_targets/search", openaev_filter_group(filters), text)
+        read.rows = [r for r in (openaev_ai_system(a) for a in read.rows) if r]
         return read
     if section == "tech_stack":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
@@ -1197,15 +1194,8 @@ async def _read_opencti(
 
 
 async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any]) -> ReadResult:
-    """OpenCRQ PRIMARY assets as profile primary asset rows (#1591), every organization of the tenant.
-
-    ``min_criticality`` (empty: every primary asset) drops a primary asset whose
-    rated security needs all fall below it. The ids of the tenant's supporting
-    assets go in ``superseded``: rows an older build imported from them
-    (the wrong layer, before #1591) are removed by the import.
-    """
     from app.integrations.providers.opencrq._common import _resolve_tenant
-    from app.services.organization_context_opencrq import _list_assets, _list_primary_assets, _opencrq_connection
+    from app.services.organization_context_opencrq import _list_assets, _opencrq_connection
 
     connection = await _opencrq_connection(db, user_id)
     if isinstance(connection, str):
@@ -1214,15 +1204,15 @@ async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any])
     tenant, err = await _resolve_tenant(base_url, headers, str(filters.get("tenant_id") or ""))
     if err:
         return ReadResult(error=f"OpenCRQ: {err}")
-    primary, err = await _list_primary_assets(base_url, headers, tenant or "")
+    assets, err = await _list_assets(base_url, headers, tenant or "")
     if err:
         return ReadResult(error=f"OpenCRQ: {err}")
-    level = str(filters.get("min_criticality") or "")
-    rows = [j for j in (opencrq_primary_asset(a, level) for a in primary) if j]
+    level = str(filters.get("min_criticality") or "high")
+    if level not in OPENCRQ_LEVELS:
+        level = "high"
+    rows = [j for j in (opencrq_jewel(a, level) for a in assets) if j]
     rows.sort(key=lambda j: ("critical", "high", "medium", "low").index(j.criticality))
-    supporting, err = await _list_assets(base_url, headers, tenant or "")
-    superseded = set() if err else {str(a.get("id")) for a in supporting if a.get("id")}
-    return ReadResult(rows=rows, total=len(rows), superseded=superseded)
+    return ReadResult(rows=rows, total=len(rows))
 
 
 async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:

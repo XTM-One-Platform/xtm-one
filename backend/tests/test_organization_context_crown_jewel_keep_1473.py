@@ -28,8 +28,7 @@ def _typed(name: str, criticality: str) -> dict[str, Any]:
 
 
 def _assets(levels: dict[str, str]) -> list[dict[str, Any]]:
-    # OpenCRQ primary assets rated by one security need (#1591): the highest need is the criticality.
-    return [{"id": f"a-{name}", "name": name, "availability": level} for name, level in levels.items()]
+    return [{"id": f"a-{name}", "name": name, "criticality": level} for name, level in levels.items()]
 
 
 def _sync_read(assets: list[dict[str, Any]], min_level: str = "high") -> imp.ReadResult:
@@ -61,15 +60,16 @@ def test_three_typed_jewels_survive_the_reconcile_then_the_sync() -> None:
     # Saved then read back, as the next request does.
     saved = oc.parse_profile(reconcile.profile.model_dump(mode="json"))
     assert {j.source for j in saved.crown_jewels} == {"manual"}
-    # #1591: nothing is pushed to OpenCRQ; the sync reads the same primary assets (>= high).
-    assert reconcile.pushed == []
-    plan = imp.plan_import(saved, "crown_jewels", "opencrq", _sync_read(assets), remove_gone=True, sync_id=_SYNC)
+    # OpenCRQ now holds the pushed criticalities; the sync reads only >= high.
+    pushed = {name: level for _id, name, level in reconcile.pushed}
+    after_push = _assets({"Core": pushed.get("Core", "high"), "Billing": pushed["Billing"], "Wiki": pushed["Wiki"]})
+    plan = imp.plan_import(saved, "crown_jewels", "opencrq", _sync_read(after_push), remove_gone=True, sync_id=_SYNC)
     assert plan.profile is not None
     jewels = {j.name: j for j in plan.profile.crown_jewels}
     assert sorted(jewels) == ["Billing", "Core", "Wiki"]
     for name in ("Core", "Billing", "Wiki"):
         assert (jewels[name].owner, jewels[name].business_service) == (f"{name} owner", f"{name} svc")
-        assert jewels[name].source == "manual"
+    assert plan.skipped == ["Core"]
 
 
 def test_a_row_already_converted_by_an_older_build_is_kept_by_the_sync() -> None:
@@ -96,16 +96,30 @@ def test_a_sync_still_removes_the_rows_it_wrote() -> None:
     assert plan.profile is not None and plan.profile.crown_jewels == []
 
 
-def test_the_reconcile_never_releases_a_synced_row() -> None:
-    # #1591: no criticality is pushed, so no synced row falls below the sync's threshold by the reconcile.
+def test_a_synced_jewel_pushed_below_the_threshold_becomes_a_linked_typed_row() -> None:
     synced = oc.CrownJewel(
         name="Billing", criticality="medium", source="opencrq", external_id="a-Billing", sync_id=_SYNC, owner="CFO"
     )
     plan = plan_sync(oc.OrganizationProfile(crown_jewels=[synced]), _assets({"Billing": "high"}))
-    assert plan.released == [] and plan.pushed == []
-    jewel = plan.profile.crown_jewels[0]
-    assert (jewel.source, jewel.external_id, jewel.owner) == ("opencrq", "a-Billing", "CFO")
-    assert plan.summary()["kept_below_sync_threshold"] == []
+    assert plan.released == [("Billing", "a-Billing")]
+    jewel = oc.parse_profile(plan.profile.model_dump(mode="json")).crown_jewels[0]
+    assert (jewel.source, jewel.external_id, jewel.opencrq_asset_id, jewel.owner) == ("manual", "", "a-Billing", "CFO")
+    assert plan.summary()["kept_below_sync_threshold"] == [{"crown_jewel": "Billing", "opencrq_asset_id": "a-Billing"}]
+    sync = imp.plan_import(
+        plan.profile,
+        "crown_jewels",
+        "opencrq",
+        _sync_read(_assets({"Billing": "medium"})),
+        remove_gone=True,
+        sync_id=_SYNC,
+    )
+    assert sync.profile is not None and [j.name for j in sync.profile.crown_jewels] == ["Billing"]
+
+
+def test_a_synced_jewel_pushed_at_or_above_the_threshold_stays_synced() -> None:
+    synced = oc.CrownJewel(name="Core", criticality="critical", source="opencrq", external_id="a-Core", sync_id=_SYNC)
+    plan = plan_sync(oc.OrganizationProfile(crown_jewels=[synced]), _assets({"Core": "high"}))
+    assert plan.released == [] and plan.profile.crown_jewels[0].source == "opencrq"
 
 
 def test_removed_rows_names_what_a_save_dropped() -> None:
@@ -258,3 +272,23 @@ def test_restored_profile_takes_the_named_fields_only() -> None:
         assert "nope" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("an unknown field must be refused")
+
+
+def test_a_version_saved_before_1501_restores_its_ai_systems() -> None:
+    """The legacy ``ai_systems`` of a past version come back as ``ai_target`` assets (#1501 review)."""
+    past = oc.parse_profile(
+        {"name": "Then", "ai_systems": [{"name": "Copilot", "kind": "agent", "exposure": "internal"}]}
+    ).model_dump(mode="json")
+    current = oc.parse_profile({"name": "Now", "assets_exposure": [{"name": "Web", "category": "host"}]}).model_dump(
+        mode="json"
+    )
+
+    merged, fields = oc.restored_profile(current, past, ["ai_systems"])
+    restored = oc.parse_profile(merged)
+    assert fields == ["ai_systems"]
+    assert [a.name for a in restored.ai_systems] == ["Copilot"]
+    assert [a.name for a in restored.assets_exposure if a.category != "ai_target"] == ["Web"]
+    assert restored.name == "Now"
+
+    whole, _ = oc.restored_profile(current, past, [])
+    assert [a.name for a in oc.parse_profile(whole).ai_systems] == ["Copilot"]
