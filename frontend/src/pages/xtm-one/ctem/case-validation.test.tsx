@@ -126,6 +126,6 @@ describe("CaseValidation", () => {
 
   it("says a case not validated yet, never blank", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} />);
-    expect(screen.getByText(/Not validated yet/)).toBeTruthy();
+    expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
   });
 });

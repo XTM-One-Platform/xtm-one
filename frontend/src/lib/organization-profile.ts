@@ -267,6 +267,10 @@ export interface AssetRow {
   tags: string[];
   source: string;
   external_id: string;
+  /** When the source last observed the asset, ISO 8601 UTC; absent or "" when it does not say (#1134 S4). */
+  last_seen?: string;
+  /** The source's activity status (OpenAEV: active, inactive, agentless, stale); absent or "" when unknown. */
+  status?: "" | "active" | "inactive" | "agentless" | "stale";
 }
 
 /** A group of assets (OpenAEV's asset group, #11781). */

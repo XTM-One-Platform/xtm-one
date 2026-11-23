@@ -613,11 +613,105 @@ export function useUpdateOrganizationSync() {
   });
 }
 
+/**
+ * What happens to the rows a deleted sync wrote (#1276): ``leave`` keeps them owned by the
+ * source, ``release`` hands them to people (editable by hand), ``purge`` removes them.
+ */
+export type SyncRowsMode = "leave" | "release" | "purge";
+
+/** Delete a sync; ``rows`` says what its rows become (the API default, ``leave``, when omitted). */
 export function useDeleteOrganizationSync() {
   const qc = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => api.delete(`/organization-context/syncs/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: SYNCS }),
+  return useMutation<void, Error, string | { id: string; rows: SyncRowsMode }>({
+    mutationFn: (target) =>
+      typeof target === "string" ? api.delete(`/organization-context/syncs/${target}`) : api.delete(`/organization-context/syncs/${target.id}?rows=${target.rows}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SYNCS });
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One source of rows of the profile (#1276): a platform, an agent or partner, a CSV import, the API or a person. */
+export interface OrganizationSource {
+  key: string;
+  kind: "platform" | "agent" | "csv" | "api" | "manual";
+  display_name: string;
+  /** Profile field -> rows of this source. */
+  rows: Record<string, number>;
+  total: number;
+  /** The agent that last wrote this source's rows, when a saved version names it. */
+  written_by_agent: string;
+  sync_ids: string[];
+}
+
+export function useOrganizationSources(scope: OrganizationSyncScope = "") {
+  return useQuery<OrganizationSource[]>({
+    queryKey: [...KEY, "sources", scope],
+    queryFn: () => api.get(scope ? `/organization-context/sources?scope=${scope}` : "/organization-context/sources"),
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What a purge or a release would touch, per profile field, and the rows of other sources kept (#1276). */
+export interface RowsPlan {
+  source: string;
+  mode: string;
+  count: number;
+  counts: Record<string, number>;
+  rows: Record<string, string[]>;
+  kept_elsewhere: Record<string, string[]>;
+  version?: number | null;
+}
+
+/** The dry run of the delete dialog: a sync's rows (target.sync) or a source's rows (target.source). */
+export function useOrganizationRowsPreview(target: { sync?: string; source?: string } | null, mode: "release" | "purge") {
+  const path = target?.sync
+    ? `/organization-context/syncs/${target.sync}/rows-preview?mode=${mode}`
+    : target?.source
+      ? `/organization-context/sources/${encodeURIComponent(target.source)}/rows-preview?mode=${mode}`
+      : "";
+  return useQuery<RowsPlan>({
+    queryKey: [...KEY, "rows-preview", path],
+    queryFn: () => api.get(path),
+    enabled: path !== "",
+    throwOnError: false,
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Purge or release every row a source without a sync wrote (an agent, a partner, a CSV import). */
+export function useApplyOrganizationSourceRows() {
+  const qc = useQueryClient();
+  return useMutation<RowsPlan, Error, { source: string; mode: "release" | "purge" }>({
+    mutationFn: ({ source, mode }) => api.post(`/organization-context/sources/${encodeURIComponent(source)}/rows`, { mode }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One entry of a sync's history: a run that changed the profile or failed, or a save. */
+export interface SyncHistoryEntry {
+  at: string;
+  action: string;
+  by: string | null;
+  summary: string;
+  trigger: string;
+  added: number | null;
+  updated: number | null;
+  removed: number | null;
+  version: number | null;
+  error: string | null;
+}
+
+export function useOrganizationSyncHistory(id: string | null) {
+  return useQuery<SyncHistoryEntry[]>({
+    queryKey: [...SYNCS, "history", id],
+    queryFn: () => api.get(`/organization-context/syncs/${id}/history`),
+    enabled: id !== null,
+    throwOnError: false,
     meta: { suppressGlobalErrorToast: true },
   });
 }

@@ -26,8 +26,8 @@ export function CaseTreatmentPlan({ plan }: { plan: CtemCaseTreatmentPlan | null
       <CardContent className="content-base">
         {!plan ? (
           <CaseSectionReason
-            own={t_i18n("No treatment plan yet: the remediation decision writes one in OpenCRQ when OpenCRQ is connected.")}
-            needsOpencrq
+            own={t_i18n("The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.")}
+            source="opencrq"
             testId="ctem-case-treatment-plan-empty"
           />
         ) : (
