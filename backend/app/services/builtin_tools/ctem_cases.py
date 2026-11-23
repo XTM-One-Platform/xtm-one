@@ -341,6 +341,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         conclusive: bool | None = None,
         inject_class: str = "",
         not_tested: list[str] | None = None,
+        evidence_type: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -383,6 +384,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     run_order=[str(n) for n in run_order] if isinstance(run_order, list) else None,
                     conclusive=conclusive if isinstance(conclusive, bool) else None,
                     inject_class=klass,
+                    evidence_type=(evidence_type or "").strip() or None,
                     actor=agent_id,
                     events=pending,
                 )
@@ -398,6 +400,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "recorded as inconclusive: the case stays open with its remediation; only a check "
                         "proving the fixed version resolves it"
                     )
+                    if newest.get("evidence_type") == "validation":
+                        answer["inconclusive"] = (
+                            "recorded as inconclusive validation evidence: a patch or upgrade case resolves only on "
+                            "remediation "
+                            "evidence (a version inventory showing every in-scope endpoint at or above the fixed "
+                            "build, evidence_type remediation)"
+                        )
                 if warning:
                     answer["warning"] = warning
                 return _dump(answer)
@@ -416,21 +425,37 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         passive_option: str = "",
         templates: list[str] | None = None,
         requested_ids: list[str] | None = None,
+        authored_payload: bool = False,
+        command: str = "",
+        target_count: int | None = None,
+        inventory_count: int | None = None,
+        inventory_label: str = "",
+        remediation_kind: str = "",
+        passive_reads_version: bool = False,
+        version_check: str = "",
+        draft_text: str = "",
     ) -> str:
         from app.services.ctem_inject_effects import (
             classify_inject,
             classify_templates,
+            mobilize_done_criterion,
             template_coverage,
             validation_gate_ask,
+            wording_problems,
         )
 
         texts = [str(t) for t in (templates or []) if str(t).strip()] + ([template] if template.strip() else [])
         flag = contract_read_only if isinstance(contract_read_only, bool) else None
+        authored = bool(authored_payload) or bool((command or "").strip())
         effects = (
             classify_templates(texts)
-            if texts
-            else classify_inject(injector=injector, template=None, contract_read_only=flag)
+            if texts and not authored
+            else classify_inject(
+                injector=injector, template=None, contract_read_only=flag, authored_payload=authored, command=command
+            )
         )
+        count = target_count if isinstance(target_count, int) and not isinstance(target_count, bool) else None
+        cited = inventory_count if isinstance(inventory_count, int) and not isinstance(inventory_count, bool) else None
         wanted = [str(i) for i in (requested_ids or []) if str(i).strip()]
         coverage = template_coverage(texts, wanted) if (texts or wanted) else None
         ask = validation_gate_ask(
@@ -439,10 +464,24 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             target_is_lab=bool(target_is_lab),
             passive_option=passive_option or "",
             coverage=coverage,
+            target_count=count,
+            inventory_count=cited,
+            inventory_label=inventory_label or "",
+            remediation_kind=remediation_kind or "",
+            passive_reads_version=bool(passive_reads_version),
         )
-        body: dict[str, Any] = {"effects": effects.to_dict(), "gate_ask": ask}
+        body: dict[str, Any] = {
+            "effects": effects.to_dict(),
+            "gate_ask": ask,
+            "mobilize": mobilize_done_criterion(
+                effects, remediation_kind=remediation_kind or "", target_count=count, version_check=version_check
+            ),
+        }
         if coverage is not None:
             body["coverage"] = coverage.to_dict()
+        problems = wording_problems(effects.classification, draft_text)
+        if problems:
+            body["draft_refused"] = problems
         return _dump(body)
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
@@ -863,6 +902,14 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "items": {"type": "string"},
                         "description": "Requested ids assess_ctem_validation_inject found no template for.",
                     },
+                    "evidence_type": {
+                        "type": "string",
+                        "enum": ["remediation", "validation"],
+                        "description": (
+                            "remediation: a version inventory, every in-scope endpoint at or above the fixed "
+                            "build; validation: a detection or behaviour test, never resolves a patch case."
+                        ),
+                    },
                     "conclusive": {
                         "type": "boolean",
                         "description": "True only when the check proves the exposure gone (the fixed version read).",
@@ -882,8 +929,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Read what a proposed validation inject does to its target before the gate "
                 "ctem.validation.non_readonly: read_only, intrusive or unknown, the requests that change state, "
-                "the cleanup, whether it needs credentials, what a no-match proves, and the gate ask built from "
-                "it. Write the ask from this answer only."
+                "the cleanup, whether it needs credentials, what a no-match proves, the gate ask (title, safe "
+                "mode, targets, evidence per option) and the mobilize done criterion built from it. Write the "
+                "ask from this answer only."
             ),
             input_schema={
                 "type": "object",
@@ -904,6 +952,15 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "contract_read_only": {"type": "boolean", "description": "The contract's own flag, if any."},
                     "target_is_lab": {"type": "boolean", "description": "True for a lab asset only."},
                     "passive_option": {"type": "string", "description": "A read-only check to offer instead."},
+                    "passive_reads_version": {"type": "boolean", "description": "The passive check reads versions."},
+                    "authored_payload": {"type": "boolean", "description": "A payload written for this run."},
+                    "command": {"type": "string", "description": "The authored payload's exact command text."},
+                    "target_count": {"type": "integer", "description": "Targets the inject runs on."},
+                    "inventory_count": {"type": "integer", "description": "Targets the context cites."},
+                    "inventory_label": {"type": "string", "description": "What it counts, e.g. workstations."},
+                    "remediation_kind": {"type": "string", "description": "The case's remediation_kind."},
+                    "version_check": {"type": "string", "description": "A non-intrusive re-test, e.g. a version read."},
+                    "draft_text": {"type": "string", "description": "Your drafted gate title and text, checked."},
                 },
                 "required": ["subject"],
             },

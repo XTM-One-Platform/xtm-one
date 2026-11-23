@@ -73,7 +73,7 @@ llm/
 | **Custom OpenAI-Compatible** (`custom_openai`) | `openai` (`httpx` for `/models`) | Yes | Admin-selected, explicit model required | No | `default` |
 | **LM Studio** (`lmstudio`) | `openai` (routed `httpx` client) | Yes | Admin-selected (models its native `/api/v1/models` types `embedding`) | No | the integration's choice |
 | **Embedding server** (`tei`) | `httpx` | No (embedding-only, `EMBEDDING_ONLY_PROVIDERS`) | Admin-selected (no model needed) | No | `tei-embedding` |
-| **Filigran AI Gateway** (`filigran_gateway`) | `openai` + `httpx` auth | Yes | Admin-selected (`/v1/embeddings`) | Admin-selected (`/v1/images/generations`), else the listing's `"default": true` image model (last fallback) | `default` |
+| **Filigran AI Gateway** (`filigran_gateway`) | `openai` + `httpx` auth | Yes | Admin-selected (`/v1/embeddings`) | Admin-selected (`/v1/images/generations`), else the listing's `default_for: ["image"]` model (last fallback) | The listing's `default_for: ["chat"]` model, else the `default` alias |
 | **ElevenLabs** (`elevenlabs`) | `httpx` | No (`only_capability` `speech`) | No | Admin-selected (Image & Video API) | speech: `eleven_multilingual_v2`, music: `music_v2_5` (video models offered, none built in) |
 | **Kling AI** (`kling`) | `httpx` | No (`only_capability` `video`) | No | No | video: `kling-v3` |
 | **Runway** (`runway`) | `httpx` | No (`only_capability` `video`) | No | No | video: `gen4.5` |

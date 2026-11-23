@@ -606,7 +606,7 @@ describe("DataTable", () => {
       expect(columnsButton.textContent).toBe("Columns");
       const pageSize = screen.getByRole("combobox", { name: "Rows per page" });
       expect(pageSize.getAttribute("data-compact")).toBe("true");
-      expect(pageSize.textContent).toBe("10");
+      expect(pageSize.textContent).toBe("25");
     } finally {
       width.mockRestore();
       globalThis.ResizeObserver = original;
