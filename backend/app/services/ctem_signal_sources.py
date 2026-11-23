@@ -21,12 +21,6 @@ each is bound for the caller. Three kinds of source:
 
 A path with no source at all is recorded by agents and the API only: it never
 reads connected. No model call; read-only.
-
-An administrator can take one connected source off one path without turning it
-off for the others (#1445): ``signal_sources.excluded`` of the organization
-profile names, per path, the excluded ``provider:kind`` keys. An excluded source
-is not bound on that path (its status and the connected count follow) and the
-recording points (:func:`excluded_sources`) record nothing from it there.
 """
 
 from __future__ import annotations
@@ -51,13 +45,6 @@ class BoundSources(set[tuple[str, str]]):
     def __init__(self, *args: Any) -> None:
         super().__init__(*args)
         self.off: set[tuple[str, str]] = set()
-        #: Per trigger path, the ``(provider, kind)`` an administrator excluded from it (#1445).
-        self.excluded: dict[str, set[tuple[str, str]]] = {}
-
-
-def source_key(provider: str, kind: str) -> str:
-    """The key of one source in ``signal_sources.excluded``: ``provider:kind``."""
-    return f"{provider}:{kind}"
 
 
 @dataclass(frozen=True)
@@ -83,6 +70,13 @@ PATH_DESCRIPTIONS: dict[str, str] = {
     "credential_leak": "A secret or an account of yours found in a leak",
     "third_party_event": "A report or incident naming a supplier or sub-processor you track",
     "blind_spot": "An asset that supports a risk scenario with no evidence at all",
+}
+
+#: The fleet capabilities (``fleet_capability_slots.CAPABILITIES``) whose tools fire a
+#: path, so a fleet without them says why the path is silent (#1434).
+PATH_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "code_flaw": ("application_security", "source_code"),
+    "credential_leak": ("application_security",),
 }
 
 _ATTACK_SURFACE = tuple((p, "pass") for p in ATTACK_SURFACE_PROVIDERS)
@@ -152,65 +146,19 @@ def path_status(sources: list[dict[str, Any]]) -> str:
 
 
 def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str, Any]]:
-    """The sources of *path* with their ``bound`` flag (``(provider, kind)`` in *bound*), ``off`` flag (in ``bound.off``)
-    and ``excluded`` flag (in ``bound.excluded[path]``: an excluded source is never bound on the path, #1445)."""
+    """The sources of *path* with their ``bound`` flag (``(provider, kind)`` in *bound*) and ``off`` flag (in ``bound.off``)."""
     known = bound or set()
     off = getattr(bound, "off", None) or set()
-    excluded = (getattr(bound, "excluded", None) or {}).get(path, set())
-    out: list[dict[str, Any]] = []
-    for s in PATH_SOURCES.get(path, ()):
-        pair = (s.provider, s.kind)
-        out.append(
-            {
-                "provider": s.provider,
-                "kind": s.kind,
-                "event": s.event,
-                "bound": pair in known and pair not in excluded,
-                "off": pair not in known and pair in off,
-                "excluded": pair in excluded,
-                # Bound before the exclusion: an excluded source of a connected provider still reads connected.
-                "available": pair in known,
-                # The paths this source also feeds (a pass is organization-wide: one switch feeds them all).
-                "also_feeds": [
-                    other
-                    for other, sources in PATH_SOURCES.items()
-                    if other != path and any((o.provider, o.kind) == pair for o in sources)
-                ],
-            }
-        )
-    return out
-
-
-def parse_excluded(profile: Any) -> dict[str, set[tuple[str, str]]]:
-    """``signal_sources.excluded`` of a parsed profile as ``{path: {(provider, kind)}}``."""
-    settings = getattr(profile, "signal_sources", None)
-    raw = getattr(settings, "excluded", None) or {}
-    out: dict[str, set[tuple[str, str]]] = {}
-    for path, keys in raw.items():
-        pairs = {tuple(k.split(":", 1)) for k in keys if ":" in k}
-        if pairs:
-            out[path] = {(p, k) for p, k in pairs}
-    return out
-
-
-async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, set[tuple[str, str]]]:
-    """The sources excluded per path in the organization's current profile; ``{}`` on any read failure.
-
-    Read by every system recording point (listeners, PIR playbook, the scheduled
-    passes) before it records: an excluded source records nothing on that path.
-    """
-    from app.services import organization_context as org_context
-
-    try:
-        version = await org_context.current_version(db, organization_id)
-        return parse_excluded(org_context.parse_profile(version.profile if version else {}))
-    except Exception:  # a profile that cannot be read never stops a signal
-        return {}
-
-
-def is_excluded(excluded: dict[str, set[tuple[str, str]]], path: str, provider: str, kind: str) -> bool:
-    """Whether ``provider:kind`` is excluded from *path*."""
-    return (provider, kind) in excluded.get(path, set())
+    return [
+        {
+            "provider": s.provider,
+            "kind": s.kind,
+            "event": s.event,
+            "bound": (s.provider, s.kind) in known,
+            "off": (s.provider, s.kind) not in known and (s.provider, s.kind) in off,
+        }
+        for s in PATH_SOURCES.get(path, ())
+    ]
 
 
 def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:
@@ -272,7 +220,6 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
         platform = await platform_connected_ids(db, ATTACK_SURFACE_PROVIDERS + EVIDENCE_HEALTH_PROVIDERS)
         version = await org_context.current_version(db, primary.id)
         profile = org_context.parse_profile(version.profile if version else {})
-        bound.excluded = parse_excluded(profile)
         surface = profile.attack_surface
         ids = {i for i in [surface.integration, *surface.integrations] if i}
         for provider in ATTACK_SURFACE_PROVIDERS:
