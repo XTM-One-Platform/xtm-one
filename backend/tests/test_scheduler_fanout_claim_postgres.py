@@ -328,6 +328,23 @@ async def test_a_fan_out_that_loses_its_claim_stops_and_leaves_the_window_open(m
         assert set(runs.values()) == {1}, runs
 
 
+async def test_a_claim_that_cannot_be_checked_stops_the_fan_out(monkeypatch, shared_redis):
+    from app.services import autonomous
+
+    async def _unreachable(*_args, **_kwargs):
+        raise ConnectionError("Redis unreachable from this pod")
+
+    monkeypatch.setattr(shared_redis, "get", _unreachable)
+    async with _temp_database() as sessionmaker:
+        assignment_id, seeded_at = await _seed(sessionmaker)
+        monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", _committing_trigger())
+        async with sessionmaker() as db:
+            await autonomous._process_scheduled_assignments(db)
+        assert await _runs_per_user(sessionmaker, assignment_id) == Counter()
+        async with sessionmaker() as db:
+            assert (await db.get(Assignment, assignment_id)).last_triggered_at == seeded_at
+
+
 async def test_a_tick_with_a_stale_snapshot_does_not_refire_a_served_window(monkeypatch, shared_redis):
     from app.services import autonomous
 

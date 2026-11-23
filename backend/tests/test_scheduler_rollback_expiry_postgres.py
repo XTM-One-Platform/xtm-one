@@ -4,6 +4,7 @@ only a real AsyncSession expires every instance on the rollback that follows it.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import Counter
 from collections.abc import AsyncIterator
@@ -11,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
@@ -156,3 +157,39 @@ async def test_a_failed_user_costs_only_their_own_run(monkeypatch):
                 # Served: the window is stamped, the failed user waits for the next one.
                 stamped = (await db.get(Assignment, assignment_id)).last_triggered_at
                 assert stamped > datetime.now(UTC) - timedelta(minutes=5)
+
+
+async def test_an_assignment_deleted_after_a_rollback_is_skipped_quietly(monkeypatch, caplog):
+    from app.services import autonomous
+
+    redis = _Redis()
+
+    async def _client():
+        return redis
+
+    monkeypatch.setattr("app.core.redis.redis_client", _client)
+    stub_agentic_gate(monkeypatch)
+
+    async with _temp_database() as sessionmaker:
+        (first, second), _ = await _seed(sessionmaker)
+        failed = False
+
+        async def _trigger(*, assignment, agent, db, triggered_by_user_id, trigger_context, **_kwargs):
+            nonlocal failed
+            if not failed:
+                failed = True
+                # The other assignment is deleted meanwhile, then this user fails.
+                async with sessionmaker() as other:
+                    other_id = second if assignment.id == first else first
+                    await other.execute(delete(Assignment).where(Assignment.id == other_id))
+                    await other.commit()
+                await db.execute(select(User.id).limit(1))
+                raise RuntimeError("transient per-user failure")
+            return None
+
+        monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", _trigger)
+
+        with caplog.at_level(logging.ERROR, logger="app.services.autonomous"):
+            async with sessionmaker() as db:
+                await autonomous._process_scheduled_assignments(db)
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR], caplog.text

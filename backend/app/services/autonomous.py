@@ -3300,8 +3300,10 @@ class _FanoutClaim:
         try:
             return await self._redis.get(self._key) == self._token
         except Exception:
-            # Unreachable for every tick alike: nobody can take it meanwhile.
-            return True
+            # Unreachable from this pod says nothing of the others: stop, and
+            # the next tick resumes with dedup.
+            logger.warning("Fan-out claim %s could not be checked", self._key, exc_info=True)
+            return False
 
 
 @contextlib.asynccontextmanager
@@ -3657,6 +3659,8 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                 await _reload_expired(
                     db, *(a for _, a in pending[index:]), *agents_map.values()
                 )
+                if _is_expired(assignment):
+                    continue  # deleted meanwhile: no row to reload
             cron_expr = (assignment.trigger_config or {}).get("cron")
             # Skip only when no cron is configured at all (key absent). A
             # present-but-invalid value ("" / [] / 0 / non-string) is a real
@@ -3670,6 +3674,8 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             agent = agents_map.get(assignment.agent_id)
             if agent is not None and _is_expired(agent):
                 await _reload_expired(db, *agents_map.values())
+                if _is_expired(agent):
+                    continue  # deleted meanwhile
             if not agent or not agent.enabled:
                 continue
 
