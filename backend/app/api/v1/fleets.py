@@ -141,9 +141,8 @@ from app.api.v1.schemas.fleet import (
     FleetOrganizationRunEstimate,
     FleetPrerequisiteConfirmRequest,
     FleetPrerequisiteState,
-    FleetResetRequest,
-    FleetResetResponse,
     FleetResponse,
+    FleetRunBudget,
     FleetRunEntry,
     FleetRunEstimateResponse,
     FleetRunStatsResponse,
@@ -197,7 +196,6 @@ from app.services.fleet_doc_on_create import (
     schedule_pending_sections,
 )
 from app.services.fleet_flow import build_fleet_flow
-from app.services.fleet_reset import reset_builtin_fleet
 from app.services.fleet_runs import fleet_cost
 from app.services.fleet_views import (
     HealthFleetStarts,
@@ -247,6 +245,14 @@ router = APIRouter()
 
 _LABEL = "Fleet"
 _NOT_FOUND = f"{_LABEL} not found"
+
+
+def _run_budget_value(budget: FleetRunBudget | None) -> dict[str, int] | None:
+    """The stored form of a fleet's run budget (#1526): its bounds that are set, ``None`` when none is."""
+    if budget is None:
+        return None
+    stored = budget.model_dump(exclude_none=True)
+    return stored or None
 
 
 def _can_manage_fleet(user: User, fleet: Fleet, user_group_ids: list[str] | None) -> bool:
@@ -416,6 +422,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             exposed_agent_ids=[str(a) for a in exposed_agent_ids(f, by_fleet.get(f.id, []))],
             budget_config=f.budget_config or None,
             max_iterations=f.max_iterations,
+            run_budget=getattr(f, "run_budget", None) or None,
             member_defaults={
                 "context_inclusion": f.default_context_inclusion or "none",
                 "collaboration_instruction": f.default_collaboration_instruction or "",
@@ -505,6 +512,7 @@ async def create_fleet_endpoint(
     )
     fleet.budget_config = budget_config
     fleet.max_iterations = max_iterations
+    fleet.run_budget = _run_budget_value(body.run_budget)
     await apply_group_share_fields(db, fleet, body, partial=False)
     await log_audit(
         db,
@@ -609,6 +617,8 @@ async def update_fleet(
         )
     if "max_iterations" in fields:
         fleet.max_iterations = clamp_max_iterations(body.max_iterations) if body.max_iterations is not None else None
+    if "run_budget" in fields:
+        fleet.run_budget = _run_budget_value(body.run_budget)
     await apply_group_share_fields(db, fleet, body, partial=True)
     await handle_company_managed_toggle(
         db,
@@ -3089,68 +3099,6 @@ async def unset_fleet_automations(
         )
     await db.commit()
     return await _control_response(db, fleet, outcome.changed)
-
-
-RESET_CONFIRM_MISMATCH = "Type the fleet's name exactly to confirm the reset."
-
-
-@router.post("/{fleet_id}/reset", response_model=FleetResetResponse)
-async def reset_fleet_to_factory(
-    fleet_id: str,
-    body: FleetResetRequest,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    _gate: None = Depends(require_agentic_ai_licensed),
-) -> FleetResetResponse:
-    """Reset a built-in fleet to its factory state (#1508): automations off and not set up,
-    run-as cleared, seeded level, no pins or added gates, every member's customer layer
-    (bindings, scoping, MCP, knowledge bases, skills, tools, notes, model) cleared and its
-    definition rewritten from the seed. Ids, runs, cases, the audit trail and the workspace
-    are kept. Administrators only; ``dry_run`` answers the counts and the automations an
-    emergency stop holds; refused during an emergency stop, while a stop holds any of
-    the fleet's automations, and on a custom fleet."""
-    fleet = await _controllable_fleet(db, user, fleet_id, "reset")
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="Only an administrator can reset a fleet.")
-    if not body.dry_run and (body.confirm_name or "").strip() != fleet.name:
-        raise HTTPException(status_code=422, detail=RESET_CONFIRM_MISMATCH)
-    try:
-        outcome = await reset_builtin_fleet(db, fleet, actor=user, dry_run=body.dry_run, request=request)
-    except FleetActionRefusedError as exc:
-        raise _refused(exc) from None
-    if not body.dry_run and outcome.changed:
-        await log_audit(
-            db,
-            user=user,
-            action="fleet_reset",
-            entity_type="fleet",
-            entity_id=fleet.id,
-            entity_name=fleet.name,
-            summary=f"Reset fleet '{fleet.name}' to its factory state",
-            details={"fleet_id": str(fleet.id), "before": outcome.audit_details()},
-            request=request,
-        )
-    # A dry run writes nothing; the commit answers every request the same way.
-    await db.commit()
-    counts = await fleet_automation_counts(db, fleet)
-    return FleetResetResponse(
-        fleet_id=str(fleet.id),
-        dry_run=body.dry_run,
-        automations=outcome.automations,
-        run_as_cleared=outcome.run_as_cleared,
-        bindings=outcome.bindings,
-        pins=outcome.pins,
-        gates=outcome.gates,
-        autonomy_level=outcome.autonomy_level,
-        agents=outcome.agents,
-        settings=outcome.settings,
-        documentation=outcome.documentation,
-        held_by_stop=list(outcome.held_by_stop),
-        automations_state=FleetAutomationsResponse(
-            total=counts.total, enabled=counts.enabled, paused=counts.paused, fleet_paused=counts.fleet_paused
-        ),
-    )
 
 
 ENABLE_RUN_AS_ADMIN_ONLY = "Only an administrator can pick another user for the fleet's automations to run as."

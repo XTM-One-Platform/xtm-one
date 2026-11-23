@@ -38,6 +38,14 @@ class FleetSkill(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=20)
 
 
+class FleetRunBudget(BaseModel):
+    """The optional run budget of a fleet (#1526): over the home members' runs of the last rolling hour, new
+    runs are held in the queue (never failed) until usage is back under it. A bound left out is unbounded."""
+
+    runs_per_hour: int | None = Field(default=None, ge=1, le=100_000)
+    tokens_per_hour: int | None = Field(default=None, ge=1, le=10_000_000_000)
+
+
 class FleetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
@@ -55,6 +63,8 @@ class FleetCreate(BaseModel):
     budget_config: AgentBudgetConfig | None = None
     #: Iteration cap default of the home members; their own wins.
     max_iterations: int | None = Field(default=None, ge=1)
+    #: Optional run budget of the fleet (#1526); omitted = none.
+    run_budget: FleetRunBudget | None = None
 
 
 class OrganizationScope(BaseModel):
@@ -100,6 +110,8 @@ class FleetUpdate(BaseModel):
     budget_config: AgentBudgetConfig | None = None
     #: ``null`` clears the fleet's iteration default.
     max_iterations: int | None = Field(default=None, ge=1)
+    #: ``null`` clears the fleet's run budget (#1526).
+    run_budget: FleetRunBudget | None = None
     #: The fields given replace the fleet's member defaults; ``null`` in one
     #: puts it back to the column default.
     member_defaults: FleetMemberDefaults | None = None
@@ -375,6 +387,8 @@ class FleetResponse(BaseModel):
     #: Run defaults of the home members, ``null`` = none.
     budget_config: dict | None = None
     max_iterations: int | None = None
+    #: The fleet's run budget (#1526), ``null`` = none.
+    run_budget: dict[str, int] | None = None
     #: What a member row inherits while its own field is unset: the two
     #: connected settings (strings) and ``organization_scope`` (an object).
     member_defaults: dict[str, str | dict] = Field(default_factory=dict)
@@ -691,43 +705,6 @@ class FleetEnableResponse(BaseModel):
     items: list[FleetEnableItemResponse]
     #: The fleet's automations after the call.
     automations: FleetAutomationsResponse
-
-
-class FleetResetRequest(BaseModel):
-    """Reset a built-in fleet to its factory state (#1508). ``dry_run`` answers the counts
-    for the confirmation dialog; a real reset needs ``confirm_name``, the fleet's name typed."""
-
-    dry_run: bool = False
-    confirm_name: str | None = Field(default=None, max_length=200)
-
-
-class FleetResetResponse(BaseModel):
-    """What a reset changed (or, on a dry run, would change)."""
-
-    fleet_id: str
-    dry_run: bool
-    #: Automations switched off or re-stamped as never set up.
-    automations: int
-    #: Automations whose run-as user is cleared.
-    run_as_cleared: int
-    #: Integrations, knowledge bases, skills, MCP servers and custom tools unbound from the members.
-    bindings: int
-    #: Approval pins removed.
-    pins: int
-    #: Gates a person added, removed.
-    gates: int
-    #: The level the fleet moves back to, ``null`` when it is already there.
-    autonomy_level: str | None = None
-    #: Member agents whose configuration is rewritten from the seed.
-    agents: int
-    #: Fleet settings put back to their default, by name.
-    settings: list[str]
-    #: Whether a local documentation version is replaced by the shipped one.
-    documentation: bool
-    #: Automations an emergency stop holds, left as they are.
-    held_by_stop: list[str]
-    #: The fleet's automations after the call.
-    automations_state: FleetAutomationsResponse
 
 
 FleetBulkActionName = Literal["pause", "resume", "set_autonomy"]
