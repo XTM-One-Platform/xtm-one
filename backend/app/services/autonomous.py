@@ -53,7 +53,9 @@ import structlog
 from croniter import croniter
 from croniter.croniter import CroniterBadCronError
 from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstanceState
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -3377,6 +3379,18 @@ async def _fanout_audience_user_ids(db: AsyncSession, assignment, now: datetime)
     )
 
 
+async def _reload_expired(db: AsyncSession, *instances) -> None:
+    """Re-read the instances a rollback expired.
+
+    A rollback expires the whole session, and an AsyncSession cannot lazy-load
+    an expired attribute: the next read would raise MissingGreenlet.
+    """
+    for instance in instances:
+        state = sa_inspect(instance, raiseerr=False)
+        if isinstance(state, InstanceState) and state.expired_attributes:
+            await db.refresh(instance)
+
+
 def _fanout_spread_delay_seconds(index: int, total: int) -> int:
     """Evenly spread *total* fan-out runs across the configured window.
 
@@ -3522,6 +3536,7 @@ async def _fanout_assignment_to_users(
             # from prior users are durable and untouched. Matches the
             # rollback-and-continue every other handler in this module uses.
             await db.rollback()
+            await _reload_expired(db, assignment, agent)
             refusal = refusal_code(exc)
             if refusal is not None and refusal_is_personal(exc):
                 # AI is off for this user's group only: their run is not
@@ -3585,6 +3600,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
     # its rollback has expired every instance of the session.
     for assignment_id, assignment in [(a.id, a) for a in assignments]:
         try:
+            await _reload_expired(db, assignment)
             cron_expr = (assignment.trigger_config or {}).get("cron")
             # Skip only when no cron is configured at all (key absent). A
             # present-but-invalid value ("" / [] / 0 / non-string) is a real
@@ -3596,6 +3612,8 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
 
             # Check if the agent is enabled (batch-loaded)
             agent = agents_map.get(assignment.agent_id)
+            if agent is not None:
+                await _reload_expired(db, agent)
             if not agent or not agent.enabled:
                 continue
 
