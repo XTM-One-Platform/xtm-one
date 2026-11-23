@@ -161,16 +161,29 @@ def _short(text: object, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 3].rstrip() + "..."
 
 
-def category_counts(profile: Any, *, tracked_count: int = 0) -> dict[str, int]:
-    """The size of every category of *profile* (``tracked_organizations`` from *tracked_count*)."""
+def category_counts(
+    profile: Any, *, tracked_count: int = 0, asset_counts: dict[str, int] | None = None
+) -> dict[str, int]:
+    """The size of every category of *profile* (``tracked_organizations`` from *tracked_count*).
+
+    *asset_counts* (``organization_context.asset_list_counts``) gives the asset
+    and group sizes the records hold (#1543), counted without loading a row.
+    """
     from app.services import organization_context_categories as cats
 
-    counts = {category.name: len(cats.rows_of(profile, category)) for category in cats.CATEGORIES if category.field}
+    lists = asset_counts or {}
+    counts = {
+        category.name: lists[category.field] if category.field in lists else len(cats.rows_of(profile, category))
+        for category in cats.CATEGORIES
+        if category.field
+    }
     counts[cats.TRACKED_ORGANIZATIONS] = tracked_count
     return counts
 
 
-def render_summary(row: Any, *, tracked_count: int = 0, ctem_work: bool = True) -> str:
+def render_summary(
+    row: Any, *, tracked_count: int = 0, ctem_work: bool = True, asset_counts: dict[str, int] | None = None
+) -> str:
     """The basic block of the primary profile *row*: identity + category index, at most :data:`SUMMARY_MAX_CHARS`.
 
     ``""`` when no profile is saved. The identity is a handful of short
@@ -222,7 +235,7 @@ def render_summary(row: Any, *, tracked_count: int = 0, ctem_work: bool = True) 
             f"1 {r.from_currency} = {r.rate:g} {r.to_currency} ({r.as_of.isoformat()}, {_short(r.source, 60)})"
             for r in profile.fx_rates[:10]
         ]
-    counts = category_counts(profile, tracked_count=tracked_count)
+    counts = category_counts(profile, tracked_count=tracked_count, asset_counts=asset_counts)
     head = (
         f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version}). "
         "The rest is in the categories below: read only the one your work needs with "
@@ -258,11 +271,11 @@ async def _tracked(db: AsyncSession) -> list[Any]:
 async def render_preloaded_categories(db: AsyncSession, row: Any, names: list[str]) -> str:
     """The categories the cascade selected, each capped, after the basic block (``""`` when none)."""
     from app.services import organization_context_categories as cats
-    from app.services.organization_context import parse_profile
+    from app.services.organization_context import hydrated_profile
 
     if row is None or not names:
         return ""
-    profile = parse_profile(row.profile)
+    profile = await hydrated_profile(db, row)  # the asset and group rows from the records (#1543)
     parts: list[str] = []
     for name in names:
         category = cats.get(name)
@@ -315,12 +328,17 @@ async def organization_summary_for(
     try:
         if not await effective_for(db, agent=agent, assignment=assignment):
             return ""
-        from app.services.organization_context import ctem_work_for, current_version
+        from app.services.organization_context import asset_list_counts, ctem_work_for, current_version
 
         row = await current_version(db)
         if row is None:
             return ""
-        basic = render_summary(row, tracked_count=len(await _tracked(db)), ctem_work=await ctem_work_for(db, agent))
+        basic = render_summary(
+            row,
+            tracked_count=len(await _tracked(db)),
+            ctem_work=await ctem_work_for(db, agent),
+            asset_counts=await asset_list_counts(db, row.organization_id),
+        )
         preloaded = await render_preloaded_categories(
             db, row, await categories_for(db, agent=agent, assignment=assignment)
         )

@@ -318,9 +318,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     from app.services import ctem_threat_package_live as package_live
 
                     # A Grouping page is recorded only once the Grouping is in OpenCTI's live
-                    # graph, read with the acting user's own access (#1547).
-                    threat_package = await package_live.verify_package(db, str(scope), threat_package)
+                    # graph, read with the acting user's own access (#1547), and only once the
+                    # case's analyst review approved the package (#1573).
                     history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    threat_package = await package_live.verify_package(
+                        db, str(scope), threat_package, view_of.review_outcome(history)
+                    )
                     case_loop.record_threat_package(
                         db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
                     )
@@ -858,7 +861,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "platform (its id, name and page "
                             "url) and the security coverage requested on it (coverage_id), once requested. "
                             "url is the draft page while the Grouping sits in a draft; a Grouping page is "
-                            "checked against the live graph and replaced by the draft page when it is not live."
+                            "checked against the live graph and replaced by the draft page when it is not live, "
+                            "and refused while the analyst review is not approved. The case's package state: "
+                            "drafted, awaiting_review, replan (answered with free text or another option), "
+                            "rejected, validated (approved and live)."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},

@@ -105,6 +105,8 @@ class CaseFix:
     title: str
     #: The version that fixes it, when the signal names one (an upgrade case keys and titles on it).
     fixed_version: str | None = None
+    #: ``{platform: version}`` when the source names the fix of each platform (#1572).
+    fixed_versions: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -206,7 +208,29 @@ def source_fix_of(evidence: dict[str, Any]) -> CaseFix | None:
     if not key or not title or kind not in REMEDIATION_KINDS:
         return None
     fixed = str(fix.get("fixed_version") or "").strip()[:100] or None
-    return CaseFix(key=_bounded_key(key), kind=kind, title=title[:COLUMN_MAX], fixed_version=fixed)
+    return CaseFix(
+        key=_bounded_key(key),
+        kind=kind,
+        title=title[:COLUMN_MAX],
+        fixed_version=fixed,
+        fixed_versions=platform_fixes_of(fix.get("fixed_versions")),
+    )
+
+
+#: Most platforms a case keeps a fix for (the evidence is source data, bounded).
+MAX_FIXED_PLATFORMS = 12
+
+
+def platform_fixes_of(raw: Any) -> dict[str, str]:
+    """``{platform: version}`` read from evidence, bounded and cleaned (#1572); ``{}`` when it holds none."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for platform, version in raw.items():
+        p, v = str(platform or "").strip()[:80], str(version or "").strip()[:100]
+        if p and v and len(out) < MAX_FIXED_PLATFORMS:
+            out[p] = v
+    return out
 
 
 def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None, list[str]]:
@@ -318,6 +342,7 @@ async def open_from_signal(
             validations=[],
             validation_plan=signal.trigger_path in ("proven_exploitable", "mitigation_regression"),
             fixed_version=fix.fixed_version,
+            fixed_versions=dict(fix.fixed_versions),
             product_label=_product_label(signal),
         )
         db.add(case)
