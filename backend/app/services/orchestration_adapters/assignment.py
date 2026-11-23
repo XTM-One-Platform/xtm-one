@@ -37,7 +37,12 @@ from app.models.assignment import AssignmentRun
 from app.models.orchestration import OrchestrationExecution, OrchestrationOutboxEvent
 from app.services import assignment_run_resume, assignment_run_wake
 from app.services import orchestration_engine as engine
-from app.services.failure_causes import FailureCause, FailureContext, classify_run_failure
+from app.services.failure_causes import (
+    FailureCause,
+    FailureContext,
+    FailureDetermination,
+    classify_run_failure,
+)
 from app.services.orchestration_adapters.base import (
     AdapterContext,
     AdapterResult,
@@ -130,6 +135,42 @@ async def _pool_slots() -> int:
     except Exception:
         workers = None
     return max(1, int(settings.max_concurrent_runs)) * max(1, int(workers or 1))
+
+
+async def children_of_live_parents(db: AsyncSession, due: list[OrchestrationExecution]) -> list[OrchestrationExecution]:
+    """The *due* assignment executions whose run is a delegated child of a run still running, oldest first."""
+    run_of: dict[uuid.UUID, object] = {}
+    for execution in due:
+        run_id = safe_uuid((execution.payload or {}).get("run_id"))
+        if run_id is not None:
+            run_of[execution.id] = run_id
+    if not run_of:
+        return []
+    parent_of = {
+        row[0]: row[1]
+        for row in (
+            await db.execute(
+                select(AssignmentRun.id, AssignmentRun.parent_run_id).where(
+                    AssignmentRun.id.in_(list(run_of.values())), AssignmentRun.parent_run_id.is_not(None)
+                )
+            )
+        ).all()
+    }
+    if not parent_of:
+        return []
+    live = set(
+        (
+            await db.execute(
+                select(AssignmentRun.id).where(
+                    AssignmentRun.id.in_(list(set(parent_of.values()))),
+                    AssignmentRun.status.in_(_LIVE_PARENT_STATUSES),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [e for e in due if parent_of.get(run_of.get(e.id)) in live]
 
 
 async def fair_share_deal(
@@ -278,6 +319,13 @@ class AssignmentAdapter(OrchestrationAdapter):
     ) -> list[OrchestrationExecution]:
         """Fair share across fleets, delegated children first (``fair_share_deal``)."""
         return await fair_share_deal(db, due, worker_id)
+
+    async def deal_reserved_claims(
+        self, db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
+    ) -> list[OrchestrationExecution]:
+        """What the delegation reserve may claim once the shared pool is full: the delegated runs whose parent
+        run is still running, oldest first."""
+        return await children_of_live_parents(db, due)
 
     def raised_attempt_bound(self, max_attempts: int) -> int:
         """A run queued under the old floor (4) is taken back under the task bound.
@@ -606,6 +654,13 @@ class AssignmentAdapter(OrchestrationAdapter):
         if run.status in TERMINAL_RUN_STATUSES:
             await self._settle_failed_run_charge(ctx, run)
             return
+        if engine.expired_before_start(execution):
+            # Its queue-wait bound passed before any worker started it: nothing
+            # ran, nothing was charged, no partner was started. Failed with its
+            # own cause and the wait it spent, and NO ``run.failed``: observers
+            # of that event must not add work to the queue that starved it.
+            await _fail_expired_before_start(ctx, run, execution)
+            return
         run.status = "failed"
         # A run lost once more than it may be resumed fails with the resume
         # cap's reason, never the hand-back's "runs again at once".
@@ -726,6 +781,33 @@ class AssignmentAdapter(OrchestrationAdapter):
 
         await ctx.db.commit()
         await _publish_run_failed(run, run.error)  # never raises
+
+
+async def _fail_expired_before_start(
+    ctx: AdapterContext, run: AssignmentRun, execution: OrchestrationExecution
+) -> None:
+    """Fail *run*, never started before its queue-wait bound, with ``deadline_exceeded_before_start``.
+
+    The run record carries ``queue_wait_seconds`` and ``started: false`` under
+    ``trigger_context['queue']``. No ``run.failed`` is published.
+    """
+    waited = engine.queue_wait_seconds(execution)
+    run.status = "failed"
+    run.error = engine.expired_before_start_message("The assignment run", execution)
+    run.failure_cause = FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value
+    run.failure_determination = FailureDetermination.STRUCTURAL.value
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "queue": {"queue_wait_seconds": waited, "started": False},
+    }
+    run.completed_at = datetime.now(UTC)
+    await ctx.db.commit()
+    logger.warning(
+        "Assignment run %s never started: its queue-wait bound passed after %s s; failed with %s, no run.failed",
+        run.id,
+        waited,
+        FailureCause.DEADLINE_EXCEEDED_BEFORE_START.value,
+    )
 
 
 class AssignmentRunWakeSweepAdapter(OrchestrationAdapter):

@@ -87,6 +87,7 @@ from app.services import (
     assignment_run_resume,
     chat_reply_guard,
     chat_turn_coalescing,
+    event_coalescing,
     event_run_dedup,
 )
 from app.services.agent_posts import set_posting_assignment
@@ -158,6 +159,7 @@ from app.services.orchestration_engine import (
     deadline_spent,
     deadline_spent_message,
     notify_orchestration_wake,
+    queued_deadline,
 )
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
@@ -843,6 +845,20 @@ _MIN_ASSIGNMENT_TIMEOUT_SECONDS: int = 600
 # inner loop still believed it had 900 s — the exact bound drift this module
 # is meant to eliminate. Matches the model's column default.
 _UNSET_TIMEOUT_FALLBACK_SECONDS: int = 300
+
+
+def max_queue_wait_seconds(assignment: Assignment) -> float | None:
+    """How long a run of *assignment* may wait for a free worker before it fails unstarted.
+
+    ``trigger_config.max_queue_wait_seconds`` when the assignment sets a number (0 or less: no
+    queue bound); ``None`` otherwise, which means the platform's
+    ``orchestration_max_queue_wait_seconds``. Distinct from ``timeout_seconds``, which is the
+    run's execution time and counts from its start.
+    """
+    value = (getattr(assignment, "trigger_config", None) or {}).get("max_queue_wait_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _apply_iteration_timeout_floor(
@@ -1539,8 +1555,14 @@ async def _report_unquarantined_auth_failure(
     reason: str,
     consecutive: int = 1,
     kind: str = "credential",
+    recipient_id: _uuid.UUID | str | None = None,
 ) -> None:
     """Report an auth failure on an assignment the quarantine will never pause.
+
+    *recipient_id* is the run's user: a company-managed assignment has no
+    owner, and without it the notice was a live toast only, stored for nobody
+    (#1454). It is passed as ``company_recipient_id``, so a personal
+    assignment still notifies its owner.
 
     The quarantine is deliberately narrow — it only pauses unattended scheduler
     runs, and never touches built-in or per-user fan-out assignments.  Those
@@ -1586,6 +1608,7 @@ async def _report_unquarantined_auth_failure(
             "consecutive_auth_failures": consecutive,
             "auth_failure_kind": kind,
         },
+        company_recipient_id=recipient_id,
     )
     if not delivered:
         # The claim was taken before the notice was known to land. Keeping it
@@ -1671,6 +1694,7 @@ async def _report_after_consecutive_failures(
         reason=reason,
         consecutive=consecutive,
         kind=kind,
+        recipient_id=run.user_id,
     )
 
 
@@ -5201,14 +5225,21 @@ async def execute_assignment_run(
             from app.services.fleet_autonomy import (
                 fleet_autonomy_block,
                 fleet_autonomy_for_run,
+                fleet_enforces_at_tool_level,
                 fleet_instructions_for_run,
             )
 
             _fleet_autonomy = await fleet_autonomy_for_run(db, getattr(_run_fleet, "fleet_id", None))
+            # Tool-level pauses only on an administrator's opt-in (#1467): by
+            # default the gates are instructions, stated in the block below.
+            _fleet_enforced = _fleet_autonomy is not None and await fleet_enforces_at_tool_level(
+                db, getattr(_run_fleet, "fleet_id", None)
+            )
             if _fleet_autonomy is not None:
                 rendered_prompt += fleet_autonomy_block(
                     *_fleet_autonomy,
                     await fleet_instructions_for_run(db, getattr(_run_fleet, "fleet_id", None)),
+                    enforced=_fleet_enforced,
                 )
 
             # ── Memory (load enabled tiers + user memory before building prompt) ──
@@ -5370,6 +5401,11 @@ async def execute_assignment_run(
             composite = CompositeToolExecutor()
             mcp_manager = None
             integration_notice = ""
+            # Auth failures of the run's integration calls, and the refusal of
+            # a credential already rejected in this run (#1454).
+            from app.services.integration_auth_guard import AuthGuardedExecutor, IntegrationAuthGuard
+
+            auth_guard = IntegrationAuthGuard()
 
             from app.services.builtin_tools import load_custom_tools, load_mcp_tools
 
@@ -5785,7 +5821,10 @@ async def execute_assignment_run(
                         filtered_defs = filter_integration_tools(
                             integ_defs, merged_allowed
                         )
-                        composite.add_tools(filtered_defs, integ_exec)
+                        composite.add_tools(
+                            filtered_defs,
+                            AuthGuardedExecutor(integ_exec, filtered_defs, auth_guard),
+                        )
                         logger.info(
                             "Loaded %d integration tool(s) for assignment (%d filtered by scoping)",
                             len(filtered_defs),
@@ -7972,8 +8011,13 @@ async def execute_assignment_run(
 
                 # The fleet's gates still waiting at its autonomy level pause
                 # their tool calls (#9769 S1b), around whichever gate the run
-                # installed; an administrator's platform kill switch wins.
-                if _fleet_autonomy is not None and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED:
+                # installed, only when an administrator opted the fleet in
+                # (#1467); the platform kill switch wins.
+                if (
+                    _fleet_autonomy is not None
+                    and _fleet_enforced
+                    and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED
+                ):
                     from app.services.fleet_autonomy import gated_tool_rules, make_fleet_autonomy_gate
 
                     _fleet_rules = gated_tool_rules(*_fleet_autonomy)
@@ -8501,6 +8545,15 @@ async def execute_assignment_run(
                     f"{run.result_summary}\n\n{integration_notice}"
                     if run.result_summary
                     else integration_notice
+                )
+            # A run whose integration calls failed authentication is degraded,
+            # never a plain success: the record names the integrations, and
+            # the result says which data it had (#1454).
+            run.integration_auth_failures = auth_guard.failures() or None
+            _coverage_notice = auth_guard.coverage_notice()
+            if _coverage_notice and agent.output_format != "json":
+                run.result_summary = (
+                    f"{run.result_summary}\n\n{_coverage_notice}" if run.result_summary else _coverage_notice
                 )
 
             # ── Surface matplotlib charts produced by the code interpreter ─
@@ -9517,7 +9570,7 @@ async def execute_assignment_run(
                         seconds=retry_delay_seconds
                     )
                     if retry_ts <= 0:
-                        retry_deadline = None
+                        retry_deadline, retry_budget = None, {}
                     else:
                         retry_timeout = _apply_iteration_timeout_floor(
                             float(retry_ts),
@@ -9525,14 +9578,17 @@ async def execute_assignment_run(
                             retry_run_id,
                             assignment.timeout_seconds,
                         )
-                        retry_deadline = retry_run_at + timedelta(
-                            seconds=retry_timeout
-                            + settings.orchestration_grace_seconds
+                        # Counted from the retry's start, as the primary
+                        # dispatch: a retry into a saturated queue keeps its budget.
+                        retry_deadline, retry_budget = queued_deadline(
+                            retry_run_at,
+                            retry_timeout + settings.orchestration_grace_seconds,
+                            max_queue_wait_seconds=max_queue_wait_seconds(assignment),
                         )
                     await create_execution(
                         db,
                         adapter="assignment",
-                        payload={"run_id": retry_run_id},
+                        payload={"run_id": retry_run_id, **retry_budget},
                         run_at=retry_run_at,
                         deadline_at=retry_deadline,
                         dedup_key=f"assignment_run:{retry_run_id}",
@@ -10238,8 +10294,13 @@ async def _schedule_run_execution(
     timeout_seconds = assignment.timeout_seconds
     if timeout_seconds is None:
         timeout_seconds = _UNSET_TIMEOUT_FALLBACK_SECONDS
+    #
+    # The budget counts from the run's START (``queued_deadline``): until a
+    # worker claims it, ``deadline_at`` is the queue-wait bound; the claim
+    # sets it to start + budget, so time spent waiting for a free slot is
+    # never charged to the run.
     if timeout_seconds <= 0:
-        deadline_at = None
+        deadline_at, start_budget = None, {}
     else:
         effective_timeout = _apply_iteration_timeout_floor(
             float(timeout_seconds),
@@ -10247,8 +10308,10 @@ async def _schedule_run_execution(
             run_id,
             assignment.timeout_seconds,
         )
-        deadline_at = run_at + timedelta(
-            seconds=effective_timeout + settings.orchestration_grace_seconds
+        deadline_at, start_budget = queued_deadline(
+            run_at,
+            effective_timeout + settings.orchestration_grace_seconds,
+            max_queue_wait_seconds=max_queue_wait_seconds(assignment),
         )
 
     # Durable scheduling via the orchestration engine: the reconciler
@@ -10261,7 +10324,7 @@ async def _schedule_run_execution(
     await create_execution(
         db,
         adapter="assignment",
-        payload={"run_id": run_id},
+        payload={"run_id": run_id, **start_budget},
         run_at=run_at,
         deadline_at=deadline_at,
         dedup_key=f"assignment_run:{run_id}",
@@ -10335,8 +10398,10 @@ class QueuedTriggerResult:
       dedup key within the window (``services/event_run_dedup.py``); ``run_id``
       is the ``skipped`` run that records the refusal. Nothing executes.
     - ``"coalesced"``   — a chat message merged into the waiting turn of a run
-      of the same conversation and sender (``services/chat_turn_coalescing.py``);
-      ``run_id`` is that run. No run is created.
+      of the same conversation and sender (``services/chat_turn_coalescing.py``),
+      or a polled event folded into the queued run of its coalesce key
+      (``services/event_coalescing.py``); ``run_id`` is that run. No run is
+      created.
     - ``"steered"``     — a chat message handed to the running turn of its
       conversation and sender, injected at the loop's next iteration
       (``services/chat_turn_steering.py``); ``run_id`` is that run. No
@@ -10819,6 +10884,25 @@ async def trigger_or_queue_assignment(
                 )
                 return QueuedTriggerResult(status="steered", run_id=steered_into)
 
+    coalesce_key = event_coalescing.context_key(trigger_context)
+    if coalesce_key is not None:
+        # A burst of polled events that stand for one change (an OpenCRQ batch
+        # recompute, #1417): folded into the run of the same key still waiting
+        # in the queue, so at most one waits behind the one running.
+        folded_into = await _fold_into_queued_run(db, assignment, coalesce_key, payload)
+        if folded_into is not None:
+            await db.commit()
+            await _release_event_claim(assignment.agent_id, dedup_key)
+            logger.info(
+                "Assignment '%s' (%s): event %s folded into queued run %s (coalesce key %s)",
+                assignment.name,
+                assignment.id,
+                (payload or {}).get("message_id") or "?",
+                folded_into,
+                coalesce_key,
+            )
+            return QueuedTriggerResult(status="coalesced", run_id=folded_into)
+
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
     start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
@@ -10928,6 +11012,37 @@ async def trigger_or_queue_assignment(
         queue_depth=depth,
         dropped_run_id=dropped_run_id,
     )
+
+
+async def _fold_into_queued_run(
+    db: AsyncSession,
+    assignment: Assignment,
+    coalesce_key: str,
+    payload: dict[str, Any] | None,
+) -> str | None:
+    """Fold a coalescing event into the queued run of the same key; its id, or ``None``.
+
+    The oldest queued run of *assignment* whose trigger context carries
+    *coalesce_key* (``services/event_coalescing.py``), locked so two events
+    folding at once never lose one. Flushes, the caller commits.
+    """
+    result = await db.execute(
+        select(AssignmentRun)
+        .where(
+            AssignmentRun.assignment_id == assignment.id,
+            AssignmentRun.status == QUEUED_RUN_STATUS,
+            AssignmentRun.trigger_context[event_coalescing.CONTEXT_KEY].as_string() == coalesce_key,
+        )
+        .order_by(AssignmentRun.created_at.asc())
+        .limit(1)
+        .with_for_update()
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+    run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
+    await db.flush()
+    return str(run.id)
 
 
 async def _merge_into_waiting_turn(

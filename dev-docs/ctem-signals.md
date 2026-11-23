@@ -70,6 +70,23 @@ package (`ctem_case_loop.fix_of`), never a guessed version. A vulnerability
 a project read whole no longer lists closes its members (a cut, refused or
 off-tier list closes nothing). Read-only: nothing is written to GitLab.
 
+A repository dependency known vulnerable in OpenCTI (#1331, slice 4,
+`ctem_dependency_matches`): after a GitHub or GitLab sync is saved, each
+repository's components that carry a PURL and a known version are looked up in
+OpenCTI with the sync owner's own credential, in a session of its own after the
+sync's commit. A Software whose `x_opencti_purl` names the same package (type,
+namespace, name; qualifiers ignored) at the same version is the component; never
+a name-only match. Each `has` relation from it to a Vulnerability is one path 3
+signal (`code_flaw`, lens `inside`, subject `code`, source `opencti`, key
+`<repository identity key>|<purl base>|<vulnerability id>`) on the repository
+asset, with the CVE, CVSS, EPSS and KEV in the evidence. The fixed version is the
+smallest Software version OpenCTI says `remediates` it above the installed one
+(same PURL base when the remediating Software names one); the case then reads
+"Upgrade <library> to <fixed version> in <repository>". No fix known: the case
+keys on the package, nothing guessed. At most 2,000 components and 2,000
+relations per sync. OpenCTI absent or failing records nothing and never stops the
+sync. Read-only.
+
 A GitHub repository security advisory the organization published on one of its
 repositories (#1410) is a vulnerability in a product it ships: a path 1 signal
 (`new_vulnerability`, lens `inside`, subject kind `vulnerability`) keyed

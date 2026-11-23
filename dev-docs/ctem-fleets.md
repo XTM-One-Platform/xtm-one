@@ -1250,6 +1250,20 @@ kinds and `event_poller` polls them every 60 s.
 - The run receives `entity`: run id, kind, status, enqueued, started and
   finished times, processed and expected totals, progress message, trigger,
   attempt, tenant and the instance URL.
+- Coalescing (#1417): a poll page is ONE event, not one per job. The newest
+  run is the entity and the `message_id`; `covers` lists the runs of the page
+  (their own `message_id`s, marked seen at dispatch), `run_count` counts them,
+  and a run that reports progress and processed nothing (`expectedTotal`
+  set, `processedTotal` 0) is no event. A kind that never reports progress
+  (`crq-price-recompute`) ends at 0 whatever it re-priced, so its runs are
+  kept. The `riskScenarioId(s)` of a job payload travel as
+  `entity.risk_scenario_ids` and on each `covers` entry. The event carries
+  `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
+  trigger context and `trigger_or_queue_assignment` folds a later event with
+  the same key into the run of the same assignment still queued
+  (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
+  event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
+  starts one run and queues at most one more.
 
 ### 8.6 Known limit and the next slices
 
@@ -1974,9 +1988,8 @@ created (scenario, simulation, inject or atomic test id, read from its
 arguments and its answer) within the turn, so the creation and the launch of
 that validation do not pause twice; a call that names a new target
 (`asset_ids`, `asset_group_ids`, `team_ids`), a new schedule (`recurrence*`,
-`start_date`) or another object asks again. The coverage request is under both
-`ctem.analyst_review` and the validation gate on these fleets, since OpenAEV
-builds and schedules a scenario from it. Full human gates: every gate
+`start_date`) or another object asks again. The coverage request is under
+`ctem.analyst_review` alone (#1467): one decision, one gate key per call. Full human gates: every gate
 waits. Full autonomous: nothing waits. A pin (`wait` or `run`) moves one gate
 either way on a built-in fleet too. The former keys (`ticket.create`,
 `openaev.*.launch`, `supplier.action`) are gone from these fleets: a ticket is
@@ -2129,9 +2142,18 @@ its label, stored value, whether it was announced to the members and "not
 enforced by the platform" (`_instructions_text`; "not set" when unset), so
 no audit log read is needed to learn it.
 
-### Where the gates are enforced (#10140)
+### Where the gates are enforced (#10140, opt-in since #1467)
 
-A gate that names tools pauses those calls wherever a member of the fleet
+By design XTM One enables no programmatic tool-level gate by default (#1467,
+Sam, 23 Nov 2026): a fleet's gates are instructions. The run prompt states
+the level and what waits (`fleet_autonomy_block`), the member asks once
+through a decision item with its ask card, and once a person answered it the
+run acts with no second pause. The platform pauses tool calls only for a fleet
+an administrator opted in (`Fleet.enforce_gates_at_tool_level`, off for every
+fleet and never written by the seed; `PUT /fleets/{id}/autonomy`
+`enforce_at_tool_level`, administrators only, audited in
+`autonomy_level_change`; `fleet_autonomy.fleet_enforces_at_tool_level`). On an
+opted-in fleet, a gate that names tools pauses those calls wherever a member of the fleet
 acts, not only in its automations: `execute_assignment_run` wraps its gate
 with `make_fleet_autonomy_gate`, and `run_agent_chat` (chat, channel threads
 of agent accounts, consults, sub-agents, work-item turns) calls

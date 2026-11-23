@@ -39,6 +39,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
@@ -450,6 +451,8 @@ def _semaphore_for_adapter(adapter_name: str) -> asyncio.Semaphore:
     an unregistered adapter, which can't happen for a claimed row but keeps this
     total).
     """
+    if adapter_name == DELEGATION_RESERVE_SLOT:
+        return _get_adapter_semaphore(DELEGATION_RESERVE_SLOT, max(1, _delegation_reserve_size()))
     try:
         adapter = get_adapter(adapter_name)
     except AdapterNotFoundError:
@@ -479,9 +482,57 @@ def _available_slots_for(adapter, adapters: list) -> int:
         _inflight_by_adapter.get(a.name, 0)
         for a in adapters
         if _adapter_concurrency_limit(a) is not None
-    )
+    ) + _inflight_by_adapter.get(DELEGATION_RESERVE_SLOT, 0)
     shared_inflight = max(0, len(_execution_tasks) - dedicated_inflight)
     return max(0, _semaphore_capacity() - shared_inflight)
+
+
+#: The slot name of the delegation reserve: slots above the shared pool that only a delegated child whose parent
+#: run is still running may take (an adapter's ``deal_reserved_claims``), so parents waiting on their own children
+#: never deadlock a full pool.
+DELEGATION_RESERVE_SLOT = "delegation_reserve"
+
+
+def _delegation_reserve_size() -> int:
+    """The slots of the delegation reserve on this worker (``delegation_reserve_slots``); 0 when off."""
+    size = getattr(settings, "delegation_reserve_slots", 0)
+    return max(0, int(size)) if isinstance(size, int) and not isinstance(size, bool) else 0
+
+
+def _reserve_slots_free() -> int:
+    """The delegation reserve's free slots on this worker now."""
+    return max(0, _delegation_reserve_size() - _inflight_by_adapter.get(DELEGATION_RESERVE_SLOT, 0))
+
+
+async def _claim_into_reserve(adapter: Any, worker_id: str, batch: int) -> list[uuid.UUID]:
+    """With the shared pool full, claim the due executions of *adapter* its ``deal_reserved_claims`` names
+    (delegated children of a live parent) into the delegation reserve; the executions claimed.
+
+    The parent holds its shared slot while it waits for its child: without the reserve, N parents filling the
+    pool and each waiting on one child would wait until a deadline. Each child holds a reserve slot until it ends.
+    """
+    dealer = getattr(adapter, "deal_reserved_claims", None)
+    free = _reserve_slots_free()
+    if not callable(dealer) or free <= 0:
+        return []
+    async with async_session() as db:
+        claimed = await engine.claim_due(
+            db,
+            adapter=adapter.name,
+            worker_id=worker_id,
+            limit=min(batch, free),
+            lease_seconds=_lease_seconds_of(adapter),
+            deal=dealer,
+            slot=DELEGATION_RESERVE_SLOT,
+        )
+        claimed_ids = [row.id for row in claimed]
+        await db.commit()
+    for execution_id in claimed_ids:
+        logger.info(
+            "Execution %s of %s runs in the delegation reserve: its parent run waits for it", execution_id, adapter.name
+        )
+        _spawn_execution_task(execution_id, adapter.name, worker_id, slot=DELEGATION_RESERVE_SLOT)
+    return claimed_ids
 
 
 def _execution_timeout(execution: OrchestrationExecution) -> float:
@@ -1134,6 +1185,14 @@ async def _run_cycle(worker_id: str) -> None:
             if not claimed_ids:
                 await _lend_idle_slots(adapter, adapters, worker_id, available, batch)
         elif not draining and not leaving and claims_here(adapter):
+            if _adapter_concurrency_limit(adapter) is None:
+                # The shared pool is full: a delegated child its parent waits for takes a reserve slot.
+                try:
+                    await _claim_into_reserve(adapter, worker_id, batch)
+                except Exception:
+                    logger.warning(
+                        "Adapter %s: nothing claimed into the delegation reserve", adapter.name, exc_info=True
+                    )
             try:
                 await _take_back_lent_slots(adapter)
             except Exception:

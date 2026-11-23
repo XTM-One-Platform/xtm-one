@@ -26,7 +26,7 @@ When an administrator has switched AI off, the home page says so instead (see [R
 
 The top of the Dashboard gathers what needs attention, each as a notice you can click:
 
-- `N work items are waiting for you`: work items that wait for your decision, or items of yours that no agent owns and that are past their due date. The notice names the item waiting longest. `Review` opens that item when it is the only one; when several wait, it opens `Operations > Work Items` on the `Waiting for me` view, which lists every item the notice counts, oldest first.
+- `N work items are waiting for you`: work items that wait for your decision, or items of yours that no agent owns and that are past their due date. The notice names the item waiting longest. `Review` opens that item when it is the only one; when several wait, it opens `Tasks > Work Items` on the `Waiting for me` view with the `All` scope, which lists every item the notice counts (your own, company-managed and shared ones), oldest first. Pick `Mine` there to narrow the list to your own items; the link keeps the scope, so a bookmark reopens the same list.
 - Model configuration: `No default model configured` or `No embedding provider configured`, when agents or knowledge bases cannot run yet. Administrators get a `Configure` button.
 - Knowledge base health: a knowledge base that needs attention, indexing stalled, re-indexing in progress or stale embeddings, with a link to the documentation or the settings.
 - Platform Health (administrators): the critical findings open in [Platform Health](health.md), their count and the most recent one, with `Review`.
