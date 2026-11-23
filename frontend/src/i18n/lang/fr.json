@@ -20080,7 +20080,6 @@
   "Triggers when a finished simulation's attack path reached an asset of high or very high criticality in OpenAEV.": "Se déclenche quand le chemin d’attaque d’une simulation terminée a atteint un actif de criticité élevée ou très élevée dans OpenAEV.",
   "Opened by": "Ouvert par",
   "The signals of this case could not be read.": "Les signaux de ce dossier n'ont pas pu être lus.",
-  "No signal opened this case: it groups open issues read from the products.": "Aucun signal n'a ouvert ce dossier : il regroupe des problèmes ouverts lus dans les produits.",
   "See the loop trace": "Voir la trace de la boucle",
   "A signal joined the case": "Un signal a rejoint le dossier",
   "Recorded a validation": "A enregistré une validation",
@@ -20714,8 +20713,6 @@
   "Not computed yet": "Pas encore calculé",
   "{count, plural, one {{products} did not answer at {time}, cases unchanged.} other {{products} did not answer at {time}, cases unchanged.}}": "{count, plural, one {{products} n'a pas répondu à {time}, cas inchangés.} other {{products} n'ont pas répondu à {time}, cas inchangés.}}",
   "Open the {product} integration": "Ouvrir l'intégration {product}",
-  "Opened from OpenCTI vulnerabilities matched to your inventory": "Ouvert à partir des vulnérabilités OpenCTI rapprochées de votre inventaire",
-  "Opened from OpenAEV findings on your assets": "Ouvert à partir des constats OpenAEV sur vos actifs",
   "Add a sync": "Ajouter une synchronisation",
   "Start with your sources": "Commencez par vos sources",
   "Pick a platform, pick the sections it fills, preview the rows, then keep them in sync.": "Choisissez une plateforme, les sections qu'elle remplit, prévisualisez les lignes, puis gardez-les synchronisées.",
@@ -21215,5 +21212,7 @@
   "About the inventory sources": "À propos des sources de l'inventaire",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Les plateformes que chaque synchronisation lit selon un calendrier, les agents et partenaires qui écrivent via l'API, les imports CSV et les lignes saisies à la main. La correspondance des actifs fusionne les enregistrements de plusieurs sources en un seul actif.",
   "About the knowledge and sources": "À propos des connaissances et sources",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Les procédures et documents de référence que les agents consultent, le contexte d'organisation qu'ils préchargent et les sources qui alimentent les actifs critiques et les PIR."
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Les procédures et documents de référence que les agents consultent, le contexte d'organisation qu'ils préchargent et les sources qui alimentent les actifs critiques et les PIR.",
+  "Opened by a source read before signals (legacy)": "Ouvert par une lecture de source antérieure aux signaux (hérité)",
+  "Split into its own case by a person or an agent": "Séparé dans son propre dossier par une personne ou un agent"
 }
