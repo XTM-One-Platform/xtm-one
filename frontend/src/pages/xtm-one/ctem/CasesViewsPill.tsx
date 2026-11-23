@@ -59,8 +59,11 @@ export function CasesViewsPill() {
   const query = caseViewQuery(searchParams);
   const active = activeCaseView(views, query);
   const label = t_i18n("Views");
-  // A long view name is cut so the toolbar keeps its anatomy at 1080 px; the
-  // tooltip names the whole view.
+  // Under 1280 px an active view is the glyph and an accent dot, its name in the
+  // tooltip and the accessible name, so the nowrap toolbar keeps Export CSV on
+  // screen at 1080 px in every locale (retest 88c2fe79 D1, UX r1 B1 on #1324: the
+  // cut name still took 170 px); from 1280 px the name alone, cut at 7 rem; from
+  // 1728 px "View: name".
   const pillText = active ? t_i18n("View: {name}", { name: active.name }) : label;
   const update = (next: CaseSavedView[]) => {
     setViews(next);
@@ -76,7 +79,22 @@ export function CasesViewsPill() {
     <div ref={ref} className="relative" data-testid="ctem-cases-views">
       <FilterPillTrigger
         icon={ViewsGlyph}
-        label={<span className="max-w-48 truncate">{pillText}</span>}
+        label={
+          active ? (
+            <>
+              <span className="inline-flex items-center min-[1280px]:hidden" data-testid="ctem-cases-view-pill-dot">
+                <span className="size-1.5 rounded-full bg-accent" aria-hidden />
+                <span className="sr-only">{pillText}</span>
+              </span>
+              <span className="hidden max-w-28 truncate min-[1280px]:inline min-[1728px]:hidden" data-testid="ctem-cases-view-pill-short">
+                {active.name}
+              </span>
+              <span className="hidden max-w-48 truncate min-[1728px]:inline">{pillText}</span>
+            </>
+          ) : (
+            <span className="max-w-48 truncate">{pillText}</span>
+          )
+        }
         title={active ? pillText : undefined}
         open={open}
         active={Boolean(active)}

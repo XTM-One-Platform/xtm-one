@@ -252,6 +252,29 @@ export interface CtemCaseRunningVersions {
   fixed_version_checked?: string[];
 }
 
+/** One asset a case's visible issues name (#1176 slice 3b), with the version it runs when the inventory knows it. */
+export interface CtemCaseAffectedAsset {
+  name: string;
+  issue_count: number;
+  open_issue_count: number;
+  kev: boolean;
+  max_cvss: number | null;
+  /** Upgrade cases read from the inventory: whether an inventory asset of that name runs the product. */
+  in_inventory?: boolean;
+  asset_id?: string;
+  versions?: string[];
+  sources?: string[];
+  status?: "below_fixed" | "fixed" | "not_comparable";
+}
+
+/** The assets of a case and where their versions come from: the asset inventory, or none yet. */
+export interface CtemCaseAffectedAssets {
+  assets: CtemCaseAffectedAsset[];
+  asset_count: number;
+  more_assets: number;
+  version_source: "inventory" | "none";
+}
+
 export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
@@ -267,6 +290,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   ticketing?: CtemTicketingTarget;
   /** Upgrade cases only: null when no asset runs the product; absent on an API older than #1252. */
   running_versions?: CtemCaseRunningVersions | null;
+  /** Absent on an API older than #1176 slice 3b. */
+  affected_assets?: CtemCaseAffectedAssets;
 }
 
 /**
