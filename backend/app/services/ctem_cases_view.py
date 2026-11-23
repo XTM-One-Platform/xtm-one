@@ -462,14 +462,18 @@ _DRAFT_PAGE = re.compile(
 
 
 def threat_package_state(package: dict[str, Any]) -> str:
-    """``drafted`` while the package's page is its OpenCTI draft, else ``validated`` (#1480).
+    """``validated`` only when the package's page is its live Grouping page, else ``drafted`` (#1480, #1547).
 
     A drafted package and its coverage are not in OpenCTI's live graph: the
     coverage has not reached OpenAEV. The Grouping page is written on the case
-    once the draft is validated.
+    only once the Grouping resolves in the live graph: ``update_ctem_case``
+    checks it at record time (``ctem_threat_package_live.verify_package``) and
+    the packages stored before that check are repaired by the administrator
+    route. A package with no page, or the draft page, is not proven live and
+    reads ``drafted``.
     """
-    url = str(package.get("url") or "")
-    return "drafted" if _DRAFT_PAGE.match(url) else "validated"
+    url = str(package.get("url") or "").strip()
+    return "validated" if url and not _DRAFT_PAGE.match(url) else "drafted"
 
 
 def threat_package_for(

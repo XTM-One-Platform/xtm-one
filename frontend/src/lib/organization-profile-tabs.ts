@@ -60,13 +60,14 @@ export type ProfileCard = keyof typeof PROFILE_CARD_TAB;
  * The CTEM > Inventory page of each card that moved there (#1178): a link to the card lands on that tab, which
  * mounts the card with its edit (OrganizationSection embed).
  */
-const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
+export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   tech_stack: "/ctem/inventory/tech-stack",
   ai_systems: "/ctem/inventory/ai-systems",
   assets_exposure: "/ctem/inventory",
-  prioritization_policy: "/ctem/inventory",
-  outside_lens: "/ctem/inventory",
-  evidence_health: "/ctem/inventory",
+  // The settings cards have their own Inventory tab (#1511), never an edit view opened by URL only.
+  prioritization_policy: "/ctem/inventory/exposure",
+  outside_lens: "/ctem/inventory/exposure",
+  evidence_health: "/ctem/inventory/exposure",
   asset_groups: "/ctem/inventory/asset-groups",
 };
 

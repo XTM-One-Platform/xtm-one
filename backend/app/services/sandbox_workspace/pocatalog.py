@@ -26,8 +26,11 @@ gettext convention) when it has a context. Only the lines of the entries named
 change: every other byte (the header, comments, obsolete ``#~`` entries, wrapping
 and separators) is kept. A new entry is written after its anchor (or last) as
 ``msgid "..."`` / ``msgstr "..."``, one blank line apart. A plural entry is read
-(its forms as an object), renamed or removed, never set. A duplicate key, CRLF
-line endings or a line that is not PO is refused.
+(its forms as an object), renamed or removed, never set. CRLF line endings or a
+line that is not PO is refused. A msgid present twice (Lingui writes one entry
+per source with an explicit id, ``#. js-lingui-explicit-id``, next to the same
+msgid from a plain ``t``) leaves the file editable: only a call that names that
+msgid is refused, with the lines of each copy.
 """
 
 from __future__ import annotations
@@ -175,23 +178,27 @@ class PoCatalog:
             self.blocks.append(block)
             if match:
                 sep, pos = match.group(0)[1:], match.end()
-        seen: set[str] = set()
+        lines: dict[str, list[int]] = {}
         for block in self.blocks:
-            if block.key is None:
-                continue
-            if block.key in seen:
-                raise PoCatalogError(f"holds the msgid {block.key!r} twice.")
-            seen.add(block.key)
+            if block.key is not None:
+                lines.setdefault(block.key, []).append(block.first_line)
+        #: key -> first line of each copy, for the keys present more than once.
+        self.duplicates: dict[str, list[int]] = {key: found for key, found in lines.items() if len(found) > 1}
 
     # The dict-like surface :mod:`jsonkeys` drives (the one of tscatalog.ScriptCatalog).
 
     def keys(self) -> list[str]:
-        return [b.key for b in self.blocks if b.key is not None]
+        return list(dict.fromkeys(b.key for b in self.blocks if b.key is not None))
 
     def __contains__(self, key: object) -> bool:
         return any(b.key == key for b in self.blocks)
 
     def _index(self, key: str) -> int:
+        if key in self.duplicates:
+            where = ", ".join(str(n) for n in self.duplicates[key])
+            raise PoCatalogError(
+                f"holds the msgid {key!r} twice (lines {where}): edit that msgid by hand or remove a copy first."
+            )
         return next(i for i, b in enumerate(self.blocks) if b.key == key)
 
     def value(self, key: str) -> str | dict[str, str]:
