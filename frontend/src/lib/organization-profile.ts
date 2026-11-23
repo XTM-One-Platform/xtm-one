@@ -53,10 +53,17 @@ export interface ProfileLike {
   attack_surface?: AttackSurfacePass;
   /** The points of the Cases attention score (#1176), set from CTEM > Cases; kept whole through the form. */
   case_attention?: CaseAttentionProfile;
-  /** Parts edited outside this form (CTEM-28, #1216, #1178); kept whole through the form so a save never resets them. */
+  /** Parts edited outside this form (CTEM-28, #1216); kept whole through the form so a save never resets them. */
   evidence_health?: Record<string, unknown>;
   cases_recompute?: Record<string, unknown>;
-  asset_identity?: Record<string, unknown>;
+  /** How one asset is matched across sources and which source a field shows (#1178), set in CTEM > Inventory; kept whole through the form. */
+  asset_identity?: AssetIdentitySettings;
+}
+
+/** The saved asset identity settings; empty lists and maps keep the engine's defaults. */
+export interface AssetIdentitySettings {
+  key_order: string[];
+  precedence: Record<string, string[]>;
 }
 
 /** The Cases attention points as the profile stores them (backend `CaseAttentionWeights`). */
@@ -113,36 +120,6 @@ export function withIntegrationIds(pass: AttackSurfacePass, ids: string[]): Atta
 }
 /** The bounds the backend's `AttackSurfacePass` enforces. */
 export const ATTACK_SURFACE_BOUNDS = { cadence_hours: { min: 1, max: 24 * 30 }, stale_after_days: { min: 1, max: 365 } } as const;
-
-/**
- * The evidence health pass (CTEM-28, backend `EvidenceHealthPass`). `enabled` unset (null) means
- * no administrator chose: the pass runs on the declared integration, else on the single connected
- * OpenCRQ integration (#1344).
- */
-export interface EvidenceHealthPass {
-  enabled: boolean | null;
-  /** The id of the OpenCRQ integration the pass reads; empty: the single connected one. */
-  integration: string;
-  max_age_days: number;
-  cadence_hours: number;
-}
-
-export const DEFAULT_EVIDENCE_HEALTH: EvidenceHealthPass = { enabled: null, integration: "", max_age_days: 30, cadence_hours: 24 };
-/** The bounds the backend's `EvidenceHealthPass` enforces. */
-export const EVIDENCE_HEALTH_BOUNDS = { max_age_days: { min: 1, max: 3650 }, cadence_hours: { min: 1, max: 24 * 30 } } as const;
-
-/**
- * Whether the pass runs, as the backend's `resolve_pass` decides it from the connected OpenCRQ
- * integration ids: off when turned off with one declared, on a declared one when connected, else
- * on the single connected one; `integration` is the one it reads.
- */
-export function evidenceHealthRuns(pass: EvidenceHealthPass, connected: readonly string[]): { runs: boolean; integration: string } {
-  const ids = [...new Set(connected.filter(Boolean))].sort();
-  const declared = (pass.integration ?? "").trim();
-  if (!ids.length || (pass.enabled === false && declared)) return { runs: false, integration: "" };
-  if (declared) return ids.includes(declared) ? { runs: true, integration: declared } : { runs: false, integration: "" };
-  return ids.length === 1 ? { runs: true, integration: ids[0] } : { runs: false, integration: "" };
-}
 
 /** A domain as the backend stores it (`OrganizationProfile._domains`): lower case, `@` and trailing dots dropped; null when empty or over 253. */
 export function normalizeDomain(raw: string): string | null {
@@ -602,7 +579,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.case_attention ? { case_attention: { ...profile.case_attention } } : {}),
     ...(profile.evidence_health ? { evidence_health: profile.evidence_health } : {}),
     ...(profile.cases_recompute ? { cases_recompute: profile.cases_recompute } : {}),
-    ...(profile.asset_identity ? { asset_identity: profile.asset_identity } : {}),
+    ...(profile.asset_identity ? { asset_identity: { key_order: [...profile.asset_identity.key_order], precedence: { ...profile.asset_identity.precedence } } } : {}),
   };
 }
 

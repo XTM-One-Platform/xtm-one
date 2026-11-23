@@ -57,35 +57,16 @@ listener row of section 2 has no source row.
 | Source `kind` | What it is | `bound` when |
 |---|---|---|
 | `listener` | an integration delivery a listener row maps to the path | an integration of the provider is connected and visible to the reader |
-| `pass` | a scheduled pass: attack surface (Shodan, GTI; paths 5, 6, 7), evidence health (OpenCRQ; paths 9, 12) | the pass runs on a connected integration of the provider; `off` (never `bound`) when the provider is connected but the pass is off or names none of its integrations |
+| `pass` | a scheduled pass: attack surface (Shodan, GTI; paths 5, 6, 7), evidence health (OpenCRQ; paths 9, 12) | its switch is on in the organization profile and its integration is connected |
 | `pir_playbook` | the OpenCTI PIR playbook (CTEM-05), delivered through the OpenCTI listener (paths 1, 2) | OpenCTI is connected and an enabled assignment holds a provisioned playbook |
 
-`status`: `connected` (one source bound), `off` (none bound, one pass `off`:
-its provider is connected, the pass does not run; neutral tone, action "Turn
-on" to its card in Settings > Organization), `not_connected` (a source exists,
-none bound or off: no integration of the provider is connected), `agents_api`
-(no automatic source: agents and the API only, never read as connected).
-
-The evidence health pass is on by default (#1344): `evidence_health.enabled`
-is unset until an administrator saves it. Unset (or the legacy stored default,
-off with no integration declared) with no integration declared, the pass runs
-on the single connected OpenCRQ integration; several connected and none
-declared read `off` until one is picked. A declared integration is read as
-declared, never swapped for another; an administrator who turned the pass off
-keeps it off. `ctem_evidence_health.resolve_pass` is the one rule of the badge
-and the tick, so the badge never reads Connected when the pass would skip. The
-attack surface pass stays opt-in (it needs owned domains or ranges and spends
-provider credits): a connected Shodan or GTI with the pass off reads `off`.
-
-The Sources tab of the Signals page (`/ctem/signals/sources`,
-`SignalSourcesPanel.tsx`) is a compact table grouped by lens: trigger path,
-sources (the event sentence in a tooltip), status, signals in 30 days, last
-signal, action; rows of at most two lines. Connect sends a listener to
-`/integrations/new?provider=`; Connect or Turn on sends a pass and the
-playbook to their card in Settings > Organization (attack surface: outside
-lens; evidence health: its card of the Exposure tab). An empty signal list
-shows the table's standard empty statement alone; the summary strip carries
-the connected count.
+`status`: `connected` (one source bound), `not_connected` (a source exists,
+none bound), `agents_api` (no automatic source: agents and the API only, never
+read as connected). The dialog (`SignalSourcesDialog.tsx`, `?signal-sources=1`)
+opens from the icon button next to the signals counter of the lifecycle card,
+the header of "Signals by trigger path" and the empty loop trace. Connect sends
+a listener to `/integrations/new?provider=`, a pass and the playbook to their
+field in Settings > Organization.
 
 ## 3. Model (`ctem_signals`, migration `c826ctemsignals1`)
 
@@ -155,6 +136,11 @@ The tools are offered to the built-in `ctem-assistant`,
 `ctem-threat-relevance-analyst`, acting for the person the turn or run acts
 for. No persona or seeded assignment uses them yet: the fleets are rewired on
 signals and cases in a later step of the loop.
+
+Any other agent reads the signals through the read-only built-in group
+`ctem_read` (`list_ctem_signals` with the same visibility as section 5, plus
+the case reads; `dev-docs/ctem-cases.md` section 8.1). It never records a
+signal.
 
 ## 7. Tests
 
