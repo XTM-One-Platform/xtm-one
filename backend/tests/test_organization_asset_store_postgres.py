@@ -236,7 +236,8 @@ async def test_the_list_filters_on_fields_and_sources_and_the_facets_name_their_
         none = await store.list_assets(session, org, filters={"category": ["database"]})
         facets = await store.asset_facets(session, org)
     assert [a["name"].casefold() for a in high.items] == ["laptop-01"]
-    assert high.items[0]["records"] == [
+    assert all(r["id"] for r in high.items[0]["records"])
+    assert [{k: r[k] for k in ("source", "external_id")} for r in high.items[0]["records"]] == [
         {"source": "intune", "external_id": "d-1"},
         {"source": "openaev", "external_id": "a-9"},
     ]

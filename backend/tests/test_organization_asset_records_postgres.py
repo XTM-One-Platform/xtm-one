@@ -92,6 +92,22 @@ async def test_a_hand_create_writes_one_record_logs_it_and_builds_its_asset() ->
     assert names == ["db-01", "laptop-01"]
 
 
+async def test_the_asset_reads_name_each_record_by_id_and_the_groups_count_their_assets() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        group = await records.upsert_group(session, org, {"name": "Servers"}, origin="form", actor="form:u")
+        record = await records.create_record(session, org, {**HAND, "group": "Servers"}, origin="form", actor="form:u")
+        await session.commit()
+        page = await store.list_assets(session, org)
+        detail = await store.get_asset(session, org, record.asset_id)
+        groups = await records.groups_out(session, org)
+    refs = {r["external_id"]: r.get("id") for item in page.items for r in item["records"]}
+    assert refs[record.external_id] == str(record.id)
+    assert all(refs.values())
+    assert detail is not None and [r["id"] for r in detail["records"]] == [str(record.id)]
+    assert [(g["id"], g["member_count"]) for g in groups] == [(str(group.id), 1)]
+
+
 async def test_an_update_with_a_stale_row_version_is_refused_and_a_fresh_one_moves_it() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _primary(session, [SYNCED])

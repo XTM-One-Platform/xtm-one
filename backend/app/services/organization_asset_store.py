@@ -770,6 +770,33 @@ def _limit(limit: int) -> int:
     return max(1, min(int(limit or 50), MAX_PAGE))
 
 
+async def _attach_record_ids(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    asset_ids: Sequence[uuid.UUID],
+    refs: Mapping[uuid.UUID, list[dict[str, str]]],
+) -> None:
+    """Add ``id`` (the asset record a row API writes, #1543) to each ``(source, external_id)`` ref of *refs*."""
+    from app.models.organization_asset_record import OrganizationAssetRecord
+
+    rec = OrganizationAssetRecord
+    found = {
+        (asset_id, source, external_id): str(record_id)
+        for record_id, asset_id, source, external_id in (
+            await db.execute(
+                select(rec.id, rec.asset_id, rec.source, rec.external_id).where(
+                    rec.organization_id == organization_id, rec.asset_id.in_(list(asset_ids))
+                )
+            )
+        ).all()
+    }
+    for asset_id, items in refs.items():
+        for ref in items:
+            record_id = found.get((asset_id, ref["source"], ref["external_id"]))
+            if record_id:
+                ref["id"] = record_id
+
+
 def _summary(
     asset: OrganizationAsset,
     sources: list[str],
@@ -904,6 +931,7 @@ async def list_assets(
             if source not in names:
                 names.append(source)
             refs.setdefault(asset_id, []).append({"source": source, "external_id": external_id})
+        await _attach_record_ids(db, organization_id, ids, refs)
         for asset_id, count in (
             await db.execute(
                 select(OrganizationAssetSoftware.asset_id, func.count())
@@ -989,6 +1017,8 @@ async def get_asset(
         .all()
     )
     names = list(dict.fromkeys(r.source for r in records))
+    detail_refs = {asset.id: [{"source": r.source, "external_id": r.external_id} for r in records]}
+    await _attach_record_ids(db, organization_id, [asset.id], detail_refs)
     return {
         **_summary(asset, names, int(soft_total)),
         "fields": asset.fields or {},
@@ -998,13 +1028,12 @@ async def get_asset(
         "possible_matches": asset.possible_matches or [],
         "records": [
             {
-                "source": r.source,
-                "external_id": r.external_id,
+                **ref,
                 "identifiers": r.identifiers or {},
                 "fields": r.fields or {},
                 "last_seen": r.last_seen_at.isoformat() if r.last_seen_at else None,
             }
-            for r in records
+            for r, ref in zip(records, detail_refs[asset.id], strict=True)
         ],
         "software": {
             "items": [_software_dict(s) for s in software],

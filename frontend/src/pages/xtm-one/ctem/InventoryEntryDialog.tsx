@@ -3,7 +3,8 @@
 /**
  * Add, update and bulk-update dialog of the CTEM Inventory's rows (#1367, point 2, Sam 23 Nov 2026: "more normal
  * management", as in OpenAEV). One dialog for the assets and the asset groups: Add creates a row entered by hand,
- * Update changes one row, the bulk form changes the selected rows. A field a platform sync sends is locked on its rows
+ * Update changes one row, the bulk form changes the selected rows. Since #1543 each write is one row API call (the
+ * asset record or the group, by id), never the whole profile. A field a platform sync sends is locked on its rows
  * (point 3): it renders disabled with the reason, and the backend refuses the same change.
  */
 import { useState } from "react";
@@ -13,23 +14,24 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Input } from "@/components/ui/input";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import { SettingsField, settingsFieldLabelId } from "@/components/ui/settings-form";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { useOrganizationContext, useSaveOrganizationContext, type OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
+import {
+  useAssetGroups,
+  useAssetRecord,
+  useCreateAssetGroup,
+  useCreateAssetRecord,
+  useUpdateAssetGroups,
+  useUpdateAssetRecords,
+  type RowsOutcome,
+} from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import { ASSET_CRITICALITY_LABELS, parseTypeValue, typeOptions, typeValue } from "@/lib/asset-taxonomy";
 import { ENVIRONMENT_LABELS, EXPOSURE_LABELS } from "@/lib/organization-import-filters";
-import type { AssetGroupRow, AssetRow } from "@/lib/organization-profile";
-import {
-  fieldEditable,
-  nameProblem,
-  newAssetGroupRow,
-  newAssetRow,
-  patchRows,
-  type InventorySection,
-} from "./inventory-entries";
+import { fieldEditable, nameProblem, newAssetGroupRow, newAssetRow, rowPatches, type InventorySection, type RowRef } from "./inventory-entries";
 
-/** What the dialog does: create a row, change one, or change the selected rows. */
-export type EntryDialogMode = { kind: "add" } | { kind: "update"; index: number } | { kind: "bulk"; indexes: number[] };
+/** What the dialog does: create a row, change one (by id), or change the selected rows. */
+export type EntryDialogMode = { kind: "add" } | { kind: "update"; id: string } | { kind: "bulk"; rows: RowRef[] };
 
 /** The value of a bulk select that leaves the field as each row has it. */
 const KEEP = "__keep__";
@@ -37,25 +39,32 @@ const KEEP = "__keep__";
 const NONE = "__none__";
 
 type Draft = Record<string, string>;
+/** The values of one row the form starts from. */
+type RowValues = RowRef & Record<string, unknown>;
 
-const rowsOf = (profile: OrganizationProfile | undefined, section: InventorySection) =>
-  ((profile as unknown as Record<string, unknown> | undefined)?.[section] ?? []) as (AssetRow | AssetGroupRow)[];
+const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-function draftOf(section: InventorySection, row: AssetRow | AssetGroupRow | undefined, bulk: boolean): Draft {
+function draftOf(section: InventorySection, row: RowValues | undefined, bulk: boolean): Draft {
   if (bulk) return { criticality: KEEP, internet_facing: KEEP, environment: KEEP, group: KEEP, owner: "" };
   if (section === "asset_groups") {
-    const g = (row as AssetGroupRow | undefined) ?? newAssetGroupRow({});
-    return { name: g.name, description: g.description, environment: g.environment || NONE, internet_facing: g.internet_facing, owner: g.owner };
+    const g = row ?? (newAssetGroupRow({}) as unknown as RowValues);
+    return {
+      name: text(g.name),
+      description: text(g.description),
+      environment: text(g.environment) || NONE,
+      internet_facing: text(g.internet_facing) || "unknown",
+      owner: text(g.owner),
+    };
   }
-  const a = (row as AssetRow | undefined) ?? newAssetRow({});
+  const a = row ?? (newAssetRow({}) as unknown as RowValues);
   return {
-    name: a.name,
-    type: typeValue(a.category, a.subcategory),
-    criticality: a.criticality || "unknown",
-    environment: a.environment || NONE,
-    internet_facing: a.internet_facing,
-    owner: a.owner,
-    group: a.group || NONE,
+    name: text(a.name),
+    type: typeValue(text(a.category), text(a.subcategory)),
+    criticality: text(a.criticality) || "unknown",
+    environment: text(a.environment) || NONE,
+    internet_facing: text(a.internet_facing) || "unknown",
+    owner: text(a.owner),
+    group: text(a.group) || NONE,
   };
 }
 
@@ -77,7 +86,7 @@ interface InventoryEntryDialogProps {
   section: InventorySection;
   mode: EntryDialogMode | null;
   onOpenChange: (open: boolean) => void;
-  /** Called once the profile is saved (the caller clears its selection). */
+  /** Called once the rows are written (the caller clears its selection). */
   onSaved?: () => void;
 }
 
@@ -85,25 +94,61 @@ export function InventoryEntryDialog({ section, mode, onOpenChange, onSaved }: I
   const open = mode !== null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Remounted per opening, so the draft starts from the row each time. */}
-      {mode && <EntryForm key={JSON.stringify(mode)} section={section} mode={mode} onClose={() => onOpenChange(false)} onSaved={onSaved} />}
+      {mode && <EntryLoader key={JSON.stringify(mode)} section={section} mode={mode} onClose={() => onOpenChange(false)} onSaved={onSaved} />}
     </Dialog>
   );
 }
 
-function EntryForm({ section, mode, onClose, onSaved }: { section: InventorySection; mode: EntryDialogMode; onClose: () => void; onSaved?: () => void }) {
+/** Reads the row an update starts from (one record, or the group from the group list), then mounts the form. */
+function EntryLoader({ section, mode, onClose, onSaved }: { section: InventorySection; mode: EntryDialogMode; onClose: () => void; onSaved?: () => void }) {
+  const isGroup = section === "asset_groups";
+  const groups = useAssetGroups();
+  const record = useAssetRecord(!isGroup && mode.kind === "update" ? mode.id : undefined);
+  let row: RowValues | undefined;
+  if (mode.kind === "update") {
+    row = isGroup ? (groups.data?.items.find((g) => g.id === mode.id) as RowValues | undefined) : (record.data as RowValues | undefined);
+    if (!row) {
+      return (
+        <DialogContent size="md" data-testid="ctem-entry-dialog">
+          <DialogBody className="space-y-3">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </DialogBody>
+        </DialogContent>
+      );
+    }
+  }
+  return <EntryForm section={section} mode={mode} row={row} groups={groups.data?.items ?? []} onClose={onClose} onSaved={onSaved} />;
+}
+
+function EntryForm({
+  section,
+  mode,
+  row,
+  groups,
+  onClose,
+  onSaved,
+}: {
+  section: InventorySection;
+  mode: EntryDialogMode;
+  row: RowValues | undefined;
+  groups: { id: string; name: string }[];
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const { data } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
-  const rows = rowsOf(data?.profile, section);
+  const isGroup = section === "asset_groups";
+  const createAsset = useCreateAssetRecord();
+  const updateAssets = useUpdateAssetRecords();
+  const createGroup = useCreateAssetGroup();
+  const updateGroups = useUpdateAssetGroups();
+  const pending = createAsset.isPending || updateAssets.isPending || createGroup.isPending || updateGroups.isPending;
   const bulk = mode.kind === "bulk";
-  const row = mode.kind === "update" ? rows[mode.index] : undefined;
   const [draft, setDraft] = useState<Draft>(() => draftOf(section, row, bulk));
   const [error, setError] = useState("");
   const set = (key: string) => (value: string) => setDraft((d) => ({ ...d, [key]: value }));
-  const isGroup = section === "asset_groups";
-  const groups = (rowsOf(data?.profile, "asset_groups") as AssetGroupRow[]).map((g) => g.name).filter((n) => n.trim());
+  const groupNames = groups.map((g) => g.name).filter((n) => n.trim());
   // A field the row's source sends is locked on that row (the bulk form skips the rows it cannot change).
   const locked = (key: string) => mode.kind === "update" && Boolean(row) && !fieldEditable(section, row!, key);
   const lockedHelper = t_i18n("Set by the source that syncs this row.");
@@ -115,47 +160,62 @@ function EntryForm({ section, mode, onClose, onSaved }: { section: InventorySect
         ? t_i18n(isGroup ? "Update the asset group" : "Update the asset")
         : t_i18n(isGroup ? "Update the selected asset groups" : "Update the selected assets");
 
+  const done = (locks: number, outcome?: RowsOutcome) => {
+    if (outcome && outcome.refused.length > 0) {
+      setError(outcome.refused.map((r) => r.reason).join("\n"));
+      if (outcome.written === 0) return;
+    }
+    toast({
+      title: mode.kind === "add" ? t_i18n("Entry added") : t_i18n("Changes saved"),
+      description: locks
+        ? t_i18n("{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}", { count: locks })
+        : undefined,
+      variant: "success",
+    });
+    onSaved?.();
+    if (!outcome || outcome.refused.length === 0) onClose();
+  };
+
   const onSubmit = () => {
-    if (!data) return;
     const patch = patchOf(section, draft, bulk);
     if (!bulk && !locked("name")) {
-      const problem = nameProblem(rows, patch.name ?? "", mode.kind === "update" ? mode.index : undefined);
+      const problem = nameProblem(isGroup ? groups : [], patch.name ?? "", mode.kind === "update" ? mode.id : undefined);
       if (problem) {
         setError(problem === "empty" ? t_i18n("Give it a name.") : t_i18n("Another entry entered by hand already has this name."));
         return;
       }
     }
-    let next: (AssetRow | AssetGroupRow)[];
-    let locks = 0;
+    const onError = (e: Error) => setError(e.message);
     if (mode.kind === "add") {
-      next = [...rows, isGroup ? newAssetGroupRow(patch) : newAssetRow(patch)];
-    } else {
-      const indexes = mode.kind === "update" ? [mode.index] : mode.indexes;
-      const out = patchRows(section, rows, indexes, patch as Partial<AssetRow | AssetGroupRow>);
-      next = out.rows;
-      locks = out.locked;
-      if (out.changed === 0) {
-        onClose();
-        return;
-      }
+      const value = isGroup ? newAssetGroupRow(patch) : newAssetRow(patch);
+      const body = Object.fromEntries(Object.entries(value).filter(([, v]) => typeof v === "string")) as Record<string, string>;
+      (isGroup ? createGroup : createAsset).mutate(body, { onSuccess: () => done(0), onError });
+      return;
     }
-    save.mutate(
-      { profile: { ...data.profile, [section]: next } as OrganizationProfile, source: "form" },
-      {
-        onSuccess: () => {
-          toast({
-            title: mode.kind === "add" ? t_i18n("Entry added") : t_i18n("Changes saved"),
-            description: locks
-              ? t_i18n("{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}", { count: locks })
-              : undefined,
-            variant: "success",
-          });
-          onSaved?.();
-          onClose();
-        },
-        onError: (e) => setError(e.message),
-      },
-    );
+    const rows = mode.kind === "update" ? [row!] : mode.rows;
+    const { patches, locked: locks } = rowPatches(section, rows, patch);
+    if (patches.length === 0) {
+      if (locks) done(locks);
+      else onClose();
+      return;
+    }
+    // One write per row; the rows of one bulk form share a patch once the locked fields are left out.
+    const groupsOfPatch = new Map<string, { ids: string[]; patch: Record<string, string> }>();
+    for (const p of patches) {
+      const key = JSON.stringify(p.patch);
+      const entry = groupsOfPatch.get(key) ?? { ids: [], patch: p.patch as Record<string, string> };
+      entry.ids.push(p.id);
+      groupsOfPatch.set(key, entry);
+    }
+    const update = isGroup ? updateGroups : updateAssets;
+    void Promise.all([...groupsOfPatch.values()].map((g) => update.mutateAsync(g)))
+      .then((outcomes) =>
+        done(locks, {
+          written: outcomes.reduce((n, o) => n + o.written, 0),
+          refused: outcomes.flatMap((o) => o.refused),
+        }),
+      )
+      .catch(onError);
   };
 
   // The fixed vocabularies keep their order; the asset groups are the organization's own (any length): searchable past a handful.
@@ -188,7 +248,7 @@ function EntryForm({ section, mode, onClose, onSaved }: { section: InventorySect
         {bulk && (
           <DialogDescription>
             {t_i18n("{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}", {
-              count: mode.indexes.length,
+              count: mode.rows.length,
             })}
           </DialogDescription>
         )}
@@ -234,7 +294,7 @@ function EntryForm({ section, mode, onClose, onSaved }: { section: InventorySect
         </SettingsField>
         {!isGroup && (
           <SettingsField id="entry-group" label={t_i18n("Asset group")}>
-            {select("group", Object.fromEntries(groups.map((g) => [g, g])), { none: true, sort: true })}
+            {select("group", Object.fromEntries(groupNames.map((g) => [g, g])), { none: true, sort: true })}
           </SettingsField>
         )}
         {error && (
@@ -247,7 +307,7 @@ function EntryForm({ section, mode, onClose, onSaved }: { section: InventorySect
         <Button variant="outline" onClick={onClose}>
           {t_i18n("Cancel")}
         </Button>
-        <Button onClick={onSubmit} disabled={save.isPending || !data} data-testid="ctem-entry-save">
+        <Button onClick={onSubmit} disabled={pending} data-testid="ctem-entry-save">
           {mode.kind === "add" ? t_i18n("Add") : t_i18n("Save")}
         </Button>
       </DialogFooter>

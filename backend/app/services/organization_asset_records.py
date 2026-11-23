@@ -1751,6 +1751,19 @@ async def profile_lists(
     return [record_row(r) for r in page[:cap]], [group_row(g) for g in groups], len(page) > cap
 
 
+async def groups_out(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, Any]]:
+    """Every asset group as the row API answers it, by name, with its distinct asset count (``member_count``)."""
+    members = await group_member_counts(db, organization_id)
+    groups = (
+        await db.execute(
+            select(OrganizationAssetGroup)
+            .where(OrganizationAssetGroup.organization_id == organization_id)
+            .order_by(OrganizationAssetGroup.name_key)
+        )
+    ).scalars()
+    return [{**group_out(g), "member_count": int(members.get(g.id, 0))} for g in groups]
+
+
 async def list_counts(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, int]:
     """``{assets_exposure, asset_groups}``: how many records and groups the organization holds (two counts)."""
     out: dict[str, int] = {}

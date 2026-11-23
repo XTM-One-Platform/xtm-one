@@ -1341,6 +1341,18 @@ async def get_asset_record(
         raise _record_http_error(exc) from None
 
 
+@router.get("/asset-groups")
+async def list_asset_groups(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Every asset group with its id, row version and asset count (what the row APIs take)."""
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    return {"items": await records.groups_out(db, org) if org is not None else []}
+
+
 @router.post("/asset-groups", status_code=201)
 async def create_asset_group(
     body: AssetGroupRequest,
