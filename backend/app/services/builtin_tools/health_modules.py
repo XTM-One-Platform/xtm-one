@@ -38,6 +38,7 @@ block; errors are generic, reasons in logs.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -45,6 +46,8 @@ from typing import TYPE_CHECKING, Any
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from .health_quality import RefusalError, build_group, parse_uuid, untrusted_json
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
@@ -571,17 +574,50 @@ async def add_module_read_tools(
     from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY
     from app.services.integration_tools import build_integration_tools
 
+    reader_id = await module_reader_user_id(db, user_id)
     context = {
         "source": "health_module_analyst",
         "agent_id": str(agent_id),
         "run_id": run_id,
         "autonomous": True,
         "hitl_enabled": False,
-        "user_id": user_id,
+        "user_id": reader_id,
         READ_ONLY_CONTEXT_KEY: frozenset({str(integration_id)}),
     }
     definitions, executor = await build_integration_tools(db, {provider: str(integration_id)}, context=context)
     kept = keep_allow_listed_reads(provider, definitions, executor)
     if kept:
         composite.add_tools(kept, executor)
+    else:
+        # Never a silent "0 tools": the checker names a platform-side defect, not the allow-list.
+        logger.error(
+            "Platform Health %s checker run %s: module tools not wired (integration %s gave no allow-listed read)",
+            provider,
+            run_id,
+            integration_id,
+        )
+        composite.withhold_integrations({provider: MODULE_TOOLS_NOT_WIRED})
     return len(kept)
+
+
+#: The reason a checker run whose module reads could not be built gives its checks (13.6).
+MODULE_TOOLS_NOT_WIRED = (
+    "Module tools not wired: the platform could not build this module's read tools for the run "
+    "(a platform-side defect, not the checker's allow-list). Report every check as not run for this reason."
+)
+
+
+async def module_reader_user_id(db: AsyncSession, user_id: str | None) -> str | None:
+    """Whom the module reads act as: the run's user, else the platform service account.
+
+    A Platform Health cycle starts its run with nobody triggering it (``cycles.start_cycle``),
+    so a company-managed checker can run with no user; a platform-managed module
+    integration then has nobody to sign its JWT for and builds no tool. The reads fall
+    back to the service account (``ADMIN_EMAIL``), the identity background work signs with.
+    """
+    if user_id and user_id != "anonymous":
+        return user_id
+    from app.llm.identity import service_account_id
+
+    account = await service_account_id(db)
+    return str(account) if account is not None else None
