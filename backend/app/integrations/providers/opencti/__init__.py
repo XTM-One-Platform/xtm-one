@@ -127,6 +127,9 @@ def build_tools(
     # The integration's opt-in Live writes setting: the draft gate is skipped
     # as above, and apply_opencti_draft is offered. Off by default.
     live_writes: bool = bool(_kwargs.get("live_writes"))
+    # The run's fleet gates apply_opencti_draft (#1480, the CTEM loop's analyst
+    # review): the tool is offered with Live writes off, the gate decides it.
+    gated_draft_validation: bool = bool(_kwargs.get("gated_draft_validation"))
 
     # Set when the agent has human-in-the-loop enabled: a callback that verifies
     # a human actually approved a given irreversible action (see
@@ -152,6 +155,7 @@ def build_tools(
         autonomous=autonomous,
         direct_mutations=direct_mutations,
         live_writes=live_writes,
+        gated_draft_validation=gated_draft_validation,
         hitl_approval_fn=hitl_approval_fn,
         persist_file_fn=_kwargs.get("persist_file_fn"),
     )

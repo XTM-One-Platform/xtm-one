@@ -257,11 +257,18 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 - `POST /api/v1/organization-context/assets/lookup` `{keys: [...]}` (at most 200): the cross-product pivot of
   OpenCTI, OpenAEV and OpenCRQ (contract v3, the XTM One emblem). Each key is read as an FQDN and its hostname, a
   hostname, a MAC or an IP address (never a serial or a cloud id), normalised as the identity engine compares them,
-  and matched against every source record of the primary organization, then the asset's name. The answer holds one
+  and matched against every source record of the primary organization, then the asset's name. A key of the form
+  `<source>:<external id>` (`openaev:<asset id>`) is a source reference: it is matched exactly on the source and
+  external id of the records and, when found, wins over every weak reading of the same key, so a product that
+  imported the same OpenAEV asset finds it whatever its name or addresses. The answer holds one
   item per key found: `{key, id, name, category, criticality, internet_facing, owner, matches, url}`, `url` the
   asset's page `/ctem/inventory/assets/{id}`, `matches` the number of assets holding a weak key (the first by name
   answers). The platforms call it with the user's own cross-platform token, so a user reads what the inventory list
   answers him.
+- The OpenAEV assets import reads `/api/endpoints/search` (endpoints with hostname, IPs and MACs), then
+  `/api/assets/search` for the rest of the inventory (web applications, cloud resources, SaaS, network devices
+  created as generic assets; AI targets keep their own read). A `platform` filter names endpoints alone and skips
+  the second read.
 
 ### 9.2 Writes through the store, merge and split (S3)
 
@@ -326,6 +333,66 @@ The tech stack inventory (9.3) counts SBOM software like any other.
   with the format, the document, the component count, the unknown versions, the bundled ones and whether it
   replaced an earlier import; 404 on an unknown asset; 422 on a file refused. The upload in the UI comes with the
   asset sources panel.
+
+### 9.5 Software as an entity (#1495)
+
+Software is a first-class object of the store, aligned with the STIX 2.1 Software SCO (name, vendor,
+CPE, plus `x_opencti_product`) so a later pivot to OpenCTI converts it field for field. Three tables,
+kept across the rebuilds of the store (their ids are stable), filled by `organization_software_store.sync_software`
+at the end of every rebuild:
+
+- `organization_software`: one per organization, vendor and product (case-folded keys). Type (`application`,
+  `operating_system`, `library`, `firmware`, `container_image`, `saas`), product-level CPE 2.3 (version `*`) and
+  its state (`override`, `reported`, `high`, `medium`, `low`, `unresolved`, the `resolve_cpe` rule: never guessed),
+  the administrator's `cpe_override`, product PURL (no `@version`), sources, first and last seen. `origin`
+  `synced`: a source reports it, read-only to people; `manual`: typed by an administrator.
+- `organization_software_versions`: one per software and version, `unknown` when no source gives it (never empty),
+  with the version's CPE (reported, else the software's with the version set) and PURL; `eol` when known.
+- `organization_software_dependencies`: a version that `depends_on` another (CycloneDX `dependencies`, SPDX
+  `DEPENDS_ON` / `DEPENDENCY_OF`) or is `bundled_in` it (CycloneDX nesting, SPDX `CONTAINS` / `CONTAINED_BY`);
+  scope when the SBOM gives one. A label resolves only within the asset's own software. Rebuilt whole with the
+  installations, so an SBOM removed takes its edges with it.
+
+`organization_asset_software` is the installation (a version on an asset, any category: host, container image,
+code repository) and names its `software_version_id`; one store, no copy. A synced software nothing installs any
+more is removed with its versions; a manual one stays. A store built before this change is linked by the next
+read (`ensure_built` finds an installation without a version and rebuilds once).
+
+Reads (any signed-in user):
+
+- `GET /api/v1/organization-context/software?q=&type=&vendor=&source=&origin=&cpe_state=&unknown_version=&offset=&limit=`:
+  one item per software with `version_count`, `asset_count` (distinct assets), `has_unknown_version`, `editable`.
+- `GET /api/v1/organization-context/software/{id}`: the software, its versions with asset counts, its
+  installations (paginated), `depends_on` and `used_by` (one level, each edge with its version and kind).
+- `GET /api/v1/organization-context/software/versions/{id}/assets?through_dependencies=`: the assets where a
+  version is present, directly (`via` empty) or through an installed version that depends on it, transitively
+  (`via` names it; the walk stops at 5,000 versions).
+
+- `GET /api/v1/organization-context/software/export.csv` (same filters): the list as CSV, at most 50,000 rows,
+  a cell starting with `=`, `+`, `-`, `@`, tab or CR prefixed with `'` so a spreadsheet never runs it.
+
+Writes (administrators, audited `entity_type organization_context`, `entity_name software`; 404 unknown,
+409 a vendor and product that exist, 422 refused):
+
+- `POST /api/v1/organization-context/software` `{vendor, product, name, type, description, cpe, purl}`: a
+  hand-typed software (`origin manual`); `cpe` is a CPE 2.3 string kept as its override (`cpe_state override`).
+- `PATCH /api/v1/organization-context/software/{id}` `{name, type, description, purl, cpe_override}`: a synced
+  software takes `cpe_override` only (any other field is 422: its name, type and versions come from its
+  sources); the override is kept across syncs and an empty one lets the sources decide again.
+- `DELETE /api/v1/organization-context/software/{id}`: 204; a hand-typed software and its hand attachments
+  (422 for a synced one, which goes when no source reports it).
+- `POST /api/v1/organization-context/software/{id}/installations` `{asset_id, version}`: attach a hand-typed
+  software to an asset (`unknown` when no version). The attachment is a component of the asset's hand
+  document, `organization_asset_sboms` format `manual` anchored on the asset's first source record like an
+  SBOM, so it follows the asset through every rebuild and merge and shows as source `manual`. The same
+  version again changes nothing. A synced software is attached by its sources only (422).
+- `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
+  attachment (every version when `version` is empty); 404 when the asset holds none.
+
+Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
+and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
+(`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
+events for software writes are not raised yet: no subscriber needs them before slice 3.
 
 ## 10. OpenCRQ alignment
 

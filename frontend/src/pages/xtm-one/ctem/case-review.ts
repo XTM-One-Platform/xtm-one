@@ -32,17 +32,30 @@ export function reviewAnswerer(by: string | null | undefined): ReviewAnswerer {
   return { kind: "unknown" };
 }
 
-/** Where the review step stands on a case, for the card's headline. */
-export type ReviewStage = "not_started" | "drafted" | "coverage_requested";
+/**
+ * Where the review step stands on a case, for the card's headline (#1480):
+ * `drafted` the package sits in an OpenCTI draft with no coverage yet;
+ * `awaiting_validation` the coverage is written in that draft too, so nothing
+ * reached OpenAEV until the draft is validated; `validated` the package is in
+ * OpenCTI's live graph without a coverage; `coverage_requested` the validated
+ * package has its coverage, sent to OpenAEV.
+ */
+export type ReviewStage = "not_started" | "drafted" | "awaiting_validation" | "validated" | "coverage_requested";
 
-export function reviewStage(pkg: { coverage_requested?: boolean } | null | undefined): ReviewStage {
+export function reviewStage(
+  pkg: { state?: "drafted" | "validated"; coverage_requested?: boolean; coverage_drafted?: boolean } | null | undefined,
+): ReviewStage {
   if (!pkg) return "not_started";
-  return pkg.coverage_requested ? "coverage_requested" : "drafted";
+  if (pkg.coverage_requested) return "coverage_requested";
+  if (pkg.coverage_drafted) return "awaiting_validation";
+  return pkg.state === "validated" ? "validated" : "drafted";
 }
 
 /** The headline of each stage, translated where drawn. @i18n-keys */
 export const REVIEW_STAGE_LABEL = {
   not_started: "The threat package an analyst reviews in OpenCTI before any validation, once the case is triaged.",
   drafted: "Threat package drafted, coverage not requested yet",
+  awaiting_validation: "Threat package drafted, not validated: coverage not sent to OpenAEV",
+  validated: "Threat package validated, coverage not requested yet",
   coverage_requested: "Coverage requested in OpenCTI",
 } as const satisfies Record<ReviewStage, string>;

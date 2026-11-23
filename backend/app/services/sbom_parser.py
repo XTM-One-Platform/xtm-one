@@ -12,6 +12,9 @@ endpoint manager or OpenAEV reports.
 - SPDX: every entry of ``packages``; CPE and PURL from ``externalRefs``; vendor
   from ``supplier`` (``Organization: F5, Inc.`` gives ``F5, Inc.``); a
   ``CONTAINS`` relationship (or its inverse ``CONTAINED_BY``) giving the parent.
+- Dependencies (#1495): CycloneDX ``dependencies`` (``ref`` -> ``dependsOn``),
+  SPDX ``DEPENDS_ON`` and its inverse ``DEPENDENCY_OF``; :meth:`Sbom.depends_on`
+  names them per component.
 
 A version that is missing, blank or ``NOASSERTION`` is answered ``None``, so the
 store keeps it as ``unknown`` rather than an empty string. An SBOM over
@@ -26,7 +29,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 #: Components one SBOM may hold: a larger one is refused (split it per application or image).
@@ -59,6 +62,20 @@ class Sbom:
     #: ``cyclonedx`` or ``spdx``.
     format: str
     components: list[Component]
+    #: Local reference -> the references it depends on (CycloneDX ``dependencies``, SPDX ``DEPENDS_ON``).
+    dependencies: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def depends_on(self, component: Component) -> list[str]:
+        """``product version`` of each component *component* depends on, in the document's order (#1495)."""
+        out: list[str] = []
+        for ref in self.dependencies.get(component.ref, ()):
+            target = self._by_ref().get(ref)
+            if target is None or target.ref == component.ref:
+                continue
+            label = f"{target.product} {target.version}".strip() if target.version else target.product
+            if label not in out:
+                out.append(label)
+        return out
 
     def bundled_in(self, component: Component) -> str:
         """``product version`` of the component that bundles *component* (empty: none)."""
@@ -120,6 +137,19 @@ def _list(node: Any, field: str) -> list[Any]:
 # ── CycloneDX ─────────────────────────────────────────────────────────
 
 
+def _cyclonedx_dependencies(doc: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
+    """``dependencies``: ``[{ref, dependsOn: [ref]}]`` to ref -> the refs it depends on."""
+    out: dict[str, tuple[str, ...]] = {}
+    for entry in _list(doc, "dependencies"):
+        ref = _text(entry, "ref")
+        if ref is None:
+            continue
+        targets = [t.strip() for t in _list(entry, "dependsOn") if isinstance(t, str) and t.strip()]
+        if targets:
+            out[ref] = tuple(dict.fromkeys([*out.get(ref, ()), *targets]))
+    return out
+
+
 def _cyclonedx(doc: Mapping[str, Any]) -> list[Component]:
     out: list[Component] = []
     counter = 0
@@ -160,6 +190,27 @@ def _cyclonedx(doc: Mapping[str, Any]) -> list[Component]:
 # ── SPDX ──────────────────────────────────────────────────────────────
 
 
+def _spdx_dependencies(doc: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
+    """``DEPENDS_ON`` (and its inverse ``DEPENDENCY_OF``) to SPDXID -> the SPDXIDs it depends on."""
+    out: dict[str, list[str]] = {}
+    for rel in _list(doc, "relationships"):
+        kind = (_text(rel, "relationshipType") or "").upper()
+        element = _text(rel, "spdxElementId")
+        related = _text(rel, "relatedSpdxElement")
+        if element is None or related is None:
+            continue
+        if kind == "DEPENDS_ON":
+            source, target = element, related
+        elif kind == "DEPENDENCY_OF":
+            source, target = related, element
+        else:
+            continue
+        targets = out.setdefault(source, [])
+        if target not in targets:
+            targets.append(target)
+    return {k: tuple(v) for k, v in out.items()}
+
+
 def _spdx(doc: Mapping[str, Any]) -> list[Component]:
     parent_of: dict[str, str] = {}
     for rel in _list(doc, "relationships"):
@@ -173,7 +224,7 @@ def _spdx(doc: Mapping[str, Any]) -> list[Component]:
             parent_of.setdefault(related, element)
         elif kind == "CONTAINED_BY":
             parent_of.setdefault(element, related)
-        # Other relationships (DEPENDS_ON, DESCRIBES...) are not a bundling.
+        # Other relationships are not a bundling (DEPENDS_ON is read by _spdx_dependencies).
     out: list[Component] = []
     for pkg in _list(doc, "packages"):
         product = _text(pkg, "name")
@@ -211,9 +262,9 @@ def parse(doc: Any) -> Sbom:
     if not isinstance(doc, Mapping):
         raise SbomError("The SBOM must be a JSON object")
     if (_text(doc, "bomFormat") or "").lower() == "cyclonedx":
-        return Sbom(format="cyclonedx", components=_cyclonedx(doc))
+        return Sbom(format="cyclonedx", components=_cyclonedx(doc), dependencies=_cyclonedx_dependencies(doc))
     if doc.get("spdxVersion"):
-        return Sbom(format="spdx", components=_spdx(doc))
+        return Sbom(format="spdx", components=_spdx(doc), dependencies=_spdx_dependencies(doc))
     raise SbomError("Unsupported SBOM: expected CycloneDX JSON (bomFormat) or SPDX JSON (spdxVersion)")
 
 

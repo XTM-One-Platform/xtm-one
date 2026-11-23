@@ -78,6 +78,8 @@ class InjectEffects:
     needs_credentials: bool = False
     reasons: list[str] = field(default_factory=list)
     source: str = "nuclei_template"
+    #: The exact text of an authored payload (a command written for this validation), when one is given.
+    command: str = ""
 
     @property
     def intrusive_or_unknown(self) -> bool:
@@ -258,10 +260,38 @@ def classify_templates(templates: list[str]) -> InjectEffects:
     return merged
 
 
+#: How long an authored command may be when it is embedded in an ask.
+COMMAND_MAX = 2000
+
+
 def classify_inject(
-    *, injector: str = "", template: str | None = None, contract_read_only: bool | None = None
+    *,
+    injector: str = "",
+    template: str | None = None,
+    contract_read_only: bool | None = None,
+    authored_payload: bool = False,
+    command: str = "",
 ) -> InjectEffects:
-    """Classify any proposed inject: its Nuclei template, else its contract's own flag, else unknown."""
+    """Classify any proposed inject: its Nuclei template, else its contract's own flag, else unknown.
+
+    *authored_payload*: the payload is written for this validation (a new command payload) or does not
+    exist yet. Nothing the platform can read vouches for it, so it is ``unknown`` (handled as intrusive)
+    whatever the contract says, and *command*, its exact text, travels with it into the ask.
+    """
+    text = (command or "").strip()[:COMMAND_MAX]
+    if authored_payload or text:
+        label = (injector or "this payload").strip()
+        return InjectEffects(
+            UNKNOWN,
+            side_effects=["runs a command authored for this validation on each target"],
+            cleanup=["revert what the command changed on each target"],
+            reasons=[
+                f"{label}: an authored or not-yet-existing payload, no template or contract vouches for it, "
+                "handled as intrusive"
+            ],
+            source="authored_payload",
+            command=text,
+        )
     if template and template.strip():
         return classify_nuclei_template(template)
     if contract_read_only is True:
@@ -282,6 +312,63 @@ def classify_inject(
     )
 
 
+#: The remediation kinds a version inventory resolves (a patch or an upgrade): a test never does.
+VERSION_REMEDIATIONS: tuple[str, ...] = ("patch", "upgrade")
+#: What a validation reference proves: the fix in place (a version inventory), or a test's behaviour.
+REMEDIATION_EVIDENCE = "remediation"
+VALIDATION_EVIDENCE = "validation"
+EVIDENCE_TYPES: tuple[str, ...] = (REMEDIATION_EVIDENCE, VALIDATION_EVIDENCE)
+_REMEDIATION_EVIDENCE_TEXT = "a version inventory showing every in-scope endpoint at or above the fixed build"
+#: Words a non-read-only gate never carries in its title or text.
+_SAFE_WORDS = re.compile(r"\b(?:read[- ]only|safe(?:ly)?|only reads?|harmless|non[- ]intrusive|passive)\b", re.I)
+
+
+def gate_title(classification: str, subject: str) -> str:
+    """The title of the gate ``ctem.validation.non_readonly``, from the inject class, never from a model."""
+    label = {
+        READ_ONLY: "Read-only validation",
+        INTRUSIVE: "Intrusive validation",
+    }.get(classification, "Validation with unknown effects (handled as intrusive)")
+    return f"{label}: {subject}"[:200]
+
+
+def safe_mode_text(classification: str) -> str:
+    """The safe-mode line of the gate: yes only for an inject the platform read as read-only."""
+    if classification == READ_ONLY:
+        return "Safe mode: yes, every request only reads."
+    if classification == INTRUSIVE:
+        return "Safe mode: no, it acts on the target."
+    return "Safe mode: no, its effect could not be read; handled as intrusive."
+
+
+def wording_problems(classification: str, text: str) -> list[str]:
+    """What in a drafted gate title or text contradicts the inject class (a non-read-only gate called safe)."""
+    if classification == READ_ONLY or not (text or "").strip():
+        return []
+    allowed = safe_mode_text(classification)
+    found = sorted({m.group(0).lower() for m in _SAFE_WORDS.finditer(text.replace(allowed, ""))})
+    return [f"a {classification} inject is described as {word!r}" for word in found]
+
+
+def target_line(target_count: int | None, inventory_count: int | None = None, inventory_label: str = "") -> str:
+    """The targets an inject runs on and their delta against the inventory the context cites."""
+    if not isinstance(target_count, int) or target_count < 0:
+        return "Targets: not counted; count the targets before any launch."
+    line = f"Targets: {target_count}."
+    if isinstance(inventory_count, int) and inventory_count >= 0:
+        label = f" {inventory_label.strip()}" if inventory_label.strip() else ""
+        delta = target_count - inventory_count
+        if delta == 0:
+            line = f"Targets: {target_count}, as many as the {inventory_count}{label} the inventory cites."
+        else:
+            way = "more" if delta > 0 else "fewer"
+            line = (
+                f"Targets: {target_count}, {abs(delta)} {way} than the {inventory_count}{label} the inventory "
+                f"cites; confirm the difference before any launch."
+            )
+    return line
+
+
 def validation_gate_ask(
     effects: InjectEffects,
     *,
@@ -289,12 +376,21 @@ def validation_gate_ask(
     target_is_lab: bool = False,
     passive_option: str = "",
     coverage: Coverage | None = None,
+    target_count: int | None = None,
+    inventory_count: int | None = None,
+    inventory_label: str = "",
+    remediation_kind: str = "",
+    passive_reads_version: bool = False,
 ) -> dict[str, Any]:
     """The ask of the gate ``ctem.validation.non_readonly`` for one inject, built from its classification.
 
     *subject*: what the validation tests (a CVE id, a threat), *passive_option*: a check that only reads
-    (a version or banner read, a read-only template), offered when given.
+    (a version or banner read, a read-only template), offered when given. The title and the safe-mode line
+    follow the class (#1500); an authored payload carries its exact command, or asks for a payload review
+    before the launch decision when its text is not given; the target count and its delta against the
+    cited inventory are listed; on a patch or upgrade case each option names the evidence it produces.
     """
+    authored = effects.source == "authored_payload"
     lines: list[str] = []
     if effects.classification == READ_ONLY:
         lines.append("What it does on the target: it sends requests that only read (no request changes state).")
@@ -306,6 +402,9 @@ def validation_gate_ask(
         lines.extend(f"- {effect}" for effect in effects.side_effects)
         if effects.cleanup:
             lines.append("Cleanup owed after the run: " + "; ".join(effects.cleanup) + ".")
+    if authored and effects.command:
+        lines.append("Command, exact text:\n" + effects.command)
+    lines.append(target_line(target_count, inventory_count, inventory_label))
     lines.append(
         "Runs without credentials: no, a no-match proves nothing."
         if effects.needs_credentials
@@ -318,31 +417,139 @@ def validation_gate_ask(
         if not coverage.reads_version:
             lines.append("It does not read the running version.")
     lines.append("A no-match is " + effects.negative_result + "; the case stays open with its remediation.")
-    options: list[dict[str, str]] = [
-        {"key": "A", "label": f"Run it against the asset{' (a lab)' if target_is_lab else ''}", "effect": lines[0]},
-    ]
-    if passive_option.strip():
-        options.append(
-            {"key": "B", "label": passive_option.strip(), "effect": "A passive check; nothing is sent beyond reads."}
+    version_case = (remediation_kind or "").strip().lower() in VERSION_REMEDIATIONS
+    if version_case:
+        lines.append(
+            "This case is resolved only by remediation evidence: " + _REMEDIATION_EVIDENCE_TEXT + "; a detection "
+            "or behaviour test result is recorded as validation evidence and never resolves it."
         )
-    options.append(
-        {
-            "key": "C" if passive_option.strip() else "B",
-            "label": "Do not run it",
-            "effect": "No validation; the case stays open with its remediation.",
-        }
-    )
-    # Against an asset that is not a lab, an intrusive or unknown inject is never the recommendation:
-    # B is the passive check when one is offered, else not running it.
-    recommendation = "A" if effects.classification == READ_ONLY or target_is_lab else "B"
     if coverage is not None and coverage.covered and coverage.uncovered:
         subject = ", ".join(coverage.covered)
+    if authored and not effects.command:
+        # Nothing to judge yet: the payload is reviewed first, the launch is a later decision.
+        options: list[dict[str, str]] = [
+            {
+                "key": "A",
+                "label": "Review the payload first: show its exact text, then decide the launch",
+                "effect": "Nothing runs; the launch is a separate decision once the payload text is read.",
+            },
+            {
+                "key": "B",
+                "label": "Do not run it",
+                "effect": "No validation; the case stays open with its remediation.",
+            },
+        ]
+        question = f"Review the authored {subject} payload before any launch decision?"
+        recommendation = "A"
+    else:
+        options = [
+            {"key": "A", "label": f"Run it against the asset{' (a lab)' if target_is_lab else ''}", "effect": lines[0]},
+        ]
+        if passive_option.strip():
+            options.append(
+                {
+                    "key": "B",
+                    "label": passive_option.strip(),
+                    "effect": "A passive check; nothing is sent beyond reads.",
+                }
+            )
+        options.append(
+            {
+                "key": "C" if passive_option.strip() else "B",
+                "label": "Do not run it",
+                "effect": "No validation; the case stays open with its remediation.",
+            }
+        )
+        question = f"Run the {subject} validation inject against the asset?"
+        # Against an asset that is not a lab, an intrusive or unknown inject is never the recommendation:
+        # B is the passive check when one is offered, else not running it.
+        recommendation = "A" if effects.classification == READ_ONLY or target_is_lab else "B"
+    if version_case:
+        for option in options:
+            if option["label"] == "Do not run it" or option["label"].startswith("Review the payload"):
+                kind = "none"
+            elif option["key"] == "B" and passive_reads_version:
+                kind = REMEDIATION_EVIDENCE
+            else:
+                kind = VALIDATION_EVIDENCE
+            option["evidence"] = kind
+            option["effect"] += {
+                "none": " Evidence: none.",
+                REMEDIATION_EVIDENCE: " Evidence: remediation (a version inventory); it can resolve the case.",
+                VALIDATION_EVIDENCE: " Evidence: validation only; it never resolves the case.",
+            }[kind]
     return {
-        "question": f"Run the {subject} validation inject against the asset?",
+        "title": gate_title(effects.classification, subject),
+        "safe_mode": effects.classification == READ_ONLY,
+        "safe_mode_text": safe_mode_text(effects.classification),
+        "question": question,
         "context": "\n".join(lines),
         "options": options,
         "recommendation": recommendation,
         "classification": effects.classification,
+        "payload_review_first": authored and not effects.command,
+    }
+
+
+def mobilize_done_criterion(
+    effects: InjectEffects | None,
+    *,
+    remediation_kind: str = "",
+    target_count: int | None = None,
+    version_check: str = "",
+) -> dict[str, Any]:
+    """The done criterion of a remediation ticket and the lines the gate ``ctem.mobilize`` carries (#1500).
+
+    The re-test that closes a ticket follows the inject class: a read-only re-test may be the criterion;
+    an intrusive or unknown one never silently: a non-intrusive check is named (*version_check*, a version
+    read) or the re-test is stated intrusive with its side effects and targets. A negative exploit re-test is
+    inconclusive and never closes a ticket alone. The hold option depends on no other pending gate.
+    """
+    klass = effects.classification if effects is not None else UNKNOWN
+    version_case = (remediation_kind or "").strip().lower() in VERSION_REMEDIATIONS
+    check = (version_check or "").strip()
+    lines: list[str] = []
+    if version_case:
+        criterion = "Done when " + _REMEDIATION_EVIDENCE_TEXT + (f" ({check})" if check else "") + "."
+        evidence = REMEDIATION_EVIDENCE
+    elif klass == READ_ONLY:
+        criterion = "Done when the read-only re-test passes and reads the fixed state."
+        evidence = VALIDATION_EVIDENCE
+    elif check:
+        criterion = f"Done when this non-intrusive check proves the fix: {check}."
+        evidence = VALIDATION_EVIDENCE
+    else:
+        effects_text = (
+            "; ".join(effects.side_effects)
+            if effects is not None and effects.side_effects
+            else "its effect could not be read"
+        )
+        targets = (
+            f"{target_count} target(s)"
+            if isinstance(target_count, int) and target_count >= 0
+            else "targets not counted yet"
+        )
+        criterion = (
+            "Done when the re-test proves the fix. The re-test is intrusive: "
+            + effects_text
+            + f"; it runs on {targets} and needs its own approval."
+        )
+        evidence = VALIDATION_EVIDENCE
+    lines.append("Done criterion: " + criterion)
+    if klass != READ_ONLY:
+        lines.append("A negative exploit re-test is inconclusive: it never closes the ticket alone.")
+    hold = {
+        "key": "hold",
+        "label": "Hold: create no ticket now",
+        "effect": "No ticket, no notice; the case stays open with its remediation and is asked again at its next step.",
+    }
+    return {
+        "done_criterion": criterion,
+        "evidence": evidence,
+        "retest_class": klass,
+        "negative_retest": "inconclusive" if klass != READ_ONLY else "conclusive only with the fixed version read",
+        "lines": lines,
+        "hold_option": hold,
     }
 
 
@@ -358,15 +565,24 @@ def checked_safe_mode(safe_mode: bool | None, inject_class: str | None) -> tuple
 
 __all__ = [
     "CLASSES",
+    "EVIDENCE_TYPES",
     "INTRUSIVE",
     "READ_ONLY",
+    "REMEDIATION_EVIDENCE",
     "UNKNOWN",
+    "VALIDATION_EVIDENCE",
+    "VERSION_REMEDIATIONS",
     "Coverage",
     "InjectEffects",
     "checked_safe_mode",
     "classify_inject",
     "classify_nuclei_template",
     "classify_templates",
+    "gate_title",
+    "mobilize_done_criterion",
+    "safe_mode_text",
+    "target_line",
     "template_coverage",
     "validation_gate_ask",
+    "wording_problems",
 ]
