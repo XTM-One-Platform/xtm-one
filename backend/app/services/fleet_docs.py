@@ -243,6 +243,18 @@ class DocGateTool(_Part):
     when: dict[str, list[str]] = Field(default_factory=dict, max_length=5)
 
 
+class DocGateGrant(_Part):
+    """What one approval of the gate covers (#1339): one decision per validation, not per call.
+
+    A call a person approved covers the later calls of the same gate that name
+    an object it named or created (``objects``: the arguments holding those ids)
+    and give none of ``fresh`` (a new target, a new schedule): those ask again.
+    """
+
+    objects: list[str] = Field(default_factory=list, max_length=10)
+    fresh: list[str] = Field(default_factory=list, max_length=20)
+
+
 #: The gates one fleet's catalog holds at most (``StructuredDoc.gates``, the
 #: ``PUT /fleets/{id}/approval-gates`` body). ``fleet_gate_proposals.propose_gates``
 #: never returns more, so "Accept all" always fits (UX round 4 B1 on #10034:
@@ -266,6 +278,8 @@ class DocGate(_Part):
     #: Bound: ``fleet_gate_proposals.GATE_TOOLS_MAX`` (one proposed gate names
     #: every write tool of an integration at one impact, #10034 UX round 2 B1).
     tools: list[DocGateTool] = Field(default_factory=list, max_length=200)
+    #: What one approval covers (#1339); none = each matching call asks on its own.
+    grant: DocGateGrant | None = None
     #: The integration a proposed gate writes to (#10034), so the page draws its
     #: mark and name; empty for a declared gate, which the module places.
     provider: str = Field(default="", max_length=60, pattern=r"^([a-z0-9][a-z0-9_-]*)?$")

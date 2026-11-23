@@ -102,7 +102,7 @@ const DECLARED_GATE_ACTIONS = [
   "Run a test against an AI system",
   "Any proposed action on a supplier",
   // The CTEM loop gate catalog (#916, CTEM-34: `builtin_fleet_docs._ctem_gates`).
-  "Validate: run an OpenAEV test that is not read-only",
+  "Validate: create or launch an OpenAEV scenario or atomic test",
   "Review: an analyst checks the threat package",
   "Decide: choose the remediation option",
   "Mobilize: create the tickets, notify the owners, hand over the prepared change",
@@ -120,8 +120,8 @@ const DECLARED_GATE_ACTIONS = [
  * says only what it does (UX round 1 B2 on #934). @i18n-keys
  */
 const CTEM_GATE_EFFECTS: Readonly<Record<string, string>> = {
-  "Validate: run an OpenAEV test that is not read-only":
-    "When it runs alone, OpenAEV tests that are not read-only start without a person.",
+  "Validate: create or launch an OpenAEV scenario or atomic test":
+    "When it runs alone, OpenAEV scenarios and atomic tests are created and launched without a person.",
   "Review: an analyst checks the threat package": "When it runs alone, the fleet requests the coverage without an analyst's review.",
   "Decide: choose the remediation option": "When it runs alone, the recommended option is applied and logged as decided by policy.",
   "Mobilize: create the tickets, notify the owners, hand over the prepared change":

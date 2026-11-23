@@ -3586,12 +3586,22 @@ class CompositeToolExecutor:
         try:
             interceptor = _dispatch_interceptor.get()
             if interceptor is not None:
-                return await interceptor.intercept(
+                result = await interceptor.intercept(
                     call, self.get_tool_definition(call.name), lambda: self._dispatch(call, executor)
                 )
-            return await self._dispatch(call, executor)
+            else:
+                result = await self._dispatch(call, executor)
         finally:
             _consent.reset(token)
+        # A gate that keeps what an approved call covers reads its answer (the
+        # fleet's validation grant, #1339); a failing observer never fails the call.
+        observe = getattr(self._approval_gate, "observe", None)
+        if observe is not None:
+            try:
+                observe(call, result)
+            except Exception:
+                logger.warning("Approval gate observer failed for %s", call.name, exc_info=True)
+        return result
 
     def _ingest_write_call(self, call: ToolCall) -> ToolCall | None:
         """The ``workset_add_item`` call a ``to_workset`` call amounts to, for the approval gate; else ``None``."""
