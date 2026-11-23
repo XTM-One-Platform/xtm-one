@@ -284,8 +284,8 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         ToolDefinition(
             name="record_ctem_signal",
             description=(
-                "Record a change in exposure that may start the CTEM loop (a CVE or an actor is optional). "
-                "The same dedupe_key again only moves last_seen_at."
+                "Record an exposure change that may start the CTEM loop (a CVE or an actor is optional). "
+                "A repeated dedupe_key only moves last_seen_at."
             ),
             input_schema={
                 "type": "object",
@@ -307,7 +307,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         ),
         ToolDefinition(
             name="list_ctem_signals",
-            description="The acting person's CTEM signals (an admin: all), latest first, counts by state.",
+            description="Your CTEM signals (admin: all), newest first, counts by state.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -316,7 +316,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "lens": lens_enum,
                     "limit": {"type": "integer"},
                     "offset": {"type": "integer"},
-                    "signal_id": {"type": "string", "description": "One signal by id (a ctem_signal event's)"},
+                    "signal_id": {"type": "string"},
                 },
                 "required": [],
             },
