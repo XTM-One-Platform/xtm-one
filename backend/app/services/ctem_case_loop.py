@@ -812,6 +812,11 @@ _GROUPING_ID = re.compile(
 _GROUPING_URL = re.compile(
     r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/groupings/([0-9a-fA-F-]{36})(?:/[A-Za-z0-9._-]*)?$"
 )
+#: An OpenCTI draft page: ``https://host/dashboard/data/import/draft/<uuid>`` (#1453). A Grouping
+#: drafted inside a draft has no live page until the draft is validated: its link is the draft's.
+_DRAFT_URL = re.compile(
+    r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/data/import/draft/[0-9a-fA-F-]{36}(?:/[A-Za-z0-9._-]*)?$"
+)
 
 
 def record_threat_package(
@@ -827,7 +832,8 @@ def record_threat_package(
 
     *package* is ``{grouping_id, name, url, coverage_id}``: the OpenCTI Grouping
     the orchestrator drafted (``create_opencti_container``), its name, its
-    OpenCTI page for that id, and the security coverage requested on it
+    OpenCTI page (the draft holding it while the package is drafted, #1453;
+    the Grouping page once the draft is validated), and the security coverage requested on it
     (``manage_opencti_security_coverage`` action ``create``), when requested.
     One ``threat_package`` event: ``to`` the Grouping id, ``reason`` the name,
     ``evidence`` the url, ``from`` the coverage id; the view serves the name,
@@ -845,8 +851,12 @@ def record_threat_package(
         )
     url = str(package.get("url") or "").strip()
     match = _GROUPING_URL.match(url) if url else None
-    if url and (match is None or match.group(1).lower() != found.group(1).lower()):
-        raise rules.CaseRuleError("threat_package.url must be the OpenCTI page of that Grouping (its groupings page)")
+    drafted = bool(url) and _DRAFT_URL.match(url) is not None
+    if url and not drafted and (match is None or match.group(1).lower() != found.group(1).lower()):
+        raise rules.CaseRuleError(
+            "threat_package.url must be the OpenCTI draft page holding the package while it is drafted "
+            "(/dashboard/data/import/draft/ then the draft id), or the Grouping page once the draft is validated"
+        )
     name = str(package.get("name") or "").strip()[:300]
     coverage_id = str(package.get("coverage_id") or "").strip()[:300]
     stored = {"grouping_id": grouping_id, "name": name or None, "url": url or None, "coverage_id": coverage_id or None}

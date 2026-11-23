@@ -70,6 +70,25 @@ def test_coverage_added_later_writes_a_new_event() -> None:
     assert event.from_value == COVERAGE
 
 
+DRAFT_URL = "https://cti.example.test/dashboard/data/import/draft/0f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f"
+
+
+def test_drafted_package_links_the_draft_page() -> None:
+    """#1453: a Grouping inside an OpenCTI draft has no live page, so its link is the draft's."""
+    db, case = FakeSession(), _case()
+    loop.record_threat_package(db, case, {**PACKAGE, "url": DRAFT_URL}, now=NOW)
+    (event,) = db.events()
+    assert (event.to_value, event.evidence) == (GROUPING, DRAFT_URL)
+
+
+def test_validated_package_switches_to_the_grouping_page() -> None:
+    db, case = FakeSession(), _case()
+    drafted = {**PACKAGE, "url": DRAFT_URL}
+    loop.record_threat_package(db, case, PACKAGE, drafted, now=NOW)
+    (event,) = db.events()
+    assert event.evidence == URL
+
+
 def test_stix_id_and_no_link_are_kept() -> None:
     db, case = FakeSession(), _case()
     loop.record_threat_package(db, case, {"grouping_id": f"grouping--{GROUPING}"}, now=NOW)
@@ -85,6 +104,7 @@ def test_stix_id_and_no_link_are_kept() -> None:
         {"grouping_id": GROUPING, "url": "javascript:alert(1)"},
         {"grouping_id": GROUPING, "url": f"https://cti.example.test/dashboard/analyses/groupings/{uuid.uuid4()}"},
         {"grouping_id": GROUPING, "url": f"https://cti.example.test/dashboard/analyses/reports/{GROUPING}"},
+        {"grouping_id": GROUPING, "url": "https://cti.example.test/dashboard/data/import/draft/not-a-draft-id"},
         {"grouping_id": f"report--{GROUPING}"},
         "not a package",
     ],

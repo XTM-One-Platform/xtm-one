@@ -1099,14 +1099,19 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
     "quota": [
         {
             "trigger": "Scenario re-priced",
-            "basis": "One run per successful OpenCRQ job, under its daily cap",
+            "basis": "One run per poll batch of successful OpenCRQ jobs, one at a time, under its daily cap",
             "runs_min": 4,
             "runs_max": 60,
         },
-        {"trigger": "Finding re-scored", "basis": "One run per successful job", "runs_min": 0, "runs_max": 30},
+        {
+            "trigger": "Finding re-scored",
+            "basis": "One run per poll batch of successful jobs, one at a time",
+            "runs_min": 0,
+            "runs_max": 30,
+        },
         {
             "trigger": "Control validation ingested",
-            "basis": "One run per successful ingestion",
+            "basis": "One run per poll batch of successful ingestions, one at a time",
             "runs_min": 0,
             "runs_max": 30,
         },

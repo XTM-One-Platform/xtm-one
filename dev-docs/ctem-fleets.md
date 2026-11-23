@@ -1250,6 +1250,20 @@ kinds and `event_poller` polls them every 60 s.
 - The run receives `entity`: run id, kind, status, enqueued, started and
   finished times, processed and expected totals, progress message, trigger,
   attempt, tenant and the instance URL.
+- Coalescing (#1417): a poll page is ONE event, not one per job. The newest
+  run is the entity and the `message_id`; `covers` lists the runs of the page
+  (their own `message_id`s, marked seen at dispatch), `run_count` counts them,
+  and a run that reports progress and processed nothing (`expectedTotal`
+  set, `processedTotal` 0) is no event. A kind that never reports progress
+  (`crq-price-recompute`) ends at 0 whatever it re-priced, so its runs are
+  kept. The `riskScenarioId(s)` of a job payload travel as
+  `entity.risk_scenario_ids` and on each `covers` entry. The event carries
+  `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
+  trigger context and `trigger_or_queue_assignment` folds a later event with
+  the same key into the run of the same assignment still queued
+  (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
+  event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
+  starts one run and queues at most one more.
 
 ### 8.6 Known limit and the next slices
 

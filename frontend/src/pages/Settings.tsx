@@ -193,10 +193,6 @@ function SettingsPage() {
   const tab: SettingsTab = (SETTINGS_TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as SettingsTab) : DEFAULT_SETTINGS_TAB;
 
   const { data: authConfig } = useAuthConfig();
-  const gatewayProviderEnabled = isFeatureEnabled(
-    authConfig?.enabled_features,
-    "FILIGRAN_GATEWAY_PROVIDER",
-  );
   // The video and music models serve the Video Studio alone. Speech
   // stays: the chat reads answers aloud with it.
   const videoStudioEnabled = isFeatureEnabled(authConfig?.enabled_features, "VIDEO_STUDIO");
@@ -465,15 +461,13 @@ function SettingsPage() {
     image: "Add Image Provider",
     all: "Add Provider",
   };
-  // Addable provider types — the Filigran AI Gateway hides here while its
-  // feature flag is off, and a video-only provider while the Video Studio is
-  // (nothing else generates video); a provider only its integration creates
-  // (LM Studio) never shows; providers already configured keep working
-  // regardless (they're rendered from `providers` data, not this list).
+  // Addable provider types — a video-only provider hides while the Video
+  // Studio is off (nothing else generates video); a provider only its
+  // integration creates (LM Studio) never shows; providers already configured
+  // keep working regardless (they're rendered from `providers` data, not this list).
   const addableProviderKeys = Object.keys(PROVIDER_DISPLAY_NAMES).filter(
     (provider) =>
-      (provider !== "filigran_gateway" || gatewayProviderEnabled)
-      && (SINGLE_CAPABILITY_PROVIDERS[provider] !== "video" || videoStudioEnabled)
+      (SINGLE_CAPABILITY_PROVIDERS[provider] !== "video" || videoStudioEnabled)
       && addableByHand(provider),
   );
   const allowedProvidersByMode: Record<AddProviderMode, string[]> = {

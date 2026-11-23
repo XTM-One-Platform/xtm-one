@@ -207,8 +207,8 @@ export function useAuthConfig() {
        Its ~15 other consumers degrade silently, and that is knowingly
        accepted rather than unnoticed. On a transient 5xx:
 
-       - `Settings` reads `FILIGRAN_GATEWAY_PROVIDER` as off and drops the
-         Gateway provider option;
+       - `Settings` reads `VIDEO_STUDIO` as off and drops the video models
+         and video-only providers;
        - `ForgotPassword` loses its "SSO accounts cannot reset a password" note;
        - `NewUser` / `Profile` / `ResetPassword` fall back to the client
          `MIN_PASSWORD_LENGTH`, so a stricter server policy shows inline
