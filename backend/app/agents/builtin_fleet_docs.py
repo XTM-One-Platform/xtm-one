@@ -483,7 +483,8 @@ _COVERAGE_REQUEST_TOOLS = [
 #: Every call that creates or starts an OpenAEV validation (Sam, 23 Nov 2026, #1339): the
 #: gate ``ctem.validation.non_readonly`` of a fleet that has the OpenAEV validation step.
 #: Reads (list, get, results, healthcheck, status reads) are not listed and stay free.
-#: The coverage request is one of them: OpenAEV builds and schedules a scenario from it.
+#: The coverage request is NOT one of them (#1467): it is the decision of the review
+#: step, ``ctem.analyst_review`` alone, one decision and one gate key per call.
 _OPENAEV_VALIDATION_TOOLS = [
     {"name": "create_openaev_scenario"},
     {"name": "import_openaev_scenario"},
@@ -497,7 +498,6 @@ _OPENAEV_VALIDATION_TOOLS = [
         "name": "manage_openaev_atomic_testing",
         "when": {"action": ["create", "duplicate", "recurrence"]},
     },
-    *_COVERAGE_REQUEST_TOOLS,
 ]
 #: One decision per validation (#1339): an approved call of the gate covers the later
 #: calls of the same gate on the objects it named or created (a scenario, a simulation,

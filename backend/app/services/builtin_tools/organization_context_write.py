@@ -155,7 +155,8 @@ def build_organization_context_write_tools(
             return "Error: the profile could not be saved right now. Say so; nothing was changed."
         return (
             f"Saved version {outcome['version']} of the profile of {outcome['organization']}: "
-            f"{', '.join(outcome['fields'])}. Settings > Organization shows it in the history and can roll it back. "
+            f"{', '.join(outcome['fields'])}. Settings > Organization shows it in the history; "
+            "an administrator can restore a field from an earlier version. "
             f"{SHARED_CONTEXT_NOTICE}"
         )
 
@@ -293,7 +294,7 @@ def build_organization_context_write_tools(
                     return json.dumps(answer, default=str)
                 if not (plan.new or plan.updated) or plan.profile is None:
                     # An endpoint source (#1251) may change only the software of known devices.
-                    if plan.software and await imp.store_endpoint_software(db, plan):
+                    if plan.software and await imp.store_endpoint_software(db, plan, user_id=person.id):
                         await db.commit()
                         answer.update(applied=True)
                     return json.dumps(answer, default=str)
@@ -302,7 +303,7 @@ def build_organization_context_write_tools(
                     db, plan.profile, source="draft", author_user_id=person.id, sources=sources
                 )
                 if plan.software:
-                    await imp.store_endpoint_software(db, plan)
+                    await imp.store_endpoint_software(db, plan, user_id=person.id)
                 await db.commit()
                 answer.update(applied=True, version=row.version)
                 return json.dumps(answer, default=str)
@@ -539,8 +540,9 @@ def build_organization_context_write_tools(
                 "Change the organization profile now, as a new version authored by the administrator you act for: "
                 "field changes on your own organization or a tracked one. Read get_organization_context first and "
                 "send the whole new value of each field (a list replaces the list), with its basis. Each value is "
-                "validated like the Settings > Organization form; the history there can roll it back. To leave the "
-                "decision to an administrator instead, use propose_organization_context_change." + SHARED_CONTEXT_CLAUSE
+                "validated like the Settings > Organization form; an admin can restore a past version. To leave the "
+                "decision to an administrator instead, use propose_organization_context_change."
+                + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
                 "type": "object",

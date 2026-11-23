@@ -296,7 +296,9 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        result["removed"] = (len(plan.gone) if plan.remove_gone else 0) + len(plan.excluded_removed)
+        result["removed"] = (len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0) + len(
+            plan.excluded_removed
+        )
         result["excluded"] = len(plan.excluded)
         if plan.error:
             result["error"] = plan.error[:500]
@@ -309,7 +311,7 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             result["version"] = saved.version
         if not plan.error and plan.software:
             # An endpoint source (#1251): the software follows its devices even when no device row changed.
-            result["software_changed"] = await imp.store_endpoint_software(db, plan)
+            result["software_changed"] = await imp.store_endpoint_software(db, plan, user_id=owner.id)
         if plan.software_rows:
             result["software_rows"] = plan.software_rows
         if plan.software_error:

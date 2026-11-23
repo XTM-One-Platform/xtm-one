@@ -258,6 +258,8 @@ BUILTIN_FLEET_WRITABLE_FIELDS: frozenset[str] = frozenset(
         "approval_pins",
         # Gates a person added to the seeded catalog (#916, CTEM-34): customer layer, never seeded.
         "customer_gates",
+        # The tool-level enforcement opt-in (#1467): the customer's, never seeded.
+        "enforce_gates_at_tool_level",
         "prerequisite_confirmations",
         "health_dismissals",
         "health_check",

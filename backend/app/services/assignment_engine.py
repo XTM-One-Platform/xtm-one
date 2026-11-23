@@ -5225,14 +5225,21 @@ async def execute_assignment_run(
             from app.services.fleet_autonomy import (
                 fleet_autonomy_block,
                 fleet_autonomy_for_run,
+                fleet_enforces_at_tool_level,
                 fleet_instructions_for_run,
             )
 
             _fleet_autonomy = await fleet_autonomy_for_run(db, getattr(_run_fleet, "fleet_id", None))
+            # Tool-level pauses only on an administrator's opt-in (#1467): by
+            # default the gates are instructions, stated in the block below.
+            _fleet_enforced = _fleet_autonomy is not None and await fleet_enforces_at_tool_level(
+                db, getattr(_run_fleet, "fleet_id", None)
+            )
             if _fleet_autonomy is not None:
                 rendered_prompt += fleet_autonomy_block(
                     *_fleet_autonomy,
                     await fleet_instructions_for_run(db, getattr(_run_fleet, "fleet_id", None)),
+                    enforced=_fleet_enforced,
                 )
 
             # ── Memory (load enabled tiers + user memory before building prompt) ──
@@ -8004,8 +8011,13 @@ async def execute_assignment_run(
 
                 # The fleet's gates still waiting at its autonomy level pause
                 # their tool calls (#9769 S1b), around whichever gate the run
-                # installed; an administrator's platform kill switch wins.
-                if _fleet_autonomy is not None and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED:
+                # installed, only when an administrator opted the fleet in
+                # (#1467); the platform kill switch wins.
+                if (
+                    _fleet_autonomy is not None
+                    and _fleet_enforced
+                    and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED
+                ):
                     from app.services.fleet_autonomy import gated_tool_rules, make_fleet_autonomy_gate
 
                     _fleet_rules = gated_tool_rules(*_fleet_autonomy)
