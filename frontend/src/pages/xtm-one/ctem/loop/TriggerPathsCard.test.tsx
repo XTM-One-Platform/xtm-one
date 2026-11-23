@@ -17,10 +17,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 const get = vi.mocked(api.get);
 
+// Turn on of a profile pass is an administrator's action (UX round 1 on #1356, B3).
+const auth = vi.hoisted(() => ({ isAdmin: true }));
+vi.mock("@/hooks/useAuth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useAuth")>();
+  return { ...actual, useAuth: () => ({ ...actual.useAuth(), isAdmin: auth.isAdmin }) };
+});
+
 const LONG = "Credential or secret leak tied to an in-scope identity";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auth.isAdmin = true;
   get.mockResolvedValue({
     paths: [
       {
@@ -75,5 +83,13 @@ describe("TriggerPathsCard", () => {
     const row = await screen.findByTestId("ctem-trigger-path");
     expect(within(row).getByTestId("ctem-trigger-path-status").textContent).toBe("Off");
     expect(within(row).getByRole("button", { name: "Turn on" })).toBeTruthy();
+
+    // A reader reads Off and gets no Turn on: the card it opens is an administrator's.
+    auth.isAdmin = false;
+    row.remove();
+    renderWithProviders(<MemoryRouter><TriggerPathsCard /></MemoryRouter>);
+    const readerRow = await screen.findByTestId("ctem-trigger-path");
+    expect(within(readerRow).getByTestId("ctem-trigger-path-status").textContent).toBe("Off");
+    expect(within(readerRow).queryByRole("button", { name: "Turn on" })).toBeNull();
   });
 });

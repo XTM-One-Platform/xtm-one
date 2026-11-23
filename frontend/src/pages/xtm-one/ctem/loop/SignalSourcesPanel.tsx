@@ -23,6 +23,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { Tip } from "@/components/ui/tooltip";
 import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { formatShortDateTimeIntl } from "@/lib/relative-time";
@@ -31,6 +32,7 @@ import { SIGNAL_STATE_LABEL } from "./DecisionReason";
 import { signalsHref } from "./signals-route";
 import {
   connectHref,
+  connectNeedsAdmin,
   connectTarget,
   LENS_ICON,
   PATH_ICON,
@@ -58,7 +60,7 @@ const LENS_HELP = {
 function SourceItem({ source }: { source: CtemSignalPathSource }) {
   const { t_i18n } = useFormatter();
   // The loop trace's naming (signalProviderName), read here without importing that module: it imports this one.
-  const name = CTEM_PRODUCT_INFO[source.provider]?.name ?? INTEGRATION_PROVIDER_NAMES[source.provider] ?? source.provider;
+  const name = sourceName(source);
   return (
     <Tip content={source.event ? t_i18n(source.event) : null}>
       <span
@@ -78,11 +80,30 @@ function SourceItem({ source }: { source: CtemSignalPathSource }) {
   );
 }
 
-function SourceList({ path, className }: { path: CtemSignalPath; className?: string }) {
+function sourceName(source: CtemSignalPathSource): string {
+  return CTEM_PRODUCT_INFO[source.provider]?.name ?? INTEGRATION_PROVIDER_NAMES[source.provider] ?? source.provider;
+}
+
+/**
+ * The sources of a path. `compact` (line 2 of a folded row) keeps one line: the names
+ * cut with an ellipsis, the whole list in the tooltip, never a wrap to a third line
+ * (UX round 1 on #1356, B2).
+ */
+function SourceList({ path, className, compact }: { path: CtemSignalPath; className?: string; compact?: boolean }) {
   const { t_i18n } = useFormatter();
   const sources = path.sources ?? [];
   if (sources.length === 0) {
     return <span className={className ? `${className} text-default-secondary` : "text-default-secondary"}>{t_i18n("None")}</span>;
+  }
+  if (compact) {
+    const names = sources.map((s) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])})`).join(", ");
+    return (
+      <Tip content={names}>
+        <span tabIndex={0} className="block min-w-0 flex-1 truncate rounded-sm" data-testid="ctem-signal-sources-compact">
+          {names}
+        </span>
+      </Tip>
+    );
   }
   return (
     <span className={className ? `${className} flex min-w-0 flex-wrap gap-x-3` : "flex min-w-0 flex-wrap gap-x-3"}>
@@ -102,6 +123,7 @@ export function SignalSourcesPanel() {
   const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
   const { count, exactCount } = useNumberFormat();
+  const { isAdmin } = useAuth();
   const { data, isLoading, isError, refetch } = useCtemSignalPaths();
   const paths = data?.paths ?? [];
   const lastSignal = (path: CtemSignalPath) =>
@@ -123,8 +145,8 @@ export function SignalSourcesPanel() {
             {path.description && (
               <span className="hidden truncate content-caption text-default-secondary @4xl:block">{t_i18n(path.description)}</span>
             )}
-            <span className="flex min-w-0 items-center gap-3 truncate content-caption text-default-secondary @4xl:hidden">
-              <SourceList path={path} />
+            <span className="flex min-w-0 items-center gap-3 whitespace-nowrap content-caption text-default-secondary @4xl:hidden">
+              <SourceList path={path} compact />
               {path.last_signal_at && <span className="shrink-0">{lastSignal(path)}</span>}
             </span>
           </span>
@@ -188,9 +210,11 @@ export function SignalSourcesPanel() {
       interactive: true,
       cell: (path) => {
         const target = pathStatus(path) === "connected" ? null : connectTarget(path);
+        // A profile pass is turned on by an administrator: a reader gets no button for it.
+        const actionable = target && (isAdmin || !connectNeedsAdmin(target));
         return (
           <span className="inline-flex items-center justify-end gap-1">
-            {target && (
+            {actionable && (
               <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-signal-sources-connect">
                 {target.off ? t_i18n("Turn on") : t_i18n("Connect")}
               </Button>

@@ -17,12 +17,13 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
+import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { HeroCard } from "../stage-heroes";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
-import { connectHref, connectTarget, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
+import { connectHref, connectNeedsAdmin, connectTarget, PATH_STATUS_LABEL, pathStatus } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
 
@@ -41,8 +42,11 @@ function PathRow({ path }: { path: CtemSignalPath }) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
   const { count, exactCount } = useNumberFormat();
+  const { isAdmin } = useAuth();
   const status = pathStatus(path);
-  const target = status === "connected" ? null : connectTarget(path);
+  const unbound = status === "connected" ? null : connectTarget(path);
+  // A profile pass is turned on by an administrator: a reader gets no button for it.
+  const target = unbound && (isAdmin || !connectNeedsAdmin(unbound)) ? unbound : null;
   return (
     <li className="flex min-w-0 flex-col gap-1 py-1.5 content-compact" data-testid="ctem-trigger-path" data-path={path.id} data-status={status}>
       <span className="min-w-0 font-medium" data-testid="ctem-trigger-path-name">{t_i18n(path.label)}</span>

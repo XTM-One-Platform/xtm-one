@@ -37,6 +37,7 @@ import {
   EVIDENCE_HEALTH_BOUNDS,
   type EvidenceHealthPass,
   evidenceHealthRuns,
+  evidenceHealthSavedIntegration,
   fromForm,
   toForm,
 } from "@/lib/organization-profile";
@@ -104,9 +105,12 @@ export function OrganizationEvidenceHealthCard({ id: anchorId, fold }: Organizat
   const cadence = draft ? boundedInteger(draft.cadence, EVIDENCE_HEALTH_BOUNDS.cadence_hours) : null;
   // Several connected integrations and none picked: the pass cannot choose, so a pick is required to turn it on.
   const pickMissing = Boolean(draft?.enabled && draft.integration === AUTO && candidates.length > 1);
+  // Off on the default setting names the single connected integration, so the off holds (UX round 1 on #1356, B4).
+  const savedIntegration = (pick: string, enabled: boolean) =>
+    evidenceHealthSavedIntegration(pick === AUTO ? "" : pick, enabled, candidates.map((integration) => integration.id));
   const next: EvidenceHealthPass | null =
     draft && maxAge !== null && cadence !== null
-      ? { enabled: draft.enabled, integration: draft.integration === AUTO ? "" : draft.integration, max_age_days: maxAge, cadence_hours: cadence }
+      ? { enabled: draft.enabled, integration: savedIntegration(draft.integration, draft.enabled), max_age_days: maxAge, cadence_hours: cadence }
       : null;
   const dirty = draft !== null && (next === null || JSON.stringify(next) !== JSON.stringify({ ...pass, enabled: pass.enabled ?? true }));
   const blocked = next === null || pickMissing;

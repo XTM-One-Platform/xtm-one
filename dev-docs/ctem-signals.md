@@ -72,7 +72,9 @@ off with no integration declared) with no integration declared, the pass runs
 on the single connected OpenCRQ integration; several connected and none
 declared read `off` until one is picked. A declared integration is read as
 declared, never swapped for another; an administrator who turned the pass off
-keeps it off. `ctem_evidence_health.resolve_pass` is the one rule of the badge
+keeps it off (the card's save of an off on the default setting names the single
+connected integration, so the off holds: `evidenceHealthSavedIntegration`).
+`ctem_evidence_health.resolve_pass` is the one rule of the badge
 and the tick, so the badge never reads Connected when the pass would skip. The
 attack surface pass stays opt-in (it needs owned domains or ranges and spends
 provider credits): a connected Shodan or GTI with the pass off reads `off`.
@@ -83,7 +85,11 @@ sources (the event sentence in a tooltip), status, signals in 30 days, last
 signal, action; rows of at most two lines. Connect sends a listener to
 `/integrations/new?provider=`; Connect or Turn on sends a pass and the
 playbook to their card in Settings > Organization (attack surface: outside
-lens; evidence health: its card beside it on CTEM > Inventory). An empty signal list
+lens; evidence health: its card beside it on CTEM > Inventory, whose `?card=`
+link opens the edit view on that card). Those two edit the organization profile,
+so only an administrator gets the button (`connectNeedsAdmin`); a reader reads
+the status. Below the 4xl width the sources step into line 2 of the first cell
+on one line, cut with an ellipsis, the whole list in a tooltip. An empty signal list
 shows the table's standard empty statement alone; the summary strip carries
 the connected count.
 

@@ -151,6 +151,17 @@ export function evidenceHealthRuns(pass: EvidenceHealthPass, connected: readonly
   return ids.length === 1 ? { runs: true, integration: ids[0] } : { runs: false, integration: "" };
 }
 
+/**
+ * The integration a save of the pass writes: the one picked, else empty (the single connected one). Turned off on
+ * that default with exactly one connected, it names that one: `enabled: false` with none declared is the legacy
+ * stored default, which `resolve_pass` reads as on, so the off would not hold (UX round 1 on #1356, B4).
+ */
+export function evidenceHealthSavedIntegration(picked: string, enabled: boolean, connected: readonly string[]): string {
+  if (picked) return picked;
+  const ids = [...new Set(connected.filter(Boolean))];
+  return !enabled && ids.length === 1 ? ids[0] : "";
+}
+
 /** A domain as the backend stores it (`OrganizationProfile._domains`): lower case, `@` and trailing dots dropped; null when empty or over 253. */
 export function normalizeDomain(raw: string): string | null {
   const text = raw.trim().toLowerCase().replace(/^@+/, "").replace(/\.+$/, "");

@@ -48,6 +48,15 @@ export function connectedCount(paths: readonly Pick<CtemSignalPath, "status" | "
 const PROFILE_PASS_FIELD: Record<string, string> = { shodan: "attack_surface", gti: "attack_surface", opencrq: "evidence_health" };
 
 /**
+ * Whether Connect or Turn on for this source edits the organization profile (a profile
+ * pass, the PIR playbook): an administrator's action, so a reader gets no button for it
+ * (UX round 1 on #1356, B3).
+ */
+export function connectNeedsAdmin(source: Pick<CtemSignalPathSource, "provider" | "kind">): boolean {
+  return source.kind === "pir_playbook" || (source.kind === "pass" && Boolean(PROFILE_PASS_FIELD[source.provider]));
+}
+
+/**
  * Where Connect goes for one source (split-sync rule): a pass set in the
  * organization profile opens its card there, the PIR playbook opens the PIR
  * field, any other source opens the new-integration page on its provider.

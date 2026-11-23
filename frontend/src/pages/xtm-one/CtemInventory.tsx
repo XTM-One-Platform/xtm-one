@@ -29,6 +29,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { OrganizationSection } from "@/pages/settings/OrganizationSection";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
+import { PROFILE_CARD_PARAM } from "@/lib/organization-profile-tabs";
 import { formatCount } from "@/lib/number-format";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
@@ -328,7 +329,11 @@ export default function CtemInventory() {
   const editCards = tab === "sources" ? null : (EDIT_CARDS[tab] ?? EDIT_CARDS.assets);
   // One list per screen, nothing below it (UX round 1, B2 and B3): an administrator edits in a view of its own,
   // opened from the header, and every reader, administrators included, sees the same list.
-  const editing = isAdmin && Boolean(editCards) && searchParams.get(EDIT_PARAM) === "1";
+  // A link to one of this tab's cards (`?card=`, Turn on on the Signals sources) opens the edit view on it: the
+  // read view shows the list only, so the card was nowhere on the page (UX round 1 on #1356, B3).
+  const linkedCard = searchParams.get(PROFILE_CARD_PARAM);
+  const cardLinked = Boolean(linkedCard && (editCards as readonly string[] | null)?.includes(linkedCard));
+  const editing = isAdmin && Boolean(editCards) && (searchParams.get(EDIT_PARAM) === "1" || cardLinked);
   // Asset matching is read by everyone, edited by administrators inside its own card.
   const matching = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
   const toggleParam = (param: string, on: boolean) =>
@@ -336,7 +341,11 @@ export default function CtemInventory() {
       (prev) => {
         const next = new URLSearchParams(prev);
         if (on) next.set(param, "1");
-        else next.delete(param);
+        else {
+          next.delete(param);
+          // Done closes the edit view a card link opened too.
+          if (param === EDIT_PARAM) next.delete(PROFILE_CARD_PARAM);
+        }
         return next;
       },
       { replace: true },

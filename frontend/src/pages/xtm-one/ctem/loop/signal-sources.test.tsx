@@ -9,7 +9,7 @@ import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { SignalSourcesPanel } from "./SignalSourcesPanel";
 import { TriggerPathsCard } from "./TriggerPathsCard";
-import { connectHref, connectTarget, connectedCount, pathStatus } from "./signal-sources";
+import { connectHref, connectNeedsAdmin, connectTarget, connectedCount, pathStatus } from "./signal-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -79,6 +79,13 @@ describe("signal source rules", () => {
     expect(connectHref({ provider: "opencrq", kind: "listener" })).toBe("/integrations/new?provider=opencrq");
     const off = { provider: "opencrq", kind: "pass" as const, event: "", bound: false, off: true };
     expect(connectTarget({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }, off] })).toBe(off);
+  });
+
+  it("keeps Turn on of a profile pass for administrators: a reader gets no button for it (UX round 1 on #1356, B3)", () => {
+    expect(connectNeedsAdmin({ provider: "opencrq", kind: "pass" })).toBe(true);
+    expect(connectNeedsAdmin({ provider: "shodan", kind: "pass" })).toBe(true);
+    expect(connectNeedsAdmin({ provider: "opencti", kind: "pir_playbook" })).toBe(true);
+    expect(connectNeedsAdmin({ provider: "aikido", kind: "listener" })).toBe(false);
   });
 });
 
