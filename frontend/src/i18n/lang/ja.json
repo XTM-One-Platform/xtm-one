@@ -21167,5 +21167,22 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, other {# 件の同期された行はソースが送信する値を保持しました}}",
   "Keep as is": "変更しない",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, other {# 行に適用されます。同期された行はソースが送信する値を保持します。}}",
-  "Left empty, each row keeps its owner.": "空欄の場合、各行は現在の所有者を保持します。"
+  "Left empty, each row keeps its owner.": "空欄の場合、各行は現在の所有者を保持します。",
+  "Feeds this path": "このパスに供給中",
+  "Not used on this path": "このパスでは使用しない",
+  "Not used here": "ここでは使用しない",
+  "Scheduled pass on": "スケジュールパスをオン",
+  "Runs on: {names}": "実行先: {names}",
+  "Choose the integration it runs on in its settings card.": "設定カードで実行先の統合を選択してください。",
+  "Open its settings": "設定を開く",
+  "Use on this path": "このパスで使用",
+  "Sources of this trigger path": "このトリガーパスのソース",
+  "Scheduled pass saved": "スケジュールパスを保存しました",
+  "Source used on this path": "このパスでソースを使用します",
+  "Source taken off this path": "このパスからソースを外しました",
+  "No owned domain or address range is set: the pass has nothing to look up.": "所有ドメインまたはアドレス範囲が設定されていないため、パスで調べる対象がありません。",
+  "The switch is organization-wide. Also feeds: {paths}": "このスイッチは組織全体に適用されます。ほかの供給先: {paths}",
+  "A live listener runs while its integration is connected.": "ライブリスナーは統合が接続されている間動作します。",
+  "Only an administrator can change the sources of a trigger path.": "トリガーパスのソースを変更できるのは管理者のみです。",
+  "Agents and the API record this path: it has no integration source.": "このパスはエージェントと API が記録します。統合ソースはありません。"
 }
