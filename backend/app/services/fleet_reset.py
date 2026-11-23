@@ -74,6 +74,7 @@ _FLEET_FACTORY_VALUES: dict[str, Any] = {
     "hide_activity_from_non_admins": False,
     "budget_config": None,
     "max_iterations": None,
+    "run_budget": None,
     "default_context_inclusion": "none",
     "default_collaboration_instruction": "",
 }

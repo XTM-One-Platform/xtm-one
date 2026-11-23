@@ -51,6 +51,21 @@ describe("ConfirmDeleteDialog", () => {
     expect(screen.getByRole("alert").textContent).toContain("emergency stop");
   });
 
+  // Review P3 on #1523: a caller that closes the dialog itself after a successful async action
+  // must not leave the typed name in the field for the next open.
+  it("clears the typed name when the caller closes the dialog", async () => {
+    const user = userEvent.setup();
+    const dialog = (open: boolean) => (
+      <ConfirmDeleteDialog open={open} onOpenChange={() => undefined} name="CTEM loop" onConfirm={() => undefined} closeOnConfirm={false} confirmLabel="Reset fleet" />
+    );
+    const { rerender } = renderWithProviders(dialog(true));
+    await user.type(screen.getByLabelText("Type CTEM loop to confirm deletion"), "CTEM loop");
+    rerender(dialog(false));
+    rerender(dialog(true));
+    expect((screen.getByLabelText("Type CTEM loop to confirm deletion") as HTMLInputElement).value).toBe("");
+    expect((screen.getByRole("button", { name: "Reset fleet" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("disables both buttons while pending and the confirm while confirmDisabled", () => {
     renderWithProviders(
       <ConfirmDeleteDialog open onOpenChange={() => undefined} name="x" onConfirm={() => undefined} pending />,

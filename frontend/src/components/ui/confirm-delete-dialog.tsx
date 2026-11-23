@@ -69,6 +69,13 @@ export function ConfirmDeleteDialog({
   closeOnConfirm = true,
 }: ConfirmDeleteDialogProps) {
   const [value, setValue] = useState("");
+  // The typed name never survives a close, whoever closes the dialog: a caller that sets
+  // open to false itself (an async action that succeeded) bypasses handleOpenChange (review P3 on #1523).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) setValue("");
+  }
 
   const isMatch = name.length > 0 && value === name;
 

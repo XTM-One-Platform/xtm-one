@@ -79,6 +79,7 @@ def _fleet(**overrides):
         hide_activity_from_non_admins=False,
         budget_config=None,
         max_iterations=None,
+        run_budget={"runs_per_hour": 5},
         default_context_inclusion="none",
         default_collaboration_instruction="",
         organization_scope={"mode": "list", "organization_ids": ["o"]},
@@ -189,6 +190,8 @@ async def test_dry_run_counts_and_writes_nothing():
     # opencti binding, one lent integration, one KB, one skill, one MCP server, one custom tool.
     assert outcome.bindings == 6
     assert "member_settings" in outcome.settings and "organization_scope" in outcome.settings
+    # Review P2 on #1523: an administrator's run budget (#1526) is a fleet setting the reset counts.
+    assert "run_budget" in outcome.settings and fleet.run_budget == {"runs_per_hour": 5}
     assert fleet.approval_pins and agent.mcp_server_ids and member.context_inclusion == "full"
 
 
@@ -204,6 +207,7 @@ async def test_reset_returns_the_fleet_and_its_members_to_the_seed_values():
     assert fleet.enforce_gates_at_tool_level is False and fleet.health_enrolled is False
     assert fleet.instructions_position is None and fleet.prerequisite_confirmations is None
     assert fleet.organization_scope == {"mode": "primary"}
+    assert fleet.run_budget is None
     assert automation.run_as_user_id is None and automation.schedule_resumed_at is None
     assert member.context_inclusion is None
     # Only the seed's own bindings stay.
