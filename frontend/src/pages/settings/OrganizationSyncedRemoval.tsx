@@ -22,10 +22,11 @@ interface Ask {
   resolve: (confirmed: boolean) => void;
 }
 
-export function useSyncedRemoval() {
+/** `enabled` false for a reader, who removes no row and may not read the syncs (UX r1 B1 on #1540). */
+export function useSyncedRemoval(enabled = true) {
   const { t_i18n, locale } = useFormatter();
   const switchId = useId();
-  const { data: syncs = [] } = useOrganizationSyncs();
+  const { data: syncs = [] } = useOrganizationSyncs("", enabled);
   const update = useUpdateOrganizationSync();
   const [ask, setAsk] = useState<Ask | null>(null);
   const [exclude, setExclude] = useState(false);

@@ -4,7 +4,7 @@
  * The signals counter of the command center (CTEM-01-UI,
  * dev-docs/ctem-loop-visibility.md sections 2 and 6): one compact line in the
  * existing exposure lifecycle card, the signals by state, each count opening
- * the loop trace on the signals of that state (`?loop=signals:<state>`). The
+ * the loop trace on the signals of that state (`/ctem/signals?state=<state>`). The
  * counts are the API's own (`counts` of `GET /api/v1/ctem-signals`), refreshed
  * by the activity stream frame `ctem_signal_update`, so a recorded signal moves
  * its count without a reload. A state with no signal keeps its zero: the loop

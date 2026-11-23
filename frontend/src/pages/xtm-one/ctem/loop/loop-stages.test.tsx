@@ -8,7 +8,7 @@ import type { CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { renderWithProviders } from "@/testing/providers";
 import { eventStatus, mergeActivity, signalActivity, type ActivityEvent } from "../activity-feed";
 import { ActivityFeed } from "../ActivityFeed";
-import { currentStage, LOOP_STAGES, parseLoopParam, signalLoop, signalsParam } from "./loop-stages";
+import { currentStage, LOOP_STAGES, signalLoop } from "./loop-stages";
 import { DecisionReason, decisionSentence, nextStepSentence } from "./DecisionReason";
 import { SignalCounter } from "./SignalCounter";
 
@@ -58,29 +58,6 @@ describe("signalLoop", () => {
   it("a discarded signal stops at reconcile; a case-opened one waits at prioritize", () => {
     expect(currentStage(signalLoop(signal({ state: "discarded" })))).toMatchObject({ key: "reconcile", status: "stopped" });
     expect(currentStage(signalLoop(signal({ state: "case_opened" })))).toMatchObject({ key: "prioritize", status: "current" });
-  });
-});
-
-describe("parseLoopParam", () => {
-  it("reads a signal or a case id and refuses anything else", () => {
-    expect(parseLoopParam(`signal:${ID}`)).toEqual({ kind: "signal", id: ID });
-    expect(parseLoopParam(`case:${ID}`)).toEqual({ kind: "case", id: ID });
-    expect(parseLoopParam("signal:../x")).toBeNull();
-    expect(parseLoopParam(null)).toBeNull();
-  });
-
-  // CTEM-01-UI: the signals counter opens the signal list, filtered by state.
-  it("reads the signal list in one state or every state, and refuses an unknown state", () => {
-    expect(parseLoopParam(signalsParam("watchlist"))).toEqual({ kind: "signals", state: "watchlist", path: null });
-    expect(parseLoopParam(signalsParam(null))).toEqual({ kind: "signals", state: null, path: null });
-    expect(parseLoopParam("signals:bogus")).toBeNull();
-  });
-
-  // #1189 (davidloiret review on #1194): a path card of the sources dialog opens that path's signals.
-  it("carries one trigger path through the signal list value", () => {
-    expect(signalsParam(null, "new_vulnerability")).toBe("signals:all:new_vulnerability");
-    expect(parseLoopParam(signalsParam("watchlist", "code_flaw"))).toEqual({ kind: "signals", state: "watchlist", path: "code_flaw" });
-    expect(parseLoopParam("signals:all:../x")).toBeNull();
   });
 });
 

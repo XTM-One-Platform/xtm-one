@@ -5,6 +5,11 @@
  * page, or "No active fleet owns this case" in secondary text when the API
  * names no owner or an owner whose case automation is off. The owner is the
  * one `GET /ctem-cases/{id}` computes (`owner_fleet`), never guessed here.
+ *
+ * The linked label and its icon read in the product primary in every state: the
+ * design-system Link paints a visited link in the tonic accent (turquoise), which
+ * turned the header label green next to the purple chips once the fleet page had
+ * been opened (#1559). Hover keeps the library's brand tertiary.
  */
 import { Link as RouterLink } from "react-router-dom";
 import { Icon, Link } from "@filigran/design-system";
@@ -37,9 +42,9 @@ export function CaseOwnedBy({
   const label = t_i18n("Owned by {name}", { name: owner.name });
   return (
     <span className="flex min-w-0 items-center gap-1 content-caption text-default-primary" data-testid="ctem-case-owner-fleet">
-      <Icon name="network" size={16} className="shrink-0" aria-hidden />
+      <Icon name="network" size={16} className={fleetId ? "shrink-0 text-filigran-brand-primary" : "shrink-0"} aria-hidden />
       {fleetId ? (
-        <Link asChild size="compact" className="min-w-0">
+        <Link asChild size="compact" className="min-w-0 visited:text-filigran-brand-primary">
           <RouterLink to={`/fleets/${fleetId}`} state={{ backTo: `/ctem/cases/${caseId}`, backLabel: "Back to Case" }}>
             <TruncatedText text={label} />
           </RouterLink>

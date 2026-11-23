@@ -111,8 +111,9 @@ The only new surface of the program. It answers "where is this object in the
 loop, and why".
 
 - **Shape**: a centred dialog, not a drawer (principle 7 of
-  `ctem-command-center-v2.md`, Sam, 7 Nov 2026), with its own deep link: the
-  current page plus `?loop=signal:<id>` or `?loop=case:<id>`, so a trace can
+  `ctem-command-center-v2.md`, Sam, 7 Nov 2026), with its own deep link. Since
+  #1263 the trace is a section of the Signals page (`/ctem/signals?signal=<id>`);
+  the `?loop=` links are gone (CTEM is unreleased, no redirect is kept), so a trace can
   be shared and reopened after a reload. Focus returns to the row that opened
   it.
 - **Reached from**: a signal row of Live activity, a case card of the board,
