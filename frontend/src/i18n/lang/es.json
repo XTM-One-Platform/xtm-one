@@ -21196,5 +21196,14 @@
   "The switch is organization-wide. Also feeds: {paths}": "El interruptor se aplica a toda la organización. También alimenta: {paths}",
   "A live listener runs while its integration is connected.": "Un oyente en vivo funciona mientras su integración está conectada.",
   "Only an administrator can change the sources of a trigger path.": "Solo un administrador puede cambiar las fuentes de una ruta de activación.",
-  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración."
+  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración.",
+  "Shipped products": "Productos distribuidos",
+  "Source repositories": "Repositorios de código",
+  "owner/name, Enter to add": "propietario/nombre, Intro para añadir",
+  "Add a shipped product": "Añadir un producto distribuido",
+  "Paste shipped products": "Pegar productos distribuidos",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Los productos que distribuye su organización, con sus repositorios de código: una vulnerabilidad en uno de ellos se asocia a sus repositorios en CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aún no hay productos distribuidos: una vulnerabilidad en un producto que distribuye queda sin resolver.",
+  "A repository is not owner/name": "Un repositorio no tiene la forma propietario/nombre"
 }

@@ -21196,5 +21196,14 @@
   "The switch is organization-wide. Also feeds: {paths}": "The switch is organization-wide. Also feeds: {paths}",
   "A live listener runs while its integration is connected.": "A live listener runs while its integration is connected.",
   "Only an administrator can change the sources of a trigger path.": "Only an administrator can change the sources of a trigger path.",
-  "Agents and the API record this path: it has no integration source.": "Agents and the API record this path: it has no integration source."
+  "Agents and the API record this path: it has no integration source.": "Agents and the API record this path: it has no integration source.",
+  "Shipped products": "Shipped products",
+  "Source repositories": "Source repositories",
+  "owner/name, Enter to add": "owner/name, Enter to add",
+  "Add a shipped product": "Add a shipped product",
+  "Paste shipped products": "Paste shipped products",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "No shipped product yet: a vulnerability on a product you ship stays unresolved.",
+  "A repository is not owner/name": "A repository is not owner/name"
 }
