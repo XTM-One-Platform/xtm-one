@@ -248,7 +248,8 @@ same way.
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
   `target_sw` (then `target_hw`), else from one operating system the name or
-  the version names (two named: none). `fixes_by_platform` keeps the smallest
+  the version names (two named: none; the bare word `ios` counts only in the
+  CPE target fields, since `Cisco IOS` / `ios_xe` are not Apple's iOS). `fixes_by_platform` keeps the smallest
   fix above the declared version per platform; one remediating version above
   it with no platform keeps the fix generic (`{}`), since its reach is not
   known. The members of one product fold per platform like the generic target

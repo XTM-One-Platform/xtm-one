@@ -390,6 +390,11 @@ async def test_an_unreadable_remediates_read_keeps_the_issues(monkeypatch):
         ("Chrome for Windows and macOS", "120.0.36", "", None),
         ("Chromebook helper", "1.0", "", None),
         ("tomcat", "9.0.98", "", None),
+        ("Cisco IOS", "15.9(3)M9", "", None),
+        ("ios_xe", "17.9.4a", "", None),
+        ("ios", "15.9", "cpe:2.3:o:cisco:ios:15.9:*:*:*:*:*:*:*", None),
+        ("Safari for iPhone_OS", "17.2", "", "iOS"),
+        ("safari", "17.2", "cpe:2.3:a:apple:safari:17.2:*:*:*:*:ios:*:*", "iOS"),
     ],
 )
 def test_the_platform_of_a_remediating_software(name: str, version: str, cpe: str, expected: str | None) -> None:

@@ -62,7 +62,12 @@ _PLATFORM_WORDS: tuple[tuple[str, str], ...] = (
     ("chromeos", "ChromeOS"),
     ("linux", "Linux"),
 )
-_PLATFORM_RES = tuple((re.compile(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])"), f) for w, f in _PLATFORM_WORDS)
+#: Words read only in a CPE ``target_sw`` / ``target_hw`` field: in a Software name
+#: or version the bare ``ios`` also names Cisco IOS (``Cisco IOS``, ``ios_xe``), not Apple's.
+_CPE_ONLY_WORDS = frozenset({"ios"})
+_PLATFORM_RES = tuple(
+    (re.compile(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])"), f, w in _CPE_ONLY_WORDS) for w, f in _PLATFORM_WORDS
+)
 #: CPE 2.3 fields: ``cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other``.
 _CPE_TARGET_SW, _CPE_TARGET_HW = 10, 11
 
@@ -139,10 +144,12 @@ def smallest_fixing_every(versions: Iterable[str]) -> str | None:
     return max(known, key=lambda v: parse_version(v) or ())
 
 
-def _platforms_named(text: str) -> set[str]:
+def _platforms_named(text: str, *, cpe_field: bool = False) -> set[str]:
     low = (text or "").strip().lower()
     found: set[str] = set()
-    for pattern, family in _PLATFORM_RES:
+    for pattern, family, cpe_only in _PLATFORM_RES:
+        if cpe_only and not cpe_field:
+            continue
         if pattern.search(low):
             found.add(family)
     return found
@@ -153,13 +160,14 @@ def platform_of_software(name: str | None, version: str | None, cpe: str | None)
 
     The CPE ``target_sw`` (then ``target_hw``) wins when it names an operating
     system; else the name and the version are read, and a platform counts only
-    when exactly one is named ("Chrome for Windows and macOS" names none).
+    when exactly one is named ("Chrome for Windows and macOS" names none). The
+    bare word ``ios`` counts only in the CPE target fields ("Cisco IOS" is not iOS).
     """
     parts = (cpe or "").strip().lower().split(":")
     if len(parts) > _CPE_TARGET_SW and parts[0] == "cpe" and parts[1] == "2.3":
         for index in (_CPE_TARGET_SW, _CPE_TARGET_HW):
             if index < len(parts) and parts[index] not in ("*", "-", ""):
-                named = _platforms_named(parts[index])
+                named = _platforms_named(parts[index], cpe_field=True)
                 if len(named) == 1:
                     return next(iter(named))
     named = _platforms_named(f"{name or ''} {version or ''}")
