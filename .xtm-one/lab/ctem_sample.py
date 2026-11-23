@@ -218,7 +218,8 @@ SCOPING_MIX: dict[str, list[dict]] = {
 PRIORITIZATION_MIX: dict[str, list[dict]] = {
     "severity_distribution": [dict(row) for row in SCOPING_MIX["vulnerabilities_by_severity"]],
     "top_vulnerabilities": [
-        {"name": name, "cvss": cvss, "severity": severity, "epss": epss, "kev": kev}
+        # ``id``: the row's OpenCTI id, the "Open in OpenCTI" pivot (#1357); a stable lab value per CVE.
+        {"id": f"vulnerability--lab-{name.lower()}", "name": name, "cvss": cvss, "severity": severity, "epss": epss, "kev": kev}
         for name, cvss, severity, epss, kev in (
             ("CVE-2024-21762", 9.8, "CRITICAL", 0.94, True),
             ("CVE-2024-23113", 9.8, "CRITICAL", 0.71, True),

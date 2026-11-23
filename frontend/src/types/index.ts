@@ -5609,6 +5609,8 @@ export interface CtemSeverityBucket {
 }
 
 interface CtemTopVulnerability {
+  /** The vulnerability's OpenCTI id, the "Open in OpenCTI" pivot (#1357); absent on an older payload. */
+  id?: string | null;
   name: string | null;
   cvss: number | null;
   severity: string | null;
