@@ -1076,7 +1076,9 @@ class Settings(BaseSettings):
     # workers claiming assignment runs), or an agent holding
     # ``assignment_agent_max_share`` of it, goes after every other fleet's due
     # work - never refused: an otherwise idle pool still runs it. A share of 0
-    # or 1 lifts that cap. False restores the strict oldest-first claim.
+    # or 1 lifts that cap. False restores the strict oldest-first claim. A
+    # fleet's optional run budget (``Fleet.run_budget``, #1526) then holds the
+    # due runs of a fleet over it (``services/fleet_run_budget``).
     assignment_fair_share_enabled: bool = True
     assignment_fleet_max_share: float = 0.5
     assignment_agent_max_share: float = 0.5

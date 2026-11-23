@@ -34,7 +34,7 @@ from app.llm.identity import (
 from app.llm.music import MusicGenerationError, MusicProviderBusyError, MusicReference, MusicRequest
 from app.llm.openai_compat import is_retryable_openai
 from app.tools.base import ToolDefinition
-from tests.gateway_helpers import gateway_refusal_body
+from tests.gateway_helpers import gateway_refusal_body, gateway_throttle_body
 
 GATEWAY_URL = "http://gateway.local:8080"
 AUD = _normalize_url(GATEWAY_URL)
@@ -372,6 +372,98 @@ class TestRetryableFalse:
     async def test_only_retryable_false_tells_the_sdk_not_to_resend(self, answer, header):
         await _obey_retryable_false(answer)
         assert answer.headers.get("x-should-retry") == header
+
+
+class TestGatewayThrottle:
+    """A gateway throttle backs the assignment off, and a chat call is sent once per retry (#1468)."""
+
+    @pytest.mark.parametrize(
+        ("status", "body", "expected"),
+        [
+            (502, gateway_throttle_body(), True),
+            (502, gateway_throttle_body(circuit_open=True), True),
+            (502, gateway_throttle_body(unwrapped=True), True),
+            # A plain provider fault says nothing; an upstream 4xx says ``retryable: false``.
+            (502, {"error": {"message": "provider error: boom", "code": "provider_error"}}, False),
+            (502, gateway_refusal_body(), False),
+            (502, "<html>Bad Gateway</html>", False),
+            (500, gateway_throttle_body(), False),
+            # The gateway shedding load: the caller should slow down too.
+            (503, {"error": {"message": "gateway overloaded", "code": "gateway_overloaded", "retry_after_seconds": 1}},
+             True),
+            (503, {"error": {"message": "unavailable", "code": "service_unavailable"}}, False),
+        ],
+        ids=["throttled", "circuit-open", "unwrapped", "plain-fault", "refusal", "html", "not-502", "overloaded",
+             "other-503"],
+    )
+    def test_only_a_gateway_throttle_counts_as_a_rate_limit(self, status, body, expected):
+        from app.llm.base import is_rate_limit_error
+
+        response = httpx.Response(status, request=httpx.Request("POST", f"{GATEWAY_URL}/v1/chat/completions"))
+        exc = openai.APIStatusError("throttled", response=response, body=body)
+        assert is_rate_limit_error(exc) is expected
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("call", ["chat", "chat_stream", "chat_stream_with_tools"])
+    async def test_a_throttled_chat_is_sent_once_per_retry_and_backs_off(self, monkeypatch, call):
+        from app.llm import base
+        from app.services import assignment_dispatch
+
+        noted: list[str] = []
+
+        async def _note(source):
+            noted.append(source)
+
+        monkeypatch.setattr(assignment_dispatch, "note_rate_limited", _note)
+        monkeypatch.setattr(base.random, "uniform", lambda _a, _b: 0)
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            calls.append(request)
+            return httpx.Response(502, json=gateway_throttle_body())
+
+        set_llm_caller(USER_ID, EMAIL)
+        provider = _mock_provider(handler)
+        messages = [ChatMessage(role="user", content="hi")]
+        with pytest.raises(openai.InternalServerError):
+            if call == "chat":
+                await provider.chat(messages, model="m")
+            elif call == "chat_stream":
+                async for _ in provider.chat_stream(messages, model="m"):
+                    pass
+            else:
+                await provider.chat_stream_with_tools(messages, model="m")
+        assert len(calls) == base.LLM_MAX_RETRIES + 1
+        assert noted and set(noted) == {"llm"}
+
+    def test_the_chat_client_is_built_once_per_client(self):
+        provider = _mock_provider(lambda _r: httpx.Response(200))
+        first = provider._chat_client()
+        assert provider._chat_client() is first
+        assert first.max_retries == 0
+        provider.client = provider.client.with_options(timeout=5)
+        assert provider._chat_client() is not first
+
+    @pytest.mark.asyncio
+    async def test_an_embedding_keeps_the_sdk_retry(self):
+        # Nothing above the SDK retries an embedding.
+        answers = iter([
+            httpx.Response(502, json=gateway_throttle_body(), headers={"retry-after-ms": "1"}),
+            httpx.Response(200, json={
+                "object": "list", "data": [{"object": "embedding", "index": 0, "embedding": [0.1]}],
+                "model": "e", "usage": {"prompt_tokens": 1, "total_tokens": 1},
+            }),
+        ])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": []})
+            return next(answers)
+
+        set_llm_caller(USER_ID, EMAIL)
+        assert await _mock_provider(handler).embed("hello", model="e") == [0.1]
 
 
 class TestChatAndModels:

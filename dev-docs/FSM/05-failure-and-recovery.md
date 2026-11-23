@@ -157,7 +157,12 @@ queue bound with no `started_at` is marked `expired_before_start`: the
 assignment adapter fails the run with `deadline_exceeded_before_start`,
 `trigger_context.queue = {queue_wait_seconds, started: false}` and no
 `run.failed`; the sub-agent adapter fails the task with the same words.
-`timeout_seconds` is execution time.
+`timeout_seconds` is execution time. A run a fleet's run budget holds
+(`fleet_run_budget.hold_over_budget`, #1526) is not waiting for a worker:
+each claim that holds it moves its queue bound to that claim plus its own
+queue window (`keep_queue_clock`, the window recorded once on the payload as
+`run_budget_queue_window_seconds`), so the sweep never fails it for the hold;
+once the fleet is back under budget the ordinary bound runs from the last hold.
 
 The sweep is a backstop, never the way work is meant to end: the work's own
 bound fires first, `orchestration_grace_seconds` earlier, and records what the
