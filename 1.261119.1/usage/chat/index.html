@@ -1519,6 +1519,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#use-a-suggested-reply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use a suggested reply
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#add-to-a-reply-that-is-still-running" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4269,6 +4280,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#use-a-suggested-reply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use a suggested reply
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#add-to-a-reply-that-is-still-running" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4813,6 +4835,9 @@
 <p>If a response ends before its answer because XTM One restarted or the reply failed, the work the agent already did is kept: the next message you send in the conversation (<code>Go on</code>, for instance) gets the tools it called and what they returned, so the agent continues from there instead of starting over. A response you stop yourself, and one that ended more than 24 hours ago, start from scratch. A long piece of reasoning with no tool call cannot be kept.</p>
 <p>A line under the composer reminds you that AI can make mistakes and that important information should be checked. The same notice appears at the bottom of the <a href="../web-widget/">embeddable chat widget</a>, between the input box and the "Powered by" line. It is shown in your interface language in the app and in English in the widget.</p>
 <p>The lightning icon among the composer buttons counts the agentic actions consumed in the current quota period (the day, month or year your administrator configured), out of your limit when there is one. Hover it for the details. While an assistant works on your message, the action this reply consumes is shown in brackets: <code>4(+1)/10</code> means 4 actions before this reply, 1 for it, out of 10. It joins the total when the reply ends, along with any sandbox code runs counted toward the same limit; a reply that fails may have its action credited back instead (see <a href="../../deployment/configuration/#agentic-quota">Configuration</a>). The counter is refreshed as well when a reply is stopped or fails, and when a reply you left running by opening another conversation ends.</p>
+<h2 id="use-a-suggested-reply">Use a suggested reply</h2>
+<p>Once an agent has answered, the message box may propose what you would likely ask next, greyed out, with a <code>Tab</code> key beside it. Press <code>Tab</code> (or the right arrow, or click the <code>Tab</code> key) to put it in the box, edit it if you want, then press Enter to send it: a suggestion is never sent by itself. Start typing or press Esc to dismiss it.</p>
+<p>There is not always one: the platform proposes nothing when the next step is not obvious, after a reply that failed or that you stopped, or when you already sent another message. The suggestion is made by the routing model your administrator sets in <code>Settings &gt; AI Models</code>, from your message, the agent's answer and the tools it used. Turn suggestions off in <a href="../my-profile/#profile-tab">your profile</a>.</p>
 <h2 id="add-to-a-reply-that-is-still-running">Add to a reply that is still running</h2>
 <p>You do not have to wait for an answer to correct or complete your request. The composer stays open while the agent works:</p>
 <ol>
@@ -5068,7 +5093,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 19, 2026 10:09:11 UTC"><span class="timeago" datetime="2026-11-19T10:09:11+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 19, 2026 10:09:11 UTC">2026-11-19</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 23, 2026 09:58:52 UTC"><span class="timeago" datetime="2026-11-23T09:58:52+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 23, 2026 09:58:52 UTC">2026-11-23</span>
   </span>
 
     
@@ -5095,6 +5120,11 @@
 
     
     <nav>
+      
+        <a href="https://github.com/AreDee-Bangs" class="md-author" title="@AreDee-Bangs">
+          
+          <img src="https://avatars.githubusercontent.com/u/11183028?v=4&amp;size=72" alt="AreDee-Bangs">
+        </a>
       
         <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
           

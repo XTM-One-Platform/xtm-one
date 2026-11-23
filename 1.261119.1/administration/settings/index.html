@@ -3196,6 +3196,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#reply-suggestions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply suggestions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#where-each-model-is-chosen" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4431,6 +4442,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#reply-suggestions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply suggestions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#where-each-model-is-chosen" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5139,6 +5161,8 @@
 <li>provider-specific model lists</li>
 </ul>
 <p>If your environment manages providers outside the UI, XTM One shows that clearly and treats those values as locked.</p>
+<h3 id="reply-suggestions">Reply suggestions</h3>
+<p>Under <code>Routing Model</code>, the <code>Reply suggestions</code> switch (on by default) lets the routing model propose each user's next message once an agent has answered in a chat: the message box shows it greyed out, <code>Tab</code> puts it in the box, and nothing is sent until the user presses Enter. It costs one short routing-model call per answer, made after the answer is shown. Nothing is generated while no routing model is set: unlike routing conditions, suggestions never fall back to the platform default model. Each user can turn suggestions off in their profile.</p>
 <h3 id="where-each-model-is-chosen">Where each model is chosen</h3>
 <p>A provider's <code>Models</code> list holds the models that chat and reason: it is what agents, the General Assistant and the platform default pick from. The image, video, speech, embedding and decision models a provider serves are not in it unless they also chat: they are chosen in the section of their capability below (<code>Image Generation</code>, <code>Video Generation</code>, <code>Speech Generation</code>, <code>Embedding Provider</code>, <code>Decision Model</code>), each listing what the configured providers serve for it, and its <code>Configure</code> button shows once a provider serves one or a choice is saved. Opening <code>Configure</code> asks the providers for their models again, so a model a provider added or dropped since the page loaded is listed as it is now. A Filigran AI Gateway model its operator declares with chat and another type (embedding, say) is offered in that type's section as well as in the <code>Models</code> list, unless the model catalog classes its id as a model that does not chat. Video and speech models are also recognised by their id. A provider that serves no chat - ElevenLabs (voices, music, video and images), Kling AI, Runway, Seedance and Google Vertex AI (video), an embedding server - is added the same way but has no <code>Models</code> list: its card says which sections its models are chosen in.</p>
 <p>A deployment can set these choices from its environment, the way it sets the default model: <code>DEFAULT_EMBEDDING_*</code>, <code>DEFAULT_IMAGE_*</code>, <code>DEFAULT_VIDEO_*</code>, <code>DEFAULT_SPEECH_*</code>, <code>DEFAULT_MUSIC_*</code> and <code>DEFAULT_DECISION_*</code> (see <a href="../../deployment/configuration/#ai-providers">Configuration</a>). The section then shows an <strong>Env</strong> badge instead of <code>Configure</code>: the environment applies its choice again at every restart, so a change made here would not last. A variable naming a provider type that cannot serve the capability (or, for the decision model, given without its model) is ignored and logged at startup, and the section stays editable. One naming a provider type that serves it but is not configured keeps the section locked: add that provider, then restart the platform.</p>
@@ -6049,7 +6073,7 @@ used.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 20, 2026 19:08:01 UTC"><span class="timeago" datetime="2026-11-20T19:08:01+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 20, 2026 19:08:01 UTC">2026-11-20</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 23, 2026 09:58:52 UTC"><span class="timeago" datetime="2026-11-23T09:58:52+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 23, 2026 09:58:52 UTC">2026-11-23</span>
   </span>
 
     
@@ -6077,6 +6101,11 @@ used.</p>
     
     <nav>
       
+        <a href="https://github.com/AreDee-Bangs" class="md-author" title="@AreDee-Bangs">
+          
+          <img src="https://avatars.githubusercontent.com/u/11183028?v=4&amp;size=72" alt="AreDee-Bangs">
+        </a>
+      
         <a href="https://github.com/fred-lr" class="md-author" title="@fred-lr">
           
           <img src="https://avatars.githubusercontent.com/u/294083249?v=4&amp;size=72" alt="fred-lr">
@@ -6092,12 +6121,13 @@ used.</p>
           <img src="https://avatars.githubusercontent.com/u/6394365?v=4&amp;size=72" alt="davidloiret">
         </a>
       
-        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
-          
-          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
-        </a>
       
       
+        
+          <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/administration/settings.md" class="md-author md-author--more">
+            +1
+          </a>
+        
       
     </nav>
   </span>
