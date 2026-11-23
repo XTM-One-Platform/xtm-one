@@ -211,8 +211,6 @@ class UserResponse(BaseModel):
     title: str | None = None
     timezone: str | None = None
     theme: str | None = None
-    # "Pastel colours" profile preference (#1305): standard colours when false.
-    pastel_colours: bool = False
     # UI language override: "auto" (inherit platform language) or a
     # supported locale code (e.g. "fr-fr").
     language: str = "auto"
@@ -1112,7 +1110,6 @@ async def me(
         title=user.title,
         timezone=user.timezone,
         theme=user.theme,
-        pastel_colours=bool(getattr(user, "pastel_colours", False)),
         language=getattr(user, "language", None) or "auto",
         ai_disabled_by_group=bool(ai_groups),
         ai_disabled_group=ai_groups[0] if ai_groups else None,

@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The High / Medium / Low priority of a CTEM briefing next step or recommended
- * action is drawn by ToneBadge (#1354), so it follows the pastel preference like
- * the case chips (plain when pastel, outlined when standard), never again by a
+ * action is drawn by ToneBadge (#1354), so it wears the same single chip style
+ * as the case chips (design system 1.13.0, #1595), never again by a
  * hand-written wash pill from a class string in CTEM_PRIORITY_CONFIG.
  */
 

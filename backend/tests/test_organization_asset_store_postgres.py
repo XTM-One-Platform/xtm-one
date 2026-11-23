@@ -235,6 +235,7 @@ async def test_the_list_filters_on_fields_and_sources_and_the_facets_name_their_
         both = await store.list_assets(session, org, filters={"criticality": ["high", "low"], "source": []})
         none = await store.list_assets(session, org, filters={"category": ["database"]})
         facets = await store.asset_facets(session, org)
+        narrowed = await store.asset_facets(session, org, filters={"criticality": ["high"], "source": ["intune"]})
     assert [a["name"].casefold() for a in high.items] == ["laptop-01"]
     assert all(r["id"] for r in high.items[0]["records"])
     assert [{k: r[k] for k in ("source", "external_id")} for r in high.items[0]["records"]] == [
@@ -244,9 +245,14 @@ async def test_the_list_filters_on_fields_and_sources_and_the_facets_name_their_
     assert [a["name"].casefold() for a in intune.items] == ["laptop-01"]
     assert both.total == 2
     assert none.total == 0
-    assert facets["criticality"] == ["high", "low"]
-    assert facets["category"] == ["host"]
-    assert facets["source"] == ["intune", "openaev"]
+    assert facets["criticality"] == [{"value": "high", "count": 1}, {"value": "low", "count": 1}]
+    assert facets["category"] == [{"value": "host", "count": 2}]
+    # laptop-01 holds an intune and an openaev record, web-02 an openaev one: a source counts assets.
+    assert facets["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 2}]
+    # A facet's counts apply the other facets picked, never its own (OR within, AND across, #1501).
+    assert narrowed["criticality"] == [{"value": "high", "count": 1}]
+    assert narrowed["source"] == [{"value": "intune", "count": 1}, {"value": "openaev", "count": 1}]
+    assert narrowed["category"] == [{"value": "host", "count": 1}]
 
 
 async def test_a_lookup_finds_an_asset_by_any_identifier_a_platform_holds_and_never_another_organization() -> None:
