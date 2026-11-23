@@ -184,7 +184,14 @@ holds one row per asset, product and version, with the sources that report it
 (Intune, Defender, an SBOM, OpenAEV). The case read (`GET
 /api/v1/ctem-cases/{id}` and the `get_ctem_case` tool) carries
 `running_versions` for an upgrade case (`ctem_case_versions.for_case`), `null`
-for any other case or when no asset runs the product:
+for any other case or when no asset runs the product. An operating system is
+stored on the asset, not as software: a case whose product label is a whole OS
+name (`Microsoft Windows`, `Apple macOS`, `Google Android`...,
+`ctem_case_versions.OS_FAMILY_LABELS`) also counts the assets whose `os_family`
+matches, their `os_version` as the version (`unknown` when empty) and the
+source of that field; an asset already counted by a software row of the product
+is not counted twice (#1430). The affected assets of the case page join the
+same way.
 
 - `versions`: one row per version of the case's product (its label, or vendor
   and product), the number of distinct assets running it and its sources, the

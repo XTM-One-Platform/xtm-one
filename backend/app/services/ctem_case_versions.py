@@ -4,7 +4,9 @@
 
 The running version of an upgrade case comes from the asset inventory (the
 canonical asset store of #1178, ``organization_asset_software``), never from a
-version typed in the tech stack. This module answers, for one case:
+version typed in the tech stack. An operating system case (``Microsoft Windows``)
+also reads the assets' ``os_family`` and ``os_version`` fields, where Intune,
+Defender and OpenAEV put the OS (#1430). This module answers, for one case:
 
 - the versions of the case's product seen across the assets, with the number
   of assets running each and the sources that report it;
@@ -61,6 +63,64 @@ def product_keys(product_label: str | None) -> tuple[str, ...]:
         return ()
     parts = label.split(" ", 1)
     return (label, parts[1]) if len(parts) == 2 else (label,)
+
+
+#: Case product labels (folded) that name an operating system, and the ``os_family`` the
+#: assets carry for it (``organization_context_microsoft.os_family`` names). Whole labels
+#: only: ``Cisco IOS``, ``Google Chrome`` or ``Linux Kernel`` are not an asset's OS (#1430).
+OS_FAMILY_LABELS: dict[str, str] = {
+    "windows": "Windows",
+    "microsoft windows": "Windows",
+    "macos": "macOS",
+    "apple macos": "macOS",
+    "mac os x": "macOS",
+    "apple mac os x": "macOS",
+    "apple ios": "iOS",
+    "apple iphone os": "iOS",
+    "ipados": "iPadOS",
+    "apple ipados": "iPadOS",
+    "android": "Android",
+    "google android": "Android",
+    "chromeos": "ChromeOS",
+    "chrome os": "ChromeOS",
+    "google chromeos": "ChromeOS",
+    "google chrome os": "ChromeOS",
+}
+
+
+def os_family_of(product_label: str | None) -> str | None:
+    """The ``os_family`` an operating system case's product stands for, else ``None`` (#1430)."""
+    return OS_FAMILY_LABELS.get(_key(product_label))
+
+
+def os_rows(
+    assets: Iterable[Mapping[str, Any]], *, product_label: str | None, skip: Iterable[str] = ()
+) -> list[dict[str, Any]]:
+    """Software-like rows of the case's OS from the assets' ``os_version`` (pure, #1430).
+
+    *assets* hold ``asset_id``, ``name``, ``os_version`` and ``source`` (the source of the
+    asset's OS field). An asset in *skip* (already counted by a software row of the
+    product) is left out, so one asset never runs the OS twice.
+    """
+    skipped = {str(a) for a in skip}
+    rows: list[dict[str, Any]] = []
+    for asset in assets:
+        asset_id = str(asset.get("asset_id") or "")
+        if not asset_id or asset_id in skipped:
+            continue
+        source = str(asset.get("source") or "").strip()
+        rows.append(
+            {
+                "name": asset.get("name"),
+                "asset_id": asset_id,
+                "asset_ids": [asset_id],
+                "vendor": "",
+                "product": product_label,
+                "version": str(asset.get("os_version") or "").strip() or UNKNOWN,
+                "sources": [source] if source else [],
+            }
+        )
+    return rows
 
 
 def matches_case(product_label: str | None, vendor: str | None, product: str | None) -> bool:
@@ -193,16 +253,18 @@ async def read_running_versions(
     keys = product_keys(product_label)
     if not keys:
         return None
+    family = os_family_of(product_label)
     try:
         # A savepoint, so a failed read never leaves the caller's transaction aborted.
         async with db.begin_nested():
             counted, named = await _read_rows(db, organization_id, keys)
+            os_assets = await _read_os_assets(db, organization_id, family) if family else []
     except Exception:  # the inventory never breaks a case read
         logger.info("CTEM case running versions unavailable", exc_info=True)
         return None
-    if not counted:
+    if not counted and not os_assets:
         return None
-    rows = [
+    rows: list[dict[str, Any]] = [
         {
             "vendor": vendor,
             "product": product,
@@ -212,6 +274,10 @@ async def read_running_versions(
         }
         for vk, pk, version, vendor, product, asset_ids in counted
     ]
+    counted_assets = {
+        a for row in rows if matches_case(product_label, row["vendor"], row["product"]) for a in row["asset_ids"]
+    }
+    rows += os_rows(os_assets, product_label=product_label, skip=counted_assets)
     return running_versions(rows, product_label=product_label, fixed_version=fixed_version)
 
 
@@ -318,12 +384,18 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     if not keys:
         return answer
     names = [_key(a["name"]) for a in answer["assets"]]
+    family = os_family_of(getattr(case, "product_label", None))
     try:
         async with db.begin_nested():
             found = await _read_asset_rows(db, case.organization_id, keys, names)
+            os_assets = await _read_os_assets(db, case.organization_id, family, names) if family else []
     except Exception:  # the inventory never breaks a case read
         logger.info("CTEM case asset versions unavailable", exc_info=True)
         return answer
+    counted_assets = {
+        str(r["asset_id"]) for r in found if matches_case(case.product_label, r.get("vendor"), r.get("product"))
+    }
+    found = [*found, *os_rows(os_assets, product_label=case.product_label, skip=counted_assets)]
     by_asset = versions_on_assets(found, product_label=case.product_label, fixed_version=case.fixed_version)
     answer["version_source"] = "inventory"
     for row in answer["assets"]:
@@ -359,6 +431,29 @@ async def _read_asset_rows(
             "sources": sources,
         }
         for name, asset_id, vendor, product, version, sources in result.all()
+    ]
+
+
+async def _read_os_assets(
+    db: AsyncSession, organization_id: uuid.UUID, family: str, names: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """The assets whose ``os_family`` is *family*, with their ``os_version`` and its source (one read)."""
+    asset = OrganizationAsset
+    fields = asset.fields
+    where = [asset.organization_id == organization_id, fields["os_family"]["value"].astext == family]
+    if names is not None:
+        where.append(asset.name_key.in_([n[:300] for n in names]))
+    result = await db.execute(
+        select(
+            asset.id,
+            asset.name_key,
+            fields["os_version"]["value"].astext,
+            func.coalesce(fields["os_version"]["source"].astext, fields["os_family"]["source"].astext),
+        ).where(*where)
+    )
+    return [
+        {"asset_id": asset_id, "name": name, "os_version": version, "source": source}
+        for asset_id, name, version, source in result.all()
     ]
 
 

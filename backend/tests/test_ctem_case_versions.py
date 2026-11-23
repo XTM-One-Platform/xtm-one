@@ -283,3 +283,51 @@ async def test_an_unreadable_inventory_keeps_the_asset_list() -> None:
     answer = await versions.assets_for_case(cast(AsyncSession, _Broken()), case, [{"assets": ["web-01"], "open": True}])
     assert answer["version_source"] == "none"
     assert answer["asset_count"] == 1
+
+
+def test_an_operating_system_case_names_the_os_family_of_the_assets() -> None:
+    assert versions.os_family_of("Microsoft Windows") == "Windows"
+    assert versions.os_family_of("  apple  macOS ") == "macOS"
+    # Whole labels only: a product that only contains an OS word is not the asset's OS.
+    assert versions.os_family_of("Cisco IOS") is None
+    assert versions.os_family_of("Google Chrome") is None
+    assert versions.os_family_of("Microsoft Windows Server Update Services") is None
+    assert versions.os_family_of(None) is None
+
+
+def test_windows_assets_count_as_running_versions_from_their_os_version() -> None:
+    """#1430: Intune assets with os_family Windows answer the Windows case's running versions."""
+    assets = [
+        {"asset_id": "a1", "name": "lapt-0002", "os_version": "10.0.26200.9911", "source": "intune"},
+        {"asset_id": "a2", "name": "lapt-0100", "os_version": "10.0.26200.9974", "source": "intune"},
+        {"asset_id": "a3", "name": "lapt-0058", "os_version": "", "source": "openaev"},
+        {"asset_id": "a4", "name": "srv-01", "os_version": "10.0.20348.1", "source": "defender"},
+    ]
+    # a4 already reports Windows as a software row: counted once, from that row.
+    software = [_row("10.0.20348.2700", assets=["a4"], sources=("sbom",))]
+    rows = software + versions.os_rows(assets, product_label="Microsoft Windows", skip={"a4"})
+    answer = versions.running_versions(rows, product_label="Microsoft Windows", fixed_version="10.0.26200.9974")
+    assert answer is not None
+    assert answer["asset_count"] == 4
+    found = {v["version"]: (v["asset_count"], v["sources"]) for v in answer["versions"]}
+    assert found == {
+        "10.0.26200.9911": (1, ["intune"]),
+        "10.0.26200.9974": (1, ["intune"]),
+        "unknown": (1, ["openaev"]),
+        "10.0.20348.2700": (1, ["sbom"]),
+    }
+    assert (answer["assets_below_fixed"], answer["assets_on_fixed"], answer["assets_not_comparable"]) == (2, 1, 1)
+
+
+def test_os_rows_join_the_affected_assets_by_name() -> None:
+    rows = versions.os_rows(
+        [{"asset_id": "a1", "name": "lapt-0002", "os_version": "10.0.26200.9911", "source": "intune"}],
+        product_label="Microsoft Windows",
+    )
+    by_asset = versions.versions_on_assets(rows, product_label="Microsoft Windows", fixed_version="10.0.26200.9974")
+    assert by_asset["lapt-0002"] == {
+        "asset_id": "a1",
+        "versions": ["10.0.26200.9911"],
+        "sources": ["intune"],
+        "status": "below_fixed",
+    }
