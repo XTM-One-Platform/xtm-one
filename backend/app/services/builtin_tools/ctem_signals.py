@@ -61,6 +61,71 @@ def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True) -> tuple[bool, dict[str, Any]]:
+    """Whether *user_id* reads the organization's signals, and the ``scope`` block an answer carries.
+
+    ``agent_reach`` reads the administrator reach of an agent tool
+    (``agent_tool_admin_bypass``: strict admin access for agent tools and the
+    Platform Health reach keep an administrator to their own); without it the
+    admin flag alone decides, as the case view does (``ctem_cases_view.signal_members``).
+    Who may read what is unchanged: the block only says which rule applied, so
+    an empty answer is never read as an empty organization.
+    """
+    from app.api.v1.helpers import agent_tool_admin_bypass
+    from app.models.user import User
+    from app.services.health.identity import in_health_reach
+
+    user = await db.get(User, user_id)
+    is_admin = bool(getattr(user, "is_admin", False))
+    whole = agent_tool_admin_bypass(user) if agent_reach else is_admin
+    if whole:
+        reason = "administrator"
+    elif not is_admin:
+        reason = "not an administrator"
+    elif in_health_reach():
+        reason = "Platform Health reach"
+    else:
+        reason = "strict admin access for agent tools"
+    block = {
+        "applied": "organization" if whole else "own",
+        "acting_user": str(user_id),
+        "is_admin": is_admin,
+        "reason": reason,
+    }
+    return whole, block
+
+
+async def case_signal_scope(db: Any, user_id: uuid.UUID, seen: set[str]) -> dict[str, Any]:
+    """The ``scope`` block of a case answer: the signal members read by the case view's rule.
+
+    *seen* holds the ``signal:<id>`` members the person may read; the case-bound
+    signals beyond them are counted (a count only), never named.
+    """
+    from sqlalchemy import func, select
+
+    from app.models.ctem_signal import CtemSignal
+
+    whole, block = await reader_scope(db, user_id, agent_reach=False)
+    if whole:
+        return block
+    try:
+        statement = select(func.count()).select_from(CtemSignal).where(CtemSignal.case_id.is_not(None))
+        bound = int((await db.execute(statement)).scalar_one() or 0)
+    except Exception:
+        logger.info("CTEM cases: case-bound signals not counted for %s", user_id, exc_info=True)
+        return block
+    if bound > len(seen):
+        block["hidden_by_scope"] = bound - len(seen)
+        block["note"] = hidden_note(bound - len(seen))
+    return block
+
+
+def hidden_note(hidden: int) -> str:
+    """The line an agent repeats when signals exist that the acting person did not record."""
+    noun = "signal exists" if hidden == 1 else "signals exist"
+    return f"{hidden} {noun} that this run's person did not record; an administrator's run reads them."
+
+
 def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The two signal tools, acting for *user_id*: an administrator lists the organization's signals.
 
@@ -143,12 +208,9 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 primary = await get_primary(db)
                 if primary is None:
                     return "No organization is set up yet: there are no signals."
-                from app.api.v1.helpers import agent_tool_admin_bypass
-                from app.models.user import User
-
                 # The admin bypass of an agent tool goes through the helper (strict admin
                 # access for agent tools and Platform Health reach decide it).
-                bypass = agent_tool_admin_bypass(await db.get(User, scope))
+                bypass, scope_block = await reader_scope(db, scope)
                 rows, total, counts = await signals.list_signals(
                     db,
                     organization_id=primary.id,
@@ -159,7 +221,29 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
-                return _dump({"total": total, "counts": counts, "signals": [signals.to_dict(r) for r in rows]})
+                if not bypass:
+                    # A count only, no content: how many the same filters match beyond the person's own.
+                    _, org_total, _ = await signals.list_signals(
+                        db,
+                        organization_id=primary.id,
+                        recorded_by=None,
+                        state=state or None,
+                        trigger_path=trigger_path or None,
+                        lens=lens or None,
+                        limit=1,
+                        offset=0,
+                    )
+                    if org_total > total:
+                        scope_block["hidden_by_scope"] = org_total - total
+                        scope_block["note"] = hidden_note(org_total - total)
+                return _dump(
+                    {
+                        "total": total,
+                        "counts": counts,
+                        "signals": [signals.to_dict(r) for r in rows],
+                        "scope": scope_block,
+                    }
+                )
         except signals.SignalError as exc:
             return f"Refused: {exc}."
         except Exception:
@@ -198,7 +282,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
         ),
         ToolDefinition(
             name="list_ctem_signals",
-            description="List CTEM signals, latest sighting first, with counts by state.",
+            description="The acting person's CTEM signals (an admin: all), latest first, counts by state.",
             input_schema={
                 "type": "object",
                 "properties": {

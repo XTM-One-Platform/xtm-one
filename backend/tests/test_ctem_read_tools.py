@@ -168,6 +168,24 @@ async def test_get_answers_the_case_with_who_opened_it_and_the_empty_reasons(rea
     assert body["history_total"] == 1
     assert body["empty_sections"]["running_versions"] == "no running version read for this upgrade"
     assert "tickets" in body["empty_sections"]
+    # #1359: the signal rule that applied is said, never left to a guess.
+    assert body["scope"]["applied"] == "own" and body["scope"]["acting_user"] == str(read.user_id)
+    assert body["scope"]["reason"] == "not an administrator"
+
+
+async def test_the_case_list_counts_the_case_bound_signals_the_scope_hides(
+    read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1359: a case's signal members are the person's own; the rest is a count, never named."""
+
+    async def _execute(_statement: Any) -> Any:
+        return SimpleNamespace(scalar_one=lambda: 2)
+
+    monkeypatch.setattr(read.db, "execute", _execute, raising=False)
+    listed = json.loads(await read.read_for(str(uuid.uuid4()))("list_ctem_cases"))
+    assert listed["scope"]["applied"] == "own"
+    assert listed["scope"]["hidden_by_scope"] == 2
+    assert listed["scope"]["note"].startswith("2 signals exist")
 
 
 async def test_a_person_who_sees_no_issue_reads_no_case(read: SimpleNamespace) -> None:
@@ -175,6 +193,7 @@ async def test_a_person_who_sees_no_issue_reads_no_case(read: SimpleNamespace) -
     assert "No case" in await other("get_ctem_case", case_id=str(read.case.id))
     listed = json.loads(await other("list_ctem_cases"))
     assert listed["cases"] == []
+    assert listed["scope"]["applied"] == "own" and listed["scope"]["is_admin"] is False
     assert "No case" in await read.read_for("")("get_ctem_case", case_id=str(read.case.id))
     assert "case_id must be" in await read.read_for(str(read.user_id))("get_ctem_case", case_id="nope")
     assert read.db.commits == 0
