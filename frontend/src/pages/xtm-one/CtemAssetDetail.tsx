@@ -32,7 +32,7 @@ import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
 import { recordRefs } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
-import { INVENTORY_PATH, isCodeRepository, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 /** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -334,6 +334,8 @@ export default function CtemAssetDetail() {
           rows={software?.items ?? []}
           columns={softwareColumns}
           rowKey={(s) => `${s.vendor}|${s.product}|${s.version}`}
+          // Each row opens its software's page (#1495 slice 2); a row no rebuild has linked yet opens nothing.
+          rowHref={(s) => (s.software_id ? softwarePath(s.software_id) : undefined)}
           server={{ total: software?.total ?? 0 }}
           onStateChange={(state) => setSoftwarePage({ index: state.page, size: state.pageSize })}
           defaultPageSize={SOFTWARE_PAGE_SIZE}

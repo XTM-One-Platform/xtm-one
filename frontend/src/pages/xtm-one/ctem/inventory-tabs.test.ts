@@ -2,14 +2,17 @@
 
 import { describe, expect, it } from "vitest";
 import { INVENTORY_CARD_PATH, PROFILE_CARD_TAB, isInventoryTab, profileFieldHref, type ProfileCard } from "@/lib/organization-profile-tabs";
-import { EXPOSURE_TAB_CARDS, INVENTORY_TABS } from "./inventory-tabs";
+import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, RETIRED_TABS } from "./inventory-tabs";
 import { INVENTORY_PATH } from "./inventory";
 
 /** The tab key a CTEM > Inventory path names: the bare path is the first tab. */
 function tabOfPath(path: string): string | null {
   if (path === INVENTORY_PATH) return INVENTORY_TABS[0].key;
   const prefix = `${INVENTORY_PATH}/`;
-  return path.startsWith(prefix) ? path.slice(prefix.length) : null;
+  if (!path.startsWith(prefix)) return null;
+  // A retired tab (#1495: Tech stack) redirects to the tab that replaced it.
+  const tab = path.slice(prefix.length);
+  return RETIRED_TABS[tab] ?? tab;
 }
 
 /** #1511: no profile card that moved to CTEM > Inventory is reachable by URL only. */

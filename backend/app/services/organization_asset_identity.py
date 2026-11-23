@@ -626,6 +626,7 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                     "purl": "",
                     "install_date": None,
                     "bundled_in": "",
+                    "type": "",
                     "depends_on": [],
                     "first_seen": None,
                     "last_seen": None,
@@ -640,6 +641,9 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                 entry["install_date"] = raw["install_date"]
             if not entry["bundled_in"] and raw.get("bundled_in"):
                 entry["bundled_in"] = str(raw["bundled_in"]).strip()
+            # A declared type (an SBOM's component type) other than the default wins over none.
+            if raw.get("type") and entry["type"] in ("", "application"):
+                entry["type"] = str(raw["type"]).strip()
             for target in raw.get("depends_on") or ():
                 label = str(target or "").strip()
                 if label and label not in entry["depends_on"]:
