@@ -66,6 +66,8 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "its SLA; one loop per case, on every trigger path (a use-case fleet takes the cases of its paths only while its own case automation is on). Cases opened before the fleet was enabled are taken on enable and on the hourly case sweep.\n"
         "- **Gate answered**: a person answers a gate a case waits on; the loop goes on from that step, "
         "or stops on a rejection.\n"
+        "- **Loop reminder due**: a reminder the loop set on a case is due; the person a gate still waits "
+        "on is reminded once.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: OpenCTI events, kept "
         "when relevant to the profile or at the PIR threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
@@ -120,7 +122,9 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
         "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
         "re-test, or past its SLA, unless an active use-case fleet owns its path; the case is the record of the loop.\n"
         "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
-        "case and the loop goes on, or stops on a rejection."
+        "case and the loop goes on, or stops on a rejection.\n"
+        "- **Loop reminder due**: a reminder set on a case is due; the person a gate still waits on is "
+        "reminded once."
     ),
     "flow": (
         "1. Relevance: below the threshold the case closes as not relevant, with the reason.\n"
@@ -666,6 +670,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "filter": "A person answers a gate a case waits on",
             "detail": "The loop goes on from that step",
         },
+        {
+            "module": "platform",
+            "name": "Loop reminder due",
+            "filter": "A reminder the loop set on a case is due",
+            "detail": "The person a gate still waits on is reminded once",
+        },
     ],
     "steps": [
         {
@@ -716,6 +726,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
         {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
         {"trigger": "Gate answered", "basis": "One run per gate answered", "runs_min": 0, "runs_max": 40},
+        {"trigger": "Loop reminder due", "basis": "One run per reminder due", "runs_min": 0, "runs_max": 40},
     ],
 }
 

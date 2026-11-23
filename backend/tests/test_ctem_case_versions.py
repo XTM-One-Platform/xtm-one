@@ -435,6 +435,16 @@ def test_a_single_platform_with_a_generic_fix_is_unchanged() -> None:
     assert versions.all_on_fixed(answer)
 
 
+def test_the_case_read_passes_the_fix_of_each_platform_it_keeps() -> None:
+    from types import SimpleNamespace
+
+    assert versions._case_platform_fixes(SimpleNamespace(fixed_versions={"Windows": "1.36", "macOS": ""})) == {
+        "Windows": "1.36"
+    }
+    assert versions._case_platform_fixes(SimpleNamespace(fixed_versions=None)) == {}
+    assert versions._case_platform_fixes(SimpleNamespace()) == {}
+
+
 def test_versions_on_assets_use_the_fix_of_the_asset_platform() -> None:
     browser = {"vendor": "Acme", "product": "Browser"}
     rows = [
