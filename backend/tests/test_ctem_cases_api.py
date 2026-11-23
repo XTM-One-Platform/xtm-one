@@ -97,9 +97,13 @@ def api(monkeypatch):
     async def _viewer(_db, user_id, vertical, *, fresh=False):
         return seen.views.get(str(user_id), view_of.ViewerView())
 
+    async def _events_of(_db, case_ids):
+        return {case_id: [] for case_id in case_ids}
+
     monkeypatch.setattr(api_module, "get_primary", _primary)
     monkeypatch.setattr(store, "list_cases", _list)
     monkeypatch.setattr(store, "get_case", _get)
+    monkeypatch.setattr(store, "events_of", _events_of)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
 
     async def _ticketing_target(_db):

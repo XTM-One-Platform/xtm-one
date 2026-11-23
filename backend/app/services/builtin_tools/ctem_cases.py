@@ -731,7 +731,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="list_ctem_cases",
             description=(
                 "List the organization's CTEM cases (open exposures grouped by the fix that closes them), "
-                "highest priority first, with the counts by state. Filters: state, priority, owner."
+                "highest priority first, with the counts by state."
             ),
             input_schema={
                 "type": "object",
