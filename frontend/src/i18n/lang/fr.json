@@ -21217,5 +21217,21 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Les produits que votre organisation livre, avec leurs dépôts de code : une vulnérabilité sur l'un d'eux est rattachée à ses dépôts dans CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aucun produit livré : une vulnérabilité sur un produit que vous livrez reste non résolue.",
-  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom"
+  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom",
+  "Kanban view": "Vue Kanban",
+  "CTEM phase": "Phase CTEM",
+  "Phase not known yet": "Phase pas encore connue",
+  "No case": "Aucun cas",
+  "Move refused": "Déplacement refusé",
+  "Due {date}": "Échéance {date}",
+  "A decision": "Une décision",
+  "{who}, since {date}": "{who}, depuis le {date}",
+  "Waits on {who} since {date}": "En attente de {who} depuis le {date}",
+  "Waits on a decision since {date}": "En attente d'une décision depuis le {date}",
+  "Waits on a decision": "En attente d'une décision",
+  "Waiting for decision needs what the case waits on: set it from the case page.": "En attente de décision demande ce que le cas attend : définissez-le depuis la page du cas.",
+  "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "Atténué, sous surveillance demande une validation réussie de l'atténuation : définissez-le depuis la page du cas.",
+  "Resolving a case needs evidence: set it from the case page.": "Résoudre un cas demande une preuve : définissez-le depuis la page du cas.",
+  "Accepting risk needs a reason and an expiry date: set it from the case page.": "Accepter le risque demande un motif et une date d'expiration : définissez-le depuis la page du cas.",
+  "Remediating needs an owner: assign the case first.": "En remédiation demande un responsable : assignez d'abord le cas."
 }

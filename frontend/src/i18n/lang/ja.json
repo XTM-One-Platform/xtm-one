@@ -21217,5 +21217,21 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "組織が出荷する製品とそのソースリポジトリ。製品の脆弱性はCTEMでそのリポジトリに紐付けられます。",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "出荷製品はまだありません。出荷製品の脆弱性は未解決のままです。",
-  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります"
+  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります",
+  "Kanban view": "カンバン表示",
+  "CTEM phase": "CTEM フェーズ",
+  "Phase not known yet": "フェーズ未確定",
+  "No case": "ケースなし",
+  "Move refused": "移動できません",
+  "Due {date}": "期限 {date}",
+  "A decision": "判断",
+  "{who}, since {date}": "{who}、{date} から",
+  "Waits on {who} since {date}": "{date} から {who} を待機中",
+  "Waits on a decision since {date}": "{date} から判断待ち",
+  "Waits on a decision": "判断待ち",
+  "Waiting for decision needs what the case waits on: set it from the case page.": "「判断待ち」にはケースが待っている内容が必要です。ケースページから設定してください。",
+  "Mitigated, watching needs a passing validation of the mitigation: set it from the case page.": "「緩和済み・監視中」には緩和策の検証合格が必要です。ケースページから設定してください。",
+  "Resolving a case needs evidence: set it from the case page.": "ケースの解決には証拠が必要です。ケースページから設定してください。",
+  "Accepting risk needs a reason and an expiry date: set it from the case page.": "リスク受容には理由と有効期限が必要です。ケースページから設定してください。",
+  "Remediating needs an owner: assign the case first.": "「修正中」には担当者が必要です。先にケースを割り当ててください。"
 }
