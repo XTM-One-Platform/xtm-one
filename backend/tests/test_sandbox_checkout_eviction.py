@@ -103,6 +103,30 @@ def test_a_stray_file_beside_a_narrow_checkout_keeps_it():
     assert not footprint.clean, "a file the record does not cover would be lost with the root"
 
 
+def test_a_build_output_the_gitignore_excludes_never_keeps_a_checkout_of_an_ended_run():
+    from app.services.sandbox_workspace.gitignore import GitIgnore
+
+    built = _record("b")
+    extra = {"b/frontend/dist/app.js": b"bundle", "b/backend/app.egg-info/PKG-INFO": b"pkg"}
+    entries = _entries(built, extra)
+    (dirty,) = eviction.footprints(entries, {"b": built})
+    assert not dirty.clean, "without the rules the build output reads as added files"
+    rules = GitIgnore([(".gitignore", b"dist/\n*.egg-info/\n")])
+    (footprint,) = eviction.footprints(entries, {"b": built}, ignores={"b": rules})
+    assert footprint.clean, "what sandbox_checkout_status calls clean is clean for the eviction too"
+    ended = dataclasses.replace(footprint, run_state=eviction.RUN_ENDED)
+    assert ended.evictable
+
+    edited = _entries(built, {**extra, "b/src/new.py": b"mine"})
+    (kept,) = eviction.footprints(edited, {"b": built}, ignores={"b": rules})
+    assert not kept.clean and kept.changes == 1, "a file the rules do not exclude is still the agent's work"
+
+    narrow = _record("n", sub_paths=("src",))
+    stray = _entries(narrow, {"n/frontend/dist/app.js": b"bundle"})
+    (outside,) = eviction.footprints(stray, {"n": narrow}, ignores={"n": rules})
+    assert outside.clean, "an ignored file outside the sub_paths is no stray work either"
+
+
 def test_a_leftover_of_an_earlier_wider_tree_never_keeps_a_clean_checkout():
     leftover = hashlib.sha256(b"old tree").hexdigest()
     narrow = dataclasses.replace(
@@ -476,6 +500,43 @@ async def test_a_checkout_of_an_ended_run_is_reclaimed_and_two_live_checkouts_fi
         "a checkout reclaimable for its ended run needs no provider read"
     )
     assert asked and all(RUN_LIVE not in a for a in asked), "the live run is never asked about"
+
+
+async def test_an_ended_runs_checkout_with_an_ignored_build_output_is_reclaimed(store, monkeypatch):  # noqa: F811
+    import io
+    import tarfile
+
+    def tracked_gitignore() -> bytes:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tf:
+            for name, data in ((".gitignore", b"dist/\n"), ("src/a.py", b"A\n")):
+                info = tarfile.TarInfo(f"acme-repo-0a1b2c3/{name}")
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        return buffer.getvalue()
+
+    composite, executor = _run_composite(RUN_LIVE)
+    composite.add_tools(*_archive_tool([], archive=tracked_gitignore))
+    composite.add_tools(*_compare_tool(set(), []))
+
+    async def ended(run_ids):
+        return {r for r in run_ids if r == RUN_OLD}
+
+    monkeypatch.setattr(workspace_tools, "_ended_runs", ended)
+    with offering_tools(composite.all_tools):
+        first = await _materialize(composite, "old", "feat/open")
+        assert not first.is_error, first.content
+        await _handed_to(executor, "old", RUN_OLD)
+        # The ended run built in its checkout: an output its tracked .gitignore excludes, as a build leaves.
+        await executor.session.put_bytes("old/dist/bundle.js", b"built")
+        held = len(await executor.session.entries(refresh=True))
+        _limited(monkeypatch, held + 1)
+        executor.session._limits = None
+        fresh = await _materialize(composite, "fresh", "v1")
+    assert not fresh.is_error, fresh.content
+    assert "Evicted to stay under the file limit" in fresh.content and "workspace/old/" in fresh.content
+    (record,) = store.records.values()
+    assert not any(p.startswith("old/") for p in store.files[record.id]), "the ignored build output went with it"
 
 
 async def test_the_refusal_names_the_live_runs_checkouts_as_holders(store, monkeypatch):  # noqa: F811

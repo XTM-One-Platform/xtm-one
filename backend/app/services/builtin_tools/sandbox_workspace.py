@@ -85,6 +85,7 @@ from app.services.sandbox_workspace import rebase as rebasing
 from app.services.sandbox_workspace.checkout import RECORD_NAME, build_record
 from app.services.sandbox_workspace.checks import MAX_ARGS, WHOLE_ARG, ChecksError
 from app.services.sandbox_workspace.detect import WORKFLOWS_DIR
+from app.services.sandbox_workspace.gitignore import GitIgnore, gitignore_paths
 from app.services.sandbox_workspace.ingest import WorkspaceIngestor, read_ref_bytes
 from app.services.sandbox_workspace.kube import KubeError
 from app.services.sandbox_workspace.manifest import QuotaExceededError, format_diff, format_size
@@ -1950,7 +1951,10 @@ def build_sandbox_workspace_tools(
             except (FileNotFoundError, ValueError, WorkspaceUnavailableError):
                 continue
         current = str(assignment_run_id or "")
-        found = eviction.footprints(entries, records, exclude=destination, current_run=current, now=time.time())
+        ignores = {root: await _gitignore_of(record, entries) for root, record in records.items()}
+        found = eviction.footprints(
+            entries, records, exclude=destination, current_run=current, now=time.time(), ignores=ignores
+        )
         # The run each checkout carries (#11500): a clean tree of an ended run
         # goes whatever its ref, so earlier runs never hold the limit.
         others = {f.record.run_id for f in found if f.record.run_id and f.run_state != eviction.RUN_LIVE}
@@ -1998,6 +2002,17 @@ def build_sandbox_workspace_tools(
         )
         metrics.operation("checkout_evict", "ok")
         return plan, chosen
+
+    async def _gitignore_of(record: checkouts.CheckoutRecord, entries: Any) -> GitIgnore:
+        """The rules of the checkout's ``.gitignore`` files, as ``sandbox_checkout_status`` reads them."""
+        rules: list[tuple[str, bytes]] = []
+        for repo_path in gitignore_paths(p for p in map(record.repo_path, map(str, entries)) if p):
+            try:
+                _entry, data = await session.get_bytes(record.workspace_path(repo_path))
+            except (FileNotFoundError, WorkspaceUnavailableError):
+                continue
+            rules.append((repo_path, data))
+        return GitIgnore(rules)
 
     async def _ref_state(record: checkouts.CheckoutRecord) -> str:
         """Whether the recorded ref still exists, through the provider's ``repository_compare`` tool."""
