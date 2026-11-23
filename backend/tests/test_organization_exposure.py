@@ -45,7 +45,11 @@ LEGACY = {
 
 def _row(profile: dict, version: int = 4):
     return SimpleNamespace(
-        version=version, profile=profile, source="form", created_at=datetime(2026, 11, 13, 8, 0, tzinfo=UTC)
+        organization_id=None,  # no asset records read: the session is a stub
+        version=version,
+        profile=profile,
+        source="form",
+        created_at=datetime(2026, 11, 13, 8, 0, tzinfo=UTC),
     )
 
 
