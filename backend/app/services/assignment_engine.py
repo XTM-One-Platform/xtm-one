@@ -3222,6 +3222,16 @@ def _record_failure_cause(
         logger.debug("Run %s failure cause: %s (%s)", run.id, cause.value, detail)
 
 
+def _deadline_failure_never_started(run: AssignmentRun, last_usage: Any) -> bool:
+    """A run failed on its deadline before any model call returned.
+
+    Such a run never worked: it waited in the queue until its deadline was
+    spent. ``retry_on_failure`` is for a run that failed while working; a
+    retry of this one only re-queues it into the same saturation.
+    """
+    return run.failure_cause == FailureCause.ENGINE_DEADLINE_EXCEEDED.value and last_usage is None
+
+
 def _apply_failure_classification(
     run: AssignmentRun, classification: FailureClassification
 ) -> None:
@@ -9407,6 +9417,15 @@ async def execute_assignment_run(
             if _stale_failure is not None:
                 # A retry would run the same configuration against the same
                 # missing resource.
+                max_retries = 0
+            elif _deadline_failure_never_started(run, getattr(_llm, "last_usage", None) if _llm is not None else None):
+                # Its deadline was spent before any model call returned: the
+                # run waited in a saturated queue and never worked. A retry
+                # only queues it again behind the same backlog.
+                logger.info(
+                    "Assignment run %s not retried: its deadline expired before any model call returned",
+                    run_id,
+                )
                 max_retries = 0
             elif assignment.retry_on_failure:
                 max_retries = assignment.max_retries or 3

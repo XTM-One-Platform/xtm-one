@@ -474,7 +474,11 @@ _STAGE_ASSIGNMENTS: list[dict] = [
                 "vertical). Powers the command-center stage card."
             ),
             "trigger_type": "schedule",
-            "trigger_config": {"cron": "0 8 * * 1"},  # Mondays 08:00
+            # Mondays 08:00, for the users of the CTEM command center only
+            # (a posture built for them within 30 days): a user who never
+            # opens it gets no weekly run. The seed sync rewrites the trigger
+            # config on every boot, so seeded instances get it too.
+            "trigger_config": {"cron": "0 8 * * 1", "fanout_audience": "ctem_users"},
             "run_as_all_users": True,
             "prompt": _stage_prompt(d),
             "enabled": True,
@@ -487,7 +491,8 @@ _STAGE_ASSIGNMENTS: list[dict] = [
             "timeout_seconds": 600,
             # Fan-out runs fail transiently (LLM rate limits, timeouts) far
             # more often than single runs — retry so a blip doesn't leave a
-            # user without an assessment until next week's tick.
+            # user without an assessment until next week's tick. A run whose
+            # deadline expired before any model call returned is not retried.
             "retry_on_failure": True,
             "max_retries": 2,
         },
