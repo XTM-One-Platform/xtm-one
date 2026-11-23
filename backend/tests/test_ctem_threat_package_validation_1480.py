@@ -141,7 +141,7 @@ def test_analyst_review_gate_names_the_draft_validation_with_a_grant() -> None:
     assert "apply_opencti_draft" in fleet_autonomy.gate_tool_names([gate])
 
 
-def _call(call_id: str, name: str, arguments: dict) -> SimpleNamespace:
+def _call(call_id: str, name: str, arguments: dict[str, Any]) -> SimpleNamespace:
     return SimpleNamespace(id=call_id, name=name, arguments=arguments)
 
 
