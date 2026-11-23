@@ -10,7 +10,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { api } from "@/lib/api";
 
 /** One field of a canonical asset: the value shown, the source that set it and every source's value. */
-interface AssetFieldOrigin {
+export interface AssetFieldOrigin {
   value: unknown;
   source?: string | null;
   values?: Record<string, unknown>;
