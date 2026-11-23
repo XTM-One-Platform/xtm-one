@@ -568,6 +568,54 @@ class RiskAppetite(BaseModel):
     approval_threshold: float | None = Field(default=None, ge=0)
 
 
+class FxRate(BaseModel):
+    """A reference exchange rate an agent may cite to convert an amount (#1383).
+
+    One unit of ``from_currency`` is ``rate`` units of ``to_currency``, as
+    published on ``as_of`` by ``source``. A risk figure priced in another
+    currency than the organization's (OpenCRQ prices in USD) is converted with
+    the rate whose ``to_currency`` is the profile's currency before it is
+    compared with a threshold; without one the comparison is unknown, never
+    made across two currencies and never on a rate the model guessed.
+    """
+
+    model_config = _Strict
+
+    from_currency: str = Field(min_length=3, max_length=3)
+    to_currency: str = Field(min_length=3, max_length=3)
+    rate: float = Field(gt=0)
+    as_of: date
+    source: str = Field(min_length=1, max_length=200)
+
+    @field_validator("from_currency", "to_currency", mode="before")
+    @classmethod
+    def _iso(cls, value: Any) -> str:
+        code = str(value or "").strip().upper()
+        if not _CURRENCY.match(code):
+            raise ValueError(f"currency {value!r} is not an ISO 4217 code (e.g. EUR, USD)")
+        return code
+
+    @model_validator(mode="after")
+    def _two_currencies(self) -> FxRate:
+        if self.from_currency == self.to_currency:
+            raise ValueError(f"a reference rate converts between two currencies, not {self.from_currency} to itself")
+        return self
+
+
+def reference_rate(profile: OrganizationProfile, from_currency: str) -> FxRate | None:
+    """The reference rate converting *from_currency* into the profile's currency, the latest ``as_of`` first.
+
+    ``None`` when the profile has no currency, names the same one, or holds no
+    such rate: the caller then reports the comparison as unknown.
+    """
+    source = str(from_currency or "").strip().upper()
+    target = profile.currency
+    if not target or not source or source == target:
+        return None
+    rates = [r for r in profile.fx_rates if r.from_currency == source and r.to_currency == target]
+    return max(rates, key=lambda r: r.as_of) if rates else None
+
+
 class TicketingSync(BaseModel):
     """How CTEM cases sync with the ticketing target (#917, ``dev-docs/ctem-ticketing.md``).
 
@@ -772,6 +820,10 @@ class OrganizationProfile(BaseModel):
     risk_appetite: RiskAppetite = Field(default_factory=RiskAppetite)
     loaded_hourly_rate: float | None = Field(default=None, ge=0)
     currency: str = Field(default="", max_length=3)
+    #: Reference exchange rates into the organization's currency (#1383), read by the
+    #: risk agents to convert OpenCRQ figures. Not a contract field; shown to agents
+    #: only when filled.
+    fx_rates: list[FxRate] = Field(default_factory=list, max_length=50)
     ticketing: TicketingTarget = Field(default_factory=TicketingTarget)
     #: Assets of the attack surface, with their exposure (#11543).
     assets_exposure: list[AssetEntry] = Field(default_factory=list, max_length=5000)
@@ -1243,6 +1295,7 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
     An empty tech stack version (CTEM-11) is left out the same way, and so are
+    empty reference exchange rates (#1383), and
     ticketing sync settings left at their defaults (#917) and the provenance of
     a typed row (#1134: ``source`` manual, no ``external_id``, no ``sync_id``).
 
@@ -1259,6 +1312,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for key in ("crown_jewels", "tech_stack", "ai_systems"):
         for row in dumped.get(key) or []:
             _drop_typed_provenance(row)
+    if not dumped.get("fx_rates"):
+        # #1383: a profile with no reference rate dumps as before.
+        dumped.pop("fx_rates", None)
     ticketing = dumped.get("ticketing")
     if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
         ticketing.pop("sync", None)
