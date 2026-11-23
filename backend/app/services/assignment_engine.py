@@ -8424,6 +8424,19 @@ async def execute_assignment_run(
                     enrich_trace_metadata(
                         wf_trace_ctx, {"agent_stop_reason": _terminal_stop}
                     )
+            from app.tools.agent_loop import deadline_stop_without_output
+
+            if deadline_stop_without_output(loop_result):
+                # The wall clock ran out before any model call produced a
+                # token: the answer is the forced-answer notice, not work.
+                # The deadline's timeout (free, ``engine_deadline_exceeded``,
+                # ``run.failed``), never a completion. Its input usage is
+                # still accounted by the failure path.
+                _finished_loop = loop_result
+                raise DeadlineCutTimeoutError(
+                    "Assignment run stopped by its deadline before any model "
+                    "output: " + deadline_spent_message("Assignment run", deadline_at)
+                )
 
             # The agent finished, but an integration reported a resource this
             # run uses as missing in separate runs: the configuration is

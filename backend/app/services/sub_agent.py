@@ -3392,6 +3392,9 @@ async def _execute_sub_agent_task(
     budget_timeout: float | None = effective_timeout
     deadline_cut = False
     loop_deadline: float | None = None
+    # The turn stopped on its wall clock before any model output: the
+    # deadline's timeout, whatever bound fired.
+    deadline_stop_no_output = False
 
     # Read by the timeout and exception handlers below, which can run before
     # the task was read.
@@ -4062,6 +4065,13 @@ async def _execute_sub_agent_task(
                 # down, and handed back an apology written for a chat reader:
                 # the task ran out of time, whatever that text says.
                 raise TimeoutError(turn_errors.get("error") or "loop timeout")
+            if loop_outcome.get("deadline_stop_without_output"):
+                # The deadline left no time for a model call: the answer is
+                # the forced-answer notice, not work. The task fails as the
+                # deadline's timeout (free, ``engine_deadline_exceeded``) and
+                # its parent is woken on a failure.
+                deadline_stop_no_output = True
+                raise TimeoutError("deadline stop without model output")
             if turn_cut:
                 # Cancelled with no stop of this worker (an operator cancel, a
                 # lease lost): its text is the cut's apology, not an answer, so
@@ -4323,12 +4333,18 @@ async def _execute_sub_agent_task(
         # that bound, is the task's own. The turn's own ``wait_for`` runs on
         # whole seconds (``chat_loop_timeout_within``), so it may fire up to a
         # second before that bound.
-        deadline_timeout = (
+        deadline_timeout = deadline_stop_no_output or (
             deadline_cut
             and loop_deadline is not None
             and time.monotonic() >= loop_deadline - 1.0
         )
-        if deadline_timeout:
+        if deadline_stop_no_output:
+            error_msg = (
+                "Task stopped by its deadline before any model output: the "
+                f"deadline left too little of its {int(budget_timeout or 0)}s "
+                "budget for a model call"
+            )
+        elif deadline_timeout:
             error_msg += (
                 f", what its deadline left of its {int(budget_timeout or 0)}s budget"
             )

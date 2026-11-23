@@ -109,6 +109,17 @@ def _failed(trace: Any) -> bool:
     return (getattr(trace, "status", None) or "") == "error"
 
 
+def _stopped_unfinished(trace: Any, unfinished: frozenset[str]) -> bool:
+    """A run that ended without an error but stopped before its task was done
+    (deadline, iteration cap, budget...): the stop reason the run wrote on its
+    trace metadata (``agent_stop_reason``). Counted apart from clean successes."""
+    if _failed(trace):
+        return False
+    meta = getattr(trace, "metadata_json", None)
+    reason = meta.get("agent_stop_reason") if isinstance(meta, dict) else None
+    return isinstance(reason, str) and reason in unfinished
+
+
 def _rate(part: int, whole: int) -> float | None:
     return round(100.0 * part / whole, 1) if whole else None
 
@@ -122,6 +133,10 @@ def summarize_window(traces: list[Any], total: int) -> dict[str, Any]:
     """The figures of one window from its listed traces (pure: unit-tested)."""
     runs = len(traces)
     failed = [t for t in traces if _failed(t)]
+    from app.tools.agent_loop import UNFINISHED_STOP_REASONS
+
+    partial = [t for t in traces if _stopped_unfinished(t, UNFINISHED_STOP_REASONS)]
+    partial_reasons = Counter(str(t.metadata_json["agent_stop_reason"]) for t in partial)
     causes = Counter((getattr(t, "failure_cause", None) or "unrecorded") for t in failed)
     rollups = [r for r in (stored_rollup(getattr(t, "metadata_json", None)) for t in traces) if r]
     tools: dict[str, dict[str, int]] = {}
@@ -144,6 +159,11 @@ def summarize_window(traces: list[Any], total: int) -> dict[str, Any]:
         "failed": len(failed),
         "failure_rate_pct": _rate(len(failed), runs),
         "failure_causes": dict(causes.most_common()),
+        # Ended without an error but stopped before the task was done: not a
+        # clean success (additive keys, #1420).
+        "partial": len(partial),
+        "partial_rate_pct": _rate(len(partial), runs),
+        "partial_stop_reasons": dict(partial_reasons.most_common()),
         "tools": [
             {
                 "tool": name,
