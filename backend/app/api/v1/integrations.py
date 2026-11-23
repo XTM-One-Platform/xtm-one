@@ -248,7 +248,7 @@ _INTEGRATION_TYPE_META: dict[str, dict[str, str]] = {
     },
     "repository": {
         "label": "Code Repository",
-        "description": "Source code hosting (GitHub, Jira, Atlassian)",
+        "description": "Source code hosting (GitHub, GitLab)",
     },
     "crm": {"label": "CRM", "description": "Customer relationship management"},
     "documentation": {"label": "Documentation", "description": "Documentation & wikis"},

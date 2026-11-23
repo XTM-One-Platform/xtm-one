@@ -32,6 +32,7 @@ from ._common import (
     mirror_content_targets,
     stored_targets_line,
 )
+from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +325,13 @@ def register(
             data = resp.json()
             items = data.get("content", data) if isinstance(data, dict) else data
             if not items:
-                return "No atomic tests found."
+                # OpenAEV answers an empty page to a grant-limited identity (#1444).
+                scope, cause = await area_scope(headers, "assessment")
+                return with_scope(
+                    "No atomic tests found" + (": " + count_text(0, scope) if scope != "full" else "") + ".",
+                    scope,
+                    cause,
+                )
             lines = [f"Atomic tests ({len(items)}):"]
             for i in items:
                 lines.append(

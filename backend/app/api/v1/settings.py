@@ -495,6 +495,9 @@ def _build_ga_response(
         xtm_mcp_enabled=(
             bool(getattr(ps, "xtm_mcp_enabled", False)) if ps else False
         ),
+        reply_suggestions_enabled=(
+            getattr(ps, "reply_suggestions_enabled", True) is not False if ps else True
+        ),
         env_managed_fields=sorted(_env_managed_ga_fields()),
     )
 
@@ -3254,6 +3257,7 @@ async def get_general_assistant_config(
                 getattr(ps, "platform_mcp_enabled", True)
             ),
             xtm_mcp_enabled=bool(getattr(ps, "xtm_mcp_enabled", False)),
+            reply_suggestions_enabled=getattr(ps, "reply_suggestions_enabled", True) is not False,
             env_managed_fields=sorted(_env_managed_ga_fields()),
         )
 
@@ -3988,6 +3992,8 @@ async def update_general_assistant_config(
         ps.platform_mcp_enabled = body.platform_mcp_enabled
     if body.xtm_mcp_enabled is not None:
         ps.xtm_mcp_enabled = body.xtm_mcp_enabled
+    if body.reply_suggestions_enabled is not None:
+        ps.reply_suggestions_enabled = body.reply_suggestions_enabled
 
     license_changed = False
     if body.enterprise_license is not None:
@@ -4674,6 +4680,8 @@ async def update_preferences(
         )
     if body.notify_waiting_work_items is not None:
         user.notify_waiting_work_items = body.notify_waiting_work_items
+    if body.reply_suggestions_enabled is not None:
+        user.reply_suggestions_enabled = body.reply_suggestions_enabled
     if "chat_sidebar_expanded_workspaces" in body.model_fields_set:
         # Written whole, duplicates dropped in first-seen order; a key naming a
         # workspace since deleted is harmless (no group draws it).

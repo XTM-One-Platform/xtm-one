@@ -55,9 +55,61 @@ def test_an_entry_flagged_out_of_capability_slots_is_never_offered() -> None:
     assert states[0].state == slots.SLOT_UNAVAILABLE
 
 
-def test_jira_fills_the_ticketing_slot_and_keeps_its_repository_type() -> None:
+def test_jira_fills_the_ticketing_slot_and_is_not_a_code_host() -> None:
     assert "jira" in slots.providers_for("ticketing", PROVIDER_CATALOG)
-    assert "repository" in PROVIDER_CATALOG["jira"]["integration_types"]
+    assert "repository" not in PROVIDER_CATALOG["jira"]["integration_types"]
+    assert "jira" not in slots.providers_for("source_code", PROVIDER_CATALOG)
+
+
+def test_aikido_is_application_security_only_never_a_vulnerability_scanner() -> None:
+    """#1434: Aikido appears once, under Application security."""
+    assert "aikido" in slots.providers_for("application_security", PROVIDER_CATALOG)
+    assert "aikido" not in slots.providers_for("scanner", PROVIDER_CATALOG)
+    # Infrastructure and cloud scanners stay in Vulnerability scanner.
+    assert {"tenable", "qualys", "wiz"} <= slots.providers_for("scanner", PROVIDER_CATALOG)
+
+
+def test_github_and_gitlab_fill_source_code() -> None:
+    assert {"github", "gitlab"} <= slots.providers_for("source_code", PROVIDER_CATALOG)
+    for key in slots.providers_for("source_code", PROVIDER_CATALOG):
+        assert "repository" in PROVIDER_CATALOG[key]["integration_types"], key
+
+
+def test_excluded_types_keep_a_provider_out_of_a_capability() -> None:
+    catalog = {
+        "infra": {"integration_types": ["vulnerability_management"]},
+        "appsec": {"integration_types": ["vulnerability_management", "application_security"]},
+    }
+    assert slots.providers_for("scanner", catalog) == frozenset({"infra"})
+    assert slots.providers_for("application_security", catalog) == frozenset({"appsec"})
+
+
+def test_the_ctem_roles_take_application_security_and_source_code() -> None:
+    """#1434: code flaws and dependencies against assets (Triage, Relevance), source-code assets (Discovery), CI gates and DAST (Validation)."""
+    for role in ("Triage", "Relevance", "Discovery"):
+        assert {"application_security", "source_code"} <= set(slots.slots_for_role(role)), role
+    assert "application_security" in slots.slots_for_role("Validation")
+    assert "source_code" not in slots.slots_for_role("Mobilization")
+
+
+def test_a_personal_aikido_is_blocked_with_its_reason_for_a_company_managed_member() -> None:
+    """#1434 item 6: the not_usable state names why a personal Aikido cannot be taken."""
+    personal = IntegrationRef(
+        integration_id="a1", provider="aikido", name="Aikido", company_managed=False, connected=True
+    )
+    states = {
+        s.capability: s
+        for s in slots.slot_states("Triage", {}, [personal], PROVIDER_CATALOG, company_managed_only=True)
+    }
+    appsec = states["application_security"]
+    assert appsec.candidates == []
+    assert [(b.integration_id, b.reason) for b in appsec.blocked] == [("a1", slots.BLOCKED_NOT_COMPANY_MANAGED)]
+    member = slots.TypeMember(
+        member_id="m1", agent_id="g1", name="Triage", role_label="Triage", can_edit=True, bound=[], custom=False
+    )
+    by_cap = {t.capability: t for t in slots.type_states([(member, list(states.values()))])}
+    assert by_cap["application_security"].state == slots.TYPE_NOT_USABLE
+    assert by_cap["application_security"].label == "Application security"
 
 
 def test_every_slot_names_a_known_capability() -> None:

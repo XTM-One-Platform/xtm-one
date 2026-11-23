@@ -246,12 +246,15 @@ async def save_organization_context(
     from app.services.organization_context_draft import name_saved_pirs
 
     submitted = dict(body.profile or {})
-    if "fx_rates" not in submitted:
-        # #1383: the reference exchange rates are set by API or by an agent, not by the
-        # settings form; a save that does not send them keeps the stored ones.
+    # #1383: the reference exchange rates are set by API or by an agent, not by the
+    # settings form; #1432: the shipped products likewise until a form sends them.
+    # A save that does not send one keeps the stored value.
+    kept = [key for key in ("fx_rates", "shipped_products") if key not in submitted]
+    if kept:
         current = await org_context.current_version(db)
-        if current is not None and (current.profile or {}).get("fx_rates"):
-            submitted["fx_rates"] = current.profile["fx_rates"]
+        for key in kept:
+            if current is not None and (current.profile or {}).get(key):
+                submitted[key] = current.profile[key]
     try:
         profile = org_context.parse_profile(submitted)
     except ValueError as exc:

@@ -264,6 +264,46 @@ class TechStackEntry(BaseModel):
     sync_id: str = Field(default="", max_length=64)
 
 
+class ShippedProduct(BaseModel):
+    """A product the organization ships (#1432), apart from the tech stack it runs.
+
+    ``repositories`` are the ``owner/name`` of its source repositories: a
+    vulnerability on the product (matched by CPE, then by product and vendor)
+    resolves to them in the CTEM scope gate, so it joins the case of the
+    repository advisory for the same CVE.
+    """
+
+    model_config = _Strict
+
+    product: str = Field(min_length=1, max_length=200)
+    vendor: str = Field(default="", max_length=200)
+    cpe: str = Field(default="", max_length=300)
+    repositories: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("product", "vendor", "cpe")
+    @classmethod
+    def _stripped(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("repositories")
+    @classmethod
+    def _repositories(cls, value: list[str]) -> list[str]:
+        """``owner/name`` each once; a GitHub URL is read as its ``owner/name``."""
+        out: list[str] = []
+        for raw in value:
+            text = str(raw or "").strip().removesuffix(".git").strip("/")
+            for prefix in ("https://github.com/", "http://github.com/", "github.com/"):
+                if text.lower().startswith(prefix):
+                    text = text[len(prefix) :]
+            if not text:
+                continue
+            parts = text.split("/")
+            if len(parts) != 2 or not all(parts) or len(text) > 200:
+                raise ValueError(f"repository {raw!r} is not owner/name")
+            out.append(text)
+        return list(dict.fromkeys(out))
+
+
 class AiSystem(BaseModel):
     """An AI system; ``openaev_asset_id`` is the id before #1134, read as an OpenAEV row (see :class:`CrownJewel`)."""
 
@@ -811,6 +851,9 @@ class OrganizationProfile(BaseModel):
     size: Literal["", "1-50", "51-250", "251-1000", "1001-5000", "5001-20000", "20000+"] = ""
     crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
     tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
+    #: What the organization ships, with its source repositories (#1432). Not a contract
+    #: field: a vendor-free organization ships nothing; the tech stack is what it runs.
+    shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
     ai_systems: list[AiSystem] = Field(default_factory=list, max_length=200)
     pir_ids: list[str] = Field(default_factory=list, max_length=100)
     #: The last known OpenCTI name of each PIR in ``pir_ids``, saved with it so the
@@ -1315,6 +1358,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     if not dumped.get("fx_rates"):
         # #1383: a profile with no reference rate dumps as before.
         dumped.pop("fx_rates", None)
+    if not dumped.get("shipped_products"):
+        # #1432: a profile that ships nothing dumps as before.
+        dumped.pop("shipped_products", None)
     ticketing = dumped.get("ticketing")
     if isinstance(ticketing, dict) and ticketing.get("sync") == TicketingSync().model_dump(mode="json"):
         ticketing.pop("sync", None)

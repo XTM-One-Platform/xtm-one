@@ -88,6 +88,10 @@ This tab can include:
 
 If your environment manages providers outside the UI, XTM One shows that clearly and treats those values as locked.
 
+### Reply suggestions
+
+Under `Routing Model`, the `Reply suggestions` switch (on by default) lets the routing model propose each user's next message once an agent has answered in a chat: the message box shows it greyed out, `Tab` puts it in the box, and nothing is sent until the user presses Enter. It costs one short routing-model call per answer, made after the answer is shown. Nothing is generated while no routing model is set: unlike routing conditions, suggestions never fall back to the platform default model. Each user can turn suggestions off in their profile.
+
 ### Where each model is chosen
 
 A provider's `Models` list holds the models that chat and reason: it is what agents, the General Assistant and the platform default pick from. The image, video, speech, embedding and decision models a provider serves are not in it unless they also chat: they are chosen in the section of their capability below (`Image Generation`, `Video Generation`, `Speech Generation`, `Embedding Provider`, `Decision Model`), each listing what the configured providers serve for it, and its `Configure` button shows once a provider serves one or a choice is saved. Opening `Configure` asks the providers for their models again, so a model a provider added or dropped since the page loaded is listed as it is now. A Filigran AI Gateway model its operator declares with chat and another type (embedding, say) is offered in that type's section as well as in the `Models` list, unless the model catalog classes its id as a model that does not chat. Video and speech models are also recognised by their id. A provider that serves no chat - ElevenLabs (voices, music, video and images), Kling AI, Runway, Seedance and Google Vertex AI (video), an embedding server - is added the same way but has no `Models` list: its card says which sections its models are chosen in.

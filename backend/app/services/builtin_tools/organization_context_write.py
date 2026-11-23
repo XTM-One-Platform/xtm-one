@@ -526,10 +526,10 @@ def build_organization_context_write_tools(
     _apply = {"type": "boolean", "description": "false (default): preview only. true: save a new version."}
     # The platforms and formats are declared by the services, never named here (invariant 18).
     from app.services.organization_context_import import SECTION_SOURCES
-    from app.services.organization_context_rows import ROW_FORMATS
+    from app.services.organization_context_rows import ROW_FORMATS, ROW_SECTIONS
 
     _import_sources = sorted({s for sources in SECTION_SOURCES.values() for s in sources})
-    _section = {"type": "string", "enum": ["assets", "asset_groups", "tech_stack", "ai_systems"]}
+    _section = {"type": "string", "enum": list(ROW_SECTIONS)}
     from app.services.organization_context_sync import ALL_SECTIONS, SYNCABLE_SECTIONS
 
     definitions = [
