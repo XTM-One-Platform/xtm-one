@@ -2,25 +2,28 @@
 
 /**
  * The Signals page `/ctem/signals` (#1263): the signals of the exposure
- * management loop and the signal sources, as one page with two tabs instead of
- * the two dialogs it replaces. A row of the CTEM menu group between Cases and
- * Inventory (Sam, 23 Nov 2026, #1401), titled with the app's standard list
- * header like Cases, no back link; also reached from the command center (the
- * key row counters, the signal sources button, the activity feed), a case's
+ * management loop. A row of the CTEM menu group between Cases and Inventory
+ * (Sam, 23 Nov 2026, #1401), titled with the app's standard list header like
+ * Cases, no back link; also reached from the command center (the key row
+ * counters, the signal sources button, the activity feed), a case's
  * "Opened by" and the Discovery stage.
+ *
+ * No tabs (#1519, the Inventory Sources pattern of #1476 and Platform Health's
+ * settings button): the header carries a secondary "Sources" button top right
+ * with the connected count, which opens the signal sources as a page of their
+ * own, `/ctem/signals/sources` (SignalSourcesPanel), with "Back to Signals" first.
  *
  * Signals: the state filter carries the API's counts (the key row's), the
  * trigger path filter is read by the server, the table searches, sorts, pages
  * and exports what the server answered. A row opens its loop trace as a
  * section of the page (`?signal=<id>`), never a modal.
- * Sources: the 12 trigger paths by lens (SignalSourcesPanel).
  *
- * Above the tabs, the summary strip (SignalsSummaryStrip): signals in 30 days,
+ * Above the list, the summary strip (SignalsSummaryStrip): signals in 30 days,
  * to validate, cases opened and the trigger paths connected with the sources'
- * logos, so the page never reads empty, whatever tab is open (Sam, 22 Nov 2026).
+ * logos, so the page never reads empty (Sam, 22 Nov 2026).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
@@ -28,7 +31,7 @@ import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-me
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { DetailTabs } from "@/components/ui/detail-tabs";
+import { BackButton } from "@/components/ui/back-button";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { SlideOver } from "@/components/ui/slide-over";
 import { SourceBadge } from "@/components/ui/source-badge";
@@ -56,7 +59,6 @@ import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
 import { connectedCount } from "./ctem/loop/signal-sources";
 import { readSignalsView, SIGNAL_SOURCES_PATH, SIGNALS_PARAMS, SIGNALS_PATH, SIGNALS_TABLE_URL_KEY, selectAllScope } from "./ctem/loop/signals-route";
 
-type Tab = "signals" | "sources";
 type StateFilter = CtemSignalState | "all";
 
 /** The page size the table reads from the API (its `MAX_PAGE`), every page loaded. */
@@ -70,10 +72,19 @@ const API_PAGE = 200;
 const COLUMN_WIDTH = { path: 160, source: 130, state: 220, firstSeen: 140, case: 104 } as const;
 
 export default function CtemSignals() {
+  const { tab } = useParams();
+  // The signal sources are a page of their own (#1519), the Inventory Sources pattern (#1476): any other
+  // segment under /ctem/signals reads as the list.
+  return tab === "sources" ? <SignalSourcesPage /> : <SignalsListPage />;
+}
+
+/**
+ * The signals list (#1519: no tabs): the standard list header with Sources as its secondary action top
+ * right (like Platform Health's settings and the Inventory Sources button), the summary strip, the list.
+ */
+function SignalsListPage() {
   const { t_i18n } = useFormatter();
   const { count } = useNumberFormat();
-  const { tab: tabParam } = useParams();
-  const tab: Tab = tabParam === "sources" ? "sources" : "signals";
   const { data: pathData } = useCtemSignalPaths();
   const paths = pathData?.paths ?? [];
   return (
@@ -82,36 +93,38 @@ export default function CtemSignals() {
         title={t_i18n("Signals")}
         info={t_i18n("The changes in exposure that start the exposure management loop, where they come from, and what the loop decided for each.")}
         infoLabel={t_i18n("About signals")}
-      />
-      <SignalsSummaryStrip />
-      <DetailTabs<Tab>
-        tabs={[
-          { key: "signals", label: "Signals", glyph: "activity", to: SIGNALS_PATH, testId: "ctem-signals-tab-signals" },
-          {
-            key: "sources",
-            label: "Sources",
-            glyph: "satellite-dish",
-            to: SIGNAL_SOURCES_PATH,
-            testId: "ctem-signals-tab-sources",
-            trailing:
-              paths.length > 0 ? (
-                <span className="tabular-nums text-default-secondary">
+        actions={
+          // Same audience as the page: a reader sees the sources too, each Connect is gated in the panel.
+          <Button variant="secondary" className="gap-1.5" asChild>
+            <Link to={SIGNAL_SOURCES_PATH} data-testid="ctem-signals-sources">
+              <Icon name="satellite-dish" size={16} aria-hidden /> {t_i18n("Sources")}
+              {paths.length > 0 && (
+                <span className="tabular-nums text-default-secondary" data-testid="ctem-signals-sources-count">
                   {count(connectedCount(paths))}/{count(paths.length)}
                 </span>
-              ) : undefined,
-          },
-        ]}
-        active={tab}
-        ariaLabel={t_i18n("Signals")}
-        testId="ctem-signals-tabs"
+              )}
+            </Link>
+          </Button>
+        }
       />
-      {tab === "sources" ? (
-        <section className="flex flex-col gap-4" aria-label={t_i18n("Signal sources")}>
-          <SignalSourcesPanel />
-        </section>
-      ) : (
-        <SignalsTab />
-      )}
+      <SignalsSummaryStrip />
+      <SignalsTab />
+    </div>
+  );
+}
+
+/** The signal sources page (#1519): the standard back link to the signals first, its title, the sources table. */
+function SignalSourcesPage() {
+  const { t_i18n } = useFormatter();
+  return (
+    <div className="space-y-4" data-testid="ctem-signal-sources-page">
+      <BackButton to={SIGNALS_PATH} label="Back to Signals" />
+      <ListPageHeader
+        title={t_i18n("Signal sources")}
+        info={t_i18n("The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.")}
+        infoLabel={t_i18n("About the signal sources")}
+      />
+      <SignalSourcesPanel />
     </div>
   );
 }
@@ -423,7 +436,7 @@ function SignalsTab() {
         isError={isError}
         onRetry={() => void refetch()}
         // The table's standard empty statement alone (Sam, 23 Nov 2026, #1344): the summary strip
-        // above carries the connected count and the Sources tab is one click away.
+        // above carries the connected count and the Sources page is one click away (header button).
         emptyLabel={anyConnected ? t_i18n("No signal seen yet: your sources are connected and nothing reached the loop.") : t_i18n("No signal yet: no source is connected.")}
         noResultsLabel={t_i18n("No signal matches these filters")}
         rowTestId="ctem-signal-row"

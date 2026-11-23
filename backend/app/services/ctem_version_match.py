@@ -143,10 +143,20 @@ def complete_ask(ask: Mapping[str, Any], match: Mapping[str, Any]) -> dict[str, 
     out = dict(ask)
     if has_line(out):
         return out
+    from app.services.decision_ask import fit
+
     head = "\n".join(card_lines(match))
-    rest = str(out.get("context") or "").strip()
-    out["context"] = (f"{head}\n{rest}" if rest else head)[:_MAX_CONTEXT_CHARS]
+    # The agent's own blindness lines say what the head now says: never twice (#1598).
+    kept = [line for line in str(out.get("context") or "").strip().splitlines() if not _states_blindness(line)]
+    rest = "\n".join(kept).strip()
+    out["context"] = fit(f"{head}\n{rest}" if rest else head, _MAX_CONTEXT_CHARS)
     return out
+
+
+def _states_blindness(line: str) -> bool:
+    """Whether a context line repeats the blind statement or the blind action of :func:`card_lines`."""
+    text = _clean(line).casefold()
+    return text.startswith(BLIND_LEAD.casefold()) or text == BLIND_ACTION.casefold()
 
 
 def case_id_of(correlation_key: object) -> uuid.UUID | None:
