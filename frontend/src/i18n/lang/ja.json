@@ -4322,6 +4322,7 @@
   "Ovrl": "総合",
   "Owned and shared by {name}": "{name}が所有・共有",
   "Owned by {name}": "担当：{name}",
+  "No active fleet owns this case": "このケースを担当する有効なフリートはありません",
   "Owner": "所有者",
   "Owner: {name}": "所有者：{name}",
   "Owner: {name} ({email})": "所有者：{name} ({email})",
