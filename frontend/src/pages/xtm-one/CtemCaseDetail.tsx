@@ -540,7 +540,7 @@ export default function CtemCaseDetail() {
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
             <CaseOwner name={ownerName} />
-            <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} />
+            <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />
             <CaseTicketChip tickets={kase.tickets} ticketing={kase.ticketing} showNotConnected />
           </>

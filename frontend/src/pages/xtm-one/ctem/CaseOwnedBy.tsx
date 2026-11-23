@@ -6,8 +6,8 @@
  * names no owner or an owner whose case automation is off. The owner is the
  * one `GET /ctem-cases/{id}` computes (`owner_fleet`), never guessed here.
  */
-import { Link } from "react-router-dom";
-import { Icon } from "@filigran/design-system";
+import { Link as RouterLink } from "react-router-dom";
+import { Icon, Link } from "@filigran/design-system";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCaseOwnerFleet } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -16,9 +16,12 @@ import { ownerFleetId, type LoopFleet } from "./case-loop-reason";
 export function CaseOwnedBy({
   owner,
   fleets,
+  caseId,
 }: {
   owner: CtemCaseOwnerFleet | null | undefined;
   fleets: readonly LoopFleet[] | undefined;
+  /** The case the fleet page links back to. */
+  caseId: string;
 }) {
   const { t_i18n } = useFormatter();
   // Absent on an API older than #1396: draw nothing rather than a false "no owner".
@@ -36,8 +39,10 @@ export function CaseOwnedBy({
     <span className="flex min-w-0 items-center gap-1 content-caption text-default-primary" data-testid="ctem-case-owner-fleet">
       <Icon name="network" size={16} className="shrink-0" aria-hidden />
       {fleetId ? (
-        <Link to={`/fleets/${fleetId}`} className="min-w-0 text-accent underline-offset-2 hover:underline focus-visible:underline">
-          <TruncatedText text={label} />
+        <Link asChild size="compact" className="min-w-0">
+          <RouterLink to={`/fleets/${fleetId}`} state={{ backTo: `/ctem/cases/${caseId}`, backLabel: "Back to Case" }}>
+            <TruncatedText text={label} />
+          </RouterLink>
         </Link>
       ) : (
         <TruncatedText text={label} />
