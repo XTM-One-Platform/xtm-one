@@ -96,6 +96,7 @@ export const FAILURE_CAUSE_GROUPS: readonly FailureCauseGroup[] = [
       "engine_attempts_exhausted",
       "engine_deadline_exceeded",
       "engine_abandoned",
+      "deadline_exceeded_before_start",
     ],
   },
   {
@@ -137,6 +138,7 @@ const FAILURE_CAUSE_LABELS: Record<string, string> = {
   engine_attempts_exhausted: "Attempts exhausted",
   engine_deadline_exceeded: "Deadline exceeded",
   engine_abandoned: "Abandoned by the engine",
+  deadline_exceeded_before_start: "Never started in time",
   unknown: "Unattributed",
   [UNRECORDED_FAILURE_CAUSE]: "No cause recorded",
   [NOT_RECORDED_REFUND_CAUSE]: "No cause recorded",

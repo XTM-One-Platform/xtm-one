@@ -508,7 +508,15 @@ class SubAgentAdapter(OrchestrationAdapter):
                 )
                 return
             if task is not None and task.status in ("pending", "running"):
-                error = _cap_reached_error(task, execution) or error
+                from app.services import orchestration_engine as engine
+
+                if engine.expired_before_start(execution):
+                    # Its queue-wait bound passed before any worker started it
+                    # (deadline_exceeded_before_start): its budget counts from its
+                    # start, so this is a capacity failure, named with its wait.
+                    error = engine.expired_before_start_message("The background task", execution)
+                else:
+                    error = _cap_reached_error(task, execution) or error
                 task.status = "failed"
                 task.error = error
                 task.completed_at = now
