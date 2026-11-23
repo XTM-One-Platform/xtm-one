@@ -584,7 +584,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 item_id = ""
                 if decision.waits:
-                    item_id = await _park(case, parsed, recommendation, decision)
+                    item_id = await _park(case, parsed, recommendation, decision, await _currency(db, org_id))
                 case_loop.record_gate(
                     db,
                     case,
@@ -656,14 +656,30 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         row = await org_context.current_version(db, org_id)
         return org_context.parse_profile(row.profile if row else {}).risk_appetite.approval_threshold
 
-    async def _park(case: Any, parsed: list[Any], recommendation: str, decision: Any) -> str:
+    async def _currency(db: AsyncSession, org_id: uuid.UUID | None) -> str:
+        """The organization profile's currency the option figures read in (#1598); empty when it names none."""
+        from app.services import organization_context as org_context
+
+        try:
+            row = await org_context.current_version(db, org_id)
+            return org_context.parse_profile(row.profile if row else {}).currency or ""
+        except Exception:  # the card is written whatever the profile answers
+            logger.info("Organization currency unavailable for the remediation ask", exc_info=True)
+            return ""
+
+    async def _park(case: Any, parsed: list[Any], recommendation: str, decision: Any, currency: str = "") -> str:
         """One work item for a person with the unified decision ask; the existing one when it is still open."""
         from app.services import ctem_remediation_decision as decision_rules
         from app.services.company_managed_writes import agent_writer
         from app.services.work_item import create_work_item
 
         ask = decision_rules.decision_ask(
-            case.title, parsed, recommendation, figures=decision.figures_shown, reason=decision.reason
+            case.title,
+            parsed,
+            recommendation,
+            figures=decision.figures_shown,
+            reason=decision.reason,
+            currency=currency,
         )
         item = await create_work_item(
             user_id=str(scope),
@@ -731,7 +747,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="list_ctem_cases",
             description=(
                 "List the organization's CTEM cases (open exposures grouped by the fix that closes them), "
-                "highest priority first, with the counts by state."
+                "highest priority first, with the counts by state. Filters: state, priority, owner."
             ),
             input_schema={
                 "type": "object",
@@ -781,7 +797,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision, or the threat package of the review step. Those writes move the status; "
+                "the decision, or the threat package of the review step. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
