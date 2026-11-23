@@ -43,7 +43,7 @@ const SOFTWARE_PAGE_SIZE = 25;
 const AssetGlyph = ({ className }: { className?: string }) => <Icon name="server" size={16} className={className} />;
 
 /** The cases still to work: a resolved one is history, read from the Cases page. */
-const OPEN_STATES = new Set(["needs_attention", "in_progress", "mitigated_watching", "accepted_risk"]);
+const OPEN_STATES = new Set(["new", "analyzing", "waiting_decision", "remediating", "validating", "mitigated_watching", "accepted_risk"]);
 
 export default function CtemAssetDetail() {
   const { t_i18n, intl } = useFormatter();
