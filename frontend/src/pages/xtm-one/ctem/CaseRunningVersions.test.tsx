@@ -128,5 +128,7 @@ describe("CaseRunningVersions (#1252)", () => {
     expect(versionSourceName("csv")).toBe("CSV import");
     expect(versionSourceName("agent:abc")).toBe("Agent");
     expect(versionSourceName("something-else")).toBe("something-else");
+    // #1357: a module under its pre-rename key reads under its current name.
+    expect(versionSourceName("openbas")).toBe("OpenAEV");
   });
 });

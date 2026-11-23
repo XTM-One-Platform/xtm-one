@@ -429,6 +429,11 @@ _ROLE_GATES = {
     # integration, the REST update's rule (#12380).
     ("services/builtin_tools/agent_builder.py", "_update_integration"): 2,
     ("services/builtin_tools/agent_builder.py", "_update_knowledge_base"): 1,
+    # The CTEM read tools report the acting person's role in their scope block
+    # (#1359): is_admin is echoed, and the case view's rule (admin flag alone,
+    # ctem_cases_view.signal_members) is named; the visibility of signals still
+    # goes through agent_tool_admin_bypass.
+    ("services/builtin_tools/ctem_signals.py", "reader_scope"): 1,
     ("services/builtin_tools/evaluations.py", "_compare_evaluation_runs"): 1,
     ("services/builtin_tools/evaluations.py", "_get_evaluation"): 1,
     ("services/builtin_tools/evaluations.py", "_get_evaluation_run_values"): 1,

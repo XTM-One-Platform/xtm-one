@@ -309,6 +309,11 @@ class HealthSettings(BaseModel):
     alert_emails: HealthAlertEmailSettings = Field(default_factory=HealthAlertEmailSettings)
     #: The Module Analyst's switch, debounce and exclusions (#101 S14a-2b).
     module_analyst: HealthModuleAnalystSettings = Field(default_factory=HealthModuleAnalystSettings)
+    #: Whom the module checkers' reads act as (section 12.3): the platform-managed JWT of
+    #: OpenCTI, OpenAEV and OpenCRQ is minted for this user. ``None``: no module read runs and
+    #: each module card asks for one; there is no other fallback (no service account, no seed
+    #: owner, no administrator by default).
+    module_run_as_user_id: uuid.UUID | None = None
 
     @field_validator("name")
     @classmethod

@@ -17,6 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
+import { ModulePivotLink } from "@/components/ui/module-pivot-link";
+import { SourceBadge } from "@/components/ui/source-badge";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NotFoundState } from "@/components/ui/not-found-state";
 import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
@@ -64,6 +66,8 @@ import { useFleets } from "@/hooks/api/useFleetApi";
 import { useAssignments } from "@/hooks/api/useAssignmentApi";
 import { useAgents } from "@/hooks/api/useAgentApi";
 import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
+import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
+import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
@@ -267,6 +271,7 @@ export default function CtemCaseDetail() {
     [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns, kase],
   );
   const loopState = useMemo(() => ({ sources: caseSources(registrations) }), [registrations]);
+  const moduleUrls = useModuleBaseUrls();
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   const [picked, setPicked] = useState<string[]>([]);
@@ -374,8 +379,20 @@ export default function CtemCaseDetail() {
         isRestrictedIssue(r.issue) ? (
           <RestrictedCell />
         ) : (
-          <span className="block max-w-[24rem] truncate font-medium" title={r.issue.name ?? r.issue.external_id}>
-            {r.issue.cve ?? r.issue.name ?? r.issue.external_id}
+          // The issue, then "Open in <Module>" on the entity it came from (#1357): an OpenCTI
+          // vulnerability by its id, an OpenAEV finding by its id; a signal has no module page.
+          <span className="flex min-w-0 max-w-[26rem] items-center gap-1.5">
+            <span className="truncate font-medium" title={r.issue.name ?? r.issue.external_id}>
+              {r.issue.cve ?? r.issue.name ?? r.issue.external_id}
+            </span>
+            <ModulePivotLink
+              module={pivotModuleOf(r.issue.source)}
+              baseUrl={moduleUrls[pivotModuleOf(r.issue.source) ?? "opencti"]}
+              id={r.issue.external_id}
+              kind={pivotModuleOf(r.issue.source) === "openaev" ? "finding" : "entity"}
+              iconOnly
+              testId="ctem-case-issue-pivot"
+            />
           </span>
         ),
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.cve ?? r.issue.name ?? "")),
@@ -384,14 +401,11 @@ export default function CtemCaseDetail() {
     {
       key: "source",
       header: "Source",
+      // The module's emblem and name (#1357); a signal keeps its name alone.
       cell: (r) =>
-        isRestrictedIssue(r.issue)
-          ? null
-          : r.issue.source === "signal"
-            ? t_i18n("Signal")
-            : r.issue.source === "openaev"
-              ? "OpenAEV"
-              : "OpenCTI",
+        isRestrictedIssue(r.issue) ? null : (
+          <SourceBadge source={r.issue.source === "signal" ? "signal" : (pivotModuleOf(r.issue.source) ?? "opencti")} label={t_i18n("Signal")} testId="ctem-case-issue-source" />
+        ),
       sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : r.issue.source),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.source),
     },

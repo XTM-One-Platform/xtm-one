@@ -65,5 +65,46 @@ describe("signal source link", () => {
     const evidence = within(facts).getByTestId("ctem-signal-evidence");
     expect(evidence).toHaveTextContent("scenario_score_degraded");
     expect(evidence).not.toHaveTextContent("platform_url");
+    expect(within(facts).getByTestId("ctem-signal-source")).toHaveAttribute("data-source", "openaev");
+  });
+
+  // #1357: an OpenCTI signal with no link in its evidence opens its entity in OpenCTI by its id,
+  // its source drawn with the OpenCTI emblem; no base URL, no pivot.
+  const cti: CtemSignal = {
+    ...regression,
+    trigger_path: "new_vulnerability",
+    source: { provider: "opencti", external_id: "vulnerability--1" },
+    subject: { kind: "vulnerability", ref: "CVE-2026-1", label: "CVE-2026-1" },
+    evidence: { event: "create" },
+  };
+
+  it("an OpenCTI signal pivots to its entity in OpenCTI", async () => {
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith("/ctem-metrics/posture") ? { products: { opencti: { present: true, url: "https://cti.example/" } } } : cti,
+      ),
+    );
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+        <SignalTraceBody id={ID} />
+      </MemoryRouter>,
+    );
+    const facts = await screen.findByTestId("ctem-signal-facts");
+    expect(within(facts).getByTestId("ctem-signal-source")).toHaveAttribute("data-source", "opencti");
+    const pivot = await within(facts).findByTestId("ctem-signal-source-pivot");
+    expect(pivot).toHaveAttribute("href", "https://cti.example/dashboard/id/vulnerability--1");
+    expect(pivot).toHaveAttribute("target", "_blank");
+  });
+
+  it("draws no pivot when OpenCTI is not connected", async () => {
+    get.mockImplementation((path: string) => Promise.resolve(path.startsWith("/ctem-metrics/posture") ? { products: {} } : cti));
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+        <SignalTraceBody id={ID} />
+      </MemoryRouter>,
+    );
+    const facts = await screen.findByTestId("ctem-signal-facts");
+    expect(within(facts).queryByTestId("ctem-signal-source-pivot")).toBeNull();
+    expect(within(facts).getByTestId("ctem-signal-source")).toHaveTextContent("OpenCTI");
   });
 });

@@ -65,6 +65,8 @@ const SURFACES: Readonly<Record<string, Audience>> = {
   "pages/settings/HealthModuleAnalystBlock.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
   "pages/settings/HealthModuleThresholdsBlock.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
   "pages/settings/HealthPetLibrary.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
+  /* The run-as picker: also rendered by the CTEM setup dialog; it draws no link, so it is held to the stricter rule. */
+  "pages/settings/HealthRunAsBlock.tsx": { kind: "any" },
   "pages/settings/HealthSection.tsx": { kind: "admin-via", via: "pages/Settings.tsx" },
   "pages/settings/HealthTriggerBlocks.tsx": { kind: "admin-via", via: "pages/settings/HealthSection.tsx" },
   "pages/Settings.tsx": { kind: "admin-route", route: "/settings" },
@@ -118,8 +120,11 @@ function routeOf(to: string) {
   return ROUTES.find((route) => route.path === path) ?? ROUTES.find((route) => pattern(route.path).test(path));
 }
 
+const HEALTH_SETTINGS = /HEALTH_SETTINGS_PATH = "([^"]+)"/.exec(read("pages/settings/settings-routes.ts"))?.[1] ?? "";
 const CONSTANTS: Readonly<Record<string, string>> = {
-  HEALTH_SETTINGS_PATH: /HEALTH_SETTINGS_PATH = "([^"]+)"/.exec(read("pages/settings/settings-routes.ts"))?.[1] ?? "",
+  HEALTH_SETTINGS_PATH: HEALTH_SETTINGS,
+  /* ModuleCheckReport: `${HEALTH_SETTINGS_PATH}#<run-as anchor>`; routeOf drops the hash. */
+  HEALTH_RUN_AS_SETTINGS_PATH: HEALTH_SETTINGS,
 };
 
 interface Found {
