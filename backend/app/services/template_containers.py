@@ -245,6 +245,45 @@ async def load_assets(
     return list(result.scalars().all())
 
 
+async def load_visible_asset(file_id: object, user_id: object) -> FileAttachment | None:
+    """The template asset *file_id* names when *user_id* can see its container, else ``None``.
+
+    The grant ``get_template``, the file download and ``render_html_to_image`` apply: the
+    container own, shared with the caller or a group, or company-managed
+    (``caller_visible_filter``). A full id only; a malformed id, a row that is no template
+    asset and a container the caller cannot see all answer ``None``. Never raises.
+    """
+    from app.api.v1.helpers import caller_visible_filter, get_user_group_ids
+    from app.core.database import async_session
+    from app.core.utils import safe_uuid
+
+    asset_id = safe_uuid(str(file_id).strip()) if isinstance(file_id, str) else None
+    user_uuid = safe_uuid(str(user_id)) if user_id else None
+    if asset_id is None or user_uuid is None:
+        return None
+    try:
+        async with async_session() as db:
+            group_ids = await get_user_group_ids(db, user_uuid)
+            return (
+                (
+                    await db.execute(
+                        select(FileAttachment)
+                        .join(TemplateContainer, TemplateContainer.id == FileAttachment.template_container_id)
+                        .where(
+                            FileAttachment.id == asset_id,
+                            FileAttachment.source == TEMPLATE_ASSET_SOURCE,
+                            caller_visible_filter(TemplateContainer, user_uuid, group_ids),
+                        )
+                    )
+                )
+                .scalars()
+                .first()
+            )
+    except Exception as exc:
+        logger.warning("Template asset %s not loaded: %s", asset_id, exc)
+        return None
+
+
 def template_asset_prefix(container_id: uuid.UUID) -> str:
     """The object-key prefix every asset of *container_id* is stored under."""
     return f"template-asset/{container_id}"

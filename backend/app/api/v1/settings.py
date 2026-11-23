@@ -4498,6 +4498,8 @@ async def update_preferences(
         user.timezone = body.timezone
     if body.theme is not None:
         user.theme = body.theme if body.theme in ("dark", "light") else None
+    if body.pastel_colours is not None:
+        user.pastel_colours = body.pastel_colours
     if body.language is not None:
         # Same contract as OpenCTI: an unsupported language is a client error,
         # never silently coerced.

@@ -272,10 +272,12 @@ async def _resolve_put_ref(
     marker, a unique 8+ hex prefix), then the conversation's or run's own row by id
     (``load_scoped_file_ref``), then a stored file the acting *user_id* owns in any of the user's
     conversations or runs, by id or prefix (``work_item_files.load_owned_file_ref``, the Files page's
-    "Mine" predicate). A row found joins the context as a fetched file, so ``code_interpreter`` mounts it
-    under ``attachments/`` from then on. Never another user's file.
+    "Mine" predicate), then a template asset whose container the user can see, by its full id
+    (``template_containers.load_visible_asset``, the grant ``get_template`` applies). A row found joins the
+    context as a fetched file, so ``code_interpreter`` mounts it under ``attachments/`` from then on. Never
+    another user's file.
     """
-    from app.services.builtin_tools._shared import load_scoped_file_ref, resolve_file_ref
+    from app.services.builtin_tools._shared import _file_handle_key, load_scoped_file_ref, resolve_file_ref
 
     if not isinstance(file_id, str) or not file_id.strip():
         return None, None
@@ -288,6 +290,12 @@ async def _resolve_put_ref(
         from app.services.work_item_files import load_owned_file_ref
 
         ref, refusal = await load_owned_file_ref(file_id, user_id)
+    if ref is None and refusal is None and user_id:
+        from app.llm.base import FileRef
+        from app.services.template_containers import load_visible_asset
+
+        asset = await load_visible_asset(_file_handle_key(file_id).removeprefix("file-"), user_id)
+        ref = FileRef.from_attachment(asset) if asset is not None else None
     if ref is not None and file_context is not None:
         from app.tools.base import register_fetched_file
 
@@ -3609,7 +3617,7 @@ def build_sandbox_workspace_tools(
         ToolDefinition(
             name="sandbox_put_file",
             description=(
-                "Copy a conversation file (an upload, a download, a generated file, a saved video frame: its file_id) into the "
+                "Copy a conversation file (an upload, a download, a generated file, a saved video frame, a template asset: its file_id) into the "
                 "code interpreter's sandbox workspace at path (path src/app.py is workspace/src/app.py), where every later "
                 "code_interpreter call finds it."
             ),
