@@ -31,6 +31,7 @@ from app.agents.ctem_third_party_risk import THIRD_PARTY_RISK_AGENTS, THIRD_PART
 from app.agents.cti_skills import CTI_SKILLS
 from app.agents.fimi_skills import FIMI_SKILLS
 from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST, SEEDED_FLEET_OPT_IN
+from app.agents.gate_answered import GATE_ANSWERED, gate_answered_assignment
 from app.agents.openaev_detection_desk import DETECTION_DESK_AGENTS, DETECTION_DESK_ASSIGNMENTS
 from app.agents.opencrq_risk_budget_desk import RISK_BUDGET_DESK_AGENTS, RISK_BUDGET_DESK_ASSIGNMENTS
 from app.agents.opencti_pir_desk import PIR_DESK_AGENTS, PIR_DESK_ASSIGNMENTS
@@ -2841,33 +2842,14 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
 ]
 BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 
-# ── CTEM loop fleets run on cases (#891, #1390, dev-docs/ctem-fleets.md s.4.0 and s.14) ──
+# ── CTEM loop fleets run on cases (#891, dev-docs/ctem-fleets.md s.4.0) ──
 # The case is the record: ``ctem_case.opened`` starts one run per case (the event
 # is raised once, at creation; a later signal joins the case without a new
 # event), ``ctem_case.reopened`` restarts the same case's loop, and
-# ``ctem_case.sla_breached`` escalates it. Ownership (#1390, CTEM-31): the CTEM
-# loop owns every case on every trigger path; a use-case fleet takes the cases of
-# its own paths only while its case automation is enabled. The owner is computed
-# when the event is published (``services/ctem_case_routing.py`` stamps
-# ``owner_fleet`` on the payload) and each case automation filters on it, so
-# exactly one fleet hears a case event.
-CTEM_CASE_ASSIGNMENT_NAME = "Case opened or reopened"
-CTEM_LOOP_CASE_FLEET = "ctem-loop"
-CTEM_VULN_CASE_FLEET = "ctem-vuln-prioritization"
-#: The fleets that run cases: fleet slug -> the orchestrator holding the case
-#: automation, the work item key prefix of its case items, and the trigger paths
-#: it takes over while that automation is enabled (``None``: every path, the
-#: default owner).
-CTEM_CASE_FLEETS: dict[str, dict[str, Any]] = {
-    CTEM_LOOP_CASE_FLEET: {"agent": "ctem-threat-response-orchestrator", "key": "ctem:f1", "paths": None},
-    CTEM_VULN_CASE_FLEET: {
-        "agent": "ctem-vuln-prioritization-orchestrator",
-        "key": "ctem:f2",
-        "paths": ("new_vulnerability",),
-    },
-}
-#: The use-case fleets that take a case over from the loop while active.
-CTEM_USE_CASE_FLEETS: tuple[str, ...] = tuple(s for s, f in CTEM_CASE_FLEETS.items() if f["paths"] is not None)
+# ``ctem_case.sla_breached`` escalates it. Path routing: the vulnerability
+# fleet takes the vulnerability and exposure paths, the threat fleet the
+# threat and supply-chain ones, so a case starts exactly one fleet run.
+CTEM_THREAT_CASE_PATHS: tuple[str, ...] = ("relevant_threat", "credential_leak", "third_party_event")
 _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.opened",
     "ctem_case.reopened",
@@ -2877,11 +2859,36 @@ _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.retest_requested",
 )
 
+# ── A person's answer to a waiting gate resumes the case (#1388) ──
+# A gate that waits is a needs_human work item the loop orchestrator owns,
+# keyed by one of these prefixes and the case (or the subject) id; the answer
+# sets it back to open. These lists are THE gate keys: the personas name them
+# and the "Gate answered" trigger below takes exactly them.
+CTEM_SHARED_GATE_PREFIXES: tuple[str, ...] = (
+    # ctem.analyst_review, read by the case page (dev-docs/ctem-loop-visibility.md).
+    "ctem:review:",
+    # ctem.validation.non_readonly, read by the case page (case-validation.ts).
+    "ctem:validation:",
+    # ctem.remediation.decision, filed by the platform (ctem_cases.py).
+    "ctem:remediation:",
+)
+CTEM_F1_GATE_PREFIXES: tuple[str, ...] = (
+    *CTEM_SHARED_GATE_PREFIXES,
+    "ctem:f1:launch:",
+    "ctem:f1:case-mobilize:",
+)
+CTEM_F2_GATE_PREFIXES: tuple[str, ...] = (
+    *CTEM_SHARED_GATE_PREFIXES,
+    "ctem:f2:validate:",
+    "ctem:f2:mobilize:",
+)
+CTEM_GATE_ANSWERED = GATE_ANSWERED
 
-def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
+
+def _case_assignment(common: dict[str, Any], *, fleet_key: str, paths_filter: dict[str, Any]) -> dict[str, Any]:
     return {
         **common,
-        "name": CTEM_CASE_ASSIGNMENT_NAME,
+        "name": "Case opened or reopened",
         "description": (
             "Runs the fleet loop on a CTEM case: opened from an in-scope signal, "
             "reopened by a failed re-test, or past its SLA."
@@ -2889,13 +2896,12 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
         "trigger_type": "platform_event",
         "trigger_config": {
             "event": list(_CASE_EVENT_NAMES),
-            "filter": {"owner_fleet": owner_filter},
+            "filter": {"trigger_path": paths_filter},
             "scope": "all",
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state, owner_fleet: the fleet the platform routed this case to, yours). The case "
-            "is the record of this loop: read it first with "
+            "state). The case is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
             "it owned by you when no open item has that key; when one is open, add a note "
@@ -2916,13 +2922,39 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
     }
 
 
+def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str, prefixes: tuple[str, ...]) -> dict[str, Any]:
+    """The listener that resumes a case once a person answered one of its waiting gates (#1388)."""
+    return gate_answered_assignment(
+        common,
+        prefixes=prefixes,
+        inherit_switch_from="Case opened or reopened",
+        description=(
+            "Resumes a CTEM case when a person answers one of its waiting gates: records the "
+            "decision on the case and runs the next step, or stops on a rejection."
+        ),
+        apply=(
+            "Read the case its key names (the case id, else the case of the subject id, found with "
+            "list_ctem_cases) with get_ctem_case, and write the decision on it with "
+            "update_ctem_case gate (outcome answered, the gate, the option chosen, who answered). "
+            "Approved: run exactly what the ask covered and continue the loop from that step, "
+            "writing every result on the case; the case's own work item keyed "
+            f"`{fleet_key}:case:` followed by the case id gets a note. Rejected or deferred: "
+            "record it on the case with the reason and stop or re-plan as the answer says. End with "
+            "the case id, the gate, the decision and the next step."
+        ),
+    )
+
+
 CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
-    _CTEM_F2_COMMON,
-    fleet_key=CTEM_CASE_FLEETS[CTEM_VULN_CASE_FLEET]["key"],
-    owner_filter={"eq": CTEM_VULN_CASE_FLEET},
+    _CTEM_F2_COMMON, fleet_key="ctem:f2", paths_filter={"not_in": list(CTEM_THREAT_CASE_PATHS)}
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
+CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(
+    _CTEM_F2_COMMON, fleet_key="ctem:f2", prefixes=CTEM_F2_GATE_PREFIXES
+)
+CTEM_F2_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
+BUILTIN_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 
 # ── OpenAEV events into the CTEM loop (CTEM-15, #918) ──
 # Provisions the OpenAEV triggers whose deliveries move the loop with no model
@@ -3126,12 +3158,10 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
 ]
 
 CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
-    _F1_RUN,
-    fleet_key=CTEM_CASE_FLEETS[CTEM_LOOP_CASE_FLEET]["key"],
-    # Every case no use-case fleet holds, an event with no owner stamped included.
-    owner_filter={"not_in": list(CTEM_USE_CASE_FLEETS)},
+    _F1_RUN, fleet_key="ctem:f1", paths_filter={"in": list(CTEM_THREAT_CASE_PATHS)}
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
+CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1", prefixes=CTEM_F1_GATE_PREFIXES))
 
 BUILTIN_ASSIGNMENTS.extend(CTEM_F1_ASSIGNMENTS)
 

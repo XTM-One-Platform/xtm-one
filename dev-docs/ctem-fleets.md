@@ -161,21 +161,13 @@ Common rules:
   work item with `needs_human: true` (approval). Read and draft actions do not.
 - Work-item keys `ctem:<fleet>:<object id>`; shared-state key per fleet
   `ctem:<fleet>:state` (open cases, last refresh, counters for ROI).
-- **The loop fleets run on cases (#891, ownership #1390).** The CTEM loop
-  owns every case on every trigger path (section 14). Its "Case opened or
-  reopened" automation (platform_event, scope all, seeded off) hears
-  `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.sla_breached`,
-  `ctem_case.validation_finished` and `ctem_case.retest_requested`. A use-case
-  fleet takes the cases of its own paths only while its case automation is
-  enabled (Vulnerability management: `new_vulnerability`). The owner is
-  computed when the event is published (`services/ctem_case_routing.py`
-  stamps `owner_fleet`) and each automation filters on it, so exactly one
-  fleet runs a case. Case events fire once: on fleet enable and on the
-  hourly case sweep, `catch_up` hands every open case its owner never ran
-  (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
-  that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
-  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active}.
-  The run owns one work item `ctem:<fleet>:case:<case id>` (an open
+- **The loop fleets run on cases (#891).** F1 (threat response) and F2
+  (vulnerability prioritization) start a loop from a CTEM case: their "Case
+  opened or reopened" automation (platform_event, scope all, seeded off) hears
+  `ctem_case.opened`, `ctem_case.reopened` and `ctem_case.sla_breached`,
+  routed by the case's `trigger_path` so exactly one fleet runs a case: F1
+  takes `relevant_threat`, `credential_leak` and `third_party_event`, F2 every
+  other path. The run owns one work item `ctem:<fleet>:case:<case id>` (an open
   one gets a note, never a second loop), writes owner, state, validation
   (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the
   case, and closes on proof: a passing re-test resolves the case. Re-test items
@@ -559,7 +551,21 @@ the next version with its source (`form`, `draft`, `api`). The free-text
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
+| reference exchange rates (`fx_rates`, optional, not a contract field) | from currency, to currency, rate, date (`as_of`), source | `ctem-risk-quantifier`, `opencrq-risk-desk-orchestrator` |
 | ticketing target | integration and project | Mobilization |
+
+Currencies (#1383): OpenCRQ prices every loss in USD; the thresholds of the
+risk appetite are in the profile's `currency`. A risk agent never compares
+the two: it converts an OpenCRQ figure with the profile's reference rate
+into the organization's currency (`reference_rate`, the latest `as_of`
+wins) and cites the rate, its date and its source, or, with no such rate,
+reports the comparison as unknown (`above_approval_threshold: null` in the
+Risk Quantifier's output) and names the missing rate. The rates are set by
+the API (`PUT /api/v1/organization-context` with `fx_rates`) or through an
+agent (`update_organization_context` / a proposal on `fx_rates`); a form
+save that does not send the key keeps the stored rates. They are shown in
+the always-on summary next to the currency, at most ten, and are not a
+category of the index.
 
 Every new agent's persona carries a "Read the organization context first"
 step; a missing field is reported in the run output, never guessed.
@@ -599,7 +605,14 @@ categories preloaded after the block come from the same cascade on
 `organization_context_categories` (platform JSON list, default `[]`; agent
 and assignment NULL = inherit, a list, empty included, wins;
 `resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. A run of a fleet member keeps the fuller
+with the call that reads the rest. The brief notice of an incomplete
+profile ("Organization context incomplete: missing ...", #11586) and the
+CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
+loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
+the fleet block and the tool reading name them only when
+`organization_context.ctem_work_for` holds (the agent holds CTEM tools, a
+built-in CTEM case or signal agent or the `ctem_read` group, or its home
+fleet is a seeded CTEM fleet or a fork of one). A run of a fleet member keeps the fuller
 fleet block above instead, so the profile appears once; resolved off,
 neither block. An explicit `off` on the agent or the assignment also removes
 the tool (`tools_enabled_for`, in `agent_chat` and `assignment_engine`);
@@ -1032,6 +1045,18 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   change of event types replaces the trigger.
 - Removed: when `provision` is dropped, the assignment is disabled or deleted.
   An unbound integration leaves the state `orphaned` with the reason.
+- Bound: the assignment's binding, else its agent's; an agent that reaches the
+  module only by template binding (`integration_template_bindings`, the seeded
+  agents) gets the integration its provisioning run-as user resolves at run
+  time (`trigger_provisioning.template_integration_id`: the user's own first,
+  else a company-wide one, oldest first so the receiver URL stays stable; never
+  the seed owner). None resolvable: the state says `template binding opencti:
+  no OpenCTI integration resolvable for the run-as user`. The OpenAEV pass and
+  the CTEM-08 live PIR score re-read (the provisioned `integration_id`) follow
+  the same rule, and so does the event poller (`event_poller._poll_integration`,
+  the OpenCRQ job events): a template-resolved integration is polled as the
+  run-as user. A poll that reads nothing says why in `get_assignment`
+  (`Poll skipped: <reason>`, `event_poll_skip:<assignment>`, a day).
 - Visible: `opencti_provisioning` (status, trigger_id, notifier_id, error,
   checked_at) is returned with the assignment's `trigger_config`, next to
   `last_triggered_at`.
@@ -2338,6 +2363,17 @@ command center hero, and on the CTEM loop fleet page (slug `ctem-loop`) through
 the header's "Set up" and the menu's "Run setup again" (`FleetSetupDialog`),
 for an XTM One administrator only, never while impersonating
 (`showsCtemLoopSetupEntry`).
+
+On the command center the entry is a nudge (#1379, `dashboardSetupEntryShown`
+in `ctem-loop-setup.ts`, `useDashboardSetupEntry`): it is drawn only while no
+CTEM work runs, that is the loop fleet's enable step reads
+`automations_enabled` 0 and every fleet the page shows (the CTEM fleets, or the
+person's choice, custom fleets included) reads 0 automations on in its health;
+it is not drawn while either is loading. Its close control writes
+`entry:ctem-loop-setup` into `users.organization_context_notice_dismissed`, so it
+never comes back on its own for that person. The fleet page entries and the
+case card's "Set up the CTEM loop" choice (a case no automation works) are
+contextual and always shown.
 
 ### One guided setup for every fleet
 

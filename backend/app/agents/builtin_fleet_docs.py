@@ -63,7 +63,9 @@ CTEM_LOOP_DOC: dict[str, str] = {
     ),
     "triggers": (
         "- **Case opened or reopened**: a CTEM case opens, reopens on a failed re-test or breaches "
-        "its SLA; one loop per case, on every trigger path (a use-case fleet takes the cases of its paths only while its own case automation is on). Cases opened before the fleet was enabled are taken on enable and on the hourly case sweep.\n"
+        "its SLA; one loop per case (vulnerability cases go to the Vulnerability management fleet).\n"
+        "- **Gate answered**: a person answers a gate a case waits on; the loop goes on from that step, "
+        "or stops on a rejection.\n"
         "- **New relevant threat** and **Threat activity flagged in a PIR**: OpenCTI events, kept "
         "when relevant to the profile or at the PIR threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
@@ -115,8 +117,10 @@ CTEM_THREAT_RESPONSE_DOC: dict[str, str] = {
         "- **Threat activity flagged in a PIR**: OpenCTI flags threat activity in an organization PIR; the run starts when its live PIR score reaches the policy threshold (75 by default, Settings).\n"
         "- **Weekly threat sweep**: Mondays 07:00, catches what the events missed.\n"
         "- **Re-test due**: a re-test request opened once a fix is deployed re-runs the validated scenario.\n"
-        "- **Case opened or reopened**: a CTEM case on any trigger path is opened, reopened by a failed "
-        "re-test, or past its SLA, unless an active use-case fleet owns its path; the case is the record of the loop."
+        "- **Case opened or reopened**: a CTEM case on a threat, credential leak or third-party path is "
+        "opened, reopened by a failed re-test, or past its SLA; the case is the record of the loop.\n"
+        "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
+        "case and the loop goes on, or stops on a rejection."
     ),
     "flow": (
         "1. Relevance: below the threshold the case closes as not relevant, with the reason.\n"
@@ -152,14 +156,15 @@ CTEM_VULN_PRIORITIZATION_DOC: dict[str, str] = {
         "- **Vulnerability sighted**: an OpenCTI sighting, triaged at a higher priority.\n"
         "- **Daily backlog pass**: every day at 06:00, re-ranks the open cases.\n"
         "- **Re-test due**: a re-test request opened once the fix is deployed re-validates the exposure.\n"
-        "- **Case opened or reopened**: while this automation is on, a CTEM case on the new vulnerability "
-        "path is opened, reopened by a failed re-test, past its SLA, or an OpenAEV result it waits on arrived; "
-        "the case is the record of the loop. Off, the CTEM loop runs those cases.\n"
+        "- **Case opened or reopened**: a CTEM case on any other path is opened, reopened by a failed "
+        "re-test, past its SLA, or an OpenAEV result it waits on arrived; the case is the record of the loop.\n"
         "- **OpenAEV results into cases**: listens to OpenAEV with no run of its own; a finished "
         "simulation or a changed finding moves the case it concerns, a degraded scenario score records "
         "a regression signal, an attack path reaching a critical asset records a proven-exploitable signal.\n"
         "- **Analyst review mark**: listens to OpenCTI with no run of its own; when the review gate "
-        "waits, the analyst's label on the drafted Grouping approves its coverage request and resumes the run."
+        "waits, the analyst's label on the drafted Grouping approves its coverage request and resumes the run.\n"
+        "- **Gate answered**: a person answers a gate the case waits on; the decision is written on the "
+        "case and the loop goes on, or stops on a rejection."
     ),
     "flow": (
         "1. Asset match from the organization context: no matching asset closes the case, with the reason.\n"
@@ -285,7 +290,8 @@ OPENCTI_PIR_DESK_DOC: dict[str, str] = {
         "Vulnerability flagged in one of the organization's PIRs.\n"
         "- **Weekly PIR answer**: Mondays 07:00.\n"
         "- **Half-year threat landscape**: 1 January and 1 July, 08:00.\n"
-        "- **Stale indicator clean-up**: the 1st of each month, 06:00."
+        "- **Stale indicator clean-up**: the 1st of each month, 06:00.\n"
+        "- **Gate answered**: a person answers an indicator revocation; it is revoked or kept as decided."
     ),
     "flow": (
         "1. Triage: the PIR Triage Analyst scores the new entity against each PIR, with the evidence "
@@ -324,7 +330,8 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Simulation finished**: an OpenAEV simulation ends (provisioned OpenAEV trigger).\n"
         "- **Weekly validation plan**: Mondays 06:00.\n"
         "- **Weekly coverage report**: Fridays 08:00.\n"
-        "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done."
+        "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done.\n"
+        "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
     ),
     "flow": (
         "1. Plan: the orchestrator picks the techniques with no recent result against the crown jewels; the "
@@ -369,7 +376,8 @@ OPENCRQ_RISK_BUDGET_DESK_DOC: dict[str, str] = {
         "- **Finding re-scored**: an OpenCRQ finding score recompute job succeeded.\n"
         "- **Control validation ingested**: OpenCRQ ingested OpenAEV findings or recorded a proven posture.\n"
         "- **Weekly investment review**: Mondays 07:00.\n"
-        "- **Monthly Board pack**: the 1st of the month at 08:00."
+        "- **Monthly Board pack**: the 1st of the month at 08:00.\n"
+        "- **Gate answered**: a person answers an investment recommendation; the decision is recorded."
     ),
     "flow": (
         "1. Refresh: on an OpenCRQ event, the orchestrator compares the register with its last snapshot.\n"
@@ -637,6 +645,12 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
             "filter": "A threat, credential leak or third-party CTEM case opens, reopens or breaches its SLA",
             "detail": "One loop per case",
         },
+        {
+            "module": "platform",
+            "name": "Gate answered",
+            "filter": "A person answers a gate a case waits on",
+            "detail": "The loop goes on from that step",
+        },
     ],
     "steps": [
         {
@@ -686,6 +700,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly threat sweep", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per fix re-tested", "runs_min": 0, "runs_max": 10},
         {"trigger": "Case opened or reopened", "basis": "One run per case event", "runs_min": 0, "runs_max": 20},
+        {"trigger": "Gate answered", "basis": "One run per gate answered", "runs_min": 0, "runs_max": 40},
     ],
 }
 
@@ -928,6 +943,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Weekly PIR answer", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Half-year threat landscape", "filter": "1 January and 1 July at 08:00"},
         {"module": "schedule", "name": "Stale indicator clean-up", "filter": "The 1st of each month at 06:00"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers an indicator revocation"},
     ],
     "steps": [
         {"title": "Triage", "detail": "Scored against each PIR and the organization profile."},
@@ -968,6 +984,7 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly PIR answer", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Half-year threat landscape", "basis": "Two runs a year", "runs_min": 0, "runs_max": 1},
         {"trigger": "Stale indicator clean-up", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+        {"trigger": "Gate answered", "basis": "One run per revocation answered", "runs_min": 0, "runs_max": 20},
     ],
 }
 
@@ -979,6 +996,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"module": "schedule", "name": "Weekly validation plan", "filter": "Mondays at 06:00"},
         {"module": "schedule", "name": "Weekly coverage report", "filter": "Fridays at 08:00"},
         {"module": "platform", "name": "Re-test due", "filter": "A re-test work item of the desk"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers a launch approval"},
     ],
     "steps": [
         {"title": "Plan", "detail": "Simulations from the threat arsenal against the crown jewels.", "gate": True},
@@ -1021,6 +1039,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
         {"trigger": "Weekly validation plan", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Weekly coverage report", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Re-test due", "basis": "One run per remediated gap", "runs_min": 0, "runs_max": 60},
+        {"trigger": "Gate answered", "basis": "One run per launch answered", "runs_min": 0, "runs_max": 60},
     ],
 }
 
@@ -1047,6 +1066,7 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
         },
         {"module": "schedule", "name": "Weekly investment review", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Monthly Board pack", "filter": "The 1st of the month at 08:00"},
+        {"module": "platform", "name": "Gate answered", "filter": "A person answers an investment recommendation"},
     ],
     "steps": [
         {"title": "Refresh", "detail": "The register compared with the last snapshot."},
@@ -1091,6 +1111,7 @@ OPENCRQ_RISK_BUDGET_DESK_STRUCTURED: dict[str, Any] = {
         },
         {"trigger": "Weekly investment review", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Monthly Board pack", "basis": "One run a month", "runs_min": 1, "runs_max": 1},
+        {"trigger": "Gate answered", "basis": "One run per recommendation answered", "runs_min": 0, "runs_max": 10},
     ],
 }
 
