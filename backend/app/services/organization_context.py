@@ -170,6 +170,8 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
 PAGE_ONLY_FIELDS: tuple[str, ...] = ("posture_target",)
 
 _Strict = ConfigDict(extra="forbid", str_strip_whitespace=True)
+#: The most assets the profile model holds; the records hold more (#1543), the readers get this many.
+PROFILE_ASSET_CAP = 5000
 
 
 def normalize_regions(value: list[str]) -> list[str]:
@@ -919,7 +921,7 @@ class OrganizationProfile(BaseModel):
     fx_rates: list[FxRate] = Field(default_factory=list, max_length=50)
     ticketing: TicketingTarget = Field(default_factory=TicketingTarget)
     #: Assets of the attack surface, with their exposure (#11543).
-    assets_exposure: list[AssetEntry] = Field(default_factory=list, max_length=5000)
+    assets_exposure: list[AssetEntry] = Field(default_factory=list, max_length=PROFILE_ASSET_CAP)
     #: Groups the assets join through their ``group`` (#11781; ``asset_group`` rows of #11543 move here).
     asset_groups: list[AssetGroupEntry] = Field(default_factory=list, max_length=500)
     #: The rules the prioritization funnel applies (#11543); defaults change nothing.
@@ -1208,6 +1210,57 @@ async def current_version(
     ).scalar_one_or_none()
 
 
+async def asset_list_counts(db: AsyncSession, organization_id: uuid.UUID | None) -> dict[str, int] | None:
+    """``{assets_exposure, asset_groups}`` counted on the asset records (#1543), ``None`` before their import.
+
+    Two indexed ``COUNT`` reads: the prompt blocks and the category index name
+    the true sizes without loading a row (the profile JSON no longer sees the
+    row API, agent and import writes).
+    """
+    from app.services import organization_asset_records as records
+
+    if organization_id is None or not await records.is_imported(db, organization_id):
+        return None
+    return await records.list_counts(db, organization_id)
+
+
+async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | None) -> OrganizationProfile:
+    """The profile of *row* with ``assets_exposure`` and ``asset_groups`` read from the asset records (#1543).
+
+    The records are the source of truth once imported: a row API, agent or
+    import write lands there and never in a profile version. Before the import
+    the stored lists are the truth and are answered as they are. The lists are
+    capped at 5,000 assets (``profile_lists``), the bound the readers had.
+    """
+    from app.services import organization_asset_records as records
+
+    profile = parse_profile(row.profile if row else {})
+    if row is None or not await records.is_imported(db, row.organization_id):
+        return profile
+    asset_rows, group_rows, _truncated = await records.profile_lists(db, row.organization_id, cap=PROFILE_ASSET_CAP)
+    assets: list[AssetEntry] = []
+    for value in asset_rows:
+        try:
+            assets.append(AssetEntry.model_validate({k: v for k, v in value.items() if k != "software"}))
+        except ValueError:
+            continue  # a record a newer release wrote with a field this one does not know
+    groups: list[AssetGroupEntry] = []
+    for value in group_rows:
+        try:
+            groups.append(AssetGroupEntry.model_validate(value))
+        except ValueError:
+            continue
+    return profile.model_copy(update={"assets_exposure": assets, "asset_groups": groups})
+
+
+async def current_profile(
+    db: AsyncSession, organization_id: uuid.UUID | None = None
+) -> tuple[OrganizationContextVersion | None, OrganizationProfile]:
+    """``(latest version, its profile with the asset lists from the records)``: what a reader of assets uses."""
+    row = await current_version(db, organization_id)
+    return row, await hydrated_profile(db, row)
+
+
 async def list_versions(
     db: AsyncSession, *, limit: int = 20, organization_id: uuid.UUID | None = None
 ) -> list[OrganizationContextVersion]:
@@ -1296,16 +1349,23 @@ async def save_version(
     # profile (an old client, an import or a sync still on this path) become row writes first, only
     # the rows that differ, each re-matching its own identity cluster. A hand row gets its id written
     # back on *profile* before the dump, so the next save addresses it exactly.
-    from app.services.organization_asset_records import apply_profile_lists
+    from app.services import organization_asset_records as records
 
-    await apply_profile_lists(
-        db,
-        organization_id,
-        profile,
-        origin="profile",
-        actor=f"{source}:{author_user_id or ''}".rstrip(":"),
-        profile_version=int(latest or 0) + 1,
-    )
+    if await _asset_lists_changed(db, organization_id, profile, latest):
+        held = await asset_list_counts(db, organization_id)
+        await records.apply_profile_lists(
+            db,
+            organization_id,
+            profile,
+            origin="profile",
+            actor=f"{source}:{author_user_id or ''}".rstrip(":"),
+            profile_version=int(latest or 0) + 1,
+            # A list read from records past the model's cap is a page: what it lacks is not deleted.
+            remove_missing=not held or held["assets_exposure"] <= PROFILE_ASSET_CAP,
+        )
+    elif await records.is_imported(db, organization_id):
+        if await records.imported_version(db, organization_id) >= int(latest or 0):
+            await records.mark_version(db, organization_id, int(latest or 0) + 1)
     row = OrganizationContextVersion(
         organization_id=organization_id,
         version=int(latest or 0) + 1,
@@ -1317,6 +1377,65 @@ async def save_version(
     db.add(row)
     await db.flush()
     return row
+
+
+def _list_dump(rows: Any) -> list[Any]:
+    return [r.model_dump(mode="json") if hasattr(r, "model_dump") else dict(r) for r in rows or []]
+
+
+async def _asset_lists_changed(
+    db: AsyncSession, organization_id: uuid.UUID, profile: BaseModel, latest: int | None
+) -> bool:
+    """Whether *profile* changes the asset or group list of the latest stored version (#1543).
+
+    A writer that edits another field bases its profile on the stored JSON,
+    whose lists no longer see the row API, agent and import writes. Applying
+    those unchanged, stale lists to the records would delete what those writes
+    added: only a list the caller changed is applied. A profile without the
+    lists (a tracked organization's model) changes nothing.
+    """
+    if getattr(profile, "assets_exposure", None) is None:
+        return False
+    if not latest:
+        return True
+    stored = (
+        await db.execute(
+            select(OrganizationContextVersion.profile).where(
+                OrganizationContextVersion.organization_id == organization_id,
+                OrganizationContextVersion.version == int(latest),
+            )
+        )
+    ).scalar()
+    stored = stored if isinstance(stored, dict) else {}
+    for name in ("assets_exposure", "asset_groups"):
+        before = [dict(r) for r in stored.get(name) or [] if isinstance(r, dict)]
+        if _list_dump(getattr(profile, name, None)) != [
+            _list_dump([parsed])[0] for parsed in _parsed_rows(name, before)
+        ]:
+            return True
+    return False
+
+
+def _parsed_rows(name: str, rows: list[dict[str, Any]]) -> list[Any]:
+    """*rows* of the stored list *name* as the profile model dumps them (a row that no longer parses kept raw).
+
+    A source's inline ``software`` (not an ``AssetEntry`` field) is left out, as
+    the model drops it, so an unchanged synced row compares equal.
+    """
+    from app.services import organization_asset_records as records
+
+    out: list[Any] = []
+    for row in rows:
+        try:
+            if name == "assets_exposure":
+                value = records.validate_asset(row)
+                value.pop("software", None)
+                out.append(AssetEntry.model_validate(value))
+            else:
+                out.append(AssetGroupEntry.model_validate(row))
+        except ValueError:
+            out.append(row)
+    return out
 
 
 #: Header of the block a fleet run's prompt carries (see :func:`fleet_run_context`).
@@ -1355,7 +1474,12 @@ async def fleet_run_context(
         if getattr(resolved, "fleet_id", None) is None:
             return ""
         ctem_work = holds_ctem_tools(agent) or await ctem_fleet(db, getattr(resolved, "fleet_id", None))
-        block = render_for_agent(await current_version(db), ctem_work=ctem_work)
+        primary = await current_version(db)
+        block = render_for_agent(
+            primary,
+            ctem_work=ctem_work,
+            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+        )
         tracked = await scoped_tracked_blocks(db, getattr(resolved, "organization_scope", None))
         scoped = f"\n\n{FLEET_RUN_CONTEXT_HEADER}\n" + "\n\n".join([block, *tracked])
         return scoped + await _concerned_organizations_block(db, organization_ids or [])
@@ -1499,8 +1623,12 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     return dumped
 
 
-def exposure_counts(profile: OrganizationProfile) -> dict[str, int]:
-    """The size of each part #11543 added (the policy counts its explicit rules)."""
+def exposure_counts(profile: OrganizationProfile, asset_counts: dict[str, int] | None = None) -> dict[str, int]:
+    """The size of each part #11543 added (the policy counts its explicit rules).
+
+    *asset_counts* (:func:`asset_list_counts`) replaces the asset and group
+    counts of the stored profile with the records' (#1543).
+    """
     policy = profile.prioritization_policy
     defaults = PrioritizationPolicy()
     rules = sum(
@@ -1508,30 +1636,38 @@ def exposure_counts(profile: OrganizationProfile) -> dict[str, int]:
         for name in PrioritizationPolicy.model_fields
         if name not in ("exclusions", "accepted_risks") and getattr(policy, name) != getattr(defaults, name)
     )
+    lists = asset_counts or {}
     return {
-        "assets_exposure": len(profile.assets_exposure),
-        "asset_groups": len(profile.asset_groups),
+        "assets_exposure": lists.get("assets_exposure", len(profile.assets_exposure)),
+        "asset_groups": lists.get("asset_groups", len(profile.asset_groups)),
         "prioritization_policy": rules + len(policy.exclusions) + len(policy.accepted_risks),
         "enterprise_knowledge": len(profile.enterprise_knowledge),
     }
 
 
-def exposure_line(profile: OrganizationProfile) -> str:
+def exposure_line(profile: OrganizationProfile, asset_counts: dict[str, int] | None = None) -> str:
     """One announcement line for the filled parts of #11543 (``""`` when none is): never their content."""
-    counts = {name: count for name, count in exposure_counts(profile).items() if count}
+    counts = {name: count for name, count in exposure_counts(profile, asset_counts).items() if count}
     if not counts:
         return ""
     parts = ", ".join(f"{name} ({count})" for name, count in counts.items())
     return f"Also filled, read by tool: {parts}; read one with get_organization_context(category=NAME)."
 
 
-def render_for_agent(row: OrganizationContextVersion | None, *, ctem_work: bool = True) -> str:
+def render_for_agent(
+    row: OrganizationContextVersion | None,
+    *,
+    ctem_work: bool = True,
+    asset_counts: dict[str, int] | None = None,
+) -> str:
     """The profile as an agent reads it: the filled fields, then the missing ones.
 
     The missing fields are named so the run reports them instead of
     guessing; the profile is data a person typed, so it is quarantined.
     *ctem_work* false (:func:`ctem_work_for`): the CTEM-only fields are not
-    named and no brief notice is asked (#1384).
+    named and no brief notice is asked (#1384). *asset_counts*
+    (:func:`asset_list_counts`): the asset and group sizes the records hold,
+    never the rows (#1543).
     """
     import json
 
@@ -1557,7 +1693,7 @@ def render_for_agent(row: OrganizationContextVersion | None, *, ctem_work: bool 
         and key != "onboarding_skipped"
     }
     labels = dict(CONTRACT_FIELDS)
-    exposure = exposure_line(profile)
+    exposure = exposure_line(profile, asset_counts)
     lines = [
         f"Organization profile, version {row.version} (saved {row.created_at:%Y-%m-%d %H:%M} UTC, source {row.source}).",
         "Cite the fields you used. Fields not filled: "

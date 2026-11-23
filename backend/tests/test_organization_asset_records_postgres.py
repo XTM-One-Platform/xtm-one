@@ -277,3 +277,42 @@ async def test_a_sync_writes_rows_and_removes_its_gone_rows_without_a_profile_ve
     assert versions == [1]  # no profile version: rows only
     assert names == ["laptop-01", "web-01"]
     assert {c["origin"] for c in log if c["op"] in ("create", "delete")} >= {"sync:s1"}
+
+
+async def test_readers_see_row_writes_and_a_save_of_another_field_keeps_them() -> None:
+    """Slice 7: the readers' profile and counts come from the records, never the stale profile JSON."""
+    from app.services import organization_context as org_context
+
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        await records.create_record(session, org, {"name": "db-01", "category": "host"}, origin="form", actor="form:u")
+        await session.commit()
+        row, profile = await org_context.current_profile(session, org)
+        counts = await org_context.asset_list_counts(session, org)
+        assert sorted(a.name for a in profile.assets_exposure) == ["db-01", "laptop-01"]
+        assert counts == {"assets_exposure": 2, "asset_groups": 0}
+        stale = org_context.parse_profile(row.profile if row else {})
+        assert [a.name for a in stale.assets_exposure] == ["laptop-01"]  # the JSON never saw the row write
+        stale.sector = "Finance"
+        await org_context.save_version(session, stale, source="api", author_user_id=None, organization_id=org)
+        await session.commit()
+        _row, after = await org_context.current_profile(session, org)
+        names = [a for a, _n in await _assets(session)]
+    assert sorted(a.name for a in after.assets_exposure) == ["db-01", "laptop-01"]
+    assert after.sector == "Finance"
+    assert names == ["db-01", "laptop-01"]
+
+
+async def test_a_profile_save_that_removes_a_row_still_removes_its_record() -> None:
+    from app.services import organization_context as org_context
+
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED, HAND])
+        _row, profile = await org_context.current_profile(session, org)
+        kept = profile.model_copy(
+            update={"assets_exposure": [a for a in profile.assets_exposure if a.name != "web-02"]}
+        )
+        await org_context.save_version(session, kept, source="api", author_user_id=None, organization_id=org)
+        await session.commit()
+        counts = await org_context.asset_list_counts(session, org)
+    assert counts == {"assets_exposure": 1, "asset_groups": 0}

@@ -388,7 +388,7 @@ async def imported_version(db: AsyncSession, organization_id: uuid.UUID) -> int:
     return int(found or 0)
 
 
-async def _mark_version(db: AsyncSession, organization_id: uuid.UUID, profile_version: int) -> None:
+async def mark_version(db: AsyncSession, organization_id: uuid.UUID, profile_version: int) -> None:
     await db.execute(
         update(OrganizationAssetImport)
         .where(OrganizationAssetImport.organization_id == organization_id)
@@ -408,7 +408,7 @@ async def _catch_up(db: AsyncSession, organization_id: uuid.UUID, version: Any) 
     await _lock(db, organization_id)
     if int(version.version) <= await imported_version(db, organization_id):
         return
-    await _mark_version(db, organization_id, int(version.version))
+    await mark_version(db, organization_id, int(version.version))
     await apply_profile_lists(db, organization_id, _ProfileLists(version.profile), origin="profile", actor="import")
 
 
@@ -824,8 +824,12 @@ async def upsert_records(
     *,
     origin: str,
     actor: str,
+    keep_software: frozenset[tuple[str, str]] = frozenset(),
 ) -> WriteResult:
     """Create or update records by ``(source, external_id)`` in one pass (a sync, an import, an agent, the API).
+
+    *keep_software*: the refs of rows that cannot carry inline software (a
+    profile model row); their record keeps the software it holds.
 
     A row without ``external_id`` from a person gets a new one (a create). A row
     equal to the stored record is left as it was and not logged. Hand origins keep
@@ -869,6 +873,9 @@ async def upsert_records(
             fresh.append(value)  # a duplicate row of the batch is dropped below, the first kept
             continue
         record = found
+        if ref in keep_software and "software" not in value and (record.fields or {}).get("software"):
+            # A profile model row carries no inline software: the save keeps the record's own list.
+            value["software"] = record.fields["software"]
         before = record_row(record)
         if before == value:
             result.unchanged += 1
@@ -1431,8 +1438,13 @@ async def apply_profile_lists(
     origin: str,
     actor: str,
     profile_version: int | None = None,
+    remove_missing: bool = True,
 ) -> WriteResult | None:
     """Turn the ``assets_exposure`` of a saved *profile* into row writes against the records.
+
+    *remove_missing* false keeps the stored records the list does not hold:
+    a list read from the records past the 5,000 cap of the profile model is
+    a page, not the whole inventory, so nothing it lacks is deleted.
 
     *profile_version* is the version ``save_version`` is about to write: the
     records are marked as having seen it, so the next read does not diff it again.
@@ -1454,7 +1466,7 @@ async def apply_profile_lists(
     await ensure_records(db, organization_id)
     await _lock(db, organization_id)
     if profile_version is not None:
-        await _mark_version(db, organization_id, profile_version)
+        await mark_version(db, organization_id, profile_version)
     gone_groups = await _apply_profile_groups(
         db, organization_id, getattr(profile, "asset_groups", None) or [], origin=origin, actor=actor
     )
@@ -1473,6 +1485,7 @@ async def apply_profile_lists(
             by_hand_name.setdefault(name_key, []).append(external_id)
     wanted: set[tuple[str, str]] = set()
     payload: list[dict[str, Any]] = []
+    modelled: set[tuple[str, str]] = set()
     for row in rows:
         value = row.model_dump(mode="json") if hasattr(row, "model_dump") else dict(row)
         source = str(value.get("source") or "manual").strip().lower() or "manual"
@@ -1482,11 +1495,20 @@ async def apply_profile_lists(
             if hasattr(row, "external_id"):
                 row.external_id = value["external_id"]
         wanted.add((source, value["external_id"]))
+        if hasattr(row, "model_dump"):
+            modelled.add((source, value["external_id"]))
         payload.append(value)
-    gone = [i for ref, (i, _n) in stored_refs.items() if ref not in wanted]
+    gone = [i for ref, (i, _n) in stored_refs.items() if ref not in wanted] if remove_missing else []
     result = WriteResult()
     for start in range(0, len(payload), MAX_BATCH):
-        part = await upsert_records(db, organization_id, payload[start : start + MAX_BATCH], origin=origin, actor=actor)
+        part = await upsert_records(
+            db,
+            organization_id,
+            payload[start : start + MAX_BATCH],
+            origin=origin,
+            actor=actor,
+            keep_software=frozenset(modelled),
+        )
         result.created += part.created
         result.updated += part.updated
         result.unchanged += part.unchanged
@@ -1727,6 +1749,21 @@ async def profile_lists(
         ).scalars()
     )
     return [record_row(r) for r in page[:cap]], [group_row(g) for g in groups], len(page) > cap
+
+
+async def list_counts(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, int]:
+    """``{assets_exposure, asset_groups}``: how many records and groups the organization holds (two counts)."""
+    out: dict[str, int] = {}
+    for name, model in (("assets_exposure", OrganizationAssetRecord), ("asset_groups", OrganizationAssetGroup)):
+        out[name] = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(model).where(model.organization_id == organization_id)
+                )
+            ).scalar()
+            or 0
+        )
+    return out
 
 
 async def counts(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, Any]:

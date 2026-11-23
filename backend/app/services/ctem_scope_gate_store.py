@@ -208,8 +208,8 @@ async def read_scenarios(db: AsyncSession, *, user_id: uuid.UUID | None) -> gate
 async def _profile(db: AsyncSession, organization_id: uuid.UUID) -> Any:
     from app.services import organization_context as org_context
 
-    row = await org_context.current_version(db, organization_id)
-    return org_context.parse_profile(row.profile if row else {})
+    _row, profile = await org_context.current_profile(db, organization_id)  # assets from the records (#1543)
+    return profile
 
 
 async def evaluate(

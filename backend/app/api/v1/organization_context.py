@@ -122,9 +122,12 @@ class DraftOrganizationContextResponse(BaseModel):
 
 
 def _response(
-    row: OrganizationContextVersion | None, removed_rows: dict[str, list[str]] | None = None
+    row: OrganizationContextVersion | None,
+    removed_rows: dict[str, list[str]] | None = None,
+    *,
+    profile: org_context.OrganizationProfile | None = None,
 ) -> OrganizationContextResponse:
-    profile = org_context.parse_profile(row.profile if row else {})
+    profile = profile if profile is not None else org_context.parse_profile(row.profile if row else {})
     return OrganizationContextResponse(
         version=row.version if row else None,
         source=row.source if row else None,
@@ -157,8 +160,13 @@ async def get_organization_context(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> OrganizationContextResponse:
-    """The current profile (empty with every field missing before the first save)."""
-    return _response(await org_context.current_version(db))
+    """The current profile (empty with every field missing before the first save).
+
+    The asset and group lists are read from the asset records (#1543): the row
+    API, agent and import writes land there, never in a profile version.
+    """
+    row, profile = await org_context.current_profile(db)
+    return _response(row, profile=profile)
 
 
 class OrganizationContextInjection(BaseModel):
