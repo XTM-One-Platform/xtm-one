@@ -641,13 +641,9 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         {
             "module": "opencti",
             "name": "New relevant threat",
-            "filter": "An intrusion set or a campaign is created",
-            "detail": "Records a relevant threat signal, no run of its own",
-        },
-        {
-            "module": "opencti",
-            "name": "Threat activity flagged in a PIR",
-            "filter": "Threat activity is flagged in an organization PIR",
+            # One card for the two listen-only OpenCTI intakes (New relevant threat and Threat activity
+            # flagged in a PIR): the sheet caps its triggers (fleet_datasheet.CAPS) and neither runs.
+            "filter": "An intrusion set or a campaign is created, or threat activity is flagged in an organization PIR",
             "detail": "Records a relevant threat signal, no run of its own",
         },
         {
@@ -721,12 +717,6 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
     ],
     "quota": [
         {"trigger": "New relevant threat", "basis": "No run: records signals", "runs_min": 0, "runs_max": 0},
-        {
-            "trigger": "Threat activity flagged in a PIR",
-            "basis": "No run: records signals",
-            "runs_min": 0,
-            "runs_max": 0,
-        },
         {
             "trigger": "Threat signal recorded",
             "basis": "One run per threat signal not yet confirmed",
