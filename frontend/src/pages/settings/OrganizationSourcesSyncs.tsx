@@ -49,20 +49,28 @@ import { useFormatter } from "@/i18n";
 import { filtersSummary } from "@/lib/organization-import-filters";
 import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
-import { SOURCED_SECTION_LABELS, sourceSectionHref, type SourcedSection } from "@/lib/organization-sources";
+import { SOURCED_SECTION_LABELS, sourceSectionHref, type ChipSource, type SourcedSection } from "@/lib/organization-sources";
 import { useScheduleLabel } from "@/lib/organization-sync-schedule";
 import { formatCount } from "@/lib/number-format";
 import { formatTimeAgo } from "@/lib/relative-time";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { bodyOf, DIRECTION_LABELS, directionOf, stateOf, SYNC_SECTION_LABELS, SyncEditDialog, type SyncState } from "./OrganizationSyncEditDialog";
 
-/** The kinds of source in words (#1276: never "Typed", never a raw slug). @i18n-keys */
-const SOURCE_KIND_NAMES = {
+/** The kinds of source only this table names. @i18n-keys */
+const SYNC_KIND_NAMES = {
   platform: "Platform sync",
   agent: "Agent or partner",
-  csv: "CSV import",
-  api: "API",
-  manual: "Entered by hand",
+} as const;
+
+/**
+ * The kinds of source in words (#1276: never "Typed", never a raw slug). CSV, API and hand rows reuse the shared
+ * SOURCE_KIND_LABELS, the names the Inventory lists and filters use (UX round 6 on #1254, B12).
+ */
+const SOURCE_KIND_NAMES = {
+  ...SYNC_KIND_NAMES,
+  csv: SOURCE_KIND_LABELS.csv,
+  api: SOURCE_KIND_LABELS.api,
+  manual: SOURCE_KIND_LABELS.manual,
 } as const satisfies Record<OrganizationSource["kind"], string>;
 
 /** The state of a row: a sync's own state, or "source" for a source with no sync. */
@@ -147,8 +155,8 @@ interface Props {
   scope?: OrganizationSyncScope;
   /** Opens the step-by-step import (platform, section, filters with a live preview, schedule, review). */
   onAddSource?: () => void;
-  /** The link of a section chip, the source's display name given; defaults to the profile tab filtered on it. */
-  sectionHref?: (field: SourcedSection, sourceLabel: string) => string;
+  /** The link of a section chip, the source's key and display label given; `null` renders the chip as plain text. */
+  sectionHref?: (field: SourcedSection, source: ChipSource) => string | null;
   /** Actions are off while the page is in edit. */
   disabled?: boolean;
 }
@@ -308,19 +316,25 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         const fields = fieldsOf(row);
         if (fields.length === 0) return <span className="text-default-secondary">{row.sync ? t_i18n(SYNC_SECTION_LABELS[row.sync.section]) : t_i18n("No row yet")}</span>;
         const name = nameOf(row);
-        // The section tables filter on the label of their Source column: the platform name, else the kind.
+        // The profile tables filter on the label of their Source column (the platform name, else the kind), the
+        // Inventory's Assets list on the source key (UX round 5 on #1254, B11).
         const kind = kindOf(row);
-        const filterLabel = kind === "platform" ? name : t_i18n(SOURCE_KIND_LABELS[kind]);
+        const chipSource: ChipSource = {
+          key: row.sync?.source ?? row.source?.key ?? "",
+          label: kind === "platform" ? name : t_i18n(SOURCE_KIND_LABELS[kind]),
+        };
         return (
           <span className="flex flex-wrap gap-1.5">
             {fields.map(({ field, count }) => {
               const label = t_i18n(SOURCED_SECTION_LABELS[field]);
+              const href = sectionHref(field, chipSource);
               return (
                 <Chip
                   key={field}
                   label={`${label} ${formatCount(locale, count)}`}
-                  onClick={() => navigate(sectionHref(field, filterLabel))}
-                  aria-label={t_i18n("{section} from {source}: {count, plural, one {# row} other {# rows}}", { section: label, source: name, count })}
+                  onClick={href ? () => navigate(href) : undefined}
+                  // A link names its target; plain text reads as drawn, the row already names the source.
+                  aria-label={href ? t_i18n("{section} from {source}: {count, plural, one {# row} other {# rows}}", { section: label, source: name, count }) : undefined}
                   data-testid="organization-sources.chip"
                 />
               );
