@@ -6,8 +6,15 @@
  * read; nothing is stored twice. The lists are short (the profile caps them), so search, filters and export run in
  * the page.
  */
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { OverflowMenu } from "@/components/ui/overflow-menu";
+import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useSaveOrganizationContext, type OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useCanonicalAssets } from "@/hooks/api/useOrganizationAssetsApi";
 import { useOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
@@ -15,6 +22,11 @@ import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
 import type { AssetGroupRow } from "@/lib/organization-profile";
 import { INVENTORY_PATH, assetFieldLabel, sourceLabel } from "./inventory";
+import { deleteRows, isSyncedRow } from "./inventory-entries";
+import { InventoryEntryDialog, type EntryDialogMode } from "./InventoryEntryDialog";
+
+/** An asset group with its index in the profile's list (what the entry dialog and a delete address). */
+type IndexedGroup = AssetGroupRow & { index: number };
 
 /** The exposure of an asset group, as the Settings table words it. @i18n-keys */
 const GROUP_EXPOSURE_LABELS = { yes: "Internet-facing", no: "Not internet-facing", unknown: "Exposure unknown" } as const;
@@ -33,10 +45,35 @@ const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?a_f_category=ai_target`;
 
 export function AssetGroupsTab() {
   const { t_i18n, intl } = useFormatter();
+  const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const { data, isLoading, isError, refetch } = useOrganizationContext();
-  const groups = ((data?.profile as { asset_groups?: AssetGroupRow[] } | undefined)?.asset_groups ?? []).filter((g) => g.name.trim());
+  const save = useSaveOrganizationContext();
+  const stored = (data?.profile as { asset_groups?: AssetGroupRow[] } | undefined)?.asset_groups ?? [];
+  const groups: IndexedGroup[] = stored.map((g, index) => ({ ...g, index })).filter((g) => g.name.trim());
+  const [selected, setSelected] = useState<string[]>([]);
+  const [dialog, setDialog] = useState<EntryDialogMode | null>(null);
+  const [toDelete, setToDelete] = useState<number[] | null>(null);
+  const keyOf = (g: IndexedGroup) => String(g.index);
+  const selectedIndexes = selected.map(Number);
 
-  const columns: DataTableColumn<AssetGroupRow>[] = [
+  const onDelete = () => {
+    if (!data || !toDelete) return;
+    const out = deleteRows(stored, toDelete);
+    save.mutate(
+      { profile: { ...data.profile, asset_groups: out.rows } as unknown as OrganizationProfile, source: "form" },
+      {
+        onSuccess: () => {
+          setSelected([]);
+          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.changed }), variant: "success" });
+        },
+        onError: (e) => toast({ title: t_i18n("Nothing was deleted"), description: e.message, variant: "error" }),
+      },
+    );
+  };
+  const syncedReason = t_i18n("Synced from its source: exclude it from the sync to remove it.");
+
+  const columns: DataTableColumn<IndexedGroup>[] = [
     {
       key: "name",
       header: "Asset group",
@@ -89,10 +126,58 @@ export function AssetGroupsTab() {
   ];
 
   return (
-    <DataTable<AssetGroupRow>
+    <>
+    <DataTable<IndexedGroup>
       rows={groups}
       columns={columns}
-      rowKey={(g) => g.name}
+      rowKey={keyOf}
+      toolbar={
+        isAdmin ? (
+          <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setDialog({ kind: "add" })} data-testid="ctem-inventory-group-add">
+            {t_i18n("Add an asset group")}
+          </Button>
+        ) : undefined
+      }
+      rowActions={
+        isAdmin
+          ? (g) => (
+              <OverflowMenu
+                label={t_i18n("Actions on {name}", { name: g.name })}
+                className="h-7 w-7"
+                items={[
+                  { id: "update", label: t_i18n("Update"), glyph: "pencil", onSelect: () => setDialog({ kind: "update", index: g.index }) },
+                  {
+                    id: "delete",
+                    label: t_i18n("Delete"),
+                    destructive: true,
+                    disabled: isSyncedRow(g),
+                    disabledReason: isSyncedRow(g) ? syncedReason : undefined,
+                    onSelect: () => setToDelete([g.index]),
+                  },
+                ]}
+              />
+            )
+          : undefined
+      }
+      rowActionsWidth={48}
+      selection={
+        isAdmin
+          ? {
+              selected,
+              onChange: setSelected,
+              actions: (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "bulk", indexes: selectedIndexes })}>
+                    {t_i18n("Update")}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setToDelete(selectedIndexes)} disabled={save.isPending}>
+                    {t_i18n("Delete")}
+                  </Button>
+                </>
+              ),
+            }
+          : undefined
+      }
       searchFields={(g) => [g.name, g.description, g.owner, ...g.tags]}
       searchPlaceholder={t_i18n("Search...")}
       filters={[
@@ -108,6 +193,17 @@ export function AssetGroupsTab() {
       emptyLabel={t_i18n("No asset group yet. Add a source to the inventory to fill it.")}
       rowTestId="ctem-inventory-group-row"
     />
+    <InventoryEntryDialog section="asset_groups" mode={dialog} onOpenChange={(o) => !o && setDialog(null)} onSaved={() => setSelected([])} />
+    <ConfirmDialog
+      open={toDelete !== null}
+      onOpenChange={(o) => !o && setToDelete(null)}
+      variant="danger"
+      title={t_i18n("Delete these entries?")}
+      description={t_i18n("The entries entered by hand are deleted. A synced entry stays: its sync owns it.")}
+      confirmLabel={t_i18n("Delete")}
+      onConfirm={onDelete}
+    />
+    </>
   );
 }
 

@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
+import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { Icon } from "@filigran/design-system";
 import {
@@ -26,13 +27,16 @@ import {
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useAuth } from "@/hooks/useAuth";
-import { OrganizationSection } from "@/pages/settings/OrganizationSection";
+import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import type { AssetRow } from "@/lib/organization-profile";
 import { useFormatter } from "@/i18n";
 import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
 import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
+import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
+import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 
@@ -52,9 +56,6 @@ const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
   { key: "internet_facing", label: "Internet facing" },
   { key: "source", label: "Source" },
 ];
-
-/** The query parameter of the administrator's edit view: the list and its edit cards never share the screen. */
-const EDIT_PARAM = "edit";
 
 /** The query parameter of the Asset matching view of the Sources tab: nothing renders under the syncs table (UX round 2, B7). */
 const MATCHING_PARAM = "matching";
@@ -82,6 +83,32 @@ function AssetsTab() {
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
+  // Entity management (#1367, point 2): Add, the row menu and the bulk actions write the profile's asset rows.
+  const { data: context } = useOrganizationContext();
+  const save = useSaveOrganizationContext();
+  // The API type leaves the #11543 sections out; the profile carries them (lib/organization-profile ProfileForm).
+  const profileRows = ((context?.profile as { assets_exposure?: AssetRow[] } | undefined)?.assets_exposure ?? []) as AssetRow[];
+  const [dialog, setDialog] = useState<EntryDialogMode | null>(null);
+  const [toDelete, setToDelete] = useState<number[] | null>(null);
+  const indexesOf = (assets: readonly CanonicalAssetSummary[]) => assetRowIndexes(profileRows, assets.flatMap((a) => a.records ?? []));
+  // An asset whose every record a sync owns cannot be deleted here.
+  const handIndexes = (a: CanonicalAssetSummary) => indexesOf([a]).filter((i) => !isSyncedRow(profileRows[i]));
+  const selectedAssets = (data?.items ?? []).filter((a) => selected.includes(a.id));
+  const onDelete = () => {
+    if (!context || !toDelete) return;
+    const out = deleteRows(profileRows, toDelete);
+    save.mutate(
+      { profile: { ...context.profile, assets_exposure: out.rows } as typeof context.profile, source: "form" },
+      {
+        onSuccess: () => {
+          setSelected([]);
+          toast({ title: t_i18n("{count, plural, one {# entry deleted} other {# entries deleted}}", { count: out.changed }), variant: "success" });
+        },
+        onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
+      },
+    );
+  };
+  const syncedReason = t_i18n("Synced from its source: exclude it from the sync to remove it.");
 
   const filters: DataTableFilter<CanonicalAssetSummary>[] = ASSET_FILTERS.map(({ key, label }) => ({
     key,
@@ -212,19 +239,81 @@ function AssetsTab() {
         emptyLabel={t_i18n("No asset yet. Add a source to the inventory to fill it.")}
         noResultsLabel={t_i18n("No asset matches this search")}
         rowTestId="ctem-inventory-asset-row"
+        toolbar={
+          isAdmin ? (
+            <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "add" })} data-testid="ctem-inventory-asset-add">
+              {t_i18n("Add an asset")}
+            </Button>
+          ) : undefined
+        }
+        rowActions={
+          isAdmin
+            ? (a) => {
+                const indexes = indexesOf([a]);
+                const deletable = handIndexes(a);
+                return (
+                  <OverflowMenu
+                    label={t_i18n("Actions on {name}", { name: a.name })}
+                    className="h-7 w-7"
+                    items={[
+                      {
+                        id: "update",
+                        label: t_i18n("Update"),
+                        glyph: "pencil",
+                        disabled: indexes.length === 0,
+                        onSelect: () => setDialog(indexes.length === 1 ? { kind: "update", index: indexes[0] } : { kind: "bulk", indexes }),
+                      },
+                      {
+                        id: "delete",
+                        label: t_i18n("Delete"),
+                        destructive: true,
+                        disabled: deletable.length === 0,
+                        disabledReason: deletable.length === 0 ? syncedReason : undefined,
+                        onSelect: () => setToDelete(deletable),
+                      },
+                    ]}
+                  />
+                );
+              }
+            : undefined
+        }
+        rowActionsWidth={48}
         selection={
           isAdmin
             ? {
                 selected,
                 onChange: setSelected,
                 actions: (
-                  <Button size="sm" variant="secondary" disabled={!canMerge || decide.isPending} onClick={() => setConfirmMerge(true)}>
-                    {t_i18n("Merge into one asset")}
-                  </Button>
+                  <>
+                    <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "bulk", indexes: indexesOf(selectedAssets) })}>
+                      {t_i18n("Update")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={save.isPending || selectedAssets.every((a) => handIndexes(a).length === 0)}
+                      onClick={() => setToDelete(selectedAssets.flatMap(handIndexes))}
+                    >
+                      {t_i18n("Delete")}
+                    </Button>
+                    <Button size="sm" variant="secondary" disabled={!canMerge || decide.isPending} onClick={() => setConfirmMerge(true)}>
+                      {t_i18n("Merge into one asset")}
+                    </Button>
+                  </>
                 ),
               }
             : undefined
         }
+      />
+      <InventoryEntryDialog section="assets_exposure" mode={dialog} onOpenChange={(o) => !o && setDialog(null)} onSaved={() => setSelected([])} />
+      <ConfirmDialog
+        open={toDelete !== null}
+        onOpenChange={(o) => !o && setToDelete(null)}
+        variant="danger"
+        title={t_i18n("Delete these entries?")}
+        description={t_i18n("The entries entered by hand are deleted. A synced entry stays: its sync owns it.")}
+        confirmLabel={t_i18n("Delete")}
+        onConfirm={onDelete}
       />
       <ConfirmDialog
         open={confirmMerge}
@@ -327,28 +416,11 @@ function TechStackTab() {
   );
 }
 
-/**
- * The profile cards an administrator edits on each tab (#1178 slice 2b): the same cards, per-card edit and Save as
- * Settings > Organization had, now here; Settings keeps the business profile.
- */
-const EDIT_CARDS = {
-  assets: ["assets_exposure", "prioritization_policy", "outside_lens"],
-  "asset-groups": ["asset_groups"],
-  "tech-stack": ["tech_stack"],
-  "ai-systems": ["ai_systems"],
-} as const satisfies Record<Exclude<InventoryTab, "sources">, readonly string[]>;
-
 export default function CtemInventory() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
-  // Editing the profile stays administrator-only, as in Settings; everyone else reads the tables.
-  const { isAdmin } = useAuth();
+  // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
   const [searchParams, setSearchParams] = useSearchParams();
-  // The Sources tab (slice 3) holds the inventory syncs and asset matching; it embeds no profile card.
-  const editCards = tab === "sources" ? null : (EDIT_CARDS[tab] ?? EDIT_CARDS.assets);
-  // One list per screen, nothing below it (UX round 1, B2 and B3): an administrator edits in a view of its own,
-  // opened from the header, and every reader, administrators included, sees the same list.
-  const editing = isAdmin && Boolean(editCards) && searchParams.get(EDIT_PARAM) === "1";
   // Asset matching is read by everyone, edited by administrators inside its own card.
   const matching = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
   const toggleParam = (param: string, on: boolean) =>
@@ -361,7 +433,6 @@ export default function CtemInventory() {
       },
       { replace: true },
     );
-  const setEditing = (on: boolean) => toggleParam(EDIT_PARAM, on);
   const setMatching = (on: boolean) => toggleParam(MATCHING_PARAM, on);
   return (
     <div className="space-y-4">
@@ -381,16 +452,6 @@ export default function CtemInventory() {
                 <Icon name="settings" size={16} aria-hidden /> {t_i18n("Asset matching")}
               </Button>
             )
-          ) : isAdmin && editCards ? (
-            editing ? (
-              <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
-                <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
-              </Button>
-            ) : (
-              <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(true)} data-testid="ctem-inventory-edit">
-                <Icon name="pencil" size={16} aria-hidden /> {t_i18n("Edit")}
-              </Button>
-            )
           ) : undefined
         }
       />
@@ -405,9 +466,7 @@ export default function CtemInventory() {
           { key: "sources", label: "Sources" },
         ]}
       />
-      {editing && editCards ? (
-        <OrganizationSection key={tab} embed={{ cards: editCards }} />
-      ) : tab === "sources" ? (
+      {tab === "sources" ? (
         matching ? <AssetMatchingCard /> : <InventorySourcesCard />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab />

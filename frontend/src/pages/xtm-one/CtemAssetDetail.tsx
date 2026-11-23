@@ -30,6 +30,9 @@ import { useFormatter } from "@/i18n";
 import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
+import { assetRowIndexes } from "./ctem/inventory-entries";
+import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
+import type { AssetRow } from "@/lib/organization-profile";
 import { INVENTORY_PATH, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
@@ -59,6 +62,10 @@ export default function CtemAssetDetail() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [splitPicked, setSplitPicked] = useState<string[]>([]);
   const [confirmSplit, setConfirmSplit] = useState(false);
+  // Update from the asset page (#1367, point 2): the profile rows behind its records, synced fields locked.
+  const [entryDialog, setEntryDialog] = useState<EntryDialogMode | null>(null);
+  const profileAssets = ((context?.profile as { assets_exposure?: AssetRow[] } | undefined)?.assets_exposure ?? []) as AssetRow[];
+  const rowIndexes = data ? assetRowIndexes(profileAssets, data.records) : [];
 
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const nameKey = (data?.name ?? "").trim().toLowerCase();
@@ -242,7 +249,20 @@ export default function CtemAssetDetail() {
             </span>
           ) : undefined
         }
+        actions={
+          isAdmin && rowIndexes.length > 0 ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setEntryDialog(rowIndexes.length === 1 ? { kind: "update", index: rowIndexes[0] } : { kind: "bulk", indexes: rowIndexes })}
+              data-testid="ctem-asset-update"
+            >
+              {t_i18n("Update")}
+            </Button>
+          ) : undefined
+        }
       />
+      <InventoryEntryDialog section="assets_exposure" mode={entryDialog} onOpenChange={(o) => !o && setEntryDialog(null)} />
 
       {data && <AssetOverviewCard asset={data} />}
 
