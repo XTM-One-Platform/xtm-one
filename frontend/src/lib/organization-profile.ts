@@ -26,7 +26,7 @@ export interface ProfileLike {
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
   tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
-  ai_systems: ({ name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string } & Provenance)[];
+  // No `ai_systems` list since #1501: an AI system is an asset of category `ai_target` (assets_exposure).
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615): the page never labels a PIR with its id. */
   pir_names?: Record<string, string>;
@@ -603,7 +603,6 @@ export function toForm(profile: ProfileLike): ProfileForm {
     pir_names: { ...(profile.pir_names ?? {}) },
     crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
     tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
-    ai_systems: profile.ai_systems.map((system) => ({ ...system })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
     loaded_hourly_rate: numberText(profile.loaded_hourly_rate),
@@ -682,7 +681,6 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         tech_stack: form.tech_stack
           .filter((entry) => entry.product.trim())
           .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
-        ai_systems: form.ai_systems.filter((system) => system.name.trim()),
         risk_appetite: {
           annual_loss_threshold: parseAmount(form.annual_loss_threshold, FIELD_LABELS["risk_appetite.annual_loss_threshold"], "annual_loss_threshold"),
           approval_threshold: parseAmount(form.approval_threshold, FIELD_LABELS["risk_appetite.approval_threshold"], "approval_threshold"),

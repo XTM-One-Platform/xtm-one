@@ -24,7 +24,7 @@ describe("organization row provenance (#1134)", () => {
     expect(columnEditable("opencrq", "name", LOCAL_FIELDS.crown_jewels)).toBe(false);
     expect(columnEditable("opencrq", "criticality", LOCAL_FIELDS.crown_jewels)).toBe(false);
     expect(columnEditable("opencrq", "business_service", LOCAL_FIELDS.crown_jewels)).toBe(true);
-    expect(columnEditable("openaev", "owner", LOCAL_FIELDS.ai_systems)).toBe(true);
+    expect(columnEditable("openaev", "owner", LOCAL_FIELDS.assets_exposure)).toBe(true);
   });
 
   it("counts synced rows and groups their exclusions by sync", () => {

@@ -42,7 +42,8 @@ const SOURCE_FILTER: Partial<Record<SourcedSection, { prefix: string; value: key
 const SECTION_CARD: Record<SourcedSection, ProfileCard> = {
   crown_jewels: "crown_jewels",
   tech_stack: "tech_stack",
-  ai_systems: "ai_systems",
+  // #1501: the AI systems are the assets of category ai_target.
+  ai_systems: "assets_exposure",
   assets_exposure: "assets_exposure",
   asset_groups: "asset_groups",
 };

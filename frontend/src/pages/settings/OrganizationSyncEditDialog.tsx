@@ -52,11 +52,9 @@ export const DIRECTION_LABELS = {
  * @i18n-keys
  */
 const OUTBOUND_REASONS = {
-  openaev_assets: "Planned: OpenAEV endpoint writes are not wired for syncs yet.",
   openaev_asset_groups: "Planned: OpenAEV asset group writes are not wired for syncs yet.",
   opencti_pirs: "Planned: OpenCTI PIR writes are not wired for syncs yet.",
   opencti_assets: "OpenCTI Systems are owned by its connectors.",
-  openaev_ai_systems: "OpenAEV has no AI system object to write.",
   openaev_tech_stack: "OpenAEV software inventory is read from its agents.",
   other: "This pairing reads only.",
 } as const;

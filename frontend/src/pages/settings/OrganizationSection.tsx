@@ -132,11 +132,6 @@ import {
 } from "@/lib/organization-profile-tabs";
 import { Icon, Spinner } from "@filigran/design-system";
 
-/** @i18n-keys */
-const AI_KIND_LABELS = { assistant: "Assistant", agent: "Agent", model_api: "Model API", embedded: "Embedded" } as const;
-/** @i18n-keys */
-const EXPOSURE_LABELS = { internal: "Internal", partner: "Partner", public: "Public" } as const;
-
 const NO_SIZE = "none";
 const NO_VALUE = "none";
 
@@ -144,9 +139,9 @@ const NO_VALUE = "none";
 const COUNTRY_CODES = Object.keys(ISO_3166_NUMERIC);
 
 /** The lists edited in their own card (#12256). */
-const LIST_KEYS = ["crown_jewels", "tech_stack", "ai_systems"] as const;
+const LIST_KEYS = ["crown_jewels", "tech_stack"] as const;
 /** @i18n-keys */
-const LIST_TITLES = { crown_jewels: "Crown jewels and business services", tech_stack: "Tech stack", ai_systems: "AI systems inventory" } as const;
+const LIST_TITLES = { crown_jewels: "Crown jewels and business services", tech_stack: "Tech stack" } as const;
 type ListKey = (typeof LIST_KEYS)[number];
 /** The exposure tables edited in their own card (#12256 slice 2). @i18n-keys */
 const EXPOSURE_TITLES = {
@@ -547,7 +542,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setDraftedTabs(new Set());
   };
   // Leaving the page with an unsaved edit asks first (#12329); a tab switch never loses it.
-  const leaveGuard = editing || listEdits.crown_jewels !== undefined || listEdits.tech_stack !== undefined || listEdits.ai_systems !== undefined || exposureEdit !== null;
+  const leaveGuard = editing || listEdits.crown_jewels !== undefined || listEdits.tech_stack !== undefined || exposureEdit !== null;
   useEffect(() => {
     if (!leaveGuard) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -884,7 +879,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   });
   type JewelRow = { index: number; value: ProfileForm["crown_jewels"][number] };
   type TechRow = { index: number; value: ProfileForm["tech_stack"][number] };
-  type AiRow = { index: number; value: ProfileForm["ai_systems"][number] };
   const jewelColumns: DataTableColumn<JewelRow>[] = [
     {
       key: "name",
@@ -1016,61 +1010,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "vendor", label: "Vendor", values: ({ value }) => [value.vendor.trim()] },
     sourceFilter<TechRow>(),
   ];
-  const aiColumns: DataTableColumn<AiRow>[] = [
-    {
-      key: "name",
-      header: "AI system",
-      width: readWidth(240),
-      cell: ({ value }) => readCell(value.name),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => value.name.toLowerCase()),
-      firstSort: "asc",
-      csv: ({ value }) => value.name,
-    },
-    {
-      key: "kind",
-      header: "Kind",
-      hideable: true,
-      headerClassName: "w-44",
-      width: readWidth(120),
-      cell: ({ value }) => readCell(value.kind ? optionLabel(AI_KIND_LABELS, value.kind) : ""),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => optionLabel(AI_KIND_LABELS, value.kind)),
-      csv: ({ value }) => value.kind,
-    },
-    {
-      key: "exposure",
-      header: "Exposure",
-      hideable: true,
-      headerClassName: "w-40",
-      width: readWidth(120),
-      cell: ({ value }) => readCell(value.exposure ? optionLabel(EXPOSURE_LABELS, value.exposure) : ""),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => Object.keys(EXPOSURE_LABELS).indexOf(value.exposure)),
-      csv: ({ value }) => value.exposure,
-    },
-    {
-      key: "owner",
-      header: "Owner",
-      hideable: true,
-      cell: ({ value }) => readCell(value.owner),
-      interactive: true,
-      sortValue: sortable<AiRow>(({ value }) => value.owner.toLowerCase()),
-      firstSort: "asc",
-      csv: ({ value }) => value.owner,
-    },
-    sourceColumn<AiRow>(),
-  ];
-  const aiFilters: DataTableFilter<AiRow>[] = [
-    optionFilter<AiRow>("kind", "Kind", AI_KIND_LABELS, ({ value }) => value.kind),
-    // Ordinal scale: internal, partner, public (#12289).
-    optionFilter<AiRow>("exposure", "Exposure", EXPOSURE_LABELS, ({ value }) => value.exposure, true),
-    sourceFilter<AiRow>(),
-  ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
   type Jewel = ProfileForm["crown_jewels"][number];
   type Tech = ProfileForm["tech_stack"][number];
-  type AiSystem = ProfileForm["ai_systems"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-full min-w-0" aria-label={t_i18n(label)}>
@@ -1135,13 +1077,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "version", header: "Version (optional)", hideable: true, width: readWidth(160), read: (v) => readCell(v.version ?? ""), edit: (v, set) => editText("Version (optional)", v.version ?? "", (version) => set({ version }), false, "1.25.3"), sortValue: (v) => (v.version ?? "").toLowerCase(), firstSort: "asc" },
     sourceEdit<Tech>(),
   ];
-  const aiEdit: ListEditColumn<AiSystem>[] = [
-    { key: "name", header: "AI system", width: readWidth(240), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("AI system", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
-    { key: "kind", header: "Kind", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.kind ? optionLabel(AI_KIND_LABELS, v.kind) : ""), edit: (v, set) => pick(AI_KIND_LABELS, v.kind, "Kind", (kind) => set({ kind })), sortValue: (v) => optionLabel(AI_KIND_LABELS, v.kind) },
-    { key: "exposure", header: "Exposure", hideable: true, headerClassName: "w-40", width: readWidth(120), read: (v) => readCell(v.exposure ? optionLabel(EXPOSURE_LABELS, v.exposure) : ""), edit: (v, set) => pick(EXPOSURE_LABELS, v.exposure, "Exposure", (exposure) => set({ exposure })), sortValue: (v) => Object.keys(EXPOSURE_LABELS).indexOf(v.exposure) },
-    { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("ai_systems", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
-    sourceEdit<AiSystem>(),
-  ];
   /** Per list (slice 2): the fields the selection toolbar sets, the free-text fields suggested from the list, and "Paste a list". */
   const LIST_BULK = {
     crown_jewels: [
@@ -1150,13 +1085,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       { key: "business_service", label: "Business service" },
     ],
     tech_stack: [{ key: "vendor", label: "Vendor", suggestions: suggestId("tech_stack", "vendor") }],
-    ai_systems: [
-      { key: "owner", label: "Owner", suggestions: suggestId("ai_systems", "owner") },
-      { key: "kind", label: "Kind", options: AI_KIND_LABELS },
-      { key: "exposure", label: "Exposure", options: EXPOSURE_LABELS },
-    ],
   } as const;
-  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], tech_stack: ["vendor"], ai_systems: ["owner"] };
+  const LIST_SUGGESTED: { [K in ListKey]: readonly (keyof ProfileForm[K][number] & string)[] } = { crown_jewels: ["owner"], tech_stack: ["vendor"] };
   const choiceWords = (labels: Record<string, string>) => Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, [label, t_i18n(label)]]));
   const header = (label: string) => [label, t_i18n(label)];
   const PASTE = {
@@ -1184,19 +1114,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         headers: { product: header("Product"), vendor: header("Vendor"), cpe: header("CPE (optional)"), version: [...header("Version (optional)"), "Version"] },
         identity: LIST_RULES.tech_stack.identity,
       } as PasteSpec<Tech>,
-    },
-    ai_systems: {
-      title: "Paste AI systems",
-      example: "Support chatbot, assistant, public, Jane Doe",
-      fieldLabels: { name: "AI system", kind: "Kind", exposure: "Exposure", owner: "Owner" },
-      spec: {
-        fields: ["name", "kind", "exposure", "owner"],
-        empty: { name: "", kind: "assistant", owner: "", exposure: "internal", openaev_asset_id: "" },
-        name: "name",
-        headers: { name: header("AI system"), kind: header("Kind"), exposure: header("Exposure"), owner: header("Owner") },
-        choices: { kind: choiceWords(AI_KIND_LABELS), exposure: choiceWords(EXPOSURE_LABELS) },
-        identity: LIST_RULES.ai_systems.identity,
-      } as PasteSpec<AiSystem>,
     },
   };
   /** `ordered` as optionFilter: an ordinal scale keeps its order. */
@@ -2141,59 +2058,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           </SettingsCard>
           )}
 
-          {show("ai_systems") && (
-          <SettingsCard
-            id={`${fieldId}-ai_systems`}
-            className={SECTION_BAR_ANCHOR_CLASS}
-            data-anchor="card"
-            {...cardFold("ai_systems", current.ai_systems.length)}
-            tabIndex={-1}
-            data-testid="settings.organization.ai-systems"
-            icon={Bot}
-            title={t_i18n("AI systems inventory")}
-            description={t_i18n("The AI systems the AI security fleet tests.")}
-            action={
-              <>
-                {attention("ai_systems")}
-                {listEditAction("ai_systems")}
-                {pasteAction("ai_systems")}
-                {listOpen("ai_systems") && (
-                  <Button variant="secondary" className="gap-1.5" onClick={() => addListRow("ai_systems", { name: "", kind: "assistant", owner: "", exposure: "internal", openaev_asset_id: "" })}>
-                    <Plus className="h-3.5 w-3.5" /> {t_i18n("Add an AI system")}
-                  </Button>
-                )}
-              </>
-            }
-          >
-            <OrganizationUsedBy fields={["ai_systems"]} readers={usedBy} agents={usedByAgents} />
-            {listEditor("ai_systems", {
-              columns: aiEdit,
-              filters: [valueFilter("kind", "Kind", AI_KIND_LABELS, (v: AiSystem) => v.kind), valueFilter("exposure", "Exposure", EXPOSURE_LABELS, (v: AiSystem) => v.exposure, true)], // exposure: ordinal (#12289)
-              searchFields: (v) => [v.name, v.owner, optionLabel(AI_KIND_LABELS, v.kind)],
-              rowLabel: (v) => v.name,
-              storageKey: "settings-organization-ai-systems",
-              rowTestId: "settings.organization.ai-system-row",
-              emptyLabel: t_i18n("No AI system yet: the AI security fleet has nothing to test."),
-            }) ??
-              (current.ai_systems.length === 0 ? (
-                <p className="text-default-secondary">{t_i18n("No AI system yet: the AI security fleet has nothing to test.")}</p>
-              ) : (
-                <DataTable
-                  rows={current.ai_systems.map((value, index) => ({ index, value }))}
-                  columns={aiColumns}
-                  layout={tableLayout}
-                  rowKey={(row) => String(row.index)}
-                  searchFields={(row) => [row.value.name, row.value.owner, t_i18n(AI_KIND_LABELS[row.value.kind as keyof typeof AI_KIND_LABELS] ?? row.value.kind)]}
-                  searchPlaceholder={t_i18n("Search...")}
-                  filters={aiFilters}
-                  exportName="ai-systems"
-                  urlKey="oai_"
-                  storageKey="settings-organization-ai-systems"
-                  emptyLabel={t_i18n("No AI system yet: the AI security fleet has nothing to test.")}
-                />
-              ))}
-          </SettingsCard>
-          )}
           </div>
           )}
 
