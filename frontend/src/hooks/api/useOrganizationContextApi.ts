@@ -39,6 +39,17 @@ interface TechStackEntry {
   sync_id?: string;
 }
 
+interface AiSystem {
+  name: string;
+  kind: "assistant" | "agent" | "model_api" | "embedded";
+  owner: string;
+  exposure: "internal" | "partner" | "public";
+  openaev_asset_id: string;
+  source?: string;
+  external_id?: string;
+  sync_id?: string;
+}
+
 export interface OrganizationProfile {
   name: string;
   sector: string;
@@ -47,7 +58,7 @@ export interface OrganizationProfile {
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
   crown_jewels: CrownJewel[];
   tech_stack: TechStackEntry[];
-  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
+  ai_systems: AiSystem[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
@@ -584,10 +595,12 @@ const SYNCS = [...KEY, "syncs"] as const;
 /** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
 export type OrganizationSyncScope = "profile" | "inventory" | "";
 
-export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
+/** `enabled` false for a reader: the syncs API is for administrators only (403 otherwise, UX r1 B1 on #1540). */
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "", enabled = true) {
   return useQuery<OrganizationSync[]>({
     queryKey: [...SYNCS, scope],
     queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
+    enabled,
     // The list says its own failure with a retry; it never takes the page down.
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },

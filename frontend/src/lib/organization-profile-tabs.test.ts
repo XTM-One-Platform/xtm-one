@@ -71,12 +71,11 @@ describe("organization profile tabs", () => {
   it("links a field to its tab and card, never to the bare first tab when the field lives elsewhere", () => {
     expect(profileFieldHref("crown_jewels")).toBe("/settings/organization/profile/business?card=crown_jewels");
     // The technology and exposure cards live on CTEM > Inventory (#1178).
-    expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory?card=prioritization_policy");
-    expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory?card=prioritization_policy");
+    expect(profileFieldHref("prioritization_policy")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
+    expect(profileFieldHref("accepted_risks")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
     expect(profileFieldHref("assets_exposure")).toBe("/ctem/inventory?card=assets_exposure");
     expect(profileFieldHref("tech_stack")).toBe("/ctem/inventory/tech-stack?card=tech_stack");
-    // #1501: the AI systems are AI target assets, edited on the asset list.
-    expect(profileFieldHref("ai_systems")).toBe("/ctem/inventory?card=assets_exposure");
+    expect(profileFieldHref("ai_systems")).toBe("/ctem/inventory/ai-systems?card=ai_systems");
     expect(profileFieldHref("tracked_organizations")).toBe("/settings/organization/profile/business?card=tracked_organizations");
     expect(profileFieldHref("sector")).toBe("/settings/organization?card=identity");
     expect(profileFieldHref("risk_appetite.approval_threshold")).toBe("/settings/organization?card=risk_appetite");

@@ -152,11 +152,16 @@ An SBOM (software bill of materials) lists what an application or a container im
 
 ### How one asset is matched across sources
 
-The same device read from two sources (an endpoint manager and OpenAEV, for example) is one asset when they share a strong identifier: hardware serial, cloud resource id, managed device id, MAC address, FQDN or hostname, in that order by default. An IP address alone never merges two assets. Each field shows the value of the source that ranks first for it (by default the endpoint manager or EDR for the operating system and software, OpenCRQ for criticality, OpenAEV for exposure), and every source's value is kept. An administrator can change the order of the identifiers, leave one out, or change the source order of a field in the profile's `asset_identity` part; `GET /api/v1/organization-context/assets/identity` shows the saved settings, the defaults and what applies.
+The same device read from two sources (an endpoint manager and OpenAEV, for example) is one asset when they share a strong identifier: hardware serial, cloud resource id, code repository path, managed device id, MAC address, FQDN or hostname, in that order by default. A code repository is matched on its path (`github.com/owner/repo`, read from its URL or from a name such as `Owner/Repo`, whatever the case or a trailing `.git`), so the repository OpenAEV lists and the one GitHub or GitLab sends are one asset; two repositories with different GitHub or GitLab ids are never merged on the path. An IP address alone never merges two assets. Each field shows the value of the source that ranks first for it (by default the endpoint manager or EDR for the operating system and software, OpenCRQ for criticality, OpenAEV for exposure), and every source's value is kept. An administrator can change the order of the identifiers, leave one out, or change the source order of a field in the profile's `asset_identity` part; `GET /api/v1/organization-context/assets/identity` shows the saved settings, the defaults and what applies.
 
-## AI systems are assets
+## AI systems inventory
 
-The AI your organization runs or exposes is an asset of category `AI target`, as in OpenAEV, with its subcategory (`LLM model`, `AI agent`, `MCP server` or `RAG pipeline`), provider, endpoint, model and modality. It is listed, filtered and synced in CTEM > Inventory > Assets like any other asset, and AI security work reads it from there. AI systems saved in the profile before this change were turned into AI target assets, linked to their OpenAEV record when they had one. The `ai_systems` section of the API and the agent tools still answers the AI target assets for one release.
+The AI systems inventory lists the AI your organization runs or exposes, so that AI security work knows what to test. `Add an AI system` adds a row with:
+
+- its `Name`;
+- its `Kind`: `Assistant`, `Agent`, `Model API` or `Embedded`;
+- its `Exposure`: `Internal`, `Partner` or `Public`;
+- its `Owner`.
 
 ## Saved versions
 
@@ -201,7 +206,7 @@ Every row of every list section (crown jewels, tech stack, AI systems, assets, a
 
 An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a crown jewel's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as **no longer in** the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use `GET /api/v1/organization-context/import/options`, `POST /api/v1/organization-context/import/preview` and `POST /api/v1/organization-context/import/apply` (`remove_gone` removes the rows no longer in the platform).
 
-An asset is one real thing whatever the number of platforms that report it. When a platform sends an asset named like a row another source wrote (typed by hand, or read from another platform), the import adds it as a second record of that asset instead of skipping it, and the asset list shows it once, with each platform it comes from and, for every field, which source set the value. Records are joined on their serial number, cloud resource id, device id, MAC address, fully qualified name or host name; an IP address alone never joins two records. An administrator can merge records the keys did not join, or keep apart two records they joined (`POST /api/v1/organization-context/assets/decisions`, removed with `DELETE` on the same path and the decision id); both are kept across syncs and written to the audit log. A row typed by hand needs an external id before it can be merged or kept apart, because without one it is known only by its position in the list.
+An asset is one real thing whatever the number of platforms that report it. When a platform sends an asset named like a row another source wrote (typed by hand, or read from another platform), the import adds it as a second record of that asset instead of skipping it, and the asset list shows it once, with each platform it comes from and, for every field, which source set the value. Records are joined on their serial number, cloud resource id, code repository path, device id, MAC address, fully qualified name or host name; an IP address alone never joins two records. An administrator can merge records the keys did not join, or keep apart two records they joined (`POST /api/v1/organization-context/assets/decisions`, removed with `DELETE` on the same path and the decision id); both are kept across syncs and written to the audit log. A row typed by hand needs an external id before it can be merged or kept apart, because without one it is known only by its position in the list.
 
 ## Keep a section in sync
 
@@ -257,7 +262,7 @@ An outbound run writes with the token of the administrator who saved the sync, l
 | Asset groups | OpenAEV | Inbound (outbound planned) |
 | PIRs | OpenCTI | Inbound (outbound planned) |
 | Assets | OpenCTI | Inbound: Systems are owned by OpenCTI connectors |
-| Assets of category AI target | OpenAEV (AI targets) | Inbound, Outbound: XTM One-owned AI target assets are created and updated in OpenAEV |
+| AI systems | OpenAEV | Inbound: OpenAEV has no AI system object to write |
 | Tech stack | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
 
 ### What each platform feeds
@@ -268,7 +273,7 @@ The source x section x direction matrix, read from the platform APIs the syncs c
 |---|---|---|---|
 | OpenAEV | Assets | Endpoints (`POST /api/endpoints/search`): name, category and subcategory, criticality, exposure, and since #1134 S4 the freshness: **last seen** (`asset_last_seen`) and **status** (`asset_status`: active, inactive, agentless, or stale when unseen past the tenant's threshold) | Inbound |
 | OpenAEV | Asset groups | Asset groups (`POST /api/asset_groups/search`) | Inbound |
-| OpenAEV | Assets of category AI target | AI targets (`POST /api/ai_targets/search`) | Inbound, Outbound |
+| OpenAEV | AI systems | Endpoints that name an AI target provider | Inbound |
 | OpenAEV | Tech stack | Security platforms (`POST /api/security_platforms/search`) | Inbound |
 | OpenCTI | Assets | Systems, with the OpenAEV taxonomy when OpenCTI carries it | Inbound |
 | OpenCTI | PIRs | Priority intelligence requirements | Inbound |

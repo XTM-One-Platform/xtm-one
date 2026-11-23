@@ -39,7 +39,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
 const INVENTORY_CARDS = {
-  technology: ["tech_stack"],
+  technology: ["tech_stack", "ai_systems"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -77,6 +77,7 @@ const CONTEXT: OrganizationContextResponse = {
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     tech_stack: [],
+    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -256,15 +257,14 @@ describe("OrganizationSection tabs (#12329)", () => {
     expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
     expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
-    // One line points to CTEM > Inventory, where the technology and exposure cards live.
-    expect(screen.getByTestId("settings.organization.inventory-pointer").textContent).toContain("CTEM > Inventory");
+    // No move notice: CTEM is unreleased, nothing points from Settings to CTEM > Inventory.
+    expect(screen.queryByText(/now live in/)).toBeNull();
   });
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
     renderPage("exposure");
     expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    expect(screen.queryByTestId("settings.organization.inventory-pointer")).toBeNull();
     expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
     expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
   });
@@ -286,6 +286,20 @@ describe("OrganizationSection tabs (#12329)", () => {
     renderPage("nope");
     expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("reads a Technology or Exposure tab path as an unknown tab, with no redirect to CTEM > Inventory", async () => {
+    for (const path of ["/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
+      const view = renderWithProviders(
+        <MemoryRouter initialEntries={[path]}>
+          <OrganizationSection />
+        </MemoryRouter>,
+      );
+      expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+      expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
+      view.unmount();
+    }
   });
 
   it("keeps the whole-profile edit across tabs and marks the tab holding an unsaved change", async () => {
@@ -485,6 +499,8 @@ describe("OrganizationSection", () => {
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
+    // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
+    expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
@@ -1195,9 +1211,10 @@ describe("OrganizationSection", () => {
   });
 
   it("lands ?card=outside_lens on the outside lens card root (UX r1 B1 on #1159)", async () => {
+    // The card lives on CTEM > Inventory (#1178), which mounts the Exposure cards.
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization?card=outside_lens"]}>
-        <OrganizationSection />
+      <MemoryRouter initialEntries={["/ctem/inventory?card=outside_lens"]}>
+        <OrganizationSection embed={{ cards: INVENTORY_CARDS.exposure }} />
       </MemoryRouter>,
     );
     expect(await screen.findByTestId("settings.organization.panel-exposure")).toBeTruthy();
