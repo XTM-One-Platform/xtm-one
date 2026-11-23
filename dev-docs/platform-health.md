@@ -928,10 +928,21 @@ decision written here).
   never from the payload; its integration is built with the read-only binding rule, then
   every tool outside `MODULE_CHECKER_TOOLS` is withheld and refused by name. Any other
   run, Copilot mode or an inactive registration gets no module tool. The reads act as the
-  run's user, else the platform service account (`ADMIN_EMAIL`): a cycle run has no
-  triggering user and a platform-managed module integration needs one to sign its JWT
-  (#1351). A wiring that yields no tool is logged as an error and named on the run
-  ("Module tools not wired", a platform-side defect), never blamed on the allow-list.
+  **"Run checks as" user** alone (`HealthSettings.module_run_as_user_id`,
+  `app/services/health/run_as.py`, #1351): a cycle run has no triggering user, a
+  platform-managed module integration needs one to sign its JWT, and the XTM One
+  administrator generally has no access to OpenCTI or OpenAEV. There is no other
+  fallback (no service account, no seed owner, no administrator by default). Not set, or
+  the user cannot reach the registration's integration (granted and connected for them,
+  the `fleet_run_as.missing_providers` rule of #9188), no read is wired and the run's
+  checks carry "Checks need a run-as user with <Module> access"; `GET
+  /health/modules/{module}/checks` answers `run_as: not_set | no_access` and the module
+  card shows that one state with a link to the setting instead of a "not run" line per
+  check. `PUT /health/settings` (a changed user) and `PUT /health/settings/run-as` (the
+  CTEM setup's Modules step) refuse with a 400 naming the modules a user cannot read,
+  nothing written. A wiring that yields no tool for a usable user is logged as an error
+  and named on the run ("Module tools not wired", a platform-side defect), never blamed
+  on the allow-list.
 - The orchestrator does not delegate to the analyst; it starts only from its own
   triggers. **Superseded by section 13.2 (S15):** the orchestrator delegates the module
   round to the module health checkers.
