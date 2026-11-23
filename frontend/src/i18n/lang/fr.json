@@ -15479,6 +15479,8 @@
   "Fleet default saved": "Valeur par défaut de la flotte enregistrée",
   "Fleet default: {field}": "Valeur par défaut de la flotte : {field}",
   "Fleet defaults": "Valeurs par défaut de la flotte",
+  "{count, plural, =0 {No home member} one {# home member} other {# home members}}": "{count, plural, =0 {Aucun membre} one {# membre} other {# membres}}",
+  "{count, plural, =0 {no connected member} one {# connected} other {# connected}}": "{count, plural, =0 {aucun membre connecté} one {# connecté} other {# connectés}}",
   "Full conversation": "Conversation complète",
   "Home member": "Membre",
   "Instruction overridden": "Instruction personnalisée",

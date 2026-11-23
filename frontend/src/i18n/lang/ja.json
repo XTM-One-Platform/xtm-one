@@ -15479,6 +15479,8 @@
   "Fleet default saved": "フリートの既定値を保存しました",
   "Fleet default: {field}": "フリートの既定値：{field}",
   "Fleet defaults": "フリートの既定値",
+  "{count, plural, =0 {No home member} one {# home member} other {# home members}}": "{count, plural, =0 {メンバーなし} other {# 人のメンバー}}",
+  "{count, plural, =0 {no connected member} one {# connected} other {# connected}}": "{count, plural, =0 {接続済みメンバーなし} other {# 件が接続済み}}",
   "Full conversation": "会話全体",
   "Home member": "メンバー",
   "Instruction overridden": "指示を上書き",
