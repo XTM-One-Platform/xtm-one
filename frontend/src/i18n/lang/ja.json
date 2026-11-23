@@ -21240,5 +21240,6 @@
   "Every signal": "すべてのシグナル",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "一致するシグナルごとに、アサインメントの並列実行数の範囲内で実行が開始されます。エージェントは自身の権限で list_ctem_signals を使ってシグナルを読み取ります。統合リスナーが記録したシグナルは、管理者として実行されるアサインメントにのみ届きます。",
   "This entry no longer exists. The list is refreshed.": "このエントリは存在しません。一覧を更新します。",
-  "This entry could not be loaded.": "このエントリを読み込めませんでした。"
+  "This entry could not be loaded.": "このエントリを読み込めませんでした。",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }
