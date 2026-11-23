@@ -157,6 +157,12 @@ class WebChatSendRequest(BaseModel):
     mentioned_agent_ids: list[str] | None = None
     referenced_conversation_ids: list[str] | None = None
     supports_tool_approval: bool = False
+    # Will this client offer the user's likely next message
+    # (``reply_suggestion``, ``services/chat_reply_suggestions.py``)? A
+    # promise like ``supports_tool_approval``: absent, none is generated and
+    # the stream closes at the turn's end, so a script reading to the end of
+    # the stream never waits on one.
+    supports_reply_suggestions: bool = False
 
     def frame(self) -> dict:
         return self.model_dump(exclude_none=True, exclude={"conversation_id"})

@@ -136,6 +136,8 @@ export function useUpdateProfile() {
       chat_sidebar_expanded_workspaces?: string[] | null;
       /** The bell shows the work items waiting for this person (#9437). */
       notify_waiting_work_items?: boolean;
+      /** The composer's reply suggestion after a chat turn. */
+      reply_suggestions_enabled?: boolean;
     }) =>
       api.put("/settings/preferences", data),
     // Serialized: every preference write PUTs a whole field value, so two

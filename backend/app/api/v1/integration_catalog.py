@@ -2223,8 +2223,9 @@ PROVIDER_CATALOG = {
         "category": "integration",
         "integration_category": "development",
         # Issues and Service Management: Jira fills the Ticketing capability
-        # slot of a fleet (services.fleet_capability_slots).
-        "integration_types": ["repository", "ticketing", "itsm"],
+        # slot of a fleet (services.fleet_capability_slots). Not a code host:
+        # never typed "repository", the Source code capability's type (#1434).
+        "integration_types": ["ticketing", "itsm"],
         "auth_type": "oauth",
         # What its sign-in learns about the account: a person's own credential
         # never reads the integration's.
@@ -4791,6 +4792,8 @@ PROVIDER_CATALOG = {
         "logo": "/logos/aikido.svg",
         "category": "integration",
         "integration_category": "exposure_management",
+        # application_security puts it in the Application security capability of a
+        # fleet and keeps it out of the Vulnerability scanner one (#1434).
         "integration_types": ["vulnerability_management", "application_security"],
         "supports_assignment_webhooks": True,
         "available_events": [

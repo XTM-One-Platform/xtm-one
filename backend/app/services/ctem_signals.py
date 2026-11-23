@@ -403,7 +403,7 @@ def path_catalog(
     ``count_30d`` and ``last_signal_at`` (#1189).
     """
     from app.services.ctem_signal_listeners import paths_with_listener
-    from app.services.ctem_signal_sources import PATH_DESCRIPTIONS, path_sources, path_status
+    from app.services.ctem_signal_sources import PATH_CAPABILITIES, PATH_DESCRIPTIONS, path_sources, path_status
 
     listened = paths_with_listener()
     out: list[dict[str, Any]] = []
@@ -417,6 +417,7 @@ def path_catalog(
             "description": PATH_DESCRIPTIONS.get(path, ""),
             "sources": sources,
             "status": path_status(sources),
+            "capabilities": list(PATH_CAPABILITIES.get(path, ())),
         }
         if counts is not None:
             by_state = counts.get(path) or {s: 0 for s in SIGNAL_STATES}

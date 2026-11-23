@@ -51,6 +51,7 @@ from typing import Any, Final
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import _api, _search_body
+from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +166,8 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         return (int(total), None) if isinstance(total, int) else (None, "no totalElements in the answer")
 
     async def get_openaev_data_health() -> str:
+        # A grant-limited identity is answered an empty page, never a 403 (#1444).
+        scope, cause = await area_scope(headers, "assessment")
         now = datetime.now(UTC)
         week, prior = now - timedelta(days=7), now - timedelta(days=28)
         lines: list[str] = []
@@ -176,10 +179,12 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             recent, err_recent = await _count(path, _window(field, week, None), f"count {label.lower()} updated")
             before, err_before = await _count(path, _window(field, prior, week), f"count {label.lower()} updated")
             if err_recent or err_before or recent is None or before is None:
-                lines.append(f"{label}: total {total}; updates per week: {err_recent or err_before}")
+                lines.append(
+                    f"{label}: total {count_text(total or 0, scope)}; updates per week: {err_recent or err_before}"
+                )
                 continue
             lines.append(
-                f"{label}: total {total}; updated last 7 days {recent}, "
+                f"{label}: total {count_text(total or 0, scope)}; updated last 7 days {count_text(recent, scope)}, "
                 f"weekly mean of the 3 weeks before {before / 3:.1f}"
             )
         running, err = await _count(
@@ -190,7 +195,7 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             ],
             "count simulations running past their end",
         )
-        lines.append(f"Simulations running over 24 h past their end: {err or running}")
+        lines.append(f"Simulations running over 24 h past their end: {err or count_text(running or 0, scope)}")
         canceled, err = await _count(
             "/api/exercises/search",
             [
@@ -199,15 +204,16 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             ],
             "count simulations canceled",
         )
-        lines.append(f"Simulations canceled in the last 24 h: {err or canceled}")
+        lines.append(f"Simulations canceled in the last 24 h: {err or count_text(canceled or 0, scope)}")
         lines.append(
             "Completeness (scenarios with no inject, simulations with no target, assets in no group, "
             "injects with no expectation) and duplicate assets: not exposed by the OpenAEV search API"
         )
         lines.append("Creation times are not filterable in OpenAEV: growth is read on updates")
-        return "OpenAEV data health:\n" + "\n".join(lines)
+        return with_scope("OpenAEV data health:\n" + "\n".join(lines), scope, cause)
 
     async def get_openaev_error_rate() -> str:
+        scope, cause = await area_scope(headers, "assessment")
         today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         status = {"key": "inject_status", "operator": "eq", "values": list(_ERROR_STATUSES)}
         days: list[str] = []
@@ -223,13 +229,15 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             if err or count is None:
                 return f"OpenAEV error rate: {err}"
             counts.append(count)
-            days.append(f"{start.date().isoformat()} {count}")
+            days.append(f"{start.date().isoformat()} {count_text(count, scope)}")
         mean = sum(counts) / len(counts)
-        return (
+        return with_scope(
             f"OpenAEV error rate (atomic testings in {'/'.join(_ERROR_STATUSES)}, by update day, UTC):\n"
             + "\n".join(days)
             + f"\n7-day daily mean {mean:.1f}; today {counts[-1]}"
-            + "\nPlatform error log and failed internal jobs: not exposed by the OpenAEV API"
+            + "\nPlatform error log and failed internal jobs: not exposed by the OpenAEV API",
+            scope,
+            cause,
         )
 
     async def get_openaev_platform_health() -> str:
