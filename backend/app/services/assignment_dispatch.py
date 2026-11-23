@@ -119,6 +119,21 @@ def shares_slots(run_type: object) -> bool:
     return run_type in SHARED_SLOT_TRIGGER_TYPES
 
 
+#: Trigger types of a seeded assignment that fires once per event: born with
+#: ``SEEDED_EVENT_CONCURRENCY`` runs at once unless its seed names a cap, so an
+#: event storm on one seeded fleet never takes the whole worker pool.
+SEEDED_EVENT_TRIGGER_TYPES = frozenset({"integration_event", "platform_event"})
+SEEDED_EVENT_CONCURRENCY = 1
+
+
+def seeded_trigger_config(trigger_type: object, trigger_config: dict[str, Any] | None) -> dict[str, Any]:
+    """The ``trigger_config`` a built-in seed writes: an event trigger capped at one run unless it names a cap."""
+    config = dict(trigger_config) if isinstance(trigger_config, dict) else {}
+    if trigger_type in SEEDED_EVENT_TRIGGER_TYPES:
+        config.setdefault(MAX_CONCURRENT_RUNS_KEY, SEEDED_EVENT_CONCURRENCY)
+    return config
+
+
 def _clamp_cap(value: int) -> int:
     return max(1, min(MAX_CONCURRENCY_CAP, int(value)))
 

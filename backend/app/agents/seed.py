@@ -67,6 +67,7 @@ from app.services.agent_config_versioning import (
     versioned_agent_values,
 )
 from app.services.assignment_activation_check import parse_activation_check
+from app.services.assignment_dispatch import seeded_trigger_config
 from app.services.assignment_pause import (
     clear_pause_provenance,
     is_emergency_stopped,
@@ -865,7 +866,7 @@ async def seed_builtin_assignments(
             # assignment's triggers could never be removed (#9160).
             kept = existing.trigger_config if isinstance(existing.trigger_config, dict) else {}
             existing.trigger_config = {
-                **data.get("trigger_config", {}),
+                **seeded_trigger_config(data["trigger_type"], data.get("trigger_config")),
                 **{k: kept[k] for k in PROVISIONING_STATE_KEYS if k in kept},
             }
             existing.prompt = data["prompt"]
@@ -965,7 +966,7 @@ async def seed_builtin_assignments(
             name=data["name"],
             description=data.get("description"),
             trigger_type=data["trigger_type"],
-            trigger_config=data.get("trigger_config", {}),
+            trigger_config=seeded_trigger_config(data["trigger_type"], data.get("trigger_config")),
             prompt=data["prompt"],
             enabled=data.get("enabled", True),
             ai_label=data.get("ai_label", False),
