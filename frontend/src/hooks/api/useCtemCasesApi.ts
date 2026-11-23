@@ -245,15 +245,6 @@ export interface CtemCaseRunningVersion {
   sources: string[];
   /** Against the fixed version, when one is known. */
   status?: "below_fixed" | "fixed" | "not_comparable";
-  /** The asset's os_family (#1572); null when the inventory does not know it. */
-  platform?: string | null;
-  /** The first asset ids of the row; more_asset_ids counts the rest (#1572). */
-  asset_ids?: string[];
-  more_asset_ids?: number;
-  /** "fix not known for this platform" when no fixed version applies to the row's platform (#1572). */
-  status_reason?: string;
-  /** The fixed version of the row's platform, when the remediation names one (#1572). */
-  fixed_version?: string;
 }
 
 /** The versions an upgrade case's product runs on the organization's assets, read from the asset inventory (#1252). */
@@ -272,14 +263,6 @@ export interface CtemCaseRunningVersions {
   assets_not_comparable?: number;
   /** With no fixed version: the sources the fixed version was looked for in. */
   fixed_version_checked?: string[];
-  /** {platform: version} when the remediation names platforms (#1572). */
-  fixed_versions?: Record<string, string>;
-  /** A generic fixed version over assets of several platforms: never read as fixed (#1572). */
-  platform_unverified?: boolean;
-  assets_fix_not_known_for_platform?: number;
-  /** Distinct assets running more than one version: counted in each of their rows (#1572). */
-  assets_multi_version?: number;
-  platforms?: string[];
 }
 
 /** One asset a case's visible issues name (#1176 slice 3b), with the version it runs when the inventory knows it. */
@@ -324,6 +307,66 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   affected_assets?: CtemCaseAffectedAssets;
   /** The fleet that runs the case (#1390); absent on an API older than #1396. */
   owner_fleet?: CtemCaseOwnerFleet | null;
+  /** One resolved decision record per gate the case met (#1518); absent on an API older than #1524. */
+  gates?: CtemCaseGateRecord[];
+}
+
+/** The status of a gate record (`ctem_case_gate_records.STATUSES`). */
+export type CtemCaseGateStatus = "waiting" | "answered" | "passed_automatically" | "expired" | "cancelled";
+
+/** Why a gate ran without a person (`ctem_case_gate_records.REASON_KINDS`). */
+type CtemCaseGateReasonKind =
+  | "runbook"
+  | "within_threshold"
+  | "above_threshold"
+  | "loss_unknown"
+  | "safe_mode"
+  | "fleet_level"
+  | "person";
+
+/** A person, group or audience a decision was asked of; `name` null when the viewer may not see it. */
+export interface CtemCaseGateRecipient {
+  type: "user" | "group" | "company" | "admins" | string;
+  id?: string;
+  name?: string | null;
+}
+
+/**
+ * The decision record of one gate (#1518, `ctem_case_gate_records.resolve`):
+ * the decision row joined with the case's `gate` events, so an answered
+ * decision reads as answered even before the case recorded it.
+ */
+export interface CtemCaseGateRecord {
+  key: string;
+  phase: string | null;
+  status: CtemCaseGateStatus;
+  asked_at: string | null;
+  asked_of: CtemCaseGateRecipient | null;
+  asked_by_agent: { id: string; name: string | null } | null;
+  deadline: string | null;
+  answered_at: string | null;
+  answered_by: { id: string; name: string | null } | null;
+  /** The channel the answer came from (`decision_router.SURFACES`). */
+  surface: string | null;
+  option: { key: string; label: string | null } | null;
+  comment: string | null;
+  reason: { kind: CtemCaseGateReasonKind; runbook?: string } | null;
+  passed_at: string | null;
+  wait_seconds: number | null;
+  decision_id: string | null;
+  work_item_id: string | null;
+  /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
+  recorded_on_case: boolean;
+  /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */
+  next: {
+    at: string;
+    kind: string | null;
+    from?: string | null;
+    to?: string | null;
+    headline: string | null;
+    actor_type: string | null;
+    actor_name: string | null;
+  } | null;
 }
 
 /** `owner_fleet` of a case: `active` false when no active fleet owns it (#1390). */
