@@ -793,6 +793,60 @@ def workspace_dependency_dirs(manifests: Mapping[str, bytes], sub_paths: Iterabl
     return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))[:MAX_DEPENDENCY_DIRS]
 
 
+#: An ESLint flat configuration, a workspace's own included (``eslint.config.ts``, ``local.eslint.config.ts``).
+_LINT_CONFIG = re.compile(r"^([\w-]+\.)*eslint\.config\.(js|cjs|mjs|ts|cts|mts)$")
+#: A bare module specifier a configuration imports (``from 'eslint-rules/src/rules'``, ``import('x')``, ``require('x')``).
+_BARE_IMPORT = re.compile(
+    r"(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)[\"'`]((?:@[\w.-]+/)?[\w][\w.-]*)(?:/[^\"'`]*)?[\"'`]"
+)
+
+
+def is_lint_config(path: str) -> bool:
+    """Whether *path* is an ESLint flat configuration whose imports :func:`lint_config_member_dirs` follows."""
+    return bool(_LINT_CONFIG.match(posixpath.basename(path)))
+
+
+def lint_config_member_dirs(
+    configs: Mapping[str, bytes], manifests: Mapping[str, bytes], sub_paths: Iterable[str]
+) -> list[str]:
+    """The workspace member directories an ESLint configuration of a narrow checkout imports by package name.
+
+    ``import { linguiRules } from 'eslint-rules/src/rules'`` in the root
+    ``eslint.config.ts`` or a member's ``local.eslint.config.ts`` resolves to
+    the sibling member named ``eslint-rules`` through the workspace link, with
+    no ``workspace:`` dependency declaring it: a checkout of ``front`` keeps the
+    configuration and fails on a missing module. *configs* maps the
+    configurations read in or above the sub_paths (:func:`is_lint_config`) to
+    their content, *manifests* every ``package.json`` of the repository. Each
+    bare specifier whose package name is a member's ``name`` adds that
+    member's directory when it is not the root, under a sub_path or holding
+    one; :data:`MAX_DEPENDENCY_DIRS` at most, sorted.
+    """
+    wanted = [s.strip("/") for s in sub_paths if s and s.strip("/")]
+
+    def kept(path: str) -> bool:
+        return any(path == s or path.startswith(s + "/") for s in wanted)
+
+    by_name: dict[str, str] = {}
+    for path, data in sorted(manifests.items()):
+        if posixpath.basename(path) != "package.json" or _skipped(path):
+            continue
+        name = _json(data).get("name")
+        directory = posixpath.dirname(path)
+        if isinstance(name, str) and directory and name not in by_name:
+            by_name[name] = directory
+    found: set[str] = set()
+    for path, data in sorted(configs.items()):
+        if not is_lint_config(path) or _skipped(path):
+            continue
+        for name in _BARE_IMPORT.findall(_text(data[:MAX_REQUIREMENTS_BYTES])):
+            member_dir = by_name.get(name)
+            if not member_dir or kept(member_dir) or any(s.startswith(member_dir + "/") for s in wanted):
+                continue
+            found.add(member_dir)
+    return sorted(d for d in found if not any(d != o and d.startswith(o + "/") for o in found))[:MAX_DEPENDENCY_DIRS]
+
+
 #: A Relay ``src`` larger than this is not added to a narrow checkout (OpenCTI's front is about 24 MB).
 MAX_RELAY_SOURCE_BYTES = 64 * 1024 * 1024
 #: The ``src`` of a ``relay.config.js`` / ``.ts`` (``src: './src'``); a JSON config is parsed.
