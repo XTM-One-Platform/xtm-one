@@ -21215,5 +21215,21 @@
   "About the inventory sources": "Acerca de las fuentes del inventario",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Las plataformas que cada sincronización lee según una programación, los agentes y socios que escriben a través de la API, las importaciones CSV y las filas introducidas a mano. La correspondencia de activos fusiona los registros de varias fuentes en un solo activo.",
   "About the knowledge and sources": "Acerca del conocimiento y las fuentes",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Los procedimientos y documentos de referencia que consultan los agentes, el contexto de la organización que precargan y las fuentes que alimentan las joyas de la corona y los PIR."
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Los procedimientos y documentos de referencia que consultan los agentes, el contexto de la organización que precargan y las fuentes que alimentan las joyas de la corona y los PIR.",
+  "CTEM signal": "Señal CTEM",
+  "CTEM signal recorded": "Señal CTEM registrada",
+  "CTEM signal triaged": "Señal CTEM clasificada",
+  "Recorded or triaged": "Registrada o clasificada",
+  "Recorded": "Registrada",
+  "Triaged": "Clasificada",
+  "A run starts when a signal is first seen, and again each time the scope gate changes its verdict.": "Una ejecución empieza cuando se ve una señal por primera vez, y de nuevo cada vez que la puerta de alcance cambia su veredicto.",
+  "A run starts when a signal is first seen, with the scope gate's first verdict. Seeing it again starts nothing.": "Una ejecución empieza cuando se ve una señal por primera vez, con el primer veredicto de la puerta de alcance. Volver a verla no inicia nada.",
+  "A run starts when the scope gate changes the verdict of a signal already seen, for example from to validate to confirmed.": "Una ejecución empieza cuando la puerta de alcance cambia el veredicto de una señal ya vista, por ejemplo de por validar a confirmada.",
+  "Third party": "Tercero",
+  "Threat": "Amenaza",
+  "Recorded by hand": "Introducida a mano",
+  "Starts a run when a signal is": "Inicia una ejecución cuando una señal está",
+  "Subject kind": "Tipo de sujeto",
+  "Every signal": "Todas las señales",
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Una ejecución empieza por cada señal que coincide, dentro de las ejecuciones en paralelo de la tarea. El agente lee la señal con list_ctem_signals y sus propios permisos: una señal registrada por un oyente de integración solo llega a una tarea que se ejecuta como administrador."
 }

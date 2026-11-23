@@ -21215,5 +21215,21 @@
   "About the inventory sources": "About the inventory sources",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
   "About the knowledge and sources": "About the knowledge and sources",
-  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs."
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.",
+  "CTEM signal": "CTEM signal",
+  "CTEM signal recorded": "CTEM signal recorded",
+  "CTEM signal triaged": "CTEM signal triaged",
+  "Recorded or triaged": "Recorded or triaged",
+  "Recorded": "Recorded",
+  "Triaged": "Triaged",
+  "A run starts when a signal is first seen, and again each time the scope gate changes its verdict.": "A run starts when a signal is first seen, and again each time the scope gate changes its verdict.",
+  "A run starts when a signal is first seen, with the scope gate's first verdict. Seeing it again starts nothing.": "A run starts when a signal is first seen, with the scope gate's first verdict. Seeing it again starts nothing.",
+  "A run starts when the scope gate changes the verdict of a signal already seen, for example from to validate to confirmed.": "A run starts when the scope gate changes the verdict of a signal already seen, for example from to validate to confirmed.",
+  "Third party": "Third party",
+  "Threat": "Threat",
+  "Recorded by hand": "Recorded by hand",
+  "Starts a run when a signal is": "Starts a run when a signal is",
+  "Subject kind": "Subject kind",
+  "Every signal": "Every signal",
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator."
 }
