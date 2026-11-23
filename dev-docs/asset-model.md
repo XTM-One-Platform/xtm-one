@@ -149,11 +149,24 @@ as resolved at sync time.
 
 ## 7. AI systems
 
-`AiSystem` (`name`, `kind`, `owner`, `exposure` internal / partner / public, `openaev_asset_id`) is the inventory of
-AI systems the organization runs. In OpenAEV the same object is an asset of category `ai_target`
-(`llm_model`, `ai_agent`, `mcp_server`, `rag_pipeline`) with its `ai_target_*` fields; `openaev_asset_id` links
-the two. It stays a list of its own in the profile (it carries the AI governance fields), and an AI system that
-is also part of the attack surface is an asset of category `ai_target` too.
+Since #1501 an AI system is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
+`ai_agent`, `mcp_server` or `rag_pipeline`, with the `ai_target_provider`, `ai_target_endpoint`,
+`ai_target_model` and `ai_target_modality` fields on `AssetEntry`. It lives in `assets_exposure`, merged and
+identified like any asset; there is no `AiSystem` list in the profile any more.
+
+- **Profiles saved before #1501**: their `ai_systems` rows become `ai_target` assets at parse
+  (`OrganizationProfile._ai_systems_into_assets`): kind `agent` -> `ai_agent`, `model_api` -> `llm_model`,
+  `assistant` and `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` ->
+  internet facing, every exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source
+  `openaev` with that `external_id`, so the OpenAEV record merges instead of duplicating.
+- **Sync with OpenAEV**: the assets import reads `/api/ai_targets/search` beside the endpoints; the outbound
+  assets sync creates and updates XTM One-owned AI target assets through `/api/ai_targets`, deletes only what it
+  created, and never writes a row an OpenAEV inbound sync owns.
+- **Deprecated alias** (one release): `ai_systems` in `get_organization_context`, `upsert_organization_rows`,
+  `run_organization_import` and the syncs reads and writes the assets of category `ai_target`;
+  `OrganizationProfile.ai_systems` is a derived property and `legacy_dump` still emits the list for old readers.
+- **CTEM > Inventory**: no AI systems tab; `/ctem/inventory/ai-systems` opens the Assets tab filtered on
+  category `ai_target`.
 
 ## 8. OpenCTI Systems
 

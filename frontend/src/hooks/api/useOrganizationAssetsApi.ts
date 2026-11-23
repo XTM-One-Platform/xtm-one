@@ -104,9 +104,16 @@ function pageQuery(params: Record<string, string | number | readonly string[] | 
 }
 
 /** The asset fields the list filters on, and the source of a record (`GET /assets/facets`). */
-export type AssetFilterKey = "category" | "criticality" | "internet_facing" | "source";
+export type AssetFilterKey = "category" | "subcategory" | "criticality" | "internet_facing" | "source";
 
-export type AssetFacets = Record<AssetFilterKey, string[]>;
+/** One facet value with the assets it holds; a subcategory names its category. */
+export interface AssetFacetValue {
+  value: string;
+  count: number;
+  category?: string;
+}
+
+export type AssetFacets = Record<AssetFilterKey, AssetFacetValue[]>;
 
 /** A page of canonical assets, filtered on a name substring and on the filter values picked. */
 export function useCanonicalAssets(query: {
@@ -123,11 +130,16 @@ export function useCanonicalAssets(query: {
   });
 }
 
-/** The values each asset filter offers, read from the store. */
-export function useAssetFacets() {
+/**
+ * The values each asset filter offers with their counts, read from the store: a facet's counts apply the search and
+ * the other facets picked (#1501), so the sidebar says how many assets a value adds.
+ */
+export function useAssetFacets(query: { q?: string; filters?: Partial<Record<AssetFilterKey, readonly string[]>> } = {}) {
+  const qs = pageQuery({ q: query.q?.trim(), ...query.filters });
   return useQuery<AssetFacets>({
-    queryKey: [...KEY, "facets"],
-    queryFn: () => api.get("/organization-context/assets/facets"),
+    queryKey: [...KEY, "facets", qs],
+    queryFn: () => api.get(`/organization-context/assets/facets${qs ? `?${qs}` : ""}`),
+    placeholderData: keepPreviousData,
     throwOnError: false,
   });
 }

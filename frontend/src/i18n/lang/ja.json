@@ -21220,5 +21220,6 @@
   "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "担当者を待っているこのフリートのメンバーの判断: 一時停止中の実行と作業項目。このタブを開いても実行は開始されず、クォータも消費されません。",
   "A source read before signals (legacy)": "シグナル導入前のソース読み取り (レガシー)",
   "A signal you cannot see": "閲覧権限のないシグナル",
-  "Split into its own case by a person or an agent": "ユーザーまたはエージェントにより個別のケースに分割"
+  "Split into its own case by a person or an agent": "ユーザーまたはエージェントにより個別のケースに分割",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }

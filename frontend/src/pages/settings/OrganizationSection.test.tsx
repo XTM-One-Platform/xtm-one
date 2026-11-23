@@ -39,7 +39,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
 const INVENTORY_CARDS = {
-  technology: ["tech_stack", "ai_systems"],
+  technology: ["tech_stack"],
   exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
@@ -77,7 +77,6 @@ const CONTEXT: OrganizationContextResponse = {
     size: "",
     crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     tech_stack: [],
-    ai_systems: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
     loaded_hourly_rate: null,
@@ -499,8 +498,6 @@ describe("OrganizationSection", () => {
     expect((await screen.findByTestId("settings.organization.attention-tech_stack")).textContent).toBe("1 needs attention");
     fireEvent.click(screen.getByRole("button", { name: /Edit Tech stack/ }));
     const bar = await screen.findByTestId("settings.organization.list-save-bar");
-    // The other card of the tab stays in read mode, its Edit waiting for this one; the tab is marked (#12329).
-    expect((screen.getByRole("button", { name: /Edit AI systems inventory/ }) as HTMLButtonElement).disabled).toBe(true);
     // 25 rows a page, never the 150.
     expect(screen.getAllByTestId("settings.organization.tech-row")).toHaveLength(25);
     const save = within(bar).getByRole("button", { name: "Save" }) as HTMLButtonElement;
