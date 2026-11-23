@@ -522,8 +522,9 @@ then the existing AI assessment and facts grid unchanged.
   tab `?state=` and the table parameters `?c_*` (filters, search, sort, page
   size, grouping; never the page number; columns stay the table's own stored
   choice). A click opens a view on page 1 (other URL parameters kept), the
-  trash deletes it, a name already used is replaced. The pill is accented and
-  names the view the list matches (`cases-saved-views.ts`).
+  trash deletes it, a name already used is replaced. One query, one view:
+  saving a list that a view already opens renames that view, so the pill,
+  accented, always names the view the list matches (`cases-saved-views.ts`).
 - **Grouping (#1176)**: a "Group by" pill at the right of the toolbar, the
   anatomy of Columns (a toolbar select is refused by the data-table gates):
   No grouping, Owner, State, Priority, Fix family; accented and named while

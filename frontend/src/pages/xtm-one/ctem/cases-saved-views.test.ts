@@ -41,6 +41,19 @@ describe("cases saved views", () => {
     expect(again).toEqual([{ id: "a", name: "kev FIRST", query: "c_f_kev=no" }]);
   });
 
+  it("keeps one view per query: saving the same list again renames its view", () => {
+    const views = addCaseSavedView([], "Critical fixes for the infrastructure team", "state=all", "a");
+    const again = addCaseSavedView(views, "Open", "state=all", "b");
+    expect(again).toEqual([{ id: "a", name: "Open", query: "state=all" }]);
+    expect(activeCaseView(again, "state=all")?.name).toBe("Open");
+  });
+
+  it("drops another view holding the name when the query already has a view", () => {
+    const views = addCaseSavedView(addCaseSavedView([], "A", "state=all", "a"), "B", "state=resolved", "b");
+    const again = addCaseSavedView(views, "b", "state=all", "c");
+    expect(again).toEqual([{ id: "a", name: "b", query: "state=all" }]);
+  });
+
   it("drops the oldest past the cap and ignores a blank name", () => {
     let views = addCaseSavedView([], "  ", "state=all", "x");
     expect(views).toEqual([]);

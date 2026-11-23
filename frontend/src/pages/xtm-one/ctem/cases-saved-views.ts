@@ -66,11 +66,23 @@ export function readCaseSavedViews(raw: string | null): CaseSavedView[] {
   }
 }
 
-/** Save a view: a name already used (any case) is replaced in place; past the cap the oldest goes. */
+/**
+ * Save a view. One query, one view: a view that already opens this query is
+ * renamed in place (so the pill always names the view the user opened), and
+ * another view holding the same name goes. A name already used (any case) by
+ * another query takes the new query in place. Past the cap the oldest goes.
+ */
 export function addCaseSavedView(views: readonly CaseSavedView[], name: string, query: string, id: string): CaseSavedView[] {
   const trimmed = name.trim().slice(0, CASE_SAVED_VIEW_NAME_MAX);
   if (!trimmed) return [...views];
-  const same = views.findIndex((v) => v.name.toLowerCase() === trimmed.toLowerCase());
+  const sameName = (v: CaseSavedView) => v.name.toLowerCase() === trimmed.toLowerCase();
+  const sameQuery = views.findIndex((v) => v.query === query);
+  if (sameQuery >= 0) {
+    return views
+      .filter((v, i) => i === sameQuery || !sameName(v))
+      .map((v) => (v.id === views[sameQuery].id ? { ...v, name: trimmed } : v));
+  }
+  const same = views.findIndex(sameName);
   if (same >= 0) return views.map((v, i) => (i === same ? { ...v, name: trimmed, query } : v));
   return [...views, { id, name: trimmed, query }].slice(-CASE_SAVED_VIEWS_MAX);
 }
