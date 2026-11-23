@@ -649,9 +649,7 @@ async def record_groups(
     ).all()
     out: dict[uuid.UUID, dict[str, str]] = {}
     for group_id, name, group_source, via in rows:
-        out.setdefault(
-            group_id, {"id": str(group_id), "name": str(name), "source": str(group_source), "via": str(via)}
-        )
+        out.setdefault(group_id, {"id": str(group_id), "name": str(name), "source": str(group_source), "via": str(via)})
     return list(out.values())
 
 

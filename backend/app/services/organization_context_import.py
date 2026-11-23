@@ -1036,7 +1036,9 @@ async def _openaev_members_by_group(
         if err or resp is None:
             return {}, f"OpenAEV asset group {group_id}: {err or 'no answer'}"
         data = resp.json() if resp is not None else {}
-        ids = [str(a) for key in ("asset_group_assets", "asset_group_dynamic_assets") for a in (data.get(key) or []) if a]
+        ids = [
+            str(a) for key in ("asset_group_assets", "asset_group_dynamic_assets") for a in (data.get(key) or []) if a
+        ]
         out[group_id] = list(dict.fromkeys(ids))
     return out, None
 

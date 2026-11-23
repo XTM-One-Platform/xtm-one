@@ -100,7 +100,9 @@ async def _members(session: AsyncSession, group_id: uuid.UUID) -> dict[str, str]
 
 async def _org_of(session: AsyncSession, group_id: uuid.UUID) -> uuid.UUID:
     return (
-        await session.execute(select(OrganizationAssetGroup.organization_id).where(OrganizationAssetGroup.id == group_id))
+        await session.execute(
+            select(OrganizationAssetGroup.organization_id).where(OrganizationAssetGroup.id == group_id)
+        )
     ).scalar_one()
 
 
