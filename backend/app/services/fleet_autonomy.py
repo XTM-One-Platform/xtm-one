@@ -325,26 +325,6 @@ def effective_gates(
     return out
 
 
-#: The integration context key holding :func:`gate_tool_names` of the run's fleet (#1480).
-FLEET_GATED_TOOLS_CONTEXT_KEY = "fleet_gated_tools"
-
-
-def gate_tool_names(gates: Iterable[Mapping[str, Any]] | None) -> frozenset[str]:
-    """Every tool a gate of the fleet names, whether it waits at the level or runs (#1480).
-
-    A tool offered only because a gate decides it (``apply_opencti_draft`` under
-    the CTEM analyst review) is offered whenever its gate exists: at a level
-    where the gate waits, :func:`gated_tool_rules` pauses the call; where it
-    runs, the fleet's policy lets it run.
-    """
-    names: set[str] = set()
-    for gate in gates or ():
-        for tool in gate.get("tools") or ():
-            if isinstance(tool, Mapping) and tool.get("name"):
-                names.add(str(tool["name"]))
-    return frozenset(names)
-
-
 def gated_tool_rules(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
     """The tool rules the run enforces at *level*: one per tool of each gate that still waits.
 
@@ -514,6 +494,10 @@ async def install_fleet_autonomy_gate(
 ) -> bool:
     """Wrap *composite*'s installed gate with the pauses of *fleet_id*'s gates at its level (#10140).
 
+    Only for a fleet an administrator opted in to tool-level enforcement
+    (``Fleet.enforce_gates_at_tool_level``, #1467): by default a fleet's gates
+    are instructions, stated in the run prompt, and no tool call pauses.
+
     The entry points other than an assignment run (chat, channel threads,
     consults, sub-agents, work-item turns) call this after installing the
     agent's own gate, so a member's gated action pauses wherever it acts. The
@@ -524,6 +508,8 @@ async def install_fleet_autonomy_gate(
     """
     autonomy = await fleet_autonomy_for_run(db, fleet_id)
     if autonomy is None:
+        return False
+    if not await fleet_enforces_at_tool_level(db, fleet_id):
         return False
     rules = gated_tool_rules(*autonomy)
     if not rules:
@@ -550,9 +536,17 @@ FLEET_AUTONOMY_HEADER = "── Fleet autonomy level ──"
 
 
 def fleet_autonomy_block(
-    level: Any, gates: Iterable[Mapping[str, Any]] | None, instructions: str | None = None
+    level: Any,
+    gates: Iterable[Mapping[str, Any]] | None,
+    instructions: str | None = None,
+    *,
+    enforced: bool = False,
 ) -> str:
     """The block appended to a fleet member's run prompt: the level and, per declared gate, waits or automatic.
+
+    *enforced* is ``Fleet.enforce_gates_at_tool_level`` (#1467): without it the
+    gates are instructions only, and the block says that an answered decision
+    is not asked again.
 
     *instructions* is :func:`instructions_line` of the fleet: one more line
     when a person announced the instructions position, nothing otherwise, so
@@ -573,11 +567,19 @@ def fleet_autonomy_block(
             lines.append(f"- {entry['action']} ({entry['module']}, impact {entry['impact']}): {verdict}")
     if alone:
         lines.append(f"{alone} other write action group(s) of this fleet run without approval (still logged).")
-    lines.append(
-        "An action that waits needs a person's approval before it runs, as your instructions say; the "
-        "platform also pauses the tool calls the fleet maps to it until a person approves. An action that "
-        "runs without approval is still reported in the case. Only an administrator can raise this level."
-    )
+    if enforced:
+        lines.append(
+            "An action that waits needs a person's approval before it runs, as your instructions say; the "
+            "platform also pauses the tool calls the fleet maps to it until a person approves. An action that "
+            "runs without approval is still reported in the case. Only an administrator can raise this level."
+        )
+    else:
+        lines.append(
+            "An action that waits needs a person's approval before it runs, as your instructions say: ask "
+            "once, and once a person has answered that decision, do the action without asking again. An "
+            "action that runs without approval is still reported in the case. Only an administrator can raise "
+            "this level."
+        )
     if instructions:
         lines.append(instructions)
     return "\n".join(lines)
@@ -606,6 +608,31 @@ async def fleet_instructions_for_run(db, fleet_id: Any) -> str | None:
         logging.getLogger(__name__).exception("Fleet instructions position unreadable for fleet %s", fleet_id)
         return None
     return instructions_line(row[0], row[1]) if row is not None else None
+
+
+async def fleet_enforces_at_tool_level(db: Any, fleet_id: Any) -> bool:
+    """Whether an administrator opted *fleet_id* in to tool-level gate pauses (#1467); ``False`` on a failed read.
+
+    Off by default: XTM One enables no programmatic tool-level gate unless a
+    person asks for one, the same rule as an agent's ``approve_tool_calls``.
+    """
+    if fleet_id is None:
+        return False
+    import logging
+
+    from sqlalchemy import select
+
+    from app.models.fleet import Fleet
+
+    try:
+        async with db.begin_nested():
+            value = (
+                await db.execute(select(Fleet.enforce_gates_at_tool_level).where(Fleet.id == fleet_id))
+            ).scalar_one_or_none()
+    except Exception:
+        logging.getLogger(__name__).exception("Fleet tool-level enforcement unreadable for fleet %s", fleet_id)
+        return False
+    return bool(value)
 
 
 async def fleet_autonomy_for_run(db, fleet_id: Any) -> tuple[str, list[Mapping[str, Any]]] | None:

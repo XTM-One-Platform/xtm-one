@@ -480,21 +480,11 @@ _OPENAEV_LAUNCH_TOOLS = [
 _COVERAGE_REQUEST_TOOLS = [
     {"name": "manage_opencti_security_coverage", "when": {"action": ["create"]}},
 ]
-#: The analyst review (#1480): validating the OpenCTI draft that holds the threat
-#: package and its coverage publishes both, and only then does the coverage reach
-#: OpenAEV. One decision with the coverage request: the approved request's answer
-#: names its draft, and that grant lets the draft's validation run without a
-#: second pause. A fleet with this gate is offered apply_opencti_draft with Live
-#: writes off (``fleet_autonomy.gate_tool_names``).
-_THREAT_PACKAGE_REVIEW_TOOLS = [
-    *_COVERAGE_REQUEST_TOOLS,
-    {"name": "apply_opencti_draft"},
-]
-_THREAT_PACKAGE_REVIEW_GRANT = {"objects": ["draft_id"], "fresh": []}
 #: Every call that creates or starts an OpenAEV validation (Sam, 23 Nov 2026, #1339): the
 #: gate ``ctem.validation.non_readonly`` of a fleet that has the OpenAEV validation step.
 #: Reads (list, get, results, healthcheck, status reads) are not listed and stay free.
-#: The coverage request is one of them: OpenAEV builds and schedules a scenario from it.
+#: The coverage request is NOT one of them (#1467): it is the decision of the review
+#: step, ``ctem.analyst_review`` alone, one decision and one gate key per call.
 _OPENAEV_VALIDATION_TOOLS = [
     {"name": "create_openaev_scenario"},
     {"name": "import_openaev_scenario"},
@@ -508,7 +498,6 @@ _OPENAEV_VALIDATION_TOOLS = [
         "name": "manage_openaev_atomic_testing",
         "when": {"action": ["create", "duplicate", "recurrence"]},
     },
-    *_COVERAGE_REQUEST_TOOLS,
 ]
 #: One decision per validation (#1339): an approved call of the gate covers the later
 #: calls of the same gate on the objects it named or created (a scenario, a simulation,
@@ -599,18 +588,15 @@ def _ctem_gates(*, launch_tools: bool, mobilize_tools: bool, mobilize_action: st
     )
     if launch_tools:
         validation["grant"] = {k: list(v) for k, v in _OPENAEV_VALIDATION_GRANT.items()}
-    review = gate(
-        "ctem.analyst_review",
-        "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
-        "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
-        "opencti",
-        "low",
-        _THREAT_PACKAGE_REVIEW_TOOLS,
-    )
-    review["grant"] = {k: list(v) for k, v in _THREAT_PACKAGE_REVIEW_GRANT.items()}
     return [
         validation,
-        review,
+        gate(
+            "ctem.analyst_review",
+            "Review: an analyst checks the threat package before its security coverage is requested",
+            "opencti",
+            "low",
+            _COVERAGE_REQUEST_TOOLS,
+        ),
         gate(
             "ctem.remediation.decision",
             "Decide: choose the remediation option and record it as an OpenCRQ treatment plan",

@@ -5225,14 +5225,21 @@ async def execute_assignment_run(
             from app.services.fleet_autonomy import (
                 fleet_autonomy_block,
                 fleet_autonomy_for_run,
+                fleet_enforces_at_tool_level,
                 fleet_instructions_for_run,
             )
 
             _fleet_autonomy = await fleet_autonomy_for_run(db, getattr(_run_fleet, "fleet_id", None))
+            # Tool-level pauses only on an administrator's opt-in (#1467): by
+            # default the gates are instructions, stated in the block below.
+            _fleet_enforced = _fleet_autonomy is not None and await fleet_enforces_at_tool_level(
+                db, getattr(_run_fleet, "fleet_id", None)
+            )
             if _fleet_autonomy is not None:
                 rendered_prompt += fleet_autonomy_block(
                     *_fleet_autonomy,
                     await fleet_instructions_for_run(db, getattr(_run_fleet, "fleet_id", None)),
+                    enforced=_fleet_enforced,
                 )
 
             # ── Memory (load enabled tiers + user memory before building prompt) ──
@@ -5745,11 +5752,6 @@ async def execute_assignment_run(
                     )
                     integration_context[SIGNATURE_CONTEXT_KEY] = getattr(agent, "integration_signatures", None)
                     integration_context[LIVE_WRITES_CONTEXT_KEY] = live_writes_overrides(agent, effective_bindings)
-                    if _fleet_autonomy is not None:
-                        # The tools a gate of the run's fleet decides (#1480).
-                        from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY, gate_tool_names
-
-                        integration_context[FLEET_GATED_TOOLS_CONTEXT_KEY] = gate_tool_names(_fleet_autonomy[1])
                     integration_context[PLATFORM_NAMES_CONTEXT_KEY] = _platform_names
                     integration_context[ATTACK_SOURCES_CONTEXT_KEY] = _attack_sources
                     integ_defs, integ_exec = await build_integration_tools(
@@ -8009,8 +8011,13 @@ async def execute_assignment_run(
 
                 # The fleet's gates still waiting at its autonomy level pause
                 # their tool calls (#9769 S1b), around whichever gate the run
-                # installed; an administrator's platform kill switch wins.
-                if _fleet_autonomy is not None and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED:
+                # installed, only when an administrator opted the fleet in
+                # (#1467); the platform kill switch wins.
+                if (
+                    _fleet_autonomy is not None
+                    and _fleet_enforced
+                    and _suppressed_outcome != OUTCOME_APPROVALS_DISABLED
+                ):
                     from app.services.fleet_autonomy import gated_tool_rules, make_fleet_autonomy_gate
 
                     _fleet_rules = gated_tool_rules(*_fleet_autonomy)
