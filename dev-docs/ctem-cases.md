@@ -557,30 +557,9 @@ then the existing AI assessment and facts grid unchanged.
   link); its action slot holds only the quiet freshness line of s.4.3, never a
   refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
-- One full list, no state tabs and no "Act on this first" band (#1503):
-  quick filter chips above the table (`QuickFilterChips`), each with its
-  count and in the URL: the scope (`?state=`: Open by default, Waiting for
-  decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
-  Critical and high). A case Waiting for decision says what it waits on, who
-  and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
-- **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
-  (quick filters, search and filters applied) at `/ctem/cases` or as columns
-  at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
-  Columns are the eight statuses in lifecycle order, or the five CTEM phases
-  when grouped by CTEM phase (`phase` on each list row:
-  `ctem_case_audit.current_phase` of the history the viewer is served; a
-  case with no event yet sits in a last "Phase not known yet" column). Cards:
-  title, urgency, owner, due, what a waiting case waits on, the loop line. In
-  the status layout a card is dragged to another column to change its status
-  (`PATCH /ctem-cases/{id}`); New, Analyzing, Remediating and Validating are
-  set by a drop (an unowned case moved to Remediating takes the person
-  dropping it as owner), Waiting for decision, Mitigated watching, Resolved
-  and Accepted risk are refused with their reason (each needs what a drop
-  cannot carry: the case page sets them), and the API's own refusal is shown
-  the same way. The Mobilization stage page's flow strip (7.1) stays a strip.
-- Group by (`?c_group=`, both views in the list): owner, status, CTEM phase,
-  priority, fix family.
+- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
+  exact counts: Needs attention, In progress, Resolved ("All time" in its
+  tooltip, A1), Accepted risk, All.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
@@ -828,6 +807,8 @@ No decision structure is stored on the case: the decision is the gate `ctem.reme
 A decision is recorded in OpenCRQ as a treatment plan through four OpenCRQ provider tools on the procedures OpenCRQ already serves (`providers/opencrq/treatment.py`): `create_opencrq_treatment_plan` (`treatmentPlans.createTreatmentPlan`: name, owner, period, one-off and annual cost, rationale, first control moves), `update_opencrq_treatment_plan` (`updateTreatmentPlan`, partial: an empty value clears a nullable field), `set_opencrq_treatment_plan_moves` (`setTreatmentPlanScope`, replaces the moves) and `add_opencrq_treatment_plan_moves` (`addTreatmentPlanMoves`). A move is a control capability with its target strength rung and coverage bucket (L0 to L3, a target left out keeps that axis); OpenCRQ re-prices the plan after a change of its moves. No new OpenCRQ entity: the accepted residual risk is the evidence dismissal `risk_accepted` with a reason code (`update_opencrq_evidence_state`), its expiry the profile policy `accepted_risks`. Every call carries the acting user's own OpenCRQ token (per-user JWT): a user OpenCRQ refuses gets that refusal and nothing is written for them. Gates: on a CTEM loop fleet the four tools are rules of `ctem.remediation.decision` (runs out of the box, a pin or Full human gates makes it wait, so the plan follows the decision without a second approval); on the risk budget desk they are rules of `opencrq.register.write`. Tests: `tests/test_opencrq_tool_contracts.py`, `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
 On the case (CTEM-18-UI, #1068): `create_opencrq_treatment_plan` answers the plan's OpenCRQ link (`Link:` line, `/treatment-plans/<id>`), and the fleet attaches the plan to the case with `update_ctem_case` `treatment_plan` {id, name, url} (`ctem_case_loop.record_treatment_plan`: the id a UUID, the url the OpenCRQ page of that id, else refused; the same plan again writes nothing). No migration: one `treatment_plan` case event (`to` the id, `reason` the name, `evidence` the url). The case detail serves `treatment_plan`, the newest such event, as the exploitation reading (#936): id, name and link only to a viewer whose own OpenCRQ read is available, `{restricted: true, at}` to anyone else, and the history row of that kind carries no value for them. The case page shows it in a "Treatment plan" card (name linked to OpenCRQ, attach date; never blank) and the history line "Attached the treatment plan". The accepted residual risk and its expiry stay where they were: the accepted-risk card of the case and Governance & Risk > Accepted risks. Tests: `tests/test_ctem_case_treatment_plan.py`, `frontend/src/pages/xtm-one/ctem/case-treatment-plan.test.tsx`.
+
+Threat package state from the live graph (#1547): a threat package reads `validated` only when its stored page is the Grouping page, and that page is stored only once the Grouping resolves in OpenCTI's live graph. `update_ctem_case` `threat_package` runs `ctem_threat_package_live.verify_package` with the acting user's own OpenCTI access (`_user_creds`, never a system token): a live Grouping keeps its page, a Grouping found inside an open draft is recorded with that draft's page (`drafted`), one found nowhere or unreadable is refused and nothing is written. A package with no page reads `drafted` too. Packages stored before the check: `POST /api/v1/ctem-cases/threat-packages/repair` (administrators, `{"dry_run": true}` by default answers the count and the cases) re-reads each case's newest package stored with a Grouping page with the caller's access and writes a new `threat_package` event with the draft page (Grouping in an open draft) or no page (Grouping absent); a live or unreadable one is left (`unreadable` counts the latter).
 
 Attack path and blast radius (CTEM-23-UI, #1289): `get_opencrq_attack_path_reach` (`providers/opencrq/risk.py`) reads OpenCRQ's `supportingAssets.getAttackPathReach` for one supporting asset: the hops nearest first (each proven by an OpenAEV execution or inferred, with its simulation), the assets reached with their depth and criticality, and the primary assets behind them; hops unconfirmed past OpenCRQ's stale delay are left out. The triage analyst calls it on the matched asset with the highest impact and the orchestrator writes it with `update_ctem_case` `attack_path` (`ctem_case_loop.record_attack_path`: origin required, a hop with no end dropped, a nature other than proven read as inferred, capped at 40 hops and reached assets and 20 primary assets, replaced whole). Column `ctem_cases.attack_path` (JSON, `{}` until the first read; migration `c1289ctemattackpath1`). One `attack_path` case event per change, its evidence the counts alone. A hop also keeps `simulation_name`, `simulation_url` (an absolute http(s) page, else dropped) and `seen_at` (the ISO date of the execution, from OpenCRQ's last reported date). The case detail serves `attack_path` like the exploitation reading: asset names and the simulation name and page only to a viewer who reads OpenCRQ, else `Restricted`; the raw simulation id is never served; `null` before the first read. The case page shows the card "Attack path and blast radius" under "How it would be exploited" (`ctem/CaseAttackPath.tsx`): the origin as "Attack starts from", each hop with a Proven chip (high tone) or an Inferred chip (info tone), and for a proven hop "Proven by <simulation name>, <date>" (or "Proven by an OpenAEV simulation, <date>"), linked to the simulation page when there is one (UX round 1 on #1296).
 

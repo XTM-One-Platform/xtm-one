@@ -38,7 +38,6 @@ from sqlalchemy import select
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.models.user import User
-from app.services import ctem_case_audit as audit
 from app.services import ctem_cases as rules
 
 logger = logging.getLogger(__name__)
@@ -411,16 +410,6 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     }
 
 
-def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
-    """Where one case stands, from the history this viewer is served (#1503).
-
-    ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
-    """
-    served = [_event(row, view) for row in events]
-    return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
-
-
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
     """The treatment plan attached to the case: its newest ``treatment_plan`` event (#1068), whatever the order."""
     plans = [row for row in events if row.kind == "treatment_plan" and row.at is not None]
@@ -473,14 +462,18 @@ _DRAFT_PAGE = re.compile(
 
 
 def threat_package_state(package: dict[str, Any]) -> str:
-    """``drafted`` while the package's page is its OpenCTI draft, else ``validated`` (#1480).
+    """``validated`` only when the package's page is its live Grouping page, else ``drafted`` (#1480, #1547).
 
     A drafted package and its coverage are not in OpenCTI's live graph: the
     coverage has not reached OpenAEV. The Grouping page is written on the case
-    once the draft is validated.
+    only once the Grouping resolves in the live graph: ``update_ctem_case``
+    checks it at record time (``ctem_threat_package_live.verify_package``) and
+    the packages stored before that check are repaired by the administrator
+    route. A package with no page, or the draft page, is not proven live and
+    reads ``drafted``.
     """
-    url = str(package.get("url") or "")
-    return "drafted" if _DRAFT_PAGE.match(url) else "validated"
+    url = str(package.get("url") or "").strip()
+    return "validated" if url and not _DRAFT_PAGE.match(url) else "drafted"
 
 
 def threat_package_for(

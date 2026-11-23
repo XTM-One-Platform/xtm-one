@@ -72,7 +72,6 @@ import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
 import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
-import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -500,13 +499,12 @@ export default function CtemCaseDetail() {
   ];
 
   // The next state as the filled primary, the platform order (secondary first).
-  // Before remediation a person starts it (with an owner, #1503); in remediation or validation they resolve it.
-  const notStarted = kase.state === "new" || kase.state === "analyzing" || kase.state === "waiting_decision";
-  const primary = notStarted
-    ? { label: t_i18n("Start"), kind: "start" as const }
-    : kase.state === "remediating" || kase.state === "validating"
-      ? { label: t_i18n("Resolve"), kind: "resolve" as const }
-      : { label: t_i18n("Reopen"), kind: "reopen" as const };
+  const primary =
+    kase.state === "needs_attention"
+      ? { label: t_i18n("Start"), kind: "start" as const }
+      : kase.state === "in_progress"
+        ? { label: t_i18n("Resolve"), kind: "resolve" as const }
+        : { label: t_i18n("Reopen"), kind: "reopen" as const };
 
   const dialogTitle: Record<Exclude<DialogKind, null>, string> = {
     start: t_i18n("Start this case"),
@@ -518,9 +516,9 @@ export default function CtemCaseDetail() {
 
   const confirm = () => {
     if (dialog === "split") splitOut();
-    else if (dialog === "start") submit({ state: "remediating", owner_user_id: kase.owner_user_id ?? me?.id });
+    else if (dialog === "start") submit({ state: "in_progress", owner_user_id: kase.owner_user_id ?? me?.id });
     else if (dialog === "resolve") submit({ state: "resolved", evidence: evidence.trim() });
-    else if (dialog === "reopen") submit({ state: "new", reason: reason.trim() });
+    else if (dialog === "reopen") submit({ state: "needs_attention", reason: reason.trim() });
     else if (dialog === "accept")
       submit({
         state: "accepted_risk",
@@ -617,7 +615,7 @@ export default function CtemCaseDetail() {
         <CaseWorkCard
           work={work}
           loopFleetId={loopFleet?.id ?? null}
-          onStart={notStarted ? () => open("start") : undefined}
+          onStart={kase.state === "needs_attention" ? () => open("start") : undefined}
         />
       )}
 
@@ -782,9 +780,6 @@ export default function CtemCaseDetail() {
         </CardContent>
       </Card>
 
-      {/* The loop trace of a signal of "Opened by" (`?loop=signal:<id>`). */}
-      <LegacySignalLinks />
-
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent size="md">
           <DialogHeader>
@@ -797,7 +792,7 @@ export default function CtemCaseDetail() {
               <SettingsField
                 id="case-split-title"
                 label={t_i18n("Name of the new case")}
-                helper={t_i18n("The new case starts in New and keeps these issues through every recompute.")}
+                helper={t_i18n("The new case starts in Needs attention and keeps these issues through every recompute.")}
                 required
               >
                 <Input
@@ -836,7 +831,7 @@ export default function CtemCaseDetail() {
               </SettingsField>
             )}
             {dialog === "accept" && (
-              <SettingsField id="case-expiry" label={t_i18n("Expires on")} helper={t_i18n("The case returns to New on that day.")} required>
+              <SettingsField id="case-expiry" label={t_i18n("Expires on")} helper={t_i18n("The case returns to Needs attention on that day.")} required>
                 <DateFilterInput
                   id="case-expiry"
                   aria-labelledby={settingsFieldLabelId("case-expiry")}

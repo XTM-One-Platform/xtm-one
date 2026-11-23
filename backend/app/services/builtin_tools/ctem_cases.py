@@ -315,6 +315,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         db, case, treatment_plan, view_of.treatment_plan_of(history), actor=agent_id
                     )
                 if threat_package is not None:
+                    from app.services import ctem_threat_package_live as package_live
+
+                    # A Grouping page is recorded only once the Grouping is in OpenCTI's live
+                    # graph, read with the acting user's own access (#1547).
+                    threat_package = await package_live.verify_package(db, str(scope), threat_package)
                     history = (await store.events_of(db, [case.id])).get(case.id, [])
                     case_loop.record_threat_package(
                         db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
@@ -773,7 +778,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision, or the threat package of the review step. Those writes move the status; "
+                "the decision, or the threat package of the review step. in_progress needs an owner; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -851,7 +856,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "description": (
                             "The Grouping the review step drafted for this case in the threat intelligence "
                             "platform (its id, name and page "
-                            "url) and the security coverage requested on it (coverage_id), once requested."
+                            "url) and the security coverage requested on it (coverage_id), once requested. "
+                            "url is the draft page while the Grouping sits in a draft; a Grouping page is "
+                            "checked against the live graph and replaced by the draft page when it is not live."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},

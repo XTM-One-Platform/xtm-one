@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import redis_client
@@ -45,16 +45,7 @@ from app.services.organizations import get_primary
 
 router = APIRouter()
 
-CaseState = Literal[
-    "new",
-    "analyzing",
-    "waiting_decision",
-    "remediating",
-    "validating",
-    "mitigated_watching",
-    "resolved",
-    "accepted_risk",
-]
+CaseState = Literal["needs_attention", "in_progress", "mitigated_watching", "resolved", "accepted_risk"]
 
 
 class CaseValidation(BaseModel):
@@ -193,11 +184,6 @@ async def list_ctem_cases(
         limit=limit,
         offset=offset,
     )
-    # The CTEM phase of each case on the page and what it waits on (#1503): the list groups by
-    # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
-    history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
-    for row in rows:
-        row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
     return {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
@@ -336,6 +322,35 @@ async def merge_ctem_cases(
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     return shown[1]
+
+
+class ThreatPackageRepair(BaseModel):
+    #: ``true`` (default) answers what the repair would correct and writes nothing.
+    dry_run: bool = True
+
+
+@router.post("/threat-packages/repair")
+async def repair_ctem_threat_packages(
+    body: ThreatPackageRepair,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Correct the threat packages stored with a Grouping page whose Grouping is not live (#1547).
+
+    One-off repair, administrators: each case's newest package recorded with a
+    Grouping page is re-read in OpenCTI with the caller's own access; a Grouping
+    inside an open draft gets the draft page, one found nowhere gets no page
+    (both read ``drafted``). ``dry_run`` answers the count and the cases.
+    """
+    _require_xtm_one()
+    from app.services import ctem_threat_package_live as package_live
+
+    result = await package_live.repair_stored_packages(
+        db, await _organization_id(db), str(admin.id), dry_run=body.dry_run
+    )
+    # A dry run writes nothing, so the commit is a no-op there.
+    await db.commit()
+    return result
 
 
 #: One on-demand recompute per user per window (design section 4.3).
