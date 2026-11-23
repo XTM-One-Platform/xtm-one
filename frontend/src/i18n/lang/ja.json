@@ -21167,5 +21167,10 @@
   "{count, plural, one {# synced row kept the values its source sends} other {# synced rows kept the values their source sends}}": "{count, plural, other {# 件の同期された行はソースが送信する値を保持しました}}",
   "Keep as is": "変更しない",
   "{count, plural, one {Applies to # row. A synced row keeps the values its source sends.} other {Applies to # rows. A synced row keeps the values its source sends.}}": "{count, plural, other {# 行に適用されます。同期された行はソースが送信する値を保持します。}}",
-  "Left empty, each row keeps its owner.": "空欄の場合、各行は現在の所有者を保持します。"
+  "Left empty, each row keeps its owner.": "空欄の場合、各行は現在の所有者を保持します。",
+  "Add a Sync all schedule": "「すべて同期」のスケジュールを追加",
+  "Back to Organization Profile": "組織プロファイルに戻る",
+  "Inventory sources": "インベントリのソース",
+  "About the inventory sources": "インベントリのソースについて",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。"
 }
