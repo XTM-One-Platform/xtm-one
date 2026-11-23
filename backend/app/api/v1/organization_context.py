@@ -533,6 +533,7 @@ async def list_canonical_assets(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     category: list[str] = Query(default_factory=list, max_length=50),
+    subcategory: list[str] = Query(default_factory=list, max_length=50),
     criticality: list[str] = Query(default_factory=list, max_length=50),
     internet_facing: list[str] = Query(default_factory=list, max_length=50),
     source: list[str] = Query(default_factory=list, max_length=50),
@@ -548,23 +549,42 @@ async def list_canonical_assets(
     org = await _built_store(db)
     if org is None:
         return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
-    filters = {"category": category, "criticality": criticality, "internet_facing": internet_facing, "source": source}
+    filters = {
+        "category": category,
+        "subcategory": subcategory,
+        "criticality": criticality,
+        "internet_facing": internet_facing,
+        "source": source,
+    }
     page = await list_assets(db, org, q=q, offset=offset, limit=limit, filters=filters)
     return CanonicalAssetsPage(**vars(page))
 
 
 @router.get("/assets/facets")
 async def read_asset_facets(
+    q: str = Query("", max_length=200),
+    category: list[str] = Query(default_factory=list, max_length=50),
+    subcategory: list[str] = Query(default_factory=list, max_length=50),
+    criticality: list[str] = Query(default_factory=list, max_length=50),
+    internet_facing: list[str] = Query(default_factory=list, max_length=50),
+    source: list[str] = Query(default_factory=list, max_length=50),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-) -> dict[str, list[str]]:
-    """The values the asset list filters on: category, criticality, internet facing and source."""
+) -> dict[str, list[dict[str, Any]]]:
+    """Each value the asset list filters on with its asset count, given the search and the other filters picked."""
     from app.services.organization_asset_store import FILTER_FIELDS, asset_facets
 
     org = await _built_store(db)
     if org is None:
         return {name: [] for name in (*FILTER_FIELDS, "source")}
-    return await asset_facets(db, org)
+    filters = {
+        "category": category,
+        "subcategory": subcategory,
+        "criticality": criticality,
+        "internet_facing": internet_facing,
+        "source": source,
+    }
+    return await asset_facets(db, org, q=q, filters=filters)
 
 
 @router.get("/assets/identity")

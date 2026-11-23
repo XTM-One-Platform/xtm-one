@@ -51,7 +51,7 @@ let frames = new Map<number, FrameRequestCallback>();
 let nextFrame = 0;
 let observers: ResizeObserverCallback[] = [];
 
-function Probe({ header, onRender }: { header: boolean; onRender: (room: number | null | undefined) => void }) {
+function Probe({ header, beside = false, onRender }: { header: boolean; beside?: boolean; onRender: (room: number | null | undefined) => void }) {
   const [area, setArea] = useState<HTMLDivElement | null>(null);
   const room = useFitToViewport(area);
   onRender(room);
@@ -62,14 +62,14 @@ function Probe({ header, onRender }: { header: boolean; onRender: (room: number 
   );
   return (
     <div id="app-content">
-      <div data-testid="grid">{header ? [<div data-testid="header" key="header" />, cell] : [cell, <div data-testid="neighbour" key="neighbour" />]}</div>
+      <div data-testid="grid">{header ? [<div data-testid="header" key="header" />, cell] : [cell, <div data-testid="neighbour" key="neighbour" {...(beside ? { "data-fit-beside": "" } : {})} />]}</div>
     </div>
   );
 }
 
-function settle(header: boolean) {
+function settle(header: boolean, beside = false) {
   const rooms: (number | null | undefined)[] = [];
-  const { getByTestId } = render(<Probe header={header} onRender={(room) => rooms.push(room)} />);
+  const { getByTestId } = render(<Probe header={header} beside={beside} onRender={(room) => rooms.push(room)} />);
   const area = getByTestId("area");
   let lastHeight = areaHeight(area);
   // Thirty layout rounds: run the queued frame, then report a size change the bound made.
@@ -136,6 +136,11 @@ describe("useFitToViewport in a row set by a taller neighbour (#11467, #11470)",
     expect(new Set(rooms.filter((room) => room !== undefined))).toEqual(new Set([null]));
     // Mount, the area ref, the one room: never a render per layout round.
     expect(rooms.length).toBeLessThanOrEqual(4);
+  });
+
+  it("still fits a list whose neighbour is a self-bounded side panel (facet sidebar, #1501 UX r1 B1)", () => {
+    const { rooms } = settle(false, true);
+    expect(typeof rooms.at(-1)).toBe("number");
   });
 
   it("fits the page's last block to the window and settles on one room", () => {
