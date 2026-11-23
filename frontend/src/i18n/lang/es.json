@@ -21193,5 +21193,12 @@
   "The switch is organization-wide. Also feeds: {paths}": "El interruptor se aplica a toda la organización. También alimenta: {paths}",
   "A live listener runs while its integration is connected.": "Un oyente en vivo funciona mientras su integración está conectada.",
   "Only an administrator can change the sources of a trigger path.": "Solo un administrador puede cambiar las fuentes de una ruta de activación.",
-  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración."
+  "Agents and the API record this path: it has no integration source.": "Los agentes y la API registran esta ruta: no tiene fuente de integración.",
+  "Add a Sync all schedule": "Añadir una programación Sincronizar todo",
+  "Back to Organization Profile": "Volver al perfil de la organización",
+  "Inventory sources": "Fuentes del inventario",
+  "About the inventory sources": "Acerca de las fuentes del inventario",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Las plataformas que cada sincronización lee según una programación, los agentes y socios que escriben a través de la API, las importaciones CSV y las filas introducidas a mano. La correspondencia de activos fusiona los registros de varias fuentes en un solo activo.",
+  "About the knowledge and sources": "Acerca del conocimiento y las fuentes",
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Los procedimientos y documentos de referencia que consultan los agentes, el contexto de la organización que precargan y las fuentes que alimentan las joyas de la corona y los PIR."
 }
