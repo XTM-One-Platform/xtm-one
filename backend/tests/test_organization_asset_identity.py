@@ -242,11 +242,21 @@ def test_custom_precedence_overrides_the_default() -> None:
     assert fields["criticality"].source == "manual"
 
 
-def test_local_fields_come_from_hand_sources_only() -> None:
+def test_local_fields_come_from_hand_sources_first() -> None:
     sync = _rec("openaev", "a-1", fields={"environment": "test"})
     hand = _rec("manual", "row-0", fields={"environment": "production"})
     assert ident.resolve_fields([sync, hand])["environment"].value == "production"
-    assert "environment" not in ident.resolve_fields([sync])
+
+
+def test_a_local_field_set_on_a_synced_record_resolves_without_a_hand_record() -> None:
+    """#1367: the person's environment and group of a synced asset live on the sync's record and are shown."""
+    sync = _rec("openaev", "a-1", fields={"environment": "production", "group": "Servers"})
+    fields = ident.resolve_fields([sync])
+    assert fields["environment"].value == "production"
+    assert fields["group"].value == "Servers"
+    # An empty hand value does not hide the synced record's value.
+    hand = _rec("manual", "row-0", fields={"environment": ""})
+    assert ident.resolve_fields([sync, hand])["environment"].value == "production"
 
 
 def test_tie_goes_to_the_most_recently_seen_source() -> None:

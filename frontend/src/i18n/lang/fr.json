@@ -21208,5 +21208,12 @@
   "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
   "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Les produits que votre organisation livre, avec leurs dépôts de code : une vulnérabilité sur l'un d'eux est rattachée à ses dépôts dans CTEM.",
   "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aucun produit livré : une vulnérabilité sur un produit que vous livrez reste non résolue.",
-  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom"
+  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom",
+  "Add a Sync all schedule": "Ajouter une planification Tout synchroniser",
+  "Back to Organization Profile": "Retour au profil de l'organisation",
+  "Inventory sources": "Sources de l'inventaire",
+  "About the inventory sources": "À propos des sources de l'inventaire",
+  "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Les plateformes que chaque synchronisation lit selon un calendrier, les agents et partenaires qui écrivent via l'API, les imports CSV et les lignes saisies à la main. La correspondance des actifs fusionne les enregistrements de plusieurs sources en un seul actif.",
+  "About the knowledge and sources": "À propos des connaissances et sources",
+  "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Les procédures et documents de référence que les agents consultent, le contexte d'organisation qu'ils préchargent et les sources qui alimentent les actifs critiques et les PIR."
 }
