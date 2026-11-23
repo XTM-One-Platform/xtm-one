@@ -571,10 +571,9 @@ async def add_module_read_tools(
     if target is None:
         return 0
     provider, integration_id = target
+    from app.services.health.run_as import configured_run_as, reaches_integration, run_as_needed_reason
     from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY
     from app.services.integration_tools import build_integration_tools
-
-    from app.services.health.run_as import configured_run_as, reaches_integration, run_as_needed_reason
 
     # The reads act as the "Run checks as" user alone (12.3): never the run's user, the
     # service account, the seed owner or an administrator by default.
