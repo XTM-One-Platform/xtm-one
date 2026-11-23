@@ -778,7 +778,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision, or the threat package of the review step. in_progress needs an owner; "
+                "the decision, or the threat package of the review step. Those writes move the status; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."

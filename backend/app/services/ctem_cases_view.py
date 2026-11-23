@@ -38,6 +38,7 @@ from sqlalchemy import select
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.models.user import User
+from app.services import ctem_case_audit as audit
 from app.services import ctem_cases as rules
 
 logger = logging.getLogger(__name__)
@@ -408,6 +409,16 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
         "reason": None if hidden else row.reason,
         "evidence": None if hidden else row.evidence,
     }
+
+
+def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
+    """Where one case stands, from the history this viewer is served (#1503).
+
+    ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none).
+    """
+    served = [_event(row, view) for row in events]
+    return {"phase": audit.current_phase(served), "waiting_on": audit.open_wait(served)}
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
