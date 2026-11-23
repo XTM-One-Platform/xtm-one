@@ -140,6 +140,12 @@ export interface CtemSignalPathSource {
   bound: boolean;
   /** A pass whose provider is connected but which does not run: turned off, or no integration it can pick (#1344). */
   off?: boolean;
+  /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
+  excluded?: boolean;
+  /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */
+  available?: boolean;
+  /** The other trigger paths this source feeds (a pass is organization-wide: one switch feeds them all). */
+  also_feeds?: string[];
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */
@@ -182,34 +188,6 @@ export function useProposeSignalScope() {
   const qc = useQueryClient();
   return useMutation<{ proposal_id: string; status: string; field: string; value: string }, Error, string>({
     mutationFn: (id) => api.post(`/ctem-signals/${encodeURIComponent(id)}/propose-scope`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
-    meta: { suppressGlobalErrorToast: true },
-  });
-}
-
-/** What a person may do to signals from the Signals page (#1505; `TRIAGE_ACTIONS` in ctem_scope_gate_store.py). */
-export type CtemSignalTriageAction = "dismiss" | "restore" | "recheck";
-
-/** The body of `POST /ctem-signals/triage`: the selected ids, or every signal one state and path match. */
-export interface CtemSignalTriage {
-  action: CtemSignalTriageAction;
-  ids?: string[];
-  filter?: { state?: CtemSignalState; trigger_path?: string };
-}
-
-export interface CtemSignalTriageResult {
-  matched: number;
-  counts: Partial<Record<CtemSignalState | "changed" | "skipped", number>>;
-}
-
-/**
- * Dismiss, restore or re-check signals in one call (#1505): the selected ones,
- * or every signal the state filter matches. The lists and counters read again.
- */
-export function useTriageCtemSignals() {
-  const qc = useQueryClient();
-  return useMutation<CtemSignalTriageResult, Error, CtemSignalTriage>({
-    mutationFn: (body) => api.post("/ctem-signals/triage", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
     meta: { suppressGlobalErrorToast: true },
   });
