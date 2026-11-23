@@ -19,11 +19,13 @@
  * to validate, cases opened and the trigger paths connected with the sources'
  * logos, so the page never reads empty, whatever tab is open (Sam, 22 Nov 2026).
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
@@ -33,6 +35,9 @@ import { TruncatedText } from "@/components/ui/truncated-text";
 import {
   CTEM_SIGNAL_STATES,
   useCtemSignalList,
+  useTriageCtemSignals,
+  type CtemSignalTriage,
+  type CtemSignalTriageAction,
   useCtemSignalPaths,
   type CtemSignal,
   type CtemSignalState,
@@ -124,6 +129,65 @@ function SignalsTab() {
   const all = counts ? CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
   const signals = useMemo(() => data?.pages.flatMap((page) => page.signals) ?? [], [data]);
   const anyConnected = connectedCount(paths) > 0;
+
+  // Triage (#1505): the selected rows, or every signal of the state filter, dismissed,
+  // restored or checked again in one call. A signal that opened a case cannot be selected.
+  const { toast } = useToast();
+  const triage = useTriageCtemSignals();
+  const [selected, setSelected] = useState<string[]>([]);
+  const [allMatching, setAllMatching] = useState(false);
+  const stateTotal = view.state && counts ? (counts[view.state] ?? 0) : 0;
+  useEffect(() => {
+    setSelected([]);
+    setAllMatching(false);
+  }, [view.state]);
+  const selectedRows = signals.filter((s) => selected.includes(s.id));
+  const anyDismissed = selectedRows.some((s) => s.decision?.reason_code === "dismissed_by_user");
+  const anyOpen = allMatching ? view.state !== "discarded" : selectedRows.some((s) => s.decision?.reason_code !== "dismissed_by_user");
+  const runTriage = (action: CtemSignalTriageAction) => {
+    const body: CtemSignalTriage = allMatching && view.state ? { action, filter: { state: view.state } } : { action, ids: selected };
+    triage.mutate(body, {
+      onSuccess: (result) => {
+        setSelected([]);
+        setAllMatching(false);
+        const changed = result.counts.changed ?? 0;
+        const title =
+          action === "dismiss"
+            ? t_i18n("{count, plural, one {# signal dismissed} other {# signals dismissed}}", { count: changed })
+            : action === "restore"
+              ? t_i18n("{count, plural, one {# signal restored} other {# signals restored}}", { count: changed })
+              : t_i18n("{count, plural, one {# signal checked again} other {# signals checked again}}", { count: result.matched - (result.counts.skipped ?? 0) });
+        toast({ title, variant: "success" });
+      },
+      onError: () => toast({ title: t_i18n("The signals could not be updated"), variant: "error" }),
+    });
+  };
+  const canSelectAllMatching = !!view.state && !allMatching && selected.length > 0 && stateTotal > selected.length;
+  const selectionActions = (
+    <span className="flex flex-wrap items-center gap-2" data-testid="ctem-signals-bulk-actions">
+      {canSelectAllMatching && (
+        <Button variant="link" size="sm" className={cn(TOOLBAR_CONTROL_HEIGHT, "px-1 content-compact")} onClick={() => setAllMatching(true)}>
+          {t_i18n("select all {count}", { count: stateTotal })}
+        </Button>
+      )}
+      <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={triage.isPending} onClick={() => runTriage("recheck")} data-testid="ctem-signals-recheck">
+        <Icon name="refresh-cw" size={16} aria-hidden />
+        {t_i18n("Check again")}
+      </Button>
+      {anyOpen && (
+        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={triage.isPending} onClick={() => runTriage("dismiss")} data-testid="ctem-signals-dismiss">
+          <Icon name="eye-off" size={16} aria-hidden />
+          {t_i18n("Dismiss signals")}
+        </Button>
+      )}
+      {(anyDismissed || (allMatching && view.state === "discarded")) && (
+        <Button variant="outline" size="sm" className={TOOLBAR_CONTROL_HEIGHT} disabled={triage.isPending} onClick={() => runTriage("restore")} data-testid="ctem-signals-restore">
+          <Icon name="rotate-ccw" size={16} aria-hidden />
+          {t_i18n("Restore")}
+        </Button>
+      )}
+    </span>
+  );
 
   const setParam = (name: string, value: string | null) =>
     setParams(
@@ -297,6 +361,17 @@ function SignalsTab() {
         emptyLabel={anyConnected ? t_i18n("No signal seen yet: your sources are connected and nothing reached the loop.") : t_i18n("No signal yet: no source is connected.")}
         noResultsLabel={t_i18n("No signal matches these filters")}
         rowTestId="ctem-signal-row"
+        selection={{
+          selected,
+          onChange: (keys) => {
+            setAllMatching(false);
+            setSelected(keys);
+          },
+          count: allMatching ? stateTotal : undefined,
+          actions: selectionActions,
+          disabledReason: (key) =>
+            signals.find((s) => s.id === key)?.state === "case_opened" ? t_i18n("This signal opened a case: the case owns it now") : undefined,
+        }}
       />
     </section>
   );

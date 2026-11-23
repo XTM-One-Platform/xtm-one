@@ -6,7 +6,7 @@
  * tab is open and an empty list still carries the sources' context.
  *
  * - Signals in 30 days: the paths' `count_30d`, the all-time total under it.
- * - To validate: the signals waiting for a person, the new ones under it.
+ * - Unmatched: the signals no inventory entry holds, parked until one does (#1505), the new ones under it.
  * - Cases opened: the signals that opened a case, the watchlist under it.
  * - Trigger paths connected: N of the live catalogue, the connected sources'
  *   logos and the Sources link on its subtitle line.
@@ -39,7 +39,7 @@ import { SIGNAL_SOURCES_PATH, signalsHref } from "./signals-route";
 /* Library glyphs handed to StatCard, which takes a glyph component (no direct lucide-react import). */
 type Glyph = ComponentProps<typeof StatCard>["icon"];
 const SignalsGlyph = (({ className }: { className?: string }) => <Icon name="activity" size={16} className={className} />) as unknown as Glyph;
-const ValidateGlyph = (({ className }: { className?: string }) => <Icon name="list-checks" size={16} className={className} />) as unknown as Glyph;
+const UnmatchedGlyph = (({ className }: { className?: string }) => <Icon name="minus" size={16} className={className} />) as unknown as Glyph;
 const CaseGlyph = (({ className }: { className?: string }) => <Icon name="briefcase" size={16} className={className} />) as unknown as Glyph;
 const SourcesGlyph = (({ className }: { className?: string }) => <Icon name="satellite-dish" size={16} className={className} />) as unknown as Glyph;
 
@@ -82,8 +82,8 @@ export function SignalsSummaryStrip() {
         onClick={() => navigate(signalsHref())}
       />
       <StatCard
-        icon={ValidateGlyph}
-        label={t_i18n("To validate")}
+        icon={UnmatchedGlyph}
+        label={t_i18n("Unmatched")}
         value={counts ? (counts.to_validate ?? 0) : pending}
         subtitle={counts ? t_i18n("{count, plural, one {# new} other {# new}}", { count: counts.new ?? 0 }) : pending}
         onClick={() => navigate(signalsHref({ state: "to_validate" }))}

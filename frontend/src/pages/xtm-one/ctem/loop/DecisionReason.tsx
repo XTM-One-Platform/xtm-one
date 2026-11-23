@@ -21,7 +21,8 @@ type Translate = (id: string, values?: Record<string, string | number>) => strin
 export const SIGNAL_STATE_LABEL: Record<CtemSignalState, string> = {
   new: "New",
   confirmed: "Confirmed",
-  to_validate: "To validate",
+  // The stored state keeps its name; it reads as what it is, never as a task (Sam, 23 Nov 2026, #1505).
+  to_validate: "Unmatched",
   discarded: "Discarded",
   watchlist: "Watchlist",
   case_opened: "Case opened",
@@ -31,7 +32,7 @@ export const SIGNAL_STATE_LABEL: Record<CtemSignalState, string> = {
 const SIGNAL_STATE_TONE: Record<CtemSignalState, HotTone> = {
   new: "blue",
   confirmed: "blue",
-  to_validate: "yellow",
+  to_validate: "neutral",
   discarded: "neutral",
   watchlist: "yellow",
   case_opened: "orange",
@@ -44,7 +45,8 @@ const SIGNAL_STATE_TONE: Record<CtemSignalState, HotTone> = {
  * the four catalogs. @i18n-keys
  */
 const REASON_SENTENCE = {
-  subject_unresolved: "Not resolved to an asset, a crown jewel or the tech stack",
+  subject_unresolved: "Not in your inventory",
+  dismissed_by_user: "Dismissed by {by}",
   contradicted_by_evidence: "Contradicted by the verdict of its own source",
   contradicted_by_signals: "Contradicted by {count, plural, one {# other signal} other {# other signals}}",
   excluded_by_policy: "Excluded by the policy ({kind}: {value})",
@@ -68,7 +70,8 @@ const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
  * params as the reason; an in-scope or unknown code has no next step. @i18n-keys
  */
 const NEXT_STEP = {
-  subject_unresolved: "Becomes a case once it is matched to an asset, a crown jewel or the tech stack",
+  subject_unresolved: "It stays here until your inventory holds it",
+  dismissed_by_user: "Restore it to send it through the loop again",
   contradicted_by_evidence: "Becomes a case if a new sighting is not contradicted by its source",
   contradicted_by_signals: "Becomes a case if a new sighting is not contradicted by the other signals",
   excluded_by_policy: "Becomes a case if the policy exclusion is removed",

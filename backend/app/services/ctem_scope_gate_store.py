@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 #: The states the gate may move (``case_opened`` belongs to the case step).
 GATED_STATES: tuple[str, ...] = ("new", "confirmed", "to_validate", "watchlist", "discarded")
+#: The ``reason_code`` of a signal a person dismissed (#1505): the gate leaves it alone until it is restored.
+DISMISSED_CODE = "dismissed_by_user"
+#: What a person may do to signals from the Signals page (#1505).
+TRIAGE_ACTIONS: tuple[str, ...] = ("dismiss", "restore", "recheck")
 #: Signals one bulk evaluation reads at most.
 MAX_BULK = 2000
 #: Risk scenarios read from OpenCRQ at most, and supporting assets per scenario.
@@ -212,6 +216,11 @@ async def _profile(db: AsyncSession, organization_id: uuid.UUID) -> Any:
     return org_context.parse_profile(row.profile if row else {})
 
 
+def dismissed(row: CtemSignal) -> bool:
+    """A signal a person dismissed (#1505): no pass of the gate moves it back, only a restore."""
+    return row.state == "discarded" and (row.decision or {}).get("reason_code") == DISMISSED_CODE
+
+
 async def evaluate(
     db: AsyncSession,
     row: CtemSignal,
@@ -219,9 +228,11 @@ async def evaluate(
     profile: Any = None,
     scenarios: gate.ScenarioIndex | None = None,
     now: datetime | None = None,
+    restore: bool = False,
 ) -> gate.Decision | None:
-    """Decide *row* and write its state and decision; ``None`` when it opened a case. The caller commits."""
-    if row.state not in GATED_STATES:
+    """Decide *row* and write its state and decision; ``None`` when it opened a case or a person
+    dismissed it (*restore* decides a dismissed one again). The caller commits."""
+    if row.state not in GATED_STATES or (dismissed(row) and not restore):
         return None
     at = now or datetime.now(UTC)
     profile = profile if profile is not None else await _profile(db, row.organization_id)
@@ -250,7 +261,8 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
     from app.services import ctem_case_loop
 
     pending = ctem_case_loop.PendingEvents()
-    if not created:
+    # A re-sighting of an unmatched signal is decided again (#1505): the inventory may hold it now.
+    if not created and row.state != "to_validate":
         return pending
     try:
         async with db.begin_nested():
@@ -306,5 +318,73 @@ async def evaluate_open(
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
         await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=now)
+        counts[row.state] = counts.get(row.state, 0) + 1
+    return counts
+
+
+def dismissal_record(row: CtemSignal, *, by: str, at: datetime) -> dict[str, Any]:
+    """The decision record of a dismissal (#1505): who and when, the state it left, the reconcile kept."""
+    previous = dict(row.decision or {})
+    return {
+        "version": gate.DECISION_VERSION,
+        "inputs": previous.get("inputs") or {},
+        "reconcile": previous.get("reconcile") or {},
+        "scope": None,
+        "policy_checks": [],
+        "severity": None,
+        "sla_hours": None,
+        "outcome": "discarded",
+        "state": "discarded",
+        "reason": f"dismissed by {by}",
+        "reason_code": DISMISSED_CODE,
+        "reason_params": {"by": by},
+        "dismissed": {"by": by, "at": at.isoformat(), "previous_state": row.state},
+        "decided_at": at.isoformat(),
+    }
+
+
+async def triage(
+    db: AsyncSession,
+    rows: list[CtemSignal],
+    *,
+    action: str,
+    actor: str,
+    evaluator_id: uuid.UUID | None,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Dismiss, restore or re-check *rows* (#1505); counts ``changed``, ``skipped`` and by state after. The caller commits.
+
+    ``dismiss`` moves a signal that opened no case to ``discarded`` with the
+    actor's name; ``restore`` decides a dismissed one again; ``recheck`` runs the
+    gate again on the others (a dismissed one stays dismissed). A signal that
+    opened a case is skipped: the case step owns it. A signal the gate confirms
+    opens its case at the next sweep, never one per signal here.
+    """
+    if action not in TRIAGE_ACTIONS:
+        raise ValueError(f"action must be one of: {', '.join(TRIAGE_ACTIONS)}")
+    at = now or datetime.now(UTC)
+    counts: dict[str, int] = {"changed": 0, "skipped": 0}
+    profile: Any = None
+    by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
+    for row in rows:
+        before = row.state
+        if action == "dismiss":
+            if row.state not in GATED_STATES or dismissed(row):
+                counts["skipped"] += 1
+                continue
+            row.decision = dismissal_record(row, by=actor, at=at)
+            row.state = "discarded"
+            row.updated_at = at
+        else:
+            if row.state not in GATED_STATES or (action == "restore") != dismissed(row):
+                counts["skipped"] += 1
+                continue
+            if profile is None:
+                profile = await _profile(db, row.organization_id)
+            reader = scenario_reader(row, evaluator_id)
+            if reader not in by_reader:
+                by_reader[reader] = await read_scenarios(db, user_id=reader)
+            await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=at, restore=True)
+        counts["changed"] += int(row.state != before or action != "recheck")
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts

@@ -143,6 +143,37 @@ describe("Signals page", () => {
     expect(screen.queryByTestId("ctem-signal-sources-link")).toBeNull();
   });
 
+  // #1505: unmatched signals are dismissed in one call, the selected rows or every one of the state.
+  it("dismisses every unmatched signal of the state in one call", async () => {
+    const signals = Array.from({ length: 3 }, (_, i) => signal(i + 1));
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 120, counts: { changed: 120, skipped: 0, discarded: 120 } });
+    // The page holds 3 rows; the state counts 120: "select all" reaches past the page.
+    renderPage("/ctem/signals?state=to_validate", { total: 3, counts: { to_validate: 120 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select every row on this page" })[0]);
+    const bar = await screen.findByTestId("ctem-signals-bulk-actions");
+    fireEvent.click(within(bar).getByRole("button", { name: /select all 120/ }));
+    fireEvent.click(within(screen.getByTestId("ctem-signals-bulk-actions")).getByTestId("ctem-signals-dismiss"));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/ctem-signals/triage", { action: "dismiss", filter: { state: "to_validate" } }),
+    );
+    post.mockReset();
+  });
+
+  it("checks the selected rows again by id", async () => {
+    const signals = Array.from({ length: 2 }, (_, i) => signal(i + 1));
+    const post = vi.mocked(api.post);
+    post.mockResolvedValue({ matched: 1, counts: { changed: 0, skipped: 0, to_validate: 1 } });
+    renderPage("/ctem/signals?state=to_validate", { total: 2, counts: { to_validate: 2 }, signals });
+    await screen.findAllByTestId("ctem-signal-row");
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Select this row" })[0]);
+    fireEvent.click(await screen.findByTestId("ctem-signals-recheck"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/ctem-signals/triage", { action: "recheck", ids: [expect.any(String)] }));
+    expect(screen.queryByTestId("ctem-signals-restore")).toBeNull();
+    post.mockReset();
+  });
+
   it("says the sources are connected and nothing was seen when one is", async () => {
     renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] });
     await waitFor(() =>
@@ -185,7 +216,7 @@ describe("Signals summary strip", () => {
   it("opens the Signals tab on the state a card names", async () => {
     renderPage("/ctem/signals/sources", { total: 3, counts: { to_validate: 3 }, signals: [] }, paths);
     const strip = await screen.findByTestId("ctem-signals-summary");
-    const card = await within(strip).findByRole("button", { name: /To validate/ });
+    const card = await within(strip).findByRole("button", { name: /Unmatched/ });
     fireEvent.click(card);
     await waitFor(() => expect(location()).toBe("/ctem/signals?state=to_validate"));
   });

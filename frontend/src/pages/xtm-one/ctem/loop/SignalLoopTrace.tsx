@@ -34,6 +34,8 @@ const LENS_LABEL: Record<string, string> = { inside: "Inside", outside: "Outside
 function StageGlyph({ status }: { status: LoopStageView["status"] }) {
   if (status === "passed") return <Icon name="check" size={16} className="text-feedback-success-primary" />;
   if (status === "stopped") return <Icon name="ban" size={16} className="text-feedback-warning-primary" />;
+  // Parked is no fault (#1505): a neutral pause, never the warning tone of a stop.
+  if (status === "parked") return <Icon name="minus" size={16} className="text-default-secondary" />;
   if (status === "current") return <Icon name="clock" size={16} className="text-accent" />;
   return <span className="h-1.5 w-1.5 rounded-full bg-elevation-hover ring-1 ring-[var(--border-elevation-subtle)]" aria-hidden />;
 }
@@ -42,6 +44,7 @@ const STATUS_LABEL: Record<LoopStageView["status"], string> = {
   passed: "Passed",
   current: "Waiting",
   stopped: "Stopped",
+  parked: "Parked",
   not_reached: "Not reached",
 };
 
@@ -646,7 +649,7 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
             data-status={stage.status}
             className={cn(
               "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5",
-              (stage.status === "current" || stage.status === "stopped") && "layer-1 bg-elevation-hover",
+              (stage.status === "current" || stage.status === "stopped" || stage.status === "parked") && "layer-1 bg-elevation-hover",
               stage.status === "not_reached" && "text-default-secondary",
             )}
           >
@@ -662,7 +665,9 @@ function SignalTrace({ signal }: { signal: CtemSignal }) {
                 {t_i18n(STATUS_LABEL[stage.status])}
                 {stage.at ? ` · ${formatShortDateTimeIntl(intl, stage.at)}` : ""}
                 {/* The stage where the loop stopped names why (#851 UX round 2 B4). */}
-                {stage.status === "stopped" ? ` · ${decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}` : ""}
+                {stage.status === "stopped" || stage.status === "parked"
+                  ? ` · ${decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}`
+                  : ""}
               </span>
             </span>
           </li>
