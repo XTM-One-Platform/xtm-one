@@ -111,7 +111,7 @@ function distanceFromEnd(scroller: Locator): Promise<number> {
 /** Ten reasoning chunks later, the reader is still at least `min` px above the end. */
 async function expectStaysUp(page: Page, scroller: Locator, min: number): Promise<void> {
   await chunksLater(page, 10);
-  expect(await distanceFromEnd(scroller)).toBeGreaterThanOrEqual(min);
+  await expect.poll(() => distanceFromEnd(scroller), { timeout: 15_000 }).toBeGreaterThanOrEqual(min);
 }
 
 /**
@@ -122,7 +122,7 @@ async function expectStaysUp(page: Page, scroller: Locator, min: number): Promis
 async function expectStaysAtTop(page: Page, scroller: Locator): Promise<void> {
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeLessThanOrEqual(2);
   await chunksLater(page, 10);
-  expect(await scroller.evaluate((el) => el.scrollTop)).toBeLessThanOrEqual(2);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 15_000 }).toBeLessThanOrEqual(2);
 }
 
 async function expectFollowsEnd(scroller: Locator): Promise<void> {
@@ -180,7 +180,10 @@ test.describe('Chat - the reader scrolls up while the agent reasons', () => {
       // The clipped window, not the text it holds: the text runs above it.
       const reasoningWindow = scroller.getByText(/Reasoning step \d+\./).first().locator('..');
       await expect(scroller.getByText(/Reasoning step 3\./)).toBeVisible({ timeout: 15_000 });
-      expect(await scroller.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(300);
+      await expect.poll(
+        () => scroller.evaluate((el) => el.scrollHeight - el.clientHeight),
+        { timeout: 15_000 },
+      ).toBeGreaterThan(300);
       // The turn opens at its end, and follows it.
       await expectFollowsEnd(scroller);
 

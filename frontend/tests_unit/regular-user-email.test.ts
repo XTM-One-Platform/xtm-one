@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test';
-import { regularUserEmail } from './constants';
+// @vitest-environment node
+import { describe, expect, it as test } from 'vitest';
+import { regularUserEmail } from '../tests_e2e/constants';
 
 // ---------------------------------------------------------------------------
 // The per-spec regular user address - the fixture's contract,
@@ -20,7 +21,7 @@ import { regularUserEmail } from './constants';
 /** The characters of an address that are not its label, at a one-digit slot. */
 const FIXED = 'e2e-regular--w0@e2e-example.com'.length;
 
-test.describe('E2E fixtures - regular user address', () => {
+describe('E2E fixtures - regular user address', () => {
   test('the labels in use keep their addresses', () => {
     expect(regularUserEmail('company-managed', 0)).toBe('e2e-regular-company-managed-w0@e2e-example.com');
     expect(regularUserEmail('agents-observability', 3)).toBe('e2e-regular-agents-observability-w3@e2e-example.com');

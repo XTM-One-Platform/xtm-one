@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+// @vitest-environment node
+import { describe, expect, it as test } from 'vitest';
 import {
   AGENDA_GRID_COLUMNS,
   AGENDA_GRID_MAX_ITEMS,
@@ -51,7 +52,7 @@ const agenda = (count: number, extra: Partial<AgendaSlide> = {}): AgendaSlide =>
 /** `groups` as the eye reads them: 1-based numbers, one line per row. */
 const picture = (groups: number[][]): string => groups.map((row) => row.map((index) => index + 1).join(' ')).join(' / ');
 
-test.describe('Presentations - agenda layout resolver', () => {
+describe('Presentations - agenda layout resolver', () => {
   test('the grid constants are the backend rule', () => {
     expect([AGENDA_GRID_COLUMNS, AGENDA_GRID_MIN_ITEMS, AGENDA_GRID_MAX_ITEMS]).toEqual([3, 6, 9]);
   });

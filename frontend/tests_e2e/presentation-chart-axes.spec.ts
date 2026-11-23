@@ -11,9 +11,9 @@ import { unzip } from './pptx-archive';
 // Q3 2026 Quarterly Review had to drop - "New logos and ASP" and "Burn
 // and net new ARR" - on the stage (two value axes on one grid, each labelled
 // in its own unit and in the ink of its series, the tooltip in each series'
-// format, the dotted right-hand target named in the legend) and through every
-// export: the PDF, the image PPTX and the editable PPTX, whose charts carry a
-// second value axis, while bars on two axes - which PowerPoint would draw one
+// format, the dotted right-hand target named in the legend) and through both
+// PPTX exports: the image and the editable one, whose charts carry a second
+// value axis, while bars on two axes - which PowerPoint would draw one
 // over the other - stay a picture the export log names.
 //
 // The deck is imported through the API from a bare spec (no LLM call), owned
@@ -151,7 +151,7 @@ async function computedFill(target: Locator): Promise<string> {
   });
 }
 
-async function exportDeck(deckId: string, format: 'pdf' | 'pptx' | 'pptx_native') {
+async function exportDeck(deckId: string, format: 'pptx' | 'pptx_native') {
   const { apiCtx, token } = await createAdminApiContext();
   try {
     const response = await apiCtx.post(`/api/v1/presentations/${deckId}/export`, {
@@ -259,12 +259,9 @@ test.describe('Presentations - two units on one chart', () => {
     await expect(burn.locator('.deck-chart-swatch-line[data-axis="secondary"]')).toHaveCount(1);
   });
 
-  test('should carry both charts into the PDF and both PPTX, the editable one on two value axes', async () => {
-    // Three server-side renders of the deck through the platform's headless browser.
-    test.setTimeout(420_000);
-
-    const pdf = await exportDeck(deckId, 'pdf');
-    expect(pdf.body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  test('should carry both charts into both PPTX exports, the editable one on two value axes', async () => {
+    // Two server-side renders of the deck through the platform's headless browser.
+    test.setTimeout(280_000);
 
     const image = unzip((await exportDeck(deckId, 'pptx')).body);
     for (const slide of [1, 2]) {

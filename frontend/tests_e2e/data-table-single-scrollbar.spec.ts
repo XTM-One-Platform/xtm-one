@@ -65,10 +65,12 @@ test.describe.serial('Records table single scrollbar', () => {
 
       // The last row and the pager are reachable: scrolled to the end, the last row is inside the area.
       await scroller.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-      const area = (await scroller.boundingBox())!;
-      const last = (await scroller.locator('tbody tr').last().boundingBox())!;
-      expect(last.y + last.height).toBeLessThanOrEqual(area.y + area.height + 1);
-      expect(area.y + area.height).toBeLessThanOrEqual(viewport.height);
+      await expect
+        .poll(async () => {
+          const [area, last] = await Promise.all([scroller.boundingBox(), scroller.locator('tbody tr').last().boundingBox()]);
+          return !!area && !!last && last.y + last.height <= area.y + area.height + 1 && area.y + area.height <= viewport.height;
+        }, { timeout: 15_000 })
+        .toBe(true);
     });
 
     test(`a long-form page keeps the table header under the top bar at ${viewport.width}x${viewport.height}`, async ({ page }) => {
@@ -81,7 +83,7 @@ test.describe.serial('Records table single scrollbar', () => {
       await expect(scroller.locator('tbody tr').first()).toBeVisible({ timeout: 15_000 });
       await expect(scroller).toHaveAttribute('data-scroll-fit', 'page');
       // One scrollbar: the area draws none of its own.
-      expect(await scroller.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scroller.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 15_000 }).toBeLessThanOrEqual(1);
 
       await page.evaluate(() => window.scrollTo(0, 600));
       const barBottom = await page.locator('#app-content').evaluate((main) => {
@@ -108,7 +110,7 @@ test.describe.serial('Records table single scrollbar', () => {
           expect(fit === 'viewport' || fit === 'page').toBe(true);
           if (fit === 'viewport') await expect.poll(() => pageOverflow(page)).toBeLessThanOrEqual(0);
           // Long-form: the page scrolls alone, the table draws no scroller of its own.
-          else expect(await tables.first().evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+          else await expect.poll(() => tables.first().evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 15_000 }).toBeLessThanOrEqual(1);
         }
       });
     }

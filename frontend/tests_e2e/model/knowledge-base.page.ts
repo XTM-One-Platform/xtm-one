@@ -6,6 +6,8 @@ export class KnowledgeBasePage {
   async gotoList(): Promise<void> {
     await this.page.goto('/knowledge');
     await this.page.getByRole('heading', { name: /Knowledge Base/i }).waitFor({ state: 'visible' });
+    // Wait for the ?vis= landing replace: a click committed before it gets its navigation overwritten.
+    await expect(this.page).toHaveURL(/\/knowledge\?vis=[a-z]+/);
   }
 
   async clickNewKB(): Promise<void> {

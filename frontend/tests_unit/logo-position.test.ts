@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+// @vitest-environment node
+import { describe, expect, it as test } from 'vitest';
 import { resolveLogoPosition, type ResolvedLogoPosition } from '../src/components/presentation/logo-position';
 import { DECK_LOGO_POSITIONS } from '../src/components/presentation/previewSpec';
 import type { DeckLogoPosition, PresentationSlide, SlideLayout } from '../src/types';
@@ -62,7 +63,7 @@ const PLACEABLE = LAYOUTS.flatMap((layout) => {
 
 const EXPLICIT: readonly ResolvedLogoPosition[] = ['start', 'center', 'end'];
 
-test.describe('Presentations - logo placement resolver', () => {
+describe('Presentations - logo placement resolver', () => {
   test('the picker order is the spec order, auto first', () => {
     expect([...DECK_LOGO_POSITIONS]).toEqual(['auto', 'start', 'center', 'end']);
   });

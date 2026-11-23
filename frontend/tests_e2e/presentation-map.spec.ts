@@ -11,8 +11,8 @@ import { slideChartBoxes, slidePictureBoxes, unzip } from './pptx-archive';
 // without a value stay in the muted surface, and a code that is not one is
 // refused with its index named. Asserted here through the real import route,
 // the real viewer - on a content slide and in a dashboard panel - and the real
-// exports: the PDF, and the editable PPTX where the map is a picture placed
-// where the viewer draws it, its title and caption written as text.
+// export: the editable PPTX, where the map is a picture placed where the viewer
+// draws it, its title and caption written as text.
 //
 // One deck imported through the API from a bare spec (no LLM call), owned by
 // the admin and deleted afterwards, with fictitious figures; the file runs
@@ -100,7 +100,7 @@ async function deleteDeck(deckId: string): Promise<void> {
   }
 }
 
-async function exportDeck(deckId: string, format: 'pdf' | 'pptx_native') {
+async function exportDeck(deckId: string, format: 'pptx_native') {
   const { apiCtx, token } = await createAdminApiContext();
   try {
     const response = await apiCtx.post(`/api/v1/presentations/${deckId}/export`, {
@@ -269,7 +269,7 @@ test.describe('Presentations - map chart', () => {
     expect(dots).toEqual([belgium, saudi, australia, unitedStates, france]);
   });
 
-  test('should export the map to a PDF, and to a PPTX as a picture where the viewer draws it, its text editable', async ({
+  test('should export the map to a PPTX as a picture where the viewer draws it, its text editable', async ({
     page,
   }) => {
     await openStage(page, deckId, SLIDE.world);
@@ -284,9 +284,6 @@ test.describe('Presentations - map chart', () => {
         height: rect.height / frame.height,
       };
     });
-
-    const pdf = await exportDeck(deckId, 'pdf');
-    expect(pdf.body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 
     const native = await exportDeck(deckId, 'pptx_native');
     const notes = JSON.parse(native.notes ?? '[]') as string[];

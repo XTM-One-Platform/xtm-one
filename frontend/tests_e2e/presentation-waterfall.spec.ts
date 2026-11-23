@@ -157,7 +157,7 @@ test.describe('Presentations - waterfall chart', () => {
     const [accent, success, error] = await Promise.all(
       ['--deck-accent', '--deck-success', '--deck-error'].map((token) => resolvedToken(page, token)),
     );
-    expect(await barFills(chart)).toEqual([accent, success, success, error, accent]);
+    await expect.poll(() => barFills(chart)).toEqual([accent, success, success, error, accent]);
 
     // The hover reads the change and the level it brings the bridge to.
     await chart.locator('.recharts-bar-rectangle').nth(1).hover();
@@ -181,6 +181,6 @@ test.describe('Presentations - waterfall chart', () => {
     ]);
     await expect(chart.locator('.recharts-cartesian-axis-tick-value')).toContainText(['Unexplained']);
     const warning = await resolvedToken(page, '--deck-warning');
-    expect((await barFills(chart))[4]).toBe(warning);
+    await expect.poll(() => barFills(chart).then((fills) => fills[4])).toBe(warning);
   });
 });
