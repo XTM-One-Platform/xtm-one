@@ -6170,7 +6170,7 @@ async def execute_assignment_run(
 
             if tools_enabled_for(agent=agent, assignment=assignment):
                 # The person the run acts for scopes the enterprise knowledge passages (#11543).
-                composite.add_tools(*build_organization_context_tool(user_id=run.user_id))
+                composite.add_tools(*build_organization_context_tool(user_id=run.user_id, agent=agent))
 
             # --- CTEM case tools (#11545): the CTEM remediation agents, XTM One only ---
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools

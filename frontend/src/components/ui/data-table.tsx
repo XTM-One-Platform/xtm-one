@@ -487,6 +487,8 @@ export interface DataTableProps<T> {
   fitGrid?: boolean;
   /** data-testid of every body row, for the page's tests. */
   rowTestId?: string;
+  /** `data-*` attributes of one body row (its id, its status), for the page's tests and styles; a row with `rowHref` takes none. */
+  rowDataAttributes?: (row: T) => Record<`data-${string}`, string | undefined>;
 }
 
 /**
@@ -605,6 +607,7 @@ function DataTableView<T>({
   fill = false,
   fitGrid = false,
   rowTestId,
+  rowDataAttributes,
   state,
   setState,
 }: DataTableProps<T> & { state: DataTableState; setState: (next: DataTableState) => void }) {
@@ -636,6 +639,18 @@ function DataTableView<T>({
     observer.observe(box);
     return () => observer.disconnect();
   }, [box]);
+  // The scroll area's own clientWidth: its border and its vertical scrollbar left out, so a
+  // full-width row never adds a horizontal overflow (6 px under the Sources table, UX round 1
+  // on #1356, B1). The content box is observed, which shrinks when the scrollbar shows.
+  const [scrollClientWidth, setScrollClientWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!scrollArea || typeof ResizeObserver === "undefined") return;
+    const measure = () => setScrollClientWidth(scrollArea.clientWidth > 0 ? scrollArea.clientWidth : null);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scrollArea);
+    return () => observer.disconnect();
+  }, [scrollArea]);
   // The host's lead control (the fleet page's list switcher) takes its width out of
   // the one-row toolbar: measured so the row can give its right group a line of its own.
   const [lead, setLead] = useState<HTMLDivElement | null>(null);
@@ -868,8 +883,9 @@ function DataTableView<T>({
   // A full-width row keeps its content on the visible part of a table wider than its card:
   // centred on the whole table, "Clear all filters" sat 41 px past the scroll edge of the
   // OpenRouter keys at 1080 (UX round 3 on #10601, A1). Sticky to the scroll area's left
-  // edge, as wide as that area (inside its 1 px border when framed).
-  const visibleWidth = boxWidth === null ? undefined : Math.max(0, boxWidth - (framed ? 2 : 0));
+  // edge, as wide as that area's client box (inside its border and its vertical scrollbar).
+  const visibleWidth =
+    scrollClientWidth !== null ? scrollClientWidth : boxWidth === null ? undefined : Math.max(0, boxWidth - (framed ? 2 : 0));
   const fullWidth = (content: ReactNode, className: string, testId?: string) => (
     <div data-testid={testId} className={cn("sticky left-0", className)} style={visibleWidth === undefined ? undefined : { width: visibleWidth }}>
       {content}
@@ -955,6 +971,7 @@ function DataTableView<T>({
     ) : (
       <tr
         key={key}
+        {...rowDataAttributes?.(row)}
         data-testid={rowTestId}
         className={className}
         onClick={opens ? () => onRowClick?.(row) : undefined}

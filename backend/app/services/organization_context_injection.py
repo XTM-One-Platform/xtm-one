@@ -170,12 +170,14 @@ def category_counts(profile: Any, *, tracked_count: int = 0) -> dict[str, int]:
     return counts
 
 
-def render_summary(row: Any, *, tracked_count: int = 0) -> str:
+def render_summary(row: Any, *, tracked_count: int = 0, ctem_work: bool = True) -> str:
     """The basic block of the primary profile *row*: identity + category index, at most :data:`SUMMARY_MAX_CHARS`.
 
     ``""`` when no profile is saved. The identity is a handful of short
     fields and the index one line per category of the model, so the block
-    never grows with a list's length.
+    never grows with a list's length. *ctem_work* false
+    (``organization_context.ctem_work_for``): the CTEM-only fields are left
+    out of the "Not filled" line and no brief notice is asked (#1384).
     """
     import json
 
@@ -185,6 +187,7 @@ def render_summary(row: Any, *, tracked_count: int = 0) -> str:
         CONTRACT_FIELDS,
         brief_notice_instruction,
         missing_fields,
+        missing_for_run,
         parse_profile,
     )
 
@@ -224,10 +227,11 @@ def render_summary(row: Any, *, tracked_count: int = 0) -> str:
     )
     category_fields = {category.field for category in cats.CATEGORIES}
     labels = dict(CONTRACT_FIELDS)
-    missing = [labels[path] for path in missing_fields(profile) if path not in category_fields]
+    run_missing = missing_for_run(missing_fields(profile), ctem_work=ctem_work)
+    missing = [labels[path] for path in run_missing if path not in category_fields]
     tail = "Not filled: " + (", ".join(missing) if missing else "none") + ". Never guess a missing field."
-    # Incomplete: every brief the agent writes says so, in one info line (#11586).
-    notice = brief_notice_instruction(missing_fields(profile))
+    # Incomplete: every brief of a CTEM run says so, in one info line (#11586, #1384).
+    notice = brief_notice_instruction(run_missing) if ctem_work else ""
     if notice:
         tail += " " + notice
     body = wrap_untrusted(json.dumps(facts, ensure_ascii=False), "organization profile", stable=True)
@@ -280,7 +284,9 @@ async def assignment_run_organization_context(
 
     if not await effective_for(db, agent=agent, assignment=assignment):
         return "", ""
-    block = await fleet_run_context(db, getattr(agent, "id", None), fleet=fleet, organization_ids=organization_ids)
+    block = await fleet_run_context(
+        db, getattr(agent, "id", None), fleet=fleet, organization_ids=organization_ids, agent=agent
+    )
     if block:
         return block, ""
     return "", await organization_summary_for(db, agent=agent, assignment=assignment)
@@ -301,12 +307,12 @@ async def organization_summary_for(
     try:
         if not await effective_for(db, agent=agent, assignment=assignment):
             return ""
-        from app.services.organization_context import current_version
+        from app.services.organization_context import ctem_work_for, current_version
 
         row = await current_version(db)
         if row is None:
             return ""
-        basic = render_summary(row, tracked_count=len(await _tracked(db)))
+        basic = render_summary(row, tracked_count=len(await _tracked(db)), ctem_work=await ctem_work_for(db, agent))
         preloaded = await render_preloaded_categories(
             db, row, await categories_for(db, agent=agent, assignment=assignment)
         )

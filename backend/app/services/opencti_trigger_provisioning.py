@@ -1149,16 +1149,31 @@ def due_for_check(state: Any, now: datetime) -> bool:
 
 
 def bound_opencti_integration_id(assignment: Any, agent: Any) -> str | None:
-    """The OpenCTI integration the assignment acts through (its own binding, else the agent's)."""
-    # An assignment's bindings replace the agent's when set ({} = none at all).
-    own = getattr(assignment, "integration_bindings", None)
-    bindings = own if isinstance(own, dict) else getattr(agent, "integration_bindings", None)
-    if not isinstance(bindings, dict):
-        return None
-    value = bindings.get("opencti")
-    if isinstance(value, list):
-        value = value[0] if value else None
-    return str(value) if value else None
+    """The OpenCTI integration the assignment binds (its own binding, else the agent's)."""
+    from app.services.trigger_provisioning import direct_binding_id
+
+    return direct_binding_id(assignment, agent, "opencti")
+
+
+async def opencti_integration_id(db: Any, assignment: Any, agent: Any) -> tuple[str | None, str]:
+    """``(integration_id, "")`` the assignment provisions and reads through, else ``(None, reason)``.
+
+    A direct binding first; else the agent's ``opencti`` template binding,
+    resolved for the provisioning run-as user as a run would resolve it
+    (never the seed owner, #9188).
+    """
+    from app.services.fleet_run_as import NO_RUN_AS_REASON, provisioning_user_id
+    from app.services.trigger_provisioning import template_integration_id, uses_template
+
+    integration_id = bound_opencti_integration_id(assignment, agent)
+    if integration_id:
+        return integration_id, ""
+    if not uses_template(agent, "opencti"):
+        return None, "no OpenCTI integration bound to the assignment or its agent"
+    user_id = provisioning_user_id(assignment, agent)
+    if user_id is None:
+        return None, NO_RUN_AS_REASON
+    return await template_integration_id(db, agent, "opencti", "OpenCTI", user_id)
 
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, str, str] | str:
@@ -1166,9 +1181,9 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Gql, str, s
     from app.models.integration import Integration
     from app.services.trigger_provisioning import receiver_secret
 
-    integration_id = bound_opencti_integration_id(assignment, agent)
+    integration_id, reason = await opencti_integration_id(db, assignment, agent)
     if not integration_id:
-        return "no OpenCTI integration bound to the assignment or its agent"
+        return reason
     integration = await db.get(Integration, uuid.UUID(integration_id))
     if integration is None or integration.provider != "opencti":
         return f"OpenCTI integration {integration_id} not found"

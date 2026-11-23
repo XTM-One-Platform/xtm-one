@@ -10,8 +10,11 @@ each is bound for the caller. Three kinds of source:
   ``ctem_signal_listeners.LISTENERS`` maps to the path. Bound when an
   integration of that provider is connected and visible to the caller.
 - ``pass``: a scheduled XTM One pass reading a provider (the attack-surface
-  pass of CTEM-26, the evidence health pass of CTEM-28). Bound when its
-  profile switch is on and one of its integrations is connected.
+  pass of CTEM-26, the evidence health pass of CTEM-28). Bound when the pass
+  runs on a connected integration of the provider; ``off`` when the provider is
+  connected but the pass is off or names none of its integrations (#1344: the
+  evidence health pass runs by default on the single connected OpenCRQ
+  integration, ``ctem_evidence_health.resolve_pass``).
 - ``pir_playbook``: the OpenCTI PIR playbook (CTEM-05) delivering flagged
   entities through the OpenCTI listener. Bound when an enabled assignment holds
   a provisioned playbook.
@@ -33,7 +36,15 @@ ATTACK_SURFACE_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
 EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
 SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook")
-PATH_STATUSES: tuple[str, ...] = ("connected", "not_connected", "agents_api")
+PATH_STATUSES: tuple[str, ...] = ("connected", "off", "not_connected", "agents_api")
+
+
+class BoundSources(set[tuple[str, str]]):
+    """The ``(provider, kind)`` pairs bound for the caller, plus ``off``: the passes whose provider is connected but which do not run."""
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__(*args)
+        self.off: set[tuple[str, str]] = set()
 
 
 @dataclass(frozen=True)
@@ -117,17 +128,26 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
 
 
 def path_status(sources: list[dict[str, Any]]) -> str:
-    """``agents_api`` with no source, ``connected`` when one is bound, else ``not_connected``."""
+    """``agents_api`` with no source, ``connected`` when one is bound, ``off`` when one is off, else ``not_connected``."""
     if not sources:
         return "agents_api"
-    return "connected" if any(s.get("bound") for s in sources) else "not_connected"
+    if any(s.get("bound") for s in sources):
+        return "connected"
+    return "off" if any(s.get("off") for s in sources) else "not_connected"
 
 
 def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str, Any]]:
-    """The sources of *path* with their ``bound`` flag (``(provider, kind)`` in *bound*)."""
+    """The sources of *path* with their ``bound`` flag (``(provider, kind)`` in *bound*) and ``off`` flag (in ``bound.off``)."""
     known = bound or set()
+    off = getattr(bound, "off", None) or set()
     return [
-        {"provider": s.provider, "kind": s.kind, "event": s.event, "bound": (s.provider, s.kind) in known}
+        {
+            "provider": s.provider,
+            "kind": s.kind,
+            "event": s.event,
+            "bound": (s.provider, s.kind) in known,
+            "off": (s.provider, s.kind) not in known and (s.provider, s.kind) in off,
+        }
         for s in PATH_SOURCES.get(path, ())
     ]
 
@@ -139,11 +159,36 @@ def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:
     return out
 
 
-async def bound_sources(db: AsyncSession, user_id: Any) -> set[tuple[str, str]]:
-    """The ``(provider, kind)`` pairs bound for the caller (module docstring)."""
+async def platform_connected_ids(db: AsyncSession, providers: tuple[str, ...]) -> dict[str, set[str]]:
+    """The connected integration ids of the platform per provider, whoever can see them.
+
+    A scheduled pass is organization-wide: it runs on an administrator's
+    integration for every reader, so its status is read on the platform's
+    connected integrations, never on the caller's visible ones (#1344, UX round 2).
+    """
+    from app.models.integration import Integration
+
+    rows = (
+        await db.execute(
+            select(Integration.id, Integration.provider).where(
+                Integration.provider.in_(providers), Integration.status == "connected"
+            )
+        )
+    ).all()
+    return _connected_ids([(r[0], r[1]) for r in rows])
+
+
+async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
+    """The ``(provider, kind)`` pairs bound for the caller, and the passes ``off`` (module docstring).
+
+    Listeners are read on the integrations visible to the caller; the passes on
+    the platform's connected integrations (:func:`platform_connected_ids`), so
+    every role reads the same status for an organization-wide pass.
+    """
     from app.api.v1.helpers import integration_visible_filter
     from app.models.assignment import Assignment
     from app.models.integration import Integration
+    from app.services import ctem_evidence_health as evidence_health
     from app.services import organization_context as org_context
     from app.services.opencti_trigger_provisioning import STATE_KEY
     from app.services.organizations import get_primary
@@ -159,23 +204,29 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> set[tuple[str, str]]:
         )
     ).all()
     connected = _connected_ids([(r[0], r[1]) for r in rows])
-    bound: set[tuple[str, str]] = {(p, "listener") for p in connected}
+    bound = BoundSources((p, "listener") for p in connected)
 
     primary = await get_primary(db)
     if primary is not None:
+        platform = await platform_connected_ids(db, ATTACK_SURFACE_PROVIDERS + EVIDENCE_HEALTH_PROVIDERS)
         version = await org_context.current_version(db, primary.id)
         profile = org_context.parse_profile(version.profile if version else {})
         surface = profile.attack_surface
-        if surface.enabled:
-            ids = {i for i in [surface.integration, *surface.integrations] if i}
-            for provider in ATTACK_SURFACE_PROVIDERS:
-                if ids & connected.get(provider, set()):
-                    bound.add((provider, "pass"))
-        health = profile.evidence_health
-        if health.enabled:
-            for provider in EVIDENCE_HEALTH_PROVIDERS:
-                if health.integration and health.integration in connected.get(provider, set()):
-                    bound.add((provider, "pass"))
+        ids = {i for i in [surface.integration, *surface.integrations] if i}
+        for provider in ATTACK_SURFACE_PROVIDERS:
+            if surface.enabled and ids & platform.get(provider, set()):
+                bound.add((provider, "pass"))
+            elif platform.get(provider):
+                bound.off.add((provider, "pass"))
+        # The tick's rule, on the platform's connected integrations (the pass is organization-wide).
+        state, picked = evidence_health.resolve_pass(
+            profile.evidence_health, await evidence_health.connected_integration_ids(db)
+        )
+        for provider in EVIDENCE_HEALTH_PROVIDERS:
+            if state == evidence_health.PASS_ON and picked in platform.get(provider, set()):
+                bound.add((provider, "pass"))
+            elif state != evidence_health.PASS_NONE and platform.get(provider):
+                bound.off.add((provider, "pass"))
 
     if "opencti" in connected:
         configs = (

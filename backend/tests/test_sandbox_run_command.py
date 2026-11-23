@@ -2157,6 +2157,26 @@ def test_staged_entries_keeps_the_nearest_checkout_and_the_loose_files():
     assert root == "a" and "b/y" not in kept and "a/inner/z" not in kept and "a/x" in kept
     kept, root = commands.staged_entries(entries, "")
     assert root == "" and kept is entries
+    # A checkout a manifest's relative path names is staged with the command's own (#1382).
+    kept, root = commands.staged_entries(entries, "a", ["b"])
+    assert root == "a" and {"a/x", "b/y", "loose.md"} <= set(kept)
+
+
+def test_linked_checkouts_reads_a_relative_path_dependency_into_a_sibling_checkout() -> None:
+    # OpenAEV injectors: nmap/pyproject.toml names pyoaev @ ../../client-python (gap sandbox-poetry-path-dep-outside-checkout).
+    manifests = {
+        "inj/nmap/pyproject.toml": '[project]\ndependencies = ["injector_common @ ../injector_common"]\n'
+        'dev = ["pyoaev @ ../../client-python"]\n'
+    }
+    roots = ["client-python", "inj", "other"]
+    assert commands.linked_checkouts(manifests, "inj", roots) == ["client-python"]
+    # A path inside the own checkout, or above the workspace, names no other checkout.
+    assert commands.linked_checkouts({"inj/a/package.json": '"x": "file:../b", "y": "../../../up"'}, "inj", roots) == []
+
+
+def test_link_manifest_paths_walks_up_to_the_checkout_root() -> None:
+    entries = dict.fromkeys(("inj/pyproject.toml", "inj/nmap/pyproject.toml", "pyproject.toml", "inj/nmap/x.py"))
+    assert commands.link_manifest_paths(entries, "inj/nmap", "inj") == ["inj/nmap/pyproject.toml", "inj/pyproject.toml"]
 
 
 async def test_an_undeclared_check_or_argv_is_refused_with_the_declared_list(api):
