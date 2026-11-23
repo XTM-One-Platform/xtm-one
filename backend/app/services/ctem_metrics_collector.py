@@ -1045,10 +1045,9 @@ async def _profile_asset_rows(db: AsyncSession | None) -> tuple[list[Any], list[
     from app.services import organization_context as org_context
 
     try:
-        row = await org_context.current_version(db)
+        row, profile = await org_context.current_profile(db)  # assets from the records (#1543)
         if row is None:
             return None
-        profile = org_context.parse_profile(row.profile)
     except Exception as exc:  # a bad stored profile never breaks the posture
         logger.info("CTEM organization profile unreadable: %s", format_exception_message(exc))
         return None

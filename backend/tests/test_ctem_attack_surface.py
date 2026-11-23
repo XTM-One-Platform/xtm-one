@@ -508,12 +508,17 @@ def _patch_tick(monkeypatch: pytest.MonkeyPatch, redis: _SlotRedis) -> None:
     async def _current(db: Any, organization_id: Any) -> Any:
         return SimpleNamespace(profile=profile.model_dump())
 
+    async def _hydrated(db: Any, row: Any) -> Any:
+        # No asset records in this fake session (#1543): the stored profile is the truth.
+        return oc.parse_profile(row.profile if row else {})
+
     async def _publish(pending: Any) -> None:
         return None
 
     monkeypatch.setattr(redis_module, "redis_client", _client)
     monkeypatch.setattr(organizations, "get_primary", _primary)
     monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(oc, "hydrated_profile", _hydrated)
     monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
 
 
