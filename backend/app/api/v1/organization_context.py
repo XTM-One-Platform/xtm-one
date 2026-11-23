@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,9 +122,12 @@ class DraftOrganizationContextResponse(BaseModel):
 
 
 def _response(
-    row: OrganizationContextVersion | None, removed_rows: dict[str, list[str]] | None = None
+    row: OrganizationContextVersion | None,
+    removed_rows: dict[str, list[str]] | None = None,
+    *,
+    profile: org_context.OrganizationProfile | None = None,
 ) -> OrganizationContextResponse:
-    profile = org_context.parse_profile(row.profile if row else {})
+    profile = profile if profile is not None else org_context.parse_profile(row.profile if row else {})
     return OrganizationContextResponse(
         version=row.version if row else None,
         source=row.source if row else None,
@@ -157,8 +160,13 @@ async def get_organization_context(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> OrganizationContextResponse:
-    """The current profile (empty with every field missing before the first save)."""
-    return _response(await org_context.current_version(db))
+    """The current profile (empty with every field missing before the first save).
+
+    The asset and group lists are read from the asset records (#1543): the row
+    API, agent and import writes land there, never in a profile version.
+    """
+    row, profile = await org_context.current_profile(db)
+    return _response(row, profile=profile)
 
 
 class OrganizationContextInjection(BaseModel):
@@ -458,8 +466,8 @@ async def import_organization_assets(
     from app.services import organization_assets_import as assets_import
 
     content = await file.read(assets_import.MAX_BYTES + 1)
-    row = await org_context.current_version(db)
-    profile = org_context.parse_profile(row.profile if row else {})
+    # Planned on the records' lists (#1543): the stored JSON misses the row writes, and its save would remove them.
+    _row, profile = await org_context.current_profile(db)
     try:
         preview = assets_import.parse_assets_csv(content, profile)
     except ValueError as exc:
@@ -1109,6 +1117,390 @@ async def remove_asset_decision(
     await db.commit()
 
 
+# ── Row APIs on the asset records (#1543): one row in, one row out, never the profile ──
+
+
+class AssetRecordRequest(BaseModel):
+    """An asset row as the profile's ``AssetEntry`` takes it (validated by the record service)."""
+
+    model_config = {"extra": "allow"}
+
+    name: str = Field(min_length=1, max_length=300)
+
+
+class AssetRecordPatchRequest(BaseModel):
+    """The fields to change on one record; ``source`` and ``external_id`` never move."""
+
+    model_config = {"extra": "allow"}
+
+
+class AssetRecordBatchRequest(BaseModel):
+    #: Rows matched on ``(source, external_id)``: an unknown pair is created, a different row updated.
+    rows: list[dict[str, Any]] = Field(max_length=10_000)
+
+
+class AssetRecordBulkDeleteRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
+
+
+class AssetGroupRequest(BaseModel):
+    model_config = {"extra": "allow"}
+
+
+class CrownJewelLinksRequest(BaseModel):
+    #: The asset record and asset group names the crown jewel covers (replaces its links).
+    names: list[str] = Field(default_factory=list, max_length=1000)
+
+
+class AssetChangesRestoreRequest(BaseModel):
+    change_ids: list[int] = Field(min_length=1, max_length=1000)
+
+
+def _record_http_error(exc: Exception) -> HTTPException:
+    from app.services.organization_asset_records import RecordNotFoundError, StaleRowError
+
+    if isinstance(exc, RecordNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, StaleRowError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+def _if_match(value: str | None) -> int | None:
+    """The row version an ``If-Match`` header names (``"3"`` or ``W/"3"``); absent: no check."""
+    if value is None or not value.strip():
+        return None
+    raw = value.strip().removeprefix("W/").strip('"')
+    try:
+        return int(raw)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="If-Match: a row version number") from None
+
+
+async def _write_org(db: AsyncSession) -> uuid.UUID:
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="No organization profile yet")
+    return org
+
+
+async def _audit_rows(
+    db: AsyncSession, admin: User, action: str, entity_id: Any, entity_name: str, summary: str, details: dict[str, Any]
+) -> None:
+    from app.services.audit import log_audit
+
+    await log_audit(
+        db,
+        user=admin,
+        action=action,
+        entity_type="organization_context",
+        entity_id=entity_id,
+        entity_name=entity_name,
+        summary=summary[:500],
+        details=details,
+    )
+
+
+def _actor(admin: User) -> str:
+    return f"form:{admin.id}"
+
+
+@router.post("/assets", status_code=201)
+async def create_asset_record(
+    body: AssetRecordRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Add one asset by hand (administrators, audited); 422 names the bad field or the missing group."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        record = await records.create_record(db, org, body.model_dump(), origin="form", actor=_actor(admin))
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    out = records.record_out(record)
+    await _audit_rows(db, admin, "create", record.id, "asset", f"Asset {record.name} added", {"source": record.source})
+    await db.commit()
+    return out
+
+
+@router.post("/assets/records/batch")
+async def upsert_asset_records(
+    body: AssetRecordBatchRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Create or update up to 10,000 rows by ``(source, external_id)``; only the rows that differ are written."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        result = await records.upsert_records(db, org, body.rows, origin="api", actor=f"api:{admin.id}")
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    counts = result.as_dict()
+    if result.created or result.updated:
+        await _audit_rows(db, admin, "update", None, "assets", f"Asset rows written: {counts}", counts)
+    await db.commit()
+    return counts
+
+
+@router.patch("/assets/records/{record_id}")
+async def update_asset_record(
+    record_id: uuid.UUID,
+    body: AssetRecordPatchRequest,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Change one asset record (administrators, audited); 409 on a stale ``If-Match``, 422 on a synced field."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    changes = body.model_dump()
+    try:
+        record = await records.update_record(
+            db, org, record_id, changes, origin="form", actor=_actor(admin), if_match=_if_match(if_match)
+        )
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    out = records.record_out(record)
+    await _audit_rows(
+        db, admin, "update", record.id, "asset", f"Asset {record.name} changed: " + ", ".join(sorted(changes)), {}
+    )
+    await db.commit()
+    return out
+
+
+@router.delete("/assets/records/{record_id}", status_code=204)
+async def delete_asset_record(
+    record_id: uuid.UUID,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> Response:
+    """Delete one asset record (administrators, audited); its identity cluster alone is re-matched."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        record = await records.get_record(db, org, record_id)
+        name = record.name
+        await records.delete_records(
+            db, org, [record_id], origin="form", actor=_actor(admin), if_match=_if_match(if_match)
+        )
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    await _audit_rows(db, admin, "delete", record_id, "asset", f"Asset {name} deleted", {})
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/assets/bulk-delete")
+async def bulk_delete_asset_records(
+    body: AssetRecordBulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Delete up to 1,000 asset records in one call (an id of another organization is skipped)."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        gone = await records.delete_records(db, org, body.ids, origin="form", actor=_actor(admin))
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    await _audit_rows(
+        db, admin, "delete", None, "assets", f"{len(gone)} assets deleted", {"ids": [str(i) for i in gone]}
+    )
+    await db.commit()
+    return {"removed": [str(i) for i in gone]}
+
+
+@router.get("/assets/records/{record_id}")
+async def get_asset_record(
+    record_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One asset record with its row version (what ``If-Match`` takes)."""
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    if org is None:
+        raise HTTPException(status_code=404, detail="No asset record with this id")
+    try:
+        return records.record_out(await records.get_record(db, org, record_id))
+    except records.RecordError as exc:
+        raise _record_http_error(exc) from None
+
+
+@router.get("/asset-groups")
+async def list_asset_groups(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Every asset group with its id, row version and asset count (what the row APIs take)."""
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    return {"items": await records.groups_out(db, org) if org is not None else []}
+
+
+@router.post("/asset-groups", status_code=201)
+async def create_asset_group(
+    body: AssetGroupRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Add an asset group (administrators, audited); the records that name it join it."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        group = await records.upsert_group(db, org, body.model_dump(), origin="form", actor=_actor(admin))
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    out = records.group_out(group)
+    await _audit_rows(db, admin, "create", group.id, "asset_group", f"Asset group {group.name} added", {})
+    await db.commit()
+    return out
+
+
+@router.patch("/asset-groups/{group_id}")
+async def update_asset_group(
+    group_id: uuid.UUID,
+    body: AssetGroupRequest,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Change an asset group (administrators, audited); 409 on a stale ``If-Match``."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        group = await records.upsert_group(
+            db,
+            org,
+            body.model_dump(),
+            origin="form",
+            actor=_actor(admin),
+            group_id=group_id,
+            if_match=_if_match(if_match),
+        )
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    out = records.group_out(group)
+    await _audit_rows(db, admin, "update", group.id, "asset_group", f"Asset group {group.name} changed", {})
+    await db.commit()
+    return out
+
+
+@router.delete("/asset-groups/{group_id}", status_code=204)
+async def delete_asset_group(
+    group_id: uuid.UUID,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> Response:
+    """Delete an asset group; its assets stay and lose the group (each change logged)."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        group = await records.get_group(db, org, group_id)
+        name = group.name
+        await records.delete_group(db, org, group_id, origin="form", actor=_actor(admin), if_match=_if_match(if_match))
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    await _audit_rows(db, admin, "delete", group_id, "asset_group", f"Asset group {name} deleted", {})
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.put("/crown-jewels/{crown_jewel}/links")
+async def set_crown_jewel_asset_links(
+    crown_jewel: str,
+    body: CrownJewelLinksRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Replace the assets and groups a crown jewel covers; 422 names the ones that match nothing."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    current = await org_context.current_version(db)
+    jewels = {
+        str(j.get("name") or "").strip().lower()
+        for j in ((current.profile or {}) if current else {}).get("crown_jewels") or []
+    }
+    if crown_jewel.strip().lower() not in jewels:
+        raise HTTPException(status_code=404, detail=f"No crown jewel is named '{crown_jewel}'")
+    missing = await records.set_crown_jewel_links(db, org, crown_jewel, body.names)
+    if missing:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="No asset or asset group is named: " + ", ".join(missing))
+    await _audit_rows(
+        db, admin, "update", None, "crown_jewel_links", f"Crown jewel {crown_jewel} covers {len(body.names)} items", {}
+    )
+    await db.commit()
+    return {"crown_jewel": crown_jewel, "names": body.names}
+
+
+@router.get("/changes")
+async def list_asset_changes(
+    entity_id: uuid.UUID | None = None,
+    since: datetime | None = None,
+    before_id: int | None = Query(None, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """The asset and group change log, newest first (one record or group with *entity_id*); page with *before_id*."""
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    items = (
+        await records.changes(db, org, entity_id=entity_id, since=since, before_id=before_id, limit=limit)
+        if org is not None
+        else []
+    )
+    return {"items": items, "next_before_id": items[-1]["id"] if len(items) == limit else None}
+
+
+@router.post("/changes/restore")
+async def restore_asset_changes(
+    body: AssetChangesRestoreRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Undo record changes by id: a delete comes back, an update gets its old fields, a create goes."""
+    from app.services import organization_asset_records as records
+
+    org = await _write_org(db)
+    try:
+        result = await records.restore(db, org, body.change_ids, actor=f"restore:{admin.id}")
+    except records.RecordError as exc:
+        await db.rollback()
+        raise _record_http_error(exc) from None
+    counts = result.as_dict()
+    await _audit_rows(
+        db, admin, "update", None, "assets", f"Asset changes restored: {counts}", {"changes": body.change_ids}
+    )
+    await db.commit()
+    return counts
+
+
 class AssetSbomImportResponse(BaseModel):
     id: str
     #: ``cyclonedx`` or ``spdx``.
@@ -1510,9 +1902,7 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal[
-        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-    ]
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1577,9 +1967,7 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal[
-        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-    ],
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -1615,6 +2003,8 @@ async def preview_organization_import(
         batch_type=body.batch_type,
         remove_gone=body.remove_gone,
     )
+    # The plan of assets and groups reads the records; their first touch imports the profile rows (#1543).
+    await db.commit()
     return ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
 
 
@@ -1641,11 +2031,32 @@ async def apply_organization_import(
         batch_type=body.batch_type,
         remove_gone=body.remove_gone,
     )
+    # The records' first-touch import (#1543) lands whatever the answer below.
+    await db.commit()
     if plan.error:
         raise HTTPException(status_code=422, detail=plan.error)
     if body.based_on_version is not None and body.based_on_version != version:
         raise HTTPException(status_code=409, detail="The profile changed since the preview. Preview again.")
     response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
+    if plan.on_records:
+        # Assets and asset groups (#1543): row writes on the records, no profile version, no 5,000 cap.
+        from app.services.audit import log_audit
+
+        written = await imp.apply_record_import(db, plan, actor=f"import:{admin.id}") if plan.has_writes else 0
+        changed = await imp.store_endpoint_software(db, plan, user_id=admin.id) if plan.software else 0
+        await log_audit(
+            db,
+            user=admin,
+            action="update",
+            entity_type="organization_context",
+            entity_id=str(plan.organization_id),
+            entity_name=plan.section,
+            summary=imp.provenance(plan, body.filters)[imp.SECTION_FIELD[plan.section]]["basis"],
+            details={"section": plan.section, "source": plan.source, "rows_written": written},
+        )
+        await db.commit()
+        response.applied = bool(written or changed)
+        return response
     removes = plan.remove_gone and len(plan.gone) > len(plan.gone_kept)
     if not (plan.new or plan.updated or removes) or plan.profile is None:
         if not plan.error and plan.software:
@@ -1674,19 +2085,7 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal[
-        "openaev",
-        "opencti",
-        "opencrq",
-        "intune",
-        "defender",
-        "tanium",
-        "crowdstrike",
-        "servicenow",
-        "github",
-        "gitlab",
-        "",
-    ] = ""
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).
@@ -1925,8 +2324,8 @@ async def _save_rows_plan(
     """Purge or release a source's rows (one sync's when *sync* is given) as a new version; the caller commits."""
     from app.services import organization_context_sources as osources
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    # The asset lists come from the records (#1543): a plan on the stored JSON would re-save stale lists.
+    _current, base = await org_context.current_profile(db)
     try:
         plan = osources.plan_rows(
             base,
@@ -1972,8 +2371,7 @@ async def preview_organization_sync_rows(
     from app.services import organization_context_sources as osources
 
     row = await _sync_or_404(db, sync_id)
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    _current, base = await org_context.current_profile(db)
     if not row.source:
         return RowsPlanResponse(source="", mode=mode, count=0, counts={}, rows={}, kept_elsewhere={})
     plan = osources.plan_rows(
@@ -2032,8 +2430,7 @@ async def list_organization_sources(
     from app.services import organization_context_sources as osources
     from app.services import organization_context_sync as osync
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    _current, base = await org_context.current_profile(db)
     syncs = await osync.all_syncs(db, scope)
     writers = await osources.writer_agents(db)
     return [
@@ -2052,8 +2449,7 @@ async def preview_organization_source_rows(
     """What purging or releasing every row of *source* would do; nothing saved (#1276)."""
     from app.services import organization_context_sources as osources
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    _current, base = await org_context.current_profile(db)
     try:
         plan = osources.plan_rows(base, source=source, mode=mode)
     except osources.SourceRefusedError as exc:

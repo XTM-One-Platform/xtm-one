@@ -217,6 +217,24 @@ def build_organization_context_write_tools(
                 person = await _admin(db)
                 if person is None:
                     return REFUSAL
+                if section in org_rows.SOURCED_SECTIONS:
+                    from app.services import organization_asset_records as records
+
+                    org = await records.ensure_records(db)
+                    if org is not None:  # no profile yet: the profile path below creates the organization
+                        return await _record_rows(
+                            db,
+                            person,
+                            org,
+                            mode,
+                            section,
+                            source,
+                            rows,
+                            external_ids,
+                            rows_format,
+                            include_owner,
+                            apply,
+                        )
                 current = await org_context.current_version(db)
                 base = org_context.parse_profile(current.profile if current else {})
                 if mode == "upsert":
@@ -242,6 +260,84 @@ def build_organization_context_write_tools(
         except Exception:
             logger.warning("Organization profile row write failed", exc_info=True)
             return "Error: the profile could not be changed right now. Say so; nothing was changed."
+
+    async def _record_rows(
+        db: Any,
+        person: Any,
+        org: uuid.UUID,
+        mode: str,
+        section: str,
+        source: str,
+        rows: list[Any] | None,
+        external_ids: list[Any] | None,
+        rows_format: str,
+        include_owner: bool,
+        apply: bool,
+    ) -> str:
+        """Assets and asset groups since #1543: planned against the records, written row by row (no version)."""
+        import json
+
+        from app.services import organization_asset_records as records
+        from app.services import organization_context_rows as org_rows
+
+        src = source.strip().lower()
+        if mode == "upsert":
+            mapped = org_rows.map_rows(list(rows or []), rows_format, include_owner=include_owner)
+            org_rows.check_call(section, src, len(mapped))
+            refs = [
+                (src, str(r.get("external_id") or "").strip())
+                for r in mapped
+                if isinstance(r, dict) and str(r.get("external_id") or "").strip()
+            ]
+            stored = await records.rows_by_ref(db, org, section, refs)
+            fresh_names = [str(r.get("name") or "") for r in mapped if isinstance(r, dict)]
+            names = await records.name_owners(db, org, section, fresh_names, source=src)
+            # A row's own record is no clash: drop the names the addressed records hold.
+            for row in stored.values():
+                names.pop(org_rows.name_key(row.get("name")), None)
+            validate = records.validate_asset if section == "assets" else records.validate_group
+            plan = org_rows.plan_record_upsert(section, src, mapped, validate=validate, stored=stored, names=names)
+        else:
+            ids = [str(i).strip() for i in (external_ids or []) if str(i).strip()]
+            org_rows.check_call(section, src, len(ids))
+            stored = await records.rows_by_ref(db, org, section, [(src, i) for i in ids])
+            plan = org_rows.plan_record_remove(section, src, ids, stored=stored)
+        answer = plan.as_dict()
+        if not apply or not plan.changed:
+            answer["applied"] = False
+            answer["notice"] = SHARED_CONTEXT_NOTICE
+            return json.dumps(answer)
+        actor = f"agent:{agent_name}"[:120] if agent_name else f"agent:{person.id}"
+        origin = f"agent:{src}"[:80]
+        try:
+            if mode == "upsert":
+                for start in range(0, len(plan.writes), records.MAX_BATCH):
+                    await records.write_rows(
+                        db, org, section, plan.writes[start : start + records.MAX_BATCH], origin=origin, actor=actor
+                    )
+            else:
+                await records.remove_rows(db, org, section, plan.remove_refs, origin=origin, actor=actor)
+        except records.RecordError as exc:
+            await db.rollback()
+            return f"Not saved: {exc}"
+        from app.services.audit import log_audit
+
+        summary = org_rows.basis(plan, agent_name)
+        await log_audit(
+            db,
+            user=person,
+            action="update" if mode == "upsert" else "delete",
+            entity_type="organization_context",
+            entity_id=str(org),
+            entity_name=section,
+            summary=f"Organization {section} rows written by agent {agent_name or 'unknown'}: {summary}"[:500],
+            details={"agent": agent_name, "section": section, "source": src, "tool": mode, **answer["counts"]},
+        )
+        await db.commit()
+        answer["applied"] = True
+        answer["history"] = "each row change is in the asset history (Inventory), restorable by an administrator"
+        answer["notice"] = SHARED_CONTEXT_NOTICE
+        return json.dumps(answer)
 
     async def _upsert_rows(
         section: str = "",
@@ -291,6 +387,16 @@ def build_organization_context_write_tools(
                     "notice": SHARED_CONTEXT_NOTICE,
                 }
                 if plan.error or not apply:
+                    return json.dumps(answer, default=str)
+                if plan.on_records:
+                    # Assets and asset groups (#1543): row writes on the records, never a profile version.
+                    written = await imp.apply_record_import(
+                        db, plan, actor=(f"agent:{agent_name}" if agent_name else f"agent:{person.id}")[:120]
+                    )
+                    if plan.software:
+                        written += await imp.store_endpoint_software(db, plan, user_id=person.id)
+                    await db.commit()
+                    answer.update(applied=bool(written))
                     return json.dumps(answer, default=str)
                 if not (plan.new or plan.updated) or plan.profile is None:
                     # An endpoint source (#1251) may change only the software of known devices.
@@ -592,7 +698,7 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_REMOVE_ROWS_TOOL,
             description=(
-                "Remove assets or asset groups a source synced, by source + external_id. "
+                "Remove assets or asset groups a source synced, by source + external_id (a device the source retired). "
                 "Rows a person wrote are never removed. Preview first."
             ),
             input_schema={
@@ -687,7 +793,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_LIST_PROPOSALS_TOOL,
             description=(
                 "The organization profile proposals of Settings > Organization, newest first: id, kind, "
-                "organization, entries, based_on_version."
+                "organization, entries, based_on_version. Read it before deciding one."
             ),
             input_schema={
                 "type": "object",
@@ -703,7 +809,8 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_DECIDE_PROPOSAL_TOOL,
             description=(
                 "Accept or reject a pending proposal, as the administrator you act for (the Settings > Organization "
-                "review). accept names the fields or organizations kept; empty rejects it."
+                "review). accept names the fields or organizations kept; empty rejects it, e.g. one already applied "
+                "with update_organization_context."
             ),
             input_schema={
                 "type": "object",

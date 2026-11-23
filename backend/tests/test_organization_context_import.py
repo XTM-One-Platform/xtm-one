@@ -31,17 +31,7 @@ def test_every_section_has_a_field_sources_and_filters():
         for source in sources:
             assert (section, source) in imp.SOURCE_FILTERS
     # Assets need no OpenAEV: OpenCTI alone can feed them; Intune and Defender bring devices and software (#1251).
-    assert imp.SECTION_SOURCES["assets"] == (
-        "openaev",
-        "opencti",
-        "intune",
-        "defender",
-        "tanium",
-        "crowdstrike",
-        "servicenow",
-        "github",
-        "gitlab",
-    )
+    assert imp.SECTION_SOURCES["assets"] == ("openaev", "opencti", "intune", "defender", "github", "gitlab")
 
 
 def test_openaev_asset_maps_exposure_and_provenance():
@@ -473,8 +463,12 @@ async def test_preview_counts_what_the_source_answered(monkeypatch):
         assert filters == {"tags": ["prod"]}
         return imp.ReadResult(rows=[imp.openaev_asset(_aev_asset("a1", "web-01"))], total=1)
 
+    async def no_records(*_a: object, **_k: object) -> None:
+        return None  # no organization records yet: the profile plan
+
     monkeypatch.setattr(org_context, "current_version", current)
     monkeypatch.setattr(imp, "_read_openaev", fake_read)
+    monkeypatch.setattr(imp, "_plan_on_records", no_records)
     plan, version = await imp.preview_import(
         None, user_id=uuid.uuid4(), section="assets", source="openaev", filters={"tags": ["prod"]}
     )
