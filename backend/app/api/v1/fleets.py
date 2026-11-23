@@ -890,25 +890,30 @@ async def update_fleet_member(
 # manage rule does: company-managed takes an administrator.
 
 
-async def _connected_integrations(db: AsyncSession, user: User, user_group_ids: list[str]) -> list[Any]:
+async def _connected_integrations(
+    db: AsyncSession, user: User, user_group_ids: list[str], *, include_unconnected: bool = False
+) -> list[Any]:
+    """The integrations the reader can see, connected ones only unless *include_unconnected*.
+
+    The read view passes *include_unconnected* so a visible integration of a
+    capability that is not connected yet is shown as blocked with its reason
+    (#1373); every write path binds connected integrations only.
+    """
     from app.models.integration import Integration
     from app.services.fleet_capability_slots import IntegrationRef
     from app.services.integration_state import INTEGRATION_CONNECTED
 
-    rows = (
-        (
-            await db.execute(
-                user_visible_query(Integration, user.id, user_group_ids, is_admin=user.is_admin).where(
-                    Integration.status == INTEGRATION_CONNECTED
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
+    query = user_visible_query(Integration, user.id, user_group_ids, is_admin=user.is_admin)
+    if not include_unconnected:
+        query = query.where(Integration.status == INTEGRATION_CONNECTED)
+    rows = (await db.execute(query)).scalars().all()
     return [
         IntegrationRef(
-            integration_id=str(r.id), provider=r.provider, name=r.name, company_managed=bool(r.is_company_managed)
+            integration_id=str(r.id),
+            provider=r.provider,
+            name=r.name,
+            company_managed=bool(r.is_company_managed),
+            connected=r.status == INTEGRATION_CONNECTED,
         )
         for r in rows
     ]
@@ -918,6 +923,14 @@ def _slot_ref(i: Any) -> Any:
     from app.api.v1.schemas.fleet import FleetSlotIntegration
 
     return FleetSlotIntegration(integration_id=i.integration_id, provider=i.provider, name=i.name)
+
+
+def _blocked_ref(i: Any) -> Any:
+    from app.api.v1.schemas.fleet import FleetSlotBlockedIntegration
+
+    return FleetSlotBlockedIntegration(
+        integration_id=i.integration_id, provider=i.provider, name=i.name, reason=i.reason or "not_connected"
+    )
 
 
 def _builtin_model(builtin: Any) -> Any:
@@ -938,6 +951,7 @@ def _slot_model(state: Any) -> Any:
         bound=[_slot_ref(i) for i in state.bound],
         candidates=[_slot_ref(i) for i in state.candidates],
         builtin=_builtin_model(state.builtin),
+        blocked=[_blocked_ref(i) for i in state.blocked],
     )
 
 
@@ -978,6 +992,12 @@ def _type_models(members: list[FleetMemberSlots], connected: list[Any]) -> list[
                     bound=[_ref(i) for i in s.bound],
                     candidates=[_ref(i) for i in s.candidates],
                     builtin=BUILTIN_OPTIONS.get(s.capability),
+                    blocked=[
+                        IntegrationRef(
+                            integration_id=i.integration_id, provider=i.provider, name=i.name, reason=i.reason
+                        )
+                        for i in s.blocked
+                    ],
                 )
                 for s in m.slots
             ],
@@ -1004,6 +1024,7 @@ def _type_models(members: list[FleetMemberSlots], connected: list[Any]) -> list[
                 for m in t.members
             ],
             builtin=_builtin_model(t.builtin),
+            blocked=[_blocked_ref(i) for i in t.blocked],
         )
         for t in type_states(pairs)
     ]
@@ -1070,7 +1091,8 @@ async def get_fleet_capability_slots(
         if rows
         else {}
     )
-    connected = await _connected_integrations(db, user, user_group_ids) if agents else []
+    # Every visible integration, so one of the right type that cannot be bound is named with its reason (#1373).
+    connected = await _connected_integrations(db, user, user_group_ids, include_unconnected=True) if agents else []
     members = [
         await _member_slots(db, user, user_group_ids, r, agents[r.agent_id], connected)
         for r in rows
@@ -3118,6 +3140,11 @@ async def enable_fleet_automations(
         )
     # Before the answer, every call (a dry run wrote nothing, so it commits nothing).
     await db.commit()
+    if not body.dry_run and changed:
+        # A CTEM case fleet takes the open cases it owns that nobody ran (#1390).
+        from app.services.ctem_case_routing import catch_up_after_enable
+
+        await catch_up_after_enable(fleet.slug)
     counts = await fleet_automation_counts(db, fleet)
     return FleetEnableResponse(
         fleet_id=str(fleet.id),

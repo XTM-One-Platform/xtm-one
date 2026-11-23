@@ -330,6 +330,41 @@ export function readMembersTableState(params: URLSearchParams): MembersTableStat
   };
 }
 
+/** The URL parameters of the table state: a link carrying one of them opens the Members section (#1387). */
+const MEMBERS_TABLE_PARAMS = ["mq", "mrole", "mstate", "msort", "mdir"] as const;
+/** The open or folded Members section in the URL: `mopen=1` open, `mopen=0` folded over a table state. */
+const MEMBERS_OPEN_PARAM = "mopen";
+
+/**
+ * Whether the URL opens the Members section (fleet defaults, toolbar and table, #1387): `mopen=1`, or a
+ * members search, filter or sort in the link (a deep link keeps working) unless `mopen=0` folds it.
+ * Without either, `openByDefault` decides.
+ */
+export function readMembersSectionOpen(params: URLSearchParams, openByDefault: boolean): boolean {
+  const flag = params.get(MEMBERS_OPEN_PARAM);
+  if (flag === "1") return true;
+  if (flag === "0") return false;
+  return openByDefault || MEMBERS_TABLE_PARAMS.some((key) => params.has(key));
+}
+
+/**
+ * The URL after Show or Hide: Show writes `mopen=1` (clearing the filters later keeps the section open);
+ * Hide removes it, or writes `mopen=0` when a table state left in the link would reopen it.
+ */
+export function writeMembersSectionOpen(params: URLSearchParams, open: boolean, openByDefault: boolean): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.delete(MEMBERS_OPEN_PARAM);
+  if (open) next.set(MEMBERS_OPEN_PARAM, "1");
+  else if (readMembersSectionOpen(next, openByDefault)) next.set(MEMBERS_OPEN_PARAM, "0");
+  return next;
+}
+
+/** The home (orchestrator included) and connected counts of the folded Members bar. */
+export function membersCounts(members: readonly FleetMember[]): { home: number; connected: number } {
+  const rows = membersTableRows(members);
+  return { home: rows.filter((m) => m.role === "member").length, connected: rows.filter((m) => m.role === "connected").length };
+}
+
 /** The URL after a change of the table state: a default value leaves its parameter out; every other parameter is kept. */
 export function writeMembersTableState(params: URLSearchParams, state: MembersTableState): URLSearchParams {
   const next = new URLSearchParams(params);

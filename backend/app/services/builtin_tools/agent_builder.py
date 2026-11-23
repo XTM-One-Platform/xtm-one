@@ -4339,6 +4339,12 @@ def build_agent_builder_tool(
                     action="add an assignment to",
                     assignment_write=True,
                 )
+                if check_value is not None:
+                    from app.services.fleets import gate_fleet_refusal
+
+                    _gate_refusal = await gate_fleet_refusal(_db, check_value)
+                    if _gate_refusal is not None:
+                        return f"{_gate_refusal} Nothing was saved."
                 if perm_err is not None or agent is None:
                     return perm_err or (
                         f"Agent `{agent_id}` not found or you don't have access to it."
@@ -7889,6 +7895,12 @@ def build_agent_builder_tool(
                 )
                 updated.append("activation_prompt (gate)")
             if check_provided:
+                if check_value is not None:
+                    from app.services.fleets import gate_fleet_refusal
+
+                    _gate_refusal = await gate_fleet_refusal(_db, check_value)
+                    if _gate_refusal is not None:
+                        return f"{_gate_refusal} Nothing was saved."
                 assignment.activation_check = check_value
                 updated.append("activation_check (tool gate)")
             if (description or "").strip():

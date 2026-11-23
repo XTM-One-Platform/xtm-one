@@ -498,6 +498,14 @@ interface FleetCapabilitySlot {
   candidates: FleetSlotIntegration[];
   /** The built-in option, when the capability has one: it fills the slot by itself (#1201). */
   builtin?: FleetSlotBuiltin | null;
+  /** Integrations of the capability this member cannot take, and why (#1373). */
+  blocked?: FleetSlotBlockedIntegration[];
+}
+
+/** An integration of the capability a member cannot take (`FleetSlotBlockedIntegration`, #1373). */
+export interface FleetSlotBlockedIntegration extends FleetSlotIntegration {
+  /** `not_company_managed`: the members are company-managed and take company-managed integrations only. */
+  reason: "not_company_managed" | "not_connected";
 }
 
 /** A capability's built-in option (`FleetSlotBuiltin`, #1201): served by XTM One, never stored as a binding. */
@@ -524,12 +532,14 @@ export interface FleetCapabilityTypeMember {
 export interface FleetCapabilityType {
   capability: string;
   label: string;
-  state: "connected" | "partial" | "not_bound" | "none_connected";
+  state: "connected" | "partial" | "not_bound" | "not_usable" | "none_connected";
   /** The fleet choice: the bound set most members share. */
   choice: FleetSlotIntegration[];
   candidates: FleetSlotIntegration[];
   members: FleetCapabilityTypeMember[];
   builtin?: FleetSlotBuiltin | null;
+  /** What no member can take, and why (#1373): the row names it instead of "Connect one". */
+  blocked?: FleetSlotBlockedIntegration[];
 }
 
 /** The capability slots of one home member (`FleetMemberSlots`). */

@@ -67,8 +67,9 @@ def test_case_events_are_no_longer_platform_wide_and_carry_routing_only():
         "object_id",
         "participant_agent_ids",
     }
+    # owner_fleet is stamped at publish (ctem_case_routing.stamp_owners, #1390), never by case_data.
     for key in pe.PLATFORM_EVENTS["ctem_case.opened"]["filter_keys"]:
-        assert key in payload
+        assert key in payload or key == "owner_fleet"
 
 
 @pytest.fixture

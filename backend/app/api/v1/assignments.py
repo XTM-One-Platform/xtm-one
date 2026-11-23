@@ -770,6 +770,8 @@ async def create_assignment(
             openapi_integration_ids(body.integration_bindings or agent.integration_bindings),
         )
 
+    if body.activation_check is not None:
+        await _gate_fleet_or_422(db, body.activation_check)
     assignment = Assignment(
         agent_id=agent.id,
         # Assignment ownership tracks the parent *agent's* owner so that the
@@ -4057,6 +4059,15 @@ def _builtin_allowed_or_422(value):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+async def _gate_fleet_or_422(db: AsyncSession, check: object) -> None:
+    """422 when the gate check names a fleet that does not exist (#1400)."""
+    from app.services.fleets import gate_fleet_refusal
+
+    refusal = await gate_fleet_refusal(db, check)
+    if refusal is not None:
+        raise HTTPException(status_code=422, detail=refusal)
+
+
 #: Fields ``update_assignment`` copies verbatim when the body sets them.
 _UPDATE_LOOP_FIELDS: tuple[str, ...] = (
     "name",
@@ -4247,6 +4258,8 @@ async def update_assignment(
     # happen while the row is still untouched.
     if getattr(body, "enabled", None) is True and not was_enabled:
         ensure_not_emergency_stopped(assignment)
+    if "activation_check" in body.model_fields_set and body.activation_check is not None:
+        await _gate_fleet_or_422(db, body.activation_check)
 
     for field in _UPDATE_LOOP_FIELDS:
         if field not in body.model_fields_set:

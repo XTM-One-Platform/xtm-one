@@ -21,7 +21,7 @@ lenses disagree. Before this change none of that had a place to land.
 |---|---|---|---|
 | 1 | `new_vulnerability` | world | OpenCTI Vulnerability created or updated; OpenCTI `has` relationship to a Vulnerability (lens inside) |
 | 2 | `relevant_threat` | world | OpenCTI Intrusion Set, Threat Actor, Campaign or Malware created or updated |
-| 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants), `issue.sla.breached` (re-sights the issue's signal), `ci.gate.failed`, `scan.image.finished` with issues |
+| 3 | `code_flaw` | inside | Aikido `issue.open.created` (and its open-source and SAST variants), `issue.sla.breached` (re-sights the issue's signal), `ci.gate.failed`, `scan.image.finished` with issues; GitHub `dependabot_alert` created, reopened, auto-reopened or reintroduced (#1331) |
 | 4 | `proven_exploitable` | inside | OpenAEV `critical_asset_reached`: a finished simulation's attack path reached a high or very high criticality asset, the simulation as subject (CTEM-13); tool and API |
 | 5 | `new_exposure` | outside | tool and API |
 | 6 | `stale_asset` | outside | OpenAEV asset turned stale (CTEM-27), tool and API |
@@ -44,6 +44,29 @@ and titled on that version (`upgrade:-/<package>@<version>`). An
 `issue.closed` records no signal: it closes the case member of the signals the
 issue recorded, and the last member closed resolves the case on a passing
 validation of kind `rescan` (`ctem_case_loop.close_signal_members`).
+
+A GitHub Dependabot alert (#1331, slice 2 of the code repository sources) is
+a path 3 signal keyed `<repository id>:<alert number>` (alert numbers restart
+per repository). Its evidence names the package, ecosystem, manifest, vulnerable
+range, GHSA and CVE ids, and writes the repository's full name, id and identity
+key (`github.com:repository:<id>`, the key the GitHub asset source writes) to
+`evidence.assets`, so the scope gate resolves it to the repository asset. With
+a first patched version the case is an upgrade in that repository, keyed
+`upgrade:<repository>/<package>@<version>` and titled "Upgrade <package> to
+<version> in <repository>". `fixed`, `dismissed` and `auto_dismissed` close its
+members as Aikido's `issue.closed` does. Read-only: nothing is written to GitHub.
+
+A GitHub repository security advisory the organization published on one of its
+repositories (#1410) is a vulnerability in a product it ships: a path 1 signal
+(`new_vulnerability`, lens `inside`, subject kind `vulnerability`) keyed
+`<repository id>:<GHSA id>`. Only `repository_advisory.published` with the
+advisory's own `state` at `published` records one: a private report in triage
+(`reported`), a draft or a withdrawn advisory records nothing. The subject is
+the CVE id when the advisory has one, else its GHSA id, so the same CVE seen
+from OpenCTI lands on the same subject (related signals, one case per fix). The
+evidence names the GHSA and CVE ids, severity, CVSS score, summary, advisory
+link, affected packages with their vulnerable range and patched versions, and
+writes the repository to `evidence.assets` as for a Dependabot alert.
 
 ## 2bis. Signal sources (the dialog of the command center)
 

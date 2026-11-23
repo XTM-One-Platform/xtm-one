@@ -19,7 +19,6 @@ from app.agents.builtin_agents import (
     BUILTIN_ASSIGNMENTS,
     CTEM_F1_CASE_ASSIGNMENT,
     CTEM_F2_CASE_ASSIGNMENT,
-    CTEM_THREAT_CASE_PATHS,
 )
 from app.models.ctem_signal import TRIGGER_PATHS
 from app.services import platform_events
@@ -53,15 +52,23 @@ def test_the_case_assignment_is_a_valid_platform_event_trigger() -> None:
 
 
 def test_every_trigger_path_starts_exactly_one_fleet_run() -> None:
-    assert set(CTEM_THREAT_CASE_PATHS) <= set(TRIGGER_PATHS)
-    for path in TRIGGER_PATHS:
-        payload = {"case_id": "c", "trigger_path": path}
-        heard = [
-            a["agent_slug"]
-            for a in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT)
-            if payload_filter_reason(payload, a["trigger_config"]["filter"]) is None
-        ]
-        assert len(heard) == 1, (path, heard)
+    from app.services.ctem_case_routing import owner_of
+
+    for active in (set(), {"ctem-loop"}, {"ctem-vuln-prioritization"}, {"ctem-loop", "ctem-vuln-prioritization"}):
+        for path in TRIGGER_PATHS:
+            payload = {"case_id": "c", "trigger_path": path, "owner_fleet": owner_of(path, active)}
+            heard = [
+                a["agent_slug"]
+                for a in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT)
+                if payload_filter_reason(payload, a["trigger_config"]["filter"]) is None
+            ]
+            assert len(heard) == 1, (active, path, heard)
+
+
+def test_an_unstamped_case_event_goes_to_the_ctem_loop() -> None:
+    payload = {"case_id": "c", "trigger_path": "new_vulnerability"}
+    assert payload_filter_reason(payload, CTEM_F1_CASE_ASSIGNMENT["trigger_config"]["filter"]) is None
+    assert payload_filter_reason(payload, CTEM_F2_CASE_ASSIGNMENT["trigger_config"]["filter"]) is not None
 
 
 def test_the_case_events_carry_the_routing_key() -> None:

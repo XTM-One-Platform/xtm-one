@@ -107,6 +107,14 @@ def api(monkeypatch):
         return {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH}
 
     monkeypatch.setattr(ticketing, "ticketing_target", _ticketing_target)
+
+    async def _owner_view(_db, _case):
+        # The routing read (#1390) is covered in test_ctem_case_routing; the fake session has no execute().
+        return {"slug": "ctem-loop", "name": "CTEM loop", "active": True}
+
+    from app.services import ctem_case_routing
+
+    monkeypatch.setattr(ctem_case_routing, "owner_view", _owner_view)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
 
