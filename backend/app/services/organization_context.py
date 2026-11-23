@@ -1236,7 +1236,7 @@ async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | N
     from app.services import organization_asset_records as records
 
     profile = parse_profile(row.profile if row else {})
-    if row is None or not await records.is_imported(db, row.organization_id):
+    if row is None or row.organization_id is None or not await records.is_imported(db, row.organization_id):
         return profile
     asset_rows, group_rows, _truncated = await records.profile_lists(db, row.organization_id, cap=PROFILE_ASSET_CAP)
     assets: list[AssetEntry] = []

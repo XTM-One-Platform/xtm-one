@@ -491,48 +491,6 @@ async def _write_memberships(
     await db.flush()
 
 
-async def set_group_members(
-    db: AsyncSession,
-    organization_id: uuid.UUID,
-    group_id: uuid.UUID,
-    record_ids: Iterable[uuid.UUID],
-    *,
-    source: str,
-    sync_id: str = "",
-) -> dict[str, int]:
-    """Make *record_ids* the members *source* (a person or a group sync) gives *group_id*, by set difference.
-
-    A record of another organization is skipped; memberships other sources hold stay.
-    """
-    member = OrganizationAssetGroupMember
-    await get_group(db, organization_id, group_id)
-    wanted = set(record_ids)
-    if wanted:
-        wanted = {
-            r
-            for (r,) in (
-                await db.execute(
-                    select(OrganizationAssetRecord.id).where(
-                        OrganizationAssetRecord.organization_id == organization_id,
-                        OrganizationAssetRecord.id.in_(list(wanted)),
-                    )
-                )
-            ).all()
-        }
-    held = {
-        r: s
-        for r, s in (await db.execute(select(member.record_id, member.source).where(member.group_id == group_id))).all()
-    }
-    gone = [r for r, s in held.items() if s == source and r not in wanted]
-    if gone:
-        await db.execute(delete(member).where(member.group_id == group_id, member.record_id.in_(gone)))
-    added = [r for r in wanted if r not in held]
-    for record_id in added:
-        db.add(member(group_id=group_id, record_id=record_id, source=source[:80], sync_id=sync_id[:64]))
-    await db.flush()
-    return {"added": len(added), "removed": len(gone)}
-
-
 async def group_member_counts(db: AsyncSession, organization_id: uuid.UUID) -> dict[uuid.UUID, int]:
     """Distinct canonical assets per group (records merged into one asset count once)."""
     member, rec = OrganizationAssetGroupMember, OrganizationAssetRecord
@@ -545,26 +503,6 @@ async def group_member_counts(db: AsyncSession, organization_id: uuid.UUID) -> d
         )
     ).all()
     return {g: int(n) for g, n in rows}
-
-
-async def group_members(
-    db: AsyncSession, group_id: uuid.UUID, *, after: uuid.UUID | None = None, limit: int = 50
-) -> list[OrganizationAssetRecord]:
-    """One keyset page of a group's member records, by record id (the primary key's order)."""
-    member = OrganizationAssetGroupMember
-    query = select(member.record_id).where(member.group_id == group_id)
-    if after is not None:
-        query = query.where(member.record_id > after)
-    ids = [r for (r,) in (await db.execute(query.order_by(member.record_id).limit(max(1, min(limit, 1000))))).all()]
-    if not ids:
-        return []
-    rows = {
-        r.id: r
-        for r in (
-            await db.execute(select(OrganizationAssetRecord).where(OrganizationAssetRecord.id.in_(ids)))
-        ).scalars()
-    }
-    return [rows[i] for i in ids if i in rows]
 
 
 async def _link_crown_jewels(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
@@ -1739,18 +1677,6 @@ async def asset_rows(
         query = query.where(or_(rec.name_key > after[0], and_(rec.name_key == after[0], rec.id > after[1])))
     query = query.order_by(rec.name_key, rec.id).limit(max(1, min(limit, MAX_BATCH)))
     return list((await db.execute(query)).scalars())
-
-
-async def iter_asset_rows(db: AsyncSession, organization_id: uuid.UUID, **filters: Any):  # type: ignore[no-untyped-def]
-    """Every record as a profile row, page by page (never every asset in memory at once)."""
-    after: tuple[str, uuid.UUID] | None = None
-    while True:
-        page = await asset_rows(db, organization_id, after=after, **filters)
-        for record in page:
-            yield record_row(record)
-        if len(page) < filters.get("limit", 1000):
-            return
-        after = (page[-1].name_key, page[-1].id)
 
 
 async def profile_lists(

@@ -19,7 +19,7 @@ persists its answer in ``models/organization_asset.py`` and answers the reads:
 - :func:`record_decision` and :func:`remove_decision` keep an administrator's
   merge (records that are one asset) or split (two records never one asset);
   every rebuild applies them (``organization_asset_decisions``, S3).
-- :func:`refresh_after_save` makes sure the store is built (since #1543 every
+- :func:`ensure_built` makes sure the store is built (since #1543 every
   row write of ``organization_asset_records`` refreshes its own identity
   clusters, so this is one indexed probe after the first build).
 - :func:`tech_stack_inventory` is the tech stack built from the software of the
@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import (
@@ -162,53 +162,6 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     if org is None:
         return 0
     return await records.rebuild_from_records(db, org)
-
-
-async def rebuild_from_profile_rows(db: AsyncSession, organization_id: uuid.UUID | None = None) -> int:
-    """The rebuild before #1543, straight from the profile's ``assets_exposure``.
-
-    Kept as the reference the property test compares the incremental refresh
-    with; the product never calls it. Answers the number of canonical assets
-    written (the caller commits).
-    """
-    version = await _current(db, organization_id)
-    if version is None:
-        if organization_id is not None:
-            await db.execute(delete(OrganizationAsset).where(OrganizationAsset.organization_id == organization_id))
-        return 0
-    org = version.organization_id
-    # Two first reads racing would both rebuild: the second waits for the first's transaction.
-    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"organization_assets:{org}"})
-    rows = [row for row in (version.profile or {}).get("assets_exposure") or [] if isinstance(row, Mapping)]
-    key_order, precedence = identity_settings(version.profile)
-    things = canonical_rows(
-        rows,
-        key_order=key_order,
-        precedence=precedence,
-        decisions=await load_decisions(db, org),
-        sboms=await load_sboms(db, org),
-    )
-    # An asset whose canonical key is unchanged keeps its id across rebuilds, so an id
-    # read from the API before an unrelated profile save still answers afterwards.
-    known: dict[str, uuid.UUID] = {
-        key: asset_id
-        for key, asset_id in (
-            await db.execute(
-                select(OrganizationAsset.canonical_key, OrganizationAsset.id).where(
-                    OrganizationAsset.organization_id == org
-                )
-            )
-        ).all()
-    }
-    # Children go with their asset (ON DELETE CASCADE).
-    await db.execute(delete(OrganizationAsset).where(OrganizationAsset.organization_id == org))
-    await write_canonical(db, org, things, known, profile_version=int(version.version))
-    # Software as an entity (#1495): what the installations install, kept across rebuilds.
-    from app.services import organization_software_store as software_store
-
-    edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
-    await software_store.sync_software(db, org, edges)
-    return len(things)
 
 
 async def write_canonical(
@@ -697,24 +650,6 @@ async def import_sbom(
         "bundled": sum(1 for c in components if c["bundled_in"]),
         "replaced": replaced,
     }
-
-
-async def refresh_after_save(db: AsyncSession, organization_id: uuid.UUID | None = None) -> uuid.UUID | None:
-    """Rebuild the store after a new profile version was saved in this transaction.
-
-    Only an organization with assets (now or in its store) is rebuilt, as
-    :func:`ensure_built` decides. A store failure never fails the save: the
-    next read rebuilds it. Answers the organization id, ``None`` when nothing
-    ran or the refresh failed.
-    """
-    import logging
-
-    try:
-        async with db.begin_nested():
-            return await ensure_built(db, organization_id)
-    except Exception:  # the profile save stands; the store catches up on its next read
-        logging.getLogger(__name__).warning("Organization asset store refresh failed", exc_info=True)
-        return None
 
 
 def _jsonable(value: Any) -> Any:

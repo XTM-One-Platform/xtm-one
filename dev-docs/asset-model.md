@@ -278,11 +278,11 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 
 ### 9.2 Writes through the store, merge and split (S3)
 
-- **Every save refreshes the store.** `organization_context.save_version` calls
-  `organization_asset_store.refresh_after_save` in the same transaction: a sync run, an import, the form and a
-  proposal all rebuild the store (the agent row tools write the records since #1543, section 9.2bis)
-  with the rows they saved. A refresh failure is logged and never fails the save; the next read rebuilds
-  (`ensure_built`).
+- **Every save refreshes the store.** Since #1543 `organization_context.save_version` turns the asset and
+  group lists of the saved profile into row writes (`organization_asset_records.apply_profile_lists`), each
+  re-matching its own identity cluster, so a sync run, an import, the form and a proposal leave the store
+  current in the same transaction (the agent row tools write the records directly, section 9.2bis). A store
+  never built is built on its first read (`ensure_built`).
 - **One asset, several records.** In the `assets` section only (`MULTI_SOURCE_SECTIONS` of
   `organization_context_import` and `organization_context_rows`), a row whose name matches a row of another
   source is added beside it as a second record instead of being skipped (import, sync) or refused (agent
