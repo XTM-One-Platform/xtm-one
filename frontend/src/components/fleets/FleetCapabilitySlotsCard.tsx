@@ -50,6 +50,7 @@ import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { XtmOneEmblem } from "@/components/ui/xtm-one-emblem";
 import {
   useFleetCapabilitySlots,
   useSetFleetCapability,
@@ -62,6 +63,8 @@ import {
 import { useFormatter } from "@/i18n";
 
 import {
+  BLOCKED_REASON_LINES,
+  BLOCKED_REASON_SHORT,
   CAPABILITIES_OPEN_BY_DEFAULT,
   MEMBERS_COLUMN_WIDTH,
   MULTI_CHANNEL_CAPABILITIES,
@@ -71,11 +74,15 @@ import {
   STATUS_COLUMN_WIDTH,
   TYPE_STATE_LABELS,
   TYPE_STATE_VARIANTS,
+  blockedFixPath,
   builtinValue,
   capabilityIcon,
   customMembers,
+  firstBlocked,
   idsForPick,
   integrationIds,
+  isBuiltinValue,
+  multiChannelSelection,
   overwritableCustomMembers,
   pickerValue,
   toggledIds,
@@ -162,8 +169,12 @@ export function FleetCapabilitySlotsCard({
 
   const builtinChip = (type: FleetCapabilityType) =>
     type.builtin && (
-      <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5">
-        <Icon name={capabilityIcon(type.capability)} size={16} className="shrink-0 text-default-secondary" aria-hidden />
+      <span
+        className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-elevation-hover px-1.5 py-0.5"
+        data-testid={`type-builtin-${type.capability}`}
+      >
+        {/* What XTM One serves wears its emblem, never the capability icon (#1373). */}
+        <XtmOneEmblem />
         <TruncatedText text={t_text(type.builtin.label)} />
       </span>
     );
@@ -196,21 +207,27 @@ export function FleetCapabilitySlotsCard({
     const builtinLabel = type.builtin ? t_text(type.builtin.label) : "";
     if (MULTI_CHANNEL_CAPABILITIES.has(type.capability)) {
       const current = integrationIds(bound);
-      // The always-on built-in is shown in the Integration column and is not a
-      // chip here: a chip would offer a remove control that cannot remove it.
-      // The picker holds the external channels that add to it.
+      const channel = (integration: FleetSlotIntegration) => ({
+        value: integration.integration_id,
+        label: integrationName(integration),
+        icon: <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />,
+      });
+      // The always-on built-in ("In XTM One") is the first row, with the XTM One emblem, checked
+      // and locked; the external channels add to it, each with its provider logo (#1373). With
+      // nothing else chosen the field reads the built-in option, never "Choose an integration".
       return (
         <MultiSelect
           aria-label={label}
           options={[
-            ...bound
-              .filter((integration) => !type.candidates.some((c) => c.integration_id === integration.integration_id))
-              .map((integration) => ({ value: integration.integration_id, label: integrationName(integration) })),
-            ...type.candidates.map((candidate) => ({ value: candidate.integration_id, label: integrationName(candidate) })),
+            ...(builtin ? [{ value: builtin, label: builtinLabel, icon: <XtmOneEmblem />, locked: true }] : []),
+            ...bound.filter((integration) => !type.candidates.some((c) => c.integration_id === integration.integration_id)).map(channel),
+            ...type.candidates.map(channel),
           ]}
           sort={false}
-          selected={current}
-          onToggle={(value) => onPick(toggledIds(current, value))}
+          selected={multiChannelSelection(type, bound)}
+          onToggle={(value) => {
+            if (!isBuiltinValue(value)) onPick(toggledIds(current, value));
+          }}
           disabled={busy}
           placeholder={t_i18n("Choose an integration")}
           searchPlaceholder={t_i18n("Search integrations...")}
@@ -228,7 +245,7 @@ export function FleetCapabilitySlotsCard({
       icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
     }));
     const pinned: SelectOption[] = builtin
-      ? [{ value: builtin, label: builtinLabel, icon: <Icon name={capabilityIcon(type.capability)} size={16} aria-hidden /> }]
+      ? [{ value: builtin, label: builtinLabel, icon: <XtmOneEmblem /> }]
       : forMember && bound.length > 0
         ? [{ value: NO_INTEGRATION_VALUE, label: t_i18n("No integration") }]
         : [];
@@ -330,6 +347,10 @@ export function FleetCapabilitySlotsCard({
         t_i18n("Fleet choice for {capability}", { capability: t_text(type.label) }),
         false,
       );
+    // A connected integration of the type the members cannot take is named with why and how to
+    // fix it, never hidden behind "Connect one" (#1373).
+    const blocked = firstBlocked(type);
+    if (blocked) return blockedAction(type, blocked);
     // "Connect one" leaves for /integrations: a new tab inside the setup flows (UX r1 B3 of #1209).
     if (inSetup)
       return (
@@ -343,6 +364,37 @@ export function FleetCapabilitySlotsCard({
       <Button type="button" variant="outline" className="w-[240px]" onClick={connectOne}>
         {t_i18n("Connect one")}
       </Button>
+    );
+  };
+
+  // A Not usable row (#1373): the integration, why the members cannot take it, and a button to its page.
+  const blockedAction = (type: FleetCapabilityType, blocked: NonNullable<ReturnType<typeof firstBlocked>>) => {
+    const why = t_i18n(BLOCKED_REASON_LINES[blocked.reason], { name: integrationName(blocked) });
+    const open = () => {
+      const path = blockedFixPath(blocked);
+      if (!inSetup) {
+        navigate(path);
+        return;
+      }
+      window.addEventListener("focus", () => void refetch(), { once: true });
+      window.open(path, "_blank", "noopener,noreferrer");
+    };
+    return (
+      <span className="inline-flex w-[240px] items-center gap-1" data-testid={`type-blocked-${type.capability}`}>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-w-0 flex-1 gap-1.5"
+          onClick={open}
+          aria-label={why}
+          data-testid={`type-blocked-open-${type.capability}`}
+        >
+          <ProviderLogo provider={blocked.provider} className="h-4 w-4 shrink-0" decorative />
+          <TruncatedText text={t_i18n(BLOCKED_REASON_SHORT[blocked.reason])} />
+          {inSetup && <Icon name="external-link" size={16} className="shrink-0" aria-hidden />}
+        </Button>
+        <InfoTip label={why} content={why} />
+      </span>
     );
   };
 
@@ -457,7 +509,7 @@ export function FleetCapabilitySlotsCard({
                   values: (type) => [type.state],
                   // An ordinal scale: what is left to bind first.
                   ordered: true,
-                  options: (["not_bound", "partial", "none_connected", "connected"] as const).map((state) => ({
+                  options: (["not_bound", "partial", "not_usable", "none_connected", "connected"] as const).map((state) => ({
                     value: state,
                     label: t_i18n(TYPE_STATE_LABELS[state]),
                   })),

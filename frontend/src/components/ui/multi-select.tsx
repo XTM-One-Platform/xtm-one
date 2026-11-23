@@ -19,7 +19,7 @@
  * (`lib/select-options.ts`): alphabetical unless `sort={false}`, every typed
  * word found anywhere in the label.
  */
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   Combobox,
   ComboboxChips,
@@ -38,6 +38,13 @@ import { cn } from "@/lib/utils";
 interface MultiSelectOption {
   value: string;
   label: string;
+  /** A 16 px mark before the label in the list (a provider logo, the XTM One emblem; #1373). */
+  icon?: ReactNode;
+  /**
+   * Always selected and never removable (an always-on built-in option, #1373): its row is shown
+   * checked and inert, and no change from the field drops it.
+   */
+  locked?: boolean;
 }
 
 interface MultiSelectProps {
@@ -100,9 +107,15 @@ export function MultiSelect({
     [ordered, selected],
   );
 
+  const locked = useMemo(() => new Set(options.filter((o) => o.locked).map((o) => o.value)), [options]);
+  const hasIcons = options.some((option) => option.icon);
+
   const handleChange = (next: MultiSelectOption | MultiSelectOption[] | null) => {
     if (disabled) return;
-    const nextValues = (Array.isArray(next) ? next : next ? [next] : []).map((o) => o.value);
+    // A locked option stays selected whatever the field reports (a clear, a chip removal).
+    const nextValues = [
+      ...new Set([...(Array.isArray(next) ? next : next ? [next] : []).map((o) => o.value), ...selected.filter((v) => locked.has(v))]),
+    ];
     // One `onToggle` per actual change, in both directions — the call sites
     // treat each value as an independent filter.
     for (const added of nextValues.filter((v) => !selected.includes(v))) onToggle(added);
@@ -117,6 +130,17 @@ export function MultiSelect({
       onValueChange={handleChange}
       getOptionLabel={(option) => option.label}
       isOptionEqualToValue={(a, b) => a.value === b.value}
+      isOptionDisabled={locked.size > 0 ? (option) => locked.has(option.value) : undefined}
+      renderOption={
+        hasIcons
+          ? (option) => (
+              <span className="flex min-w-0 items-center gap-2">
+                {option.icon}
+                <span className="min-w-0 truncate">{option.label}</span>
+              </span>
+            )
+          : undefined
+      }
       filterOptions={(candidates, query) => candidates.filter((option) => matchesQuery(query, [option.label]))}
       disabled={disabled}
       maxVisibleChips={maxVisibleChips}

@@ -21077,5 +21077,16 @@
   "The products you declare by hand. The Tech stack list adds the software of your assets.": "Los productos que declara a mano. La lista Tech stack añade el software de sus activos.",
   "Installed software": "Software instalado",
   "No AI system declared for the AI security fleet yet.": "Todavía no hay ningún sistema de IA declarado para la flota de seguridad de IA.",
-  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# activo objetivo de IA está en el inventario} other {# activos objetivo de IA están en el inventario}}"
+  "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, one {# activo objetivo de IA está en el inventario} other {# activos objetivo de IA están en el inventario}}",
+  "Waits for approval": "Espera aprobación",
+  "Not usable": "No utilizable",
+  "Not company-managed": "No gestionada por la empresa",
+  "Sign-in not finished": "Inicio de sesión sin terminar",
+  "At {level}": "En {level}",
+  "Gated actions at {level}": "Acciones sujetas a aprobación en {level}",
+  "Deletes data or speaks in a person's name outside XTM One; it cannot be taken back.": "Borra datos o habla en nombre de una persona fuera de XTM One; no se puede deshacer.",
+  "Creates or changes content outside XTM One that other people and systems act on.": "Crea o cambia fuera de XTM One contenido sobre el que actúan otras personas y sistemas.",
+  "A reversible mark, label or draft outside XTM One.": "Una marca, etiqueta o borrador reversible fuera de XTM One.",
+  "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} está conectada pero no gestionada por la empresa: los miembros de esta flota solo usan integraciones gestionadas por la empresa. Un administrador puede hacerla gestionada por la empresa.",
+  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} aún no está conectada: termine su inicio de sesión en la página de la integración."
 }

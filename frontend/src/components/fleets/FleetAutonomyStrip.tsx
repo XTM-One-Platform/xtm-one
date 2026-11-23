@@ -79,6 +79,7 @@ import { FleetGateReview } from "./FleetGateReview";
 import { FleetPendingApprovals } from "./FleetPendingApprovals";
 import { fleetRefusalMessage } from "./fleet-refusals";
 import { FleetGateMark } from "./FleetModuleMark";
+import { FleetGatesTable } from "./FleetGatesTable";
 
 /** What the level never covers: written once, in the strip (UX round 3 C2, round 1 B4 on #10034). */
 const NOT_COVERED_LINE =
@@ -237,8 +238,11 @@ export function FleetAutonomyStrip({
     return {
       key,
       label: AUTONOMY_LEVEL_LABELS[key],
-      // Meaning, then the summary for THIS fleet at that step (UX round 3 B3).
-      tip: (
+      // Meaning, then the summary for THIS fleet at that step (UX round 3 B3). In the setup step the
+      // table under the levels says what waits, row by row, so the tip keeps the meaning alone (#1373).
+      tip: compact ? (
+        <span className="block">{t_i18n(AUTONOMY_LEVEL_HINTS[key])}</span>
+      ) : (
         <span className="block space-y-0.5">
           <span className="block">{t_i18n(AUTONOMY_LEVEL_HINTS[key])}</span>
           <span className="block tabular-nums">{summary(key)}</span>
@@ -412,6 +416,16 @@ export function FleetAutonomyStrip({
             ))}
           </dl>
         </section>
+      )}
+
+      {/* The setup step (#1373): what each gated action is and whether it waits at the level picked, live. */}
+      {hasCatalog && compact && (
+        <div className="space-y-2">
+          <FleetGatesTable catalog={catalog} level={level} />
+          <p className="content-compact text-default-secondary" data-testid="fleet-autonomy-not-covered">
+            {t_i18n(NOT_COVERED_LINE)}
+          </p>
+        </div>
       )}
 
       {hasCatalog && !compact && (
