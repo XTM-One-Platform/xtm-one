@@ -86,7 +86,7 @@ describe("FleetCapabilitySlotsCard", () => {
     const opened = vi.spyOn(window, "open").mockReturnValue(null);
     render(true);
     expect(screen.getByText("1 member")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Hide slots" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hide Capabilities" })).toBeNull();
     fireEvent.click(screen.getByText("Ticketing"));
     expect(screen.getByText("Vuln Triage Analyst")).toBeInTheDocument();
     expect(screen.queryAllByRole("link")).toHaveLength(0);
@@ -106,7 +106,7 @@ describe("FleetCapabilitySlotsCard", () => {
     expect(link).not.toHaveAttribute("target");
     fireEvent.click(screen.getByRole("button", { name: "Connect one" }));
     expect(opened).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Hide slots" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Capabilities" })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("resets a custom member to the fleet choice", () => {

@@ -86,6 +86,7 @@ import {
   typeStateRank,
   unsetMembers,
 } from "./capability-slots-table";
+import { FleetFoldHeader } from "./FleetFoldHeader";
 import { fleetRefusalMessage } from "./fleet-refusals";
 
 /** Ten rows a page: the Members table stays one short scroll away (no nested scroll box). */
@@ -406,35 +407,21 @@ export function FleetCapabilitySlotsCard({
   return (
     <Card data-testid="fleet-capability-slots">
       <CardContent className="space-y-3 p-4">
-        {/* The Fleet defaults bar's header: icon, 12 px title, one-line summary (UX r1 B4 of #994). */}
-        <div className="flex items-start gap-2">
-          <Icon name="network" size={16} className="shrink-0 text-default-secondary" aria-hidden />
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
-            <h3 className="flex shrink-0 items-center gap-1 whitespace-nowrap content-compact font-medium">
-              {t_i18n("Capabilities")}
-              <InfoTip label={t_i18n("What capability slots are")} content={help} />
-            </h3>
+        {/* The shared fleet section header (UX r1 B4 of #994; one header for every fold, UX r1 B1 of #1393). */}
+        <FleetFoldHeader
+          icon="network"
+          title={t_i18n("Capabilities")}
+          titleExtra={<InfoTip label={t_i18n("What capability slots are")} content={help} />}
+          summary={
             <span className="min-w-0 content-compact text-default-secondary" data-testid="fleet-capability-slots-summary">
               {t_i18n("{total, plural, one {{connected} of # capability connected} other {{connected} of # capabilities connected}}", {
                 connected,
                 total,
               })}
             </span>
-          </div>
-          {!inSetup && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="ml-auto shrink-0"
-              aria-expanded={open}
-              aria-controls="fleet-capability-slots-rows"
-              onClick={() => setOpen((value) => !value)}
-            >
-              {open ? t_i18n("Hide slots") : t_i18n("Show slots")}
-            </Button>
-          )}
-        </div>
+          }
+          fold={inSetup ? undefined : { open, onToggle: () => setOpen((value) => !value), controls: "fleet-capability-slots-rows" }}
+        />
         {open && (
           <div id="fleet-capability-slots-rows">
             <DataTable
