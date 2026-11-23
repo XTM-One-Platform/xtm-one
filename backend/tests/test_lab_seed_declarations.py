@@ -93,6 +93,8 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
         "lab-org-synced-light": {"LAB_ORG_SYNCED": "on", "LAB_THEME": "light"},
         "lab-perf-thread": {"LAB_PERF_THREAD": "on"},
         "lab-langfuse-env": {"LAB_LANGFUSE": "env"},
+        # SMTP configured on lab-only values (#1542).
+        "lab-smtp": {"LAB_SMTP": "on"},
         "lab-db-license": {"LAB_LICENSE_SOURCE": "database"},
         "lab-db-license-light": {"LAB_LICENSE_SOURCE": "database", "LAB_THEME": "light"},
         # The worker runs: a manually triggered assignment run executes on the stub model (#11297).
@@ -111,6 +113,7 @@ def test_the_home_state_labs_are_the_same_lab_with_one_switch_each():
         "LAB_AI",
         "LAB_PEER_GROUP_AI",
         "LAB_LANGFUSE",
+        "LAB_SMTP",
         "LAB_LICENSE_SOURCE",
         "LAB_ORG_SETUP_PROMPT",
         "LAB_ORG_SYNCED",
@@ -261,6 +264,24 @@ def test_lab_langfuse_env_hands_the_lab_keys_to_the_backend_and_the_default_does
     assert "lab-only" in env["LAB_LANGFUSE_PUBLIC_KEY"] and "lab-only" in env["LAB_LANGFUSE_SECRET_KEY"]
     assert env["LAB_LANGFUSE_HOST"].startswith("http://127.0.0.1:")
     assert "**langfuse_env()" in _lab_source("backend_env")
+
+
+_SMTP_NAMES = ("LAB_SMTP_STATES", "LAB_SMTP_HOSTNAME", "LAB_SMTP_PORT", "LAB_SMTP_FROM", "lab_switch", "smtp_env")
+
+
+def test_lab_smtp_on_configures_a_loopback_smtp_server_and_the_default_does_not():
+    """#1542: ``LAB_SMTP=on`` makes the backend answer SMTP configured, on a host no mail leaves the lab by."""
+    assert _lab_namespace(*_SMTP_NAMES)["smtp_env"]() == {}
+    assert _lab_namespace(*_SMTP_NAMES, env={"LAB_SMTP": "off"})["smtp_env"]() == {}
+    unknown = _lab_namespace(*_SMTP_NAMES, env={"LAB_SMTP": "relay"})
+    assert unknown["smtp_env"]() == {}
+    assert unknown["logged"] == ["LAB_SMTP='relay' ignored: one of off, on"]
+    on = _lab_namespace(*_SMTP_NAMES, env={"LAB_SMTP": "On"})
+    env = on["smtp_env"]()
+    assert env["SMTP_HOSTNAME"] == "127.0.0.1" and env["SMTP_PORT"] == "9"
+    assert env["SMTP_STARTTLS"] == "false" and env["SMTP_USE_TLS"] == "false"
+    assert env["SMTP_FROM"].endswith(".invalid")
+    assert "**smtp_env()" in _lab_source("backend_env")
 
 
 def test_the_langfuse_states_are_saved_and_read_back():
