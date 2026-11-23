@@ -45,8 +45,8 @@ def fleet(monkeypatch):
     async def _for_run(db, fleet_id):
         return None if fleet_id is None else state["autonomy"]
 
-    async def _enforced(db, fleet_id):
-        return state["enforced"]
+    async def _enforced(db: object, fleet_id: object) -> bool:
+        return bool(state["enforced"])
 
     monkeypatch.setattr(fleet_autonomy, "fleet_enforces_at_tool_level", _enforced)
 
@@ -93,12 +93,15 @@ async def test_a_fleet_without_gates_or_without_a_fleet_changes_nothing(fleet):
     assert composite.approval_gate is inner
 
 
-async def test_no_tool_level_pause_unless_an_administrator_opted_the_fleet_in(fleet):
+async def test_no_tool_level_pause_unless_an_administrator_opted_the_fleet_in(fleet: dict[str, object]) -> None:
     """#1467: a fleet's gates are instructions by default; the tool call runs."""
     fleet["enforced"] = False
     seen: list[str] = []
-    inner = lambda call: seen.append(call.id)  # noqa: E731
-    composite = _Composite(inner)
+
+    def inner(call: SimpleNamespace) -> None:
+        seen.append(call.id)
+
+    composite = _Composite(inner)  # type: ignore[no-untyped-call]
     assert await install_fleet_autonomy_gate(None, composite, "fleet-1") is False
     assert composite.approval_gate is inner
     composite.approval_gate(_TICKET)

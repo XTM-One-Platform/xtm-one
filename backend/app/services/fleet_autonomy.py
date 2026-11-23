@@ -610,7 +610,7 @@ async def fleet_instructions_for_run(db, fleet_id: Any) -> str | None:
     return instructions_line(row[0], row[1]) if row is not None else None
 
 
-async def fleet_enforces_at_tool_level(db, fleet_id: Any) -> bool:
+async def fleet_enforces_at_tool_level(db: Any, fleet_id: Any) -> bool:
     """Whether an administrator opted *fleet_id* in to tool-level gate pauses (#1467); ``False`` on a failed read.
 
     Off by default: XTM One enables no programmatic tool-level gate unless a
