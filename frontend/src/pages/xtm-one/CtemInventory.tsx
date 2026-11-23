@@ -35,7 +35,7 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AiSystemsTab, AssetGroupsTab } from "./ctem/InventoryProfileTabs";
+import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
@@ -65,7 +65,7 @@ const MATCHING_PARAM = "matching";
 /** The most records one merge names (organization_asset_store.MAX_MERGE_RECORDS). */
 const MAX_MERGE_RECORDS = 50;
 
-function AssetsTab() {
+function AssetsTab({ add }: { add: AddRequest }) {
   const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -141,7 +141,7 @@ function AssetsTab() {
     {
       key: "name",
       header: "Asset",
-      cell: (a) => <TruncatedText text={a.name} className="max-w-[18rem] font-medium" />,
+      cell: (a) => <TruncatedText text={a.name} className="max-w-[16rem] font-medium" />,
       csv: (a) => a.name,
       // The store answers by name: the one server sort.
       sortValue: (a) => a.name.toLowerCase(),
@@ -202,17 +202,19 @@ function AssetsTab() {
       cell: (a) => formatCount(intl.locale, a.software_count),
       csv: (a) => a.software_count,
       hideable: true,
+      // The table fits its pane at 1080 (UX round 1 on #1375, B3): the count steps aside first.
+      hideBelow: "4xl",
     },
     {
       key: "sources",
       header: "Sources",
       // The logo of each source, its name beside the first and on hover (#1367, point 8a).
       cell: (a) => (
-        <span className="inline-flex min-w-0 items-center gap-1.5" title={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")}>
+        <span className="inline-flex min-w-0 items-center gap-1.5">
           {a.sources.map((source) => (
             <SourceLogo key={source} source={source} />
           ))}
-          <TruncatedText text={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[12rem]" />
+          <TruncatedText text={a.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[10rem]" />
         </span>
       ),
       csv: (a) => a.sources.join(" "),
@@ -241,13 +243,6 @@ function AssetsTab() {
         emptyLabel={t_i18n("No asset yet. Add a source to the inventory to fill it.")}
         noResultsLabel={t_i18n("No asset matches this search")}
         rowTestId="ctem-inventory-asset-row"
-        toolbar={
-          isAdmin ? (
-            <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "add" })} data-testid="ctem-inventory-asset-add">
-              {t_i18n("Add an asset")}
-            </Button>
-          ) : undefined
-        }
         rowActions={
           isAdmin
             ? (a) => {
@@ -287,18 +282,19 @@ function AssetsTab() {
                 onChange: setSelected,
                 actions: (
                   <>
-                    <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "bulk", indexes: indexesOf(selectedAssets) })}>
+                    <Button size="sm" variant="secondary" className={BULK_ACTION} onClick={() => setDialog({ kind: "bulk", indexes: indexesOf(selectedAssets) })}>
                       {t_i18n("Update")}
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
+                      className={BULK_ACTION}
                       disabled={save.isPending || selectedAssets.every((a) => handIndexes(a).length === 0)}
                       onClick={() => setToDelete(selectedAssets.flatMap(handIndexes))}
                     >
                       {t_i18n("Delete")}
                     </Button>
-                    <Button size="sm" variant="secondary" disabled={!canMerge || decide.isPending} onClick={() => setConfirmMerge(true)}>
+                    <Button size="sm" variant="secondary" className={BULK_ACTION} disabled={!canMerge || decide.isPending} onClick={() => setConfirmMerge(true)}>
                       {t_i18n("Merge into one asset")}
                     </Button>
                   </>
@@ -307,7 +303,16 @@ function AssetsTab() {
             : undefined
         }
       />
-      <InventoryEntryDialog section="assets_exposure" mode={dialog} onOpenChange={(o) => !o && setDialog(null)} onSaved={() => setSelected([])} />
+      <InventoryEntryDialog
+        section="assets_exposure"
+        mode={dialog ?? (add.open ? { kind: "add" } : null)}
+        onOpenChange={(o) => {
+          if (o) return;
+          setDialog(null);
+          add.onClose();
+        }}
+        onSaved={() => setSelected([])}
+      />
       <ConfirmDialog
         open={toDelete !== null}
         onOpenChange={(o) => !o && setToDelete(null)}
@@ -432,6 +437,8 @@ export default function CtemInventory() {
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin } = useAuth();
+  const [adding, setAdding] = useState(false);
+  const add: AddRequest = { open: adding, onClose: () => setAdding(false) };
   const editCards = tab === "assets" ? EDIT_CARDS.assets : null;
   // A link to one of these cards opens the edit view on it and keeps it open once the card parameter leaves
   // (UX rounds 1 and 2 on #1356, B3 then B1).
@@ -470,6 +477,16 @@ export default function CtemInventory() {
             <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
               <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
             </Button>
+          ) : isAdmin && (tab === "assets" || tab === "asset-groups") ? (
+            // The page's primary action, outside the table toolbar (UX round 1 on #1375, B1).
+            <Button
+              variant="secondary"
+              className="gap-1.5"
+              onClick={() => setAdding(true)}
+              data-testid={tab === "assets" ? "ctem-inventory-asset-add" : "ctem-inventory-group-add"}
+            >
+              <Icon name="plus" size={16} aria-hidden /> {t_i18n(tab === "assets" ? "Add an asset" : "Add an asset group")}
+            </Button>
           ) : undefined
         }
       />
@@ -489,13 +506,13 @@ export default function CtemInventory() {
       ) : tab === "sources" ? (
         matching ? <AssetMatchingCard /> : <InventorySourcesCard />
       ) : tab === "asset-groups" ? (
-        <AssetGroupsTab />
+        <AssetGroupsTab add={add} />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
       ) : tab === "ai-systems" ? (
         <AiSystemsTab />
       ) : (
-        <AssetsTab />
+        <AssetsTab add={add} />
       )}
     </div>
   );

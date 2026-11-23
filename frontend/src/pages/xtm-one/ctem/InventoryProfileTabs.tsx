@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +24,12 @@ import type { AssetGroupRow } from "@/lib/organization-profile";
 import { INVENTORY_PATH, assetFieldLabel, sourceLabel } from "./inventory";
 import { deleteRows, isSyncedRow } from "./inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./InventoryEntryDialog";
+
+/** The page header's Add of the Assets and Asset groups tabs (UX round 1 on #1375, B1): one add request the tab answers. */
+export type AddRequest = { open: boolean; onClose: () => void };
+
+/** A bulk action of the selection bar: the table toolbar's control height (UX round 1 on #1375, B1). */
+export const BULK_ACTION = `${TOOLBAR_CONTROL_HEIGHT} px-3`;
 
 /** An asset group with its index in the profile's list (what the entry dialog and a delete address). */
 type IndexedGroup = AssetGroupRow & { index: number };
@@ -43,7 +49,7 @@ const label = (labels: Record<string, string>, value: string) => labels[value] ?
 /** The Assets tab filtered on the AI target category: the AI systems the inventory's sources hold. */
 const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?a_f_category=ai_target`;
 
-export function AssetGroupsTab() {
+export function AssetGroupsTab({ add }: { add: AddRequest }) {
   const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -131,13 +137,6 @@ export function AssetGroupsTab() {
       rows={groups}
       columns={columns}
       rowKey={keyOf}
-      toolbar={
-        isAdmin ? (
-          <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setDialog({ kind: "add" })} data-testid="ctem-inventory-group-add">
-            {t_i18n("Add an asset group")}
-          </Button>
-        ) : undefined
-      }
       rowActions={
         isAdmin
           ? (g) => (
@@ -167,10 +166,10 @@ export function AssetGroupsTab() {
               onChange: setSelected,
               actions: (
                 <>
-                  <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: "bulk", indexes: selectedIndexes })}>
+                  <Button size="sm" variant="secondary" className={BULK_ACTION} onClick={() => setDialog({ kind: "bulk", indexes: selectedIndexes })}>
                     {t_i18n("Update")}
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setToDelete(selectedIndexes)} disabled={save.isPending}>
+                  <Button size="sm" variant="secondary" className={BULK_ACTION} onClick={() => setToDelete(selectedIndexes)} disabled={save.isPending}>
                     {t_i18n("Delete")}
                   </Button>
                 </>
@@ -193,7 +192,16 @@ export function AssetGroupsTab() {
       emptyLabel={t_i18n("No asset group yet. Add a source to the inventory to fill it.")}
       rowTestId="ctem-inventory-group-row"
     />
-    <InventoryEntryDialog section="asset_groups" mode={dialog} onOpenChange={(o) => !o && setDialog(null)} onSaved={() => setSelected([])} />
+    <InventoryEntryDialog
+      section="asset_groups"
+      mode={dialog ?? (add.open ? { kind: "add" } : null)}
+      onOpenChange={(o) => {
+        if (o) return;
+        setDialog(null);
+        add.onClose();
+      }}
+      onSaved={() => setSelected([])}
+    />
     <ConfirmDialog
       open={toDelete !== null}
       onOpenChange={(o) => !o && setToDelete(null)}
