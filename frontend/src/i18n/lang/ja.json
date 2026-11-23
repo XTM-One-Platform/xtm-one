@@ -5573,7 +5573,6 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "Webhook URLは作成後にアサインメントIDを使って自動生成されます。",
   "The whole request body is passed to the agent as the trigger payload.": "リクエストボディ全体がトリガーのペイロードとしてエージェントに渡されます。",
   "Theme": "テーマ",
-  "Pastel colours": "パステルカラー",
   "Theme Color": "テーマカラー",
   "Theme configuration": "テーマ設定",
   "There are no objects on the platform yet.": "プラットフォームにはまだオブジェクトがありません。",
@@ -13928,6 +13927,8 @@
   "The model got stuck repeating the same text, so this run was stopped: the result is partial.": "モデルが同じテキストを繰り返し続けたため、この実行を停止しました。部分的な結果です。",
   "The model did not answer in time, so this run stopped before the agent finished.": "モデルが時間内に応答しなかったため、この実行はエージェントが完了する前に停止しました。",
   "This run stopped while tasks it delegated were still running: the result is partial.": "委任したタスクがまだ実行中のまま、この実行は停止しました。結果は部分的です。",
+  "The agent finished, but none of its integrations could be read: the result is not assessable.": "エージェントは完了しましたが、どの連携も読み取れませんでした。結果は評価できません。",
+  "Not assessable": "評価不可",
   "This run stopped before the agent finished: the result is partial.": "この実行はエージェントが完了する前に停止しました。結果は部分的です。",
   "Takes": "取得元",
   "Live data from {platform}, read with your own access.": "{platform} のライブデータ (あなた自身のアクセス権で読み取り)",
@@ -21035,7 +21036,6 @@
   "Installed software": "インストール済みソフトウェア",
   "No AI system declared for the AI security fleet yet.": "AI セキュリティフリート向けに宣言された AI システムはまだありません。",
   "{count, plural, one {# AI target asset is in the inventory} other {# AI target assets are in the inventory}}": "{count, plural, other {インベントリに AI ターゲット資産が # 件あります}}",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "重大度、ステータス、マーキングの色を柔らかい色調にします。オフ: すべての製品で共通の標準色。",
   "Operating system": "オペレーティング システム",
   "Ownership": "所有形態",
   "Device owner": "デバイスのユーザー",
@@ -21209,6 +21209,9 @@
   "Back to Organization Profile": "組織プロファイルに戻る",
   "Inventory sources": "インベントリのソース",
   "About the inventory sources": "インベントリのソースについて",
+  "Back to Signals": "シグナルに戻る",
+  "About the signal sources": "シグナルソースについて",
+  "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "エクスポージャー管理ループを開始するトリガーパスを視点別に示し、このプラットフォームで各パスに供給するソースとその接続状態を表示します。",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。",
   "About the knowledge and sources": "ナレッジとソースについて",
   "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "エージェントが検索する手順書と参照ドキュメント、事前に読み込む組織コンテキスト、そしてクラウンジュエルと PIR を供給するソース。",
@@ -21297,5 +21300,6 @@
   "The signals could not be updated": "シグナルを更新できませんでした",
   "This signal opened a case: the case owns it now": "このシグナルはケースを開きました。現在はケースが管理しています",
   "Add to inventory": "インベントリに追加",
-  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, other {#件をインベントリに追加しました}}"
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, other {#件をインベントリに追加しました}}",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }

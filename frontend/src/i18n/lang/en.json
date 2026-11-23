@@ -5578,7 +5578,6 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "The webhook URL will be automatically generated after creation using the assignment ID.",
   "The whole request body is passed to the agent as the trigger payload.": "The whole request body is passed to the agent as the trigger payload.",
   "Theme": "Theme",
-  "Pastel colours": "Pastel colours",
   "Theme Color": "Theme Color",
   "Theme configuration": "Theme configuration",
   "There are no objects on the platform yet.": "There are no objects on the platform yet.",
@@ -13928,6 +13927,8 @@
   "The model got stuck repeating the same text, so this run was stopped: the result is partial.": "The model got stuck repeating the same text, so this run was stopped: the result is partial.",
   "The model did not answer in time, so this run stopped before the agent finished.": "The model did not answer in time, so this run stopped before the agent finished.",
   "This run stopped while tasks it delegated were still running: the result is partial.": "This run stopped while tasks it delegated were still running: the result is partial.",
+  "The agent finished, but none of its integrations could be read: the result is not assessable.": "The agent finished, but none of its integrations could be read: the result is not assessable.",
+  "Not assessable": "Not assessable",
   "This run stopped before the agent finished: the result is partial.": "This run stopped before the agent finished: the result is partial.",
   "Takes": "Takes",
   "Live data from {platform}, read with your own access.": "Live data from {platform}, read with your own access.",
@@ -20991,7 +20992,6 @@
   "The remediation options with their cost and the one approved, once the case is validated.": "The remediation options with their cost and the one approved, once the case is validated.",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.",
   "Work CTEM cases": "Work CTEM cases",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.",
   "No asset group yet. Add a source to the inventory to fill it.": "No asset group yet. Add a source to the inventory to fill it.",
   "Opens CTEM > Inventory": "Opens CTEM > Inventory",
   "Operating system": "Operating system",
@@ -21209,6 +21209,9 @@
   "Back to Organization Profile": "Back to Organization Profile",
   "Inventory sources": "Inventory sources",
   "About the inventory sources": "About the inventory sources",
+  "Back to Signals": "Back to Signals",
+  "About the signal sources": "About the signal sources",
+  "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
   "About the knowledge and sources": "About the knowledge and sources",
   "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.",
@@ -21297,5 +21300,6 @@
   "The signals could not be updated": "The signals could not be updated",
   "This signal opened a case: the case owns it now": "This signal opened a case: the case owns it now",
   "Add to inventory": "Add to inventory",
-  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}"
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}",
+  "Subcategories of {category}": "Subcategories of {category}"
 }

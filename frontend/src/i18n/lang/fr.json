@@ -5573,7 +5573,6 @@
   "The webhook URL will be automatically generated after creation using the assignment ID.": "L'URL du webhook sera générée automatiquement après la création à partir de l'ID de l'assignation.",
   "The whole request body is passed to the agent as the trigger payload.": "L'intégralité du corps de la requête est transmise à l'agent comme charge utile du déclencheur.",
   "Theme": "Thème",
-  "Pastel colours": "Couleurs pastel",
   "Theme Color": "Couleur du thème",
   "Theme configuration": "Configuration du thème",
   "There are no objects on the platform yet.": "Il n'y a pas encore d'objets sur la plateforme.",
@@ -13928,6 +13927,8 @@
   "The model got stuck repeating the same text, so this run was stopped: the result is partial.": "Le modèle s'est mis à répéter le même texte, cette exécution a donc été arrêtée : le résultat est partiel.",
   "The model did not answer in time, so this run stopped before the agent finished.": "Le modèle n'a pas répondu à temps : cette exécution s'est arrêtée avant que l'agent ait terminé.",
   "This run stopped while tasks it delegated were still running: the result is partial.": "Cette exécution s'est arrêtée alors que des tâches qu'elle avait déléguées étaient encore en cours : le résultat est partiel.",
+  "The agent finished, but none of its integrations could be read: the result is not assessable.": "L'agent a terminé, mais aucune de ses intégrations n'a pu être lue : le résultat n'est pas évaluable.",
+  "Not assessable": "Non évaluable",
   "This run stopped before the agent finished: the result is partial.": "Cette exécution s'est arrêtée avant que l'agent ait terminé : le résultat est partiel.",
   "Takes": "Prend",
   "Live data from {platform}, read with your own access.": "Données en direct de {platform}, lues avec vos propres droits.",
@@ -20991,7 +20992,6 @@
   "The remediation options with their cost and the one approved, once the case is validated.": "Les options de remédiation avec leur coût et celle approuvée, une fois le cas validé.",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "Le plan de traitement que la remédiation approuvée écrit dans OpenCRQ, avec son coût et la réduction de perte promise.",
   "Work CTEM cases": "Traiter les cas CTEM",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tons adoucis pour les couleurs de sévérité, de statut et de marquage. Désactivé : couleurs standard, identiques dans tous les produits.",
   "No asset group yet. Add a source to the inventory to fill it.": "Aucun groupe d'actifs pour l'instant. Ajoutez une source à l'inventaire pour le remplir.",
   "Opens CTEM > Inventory": "Ouvre CTEM > Inventaire",
   "Operating system": "Système d'exploitation",
@@ -21209,6 +21209,9 @@
   "Back to Organization Profile": "Retour au profil de l'organisation",
   "Inventory sources": "Sources de l'inventaire",
   "About the inventory sources": "À propos des sources de l'inventaire",
+  "Back to Signals": "Retour aux signaux",
+  "About the signal sources": "À propos des sources de signaux",
+  "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "Les chemins de déclenchement qui lancent la boucle de gestion de l'exposition, par angle, avec les sources qui alimentent chacun sur cette plateforme et leur état de connexion.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Les plateformes que chaque synchronisation lit selon un calendrier, les agents et partenaires qui écrivent via l'API, les imports CSV et les lignes saisies à la main. La correspondance des actifs fusionne les enregistrements de plusieurs sources en un seul actif.",
   "About the knowledge and sources": "À propos des connaissances et sources",
   "The procedures and reference documents agents search, the organization context they preload, and the sources that feed the crown jewels and PIRs.": "Les procédures et documents de référence que les agents consultent, le contexte d'organisation qu'ils préchargent et les sources qui alimentent les actifs critiques et les PIR.",
@@ -21297,5 +21300,6 @@
   "The signals could not be updated": "Les signaux n'ont pas pu être mis à jour",
   "This signal opened a case: the case owns it now": "Ce signal a ouvert un dossier : le dossier en a désormais la charge",
   "Add to inventory": "Ajouter à l’inventaire",
-  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}"
+  "{count, plural, one {# entry added to the inventory} other {# entries added to the inventory}}": "{count, plural, one {# entrée ajoutée à l’inventaire} other {# entrées ajoutées à l’inventaire}}",
+  "Subcategories of {category}": "Sous-catégories de {category}"
 }

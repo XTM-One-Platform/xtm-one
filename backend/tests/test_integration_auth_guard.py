@@ -73,7 +73,13 @@ async def test_both_credentials_rejected_degrades_with_no_coverage_and_stops_cal
         ("opencti", "401", "list_opencti_reports"),
         ("openaev", "401", "list_openaev_scenarios"),
     ]
-    assert guard.coverage() == {"readable": [], "partial": [], "rejected": ["openaev", "opencti"]}
+    assert guard.coverage() == {
+        "readable": [],
+        "partial": [],
+        "forbidden": [],
+        "rejected": ["openaev", "opencti"],
+    }
+    assert guard.unreadable()
     notice = guard.coverage_notice()
     assert "degraded" in notice
     assert "Readable: none." in notice
@@ -99,9 +105,11 @@ async def test_forbidden_on_some_endpoints_keeps_the_rest_readable() -> None:
             "status": "403",
             "first_tool": "list_openaev_findings",
             "tools": ["list_openaev_findings"],
+            "readable": True,
         }
     ]
     assert guard.coverage()["partial"] == ["openaev"]
+    assert not guard.unreadable()
     assert "forbidden (403) on list_openaev_findings" in guard.coverage_notice()
 
 
