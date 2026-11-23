@@ -125,6 +125,46 @@ export function loopRuns(status: FleetSetupStatus | null | undefined): boolean {
   return countFact(stepOf(status, "enable"), "automations_enabled") > 0;
 }
 
+/**
+ * The key the command center's "Set up the CTEM loop" entry is closed under, in
+ * the person's dismissed notices (`users.organization_context_notice_dismissed`,
+ * #11586): closed once, it never comes back on its own for that person.
+ */
+export const SETUP_ENTRY_DISMISS_KEY = "entry:ctem-loop-setup";
+
+/** What the command center reads to decide whether its setup entry is drawn. */
+export interface DashboardSetupEntryFacts {
+  /** An administrator of XTM One, not impersonating (`showsCtemLoopSetupEntry`). */
+  canSetUp: boolean;
+  /** `GET /fleets/setup/ctem-loop`; undefined while not read or refused. */
+  status: FleetSetupStatus | null | undefined;
+  statusLoading: boolean;
+  /**
+   * The automations on of each fleet the command center shows (its fleets row:
+   * the CTEM fleets, or the person's choice); `null` per fleet whose health is
+   * not read yet, and `null` for the whole list while the fleets load.
+   */
+  fleetAutomationsOn: readonly (number | null | undefined)[] | null;
+  /** The person's dismissed notices. */
+  dismissed: readonly string[] | null | undefined;
+}
+
+/**
+ * Whether the command center draws its "Set up the CTEM loop" entry: a nudge for
+ * an organization with no CTEM work running yet. Hidden once the CTEM loop fleet
+ * has an automation on, once any fleet the page shows has one (a custom fleet
+ * running the loop), once the person closed it, and while any of that is still
+ * loading (no flash). The CTEM loop fleet page keeps its own entry.
+ */
+export function dashboardSetupEntryShown(facts: DashboardSetupEntryFacts): boolean {
+  if (!facts.canSetUp) return false;
+  if (facts.dismissed?.includes(SETUP_ENTRY_DISMISS_KEY)) return false;
+  if (facts.statusLoading || facts.fleetAutomationsOn == null) return false;
+  if (loopRuns(facts.status)) return false;
+  // A fleet whose health is not read yet may run automations: wait for it.
+  return facts.fleetAutomationsOn.every((on) => on != null && on <= 0);
+}
+
 /** A number fact, 0 when absent or not a number. */
 export function countFact(step: FleetSetupStep | undefined, name: string): number {
   const value = step?.facts[name];

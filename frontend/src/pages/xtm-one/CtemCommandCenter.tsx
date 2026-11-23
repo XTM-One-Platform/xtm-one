@@ -55,7 +55,7 @@ import { MiniTrend, PostureOrbit, signedDelta } from "./ctem/ctem-viz";
 import { CtemStatRow, type CtemHeaderStat } from "./ctem/CtemPageHeader";
 import { CtemWidgetHeader } from "./ctem/CtemWidgetHeader";
 import { ChooseFleetsDialog } from "@/components/fleets/ChooseFleetsDialog";
-import { CtemLoopSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
+import { CtemLoopSetupEntry, useDashboardSetupEntry } from "@/components/fleets/CtemLoopSetupEntry";
 import { CompanyContextNotice, ContextScoredLine } from "./ctem/CompanyContextNotice";
 import { useFleets } from "@/hooks/api/useFleetApi";
 import { useOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
@@ -626,6 +626,12 @@ export default function CtemCommandCenter({
   const dismissFleetInvite = useCallback(
     () => updateProfile.mutate({ ctem_fleet_invite_dismissed: { fleets: ctemFleetSlugs, modules: connectedLogos } }),
     [updateProfile, ctemFleetSlugs, connectedLogos],
+  );
+  // "Set up the CTEM loop" is a nudge (Sam, 23 Nov 2026): gone once the CTEM
+  // loop fleet or any fleet of the page has an automation on, or once the
+  // person closed it; not drawn while that is loading.
+  const setupEntry = useDashboardSetupEntry(
+    fleetActivity.isLoading || !configLoaded ? null : fleetActivity.tiles.map((t) => t.automationsOn),
   );
   // Every CTEM fleet off and the invitation closed: the Fleet activity card is
   // one line, so it is drawn at that height and the widgets below move up (UX
@@ -1291,8 +1297,9 @@ export default function CtemCommandCenter({
                         <MessageSquare className="h-3.5 w-3.5" /> {t_i18n("Start chatting")}
                       </Button>
                     )}
-                    {/* The guided CTEM loop setup, always reachable again (#1087): administrators only. */}
-                    <CtemLoopSetupEntry />
+                    {/* The guided CTEM loop setup (#1087): administrators only, while no CTEM work runs;
+                        the CTEM loop fleet page keeps it reachable. */}
+                    {setupEntry.shown && <CtemLoopSetupEntry onDismiss={setupEntry.dismiss} />}
                     <span className="inline-flex items-center gap-1.5 text-[11px] text-default-secondary min-w-0">
                       <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent/70" />
                       <span className="truncate">
