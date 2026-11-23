@@ -169,7 +169,8 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
   const columns: DataTableColumn<AuditRow>[] = [
     {
       key: "at",
-      header: "Time",
+      // Own key: the shared "Time" key reads as a duration in fr/es/ja (Durée).
+      header: "Date and time",
       cell: (r) => <span className="whitespace-nowrap">{date(r.at)}</span>,
       sortValue: (r) => (r.at ? Date.parse(r.at) : 0),
       csv: (r) => r.at ?? "",

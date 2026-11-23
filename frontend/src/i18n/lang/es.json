@@ -21237,5 +21237,6 @@
   "Split into its own case by a person or an agent": "Separado en su propio caso por una persona o un agente",
   "Announced to the loop by the catch-up pass": "Anunciado al ciclo por la pasada de recuperación",
   "Announced to the loop by the backfill": "Anunciado al ciclo por la carga retroactiva",
-  "The accepted risk expired": "El riesgo aceptado expiró"
+  "The accepted risk expired": "El riesgo aceptado expiró",
+  "Date and time": "Fecha y hora"
 }
