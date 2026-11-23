@@ -698,7 +698,7 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_REMOVE_ROWS_TOOL,
             description=(
-                "Remove assets or asset groups a source synced, by source + external_id (a device the source retired). "
+                "Remove assets or asset groups a source synced, by source + external_id. "
                 "Rows a person wrote are never removed. Preview first."
             ),
             input_schema={
@@ -793,7 +793,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_LIST_PROPOSALS_TOOL,
             description=(
                 "The organization profile proposals of Settings > Organization, newest first: id, kind, "
-                "organization, entries, based_on_version. Read it before deciding one."
+                "organization, entries, based_on_version."
             ),
             input_schema={
                 "type": "object",
@@ -809,8 +809,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_DECIDE_PROPOSAL_TOOL,
             description=(
                 "Accept or reject a pending proposal, as the administrator you act for (the Settings > Organization "
-                "review). accept names the fields or organizations kept; empty rejects it, e.g. one already applied "
-                "with update_organization_context."
+                "review). accept names the fields or organizations kept; empty rejects it."
             ),
             input_schema={
                 "type": "object",
