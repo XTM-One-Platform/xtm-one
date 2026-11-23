@@ -934,10 +934,12 @@ def _broken_resolutions(
 
     A content still holding a conflict hunk, a structured content (``.json``, ``.yaml``, ``.toml``) that no
     longer parses or writes a key twice while the ref's version is sound (an i18n catalog merged by hand,
-    #11986), or a Python file (a ``keep: both`` union, a hand merge) that no longer parses while both sides do
-    (#12179), is refused with the path, the line and the reason named.
+    #11986), a JSON content that drops a key both sides hold (a stale copy of a catalog, #1311), or a Python file
+    (a ``keep: both`` union, a hand merge) that no longer parses while both sides do (#12179), is refused with
+    the path, the line and the reason named.
     """
     from app.services.sandbox_workspace import structured
+    from app.services.sandbox_workspace.jsonmerge import dropped_keys
     from app.services.sandbox_workspace.rebase import has_conflict_markers
 
     broken: list[str] = []
@@ -952,6 +954,18 @@ def _broken_resolutions(
             why = "" if structured.parse_defect(kind, ref_text) else structured.parse_defect(kind, text)
             if why:
                 broken.append(f"{path} (the ref's version is valid {kind}, the resolved content does not parse: {why})")
+                continue
+            branch = (branch_versions or {}).get(path)
+            if kind == structured.JSON and branch is not None:
+                # A merge keeps every key both sides hold; a resolution that drops one was written from a stale
+                # copy of a catalog: refused, the keys named.
+                lost = dropped_keys(text, ref_text, branch.decode("utf-8", "replace"))
+                if lost:
+                    shown = ", ".join(lost[:10]) + (f" and {len(lost) - 10} more" if len(lost) > 10 else "")
+                    broken.append(
+                        f"{path} (the resolved content drops {len(lost)} key(s) both sides hold: {shown}; "
+                        "keep them, or remove them in a commit of their own after the merge)"
+                    )
             continue
         source = structured.resolution_kind(path)
         if source and not kind and (ref is not None or (branch_versions or {}).get(path) is not None):

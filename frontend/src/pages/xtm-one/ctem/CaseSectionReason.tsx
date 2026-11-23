@@ -1,78 +1,82 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The empty state of a case page section (#1206, slice D), worded from live
- * state (`case-loop-reason.ts`): OpenCRQ not connected, no automation works
- * the case, the fleet run working it now, or the section's own sentence when
- * nothing blocks it. The page provides the state once (`CaseLoopProvider`);
- * a section rendered without it keeps its own sentence.
+ * The not-started state of a case page section (#1266): what the section will
+ * hold, the product it is written from with that product's logo and connection
+ * state, and "Connect" where the product is missing. Who works the case is
+ * said once, at the top of the page (`CaseWorkCard`), never repeated here. The
+ * page provides the connection states once (`CaseLoopProvider`); a section
+ * rendered without it shows its sentence alone.
  */
 import { createContext, useContext, type ReactNode } from "react";
-import { Link as RouterLink } from "react-router-dom";
-import { Link } from "@filigran/design-system";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { withBasePath } from "@/lib/base-path";
 import { useFormatter } from "@/i18n";
-import { sectionReason, type CaseLoopWorker } from "./case-loop-reason";
+import type { CaseSource, CaseSources } from "./case-workers";
 
 interface CaseLoopState {
-  worker: CaseLoopWorker;
-  /** Whether OpenCRQ is registered; `null` while unknown. */
-  opencrq: boolean | null;
+  sources: CaseSources;
 }
 
-const CaseLoopContext = createContext<CaseLoopState>({ worker: { kind: "unknown" }, opencrq: null });
+const UNKNOWN: CaseLoopState = { sources: { opencrq: null, opencti: null, openaev: null } };
+const CaseLoopContext = createContext<CaseLoopState>(UNKNOWN);
 
 export function CaseLoopProvider({ value, children }: { value: CaseLoopState; children: ReactNode }) {
   return <CaseLoopContext.Provider value={value}>{children}</CaseLoopContext.Provider>;
 }
 
+/** The products a section is written from. */
+const SOURCE_PRODUCT: Record<CaseSource, { name: string; logo: string }> = {
+  opencrq: { name: "OpenCRQ", logo: "/logos/opencrq.svg" },
+  opencti: { name: "OpenCTI", logo: "/logos/opencti.svg" },
+  openaev: { name: "OpenAEV", logo: "/logos/openaev.svg" },
+};
+
 export function CaseSectionReason({
   own,
-  needsOpencrq = false,
+  source,
   testId,
 }: {
-  /** The section's own sentence, already translated: shown when nothing blocks the section. */
+  /** What the section will hold, already translated. */
   own: string;
-  /** The section is written from OpenCRQ (exploitation reading, treatment plan). */
-  needsOpencrq?: boolean;
+  /** The product the section is written from; none for a section XTM One writes alone. */
+  source?: CaseSource;
   testId: string;
 }) {
-  const { t_i18n, intl } = useFormatter();
-  const { worker, opencrq } = useContext(CaseLoopContext);
-  const reason = sectionReason(worker, needsOpencrq, opencrq);
+  const { t_i18n } = useFormatter();
+  const { sources } = useContext(CaseLoopContext);
+  const product = source ? SOURCE_PRODUCT[source] : null;
+  const connected = source ? sources[source] : null;
+  const missing = connected === false;
 
-  if (reason === "opencrq") {
-    return (
-      <p className="text-default-secondary" data-testid={testId} data-reason={reason}>
-        {t_i18n("Empty: OpenCRQ is not connected.")}{" "}
-        <Link asChild>
-          <RouterLink to="/integrations">{t_i18n("Connect OpenCRQ")}</RouterLink>
-        </Link>
-      </p>
-    );
-  }
-  if (reason === "not_set_up" && worker.kind === "not_set_up") {
-    return (
-      <p className="text-default-secondary" data-testid={testId} data-reason={reason}>
-        {t_i18n("No automation works this case: the CTEM loop fleet is not set up.")}{" "}
-        <Link asChild>
-          <RouterLink to={worker.fleetId ? `/fleets/${worker.fleetId}` : "/fleets"}>{t_i18n("Open the fleet")}</RouterLink>
-        </Link>
-      </p>
-    );
-  }
-  if (reason === "running" && worker.kind === "running") {
-    const since = intl.formatDate(worker.since, { dateStyle: "medium", timeStyle: "short" });
-    return (
-      <p className="text-default-secondary" data-testid={testId} data-reason={reason}>
-        {worker.agent
-          ? t_i18n("Waiting for {agent}, working this case since {since}.", { agent: worker.agent, since })
-          : t_i18n("Waiting for a fleet step, working this case since {since}.", { since })}
-      </p>
-    );
-  }
   return (
-    <p className="text-default-secondary" data-testid={testId} data-reason="own">
-      {own}
-    </p>
+    <div className="flex flex-wrap items-center justify-between gap-3" data-testid={testId} data-reason={missing ? "source_missing" : "own"}>
+      <span className="flex min-w-0 items-center gap-3">
+        {product && <img src={withBasePath(product.logo)} alt="" className="h-6 w-6 shrink-0" />}
+        <span className="flex min-w-0 flex-col">
+          <span className="content-base text-default-secondary">{own}</span>
+          {product && connected !== null && (
+            <span className={missing ? "content-compact text-feedback-warning-primary" : "content-compact text-default-secondary"}>
+              {missing
+                ? t_i18n("{product} is not connected", { product: product.name })
+                : t_i18n("Written from {product}, connected", { product: product.name })}
+            </span>
+          )}
+        </span>
+      </span>
+      {product && missing && <ConnectButton product={product.name} />}
+    </div>
+  );
+}
+
+/** Mounted only when a product is missing, so a section read outside the router (a test) still renders. */
+function ConnectButton({ product }: { product: string }) {
+  const { t_i18n } = useFormatter();
+  const navigate = useNavigate();
+  return (
+    <Button variant="outline" size="sm" onClick={() => navigate("/integrations")}>
+      {t_i18n("Connect {product}", { product })}
+    </Button>
   );
 }

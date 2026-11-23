@@ -300,6 +300,7 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         return None
     category, subcategory = openaev_asset_taxonomy(asset, batch_type)
     criticality = str(asset.get("asset_criticality") or "").strip().lower()
+    status = str(asset.get("asset_status") or "").strip().lower()
     return AssetEntry(
         name=name[:200],
         category=category,  # type: ignore[arg-type]
@@ -308,7 +309,28 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         internet_facing=_yes_no(asset.get("asset_internet_facing")),  # type: ignore[arg-type]
         source="openaev",
         external_id=asset_id[:200],
+        last_seen=openaev_last_seen(asset.get("asset_last_seen")),
+        status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
     )
+
+
+#: OpenAEV ``asset_status`` values (lower-cased) an asset row keeps (#1134 S4, CTEM-27).
+OPENAEV_ASSET_STATUSES: frozenset[str] = frozenset({"active", "inactive", "agentless", "stale"})
+
+
+def openaev_last_seen(value: Any) -> str:
+    """OpenAEV's ``asset_last_seen`` (an ISO instant or epoch seconds) as ISO 8601 UTC, "" when unreadable."""
+    if value is None or value == "":
+        return ""
+    try:
+        if isinstance(value, (int, float)):
+            seen = datetime.fromtimestamp(float(value), tz=UTC)
+        else:
+            seen = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+            seen = seen.replace(tzinfo=UTC) if seen.tzinfo is None else seen.astimezone(UTC)
+    except (ValueError, OverflowError, OSError):
+        return ""
+    return seen.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def openaev_asset_group(group: dict[str, Any]) -> AssetGroupEntry | None:

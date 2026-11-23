@@ -234,3 +234,41 @@ async def test_the_fleet_data_flow_draws_each_checker_reading_its_modules_integr
         assert (f"agent:{checkers[role]}", node, EDGE_READ) in edges
     # Read only: no checker draws a write edge.
     assert not [e for e in flow.edges if e.source in {f"agent:{i}" for i in checkers.values()} and e.kind != EDGE_READ]
+
+
+@pytest.mark.asyncio
+async def test_the_seeded_fleet_delegates_to_each_checker_and_each_holds_its_playbook(xtm_one: None) -> None:
+    """#101 S15f-2, 13.9 (n): the orchestrator's delegate handovers, the checkers' skills, the graph edges."""
+    from sqlalchemy import true
+
+    from app.agents.seed import seed_builtin_skills
+    from app.models.agent_skill import AgentSkill
+    from app.models.fleet import Fleet
+    from app.services.fleet_flow import EDGE_HANDOVER, build_fleet_flow
+    from app.services.health.read_only import HEALTH_FLEET_SLUG
+
+    admin = make_user("admin", admin=True)
+    async with health_database() as sessions, sessions() as db:
+        db.add(admin)
+        await db.commit()
+        await seed_builtin_skills(db, platform_mode="xtm_one")
+        await db.commit()
+        await fleet_seed.seed_health_fleet(db)
+        rows = (await db.execute(select(Agent).where(Agent.health_role.is_not(None)))).scalars()
+        agents = {a.health_role: a for a in rows}
+        skills = {
+            str(skill.id): skill.tags
+            for skill in (await db.execute(select(AgentSkill).where(AgentSkill.is_company_managed.is_(True)))).scalars()
+        }
+        fleet = (await db.execute(select(Fleet).where(Fleet.slug == HEALTH_FLEET_SLUG))).scalar_one()
+        flow = await build_fleet_flow(db, fleet, visible_agent_clause=true(), visible_integration_clause=true())
+
+    orchestrator = agents["orchestrator"]
+    edges = {(e.source, e.target, e.kind, e.type) for e in flow.edges}
+    for provider, role in CHECKER_ROLE_BY_PROVIDER.items():
+        checker = agents[role]
+        assert str(checker.id) in [str(i) for i in orchestrator.handover_agent_ids or []], role
+        assert (orchestrator.handover_types or {}).get(str(checker.id)) == "delegate", role
+        assert (f"agent:{orchestrator.id}", f"agent:{checker.id}", EDGE_HANDOVER, "delegate") in edges, role
+        held = [skills[str(i)] for i in checker.skill_ids or [] if str(i) in skills]
+        assert any(f"slug:health-{provider}-checks" in (tags or []) for tags in held), (role, held)

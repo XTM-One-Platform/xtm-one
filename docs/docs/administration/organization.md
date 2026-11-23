@@ -265,6 +265,22 @@ An outbound run writes with the token of the administrator who saved the sync, l
 | AI systems | OpenAEV | Inbound: OpenAEV has no AI system object to write |
 | Tech stack | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
 
+### What each platform feeds
+
+The source x section x direction matrix, read from the platform APIs the syncs call:
+
+| Platform | Section | What a run reads | Directions |
+|---|---|---|---|
+| OpenAEV | Assets | Endpoints (`POST /api/endpoints/search`): name, category and subcategory, criticality, exposure, and since #1134 S4 the freshness: **last seen** (`asset_last_seen`) and **status** (`asset_status`: active, inactive, agentless, or stale when unseen past the tenant's threshold) | Inbound |
+| OpenAEV | Asset groups | Asset groups (`POST /api/asset_groups/search`) | Inbound |
+| OpenAEV | AI systems | Endpoints that name an AI target provider | Inbound |
+| OpenAEV | Tech stack | Security platforms (`POST /api/security_platforms/search`) | Inbound |
+| OpenCTI | Assets | Systems, with the OpenAEV taxonomy when OpenCTI carries it | Inbound |
+| OpenCTI | PIRs | Priority intelligence requirements | Inbound |
+| OpenCRQ | Crown jewels | Supporting assets at or above the minimum criticality | Inbound, Outbound |
+
+The freshness of an asset is the source's: it is read-only in XTM One and follows each run. When several sources describe one asset, the most recently seen record wins a field the precedence leaves tied. Not synced yet: an OpenAEV per-asset software inventory (OpenAEV exposes no software list on an endpoint today), OpenCTI organizations into tracked organizations (linked one by one from the tracked organization), and OpenCRQ risk tolerances (no profile field holds them).
+
 In **Syncs**, the **Direction** column shows each sync's master, and **Edit** sets it: **Outbound** is offered only where the platform can be written, otherwise it is greyed out with the reason. Changing the direction shows that the new direction starts clean before you save.
 
 `GET /api/v1/organization-context/syncs/directions` lists, per section and platform, the directions a sync may take and why outbound is not offered.
