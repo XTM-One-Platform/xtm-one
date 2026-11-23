@@ -712,11 +712,12 @@ async def list_tech_stack_inventory(
 @router.get("/software", response_model=CanonicalAssetsPage)
 async def list_organization_software(
     q: str = Query("", max_length=200),
-    type: str = Query("", max_length=30),
+    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
+    type: list[str] = Query(default_factory=list, max_length=10),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: str = Query("", max_length=10),
-    cpe_state: str = Query("", max_length=20),
+    origin: list[str] = Query(default_factory=list, max_length=10),
+    cpe_state: list[str] = Query(default_factory=list, max_length=10),
     unknown_version: bool | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -773,11 +774,12 @@ async def list_assets_of_software_version(
 @router.get("/software/export.csv")
 async def export_organization_software(
     q: str = Query("", max_length=200),
-    type: str = Query("", max_length=30),
+    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
+    type: list[str] = Query(default_factory=list, max_length=10),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: str = Query("", max_length=10),
-    cpe_state: str = Query("", max_length=20),
+    origin: list[str] = Query(default_factory=list, max_length=10),
+    cpe_state: list[str] = Query(default_factory=list, max_length=10),
     unknown_version: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
@@ -1028,10 +1030,11 @@ async def get_organization_software(
     software_id: uuid.UUID,
     installations_offset: int = Query(0, ge=0),
     installations_limit: int = Query(100, ge=1, le=200),
+    installations_q: str = Query("", max_length=200),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One software: its versions with asset counts, its installations, what it depends on and what uses it."""
+    """One software: its versions with asset counts, its installations (searchable by asset name), what it depends on and what uses it."""
     from app.services.organization_software_store import get_software
 
     org = await _built_store(db)
@@ -1042,6 +1045,7 @@ async def get_organization_software(
             software_id,
             installations_offset=installations_offset,
             installations_limit=installations_limit,
+            installations_q=installations_q,
         )
         if org is not None
         else None
@@ -1930,9 +1934,7 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal[
-        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-    ]
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1997,9 +1999,7 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal[
-        "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
-    ],
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -2117,19 +2117,7 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal[
-        "openaev",
-        "opencti",
-        "opencrq",
-        "intune",
-        "defender",
-        "tanium",
-        "crowdstrike",
-        "servicenow",
-        "github",
-        "gitlab",
-        "",
-    ] = ""
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).
