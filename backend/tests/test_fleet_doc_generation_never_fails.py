@@ -165,6 +165,58 @@ def test_transient_failures_are_told_from_the_others() -> None:
     assert not gen.is_transient(ValueError("a defect"))
 
 
+def _told_not_to_retry(cls, status: int):
+    import httpx
+
+    request = httpx.Request("POST", "https://gateway.local/v1/chat/completions")
+    response = httpx.Response(status, headers={"x-should-retry": "false", "retry-after": "86400"}, request=request)
+    return cls("quota exceeded", response=response, body=None)
+
+
+def test_an_error_the_provider_says_not_to_retry_is_not_transient() -> None:
+    import openai
+
+    assert not gen.is_transient(_told_not_to_retry(openai.RateLimitError, 429))
+    assert not gen.is_transient(_told_not_to_retry(openai.InternalServerError, 502))
+
+
+@pytest.fixture
+def no_back_off(monkeypatch):
+    from app.llm import base
+
+    # No real back-off: a wrong retry fails on the call count, not after minutes of waits.
+    monkeypatch.setattr(base, "_extract_retry_after", lambda _exc: None)
+
+
+async def test_an_error_the_provider_says_not_to_retry_is_sent_once(no_back_off) -> None:
+    import openai
+
+    model = _Scripted(lambda _m, _n: _told_not_to_retry(openai.RateLimitError, 429))
+    with pytest.raises(gen.FleetDocDraftError) as failed:
+        await gen.draft_fleet_documentation(object(), uuid.uuid4(), _fleet(), llm=model)
+    # Its parts and sections would meet the same refusal: none is asked.
+    assert len(model.calls) == 1
+    assert str(failed.value).startswith("The AI model did not answer:")
+
+
+async def test_a_refusal_met_in_parts_leaves_the_rest_pending_unasked(no_back_off) -> None:
+    import openai
+
+    def reply(messages, n):
+        if n == 1:
+            return json.dumps({"sections": {"purpose": "Why."}, "structured": {"purpose_line": "Why."}})
+        if _section_of(messages) is None:
+            return _ProviderError(503)  # the missing sections together: a plain failure, asked one by one
+        return _told_not_to_retry(openai.RateLimitError, 429)
+
+    model = _Scripted(reply)
+    draft = await gen.draft_fleet_documentation(object(), uuid.uuid4(), _fleet(), llm=model)
+    missing = [k for k in DOC_SECTIONS if k != "purpose"]
+    assert draft.pending == missing
+    # The answer, the missing sections together and their retries, then one section alone refused.
+    assert len(model.calls) == 1 + (gen.TRANSIENT_RETRIES + 1) + 1
+
+
 async def test_a_section_the_provider_keeps_failing_on_is_pending_and_the_rest_is_saved(fingerprint) -> None:
     """One section failing after its retries: the rest is saved, that section keeps its text and is pending."""
 
