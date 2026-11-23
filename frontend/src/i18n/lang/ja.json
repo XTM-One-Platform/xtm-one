@@ -21077,5 +21077,15 @@
   "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, other {ほかに # 件の資産が表示されていません}}",
   "CTEM Read": "CTEM 読み取り",
   "Read the CTEM signals and cases the person you act for can see, read-only": "代理で操作する相手が閲覧できる CTEM のシグナルとケースを読み取り専用で参照します",
-  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。"
+  "Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.": "エージェントが CTEM シグナルを証拠付きで一覧表示し、CTEM ケースを状態別の件数付きで一覧表示し、1 件のケースをその課題、履歴、作成者、空のセクションが空である理由とともに読み取れるようにします。ターンまたは実行の代理対象者として、CTEM ページと同じルールで動作します。その人が閲覧できないケースはエージェントにとって存在せず、閲覧できない課題は制限付きの行になります。何も書き込みません。XTM One モードのみ。",
+  "Run checks as": "チェックの実行ユーザー",
+  "Set the run-as user": "実行ユーザーを設定",
+  "Checks need a run-as user with {module} access.": "チェックには {module} へのアクセス権を持つ実行ユーザーが必要です。",
+  "The XTM One administrator often has no access to the modules: choose a user who has.": "XTM One の管理者はモジュールへのアクセス権を持たないことが多いため、アクセス権を持つユーザーを選択してください。",
+  "The module checks read OpenCTI, OpenAEV and OpenCRQ as this user. Pick a user with access to every registered module: the save is refused otherwise. Not set: no module check runs.": "モジュールのチェックは、このユーザーとして OpenCTI、OpenAEV、OpenCRQ を読み取ります。登録済みのすべてのモジュールにアクセスできるユーザーを選択してください。そうでない場合、保存は拒否されます。未設定の場合、モジュールのチェックは実行されません。",
+  "Platform Health reads the modules as this user to check them. Pick a user with access to every connected module.": "Platform Health は、このユーザーとしてモジュールを読み取ってチェックします。接続済みのすべてのモジュールにアクセスできるユーザーを選択してください。",
+  "The run-as user was not saved.": "実行ユーザーは保存されませんでした。",
+  "Saved. The next check round reads the modules as this user.": "保存しました。次回のチェックでは、このユーザーとしてモジュールを読み取ります。",
+  "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "このユーザーは {modules} にアクセスできません。Platform Health はこのユーザーとしてモジュールのチェックを実行します。{modules} へのアクセス権を付与するか、アクセス権を持つユーザーを選択してください。",
+  "The run-as user does not exist or is deactivated.": "実行ユーザーが存在しないか、無効化されています。"
 }

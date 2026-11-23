@@ -16338,6 +16338,8 @@ export interface HealthSettings extends HealthTriggerSettings {
   alert_emails: HealthAlertEmailSettings;
   /** The Module Analyst's switch, debounce, exclusions and own ceilings (#101 S14). */
   module_analyst: HealthModuleAnalystSettings;
+  /** Whom the module checks read OpenCTI, OpenAEV and OpenCRQ as (dev-docs 12.3); `null`: not set, no module read runs. */
+  module_run_as_user_id?: string | null;
 }
 
 /**
@@ -16606,6 +16608,8 @@ export interface HealthModuleCheckReport {
 export interface HealthModuleCheckReports {
   module: HealthModule;
   items: HealthModuleCheckReport[];
+  /** `not_set` or `no_access`: the card shows one call to action instead of the per-check lines. */
+  run_as?: "ok" | "not_set" | "no_access";
 }
 
 /** One read the Module Analyst made to back a recommendation. */

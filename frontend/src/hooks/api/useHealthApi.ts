@@ -128,6 +128,8 @@ export function useSaveHealthSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (settings: HealthSettings) => api.put<HealthSettings>("/health/settings", settings),
+    // The settings section answers every failure itself: one toast, or the refused field inline (UX r1 B1).
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (data) => {
       qc.setQueryData(SETTINGS_KEY, data);
       void qc.invalidateQueries({ queryKey: BUDGET_KEY });
@@ -136,6 +138,23 @@ export function useSaveHealthSettings() {
       // The orchestrator agent is renamed with it, in the lists and the flow node catalog.
       void qc.invalidateQueries({ queryKey: ["agents"] });
       syncFlowNodeCatalog(qc);
+    },
+  });
+}
+
+/**
+ * Set the "Run checks as" user alone (dev-docs 12.3), from the onboarding step. A user who cannot read a
+ * registered module is refused (400) with the modules named; nothing is written then.
+ */
+export function useSaveHealthRunAs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.put<{ module_run_as_user_id: string | null }>("/health/settings/run-as", { user_id: userId }),
+    // The onboarding step shows the refusal under its picker.
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+      void qc.invalidateQueries({ queryKey: ["health-overview"] });
     },
   });
 }
