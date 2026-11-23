@@ -43,6 +43,8 @@ def synced_edit_problems(stored: dict[str, Any] | None, incoming: dict[str, Any]
         return []
     problems: list[str] = []
     for section, (attr, name_attr, _cap, local) in SOURCED_FIELDS.items():
+        if section == "ai_systems":
+            continue  # #1501: the deprecated alias of the AI target assets, judged with the assets
         before = {}
         for row in stored.get(attr) or []:
             if isinstance(row, dict) and (key := _key(row)) is not None:

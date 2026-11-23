@@ -304,8 +304,32 @@ class ShippedProduct(BaseModel):
         return list(dict.fromkeys(out))
 
 
+#: OpenAEV's ``Asset.AI_TARGET_PROVIDER``, lower-cased (#1501).
+AI_TARGET_PROVIDERS: tuple[str, ...] = (
+    "openai_compatible",
+    "anthropic",
+    "azure_openai",
+    "aws_bedrock",
+    "google_vertex",
+    "huggingface",
+    "ollama",
+    "custom_http",
+    "mcp_server",
+    "agent_http",
+    "xtm_one",
+)
+#: The kind of a profile AI system (before #1501) -> the OpenAEV ``ai_target`` subcategory it is.
+#: ``assistant`` and ``embedded`` have none: the row keeps its kind as the tag ``ai_kind:<kind>``.
+AI_KIND_SUBCATEGORY: dict[str, str] = {"agent": "ai_agent", "model_api": "llm_model"}
+#: A profile AI system's exposure (before #1501) -> the asset's ``internet_facing``.
+AI_EXPOSURE_FACING: dict[str, str] = {"public": "yes", "internal": "no", "partner": "unknown"}
+
+
 class AiSystem(BaseModel):
-    """An AI system; ``openaev_asset_id`` is the id before #1134, read as an OpenAEV row (see :class:`CrownJewel`)."""
+    """A profile AI system as saved before #1501, read only to move it into the assets.
+
+    ``openaev_asset_id`` is the id before #1134, read as an OpenAEV row (see :class:`CrownJewel`).
+    """
 
     model_config = _Strict
 
@@ -435,11 +459,25 @@ class AssetEntry(BaseModel):
     #: The source's activity status (OpenAEV ``asset_status`` lower-cased: ``stale`` when unseen
     #: past the tenant's threshold); empty when the source does not say.
     status: Literal["", "active", "inactive", "agentless", "stale"] = ""
+    #: An AI target (category ``ai_target``, #1501): OpenAEV's ``ai_target_*`` fields, lower-cased
+    #: enums. The token, the configuration and the system prompt never leave OpenAEV.
+    ai_target_provider: str = Field(default="", max_length=40)
+    ai_target_endpoint: str = Field(default="", max_length=500)
+    ai_target_model: str = Field(default="", max_length=200)
+    ai_target_modality: Literal["", "text", "vision", "audio", "multimodal"] = ""
 
     @model_validator(mode="before")
     @classmethod
     def _legacy_type(cls, data: Any) -> Any:
         return upgrade_legacy_type(data) if isinstance(data, dict) else data
+
+    @field_validator("ai_target_provider")
+    @classmethod
+    def _provider(cls, value: str) -> str:
+        text = value.strip().lower()
+        if text and text not in AI_TARGET_PROVIDERS:
+            raise ValueError(f"ai_target_provider {value!r} is not one of {', '.join(AI_TARGET_PROVIDERS)}")
+        return text
 
     @field_validator("mac", "ip")
     @classmethod
@@ -854,7 +892,8 @@ class OrganizationProfile(BaseModel):
     #: What the organization ships, with its source repositories (#1432). Not a contract
     #: field: a vendor-free organization ships nothing; the tech stack is what it runs.
     shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
-    ai_systems: list[AiSystem] = Field(default_factory=list, max_length=200)
+    #: No ``ai_systems`` list since #1501: an AI system is an asset of category ``ai_target``
+    #: (``assets_exposure``); a profile saved before reads its rows there (:func:`ai_system_asset`).
     pir_ids: list[str] = Field(default_factory=list, max_length=100)
     #: The last known OpenCTI name of each PIR in ``pir_ids``, saved with it so the
     #: profile names a PIR even when OpenCTI cannot be read or deleted it (#9615).
@@ -900,6 +939,26 @@ class OrganizationProfile(BaseModel):
     #: (``services/organization_onboarding.py``, #11224). Not a contract field:
     #: ``missing_fields`` still reports them; the onboarding no longer asks.
     onboarding_skipped: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ai_systems_into_assets(cls, data: Any) -> Any:
+        """A profile saved before #1501: its ``ai_systems`` rows become ``ai_target`` assets, nothing lost.
+
+        A row an asset of the same source and id already carries (an OpenAEV AI target imported both
+        ways) is not added twice; a typed row named like an AI target asset is the same thing.
+        """
+        if not isinstance(data, dict) or "ai_systems" not in data:
+            return data
+        data = dict(data)
+        legacy = data.pop("ai_systems") or []
+        assets = list(data.get("assets_exposure") or [])
+        for raw in legacy if isinstance(legacy, list) else []:
+            row = ai_system_asset(raw)
+            if row is not None and not _carried(assets, row):
+                assets.append(row)
+        data["assets_exposure"] = assets
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -965,6 +1024,57 @@ class OrganizationProfile(BaseModel):
         return self
 
 
+def ai_system_asset(raw: Any) -> dict[str, Any] | None:
+    """A profile AI system saved before #1501 as an ``ai_target`` asset row (``None`` when unreadable).
+
+    The kind becomes the OpenAEV subcategory where one exists (:data:`AI_KIND_SUBCATEGORY`), else the
+    tag ``ai_kind:<kind>``; the exposure sets ``internet_facing`` (:data:`AI_EXPOSURE_FACING`) and stays
+    as the tag ``exposure:<value>``; owner, source, id and sync are kept.
+    """
+    if isinstance(raw, AiSystem):
+        raw = raw.model_dump()
+    if not isinstance(raw, dict):
+        return None
+    try:
+        system = AiSystem.model_validate(raw)
+    except ValueError:
+        return None
+    tags = [f"exposure:{system.exposure}"]
+    subcategory = AI_KIND_SUBCATEGORY.get(system.kind, "")
+    if not subcategory:
+        tags.insert(0, f"ai_kind:{system.kind}")
+    return {
+        "name": system.name,
+        "category": "ai_target",
+        "subcategory": subcategory,
+        "internet_facing": AI_EXPOSURE_FACING[system.exposure],
+        "owner": system.owner,
+        "tags": tags,
+        "source": system.source,
+        "external_id": system.external_id,
+        "sync_id": system.sync_id,
+    }
+
+
+def _carried(assets: list[Any], row: dict[str, Any]) -> bool:
+    """Whether *assets* already hold *row*: the same source and id, or an AI target of the same name."""
+    for asset in assets:
+        data = asset.model_dump() if isinstance(asset, BaseModel) else asset
+        if not isinstance(data, dict):
+            continue
+        source = str(data.get("source") or "manual").strip().lower()
+        if row["external_id"] and source == row["source"] and str(data.get("external_id") or "") == row["external_id"]:
+            return True
+        if data.get("category") == "ai_target" and str(data.get("name") or "").strip().casefold() == row["name"].casefold():
+            return True
+    return False
+
+
+def ai_target_assets(profile: OrganizationProfile) -> list[AssetEntry]:
+    """The AI systems of *profile*: its assets of category ``ai_target`` (#1501)."""
+    return [asset for asset in profile.assets_exposure if asset.category == "ai_target"]
+
+
 #: Every field of the contract, in the order a report names them, with the
 #: words a person reads when it is missing.
 CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
@@ -985,6 +1095,9 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
 
 
 def _value(profile: OrganizationProfile, path: str) -> Any:
+    if path == "ai_systems":
+        # #1501: the contract field is filled by the assets of category ai_target.
+        return ai_target_assets(profile)
     value: Any = profile
     for part in path.split("."):
         value = getattr(value, part)
@@ -1352,7 +1465,7 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for entry in dumped.get("tech_stack") or []:
         if not entry.get("version"):
             entry.pop("version", None)
-    for key in ("crown_jewels", "tech_stack", "ai_systems"):
+    for key in ("crown_jewels", "tech_stack"):
         for row in dumped.get(key) or []:
             _drop_typed_provenance(row)
     if not dumped.get("fx_rates"):

@@ -40,7 +40,7 @@ DIRECTIONS: dict[tuple[str, str], tuple[tuple[str, ...], str]] = {
     ("asset_groups", "openaev"): ((INBOUND,), "Planned: OpenAEV asset group writes are not wired for syncs yet."),
     ("pirs", "opencti"): ((INBOUND,), "Planned: OpenCTI PIR writes are not wired for syncs yet."),
     ("assets", "opencti"): ((INBOUND,), "OpenCTI Systems are owned by its connectors."),
-    ("ai_systems", "openaev"): ((INBOUND,), "OpenAEV has no AI system object to write."),
+    ("ai_systems", "openaev"): ((INBOUND,), "Planned: OpenAEV AI target writes are not wired for syncs yet."),
     ("tech_stack", "openaev"): ((INBOUND,), "OpenAEV software inventory is read from its agents."),
 }
 
