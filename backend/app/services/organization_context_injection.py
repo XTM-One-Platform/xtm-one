@@ -216,6 +216,12 @@ def render_summary(row: Any, *, tracked_count: int = 0, ctem_work: bool = True) 
         }
     if profile.currency:
         facts["currency"] = profile.currency
+    if profile.fx_rates:
+        # #1383: the reference rates an agent cites to convert a figure into the currency above.
+        facts["fx_rates"] = [
+            f"1 {r.from_currency} = {r.rate:g} {r.to_currency} ({r.as_of.isoformat()}, {_short(r.source, 60)})"
+            for r in profile.fx_rates[:10]
+        ]
     counts = category_counts(profile, tracked_count=tracked_count)
     head = (
         f"{SUMMARY_HEADER}\nThe organization you work for (profile version {row.version}). "

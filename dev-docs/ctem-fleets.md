@@ -551,7 +551,21 @@ the next version with its source (`form`, `draft`, `api`). The free-text
 | PIRs | OpenCTI PIR ids (`manage_opencti_pir` exists today) | F1, F3 relevance |
 | risk appetite | loss threshold per year, approval threshold | F1, F2, F3 approvals and ranking |
 | loaded hourly rate, currency | number | ROI (section 5) |
+| reference exchange rates (`fx_rates`, optional, not a contract field) | from currency, to currency, rate, date (`as_of`), source | `ctem-risk-quantifier`, `opencrq-risk-desk-orchestrator` |
 | ticketing target | integration and project | Mobilization |
+
+Currencies (#1383): OpenCRQ prices every loss in USD; the thresholds of the
+risk appetite are in the profile's `currency`. A risk agent never compares
+the two: it converts an OpenCRQ figure with the profile's reference rate
+into the organization's currency (`reference_rate`, the latest `as_of`
+wins) and cites the rate, its date and its source, or, with no such rate,
+reports the comparison as unknown (`above_approval_threshold: null` in the
+Risk Quantifier's output) and names the missing rate. The rates are set by
+the API (`PUT /api/v1/organization-context` with `fx_rates`) or through an
+agent (`update_organization_context` / a proposal on `fx_rates`); a form
+save that does not send the key keeps the stored rates. They are shown in
+the always-on summary next to the currency, at most ten, and are not a
+category of the index.
 
 Every new agent's persona carries a "Read the organization context first"
 step; a missing field is reported in the run output, never guessed.
@@ -2349,6 +2363,17 @@ command center hero, and on the CTEM loop fleet page (slug `ctem-loop`) through
 the header's "Set up" and the menu's "Run setup again" (`FleetSetupDialog`),
 for an XTM One administrator only, never while impersonating
 (`showsCtemLoopSetupEntry`).
+
+On the command center the entry is a nudge (#1379, `dashboardSetupEntryShown`
+in `ctem-loop-setup.ts`, `useDashboardSetupEntry`): it is drawn only while no
+CTEM work runs, that is the loop fleet's enable step reads
+`automations_enabled` 0 and every fleet the page shows (the CTEM fleets, or the
+person's choice, custom fleets included) reads 0 automations on in its health;
+it is not drawn while either is loading. Its close control writes
+`entry:ctem-loop-setup` into `users.organization_context_notice_dismissed`, so it
+never comes back on its own for that person. The fleet page entries and the
+case card's "Set up the CTEM loop" choice (a case no automation works) are
+contextual and always shown.
 
 ### One guided setup for every fleet
 

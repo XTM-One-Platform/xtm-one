@@ -127,7 +127,7 @@ def test_the_index_is_generated_from_the_model() -> None:
     list_fields = {
         field
         for field, info in oc.OrganizationProfile.model_fields.items()
-        if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped")
+        if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped", "fx_rates")
     }
     # The one object field read as a category (#11543): its rules are its rows.
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy"}

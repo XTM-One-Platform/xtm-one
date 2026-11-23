@@ -46,7 +46,8 @@ from pydantic import BaseModel
 from app.services.organization_context import CONTRACT_FIELDS, OrganizationProfile
 
 #: List fields of the profile that are identity or bookkeeping, never a category.
-_NOT_CATEGORIES: frozenset[str] = frozenset({"regions", "onboarding_skipped"})
+#: ``fx_rates`` (#1383) is a handful of rates shown with the currency in the basic block.
+_NOT_CATEGORIES: frozenset[str] = frozenset({"regions", "onboarding_skipped", "fx_rates"})
 #: The category read from the tracked organizations, not from the profile.
 TRACKED_ORGANIZATIONS = "tracked_organizations"
 #: Object fields of the profile read as a category, one row per explicit rule (#11543).
