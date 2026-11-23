@@ -2,7 +2,7 @@
 
 /** The URL writes of the asset facet sidebar (#1501): the keys the table reads, back on the first page. */
 import { describe, expect, test } from "vitest";
-import { clearFacetParams, facetParam, toggleFacetParam } from "./AssetFacetSidebar";
+import { clearFacetParams, facetParam, facetsBeside, pickedFacetCount, toggleFacetParam } from "./AssetFacetSidebar";
 import { criticalityShortLabel, orderFacetValues } from "./inventory";
 
 const identity = (text: string) => text;
@@ -29,6 +29,20 @@ describe("asset facet URL state", () => {
     expect(cleared.getAll("a_f_subcategory")).toEqual([]);
     expect(cleared.getAll("a_f_source")).toEqual(["intune"]);
     expect(cleared.get("a_q")).toBe("web");
+  });
+});
+
+describe("asset facets at the window's width (#1501 UX r4 B1)", () => {
+  test("draws the facets beside the table at 1728 and behind the Filters button at 1080, so the table never scrolls sideways", () => {
+    expect(facetsBeside(1728)).toBe(true);
+    expect(facetsBeside(1536)).toBe(true);
+    expect(facetsBeside(1440)).toBe(false);
+    expect(facetsBeside(1080)).toBe(false);
+  });
+
+  test("counts every picked value for the Filters badge", () => {
+    expect(pickedFacetCount({ category: ["host", "ai_target"], subcategory: ["server"], criticality: [], internet_facing: ["yes"], source: [] })).toBe(4);
+    expect(pickedFacetCount({ category: [], subcategory: [], criticality: [], internet_facing: [], source: [] })).toBe(0);
   });
 });
 

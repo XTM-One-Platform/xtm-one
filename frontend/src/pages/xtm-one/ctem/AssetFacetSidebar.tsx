@@ -7,8 +7,13 @@
  * selection lives in the URL (`a_f_<facet>`), the keys the table reads, so a link and `?a_f_category=ai_target` keep
  * working.
  */
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Icon } from "@filigran/design-system";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FacetBranch, FacetCheckbox, FacetGroup, FacetSidebar } from "@/components/ui/facet-sidebar";
+import { formatCount } from "@/lib/number-format";
 import type { AssetFacetValue, AssetFacets, AssetFilterKey } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import { CategoryMark, SourceLogo } from "./inventory-icons";
@@ -55,14 +60,36 @@ const GROUP_LABELS: Record<Exclude<AssetFilterKey, "subcategory">, string> = {
   source: "Source",
 };
 
+/**
+ * The narrowest window that draws the facets beside the asset table (#1501 UX r4 B1). Below it the aside (256 px and
+ * its 24 px gap) left the table card 570 px for 730 px (EN) to 761 px (FR) of content at 1080, so it scrolled sideways
+ * and the row actions fell off screen: there the facets open from a Filters button in the table's toolbar instead.
+ * At 1728 the card measured 1218 of 1218; 1536 (the 2xl step) keeps it about 1026 px, room for every column a
+ * container of that width shows.
+ */
+export const FACETS_BESIDE_MIN_WIDTH = 1536;
+export const FACETS_BESIDE_QUERY = `(min-width: ${FACETS_BESIDE_MIN_WIDTH}px)`;
+
+/** Whether a window this wide draws the facets beside the table (else behind the Filters button). */
+export function facetsBeside(viewportWidth: number): boolean {
+  return viewportWidth >= FACETS_BESIDE_MIN_WIDTH;
+}
+
+/** How many facet values are picked, the badge of the Filters button. */
+export function pickedFacetCount(picked: Record<AssetFilterKey, string[]>): number {
+  return SIDEBAR_FACETS.reduce((total, facet) => total + (picked[facet]?.length ?? 0), 0);
+}
+
 export function AssetFacetSidebar({
-  facets, picked, prefix, fitBeside = false,
+  facets, picked, prefix, fitBeside = false, panel = false,
 }: {
   facets: AssetFacets | undefined;
   picked: Record<AssetFilterKey, string[]>;
   prefix: string;
   /** Beside a table that fits the window: the aside ends with it and scrolls alone (UX r1 B1). */
   fitBeside?: boolean;
+  /** Inside the Filters dialog of a narrow window (UX r4 B1). */
+  panel?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const [, setSearchParams] = useSearchParams();
@@ -102,7 +129,7 @@ export function AssetFacetSidebar({
   };
 
   return (
-    <FacetSidebar hasFilters={hasFilters} onClearAll={() => clear(SIDEBAR_FACETS)} testId="ctem-inventory-asset-facets" fitBeside={fitBeside}>
+    <FacetSidebar hasFilters={hasFilters} onClearAll={() => clear(SIDEBAR_FACETS)} testId="ctem-inventory-asset-facets" fitBeside={fitBeside} panel={panel}>
       {categories.length > 0 && (
         <FacetGroup
           label={t_i18n(GROUP_LABELS.category)}
@@ -162,5 +189,47 @@ export function AssetFacetSidebar({
       {simple("internet_facing", true)}
       {simple("source", true)}
     </FacetSidebar>
+  );
+}
+
+/**
+ * The facets of a window too narrow to draw them beside the table (UX r4 B1): a Filters button in the table's toolbar,
+ * its badge the number of values picked, opening the same facets in a dialog. The picks stay in the URL as beside.
+ */
+export function AssetFacetsButton({
+  facets, picked, prefix,
+}: {
+  facets: AssetFacets | undefined;
+  picked: Record<AssetFilterKey, string[]>;
+  prefix: string;
+}) {
+  const { t_i18n, intl } = useFormatter();
+  const [open, setOpen] = useState(false);
+  const count = pickedFacetCount(picked);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="gap-1.5"
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+        data-testid="ctem-inventory-asset-facets-button"
+      >
+        <Icon name="sliders-horizontal" size={16} aria-hidden />
+        {t_i18n("Filters")}
+        {count > 0 && (
+          <span className="rounded-sm bg-elevation-hover px-1.5 py-px content-compact tabular-nums">{formatCount(intl.locale, count)}</span>
+        )}
+      </Button>
+      <DialogContent size="sm" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{t_i18n("Filters")}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <AssetFacetSidebar facets={facets} picked={picked} prefix={prefix} panel />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

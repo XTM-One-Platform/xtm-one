@@ -36,7 +36,8 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AssetFacetSidebar, SIDEBAR_FACETS } from "./ctem/AssetFacetSidebar";
+import { AssetFacetSidebar, AssetFacetsButton, FACETS_BESIDE_QUERY, SIDEBAR_FACETS } from "./ctem/AssetFacetSidebar";
+import { useMediaQuery } from "@/hooks/useCompactToolbar";
 import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
@@ -86,6 +87,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
     filters: picked,
   });
   const facets = useAssetFacets({ q: table.search, filters: picked });
+  // Beside the table only where both fit (UX r4 B1); below, the same facets behind a Filters button of the toolbar.
+  const facetsBeside = useMediaQuery(FACETS_BESIDE_QUERY, true);
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
@@ -221,9 +224,10 @@ function AssetsTab({ add }: { add: AddRequest }) {
   return (
     <>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} fitBeside />
+      {facetsBeside && <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} fitBeside />}
       <div className="min-w-0 flex-1">
       <DataTable<CanonicalAssetSummary>
+        toolbarLead={facetsBeside ? undefined : <AssetFacetsButton facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} />}
         rows={rows}
         columns={columns}
         rowKey={(a) => a.id}

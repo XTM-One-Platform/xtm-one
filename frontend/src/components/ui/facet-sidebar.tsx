@@ -152,9 +152,11 @@ export function FacetBranch({
  * With `fitBeside` (beside a records table that fits the window), the aside ends at the window's
  * bottom, as the table does, and is the only scroller of the facets: the page never scrolls (#1501
  * UX r1 B1). Without it (a long-form page, the integration catalog), it sticks while the page scrolls.
+ * With `panel`, the same facets inside a dialog (a window too narrow for the aside beside its table,
+ * #1501 UX r4 B1): no aside, no card, no heading of its own (the dialog's title names it).
  */
 export function FacetSidebar({
-  children, hasFilters, onClearAll, className, testId, fitBeside = false,
+  children, hasFilters, onClearAll, className, testId, fitBeside = false, panel = false,
 }: {
   children: ReactNode;
   hasFilters: boolean;
@@ -162,11 +164,26 @@ export function FacetSidebar({
   className?: string;
   testId?: string;
   fitBeside?: boolean;
+  panel?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const [aside, setAside] = useState<HTMLElement | null>(null);
-  const room = useFitBeside(fitBeside ? aside : null);
-  const fitted = fitBeside && room !== undefined;
+  const room = useFitBeside(fitBeside && !panel ? aside : null);
+  const fitted = fitBeside && !panel && room !== undefined;
+  if (panel) {
+    return (
+      <div className={cn("space-y-5", className)} data-testid={testId}>
+        {hasFilters && (
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 content-compact text-default-secondary" onClick={onClearAll}>
+              <Icon name="rotate-ccw" size={16} aria-hidden /> {t_i18n("Clear all")}
+            </Button>
+          </div>
+        )}
+        {children}
+      </div>
+    );
+  }
   return (
     <aside
       ref={setAside}
