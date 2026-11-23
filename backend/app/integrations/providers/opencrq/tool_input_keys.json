@@ -396,6 +396,16 @@
   "get_opencrq_crq_what_if": [
     {
       "procedures": [
+        "crqIndicators.getLatestRun"
+      ],
+      "fields": [
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
         "crqIndicators.getWhatIfResults"
       ],
       "fields": [
@@ -1408,6 +1418,17 @@
     }
   ],
   "run_opencrq_crq_simulation": [
+    {
+      "procedures": [
+        "crqIndicators.enqueueFamilyRecompute"
+      ],
+      "fields": [
+        "family",
+        "riskScenarioId"
+      ],
+      "conditional": [],
+      "closed": true
+    },
     {
       "procedures": [
         "crqIndicators.enqueueSimulation"
