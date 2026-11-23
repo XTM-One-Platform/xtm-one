@@ -221,8 +221,9 @@ async def repair_attack_surface_new_hosts(
     from app.services import ctem_attack_surface as surface
 
     result = await surface.repair_partial_read_new_hosts(db, await _organization_id(db), dry_run=body.dry_run)
-    if not body.dry_run:
-        await db.commit()
+    # A dry run writes nothing, so the commit is a no-op there; committing on every path
+    # keeps the writes visible before the response is sent.
+    await db.commit()
     return result
 
 
