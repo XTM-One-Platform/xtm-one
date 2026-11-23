@@ -15172,6 +15172,7 @@
   "Currency of the amounts": "Devise des montants",
   "Embedded": "Intégré",
   "Exposure": "Exposition",
+  "Exposure policy": "Politique d'exposition",
   "Fields not filled, reported by every agent that needs them:": "Champs non renseignés, signalés par chaque agent qui en a besoin :",
   "Internal": "Interne",
   "Link {name} to its OpenCRQ asset": "Lier {name} à son actif OpenCRQ",

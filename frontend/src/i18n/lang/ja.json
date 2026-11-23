@@ -15172,6 +15172,7 @@
   "Currency of the amounts": "金額の通貨",
   "Embedded": "組み込み",
   "Exposure": "公開範囲",
+  "Exposure policy": "公開範囲ポリシー",
   "Fields not filled, reported by every agent that needs them:": "未入力の項目（必要とするすべてのエージェントが報告します）：",
   "Internal": "社内",
   "Link {name} to its OpenCRQ asset": "{name}をOpenCRQの資産にリンク",
