@@ -175,13 +175,47 @@ async def test_a_fleet_member_run_starts_from_the_profile(monkeypatch):
     async def _current(_db):
         return _row({k: v for k, v in FULL.items() if k != "loaded_hourly_rate"}, version=4)
 
+    async def _ctem(_db: object, _fleet_id: object) -> bool:
+        return True
+
     monkeypatch.setattr(fleet_runs, "home_fleet_defaults", _home)
     monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(oc, "ctem_fleet", _ctem)
     text = await oc.fleet_run_context(None, uuid.uuid4())  # type: ignore[arg-type]
     assert text.startswith(f"\n\n{oc.FLEET_RUN_CONTEXT_HEADER}\n")
     assert "version 4" in text
     assert "Fields not filled: loaded hourly rate." in text
     assert "UNTRUSTED" in text
+
+
+async def test_a_member_of_a_fleet_that_is_not_ctem_is_not_told_the_ctem_only_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.fleet_runs as fleet_runs
+
+    async def _home(_db: object, _agent_id: object) -> fleet_runs.FleetRunDefaults:
+        return fleet_runs.FleetRunDefaults(fleet_id=uuid.uuid4())
+
+    async def _current(_db: object) -> object:
+        return _row({k: v for k, v in FULL.items() if k not in ("loaded_hourly_rate", "ai_systems")}, version=4)
+
+    async def _not_ctem(_db: object, _fleet_id: object) -> bool:
+        return False
+
+    monkeypatch.setattr(fleet_runs, "home_fleet_defaults", _home)
+    monkeypatch.setattr(oc, "current_version", _current)
+    monkeypatch.setattr(oc, "ctem_fleet", _not_ctem)
+    text = await oc.fleet_run_context(None, uuid.uuid4())  # type: ignore[arg-type]
+    assert "Fields not filled: AI systems inventory." in text
+    assert "loaded hourly rate" not in text
+    assert "Organization context incomplete" not in text
+    # The same fleet run of an agent holding CTEM tools keeps the notice (#1384).
+    agent = SimpleNamespace(
+        id=uuid.uuid4(), slug="ctem-risk-quantifier", is_builtin=False, builtin_tool_ids=["ctem_read"]
+    )
+    text = await oc.fleet_run_context(None, agent.id, agent=agent)  # type: ignore[arg-type]
+    assert "Fields not filled: AI systems inventory, loaded hourly rate." in text
+    assert "Organization context incomplete: missing AI systems inventory, loaded hourly rate." in text
 
 
 async def test_a_fleet_member_run_without_a_profile_names_every_field(monkeypatch):

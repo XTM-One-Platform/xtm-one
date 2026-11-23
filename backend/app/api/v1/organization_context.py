@@ -245,8 +245,15 @@ async def save_organization_context(
     from app.services.organization_assets_import import check_links
     from app.services.organization_context_draft import name_saved_pirs
 
+    submitted = dict(body.profile or {})
+    if "fx_rates" not in submitted:
+        # #1383: the reference exchange rates are set by API or by an agent, not by the
+        # settings form; a save that does not send them keeps the stored ones.
+        current = await org_context.current_version(db)
+        if current is not None and (current.profile or {}).get("fx_rates"):
+            submitted["fx_rates"] = current.profile["fx_rates"]
     try:
-        profile = org_context.parse_profile(body.profile)
+        profile = org_context.parse_profile(submitted)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     problems = check_links(profile)

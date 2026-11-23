@@ -127,7 +127,7 @@ def test_the_index_is_generated_from_the_model() -> None:
     list_fields = {
         field
         for field, info in oc.OrganizationProfile.model_fields.items()
-        if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped")
+        if get_origin(info.annotation) is list and field not in ("regions", "onboarding_skipped", "fx_rates")
     }
     # The one object field read as a category (#11543): its rules are its rows.
     assert {c.field for c in cats.CATEGORIES if c.field} == list_fields | {"prioritization_policy"}
@@ -436,3 +436,105 @@ def test_a_complete_profile_adds_no_notice() -> None:
 def test_the_tool_reading_carries_the_notice_too() -> None:
     assert "Organization context incomplete: missing " in oc.render_for_agent(cast(Any, _row(PROFILE)))
     assert "Organization context incomplete: missing " in oc.render_for_agent(None)
+
+
+# -- The notice is CTEM-scoped (#1384) ----------------------------------------
+
+
+def test_a_run_that_is_not_ctem_work_gets_no_notice_and_no_ctem_only_field() -> None:
+    text = inj.render_summary(_row(PROFILE), ctem_work=False)
+    assert text.startswith(inj.SUMMARY_HEADER)
+    assert "Acme Energy" in text and "EUR" in text, "the identity is kept"
+    assert "Categories:" in text, "the category index is kept"
+    assert "Not filled: " in text and "Never guess a missing field." in text
+    assert "Organization context incomplete" not in text
+    tail = text.split("Not filled: ", 1)[1]
+    labels = dict(oc.CONTRACT_FIELDS)
+    for path in oc.CTEM_ONLY_FIELDS:
+        assert labels[path] not in tail, path
+    for reading in (
+        oc.render_for_agent(cast(Any, _row(PROFILE)), ctem_work=False),
+        oc.render_for_agent(None, ctem_work=False),
+    ):
+        assert "Organization context incomplete" not in reading
+        assert "loaded hourly rate" not in reading
+
+
+def test_a_ctem_run_keeps_the_notice_as_today() -> None:
+    assert inj.render_summary(_row(PROFILE), ctem_work=True) == inj.render_summary(_row(PROFILE))
+    assert "Organization context incomplete: missing " in inj.render_summary(_row(PROFILE), ctem_work=True)
+
+
+@pytest.mark.parametrize(
+    ("agent", "expected"),
+    [
+        (SimpleNamespace(slug="ctem-risk-quantifier", is_builtin=True, builtin_tool_ids=["ctem_read"]), True),
+        (SimpleNamespace(slug="ctem-threat-relevance-analyst", is_builtin=True, builtin_tool_ids=[]), True),
+        (SimpleNamespace(slug="ctem-remediation-coordinator", is_builtin=True, builtin_tool_ids=None), True),
+        (SimpleNamespace(slug="ctem-threat-relevance-analyst", is_builtin=False, builtin_tool_ids=[]), False),
+        (SimpleNamespace(slug="chief-of-staff", is_builtin=False, builtin_tool_ids=["files", "web"]), False),
+        (None, False),
+    ],
+)
+def test_holding_ctem_tools_is_the_built_in_ctem_agents_and_the_read_group(agent: object, expected: bool) -> None:
+    assert oc.holds_ctem_tools(agent) is expected
+
+
+@pytest.mark.parametrize(
+    ("slug", "is_builtin", "forked_from", "expected"),
+    [
+        ("ctem-loop", True, None, True),
+        ("ctem-threat-response", True, None, True),
+        ("ctem-loop", False, None, False),
+        ("my-loop", False, {"slug": "ctem-loop", "is_builtin": True}, True),
+        ("my-loop", False, {"slug": "ctem-loop", "is_builtin": False}, False),
+        ("ceo-office", False, None, False),
+    ],
+)
+def test_a_ctem_fleet_is_a_seeded_ctem_fleet_or_a_fork_of_one(
+    slug: str, is_builtin: bool, forked_from: object, expected: bool
+) -> None:
+    assert oc.is_ctem_fleet(slug=slug, is_builtin=is_builtin, forked_from=forked_from) is expected
+
+
+async def test_the_summary_of_an_agent_in_no_fleet_without_ctem_tools_has_no_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.fleet_runs as fleet_runs
+
+    await _with(monkeypatch, platform=True)
+
+    async def _no_fleet(_db: object, _agent_id: object) -> fleet_runs.FleetRunDefaults:
+        return fleet_runs.NO_FLEET
+
+    monkeypatch.setattr(fleet_runs, "home_fleet_defaults", _no_fleet)
+    plain = SimpleNamespace(
+        id=uuid.uuid4(), slug="writer", is_builtin=False, builtin_tool_ids=[], organization_context_mode="inherit"
+    )
+    text = await inj.organization_summary_for(_NO_DB, agent=plain)
+    assert text.startswith(inj.SUMMARY_HEADER) and "Never guess a missing field." in text
+    assert "Organization context incomplete" not in text
+    ctem = SimpleNamespace(
+        id=uuid.uuid4(), slug="x", is_builtin=False, builtin_tool_ids=["ctem_read"], organization_context_mode="inherit"
+    )
+    assert "Organization context incomplete: missing " in await inj.organization_summary_for(_NO_DB, agent=ctem)
+
+
+async def test_the_summary_of_a_ctem_fleet_member_has_the_notice(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.fleet_runs as fleet_runs
+
+    await _with(monkeypatch, platform=True)
+    fleet_id = uuid.uuid4()
+
+    async def _home(_db: object, _agent_id: object) -> fleet_runs.FleetRunDefaults:
+        return fleet_runs.FleetRunDefaults(fleet_id=fleet_id)
+
+    async def _ctem(_db: object, wanted: object) -> bool:
+        return wanted == fleet_id
+
+    monkeypatch.setattr(fleet_runs, "home_fleet_defaults", _home)
+    monkeypatch.setattr(oc, "ctem_fleet", _ctem)
+    member = SimpleNamespace(
+        id=uuid.uuid4(), slug="m", is_builtin=False, builtin_tool_ids=[], organization_context_mode="inherit"
+    )
+    assert "Organization context incomplete: missing " in await inj.organization_summary_for(_NO_DB, agent=member)

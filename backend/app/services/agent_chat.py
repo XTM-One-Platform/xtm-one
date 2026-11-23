@@ -4537,6 +4537,7 @@ async def run_agent_chat(
                     *build_organization_context_tool(
                         user_id=None if is_anonymous_user else user_id,
                         is_admin=bool(getattr(user_record, "is_admin", False)),
+                        agent=agent,
                     )
                 )
             # The write-proposal tool of the profile (#9484, S-a2): the CTEM
