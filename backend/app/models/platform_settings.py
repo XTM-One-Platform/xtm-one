@@ -212,6 +212,15 @@ class PlatformSettings(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
 
+    # Reply suggestions: once a chat turn is done, the routing model proposes
+    # the user's next message as ghost text in the composer
+    # (``services/chat_reply_suggestions.py``). Default ON, but nothing is
+    # generated while no ``routing_model`` is set; each user may turn it off
+    # (``User.reply_suggestions_enabled``).
+    reply_suggestions_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
     # Organization summary in every agent's system prompt (#11533): the
     # platform default of the cascade assignment > agent > platform that
     # ``services/organization_context_injection.py`` resolves. Default ON.

@@ -62,4 +62,15 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
 
 def test_the_catalog_without_activity_keeps_its_former_shape_plus_sources() -> None:
     row = ctem_signals.path_catalog()[0]
-    assert {"id", "label", "default_lens", "listener", "description", "sources", "status"} == set(row)
+    assert {"id", "label", "default_lens", "listener", "description", "sources", "status", "capabilities"} == set(row)
+
+
+def test_the_code_paths_name_the_fleet_capability_that_feeds_them() -> None:
+    """#1434: a fleet without Application security says why code_flaw and credential_leak are silent."""
+    from app.services.fleet_capability_slots import CAPABILITIES
+
+    rows = {r["id"]: r for r in ctem_signals.path_catalog()}
+    assert "application_security" in rows["code_flaw"]["capabilities"]
+    assert rows["credential_leak"]["capabilities"] == ["application_security"]
+    for caps in sources.PATH_CAPABILITIES.values():
+        assert set(caps) <= set(CAPABILITIES)

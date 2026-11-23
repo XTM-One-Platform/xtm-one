@@ -158,6 +158,7 @@ from app.services.orchestration_engine import (
     deadline_spent,
     deadline_spent_message,
     notify_orchestration_wake,
+    queued_deadline,
 )
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
@@ -843,6 +844,20 @@ _MIN_ASSIGNMENT_TIMEOUT_SECONDS: int = 600
 # inner loop still believed it had 900 s — the exact bound drift this module
 # is meant to eliminate. Matches the model's column default.
 _UNSET_TIMEOUT_FALLBACK_SECONDS: int = 300
+
+
+def max_queue_wait_seconds(assignment: Assignment) -> float | None:
+    """How long a run of *assignment* may wait for a free worker before it fails unstarted.
+
+    ``trigger_config.max_queue_wait_seconds`` when the assignment sets a number (0 or less: no
+    queue bound); ``None`` otherwise, which means the platform's
+    ``orchestration_max_queue_wait_seconds``. Distinct from ``timeout_seconds``, which is the
+    run's execution time and counts from its start.
+    """
+    value = (getattr(assignment, "trigger_config", None) or {}).get("max_queue_wait_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _apply_iteration_timeout_floor(
@@ -9529,7 +9544,7 @@ async def execute_assignment_run(
                         seconds=retry_delay_seconds
                     )
                     if retry_ts <= 0:
-                        retry_deadline = None
+                        retry_deadline, retry_budget = None, {}
                     else:
                         retry_timeout = _apply_iteration_timeout_floor(
                             float(retry_ts),
@@ -9537,14 +9552,17 @@ async def execute_assignment_run(
                             retry_run_id,
                             assignment.timeout_seconds,
                         )
-                        retry_deadline = retry_run_at + timedelta(
-                            seconds=retry_timeout
-                            + settings.orchestration_grace_seconds
+                        # Counted from the retry's start, as the primary
+                        # dispatch: a retry into a saturated queue keeps its budget.
+                        retry_deadline, retry_budget = queued_deadline(
+                            retry_run_at,
+                            retry_timeout + settings.orchestration_grace_seconds,
+                            max_queue_wait_seconds=max_queue_wait_seconds(assignment),
                         )
                     await create_execution(
                         db,
                         adapter="assignment",
-                        payload={"run_id": retry_run_id},
+                        payload={"run_id": retry_run_id, **retry_budget},
                         run_at=retry_run_at,
                         deadline_at=retry_deadline,
                         dedup_key=f"assignment_run:{retry_run_id}",
@@ -10250,8 +10268,13 @@ async def _schedule_run_execution(
     timeout_seconds = assignment.timeout_seconds
     if timeout_seconds is None:
         timeout_seconds = _UNSET_TIMEOUT_FALLBACK_SECONDS
+    #
+    # The budget counts from the run's START (``queued_deadline``): until a
+    # worker claims it, ``deadline_at`` is the queue-wait bound; the claim
+    # sets it to start + budget, so time spent waiting for a free slot is
+    # never charged to the run.
     if timeout_seconds <= 0:
-        deadline_at = None
+        deadline_at, start_budget = None, {}
     else:
         effective_timeout = _apply_iteration_timeout_floor(
             float(timeout_seconds),
@@ -10259,8 +10282,10 @@ async def _schedule_run_execution(
             run_id,
             assignment.timeout_seconds,
         )
-        deadline_at = run_at + timedelta(
-            seconds=effective_timeout + settings.orchestration_grace_seconds
+        deadline_at, start_budget = queued_deadline(
+            run_at,
+            effective_timeout + settings.orchestration_grace_seconds,
+            max_queue_wait_seconds=max_queue_wait_seconds(assignment),
         )
 
     # Durable scheduling via the orchestration engine: the reconciler
@@ -10273,7 +10298,7 @@ async def _schedule_run_execution(
     await create_execution(
         db,
         adapter="assignment",
-        payload={"run_id": run_id},
+        payload={"run_id": run_id, **start_budget},
         run_at=run_at,
         deadline_at=deadline_at,
         dedup_key=f"assignment_run:{run_id}",
