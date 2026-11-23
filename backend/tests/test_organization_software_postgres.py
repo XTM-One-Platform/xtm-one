@@ -237,6 +237,21 @@ async def test_a_hand_typed_software_takes_its_cpe_override_and_survives_a_rebui
     assert twice.value.status == 409 and bad_cpe.value.status == 422
 
 
+async def test_the_matcher_reads_synced_and_hand_typed_software_with_their_versions() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST, HOST_2])
+        await sw.create_software(session, org, vendor="Acme", product="Portal", software_type="saas", cpe=PORTAL_CPE)
+        await session.commit()
+        software = await sw.matcher_software(session, org)
+    by_product = {s["product"]: s for s in software}
+    assert set(by_product) == {"Chrome", "Portal"}
+    assert sorted(by_product["Chrome"]["versions"]) == ["131.0", "unknown"]
+    assert by_product["Portal"]["cpe"] == PORTAL_CPE and by_product["Portal"]["versions"] == []
+    entries = {e["label"]: e for e in sw.matcher_entries(software)}
+    assert entries["Google Chrome"]["version"] == "131.0"
+    assert entries["Acme Portal"]["cpe"] == PORTAL_CPE
+
+
 async def test_a_filter_with_several_values_answers_any_of_them() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _setup(session, [HOST])

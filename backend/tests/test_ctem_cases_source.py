@@ -241,7 +241,7 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
         return None
 
     db.commit = commit
-    monkeypatch.setattr(source, "_profile_tech_stack", stack)
+    monkeypatch.setattr(source, "_organization_software", stack)
     monkeypatch.setattr(source, "_user_creds", creds)
     monkeypatch.setattr(source, "_read_opencti", read_opencti)
     monkeypatch.setattr(source, "attach_probe", lambda headers, base_url: headers)

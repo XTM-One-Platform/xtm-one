@@ -203,7 +203,7 @@ def _wire(monkeypatch, *, stack, tailored, openaev, reachability=None, rows=None
         return tailored
 
     collectors = [("opencti", fake_octi)] + ([("openaev", fake_aev)] if openaev else [])
-    monkeypatch.setattr(collector, "_profile_tech_stack", fake_stack)
+    monkeypatch.setattr(collector, "_organization_software", fake_stack)
     monkeypatch.setattr(collector, "_profile_asset_rows", fake_rows)
     monkeypatch.setattr(collector, "_profile_reachability", fake_reachability)
     monkeypatch.setattr(collector, "_user_creds", fake_creds)
