@@ -35,6 +35,19 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    id), asset groups, crown jewels (by name or `opencrq_asset_id`), and the
    tech stack for software (a product name, or the product part of a CPE),
    which adds the assets that run that product.
+   **Shipped products** (`shipped_products`, what the organization ships,
+   apart from the tech stack it runs): a software reference or a CPE of the
+   evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies
+   the vulnerability's CPEs into `cpe`) matches a row by CPE first (the
+   vendor and product of the row's CPE, any version), else by product and
+   vendor (a CPE naming them, or the product name). A CPE match wins over a
+   product match. The matched rows' repositories (`owner/name`) resolve the
+   subject (`reconcile.repositories`, `reconcile.shipped_products` with
+   `by: cpe | product`), and the profile asset of the same name (a
+   repository the GitHub or GitLab import wrote) gives its criticality. The
+   case key stays `patch:vulnerability/<cve>`, so the CVE from OpenCTI and
+   the GitHub repository advisory of the same CVE share one case. No match
+   leaves the subject `subject_unresolved` as before.
 3. **Lenses**: the organization's other signals on the same subject (same
    kind and reference, any recorder, any path) are counted with this one.
    Confidence: `high` when a test proved it (path `proven_exploitable` or
