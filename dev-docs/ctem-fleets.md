@@ -591,7 +591,14 @@ categories preloaded after the block come from the same cascade on
 `organization_context_categories` (platform JSON list, default `[]`; agent
 and assignment NULL = inherit, a list, empty included, wins;
 `resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. A run of a fleet member keeps the fuller
+with the call that reads the rest. The brief notice of an incomplete
+profile ("Organization context incomplete: missing ...", #11586) and the
+CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
+loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
+the fleet block and the tool reading name them only when
+`organization_context.ctem_work_for` holds (the agent holds CTEM tools, a
+built-in CTEM case or signal agent or the `ctem_read` group, or its home
+fleet is a seeded CTEM fleet or a fork of one). A run of a fleet member keeps the fuller
 fleet block above instead, so the profile appears once; resolved off,
 neither block. An explicit `off` on the agent or the assignment also removes
 the tool (`tools_enabled_for`, in `agent_chat` and `assignment_engine`);
@@ -1024,6 +1031,18 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   change of event types replaces the trigger.
 - Removed: when `provision` is dropped, the assignment is disabled or deleted.
   An unbound integration leaves the state `orphaned` with the reason.
+- Bound: the assignment's binding, else its agent's; an agent that reaches the
+  module only by template binding (`integration_template_bindings`, the seeded
+  agents) gets the integration its provisioning run-as user resolves at run
+  time (`trigger_provisioning.template_integration_id`: the user's own first,
+  else a company-wide one, oldest first so the receiver URL stays stable; never
+  the seed owner). None resolvable: the state says `template binding opencti:
+  no OpenCTI integration resolvable for the run-as user`. The OpenAEV pass and
+  the CTEM-08 live PIR score re-read (the provisioned `integration_id`) follow
+  the same rule, and so does the event poller (`event_poller._poll_integration`,
+  the OpenCRQ job events): a template-resolved integration is polled as the
+  run-as user. A poll that reads nothing says why in `get_assignment`
+  (`Poll skipped: <reason>`, `event_poll_skip:<assignment>`, a day).
 - Visible: `opencti_provisioning` (status, trigger_id, notifier_id, error,
   checked_at) is returned with the assignment's `trigger_config`, next to
   `last_triggered_at`.
@@ -2330,17 +2349,6 @@ command center hero, and on the CTEM loop fleet page (slug `ctem-loop`) through
 the header's "Set up" and the menu's "Run setup again" (`FleetSetupDialog`),
 for an XTM One administrator only, never while impersonating
 (`showsCtemLoopSetupEntry`).
-
-On the command center the entry is a nudge (#1379, `dashboardSetupEntryShown`
-in `ctem-loop-setup.ts`, `useDashboardSetupEntry`): it is drawn only while no
-CTEM work runs, that is the loop fleet's enable step reads
-`automations_enabled` 0 and every fleet the page shows (the CTEM fleets, or the
-person's choice, custom fleets included) reads 0 automations on in its health;
-it is not drawn while either is loading. Its close control writes
-`entry:ctem-loop-setup` into `users.organization_context_notice_dismissed`, so it
-never comes back on its own for that person. The fleet page entries and the
-case card's "Set up the CTEM loop" choice (a case no automation works) are
-contextual and always shown.
 
 ### One guided setup for every fleet
 
