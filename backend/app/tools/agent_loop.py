@@ -4521,6 +4521,30 @@ def unfinished_stop_reason(response: ChatResponse | None) -> str | None:
     return reason if reason in UNFINISHED_STOP_REASONS else None
 
 
+_OUTPUT_TOKEN_KEYS: tuple[str, ...] = ("output_tokens", "completion_tokens")
+
+
+def deadline_stop_without_output(response: ChatResponse | None) -> bool:
+    """The loop stopped on its wall clock before any model call produced output.
+
+    A run that starts late, with less of its deadline left than one model call
+    needs, goes straight to the forced-answer shortcut: its answer is the canned
+    ``FORCED_ANSWER_TIMEOUT_MESSAGE``, no model wrote a token of it. That is a
+    run the deadline never let start, not a completed one. Read off the run's
+    accumulated usage (every returned call merges its output tokens into it),
+    never off the text.
+    """
+    if getattr(response, "stop_reason", None) != DEADLINE_STOP_REASON:
+        return False
+    usage = getattr(response, "usage", None) or {}
+    produced = 0
+    for key in _OUTPUT_TOKEN_KEYS:
+        value = usage.get(key) if isinstance(usage, dict) else None
+        if isinstance(value, (int, float)):
+            produced += int(value)
+    return produced <= 0
+
+
 def _with_limit_stop(response: ChatResponse, limit_stop: str | None) -> ChatResponse:
     """Mark *response* with the loop limit it ended on, when it ended on one.
 

@@ -109,6 +109,10 @@ def test_basic_block_names_the_identity_and_indexes_every_category() -> None:
     assert "2e+06 EUR" in text
     assert "SCADA" not in text, "a category's rows are not in the basic block"
     for category in cats.CATEGORIES:
+        if category.name in cats.OPTIONAL_CATEGORIES:
+            # Named only once filled (shipped products): the block keeps its size.
+            assert f"- {category.name} (" not in text
+            continue
         assert f"- {category.name} (" in text, f"{category.name} missing from the index"
     assert "- crown_jewels (" in text and "): 2 rows;" in text
     assert ": 1 row;" in text

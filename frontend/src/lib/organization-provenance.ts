@@ -63,6 +63,9 @@ export const LOCAL_FIELDS = {
   crown_jewels: ["owner", "business_service", "assets"],
   tech_stack: ["vendor", "cpe", "version"],
   ai_systems: ["owner"],
+  // The CTEM Inventory's rows (#1367, point 3): what the sync never sends.
+  assets_exposure: ["environment", "owner", "tech_stack", "group"],
+  asset_groups: ["environment", "owner", "tech_stack", "description"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Whether the column *key* of a row of *source* takes an edit: always for a hand row, only a local field for a platform row. */

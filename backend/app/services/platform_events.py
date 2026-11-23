@@ -183,6 +183,7 @@ _RUN_KEYS = (
     "work_item_ids",
     "reason",
     "stop_reason",
+    "partial",
 )
 _TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "outcome_preview")
 _A2A_DELEGATION_KEYS = (
@@ -297,7 +298,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         "description": (
             "An assignment run completed. stop_reason names why a run stopped before its task was done "
             "(deadline, budget_exhausted, max_iterations, timeout, waiting_on_tasks...): the run still "
-            "completes with a partial result; null when it ended on its own terms."
+            "completes with a partial result; null when it ended on its own terms. partial is true exactly "
+            "when stop_reason is set."
         ),
         "filter_keys": _RUN_KEYS,
     },
@@ -774,6 +776,9 @@ def run_data(
         # Why a completed run stopped before its task was done (the run's
         # stop_reason: deadline, budget, iteration cap...); None otherwise.
         "stop_reason": stop_reason,
+        # A completed run that stopped before its task was done, said outright:
+        # a listener never has to know the list of unfinished stop reasons.
+        "partial": bool(stop_reason),
         # The agent whose run it is raised the event (ignore_self_triggered_events).
         "actor_agent_id": _str(agent_id),
         "participant_agent_ids": sorted(participants),

@@ -58,6 +58,7 @@ ENTERPRISE_KNOWLEDGE = "enterprise_knowledge"
 _LABELS: dict[str, str] = {
     "assets_exposure": "assets and exposure",
     "asset_groups": "asset groups",
+    "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
@@ -213,6 +214,16 @@ def matches(row: Any, query: str) -> bool:
         return True
     values = row.values() if isinstance(row, dict) else [row]
     return any(needle in str(value).lower() for value in values)
+
+
+#: Categories the index names only once filled (#1432): most organizations ship nothing, and the
+#: basic block keeps its size for every profile that does not fill them.
+OPTIONAL_CATEGORIES: frozenset[str] = frozenset({"shipped_products"})
+
+
+def indexed(category: Category, count: int) -> bool:
+    """Whether the category index of the basic block names *category*."""
+    return bool(count) or category.name not in OPTIONAL_CATEGORIES
 
 
 def index_line(category: Category, count: int) -> str:
