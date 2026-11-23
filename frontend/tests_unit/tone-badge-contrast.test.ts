@@ -7,12 +7,12 @@ import { describe, it, expect } from "vitest";
  * The hot-tone badge (#1267) reads in both themes.
  *
  * Each tone of `HOT_TONE_CLASS` (components/ui/tone-badge.tsx) is read from the
- * source, its text, edge and wash resolved from the library's own theme
- * tokens, and held on every default and hover surface of layers 0 to 2: the
- * label at 4.5:1 against the washed pill, the edge at 3:1 against the ground.
- * With the pastel preference on (the `pastel:` classes) every tone is the
- * library Chip's plain fill: no edge, the 30% secondary wash, the default
- * label, held at 4.5:1 on the same surfaces.
+ * source, its text and wash resolved from the library's own theme tokens, and
+ * held on every default and hover surface of layers 0 to 2: the label at 4.5:1
+ * against the washed pill. One chip style since @filigran/design-system 1.13.0
+ * (#1595): the library Chip's 30% secondary fill, the default label and the
+ * 1px inset hairline in the tone's `-tertiary` ink at 30% (decorative, as in
+ * the library, so it is checked for presence, not contrast).
  */
 
 const FRONTEND = path.resolve(__dirname, "..");
@@ -86,14 +86,9 @@ async function tones(): Promise<Record<string, string>> {
   return Object.fromEntries([...block![1].matchAll(/(\w+):\s*"([^"]+)"/g)].map(([, tone, classes]) => [tone, classes]));
 }
 
-/** The CSS variable a text, border or bg utility paints with (standard, or under `pastel:`). */
-function variableOf(
-  classes: string,
-  kind: "text" | "border" | "bg",
-  mode: "standard" | "pastel" = "standard",
-): { variable: string; share: number } | null {
-  const prefix = mode === "pastel" ? "pastel:" : "(?<![\\w:-])";
-  const m = classes.match(new RegExp(`${prefix}${kind}-([a-z][\\w-]*?)(?:/(\\d+))?(?=\\s|$)`));
+/** The CSS variable a text or bg utility paints with. */
+function variableOf(classes: string, kind: "text" | "bg"): { variable: string; share: number } | null {
+  const m = classes.match(new RegExp(`(?<![\\w:-])${kind}-([a-z][\\w-]*?)(?:/(\\d+))?(?=\\s|$)`));
   if (!m || m[1] === "transparent") return null;
   const token = m[1];
   const translucent = token.match(/^(.*)-transparency-(\d+)$/);
@@ -109,51 +104,31 @@ describe("hot-tone badge", () => {
     expect(Object.keys(await tones()).sort()).toEqual(["blue", "green", "neutral", "orange", "red", "yellow"]);
   });
 
-  it("reads the label at 4.5:1 and the edge at 3:1 on every surface, in both themes", async () => {
+  it("is the library Chip's single style: 30% fill, default label, inset hairline at 30%, no pastel class", async () => {
+    for (const [tone, classes] of Object.entries(await tones())) {
+      expect(classes, `${tone} still follows the retired pastel class`).not.toMatch(/pastel:/);
+      expect(classes, `${tone} keeps the box size`).toMatch(/(^|\s)border-transparent(\s|$)/);
+      expect(classes, `${tone} fill`).toMatch(/(^|\s)bg-feedback-[a-z]+-secondary-transparency-30(\s|$)/);
+      expect(classes, `${tone} label`).toMatch(/(^|\s)text-default-primary(\s|$)/);
+      expect(classes, `${tone} hairline`).toMatch(/(^|\s)inset-ring inset-ring-feedback-[a-z]+-tertiary\/30(\s|$)/);
+    }
+  });
+
+  it("reads the label at 4.5:1 on every surface, in both themes", async () => {
     const table = await tones();
     const { primitives, schemes } = await themes();
     for (const [scheme, scope] of Object.entries(schemes)) {
       for (const [tone, classes] of Object.entries(table)) {
         const text = variableOf(classes, "text");
-        const edge = variableOf(classes, "border");
         const wash = variableOf(classes, "bg");
         expect(text, `${tone} has no text colour`).not.toBeNull();
-        expect(edge, `${tone} has no edge colour`).not.toBeNull();
-        for (const surface of SURFACES) {
-          const ground = resolve(`var(--${surface})`, scope, primitives);
-          const pill = wash ? mix(resolve(wash.variable, scope, primitives), ground, wash.share) : ground;
-          expect(
-            contrast(resolve(text!.variable, scope, primitives), pill),
-            `${tone} label on ${surface}, ${scheme}`,
-          ).toBeGreaterThanOrEqual(4.5);
-          expect(
-            contrast(resolve(edge!.variable, scope, primitives), ground),
-            `${tone} edge on ${surface}, ${scheme}`,
-          ).toBeGreaterThanOrEqual(3);
-        }
-      }
-    }
-  });
-
-  it("is the library Chip's plain fill under the pastel preference, label at 4.5:1", async () => {
-    const table = await tones();
-    const { primitives, schemes } = await themes();
-    for (const [tone, classes] of Object.entries(table)) {
-      expect(classes, `${tone} keeps its edge in pastel`).toMatch(/(^|\s)pastel:border-transparent(\s|$)/);
-      expect(classes, `${tone} pastel wash`).toMatch(/pastel:bg-feedback-[a-z]+-secondary-transparency-30\b/);
-    }
-    for (const [scheme, scope] of Object.entries(schemes)) {
-      for (const [tone, classes] of Object.entries(table)) {
-        const text = variableOf(classes, "text", "pastel");
-        const wash = variableOf(classes, "bg", "pastel");
-        expect(text, `${tone} has no pastel text colour`).not.toBeNull();
-        expect(wash, `${tone} has no pastel wash`).not.toBeNull();
+        expect(wash, `${tone} has no wash`).not.toBeNull();
         for (const surface of SURFACES) {
           const ground = resolve(`var(--${surface})`, scope, primitives);
           const pill = mix(resolve(wash!.variable, scope, primitives), ground, wash!.share);
           expect(
             contrast(resolve(text!.variable, scope, primitives), pill),
-            `${tone} pastel label on ${surface}, ${scheme}`,
+            `${tone} label on ${surface}, ${scheme}`,
           ).toBeGreaterThanOrEqual(4.5);
         }
       }

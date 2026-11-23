@@ -59,32 +59,19 @@ export function applyTheme(theme: string | null | undefined) {
   } catch { /* quota exceeded or private browsing */ }
 }
 
-const PASTEL_STORAGE_KEY = "copilot-pastel";
-
 /**
- * The "Pastel colours" preference (#1305): the design system draws standard
- * colours by default and its pastel fills only under a `pastel` class on the
- * root element (its `pastel:` variant), so this class is the whole switch.
- * Cached like the theme so a reload paints the chosen palette before `/me`.
+ * The design system draws one chip style since 1.13.0 (#1595): the former
+ * "Pastel colours" preference is gone, so the class and the cache entry it
+ * left on a browser are cleared once at load.
  */
-export function applyPastel(enabled: boolean | null | undefined) {
-  const on = enabled === true;
-  document.documentElement.classList.toggle("pastel", on);
+function clearRetiredPastel() {
+  document.documentElement.classList.remove("pastel");
   try {
-    if (on) localStorage.setItem(PASTEL_STORAGE_KEY, "1");
-    else localStorage.removeItem(PASTEL_STORAGE_KEY);
-  } catch { /* quota exceeded or private browsing */ }
-}
-
-function restoreCachedPastel() {
-  try {
-    if (localStorage.getItem(PASTEL_STORAGE_KEY) === "1") {
-      document.documentElement.classList.add("pastel");
-    }
+    localStorage.removeItem("copilot-pastel");
   } catch { /* ignore */ }
 }
 
-restoreCachedPastel();
+clearRetiredPastel();
 
 function readCachedTheme(): string | null {
   try {
@@ -156,13 +143,6 @@ followModeAttribute();
 export function useThemeEffect() {
   const { data: user } = useMe();
   const userTheme = user?.theme;
-  const userLoaded = user !== undefined;
-  const userPastel = user?.pastel_colours;
-
-  useEffect(() => {
-    if (!userLoaded) return;
-    applyPastel(userPastel);
-  }, [userLoaded, userPastel]);
 
   useEffect(() => {
     if (userTheme === undefined) return;

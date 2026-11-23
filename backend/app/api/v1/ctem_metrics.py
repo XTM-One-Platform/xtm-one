@@ -1452,6 +1452,75 @@ async def _is_first_vertical_run(
 _VERTICAL_RUN_SCAN = 40
 
 
+def _run_unreadable(run: Any) -> bool:
+    """Whether *run* completed with none of its called integrations readable (#1589)."""
+    from app.services.integration_auth_guard import UNREADABLE_STOP_REASON
+
+    return getattr(run, "stop_reason", None) == UNREADABLE_STOP_REASON
+
+
+async def _latest_run_not_assessable(
+    db: AsyncSession, agent_id: Any, user_id: Any, vertical: str
+) -> list[dict[str, Any]] | None:
+    """The integration auth failures of the user's newest completed run of
+    *agent_id* for *vertical* when that run could read none of its
+    integrations, else ``None``.
+
+    The card then says "not assessable" (and why) instead of ``pending``, which
+    would start another blind run on landing (#1589).
+    """
+    run = (
+        await db.execute(
+            select(AssignmentRun)
+            .where(
+                AssignmentRun.agent_id == agent_id,
+                AssignmentRun.user_id == user_id,
+                AssignmentRun.trigger_context["ctem_vertical"].astext == vertical,
+                AssignmentRun.status == "completed",
+            )
+            .order_by(AssignmentRun.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if run is None or not _run_unreadable(run):
+        return None
+    return list(run.integration_auth_failures or [])
+
+
+def _artifact_status(*, generating: bool, artifact: Any, not_assessable: list[dict[str, Any]] | None) -> str | None:
+    """The card status before the AI-lock check: ``None`` means nothing to show.
+
+    ``generating`` outranks a cached artifact; a newest run that read nothing
+    answers ``not_assessable`` when no earlier artifact can be shown (#1589).
+    """
+    if generating:
+        return "generating"
+    if artifact:
+        return "ready"
+    if not_assessable is not None:
+        return "not_assessable"
+    return None
+
+
+def _artifact_stale(
+    *,
+    artifact: Any,
+    generated_at: datetime | None,
+    not_assessable: list[dict[str, Any]] | None,
+    is_stale: Callable[[datetime | None], bool],
+) -> bool:
+    """Whether the card marks its artifact stale, which makes the page
+    regenerate it on landing.
+
+    Never while the newest run read none of its integrations: a regeneration
+    would read nothing again and leave the older artifact in place, so every
+    landing would start another blind run (#1589).
+    """
+    if not artifact or not_assessable is not None:
+        return False
+    return is_stale(generated_at)
+
+
 async def _latest_vertical_artifact(
     db: AsyncSession, agent_id, user_id, vertical: str
 ) -> tuple[Any | None, dict | None]:
@@ -1481,6 +1550,10 @@ async def _latest_vertical_artifact(
     ).scalars().all()
     legacy: tuple[Any, dict] | None = None
     for r in rows:
+        # A run that could read none of its integrations is never an
+        # artifact: its headline and score were written blind (#1589).
+        if _run_unreadable(r):
+            continue
         parsed = _parse_briefing(r.result_summary)
         if not parsed:
             continue
@@ -1550,27 +1623,33 @@ async def ctem_briefing(
     # briefing - switching back never discards it).
     run, briefing = await _latest_vertical_artifact(db, agent.id, user.id, vertical)
     generating = await _user_has_active_briefing_run(db, agent.id, user.id, vertical)
+    not_assessable = await _latest_run_not_assessable(db, agent.id, user.id, vertical)
 
     # ``generating`` takes precedence over a cached result: when a fresh run is in
     # flight we report "generating" (so the UI spins and polls) even though the
     # previous briefing is still cached and returned alongside it.
-    if generating:
-        status = "generating"
-    elif briefing:
-        status = "ready"
-    else:
-        # Nothing to show: the UI auto-generates on ``pending``, so answer why
-        # it cannot instead (AI off, no model). A cached briefing stays readable.
-        status = await _ai_lock_status(db, agent) or "pending"
+    # Nothing to show: the UI auto-generates on ``pending``, so answer why
+    # it cannot instead (AI off, no model). A cached briefing stays readable.
+    status = (
+        _artifact_status(generating=generating, artifact=briefing, not_assessable=not_assessable)
+        or await _ai_lock_status(db, agent)
+        or "pending"
+    )
 
     generated_at = run.created_at if run else None
     return {
         "briefing": briefing,
         "status": status,
         "generating": generating,
+        # The newest run could read none of its integrations: the failures,
+        # so the card says why (#1589). ``None`` otherwise.
+        "not_assessable": not_assessable,
         # Past the daily window: the command center regenerates it on landing
         # and marks it stale meanwhile (#12183).
-        "stale": bool(briefing) and _briefing_is_stale(generated_at),
+        # Never while the newest run was unreadable (#1589).
+        "stale": _artifact_stale(
+            artifact=briefing, generated_at=generated_at, not_assessable=not_assessable, is_stale=_briefing_is_stale
+        ),
         "fresh_hours": BRIEFING_FRESH_HOURS,
         "agent_name": agent.name,
         "agent_slug": agent.slug,
@@ -1697,25 +1776,31 @@ async def ctem_stage_assessment(
     # assessment - switching back never discards it).
     run, assessment = await _latest_vertical_artifact(db, agent.id, user.id, vertical)
     generating = await _user_has_active_briefing_run(db, agent.id, user.id, vertical)
+    not_assessable = await _latest_run_not_assessable(db, agent.id, user.id, vertical)
 
     # ``generating`` takes precedence over a cached result: when a fresh run is in
     # flight we report "generating" (so the UI spins and polls) even though the
     # previous assessment is still cached and returned alongside it.
-    if generating:
-        status = "generating"
-    elif assessment:
-        status = "ready"
-    else:
-        status = await _ai_lock_status(db, agent) or "pending"
+    status = (
+        _artifact_status(generating=generating, artifact=assessment, not_assessable=not_assessable)
+        or await _ai_lock_status(db, agent)
+        or "pending"
+    )
 
     generated_at = run.created_at if run else None
     return {
         "assessment": assessment,
         "status": status,
         "generating": generating,
+        # The newest run could read none of its integrations: the failures,
+        # so the card says why (#1589). ``None`` otherwise.
+        "not_assessable": not_assessable,
         # Past the weekly window: the stage page regenerates it on visit and
         # marks it stale meanwhile (#12002).
-        "stale": bool(assessment) and _assessment_is_stale(generated_at),
+        # Never while the newest run was unreadable (#1589).
+        "stale": _artifact_stale(
+            artifact=assessment, generated_at=generated_at, not_assessable=not_assessable, is_stale=_assessment_is_stale
+        ),
         "fresh_days": STAGE_ASSESSMENT_FRESH_DAYS,
         "agent_name": agent.name,
         "agent_slug": agent.slug,

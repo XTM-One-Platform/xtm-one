@@ -1643,6 +1643,14 @@ async def _run_autonomous_tick_inner() -> int:
             from app.services import ctem_case_loop
 
             if await ctem_case_loop.sweep_due():
+                # #1505: the unmatched signals a newer profile version may now hold, decided
+                # again first, so the sweep below opens their cases grouped by case key.
+                from app.services import ctem_scope_gate_store
+
+                rechecked = await ctem_scope_gate_store.recheck_parked(db)
+                await db.commit()
+                if rechecked:
+                    logger.info("CTEM unmatched signals re-checked after a profile change: %s", rechecked)
                 pending = ctem_case_loop.PendingEvents()
                 counts = await ctem_case_loop.sweep(db, events=pending)
                 await db.commit()

@@ -13,8 +13,25 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 ## 1. When it runs
 
 - After a signal is first recorded, by the API, the agent tool or a listener.
-  A new sighting of a known signal does not re-run it. A failure leaves the
-  signal `new`; it never refuses the signal.
+  A new sighting of a known signal re-runs it only when the signal is
+  unmatched (`to_validate`). A failure leaves the signal `new`; it never
+  refuses the signal.
+- After a profile change (assets, groups, crown jewels, owned domains, tech
+  stack, shipped products): the autonomous tick decides again the unmatched
+  signals last decided before the newest profile version, 500 per tick
+  (`recheck_parked`). A signal it confirms opens its case at the next case
+  sweep, grouped by case key, never one case per host.
+- From the Signals page, by the people who read the signals:
+  `POST /api/v1/ctem-signals/triage` dismisses (state `discarded`, reason
+  `dismissed_by_user`, kept out of every pass until restored), restores or
+  re-checks the selected signals or every signal a state filter matches. An
+  administrator also has `POST /api/v1/ctem-signals/add-to-inventory`: one
+  profile version declares the subjects of the selected unmatched signals (a
+  host an asset, a software a tech stack product, an identity its email domain
+  as an owned domain), then the gate runs on them again.
+- A host under an owned domain (`*.corp.example`) resolves to it
+  (`hosted_under` in the reconcile record) and goes to the watchlist with an
+  unknown criticality, never to a case of its own.
 - On demand, by an administrator: `POST /api/v1/ctem-signals/{id}/evaluate`
   (one signal) and `POST /api/v1/ctem-signals/evaluate` (every signal not yet
   in a case, at most 2,000, newest first), after a policy change or a change
