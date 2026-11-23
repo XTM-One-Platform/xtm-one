@@ -26,6 +26,16 @@ def test_status_never_reads_connected_without_a_bound_source() -> None:
     assert sources.path_status([]) == "agents_api"
     assert sources.path_status([{"bound": False}, {"bound": False}]) == "not_connected"
     assert sources.path_status([{"bound": False}, {"bound": True}]) == "connected"
+    assert sources.path_status([{"bound": False, "off": True}]) == "off"
+    assert sources.path_status([{"bound": True, "off": True}]) == "connected"
+
+
+def test_a_source_off_reads_off_and_never_bound() -> None:
+    bound = sources.BoundSources({("opencti", "listener")})
+    bound.off.add(("opencrq", "pass"))
+    row = sources.path_sources("control_decay", bound)
+    assert row[0]["bound"] is False and row[0]["off"] is True
+    assert sources.path_status(row) == "off"
 
 
 def test_the_catalog_carries_sources_status_and_activity() -> None:
@@ -45,6 +55,7 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
         "kind": "listener",
         "event": sources.PATH_SOURCES["code_flaw"][0].event,
         "bound": False,
+        "off": False,
     }
     assert rows["new_exposure"]["last_signal_at"] is None
 

@@ -48,7 +48,7 @@ def _health(
 
 def test_the_pass_is_off_by_default_and_stays_out_of_the_always_on_block() -> None:
     profile = oc.parse_profile({})
-    assert profile.evidence_health.enabled is False
+    assert profile.evidence_health.enabled is None
     assert profile.evidence_health.max_age_days == 30
     assert profile.evidence_health.cadence_hours == 24
     assert "evidence_health" in oc.EXPOSURE_FIELDS

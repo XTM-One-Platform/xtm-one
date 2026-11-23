@@ -247,7 +247,10 @@ describe("DataTable", () => {
 
   it("keeps the no-results row on the visible part of a table wider than its card (UX round 3 on #10601, A1)", () => {
     const original = globalThis.ResizeObserver;
-    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
+    // The card is 800 px; its scroll area's client box leaves out the 1 px border and a 6 px vertical scrollbar.
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "data-table-scroll" ? 792 : 800;
+    });
     globalThis.ResizeObserver = class {
       observe() {}
       unobserve() {}
@@ -259,8 +262,9 @@ describe("DataTable", () => {
       fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zulu" } });
       act(() => vi.advanceTimersByTime(300));
       const content = screen.getByTestId("data-table-no-results");
-      // As wide as the scroll area inside its 1 px border, whatever the table's own width.
-      expect(content.style.width).toBe("798px");
+      // As wide as the scroll area's client box, whatever the table's own width: a full-width row past it
+      // overflowed by the scrollbar's width (UX round 1 on #1356, B1).
+      expect(content.style.width).toBe("792px");
       expect(within(content).getByRole("button", { name: "Clear all filters" })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
