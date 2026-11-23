@@ -30,6 +30,7 @@ No finding means healthy: stop there. Send nothing, write nothing.
 | `assignment_failing` | owner | an assignment failed its last 3 judged runs |
 | `assignment_silent` | owner | a schedule has not fired for 14 days |
 | `past_due` | owner | an open item is past its due date |
+| `not_picked_up` | owner | an open item no inbox will take: no owner, an owner with no work-item inbox, or inboxes whose correlation prefix or priority leave it out; the fix is an owner whose inbox takes it, a wider inbox, or cancelling it |
 | `blocked_without_blocker` | owner | a blocked item is not black or white: no owner, only a free-text reason, needs_human without an ask card, or its blocked_on items all cancelled; the fix is a valid blocker (`blocked_on`, `blocked_on_refs`, or `needs_human` with an ask; skill "Fleet design and operations" section 4), or `not_before` for a deferral |
 | `decision_card_not_readable` | owner | an item waits for a person on an ask that is missing, incomplete or full of ids |
 | `wait_cycle` | owner | blocked items wait on each other (blocked_on, or a pull request a review item gates) |
