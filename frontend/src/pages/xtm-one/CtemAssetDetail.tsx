@@ -33,7 +33,7 @@ import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
 import { assetRowIndexes } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import type { AssetRow } from "@/lib/organization-profile";
-import { INVENTORY_PATH, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, isCodeRepository, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 const SOFTWARE_PAGE = 100;
@@ -116,11 +116,14 @@ export default function CtemAssetDetail() {
   }
 
   const date = (value: string | null) => (value ? intl.formatDate(value, { dateStyle: "medium" }) : "");
+  // A code repository's software is its dependencies (GitHub or GitLab SBOM, #1331): said as such, with the
+  // package URL the vulnerability matching keys on.
+  const isRepository = isCodeRepository(data);
 
   const softwareColumns: DataTableColumn<AssetSoftware>[] = [
     {
       key: "product",
-      header: "Software",
+      header: isRepository ? "Package" : "Software",
       cell: (s) => <TruncatedText text={[s.vendor, s.product].filter(Boolean).join(" ")} className="max-w-[18rem] font-medium" />,
       csv: (s) => [s.vendor, s.product].filter(Boolean).join(" "),
       // The store pages the software by vendor and product: the page reads in that order.
@@ -133,6 +136,17 @@ export default function CtemAssetDetail() {
       cell: (s) => (s.version === "unknown" ? <span className="text-default-secondary">{t_i18n("Unknown")}</span> : s.version),
       csv: (s) => s.version,
     },
+    ...(isRepository
+      ? [
+          {
+            key: "purl",
+            header: "Package URL",
+            cell: (s: AssetSoftware) => <TruncatedText text={s.purl ?? ""} className="max-w-[22rem] font-mono" />,
+            csv: (s: AssetSoftware) => s.purl,
+            hideable: true,
+          },
+        ]
+      : []),
     {
       key: "bundled",
       header: "Bundled in",
@@ -310,11 +324,11 @@ export default function CtemAssetDetail() {
 
       <AssetSection
         id="asset-software"
-        title={t_i18n("Software")}
+        title={isRepository ? t_i18n("Dependencies") : t_i18n("Software")}
         count={software?.total}
         actions={sbomButton}
         empty={softwareEmpty}
-        emptyLabel={t_i18n("No software known on this asset yet.")}
+        emptyLabel={isRepository ? t_i18n("No dependency known in this repository yet.") : t_i18n("No software known on this asset yet.")}
       >
         <DataTable<AssetSoftware>
           rows={software?.items ?? []}
@@ -327,7 +341,7 @@ export default function CtemAssetDetail() {
           exportName="ctem-asset-software"
           isLoading={isLoading && !data}
           onRetry={() => void refetch()}
-          emptyLabel={t_i18n("No software known on this asset yet.")}
+          emptyLabel={isRepository ? t_i18n("No dependency known in this repository yet.") : t_i18n("No software known on this asset yet.")}
           rowTestId="ctem-asset-software-row"
         />
       </AssetSection>
