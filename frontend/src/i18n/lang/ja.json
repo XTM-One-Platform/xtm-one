@@ -21236,5 +21236,6 @@
   "Starts a run when a signal is": "シグナルが次の状態のとき実行を開始",
   "Subject kind": "対象の種類",
   "Every signal": "すべてのシグナル",
-  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "一致するシグナルごとに、アサインメントの並列実行数の範囲内で実行が開始されます。エージェントは自身の権限で list_ctem_signals を使ってシグナルを読み取ります。統合リスナーが記録したシグナルは、管理者として実行されるアサインメントにのみ届きます。"
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "一致するシグナルごとに、アサインメントの並列実行数の範囲内で実行が開始されます。エージェントは自身の権限で list_ctem_signals を使ってシグナルを読み取ります。統合リスナーが記録したシグナルは、管理者として実行されるアサインメントにのみ届きます。",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }

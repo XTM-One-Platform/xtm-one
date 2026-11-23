@@ -21236,5 +21236,6 @@
   "Starts a run when a signal is": "Démarre une exécution quand un signal est",
   "Subject kind": "Type de sujet",
   "Every signal": "Tous les signaux",
-  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Une exécution démarre pour chaque signal correspondant, dans la limite des exécutions en parallèle de la tâche. L'agent lit le signal avec list_ctem_signals et ses propres droits : un signal enregistré par un écouteur d'intégration n'atteint une tâche que si elle s'exécute en tant qu'administrateur."
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "Une exécution démarre pour chaque signal correspondant, dans la limite des exécutions en parallèle de la tâche. L'agent lit le signal avec list_ctem_signals et ses propres droits : un signal enregistré par un écouteur d'intégration n'atteint une tâche que si elle s'exécute en tant qu'administrateur.",
+  "Subcategories of {category}": "Sous-catégories de {category}"
 }
