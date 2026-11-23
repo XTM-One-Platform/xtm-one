@@ -21176,5 +21176,14 @@
   "What this reply suggestion setting does": "この返信候補の設定について",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "オンにすると、プラットフォームのルーティングモデルが各回答を読み取り、次のメッセージを 1 つメッセージ欄にグレー表示で提案します。Tab キーで欄に入力され、入力を始めるか Esc キーで消えます。Enter キーを押すまで何も送信されません。オフにすると、提案は生成されません。",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "エージェントが回答すると、ルーティングモデルがチャットのメッセージ欄にユーザーの次のメッセージを提案します (Tab キーで使用)。各ユーザーはプロフィールでオフにできます。",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "ルーティングモデルが必要です。設定されていない場合、返信候補は生成されません。"
+  "Needs a routing model: with none set, no reply suggestion is generated.": "ルーティングモデルが必要です。設定されていない場合、返信候補は生成されません。",
+  "Shipped products": "出荷製品",
+  "Source repositories": "ソースリポジトリ",
+  "owner/name, Enter to add": "owner/name、Enterで追加",
+  "Add a shipped product": "出荷製品を追加",
+  "Paste shipped products": "出荷製品を貼り付け",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "組織が出荷する製品とそのソースリポジトリ。製品の脆弱性はCTEMでそのリポジトリに紐付けられます。",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "出荷製品はまだありません。出荷製品の脆弱性は未解決のままです。",
+  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります"
 }

@@ -21176,5 +21176,14 @@
   "What this reply suggestion setting does": "À quoi sert ce réglage des suggestions de réponse",
   "On, the platform's routing model reads each answer and proposes one next message, greyed out in the message box. Tab puts it in the box, typing or Escape dismisses it, and nothing is sent until you press Enter. Off, no suggestion is generated for you.": "Activé, le modèle de routage de la plateforme lit chaque réponse et propose un prochain message, grisé dans la zone de message. Tab le place dans la zone, taper ou Échap le fait disparaître, et rien n'est envoyé avant que vous appuyiez sur Entrée. Désactivé, aucune suggestion n'est générée pour vous.",
   "Once an agent has answered, the routing model proposes the user's next message in the chat's message box (Tab to use it). Each user can turn it off in their profile.": "Une fois qu'un agent a répondu, le modèle de routage propose le prochain message de l'utilisateur dans la zone de message du chat (Tab pour l'utiliser). Chaque utilisateur peut le désactiver dans son profil.",
-  "Needs a routing model: with none set, no reply suggestion is generated.": "Nécessite un modèle de routage : sans lui, aucune suggestion de réponse n'est générée."
+  "Needs a routing model: with none set, no reply suggestion is generated.": "Nécessite un modèle de routage : sans lui, aucune suggestion de réponse n'est générée.",
+  "Shipped products": "Produits livrés",
+  "Source repositories": "Dépôts de code",
+  "owner/name, Enter to add": "propriétaire/nom, Entrée pour ajouter",
+  "Add a shipped product": "Ajouter un produit livré",
+  "Paste shipped products": "Coller des produits livrés",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Les produits que votre organisation livre, avec leurs dépôts de code : une vulnérabilité sur l'un d'eux est rattachée à ses dépôts dans CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aucun produit livré : une vulnérabilité sur un produit que vous livrez reste non résolue.",
+  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom"
 }
