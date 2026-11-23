@@ -48,6 +48,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.docs_links import docs_url
 from app.services.health.engine import Check, CheckResult, close_out, register_check
 from app.services.health.opencti_checks import _registrations, with_restart_grace
 from app.services.health.platform_checks import PLATFORM_CHECK_INTERVAL, _platform_check
@@ -57,7 +58,7 @@ MODULE = "openaev"
 PLATFORM_IDENTIFIER = "openaev"
 #: The thresholds when none is stored (Settings > Platform Health, #101 S10b).
 DEFAULTS = HealthOpenAEVThresholds()
-DOC_LINK = "/docs/administration/health#openaev-checks"
+DOC_LINK = docs_url("administration/health", "openaev-checks")
 SOURCE = "OpenAEV health snapshot"
 
 Read = Callable[[Any, dict[str, Any] | None, datetime, HealthOpenAEVThresholds], list[CheckResult]]

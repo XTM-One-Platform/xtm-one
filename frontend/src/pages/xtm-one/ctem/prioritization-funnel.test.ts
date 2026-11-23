@@ -96,11 +96,11 @@ test("the sample funnel is monotonic and its drops add up", () => {
 test("a not configured layer leads to the Settings card of its field, never the bare first tab", () => {
   const notConfigured = (key: CtemFunnel["layers"][number]["key"]) =>
     funnelLayerHref({ key, count: null, drop: null, state: "not_configured", source: "organization", category: null }, "https://cti.example");
-  assert.equal(notConfigured("relevant"), "/settings/organization/profile/technology?card=tech_stack");
-  assert.equal(notConfigured("exposed"), "/settings/organization/profile/exposure?card=assets_exposure");
+  assert.equal(notConfigured("relevant"), "/ctem/inventory/tech-stack?card=tech_stack");
+  assert.equal(notConfigured("exposed"), "/ctem/inventory?card=assets_exposure");
   assert.equal(notConfigured("business_impact"), "/settings/organization/profile/business?card=crown_jewels");
-  assert.equal(notConfigured("policy"), "/settings/organization/profile/exposure?card=prioritization_policy");
-  assert.equal(notConfigured("open_issues"), "/settings/organization/profile/technology?card=tech_stack");
+  assert.equal(notConfigured("policy"), "/ctem/inventory?card=prioritization_policy");
+  assert.equal(notConfigured("open_issues"), "/ctem/inventory/tech-stack?card=tech_stack");
   // Every layer with a call to action names a field, so no CTA falls back to the first tab.
   for (const [key, copy] of Object.entries(FUNNEL_LAYER_COPY)) {
     if (copy.cta) assert.ok(FUNNEL_LAYER_FIELD[key as keyof typeof FUNNEL_LAYER_FIELD], key);
@@ -113,7 +113,7 @@ test("a not configured layer leads to the Settings card of its field, never the 
 
 test("a not configured layer leads to Settings, a live one to the OpenCTI list it counts", () => {
   const [known, , exploitable, exposed, , , openIssues] = SAMPLE_FUNNEL.layers;
-  assert.equal(funnelLayerHref(exposed, "https://cti.example"), "/settings/organization/profile/exposure?card=assets_exposure");
+  assert.equal(funnelLayerHref(exposed, "https://cti.example"), "/ctem/inventory?card=assets_exposure");
   assert.equal(funnelLayerHref(known, "https://cti.example/"), "https://cti.example/dashboard/arsenal/vulnerabilities");
   const filters = { mode: "or", filters: [{ key: ["x_opencti_cisa_kev"], values: ["true"] }], filterGroups: [] };
   const href = funnelLayerHref({ ...exploitable, filters }, "https://cti.example");
@@ -163,7 +163,7 @@ test("without a tech stack, OpenAEV or any case, the cases layer is not configur
   const layer = casesLayer(withCasesLayer(bare, { open: 0, total: 0 }));
   assert.equal(layer.state, "not_configured");
   assert.equal(layer.count, null);
-  assert.equal(funnelLayerHref(layer, "https://cti.example"), "/settings/organization/profile/technology?card=tech_stack");
+  assert.equal(funnelLayerHref(layer, "https://cti.example"), "/ctem/inventory/tech-stack?card=tech_stack");
   // A case that exists (built before the stack was removed) is still counted.
   assert.equal(casesLayer(withCasesLayer(bare, { open: 2, total: 3 })).count, 2);
   // OpenAEV alone builds cases.
