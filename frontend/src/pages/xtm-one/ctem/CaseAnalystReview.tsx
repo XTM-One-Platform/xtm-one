@@ -3,7 +3,9 @@
 /**
  * "Analyst review" on a case page (CTEM-16-UI, #1115, gate `ctem.analyst_review`):
  * the threat package the fleet drafted in OpenCTI (a Grouping, its link), whether
- * its security coverage was requested, and the gate: "Analyst review skipped by
+ * it is still in its draft (never "coverage requested" while the coverage sits
+ * in the draft, and a signal once the draft outlives the case SLA, #1480) or
+ * validated with its security coverage requested, and the gate: "Analyst review skipped by
  * policy" when it ran without a person (never hidden), the waiting review on the
  * unified work-item decision card (dev-docs/human-gates.md), never a CTEM card,
  * or who answered: a person or the analyst's mark in OpenCTI. A viewer who does
@@ -89,7 +91,15 @@ export function CaseAnalystReview({
           {stage === "not_started" && !gate ? (
             <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" testId="ctem-case-analyst-review-empty" />
           ) : (
-            <span className={stage === "not_started" ? "text-default-secondary" : undefined}>{t_i18n(REVIEW_STAGE_LABEL[stage])}</span>
+            <span className={stage === "not_started" ? "text-default-secondary" : undefined} data-testid="ctem-case-threat-package-stage">
+              {t_i18n(REVIEW_STAGE_LABEL[stage])}
+            </span>
+          )}
+          {pkg?.draft_overdue && (
+            <span className="flex items-start gap-1 content-compact text-feedback-warning-primary" data-testid="ctem-case-threat-package-overdue">
+              <Icon name="triangle-alert" size={16} className="mt-0.5 shrink-0" aria-hidden />
+              <span>{t_i18n("Still in a draft past the case SLA: validate it in OpenCTI or answer the review")}</span>
+            </span>
           )}
           {pkg && (
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">

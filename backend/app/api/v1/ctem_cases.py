@@ -66,6 +66,9 @@ class CaseValidation(BaseModel):
     safe_mode: bool | None = None
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
+    #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
+    #: only on remediation evidence.
+    evidence_type: Literal["remediation", "validation"] | None = None
 
 
 class CaseUpdate(BaseModel):
@@ -474,6 +477,7 @@ async def record_ctem_case_validation(
             note=body.note,
             safe_mode=body.safe_mode,
             run_order=body.run_order,
+            evidence_type=body.evidence_type,
             actor=str(user.id),
             events=pending,
         )

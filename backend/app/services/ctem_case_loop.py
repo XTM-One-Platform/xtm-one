@@ -358,6 +358,7 @@ async def record_validation(
     run_order: list[str] | None = None,
     conclusive: bool | None = None,
     inject_class: str | None = None,
+    evidence_type: str | None = None,
     actor: str = rules.SYSTEM_ACTOR,
     events: PendingEvents | None = None,
     now: datetime | None = None,
@@ -377,9 +378,23 @@ async def record_validation(
     not say (a scanner closing the finding at source). ``inject_class``: the
     platform's reading of the inject that ran (``ctem_inject_effects``); an
     intrusive or unknown inject is never recorded as safe mode, and its pass is
-    inconclusive unless ``conclusive`` is true. The caller commits.
+    inconclusive unless ``conclusive`` is true. ``evidence_type`` (#1500):
+    ``remediation`` (the fix in place: a version inventory showing every
+    in-scope endpoint at or above the fixed build) or ``validation`` (a
+    detection or behaviour test). A patch or upgrade case resolves only on
+    remediation evidence; when the writer does not say, a provider re-scan and
+    a conclusive check (the fixed version read) count as remediation, anything
+    else as validation, recorded and never resolving. The caller commits.
     """
-    from app.services.ctem_inject_effects import CLASSES, READ_ONLY, checked_safe_mode
+    from app.services.ctem_inject_effects import (
+        CLASSES,
+        EVIDENCE_TYPES,
+        READ_ONLY,
+        REMEDIATION_EVIDENCE,
+        VALIDATION_EVIDENCE,
+        VERSION_REMEDIATIONS,
+        checked_safe_mode,
+    )
 
     if result not in VALIDATION_RESULTS:
         raise rules.CaseRuleError(f"unknown validation result {result!r}")
@@ -403,6 +418,18 @@ async def record_validation(
         safe_mode, _warning = checked_safe_mode(safe_mode, inject_class)
         if conclusive is None and inject_class != READ_ONLY:
             conclusive = False
+    if evidence_type is not None and evidence_type not in EVIDENCE_TYPES:
+        raise rules.CaseRuleError(f"unknown evidence type {evidence_type!r}")
+    if (case.remediation_kind or "") in VERSION_REMEDIATIONS:
+        if evidence_type is None:
+            proven = conclusive is True or entry["kind"] == RESCAN_KIND
+            evidence_type = REMEDIATION_EVIDENCE if proven else VALIDATION_EVIDENCE
+        entry["evidence_type"] = evidence_type
+        if evidence_type == VALIDATION_EVIDENCE and result in rules.PASSING_RESULTS:
+            # A detection or behaviour test never resolves a patch or upgrade case (#1500).
+            conclusive = False
+    elif evidence_type is not None:
+        entry["evidence_type"] = evidence_type
     if safe_mode is not None:
         entry["safe_mode"] = bool(safe_mode)
     if conclusive is not None:

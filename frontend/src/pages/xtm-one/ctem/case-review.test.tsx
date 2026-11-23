@@ -59,6 +59,13 @@ describe("case-review helpers", () => {
     expect(reviewStage({ coverage_requested: true })).toBe("coverage_requested");
   });
 
+  it("never reads coverage requested while the package sits in its draft (#1480)", () => {
+    expect(reviewStage({ state: "drafted", coverage_requested: false, coverage_drafted: false })).toBe("drafted");
+    expect(reviewStage({ state: "drafted", coverage_requested: false, coverage_drafted: true })).toBe("awaiting_validation");
+    expect(reviewStage({ state: "validated", coverage_requested: false, coverage_drafted: false })).toBe("validated");
+    expect(reviewStage({ state: "validated", coverage_requested: true, coverage_drafted: false })).toBe("coverage_requested");
+  });
+
   it("names a person by id, the OpenCTI mark as the mark, anything else as unknown", () => {
     expect(reviewAnswerer(USER)).toEqual({ kind: "person", id: USER });
     expect(reviewAnswerer("OpenCTI analyst mark")).toEqual({ kind: "mark" });
@@ -104,6 +111,29 @@ describe("CaseAnalystReview", () => {
     const history = [ev({ to: "answered", reason: USER })];
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={PKG} history={history} personName={(id) => (id === USER ? "Ada" : null)} />);
     expect(screen.getByTestId("ctem-case-analyst-review-gate").textContent).toContain("by Ada");
+  });
+
+  it("shows a drafted package with its coverage as not sent to OpenAEV, and the overdue signal past the SLA (#1480)", () => {
+    const DRAFT = `https://cti.example.test/dashboard/data/import/draft/${GROUPING}`;
+    const pkg = { ...PKG, url: DRAFT, state: "drafted" as const, coverage_requested: false, coverage_drafted: true, draft_overdue: true };
+    renderWithProviders(<CaseAnalystReview caseId="c1" pkg={pkg} history={[]} />);
+    expect(screen.getByTestId("ctem-case-threat-package-stage").textContent).toBe("Threat package drafted, not validated: coverage not sent to OpenAEV");
+    expect(screen.queryByText("Coverage requested in OpenCTI")).toBeNull();
+    expect(screen.getByTestId("ctem-case-threat-package-overdue").textContent).toContain("past the case SLA");
+    expect((screen.getByTestId("ctem-case-threat-package-link") as HTMLAnchorElement).href).toBe(DRAFT);
+  });
+
+  it("shows no overdue signal on a validated package", () => {
+    renderWithProviders(<CaseAnalystReview caseId="c1" pkg={{ ...PKG, state: "validated", draft_overdue: false }} history={[]} />);
+    expect(screen.getByTestId("ctem-case-threat-package-stage").textContent).toBe("Coverage requested in OpenCTI");
+    expect(screen.queryByTestId("ctem-case-threat-package-overdue")).toBeNull();
+  });
+
+  it("keeps the drafted state for a viewer who does not read OpenCTI", () => {
+    renderWithProviders(
+      <CaseAnalystReview caseId="c1" pkg={{ restricted: true, state: "drafted", coverage_requested: false, coverage_drafted: true, draft_overdue: false, at: PKG.at }} history={[]} />,
+    );
+    expect(screen.getByTestId("ctem-case-threat-package-stage").textContent).toBe("Threat package drafted, not validated: coverage not sent to OpenAEV");
   });
 
   it("keeps the Grouping restricted for a viewer who does not read OpenCTI", () => {

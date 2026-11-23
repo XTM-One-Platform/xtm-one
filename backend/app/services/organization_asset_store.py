@@ -230,6 +230,11 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
                 )
             )
     await db.flush()
+    # Software as an entity (#1495): what the installations install, kept across rebuilds.
+    from app.services import organization_software_store as software_store
+
+    edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
+    await software_store.sync_software(db, org, edges)
     return len(things)
 
 
@@ -439,6 +444,8 @@ def sbom_components(sbom: Any) -> list[dict[str, Any]]:
             "cpe": _cut(comp.cpe, 300),
             "purl": _cut(comp.purl, 500),
             "bundled_in": _cut(sbom.bundled_in(comp), 300),
+            # The components it depends on (#1495), ``product version`` labels.
+            "depends_on": [_cut(label, 300) for label in sbom.depends_on(comp)],
         }
     return list(out.values())
 
@@ -463,9 +470,14 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
 ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "github", "gitlab"})
 
 
+#: The format of the hand document that carries an administrator's software attachments on an asset (#1495).
+HAND_SOFTWARE_FORMAT = "manual"
+
+
 def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
+    source = row.format if row.format in ENDPOINT_SOFTWARE_FORMATS | {HAND_SOFTWARE_FORMAT} else SBOM_SOURCE
     return identity.SourceRecord(
-        source=row.format if row.format in ENDPOINT_SOFTWARE_FORMATS else SBOM_SOURCE,
+        source=source,
         external_id=f"{row.anchor_source}:{row.anchor_external_id}:{row.document_key}",
         software=[
             {**c, "first_seen": row.imported_at, "last_seen": row.imported_at}
@@ -689,7 +701,23 @@ async def ensure_built(db: AsyncSession, organization_id: uuid.UUID | None = Non
     has_rows = bool((version.profile or {}).get("assets_exposure"))
     if (built or 0) != int(version.version) and (has_rows or built is not None):
         await rebuild_from_profile(db, org)
+    elif await _unlinked_installation(db, org):
+        # A store built before software was an entity (#1495): one rebuild links it.
+        await rebuild_from_profile(db, org)
     return org
+
+
+async def _unlinked_installation(db: AsyncSession, organization_id: uuid.UUID) -> bool:
+    """Whether an installation of *organization_id* names no software version yet (one indexed probe)."""
+    found = await db.execute(
+        select(OrganizationAssetSoftware.id)
+        .where(
+            OrganizationAssetSoftware.organization_id == organization_id,
+            OrganizationAssetSoftware.software_version_id.is_(None),
+        )
+        .limit(1)
+    )
+    return found.first() is not None
 
 
 @dataclass
@@ -866,6 +894,8 @@ def _software_dict(row: OrganizationAssetSoftware) -> dict[str, Any]:
         "first_seen": row.first_seen_at.isoformat() if row.first_seen_at else None,
         "last_seen": row.last_seen_at.isoformat() if row.last_seen_at else None,
         "sources": list(row.sources or []),
+        # The software version it installs (#1495): the software page links from here.
+        "software_version_id": str(row.software_version_id) if row.software_version_id else None,
     }
 
 
@@ -954,6 +984,18 @@ MAX_LOOKUP_KEYS = 200
 LOOKUP_KINDS: tuple[str, ...] = ("fqdn", "hostname", "mac", "ip")
 
 
+#: A source reference another product holds for the same thing: ``<source>:<external id>``, e.g.
+#: ``openaev:3f2a...`` for the OpenAEV asset both products imported. Matched exactly on the source
+#: records, before the identifiers and the name, since it names one record of one source.
+_SOURCE_REFERENCE = re.compile(r"^([a-z][a-z0-9_-]{1,79}):(\S{1,200})$")
+
+
+def _source_reference(value: str) -> tuple[str, str] | None:
+    """``(source, external_id)`` when *value* reads as a source reference, else ``None``."""
+    found = _SOURCE_REFERENCE.match(value)
+    return (found.group(1), found.group(2)) if found else None
+
+
 def _lookup_keys(value: str) -> set[tuple[str, str]]:
     """The (kind, normalised value) pairs *value* may be: an FQDN and its hostname, a MAC, an IP."""
     return {(kind, key) for kind in LOOKUP_KINDS if (key := identity.normalize_identifier(kind, value))}
@@ -970,25 +1012,38 @@ async def find_assets_by_identifier(
     hostname, ``10.0.0.5`` an IP, ``aa:bb:...`` a MAC, ``web-02.corp.example``
     an FQDN and the hostname ``web-02``) and matched against the identifiers of every
     source record, normalised as the identity engine compares them, then
-    against the asset's name. A value no asset holds is absent; when several
-    assets hold it (a weak key such as a shared IP), the first by name answers.
-    The profile caps its rows at 5,000, so one scan of the records is bounded.
+    against the asset's name. A value of the form ``<source>:<external id>``
+    (``openaev:<asset id>``) names one source record: it is matched exactly on
+    the records' source and external id and, when found, wins over every
+    weak reading of the same value. A value no asset holds is absent; when
+    several assets hold it (a weak key such as a shared IP), the first by name
+    answers. The profile caps its rows at 5,000, so one scan of the records is bounded.
     """
     asked: dict[str, set[tuple[str, str]]] = {}
+    references: dict[str, tuple[str, str]] = {}
     for value in values[:MAX_LOOKUP_KEYS]:
         text_value = str(value or "").strip()
         if text_value and text_value not in asked:
             asked[text_value] = _lookup_keys(text_value)
+            if (reference := _source_reference(text_value)) is not None:
+                references[text_value] = reference
     if not asked:
         return {}
     held: dict[tuple[str, str], set[uuid.UUID]] = {}
-    for asset_id, identifiers in (
+    by_reference: dict[tuple[str, str], set[uuid.UUID]] = {}
+    wanted_references = set(references.values())
+    for asset_id, source, external_id, identifiers in (
         await db.execute(
-            select(OrganizationAssetSource.asset_id, OrganizationAssetSource.identifiers).where(
-                OrganizationAssetSource.organization_id == organization_id
-            )
+            select(
+                OrganizationAssetSource.asset_id,
+                OrganizationAssetSource.source,
+                OrganizationAssetSource.external_id,
+                OrganizationAssetSource.identifiers,
+            ).where(OrganizationAssetSource.organization_id == organization_id)
         )
     ).all():
+        if (source, external_id) in wanted_references:
+            by_reference.setdefault((source, external_id), set()).add(asset_id)
         record = identity.SourceRecord(source="lookup", external_id="", identifiers=dict(identifiers or {}))
         for kind in LOOKUP_KINDS:
             for key in record.keys(kind):
@@ -1005,6 +1060,10 @@ async def find_assets_by_identifier(
         by_name.setdefault(name_key, set()).add(asset_id)
     matched: dict[str, set[uuid.UUID]] = {}
     for value, keys in asked.items():
+        exact = by_reference.get(references[value], set()) if value in references else set()
+        if exact:
+            matched[value] = exact
+            continue
         ids: set[uuid.UUID] = set()
         for pair in keys:
             ids |= held.get(pair, set())

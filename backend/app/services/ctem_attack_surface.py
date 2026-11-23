@@ -19,7 +19,12 @@ outside lens (``services/ctem_signals.record_signal``, recorded by ``system``):
   earlier pass (the reconcile leaves it ``to_validate``).
 
 The first pass sets the baseline: it raises paths 5 and 6 (they compare with
-the profile) and no path 7. The model writes nothing here: the spine (scope
+the profile) and no path 7. A later pass raises a new host on path 7 only when
+both its own read and the previous pass's read of the provider and scope that
+saw it were complete, and the provider did not know the host before the
+previous pass (#1498): a host a partial read missed joins the baseline
+silently. Every committed pass is stored with what it read
+(``models/ctem_surface_pass.py``). The model writes nothing here: the spine (scope
 gate, cases) decides what each signal becomes. No gate. Design:
 ``dev-docs/ctem-attack-surface.md``.
 """
@@ -38,6 +43,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_surface_observation import CtemSurfaceObservation
+from app.models.ctem_surface_pass import CtemSurfacePass
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +84,41 @@ class Observation:
     resolves: bool = True
     #: The providers that saw the host in this pass (set by ``merge_observations``).
     providers: list[str] = field(default_factory=list)
+    #: The reads that saw it, ``<provider>|<scope>`` (an owned domain, a range, ``*``).
+    reads: list[str] = field(default_factory=list)
+    #: The earliest time the provider's own data shows the host existed (a DNS record's
+    #: ``last_seen``, a banner's ``timestamp``, an ASM entity's ``first_seen``).
+    known_since: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ReadCoverage:
+    """What one provider query read in a pass: its scope, pages, records and whether it hit its bound."""
+
+    provider: str
+    scope: str
+    kind: str
+    pages: int
+    records: int
+    truncated: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "scope": self.scope,
+            "kind": self.kind,
+            "pages": self.pages,
+            "records": self.records,
+            "truncated": self.truncated,
+        }
+
+
+@dataclass(frozen=True)
+class PreviousPass:
+    """The pass the diff compares with: when it ran and the status of each of its reads."""
+
+    at: datetime
+    statuses: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -111,6 +152,68 @@ class SurfaceReader(Protocol):
     provider: str
 
     async def observe(self, domains: list[str], ranges: list[str]) -> list[Observation]: ...
+
+
+def read_key(provider: str, scope: str) -> str:
+    return f"{provider}|{scope}"
+
+
+def read_statuses(coverage: Iterable[ReadCoverage]) -> dict[str, str]:
+    """The status of each read of a pass: ``truncated`` when a query hit its page bound,
+    ``empty`` when its queries answered nothing, else ``complete``."""
+    grouped: dict[str, list[ReadCoverage]] = {}
+    for item in coverage:
+        grouped.setdefault(read_key(item.provider, item.scope), []).append(item)
+    out: dict[str, str] = {}
+    for key, items in grouped.items():
+        if any(i.truncated for i in items):
+            out[key] = "truncated"
+        elif sum(i.records for i in items) == 0:
+            out[key] = "empty"
+        else:
+            out[key] = "complete"
+    return out
+
+
+def _when(value: object) -> datetime | None:
+    """A provider timestamp (ISO 8601, naive read as UTC), or ``None``."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _earliest(current: datetime | None, value: object) -> datetime | None:
+    when = _when(value)
+    if when is None:
+        return current
+    return when if current is None or when < current else current
+
+
+def new_host_withheld(obs: Observation, previous: PreviousPass | None, statuses: dict[str, str]) -> str:
+    """Why a host absent from the baseline is not a new host (path 7), or ``""`` when it is one.
+
+    A host is new only when every read that saw it is complete in this pass and
+    was complete in the previous one, and the provider's own data does not date
+    it before the previous pass.
+    """
+    if previous is None:
+        return "no_previous_pass"
+    if obs.known_since is not None and obs.known_since <= previous.at:
+        return "known_to_provider"
+    if not obs.reads:
+        return "read_unknown"
+    for read in obs.reads:
+        now_status = statuses.get(read) or "unknown"
+        if now_status != "complete":
+            return f"read_{now_status}"
+        before_status = previous.statuses.get(read) or "missing"
+        if before_status != "complete":
+            return f"previous_read_{before_status}"
+    return ""
 
 
 # ── the diff, pure ──────────────────────────────────────────────────────
@@ -160,8 +263,16 @@ def diff(
     *,
     now: datetime,
     provider: str,
+    previous: PreviousPass | None = None,
+    statuses: dict[str, str] | None = None,
+    withheld: dict[str, str] | None = None,
 ) -> list[Finding]:
-    """The differences between this pass, the previous one and the profile (no I/O)."""
+    """The differences between this pass, the previous one and the profile (no I/O).
+
+    *previous* and *statuses* decide whether a host absent from the baseline is
+    new (:func:`new_host_withheld`); a host that is not lands in *withheld*
+    with the reason and joins the baseline silently.
+    """
     surface = getattr(profile, "attack_surface", None)
     stale_days = int(getattr(surface, "stale_after_days", 14) or 14)
     domains = list(getattr(profile, "owned_domains", []) or [])
@@ -248,15 +359,25 @@ def diff(
             continue
         # path 7: anything new against the baseline (never on the first pass, which sets it).
         if before is None and not first_pass:
-            found.append(
-                Finding(
-                    "surface_drift",
-                    host,
-                    "a host neither declared nor seen by an earlier pass",
-                    "new_host",
-                    _evidence(obs, baseline="absent"),
+            why = new_host_withheld(obs, previous, statuses or {})
+            if why:
+                if withheld is not None:
+                    withheld[host] = why
+            else:
+                found.append(
+                    Finding(
+                        "surface_drift",
+                        host,
+                        "a host neither declared nor seen by an earlier pass",
+                        "new_host",
+                        _evidence(
+                            obs,
+                            baseline="absent",
+                            reads=list(obs.reads),
+                            previous_pass_at=previous.at.isoformat() if previous else None,
+                        ),
+                    )
                 )
-            )
         elif before is not None:
             for port in obs.ports:
                 if port.key not in before.ports:
@@ -337,6 +458,22 @@ def _as_baseline(row: CtemSurfaceObservation) -> Baseline:
     return Baseline(host=row.host, ports=ports, last_seen_at=seen, signalled=tuple(row.signalled or []))
 
 
+async def _previous_pass(db: AsyncSession, organization_id: uuid.UUID) -> PreviousPass | None:
+    """The latest committed pass of the organization, or ``None`` before the first recorded one."""
+    row = (
+        await db.execute(
+            select(CtemSurfacePass)
+            .where(CtemSurfacePass.organization_id == organization_id)
+            .order_by(CtemSurfacePass.at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    at = row.at if row.at.tzinfo else row.at.replace(tzinfo=UTC)
+    return PreviousPass(at=at, statuses={str(k): str(v) for k, v in (row.statuses or {}).items()})
+
+
 def _kept_for_path(excluded: dict[str, set[tuple[str, str]]], path: str, providers: Iterable[str]) -> bool:
     """Whether a finding seen by *providers* is recorded on *path*: at least one of them is not excluded
     from it (#1445). A host no provider of the pass is named for keeps the old behaviour."""
@@ -353,7 +490,8 @@ async def run_pass(
     reader: SurfaceReader,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """One pass: observe, diff, record the signals and store the new baseline. The caller commits.
+    """One pass: observe, diff, record the signals, store the new baseline and the pass summary.
+    The caller commits.
 
     Answers the counts and the case events to raise after the commit
     (``ctem_case_loop.publish_pending``) under ``pending``.
@@ -364,9 +502,20 @@ async def run_pass(
     domains = list(getattr(profile, "owned_domains", []) or [])
     ranges = list(getattr(profile, "address_ranges", []) or [])
     observations = await reader.observe(domains, ranges)
+    coverage = reader_coverage(reader)
+    statuses = read_statuses(coverage)
+    previous = await _previous_pass(db, organization_id)
     rows = await _baseline(db, organization_id)
+    withheld: dict[str, str] = {}
     findings = diff(
-        profile, observations, {h: _as_baseline(r) for h, r in rows.items()}, now=at, provider=reader.provider
+        profile,
+        observations,
+        {h: _as_baseline(r) for h, r in rows.items()},
+        now=at,
+        provider=reader.provider,
+        previous=previous,
+        statuses=statuses,
+        withheld=withheld,
     )
 
     for obs in observations:
@@ -427,22 +576,130 @@ async def run_pass(
             row.signalled = list(dict.fromkeys([*(row.signalled or []), finding.dedupe_key]))
         counts["recorded"] += 1
         counts[finding.trigger_path] = counts.get(finding.trigger_path, 0) + 1
-    return {"counts": counts, "pending": pending}
+    counts["new_host_withheld"] = len(withheld)
+    db.add(
+        CtemSurfacePass(
+            organization_id=organization_id,
+            at=at,
+            provider=reader.provider[:40],
+            observed=len(observations),
+            coverage=[c.as_dict() for c in coverage][:200],
+            statuses=statuses,
+            counts=counts,
+            previous_at=previous.at if previous else None,
+        )
+    )
+    await db.flush()
+    return {"counts": counts, "pending": pending, "statuses": statuses}
+
+
+# ── the pass summaries and the one-off repair (#1498) ───────────────────────
+
+#: Pass summaries one read answers at most.
+MAX_PASSES = 50
+
+
+def pass_to_dict(row: CtemSurfacePass) -> dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "at": row.at.isoformat() if row.at else None,
+        "provider": row.provider,
+        "observed": row.observed,
+        "coverage": list(row.coverage or []),
+        "statuses": dict(row.statuses or {}),
+        "truncated": any(v == "truncated" for v in (row.statuses or {}).values()),
+        "counts": dict(row.counts or {}),
+        "previous_at": row.previous_at.isoformat() if row.previous_at else None,
+    }
+
+
+async def list_passes(db: AsyncSession, organization_id: uuid.UUID, *, limit: int = 10) -> list[CtemSurfacePass]:
+    """The latest committed passes of the organization, newest first."""
+    rows = await db.execute(
+        select(CtemSurfacePass)
+        .where(CtemSurfacePass.organization_id == organization_id)
+        .order_by(CtemSurfacePass.at.desc())
+        .limit(max(1, min(int(limit), MAX_PASSES)))
+    )
+    return list(rows.scalars().all())
+
+
+#: The states a repaired signal may be in: the gate's open states, never a case.
+_REPAIRABLE_STATES: tuple[str, ...] = ("new", "confirmed", "to_validate", "watchlist")
+#: The verdict a repair writes: the scope gate reads it as contradicting (``CONTRADICTING_VERDICTS``).
+REPAIR_VERDICT = "false_positive"
+
+
+async def repair_partial_read_new_hosts(
+    db: AsyncSession, organization_id: uuid.UUID, *, dry_run: bool = True, now: datetime | None = None
+) -> dict[str, Any]:
+    """Discard the path 7 ``new_host`` signals of the outside lens raised without a complete
+    previous read (#1498): every one raised before a pass summary recorded complete reads on
+    both sides carries no ``previous_pass_at`` in its evidence. The hosts stay in the baseline
+    (their observation rows are kept). A signal that opened a case is left to the case step.
+    The caller commits; *dry_run* answers what it would discard and writes nothing.
+    """
+    from app.models.ctem_signal import CtemSignal
+    from app.services.ctem_signals import SYSTEM_ACTOR
+
+    at = now or datetime.now(UTC)
+    rows = (
+        (
+            await db.execute(
+                select(CtemSignal).where(
+                    CtemSignal.organization_id == organization_id,
+                    CtemSignal.recorded_by == SYSTEM_ACTOR,
+                    CtemSignal.trigger_path == "surface_drift",
+                    CtemSignal.state.in_(_REPAIRABLE_STATES),
+                    CtemSignal.dedupe_key.like(f"%:{SOURCE}:%:new_host"),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    chosen = [r for r in rows if not (r.evidence or {}).get("previous_pass_at")]
+    hosts = sorted({r.subject_ref for r in chosen})
+    if not dry_run:
+        for row in chosen:
+            row.evidence = {**(row.evidence or {}), "verdict": REPAIR_VERDICT, "repaired": "partial_previous_read"}
+            row.state = "discarded"
+            row.decision = {
+                **(row.decision or {}),
+                "outcome": "discarded",
+                "reason": "raised without a complete previous read of the attack surface (#1498)",
+                "reason_code": "partial_previous_read",
+                "decided_at": at.isoformat(),
+            }
+            row.updated_at = at
+        await db.flush()
+    return {"dry_run": dry_run, "discarded": len(chosen), "hosts": hosts[:200]}
 
 
 # ── the provider reader: Shodan ─────────────────────────────────────────
 
-#: One page per query: a pass costs at most one query credit per domain and per range.
 _SHODAN_URL = "https://api.shodan.io"
+#: Pages read per query (#1498): ``/dns/domain`` answers ``more`` while records remain, the host
+#: search answers ``total`` at 100 matches a page. A pass costs at most
+#: ``_SHODAN_DNS_PAGES + _SHODAN_SEARCH_PAGES`` query credits per owned domain and
+#: ``_SHODAN_SEARCH_PAGES`` per range; a query that hits its bound is a truncated read.
+_SHODAN_DNS_PAGES = 5
+_SHODAN_SEARCH_PAGES = 3
+_SHODAN_SEARCH_PAGE_SIZE = 100
 
 
 class ShodanSurfaceReader:
-    """The outside view from Shodan: DNS records of each owned domain, banners of each range and domain."""
+    """The outside view from Shodan: DNS records of each owned domain, banners of each range and domain.
+
+    Each query is paged up to its bound and recorded in ``coverage`` (pages, records,
+    truncated), so the pass knows what it read.
+    """
 
     provider = "shodan"
 
     def __init__(self, api_key: str):
         self._key = api_key
+        self.coverage: list[ReadCoverage] = []
 
     async def _get(self, path: str, action: str, params: dict[str, Any] | None = None) -> Any:
         from app.core.egress import egress_client
@@ -459,48 +716,98 @@ class ShodanSurfaceReader:
             raise SurfaceReadError(f"Shodan answered a non-JSON body to {action}") from exc
 
     async def observe(self, domains: list[str], ranges: list[str]) -> list[Observation]:
-        from urllib.parse import quote
-
         hosts: dict[str, Observation] = {}
+        self.coverage = []
 
-        def _host(name: str) -> Observation:
+        def _host(name: str, scope: str) -> Observation:
             key = host_key(name)
             if key not in hosts:
                 hosts[key] = Observation(host=key)
+            read = read_key(self.provider, scope)
+            if read not in hosts[key].reads:
+                hosts[key].reads.append(read)
             return hosts[key]
 
         for domain in domains:
-            data = await self._get(f"/dns/domain/{quote(domain, safe='')}", f"read the DNS records of {domain}") or {}
-            records = data.get("data") or []
-            named: set[str] = set()
-            for record in records:
-                sub = str(record.get("subdomain") or "").strip()
-                name = f"{sub}.{domain}" if sub else domain
-                kind = str(record.get("type") or "").upper()
-                value = str(record.get("value") or "").strip().rstrip(".").lower()
-                # A record of any type (MX, TXT, NS included) backs the name: only a
-                # listed name that no record backs resolves to nothing (path 6).
-                named.add(host_key(name))
-                if kind in {"A", "AAAA", "CNAME"}:
-                    obs = _host(name)
-                    if value:
-                        obs.dns_target = obs.dns_target or value
-                        if kind in {"A", "AAAA"}:
-                            obs.ip = obs.ip or value
-                    else:
-                        obs.resolves = False
-            for sub in data.get("subdomains") or []:
-                name = f"{sub}.{domain}"
-                if host_key(name) not in named:
-                    _host(name).resolves = False
-            self._banners(await self._search(f"hostname:{domain}"), _host)
+            await self._dns(domain, _host)
+            matches = await self._search(f"hostname:{domain}", domain)
+            self._banners(matches, lambda name, d=domain: _host(name, d))
         for block in ranges:
-            self._banners(await self._search(f"net:{block}"), _host)
+            matches = await self._search(f"net:{block}", block)
+            self._banners(matches, lambda name, b=block: _host(name, b))
         return list(hosts.values())
 
-    async def _search(self, query: str) -> list[dict[str, Any]]:
-        data = await self._get("/shodan/host/search", f"search {query}", {"query": query, "minify": "false"}) or {}
-        return [m for m in data.get("matches") or [] if isinstance(m, dict)]
+    async def _dns(self, domain: str, host: Any) -> None:
+        """Every page of ``/dns/domain`` up to the bound: records and listed subdomains."""
+        from urllib.parse import quote
+
+        records: list[dict[str, Any]] = []
+        subdomains: list[str] = []
+        pages = 0
+        more = False
+        for page in range(1, _SHODAN_DNS_PAGES + 1):
+            data = (
+                await self._get(
+                    f"/dns/domain/{quote(domain, safe='')}",
+                    f"read the DNS records of {domain}",
+                    {"page": page} if page > 1 else None,
+                )
+                or {}
+            )
+            pages += 1
+            records.extend(r for r in data.get("data") or [] if isinstance(r, dict))
+            subdomains.extend(str(s) for s in data.get("subdomains") or [])
+            more = bool(data.get("more"))
+            if not more:
+                break
+        self.coverage.append(
+            ReadCoverage(self.provider, domain, "dns", pages, len(records) + len(set(subdomains)), truncated=more)
+        )
+        named: set[str] = set()
+        for record in records:
+            sub = str(record.get("subdomain") or "").strip()
+            name = f"{sub}.{domain}" if sub else domain
+            kind = str(record.get("type") or "").upper()
+            value = str(record.get("value") or "").strip().rstrip(".").lower()
+            # A record of any type (MX, TXT, NS included) backs the name: only a
+            # listed name that no record backs resolves to nothing (path 6).
+            named.add(host_key(name))
+            if kind in {"A", "AAAA", "CNAME"}:
+                obs = host(name, domain)
+                obs.known_since = _earliest(obs.known_since, record.get("last_seen"))
+                if value:
+                    obs.dns_target = obs.dns_target or value
+                    if kind in {"A", "AAAA"}:
+                        obs.ip = obs.ip or value
+                else:
+                    obs.resolves = False
+        for sub in dict.fromkeys(subdomains):
+            name = f"{sub}.{domain}"
+            if host_key(name) not in named:
+                host(name, domain).resolves = False
+
+    async def _search(self, query: str, scope: str) -> list[dict[str, Any]]:
+        """Every page of the host search up to the bound; truncated when matches remain."""
+        matches: list[dict[str, Any]] = []
+        total = 0
+        pages = 0
+        for page in range(1, _SHODAN_SEARCH_PAGES + 1):
+            params: dict[str, Any] = {"query": query, "minify": "false"}
+            if page > 1:
+                params["page"] = page
+            data = await self._get("/shodan/host/search", f"search {query}", params) or {}
+            pages += 1
+            batch = [m for m in data.get("matches") or [] if isinstance(m, dict)]
+            matches.extend(batch)
+            try:
+                total = max(total, int(data.get("total") or 0))
+            except (TypeError, ValueError):
+                total = max(total, len(matches))
+            if len(batch) < _SHODAN_SEARCH_PAGE_SIZE or len(matches) >= total:
+                break
+        truncated = len(matches) < total
+        self.coverage.append(ReadCoverage(self.provider, scope, "search", pages, len(matches), truncated=truncated))
+        return matches
 
     @staticmethod
     def _banners(matches: list[dict[str, Any]], host: Any) -> None:
@@ -519,6 +826,7 @@ class ShodanSurfaceReader:
                 obs = host(name)
                 obs.ip = obs.ip or ip
                 obs.resolves = True
+                obs.known_since = _earliest(obs.known_since, match.get("timestamp"))
                 if port.key not in {p.key for p in obs.ports}:
                     obs.ports.append(port)
                 obs.cert_names = list(dict.fromkeys([*obs.cert_names, *[c for c in cert_names if c]]))
@@ -564,6 +872,7 @@ class GtiAsmSurfaceReader:
         from app.integrations.providers.gti._common import build_gti_headers
 
         self._headers = build_gti_headers(api_key)
+        self.coverage: list[ReadCoverage] = []
 
     async def _get(self, path: str, action: str, params: dict[str, Any] | None = None, project: str = "") -> Any:
         from app.core.egress import egress_client
@@ -595,7 +904,12 @@ class GtiAsmSurfaceReader:
 
         projects = _result_list(await self._get("/projects", "list the ASM projects"))
         hosts: dict[str, Observation] = {}
+        self.coverage = []
         path = f"/search/entities/{quote(f'type:{_GTI_IP_ENTITY}', safe=':')}"
+        # ASM is read per project, not per owned domain: its one read covers every
+        # scope of the pass (``*``), truncated when a bound left entities unread.
+        pages = records = 0
+        truncated = len(projects) > _GTI_MAX_PROJECTS
         for project in projects[:_GTI_MAX_PROJECTS]:
             project_id = str(project.get("id") or "").strip()
             if not project_id.isdigit():
@@ -608,11 +922,16 @@ class GtiAsmSurfaceReader:
                 payload = await self._get(
                     path, f"search the IP entities of ASM project {project_id}", params, project_id
                 )
+                pages += 1
                 for entity in _result_list(payload):
+                    records += 1
                     self._entity(entity, domains, ranges, hosts)
                 token = _next_token(payload) or ""
                 if not token:
                     break
+            if token:
+                truncated = True
+        self.coverage.append(ReadCoverage(self.provider, "*", "asm", pages, records, truncated=truncated))
         return list(hosts.values())
 
     @staticmethod
@@ -632,9 +951,13 @@ class GtiAsmSurfaceReader:
                 return
             names = [ip]
         ports = _gti_ports(summary)
+        read = read_key(GtiAsmSurfaceReader.provider, "*")
         for name in names:
             obs = hosts.setdefault(name, Observation(host=name))
             obs.ip = obs.ip or ip
+            obs.known_since = _earliest(obs.known_since, entity.get("first_seen") or summary.get("first_seen"))
+            if read not in obs.reads:
+                obs.reads.append(read)
             for port in ports:
                 if port.key not in {p.key for p in obs.ports}:
                     obs.ports.append(port)
@@ -664,6 +987,9 @@ def merge_observations(per_reader: list[tuple[str, list[Observation]]]) -> list[
                 into.resolves = True
             into.ip = into.ip or obs.ip
             into.dns_target = into.dns_target or obs.dns_target
+            into.reads = list(dict.fromkeys([*into.reads, *obs.reads]))
+            if obs.known_since is not None and (into.known_since is None or obs.known_since < into.known_since):
+                into.known_since = obs.known_since
             for port in obs.ports:
                 if port.key not in {p.key for p in into.ports}:
                     into.ports.append(port)
@@ -680,10 +1006,17 @@ class MergedSurfaceReader:
     def __init__(self, readers: list[SurfaceReader]):
         self.readers = readers
         self.provider = "+".join(r.provider for r in readers)[:40]
+        self.coverage: list[ReadCoverage] = []
 
     async def observe(self, domains: list[str], ranges: list[str]) -> list[Observation]:
         per_reader = [(r.provider, await r.observe(domains, ranges)) for r in self.readers]
+        self.coverage = [c for r in self.readers for c in reader_coverage(r)]
         return merge_observations(per_reader)
+
+
+def reader_coverage(reader: Any) -> list[ReadCoverage]:
+    """What *reader* says it read in its last ``observe`` (none for a reader that does not say)."""
+    return [c for c in getattr(reader, "coverage", None) or [] if isinstance(c, ReadCoverage)]
 
 
 def declared_integrations(surface: Any) -> list[str]:

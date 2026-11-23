@@ -24,6 +24,9 @@ from app.models.organization_asset import (
     OrganizationAssetSbom,
     OrganizationAssetSoftware,
     OrganizationAssetSource,
+    OrganizationSoftware,
+    OrganizationSoftwareDependency,
+    OrganizationSoftwareVersion,
 )
 from app.models.organization_context import OrganizationContextVersion
 from app.services import organization_asset_store as store
@@ -40,6 +43,9 @@ async def _database() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         OrganizationAssetSoftware,
         OrganizationAssetDecision,
         OrganizationAssetSbom,
+        OrganizationSoftware,
+        OrganizationSoftwareVersion,
+        OrganizationSoftwareDependency,
         OrganizationContextVersion,
     ]
     tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
@@ -276,6 +282,31 @@ async def test_a_lookup_never_reads_a_free_value_as_a_serial() -> None:
         await session.commit()
         found = await store.find_assets_by_identifier(session, org, ["web-02"])
     assert found == {}
+
+
+async def test_a_lookup_finds_a_web_application_by_name_and_by_its_source_reference() -> None:
+    web_app = {
+        "name": "00e80886.octi.example.io",
+        "category": "web_application",
+        "subcategory": "website",
+        "source": "openaev",
+        "external_id": "oaev-web-1",
+    }
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        await _save(session, org, 1, [web_app, SERVER])
+        await store.ensure_built(session)
+        await session.commit()
+        found = await store.find_assets_by_identifier(
+            session,
+            org,
+            ["00e80886.octi.example.io", "openaev:oaev-web-1", "openaev:a-10", "openaev:missing", "intune:oaev-web-1"],
+        )
+    assert sorted(found) == ["00e80886.octi.example.io", "openaev:a-10", "openaev:oaev-web-1"]
+    assert found["openaev:oaev-web-1"]["name"] == "00e80886.octi.example.io"
+    assert found["openaev:oaev-web-1"]["matches"] == 1
+    assert found["00e80886.octi.example.io"]["id"] == found["openaev:oaev-web-1"]["id"]
+    assert found["openaev:a-10"]["name"] == "web-02"
 
 
 async def test_a_split_keeps_two_records_apart_across_rebuilds_and_its_removal_merges_them_again() -> None:
