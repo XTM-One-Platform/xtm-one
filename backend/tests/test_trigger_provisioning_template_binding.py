@@ -203,6 +203,65 @@ async def test_openaev_resolves_its_template_binding_the_same_way() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_poller_reads_a_template_only_agent_through_the_run_as_users_integration() -> None:
+    from app.services.event_poller import _poll_integration
+
+    own = _integration(RUN_AS, provider="opencrq")
+    config = {"provider": "opencrq", "event": "job_finished"}
+    agent = _agent({}, ["opencrq"])
+    assert await _poll_integration(FakeDb([own]), _assignment(), agent, config) == (str(own.id), RUN_AS, "")
+    integration_id, reader, reason = await _poll_integration(FakeDb([]), _assignment(), agent, config)
+    assert (integration_id, reader) == (None, None)
+    assert reason == "template binding opencrq: no OpenCRQ integration resolvable for the run-as user"
+
+
+@pytest.mark.asyncio
+async def test_the_poller_keeps_a_bound_integration_read_as_the_agent_owner() -> None:
+    from app.services.event_poller import _poll_integration
+
+    agent = _agent({"opencrq": ["bound"]}, ["opencrq"])
+    config = {"provider": "opencrq", "event": "job_finished"}
+    assert await _poll_integration(FakeDb([]), _assignment(), agent, config) == ("bound", OTHER, "")
+    pinned = {**config, "integration_id": "pinned"}
+    assert (await _poll_integration(FakeDb([]), _assignment(), agent, pinned))[0] == "pinned"
+    _, _, reason = await _poll_integration(FakeDb([]), _assignment(), _agent({}, []), config)
+    assert reason == "no opencrq integration bound to the trigger or its agent"
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.store[key] = value
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.store.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_poll_is_shown_with_its_reason_then_cleared(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import graph_event_subscriptions as ges
+    from app.services.event_poller import POLL_INTERVALS, note_poll_skip
+
+    async def _no_record(_redis: Any, _assignment_id: Any) -> None:
+        return None
+
+    monkeypatch.setattr(ges, "read_record", _no_record)
+    event = next(iter(POLL_INTERVALS))
+    assignment = _assignment(config={"provider": "opencrq", "event": event})
+    redis = FakeRedis()
+    await note_poll_skip(redis, assignment.id, "template binding opencrq: no OpenCRQ integration resolvable")
+    info = await ges.delivery_mode(redis, assignment)  # type: ignore[arg-type]
+    assert info["poll_skipped"].startswith("template binding opencrq")
+    await note_poll_skip(redis, assignment.id, None)
+    assert "poll_skipped" not in await ges.delivery_mode(redis, assignment)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
 async def test_the_pir_score_reread_uses_the_provisioned_integration(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import ctem_trigger_rules
 
