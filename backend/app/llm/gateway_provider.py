@@ -86,10 +86,10 @@ _OWNER_MISS_TTL_SECONDS = 30.0
 _OWNER_LISTING_TIMEOUT = httpx.Timeout(5.0)
 # A voices read answers within the 20 s the speech settings wait for it.
 _VOICES_TIMEOUT = httpx.Timeout(15.0)
-# The listing's default image and speech models are read again after this.
+# The listing's default models are read again after this.
 _DEFAULTS_TTL_SECONDS = 300.0
-# The types whose default model the listing marks (``"default": true``, XTM-One-Platform/ai-gateway#376).
-_DEFAULT_TYPES = ("image", "speech")
+# The types whose default model the listing marks (``"default_for": [...]``, XTM-One-Platform/ai-gateway#391).
+_DEFAULT_TYPES = ("image", "speech", "chat", "embedding")
 
 # One composition is one request. The read outlasts the gateway's own 10 minute
 # upstream wait, so its answer (a refusal included) arrives before the client
@@ -375,10 +375,11 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
                 mask = getattr(m, "image_mask", None)
                 edit_masks[m.id] = mask if isinstance(mask, bool) else None
             # Absent on an older gateway: no default. Only for a type the entry declares, never its id's guess.
-            if getattr(m, "default", None) is True:
+            default_for = getattr(m, "default_for", None)
+            if isinstance(default_for, list):
                 declared = declared_model_types(getattr(m, "types", None), getattr(m, "type", None))
                 for t in _DEFAULT_TYPES:
-                    if t in declared:
+                    if t in default_for and t in declared:
                         defaults.setdefault(t, m.id)
             out.append(GatewayModel(m.id, owner, _types_of(m)))
         self._listed_defaults = defaults
@@ -387,7 +388,7 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
         return out
 
     async def marked_default_model(self, kind: str) -> str | None:
-        """The model the gateway marks default for *kind* (``image``, ``speech``), the last fallback (#746).
+        """The model the gateway marks default for *kind* (``image``, ``speech``, ``chat``, ``embedding``).
 
         Read from a listing at most :data:`_DEFAULTS_TTL_SECONDS` old. While one is read, or after one
         failed, the last defaults read answer: one listing at a time, retried after the miss TTL.
