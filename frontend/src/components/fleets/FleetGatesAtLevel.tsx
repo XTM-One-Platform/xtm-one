@@ -30,7 +30,7 @@ import { AUTONOMY_LEVEL_LABELS, IMPACT_LABELS, ctemGateEffect, gateActionLabel }
 import { GATE_IMPACT_EXPLANATIONS, GATE_STATE_LABELS, gateRows } from "./fleet-gates-table";
 import { FleetGateMark } from "./FleetModuleMark";
 
-export function FleetGatesTable({ catalog, level }: { catalog: FleetAutonomyGate[]; level: FleetAutonomyLevel }) {
+export function FleetGatesAtLevel({ catalog, level }: { catalog: FleetAutonomyGate[]; level: FleetAutonomyLevel }) {
   const { t_i18n } = useFormatter();
   if (catalog.length === 0) return null;
   return (

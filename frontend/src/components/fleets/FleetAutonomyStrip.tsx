@@ -79,7 +79,7 @@ import { FleetGateReview } from "./FleetGateReview";
 import { FleetPendingApprovals } from "./FleetPendingApprovals";
 import { fleetRefusalMessage } from "./fleet-refusals";
 import { FleetGateMark } from "./FleetModuleMark";
-import { FleetGatesTable } from "./FleetGatesTable";
+import { FleetGatesAtLevel } from "./FleetGatesAtLevel";
 
 /** What the level never covers: written once, in the strip (UX round 3 C2, round 1 B4 on #10034). */
 const NOT_COVERED_LINE =
@@ -421,7 +421,7 @@ export function FleetAutonomyStrip({
       {/* The setup step (#1373): what each gated action is and whether it waits at the level picked, live. */}
       {hasCatalog && compact && (
         <div className="space-y-2">
-          <FleetGatesTable catalog={catalog} level={level} />
+          <FleetGatesAtLevel catalog={catalog} level={level} />
           <p className="content-compact text-default-secondary" data-testid="fleet-autonomy-not-covered">
             {t_i18n(NOT_COVERED_LINE)}
           </p>
