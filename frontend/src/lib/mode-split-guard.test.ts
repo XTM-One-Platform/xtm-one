@@ -80,6 +80,8 @@ const MODE_READERS: Record<string, [ModeClass, string]> = {
   "pages/settings/ParametersSection.tsx": ["domain content", "XTM Hub registration card; Reset onboarding card (guided setup, XTM One mode only); edition badge (licence)"],
   "pages/settings/QuotasSection.tsx": ["licence and edition", "agentic quota source and edition cards"],
   "pages/settings/RoiUnitsSection.tsx": ["domain content", "title and order of the mode's built-in ROI catalog"],
+  "pages/agent-detail/AddAssignmentPanel.tsx": ["domain content", "the CTEM signal tile of the trigger picker, XTM One only (#1409)"],
+  "pages/assignment-detail/TriggerCard.tsx": ["domain content", "the CTEM signal tile of the trigger picker, XTM One only (#1409)"],
 };
 
 const READS_MODE = /\buseIsXtmOne\(|\bisXtmOneMode\(|\bplatform_mode\s*[!=]==/;
