@@ -3475,22 +3475,27 @@ async def get_embedding_provider(
     for cfg in configs:
         configs_by_provider.setdefault(cfg.provider, []).append(cfg)
 
+    def _admin_configured() -> tuple[LLMProviderConfig, str] | None:
+        if getattr(ps, "embedding_provider_id", None):
+            config = next((c for c in configs if c.id == ps.embedding_provider_id), None)
+            if config:
+                model = ps.embedding_model or config.default_model or ""
+                if model or config.provider in _EMBEDDING_MODEL_OPTIONAL_PROVIDERS:
+                    return config, model
+        if ps.embedding_provider:
+            matching = configs_by_provider.get(ps.embedding_provider, [])
+            if matching:
+                config = newest_config(matching)
+                model = ps.embedding_model or config.default_model or ""
+                if model or config.provider in _EMBEDDING_MODEL_OPTIONAL_PROVIDERS:
+                    return config, model
+        return None
+
     # 1. Admin-configured (UUID first)
-    if getattr(ps, "embedding_provider_id", None):
-        config = next((c for c in configs if c.id == ps.embedding_provider_id), None)
-        if config:
-            model = ps.embedding_model or config.default_model or ""
-            if model or config.provider in _EMBEDDING_MODEL_OPTIONAL_PROVIDERS:
-                await ensure_not_excluded(db, config, "Embedding", user_id)
-                return _with_embedding_dimensions(await _cached_provider(config)), model, config.id
-    if ps.embedding_provider:
-        matching = configs_by_provider.get(ps.embedding_provider, [])
-        if matching:
-            config = newest_config(matching)
-            model = ps.embedding_model or config.default_model or ""
-            if model or config.provider in _EMBEDDING_MODEL_OPTIONAL_PROVIDERS:
-                await ensure_not_excluded(db, config, "Embedding", user_id)
-                return _with_embedding_dimensions(await _cached_provider(config)), model, config.id
+    if (chosen := _admin_configured()) is not None:
+        config, model = chosen
+        await ensure_not_excluded(db, config, "Embedding", user_id)
+        return _with_embedding_dimensions(await _cached_provider(config)), model, config.id
 
     # 2. Fallback: first embedding-capable provider
     fallback = implicit_embedding_fallback(
@@ -3507,7 +3512,8 @@ async def get_embedding_provider(
     if not ps.embedding_model and any(c.provider == FiligranGatewayProvider.provider_name for c in configs):
         from app.llm.gateway_embedding_default import fill_at_lookup
 
-        if (adopted := await fill_at_lookup(ps, configs)) is not None:
+        # A choice saved meanwhile is copied onto *ps*: served as step 1 would.
+        if (adopted := await fill_at_lookup(ps, configs) or _admin_configured()) is not None:
             config = next((c for c in configs if c.id == adopted[0].id), adopted[0])
             await ensure_not_excluded(db, config, "Embedding", user_id)
             return _with_embedding_dimensions(await _cached_provider(config)), adopted[1], config.id

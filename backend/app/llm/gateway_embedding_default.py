@@ -25,7 +25,7 @@ import time
 import uuid
 from collections.abc import Iterable
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -193,8 +193,9 @@ async def byollm_keeps_it_empty(db: AsyncSession) -> bool:
 async def fill_at_lookup(ps, configs: list[LLMProviderConfig]) -> tuple[LLMProviderConfig, str] | None:
     """:func:`fill_from_gateway` for an embedding lookup that found no model, committed in its own session.
 
-    The caller's transaction may roll back, or hold the settings row: then the
-    model serves this lookup unsaved, and a later lookup saves it.
+    A choice saved meanwhile is copied onto *ps* instead, for the caller to
+    resolve. While the caller's own transaction holds the row, the model serves
+    this lookup unsaved, and a later lookup saves it.
     """
     from sqlalchemy.orm.attributes import set_committed_value
 
@@ -202,32 +203,36 @@ async def fill_at_lookup(ps, configs: list[LLMProviderConfig]) -> tuple[LLMProvi
     from app.core import database
     from app.llm.router import select_provider_configs
 
+    def _copy_to_caller(stored) -> None:
+        for attr in ("embedding_provider", "embedding_provider_id", "embedding_model"):
+            set_committed_value(ps, attr, getattr(stored, attr))
+
     # Flags are cached and refusals remembered: with no candidate, the lookup pays no query.
     if not await _flagged(configs, ps.embedding_dimensions):
         return None
     async with database.async_session() as db:
-        # Never waits on a row lock: the caller's own transaction may hold it.
         stored = await peek_platform_settings(db)
         if stored is None:  # a fresh install's row, not committed yet: nothing configured
             return await adoptable_gateway_default(db, configs, dimensions=ps.embedding_dimensions)
-        if not no_embedding_choice(stored) or await byollm_keeps_it_empty(db):
+        if not no_embedding_choice(stored):
+            _copy_to_caller(stored)
+            return None
+        if await byollm_keeps_it_empty(db):
             return None
         configs = list((await db.execute(select_provider_configs())).scalars().all())
         adopted = await adoptable_gateway_default(db, configs, dimensions=stored.embedding_dimensions)
         if adopted is None:
             return None
         try:
-            await db.refresh(stored, with_for_update={"nowait": True})
+            # Briefly: an admin's save commits in time, the caller's own transaction never does.
+            await db.execute(text("SET LOCAL lock_timeout = '2s'"))
+            await db.refresh(stored, with_for_update=True)
         except DBAPIError:
             return adopted
         if not no_embedding_choice(stored):
-            # Another lookup saved first: use what it saved.
-            adopted = next(((c, stored.embedding_model) for c in configs if c.id == stored.embedding_provider_id), None)
-            if adopted is None or not adopted[1]:
-                return None
-        else:
-            await _save(db, stored, *adopted)
-            await db.commit()
-    for attr in ("embedding_provider", "embedding_provider_id", "embedding_model"):
-        set_committed_value(ps, attr, getattr(stored, attr))
+            _copy_to_caller(stored)
+            return None
+        await _save(db, stored, *adopted)
+        await db.commit()
+    _copy_to_caller(stored)
     return adopted

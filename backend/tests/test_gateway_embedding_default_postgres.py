@@ -681,3 +681,79 @@ async def test_the_size_probe_leaves_the_shared_provider_alone(monkeypatch, nati
 
         assert native.calls == 1
         assert shared.embedding_dimensions == 1024
+
+
+async def _add_tei(sessions) -> LLMProviderConfig:
+    async with sessions() as db:
+        tei = LLMProviderConfig(
+            user_id=None,
+            provider="tei",
+            api_key_enc=encrypt_value("none||http://tei.local"),
+            default_model="",
+            available_models=[],
+        )
+        db.add(tei)
+        await db.commit()
+        return tei
+
+
+async def _choose_tei(db, tei: LLMProviderConfig) -> None:
+    ps = await get_platform_settings(db)
+    ps.embedding_provider, ps.embedding_provider_id, ps.embedding_model = "tei", tei.id, None
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_model_less_choice_saved_meanwhile_is_served(monkeypatch):
+    from app.llm import gateway_embedding_default as module
+
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        await _add_config(sessions, GATEWAY)
+        tei = await _add_tei(sessions)
+        async with sessions() as db:
+            await get_platform_settings(db)
+            await db.commit()
+        checked = module.adoptable_gateway_default
+
+        async def _admin_chooses_tei_meanwhile(*args, **kwargs):
+            found = await checked(*args, **kwargs)
+            async with sessions() as other:
+                await _choose_tei(other, tei)
+            return found
+
+        monkeypatch.setattr(module, "adoptable_gateway_default", _admin_chooses_tei_meanwhile)
+
+        async with sessions() as db:
+            _provider, model, config_id = await router.get_embedding_provider(db)
+
+        assert (model, config_id) == ("", tei.id)
+        assert await _stored(sessions) == ("tei", tei.id, None, None)
+
+
+@pytest.mark.asyncio
+async def test_an_admin_choice_committing_under_the_lock_wins(monkeypatch):
+    """The lookup waits briefly for the row instead of embedding with the gateway model under a new default."""
+    import asyncio
+
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        await _add_config(sessions, GATEWAY)
+        tei = await _add_tei(sessions)
+        async with sessions() as db:
+            await get_platform_settings(db)
+            await db.commit()
+
+        async def _admin_saves(holder):
+            await asyncio.sleep(0.5)
+            await _choose_tei(holder, tei)
+
+        async with sessions() as holder:
+            ps = await get_platform_settings(holder)
+            await holder.refresh(ps, with_for_update=True)  # the admin's save holds the row
+            async with sessions() as db:
+                (_provider, model, config_id), _ = await asyncio.gather(
+                    router.get_embedding_provider(db), _admin_saves(holder)
+                )
+
+        assert (model, config_id) == ("", tei.id)
