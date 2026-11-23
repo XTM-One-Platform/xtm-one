@@ -316,7 +316,8 @@ Rules:
   size: one of "1-50","51-250","251-1000","1001-5000","5001-20000","20000+" (employees);
   crown_jewels: [{"name","business_service","owner","criticality": low|medium|high|critical}];
   tech_stack: [{"vendor","product","cpe"}] (cpe only when you are sure of it, else "");
-  ai_systems: [{"name","kind": assistant|agent|model_api|embedded,"owner","exposure": internal|partner|public}];
+  ai_systems: [{"name","kind": assistant|agent|model_api|embedded,"owner","exposure": internal|partner|public}]
+    (the AI the organization runs; saved as assets of category ai_target);
   pir_ids: ids from the known PIR list only (a PIR worth creating goes to suggested_pirs);
   risk_appetite.annual_loss_threshold, risk_appetite.approval_threshold, loaded_hourly_rate: numbers in the
   profile currency; currency: ISO 4217 code; ticketing: {"integration","project"}.
