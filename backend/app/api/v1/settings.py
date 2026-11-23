@@ -728,6 +728,7 @@ async def _ensure_platform_default_model(
     available_models: list[str] | None = None,
     *,
     fill_empty_defaults: bool = True,
+    replaces: str | None = None,
 ) -> None:
     """Set platform default models if none are configured yet.
 
@@ -745,6 +746,9 @@ async def _ensure_platform_default_model(
     ones included: the boot seed passes it under ``BYOLLM_ACTIVATED`` on an
     install an administrator has configured, where an empty default is their
     choice.
+
+    ``replaces``: a saved agent default of this very config equal to it counts
+    as unset (the gateway's ``default`` alias once it marks a chat model, #1421).
     """
     from app.api.v1.platform_settings_helpers import (
         get_platform_settings as _load_ps,
@@ -805,7 +809,13 @@ async def _ensure_platform_default_model(
 
     ps = await _load_ps(db)
 
-    if not ps.agent_default_model and chat_default:
+    replaced = (
+        replaces is not None
+        and ps.agent_default_model == replaces
+        and ps.agent_default_provider == provider
+        and str(ps.agent_default_provider_id or provider_id) == str(provider_id)
+    )
+    if (not ps.agent_default_model or replaced) and chat_default:
         ps.agent_default_provider = provider
         ps.agent_default_provider_id = uuid.UUID(provider_id) if provider_id else None
         ps.agent_default_model = chat_default
@@ -2499,7 +2509,14 @@ async def refresh_llm_provider_models(
     """
     from app.core.config import settings as app_settings
     from app.core.migrations import bootstrap_lock
-    from app.llm.env_listing import apply_listing, env_provider_keys, list_models_for_seed, listing_platform_model
+    from app.llm.env_listing import (
+        apply_listing,
+        declared_default,
+        env_provider_keys,
+        list_models_for_seed,
+        listing_platform_model,
+        replaced_alias,
+    )
     from app.main import _byollm_install_configured
     from app.services.model_catalog_announcements import model_catalog_watch
 
@@ -2536,8 +2553,8 @@ async def refresh_llm_provider_models(
     # a rollback expires the user loaded on this session (MissingGreenlet).
     await db.commit()
     set_llm_caller(user.id, user.email)
-    listed = await list_models_for_seed(provider, dict(env_provider_keys(warn=False))[provider])
-    if listed is None:
+    listing = await list_models_for_seed(provider, dict(env_provider_keys(warn=False))[provider])
+    if listing is None:
         raise HTTPException(
             status_code=502,
             detail=f"The '{provider}' provider did not list its models; the model list is unchanged.",
@@ -2548,12 +2565,13 @@ async def refresh_llm_provider_models(
         async with bootstrap_lock(wait_timeout=25), model_catalog_watch():
             await lock_provider_configs(db)
             config = await _listed_config()  # an admin may have edited it meanwhile
+            listed = listing.models
             removed = sorted(set(config.available_models or []) - set(listed))
             # Read before anything is written, as at boot.
             install_configured = await _byollm_install_configured(db)
-            apply_listing(config, listed)
+            apply_listing(config, listed, listing.chat_default)
             # A first listing fills the empty platform defaults, as boot does.
-            declared = getattr(PROVIDER_MAP.get(config.provider), "default_model", None)
+            declared = declared_default(config.provider, listing.chat_default, listed)
             if model := listing_platform_model(listed, config.default_model, app_settings.default_model, declared):
                 await _ensure_platform_default_model(
                     db,
@@ -2562,6 +2580,7 @@ async def refresh_llm_provider_models(
                     provider_id=str(config.id),
                     available_models=None,
                     fill_empty_defaults=not install_configured,
+                    replaces=replaced_alias(config.provider, declared),
                 )
             await log_audit(
                 db,

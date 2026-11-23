@@ -17,7 +17,14 @@ This module keeps, across those rebuilds, what they install:
   stays with its versions.
 - :func:`software_rows` is the pure half of the sync (testable without a database).
 - :func:`list_software`, :func:`get_software` and :func:`assets_of_version` are
-  the paginated reads of the API (``GET /api/v1/organization-context/software``).
+  the paginated reads of the API (``GET /api/v1/organization-context/software``);
+  :func:`software_csv` its CSV export.
+- :func:`create_software`, :func:`update_software`, :func:`delete_software`,
+  :func:`attach_software` and :func:`detach_software` are an administrator's
+  writes. A synced software is read-only but for its CPE override; a hand-typed
+  one is attached to an asset through a hand document anchored on the asset's
+  first source record (``organization_asset_sboms`` format ``manual``), so the
+  attachment follows the asset through every rebuild and merge.
 
 The CPE of a software is resolved, never guessed (``identity.resolve_cpe``): the
 administrator's override, else one a source reported, else ``unresolved``.
@@ -278,7 +285,9 @@ async def sync_software(
             stored[key] = soft
         soft.vendor = _cut(row.vendor, 200)
         soft.product = _cut(row.product, 200)
-        soft.name = _cut(display_name(row.vendor, row.product), 300)
+        # The name an administrator gave a hand-typed software stays; a synced one takes the sources'.
+        if soft.origin != "manual" or not soft.name:
+            soft.name = _cut(display_name(row.vendor, row.product), 300)
         soft.name_key = _key(soft.name)[:300]
         soft.sources = sorted(row.sources | ({"manual"} if soft.origin == "manual" else set()))
         soft.purl = _cut(soft.purl or row.purl, 500) if soft.origin == "manual" else _cut(row.purl, 500)
@@ -672,3 +681,345 @@ async def assets_of_version(
         offset=offset,
         limit=limit,
     )
+
+
+# ── Writes: an administrator's software (#1495, slice 1b) ──────────────
+
+
+class SoftwareError(ValueError):
+    """A software write refused; ``status`` is the HTTP status the API answers (404, 409 or 422)."""
+
+    def __init__(self, message: str, status: int = 422) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def _check_cpe(cpe: str) -> str:
+    cpe = (cpe or "").strip()
+    if cpe and not (cpe.startswith("cpe:2.3:") and len(cpe.split(":")) >= 13):
+        raise SoftwareError("cpe must be a CPE 2.3 formatted string (cpe:2.3:part:vendor:product:version:...)")
+    return cpe
+
+
+def _check_type(software_type: str) -> str:
+    software_type = (software_type or "application").strip()
+    if software_type not in SOFTWARE_TYPES:
+        raise SoftwareError(f"type must be one of {', '.join(SOFTWARE_TYPES)}")
+    return software_type
+
+
+async def _software(db: AsyncSession, organization_id: uuid.UUID, software_id: uuid.UUID) -> OrganizationSoftware:
+    soft = (
+        await db.execute(
+            select(OrganizationSoftware).where(
+                OrganizationSoftware.organization_id == organization_id, OrganizationSoftware.id == software_id
+            )
+        )
+    ).scalar_one_or_none()
+    if soft is None:
+        raise SoftwareError("Software not found", 404)
+    return soft
+
+
+def _resolve(soft: OrganizationSoftware) -> None:
+    resolved = identity.resolve_cpe(soft.vendor, soft.product, "", reported=(), override=soft.cpe_override or "")
+    if resolved["confidence"] == "override" or soft.origin == "manual":
+        soft.cpe = _cut(resolved["cpe"], 300)
+        soft.cpe_state = resolved["confidence"]
+
+
+async def create_software(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    vendor: str,
+    product: str,
+    name: str = "",
+    software_type: str = "application",
+    description: str = "",
+    cpe: str = "",
+    purl: str = "",
+) -> dict[str, Any]:
+    """Type a software by hand (``origin`` ``manual``); 409 when the vendor and product already exist."""
+    product = _cut(product, 200)
+    if not product:
+        raise SoftwareError("product is required")
+    vendor = _cut(vendor, 200)
+    key = (_key(vendor)[:200], _key(product)[:200])
+    taken = (
+        await db.execute(
+            select(OrganizationSoftware.id).where(
+                OrganizationSoftware.organization_id == organization_id,
+                OrganizationSoftware.vendor_key == key[0],
+                OrganizationSoftware.product_key == key[1],
+            )
+        )
+    ).scalar_one_or_none()
+    if taken is not None:
+        raise SoftwareError("A software with this vendor and product already exists", 409)
+    soft = OrganizationSoftware(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        vendor=vendor,
+        product=product,
+        vendor_key=key[0],
+        product_key=key[1],
+        name=_cut(name, 300) or _cut(display_name(vendor, product), 300),
+        software_type=_check_type(software_type),
+        description=_cut(description, 2000),
+        cpe_override=_check_cpe(cpe),
+        purl=_cut(purl, 500),
+        origin="manual",
+        sources=["manual"],
+    )
+    soft.name_key = _key(soft.name)[:300]
+    _resolve(soft)
+    db.add(soft)
+    await db.flush()
+    return _software_dict(soft)
+
+
+#: The fields of a hand-typed software an administrator may change; a synced one takes ``cpe_override`` only.
+EDITABLE_FIELDS: tuple[str, ...] = ("name", "type", "description", "purl", "cpe_override")
+
+
+async def update_software(
+    db: AsyncSession, organization_id: uuid.UUID, software_id: uuid.UUID, changes: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Change a software; answers it and the fields changed (``{field: [before, after]}``).
+
+    A synced software is read-only but for its CPE override (422 for any other
+    field): its name, type and versions come from its sources.
+    """
+    soft = await _software(db, organization_id, software_id)
+    unknown = set(changes) - set(EDITABLE_FIELDS)
+    if unknown:
+        raise SoftwareError(f"Unknown field(s): {', '.join(sorted(unknown))}")
+    if soft.origin != "manual" and set(changes) - {"cpe_override"}:
+        raise SoftwareError("A synced software is read-only; only its CPE override can be set")
+    before = _software_dict(soft)
+    if "name" in changes:
+        soft.name = _cut(changes["name"], 300) or _cut(display_name(soft.vendor, soft.product), 300)
+        soft.name_key = _key(soft.name)[:300]
+    if "type" in changes:
+        soft.software_type = _check_type(str(changes["type"] or ""))
+    if "description" in changes:
+        soft.description = _cut(changes["description"], 2000)
+    if "purl" in changes:
+        soft.purl = _cut(changes["purl"], 500)
+    if "cpe_override" in changes:
+        soft.cpe_override = _check_cpe(str(changes["cpe_override"] or ""))
+        if soft.origin == "manual" or soft.cpe_override:
+            _resolve(soft)
+        else:
+            # The override is cleared on a synced software: the next rebuild resolves its CPE from its sources.
+            soft.cpe, soft.cpe_state = "", "unresolved"
+    await db.flush()
+    after = _software_dict(soft)
+    changed = {f: [before[f], after[f]] for f in EDITABLE_FIELDS if before[f] != after[f]}
+    return after, changed
+
+
+async def _hand_documents(db: AsyncSession, organization_id: uuid.UUID) -> list[Any]:
+    from app.models.organization_asset import OrganizationAssetSbom
+    from app.services.organization_asset_store import HAND_SOFTWARE_FORMAT
+
+    return list(
+        (
+            await db.execute(
+                select(OrganizationAssetSbom).where(
+                    OrganizationAssetSbom.organization_id == organization_id,
+                    OrganizationAssetSbom.format == HAND_SOFTWARE_FORMAT,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _is_component_of(component: Mapping[str, Any], soft: OrganizationSoftware) -> bool:
+    return _key(component.get("vendor")) == soft.vendor_key and _key(component.get("product")) == soft.product_key
+
+
+async def delete_software(db: AsyncSession, organization_id: uuid.UUID, software_id: uuid.UUID) -> dict[str, Any]:
+    """Delete a hand-typed software and its hand attachments (422 for a synced one); the caller rebuilds."""
+    soft = await _software(db, organization_id, software_id)
+    if soft.origin != "manual":
+        raise SoftwareError("A synced software cannot be deleted; it goes when no source reports it")
+    gone = _software_dict(soft)
+    detached = 0
+    for doc in await _hand_documents(db, organization_id):
+        kept = [c for c in doc.components or [] if not _is_component_of(c, soft)]
+        detached += len(doc.components or []) - len(kept)
+        if kept:
+            doc.components = kept
+        else:
+            await db.delete(doc)
+    await db.delete(soft)
+    await db.flush()
+    return {**gone, "detached": detached}
+
+
+async def _anchor(db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID) -> tuple[str, str]:
+    from app.models.organization_asset import OrganizationAssetSource
+
+    anchor = (
+        await db.execute(
+            select(OrganizationAssetSource.source, OrganizationAssetSource.external_id)
+            .join(OrganizationAsset, OrganizationAsset.id == OrganizationAssetSource.asset_id)
+            .where(OrganizationAsset.organization_id == organization_id, OrganizationAsset.id == asset_id)
+            .order_by(OrganizationAssetSource.source, OrganizationAssetSource.external_id)
+            .limit(1)
+        )
+    ).first()
+    if anchor is None:
+        raise SoftwareError("Asset not found", 404)
+    return str(anchor[0]), str(anchor[1])
+
+
+async def attach_software(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    software_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    *,
+    version: str = "",
+    author_user_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
+    """Attach a hand-typed software to an asset at *version* (``unknown`` when empty); the caller rebuilds.
+
+    The attachment is a component of the asset's hand document, anchored on its
+    first source record, so it follows the asset through every rebuild and merge.
+    Attaching the same version again changes nothing; a synced software is
+    attached by its sources only (422).
+    """
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from app.models.organization_asset import OrganizationAssetSbom
+    from app.services.organization_asset_store import HAND_SOFTWARE_FORMAT
+
+    soft = await _software(db, organization_id, software_id)
+    if soft.origin != "manual":
+        raise SoftwareError("A synced software is attached by its sources; type the software by hand to attach it")
+    source, external_id = await _anchor(db, organization_id, asset_id)
+    version = _cut(version, 100) or identity.UNKNOWN_VERSION
+    doc = (
+        await db.execute(
+            select(OrganizationAssetSbom).where(
+                OrganizationAssetSbom.organization_id == organization_id,
+                OrganizationAssetSbom.anchor_source == source,
+                OrganizationAssetSbom.anchor_external_id == external_id,
+                OrganizationAssetSbom.document_key == HAND_SOFTWARE_FORMAT,
+            )
+        )
+    ).scalar_one_or_none()
+    if doc is None:
+        doc = OrganizationAssetSbom(
+            organization_id=organization_id,
+            anchor_source=source,
+            anchor_external_id=external_id,
+            document_key=HAND_SOFTWARE_FORMAT,
+            format=HAND_SOFTWARE_FORMAT,
+            file_name="",
+            components=[],
+        )
+        db.add(doc)
+    components = list(doc.components or [])
+    entry = {
+        "vendor": soft.vendor,
+        "product": soft.product,
+        "version": version,
+        "cpe": version_cpe(soft.cpe, version),
+        "purl": soft.purl,
+        "bundled_in": "",
+    }
+    added = not any(_is_component_of(c, soft) and str(c.get("version")) == version for c in components)
+    if added:
+        doc.components = [*components, entry]
+        doc.author_user_id = author_user_id
+        doc.imported_at = _dt.now(UTC)
+    await db.flush()
+    return {"software_id": str(soft.id), "asset_id": str(asset_id), "version": version, "added": added}
+
+
+async def detach_software(
+    db: AsyncSession, organization_id: uuid.UUID, software_id: uuid.UUID, asset_id: uuid.UUID, *, version: str = ""
+) -> int:
+    """Remove a hand attachment from an asset (every version when *version* is empty); answers how many went.
+
+    404 when the asset holds no hand attachment of that software; the caller rebuilds.
+    """
+    from app.services.organization_asset_store import HAND_SOFTWARE_FORMAT
+
+    soft = await _software(db, organization_id, software_id)
+    source, external_id = await _anchor(db, organization_id, asset_id)
+    removed = 0
+    for doc in await _hand_documents(db, organization_id):
+        if (doc.anchor_source, doc.anchor_external_id, doc.document_key) != (source, external_id, HAND_SOFTWARE_FORMAT):
+            continue
+        kept = [
+            c
+            for c in doc.components or []
+            if not (_is_component_of(c, soft) and (not version or str(c.get("version")) == version))
+        ]
+        removed += len(doc.components or []) - len(kept)
+        if kept:
+            doc.components = kept
+        else:
+            await db.delete(doc)
+    if not removed:
+        raise SoftwareError("This asset holds no hand attachment of this software", 404)
+    await db.flush()
+    return removed
+
+
+# ── CSV export ────────────────────────────────────────────────────────
+
+#: The columns of the software CSV, in order.
+CSV_COLUMNS: tuple[str, ...] = (
+    "name",
+    "vendor",
+    "product",
+    "type",
+    "cpe",
+    "cpe_state",
+    "purl",
+    "origin",
+    "sources",
+    "version_count",
+    "asset_count",
+    "has_unknown_version",
+    "first_seen",
+    "last_seen",
+)
+#: The most rows one export writes.
+MAX_CSV_ROWS = 50_000
+
+
+def _csv_cell(value: Any) -> str:
+    """A cell a spreadsheet never runs as a formula (``=``, ``+``, ``-``, ``@``, tab and CR are prefixed with ``'``)."""
+    if isinstance(value, list):
+        value = "; ".join(str(v) for v in value)
+    text_value = "" if value is None else str(value)
+    return f"'{text_value}" if text_value[:1] in ("=", "+", "-", "@", "\t", "\r") else text_value
+
+
+async def software_csv(db: AsyncSession, organization_id: uuid.UUID, **filters: Any) -> str:
+    """The software list as CSV (the filters of :func:`list_software`), at most :data:`MAX_CSV_ROWS` rows."""
+    import csv
+    import io
+
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(CSV_COLUMNS)
+    offset = 0
+    while offset < MAX_CSV_ROWS:
+        page = await list_software(db, organization_id, offset=offset, limit=MAX_PAGE, **filters)
+        for item in page.items:
+            writer.writerow([_csv_cell(item[c]) for c in CSV_COLUMNS])
+        offset += len(page.items)
+        if not page.items or offset >= page.total:
+            break
+    return out.getvalue()

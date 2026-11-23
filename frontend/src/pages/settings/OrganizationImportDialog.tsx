@@ -369,12 +369,21 @@ const TAXONOMY_FILTERS: FilterKey[] = ["category", "subcategory", "criticality",
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Today's one-click draft of the empty fields from every platform. */
-  onQuickSetup: () => void;
+  /** Today's one-click draft of the empty fields from every platform; without it the Quick setup row is not drawn. */
+  onQuickSetup?: () => void;
   quickSetupPending?: boolean;
+  /**
+   * The sections offered (#1367, points 4 and 5): CTEM > Inventory > Sources imports the inventory sections, Settings >
+   * Organization the business profile ones (crown jewels, PIRs). Every section when omitted.
+   */
+  sections?: readonly ImportSectionKey[];
 }
 
-export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending }: Props) {
+/** The sections each surface imports into (#1367): the same split as the backend's SECTION_SCOPES. */
+export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "tech_stack", "ai_systems"] as const satisfies readonly ImportSectionKey[];
+export const PROFILE_IMPORT_SECTIONS = ["crown_jewels", "pirs"] as const satisfies readonly ImportSectionKey[];
+
+export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, quickSetupPending, sections: offered }: Props) {
   const { t_i18n } = useFormatter();
   const f = useNumberFormat();
   const { toast } = useToast();
@@ -643,7 +652,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     );
   };
 
-  const sectionKeys = Object.keys(SECTION_LABELS) as ImportSectionKey[];
+  const sectionKeys = (Object.keys(SECTION_LABELS) as ImportSectionKey[]).filter((key) => !offered || offered.includes(key));
   const availableSources = (sectionEntry?.sources ?? []).filter((entry) => entry.available).map((entry) => entry.source);
   const pickSource = (next: ImportSourceKey) => {
     setSource(next);
@@ -675,15 +684,17 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           />
         ))}
       </div>
-      <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
-        <p className="content-compact text-default-secondary">
-          {t_i18n("Quick setup: fill the empty fields from every connected platform in one click, then review them in the form.")}
-        </p>
-        <Button variant="secondary" onClick={onQuickSetup} disabled={quickSetupPending} aria-busy={quickSetupPending || undefined}>
-          {quickSetupPending && <Spinner size="sm" tone="inherit" />}
-          {t_i18n("Quick setup")}
-        </Button>
-      </div>
+      {onQuickSetup && (
+        <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
+          <p className="content-compact text-default-secondary">
+            {t_i18n("Quick setup: fill the empty fields from every connected platform in one click, then review them in the form.")}
+          </p>
+          <Button variant="secondary" onClick={onQuickSetup} disabled={quickSetupPending} aria-busy={quickSetupPending || undefined}>
+            {quickSetupPending && <Spinner size="sm" tone="inherit" />}
+            {t_i18n("Quick setup")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 

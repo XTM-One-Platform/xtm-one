@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from html import escape as html_escape
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from urllib.parse import urlsplit
 
 import structlog
@@ -216,6 +216,9 @@ from app.services.registered_platform_origins import (
     registered_platform_origins,
 )
 from app.services.vault.errors import SecretUnavailableError
+
+if TYPE_CHECKING:
+    from app.llm.env_listing import SeedListing
 
 setup_logging(
     debug=settings.debug, log_level=settings.log_level, log_format=settings.log_format
@@ -632,7 +635,7 @@ def _load_dotenv_files() -> None:
     load_dotenv_files()
 
 
-async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, list[str]]:
+async def _seed_listed_models(providers: list[tuple[str, str]], models_editable: bool) -> dict[str, "SeedListing"]:
     """List the models of the seeded providers whose catalog is their listing.
 
     Which ones: ``app.llm.env_listing.catalogs_to_list``. Done before the
@@ -651,7 +654,7 @@ async def _seed_listed_models(providers: list[tuple[str, str]], models_editable:
         rows = (await db.execute(_sel(LLMProviderConfig))).scalars().all()
     names = catalogs_to_list(providers, rows, models_editable)
     listed = {n: await list_models_for_seed(n, k) for n, k in providers if n in names}
-    return {n: models for n, models in listed.items() if models}
+    return {n: listing for n, listing in listed.items() if listing}
 
 
 async def _seed_llm_providers_from_env() -> set[str]:
@@ -702,13 +705,14 @@ async def _seed_llm_providers_from_env() -> set[str]:
         env_provider_keys,
         listing_platform_model,
     )
+    from app.llm.env_listing import declared_default as _declared_default
     from app.llm.env_listing import listing_default as _listing_default
+    from app.llm.env_listing import replaced_alias as _replaced_alias
     from app.llm.env_models import (
         env_models_for,
         merge_env_models,
         resolve_default_model,
     )
-    from app.llm.router import PROVIDER_MAP
     from app.models.llm_config import LLMProviderConfig
 
     providers_to_seed = env_provider_keys()
@@ -779,10 +783,13 @@ async def _seed_llm_providers_from_env() -> set[str]:
             # catalog is never touched (historical "optional" contract), except
             # by a listing (``_seed_listed_models``).
             env_models = env_models_for(provider_name)
-            listed = listed_models.get(provider_name)
+            listing = listed_models.get(provider_name)
+            listed = listing.models if listing else None
             # A listing is alphabetical: the provider's own default (the gateway's
-            # ``default`` alias) when listed, else the stored one, else the first.
-            declared_default = getattr(PROVIDER_MAP.get(provider_name), "default_model", None)
+            # marked chat model, else its ``default`` alias) when listed, else the
+            # stored one, else the first.
+            declared_default = _declared_default(provider_name, listing and listing.chat_default, listed or [])
+            replaced = _replaced_alias(provider_name, declared_default)
             if listed and not models_editable:
                 env_models = listed
             seed_lists[provider_name] = env_models or listed or []
@@ -813,7 +820,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                         # Pinned regime: the env list IS the catalog.
                         existing.available_models = env_models
                         existing.default_model = (
-                            _listing_default(existing.default_model, declared_default, env_models)
+                            _listing_default(existing.default_model, declared_default, env_models, replaced)
                             if listed
                             else env_models[0]
                         )
@@ -854,9 +861,9 @@ async def _seed_llm_providers_from_env() -> set[str]:
                 db.add(cfg)
                 await db.flush()
                 logger.info("LLM env seed: provisioned %s provider", provider_name)
-            if listed and models_editable and cfg.available_models in (None, cfg.env_models):
+            if listing and models_editable and cfg.available_models in (None, cfg.env_models):
                 # Editable: refreshed until an admin edits it (it then differs from the snapshot).
-                apply_listing(cfg, listed)
+                apply_listing(cfg, listing.models, listing.chat_default)
             seeded_rows[provider_name] = cfg
 
             # The catalog the row actually ends up with (merged in editable
@@ -886,6 +893,7 @@ async def _seed_llm_providers_from_env() -> set[str]:
                     # Under BYOLLM an empty default of a configured install is
                     # the administrator's choice, not a gap.
                     fill_empty_defaults=not install_configured_before_boot,
+                    replaces=replaced if listed else None,
                 )
 
         async def _sync_compound_provider_base_url(
