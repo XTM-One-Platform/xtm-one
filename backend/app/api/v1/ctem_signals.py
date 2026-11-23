@@ -177,13 +177,54 @@ async def evaluate_ctem_signals(
 ) -> dict[str, Any]:
     """Run the reconcile and scope gate again on every open signal (after a policy change); counts by state."""
     _require_xtm_one()
-    pending = case_loop.PendingEvents()
-    counts = await scope_gate.evaluate_open(
-        db, organization_id=await _organization_id(db), user_id=admin.id, events=pending
-    )
+    counts = await scope_gate.evaluate_open(db, organization_id=await _organization_id(db), user_id=admin.id)
     await db.commit()
-    await case_loop.publish_pending(pending)  # ctem_signal.triaged per changed verdict (#1409)
     return {"evaluated": sum(counts.values()), "counts": counts}
+
+
+@router.get("/attack-surface/passes")
+async def list_attack_surface_passes(
+    limit: int = Query(default=10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """The latest attack surface passes of the outside lens (#1498), newest first (administrators).
+
+    Each pass names its providers, what each read covered (pages, records,
+    truncated) per owned domain or range, the hosts observed and the signals per
+    path, including a pass that found nothing.
+    """
+    _require_xtm_one()
+    from app.services import ctem_attack_surface as surface
+
+    rows = await surface.list_passes(db, await _organization_id(db), limit=limit)
+    return {"passes": [surface.pass_to_dict(r) for r in rows]}
+
+
+class SurfaceRepair(BaseModel):
+    #: ``true`` (default) answers what the repair would discard and writes nothing.
+    dry_run: bool = True
+
+
+@router.post("/attack-surface/repair-new-hosts")
+async def repair_attack_surface_new_hosts(
+    body: SurfaceRepair,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Discard the path 7 new-host signals raised without a complete previous read (#1498).
+
+    One-off repair, administrators: the hosts stay in the baseline; a signal
+    that opened a case is left to the case step. ``dry_run`` answers the hosts.
+    """
+    _require_xtm_one()
+    from app.services import ctem_attack_surface as surface
+
+    result = await surface.repair_partial_read_new_hosts(db, await _organization_id(db), dry_run=body.dry_run)
+    # A dry run writes nothing, so the commit is a no-op there; committing on every path
+    # keeps the writes visible before the response is sent.
+    await db.commit()
+    return result
 
 
 @router.post("/{signal_id}/evaluate")
@@ -198,12 +239,10 @@ async def evaluate_ctem_signal(
     row = await signals.get_signal(db, signal_id, organization_id=await _organization_id(db), recorded_by=None)
     if row is None:
         raise HTTPException(status_code=404, detail="No such signal")
-    pending = case_loop.PendingEvents()
-    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id, events=pending)
+    decision = await scope_gate.evaluate_one(db, row, evaluator_id=admin.id)
     if decision is None:
         raise HTTPException(status_code=409, detail="This signal opened a case: the case step owns it now")
     await db.commit()
-    await case_loop.publish_pending(pending)  # ctem_signal.triaged when the verdict changed (#1409)
     return signals.to_dict(row)
 
 
