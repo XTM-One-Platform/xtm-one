@@ -21240,5 +21240,6 @@
   "Every signal": "Every signal",
   "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.",
   "This entry no longer exists. The list is refreshed.": "This entry no longer exists. The list is refreshed.",
-  "This entry could not be loaded.": "This entry could not be loaded."
+  "This entry could not be loaded.": "This entry could not be loaded.",
+  "Subcategories of {category}": "Subcategories of {category}"
 }
