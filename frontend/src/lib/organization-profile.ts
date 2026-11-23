@@ -26,7 +26,7 @@ export interface ProfileLike {
   } & Provenance)[];
   /** `version`: the version the organization runs, optional (CTEM-11, #894): cases then name the version to reach. */
   tech_stack: ({ product: string; vendor: string; cpe: string; version?: string } & Provenance)[];
-  ai_systems: ({ name: string; kind: string; owner: string; exposure: string; openaev_asset_id: string } & Provenance)[];
+  // No `ai_systems` list since #1501: an AI system is an asset of category `ai_target` (assets_exposure).
   /**
    * What the organization ships, apart from what it runs (#1432): a vulnerability on one of these products (by CPE,
    * then product and vendor) resolves to its source repositories (`owner/name`). Absent on a profile that declares none.
@@ -625,7 +625,6 @@ export function toForm(profile: ProfileLike): ProfileForm {
     pir_names: { ...(profile.pir_names ?? {}) },
     crown_jewels: profile.crown_jewels.map((jewel) => ({ ...jewel })),
     tech_stack: profile.tech_stack.map((entry) => ({ ...entry })),
-    ai_systems: profile.ai_systems.map((system) => ({ ...system })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
     approval_threshold: numberText(profile.risk_appetite.approval_threshold),
@@ -713,7 +712,6 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         tech_stack: form.tech_stack
           .filter((entry) => entry.product.trim())
           .map(({ version, ...entry }) => (version?.trim() ? { ...entry, version: version.trim() } : entry)),
-        ai_systems: form.ai_systems.filter((system) => system.name.trim()),
         // Always sent, an empty list included, so removing the last row clears it: the server keeps the stored list
         // only for a save that leaves the key out (#1432).
         shipped_products: shippedOf(form.shipped_products),

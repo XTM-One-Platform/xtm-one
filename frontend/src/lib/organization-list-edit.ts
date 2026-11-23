@@ -191,7 +191,6 @@ export function attentionCount<V>(values: readonly V[], check: (value: V, all: r
 
 type Jewel = { name: string; business_service: string; owner: string; criticality: string };
 type Tech = { product: string; vendor: string; cpe: string };
-type AiSystem = { name: string; kind: string; owner: string; exposure: string };
 type Shipped = { product: string; vendor: string; cpe: string; repositories: readonly string[] };
 
 /** The checks and the identity of each list of the identity half of the profile. */
@@ -207,10 +206,6 @@ export const LIST_RULES = {
       ...(isCpe(value.cpe) ? [] : [LIST_ISSUES.cpe]),
     ],
     identity: (value: Tech) => (value.product.trim() ? `${value.product.trim()}\u0000${value.vendor.trim()}` : ""),
-  },
-  ai_systems: {
-    check: (value: AiSystem): ListIssue[] => (value.name.trim() ? [] : [LIST_ISSUES.emptyName]),
-    identity: (value: AiSystem) => value.name.trim(),
   },
   // What the organization ships (#1432): identified as the tech stack is, by product and vendor.
   shipped_products: {
