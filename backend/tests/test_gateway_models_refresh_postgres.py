@@ -382,6 +382,23 @@ async def test_the_gateway_default_alias_fills_the_platform_default_on_refresh(m
 
 
 @pytest.mark.asyncio
+async def test_a_refresh_moves_a_saved_alias_to_the_gateway_chat_default(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, [*LISTED, "default"])
+        await _boot()
+        admin = await _admin(sessions)
+        row = await _gateway_row(sessions)
+        assert await _agent_default(sessions) == ("filigran_gateway", "default")
+
+        gateway.chat_default = "claude-sonnet-5"
+        await _refresh(sessions, admin, row.id)
+
+        assert (await _gateway_row(sessions)).default_model == "claude-sonnet-5"
+        assert await _agent_default(sessions) == ("filigran_gateway", "claude-sonnet-5")
+
+
+@pytest.mark.asyncio
 async def test_a_refresh_does_not_pin_an_alphabetical_pick_platform_wide(monkeypatch):
     async with _database() as sessions:
         _env(monkeypatch)
