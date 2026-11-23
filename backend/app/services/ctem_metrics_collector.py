@@ -1006,36 +1006,30 @@ async def _octi_kev_tailored(
     }
 
 
-async def _profile_tech_stack(db: AsyncSession | None) -> list[dict[str, str]]:
-    """The primary organization profile's tech stack, ``[]`` when none is set."""
+async def _organization_software(db: AsyncSession | None) -> list[dict[str, str]]:
+    """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
+
+    The Software entities of the asset store (synced and hand-typed), with the
+    installed version when only one known version runs, plus the profile rows
+    typed before the move to Software that no entity carries yet
+    (``organization_software_store.matcher_entries``).
+    """
     if db is None:
         return []
     from app.services import organization_context as org_context
+    from app.services import organization_software_store as software_store
 
     try:
         row = await org_context.current_version(db)
         if row is None:
             return []
         profile = org_context.parse_profile(row.profile)
-    except Exception as exc:  # a bad stored profile never breaks the posture
-        logger.info("CTEM organization profile unreadable: %s", format_exception_message(exc))
+        software = await software_store.matcher_software(db, row.organization_id)
+    except Exception as exc:  # a bad stored profile or store never breaks the posture
+        logger.info("CTEM organization software unreadable: %s", format_exception_message(exc))
         return []
-    stack: list[dict[str, str]] = []
-    for entry in profile.tech_stack:
-        product = entry.product.strip()
-        if not product:
-            continue
-        vendor = entry.vendor.strip()
-        stack.append(
-            {
-                "product": product,
-                "vendor": vendor,
-                "cpe": entry.cpe.strip(),
-                "version": entry.version.strip(),
-                "label": f"{vendor} {product}" if vendor and not product.lower().startswith(vendor.lower()) else product,
-            }
-        )
-    return stack
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    return software_store.matcher_entries(software, typed)
 
 
 async def _profile_asset_rows(db: AsyncSession | None) -> tuple[list[Any], list[Any]] | None:
@@ -2389,7 +2383,7 @@ async def build_posture_for_user(
     # max(OpenCTI, OpenAEV) instead of their sum.
     # The organization profile's tech stack (cyber): read in the same DB phase,
     # it narrows the KEV count to what the organization runs (#11213).
-    stack = await _profile_tech_stack(db) if vertical == VERTICAL_CYBER else []
+    stack = await _organization_software(db) if vertical == VERTICAL_CYBER else []
     asset_rows = await _profile_asset_rows(db) if vertical == VERTICAL_CYBER else None
     reachability = _profile_reachability(asset_rows)
 
