@@ -183,7 +183,9 @@ is reported as gone, kept unless the administrator removes it. A truncated or fa
 records several sources hold on one thing into one canonical thing; the store of the next slices persists it.
 
 - Identity: strong keys in a configurable order (`DEFAULT_KEY_ORDER`: serial, cloud resource id, device id, MAC,
-  FQDN, hostname), each normalised (placeholder serials and null MACs dropped). An IP address is weak: it never
+  FQDN, hostname), each normalised (placeholder serials and null MACs dropped; a hostname drops apostrophes of
+  every kind and spells blanks and underscores as hyphens, so the device name `Amani’s MacBook Pro` an endpoint
+  manager sends and the hostname `Amanis-MacBook-Pro` macOS derives from it are one key). An IP address is weak: it never
   merges, it is answered as a possible match. No merge when one source holds two ids, when a higher-ranked key
   differs on both sides, or when an administrator split the pair; an administrator's merge wins over the keys.
   The answer does not depend on the order of the records and says why (`merged on serial`).
@@ -192,15 +194,17 @@ records several sources hold on one thing into one canonical thing; the store of
   exposure), customisable; `unknown` never wins over a known value; local fields come from hand sources only.
 - Software: one entry per vendor, product and version across sources, with first and last seen; an unknown
   version is `unknown`, never empty.
-- Endpoint sources (`organization_context_microsoft`): Microsoft Intune (Graph `managedDevices` and
-  `detectedApps`, permission `DeviceManagementManagedDevices.Read.All`) and Microsoft Defender for Endpoint
+- Endpoint sources (`organization_context_microsoft`): Microsoft Intune (Graph v1.0 `managedDevices`, and beta
+  `managedDevices/{id}/detectedApps`: v1.0 has no such relationship and answers 400; permission `DeviceManagementManagedDevices.Read.All`) and Microsoft Defender for Endpoint
   (`/api/machines` and `SoftwareInventoryByMachine`, `Machine.Read.All` and `Software.Read.All`) feed the
   `assets` section like any import source, scheduled through the section syncs. A device row carries its
   identity keys (serial, Entra device id, hostname, FQDN, MAC, IP), its OS and its last-seen date; its software
   is stored as a document anchored on that row (`replace_endpoint_software`, `document_key` the source, replaced
   at every run, removed with the device on a complete read), so it ranks by the source's class: `intune` is
   `mdm`, `defender` is `edr` (`BUILTIN_SOURCE_CLASSES`). Reads are paged, a 429 or 503 is waited out with its
-  `Retry-After` (bounded), and a refused permission is answered with the permission to grant. A Defender
+  `Retry-After` (bounded), and a refused permission is answered with the permission to grant. A software read
+  that fails while devices sync is said in the sync's run status (`software_unread`, `software_error`), never a
+  silent zero. A Defender
   read without the software permission still syncs the machines.
 - Tech stack: derived from asset software (`derive_tech_stack`), one item per vendor and product with the
   versions seen and the assets running each; typed SaaS and cloud rows stay, without versions. The CPE comes

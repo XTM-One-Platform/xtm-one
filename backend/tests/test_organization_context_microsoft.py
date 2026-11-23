@@ -246,13 +246,14 @@ def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_read_intune_pages_waits_out_throttling_and_reads_apps() -> None:
     base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    apps = f"{microsoft.GRAPH_BETA}/deviceManagement/managedDevices"
     second = {**INTUNE_DEVICE, "id": "dev-2", "deviceName": "MAC-7", "operatingSystem": "macOS", "serialNumber": "C02X"}
     client = _Client(
         {
-            f"{base}/8d3b-intune/detectedApps": [
+            f"{apps}/8d3b-intune/detectedApps": [
                 _Resp(200, {"value": [{"displayName": "Slack", "version": "4.41.97", "publisher": "Slack"}]})
             ],
-            f"{base}/dev-2/detectedApps": [_Resp(200, {"value": []})],
+            f"{apps}/dev-2/detectedApps": [_Resp(200, {"value": []})],
             f"{base}?": [
                 _Resp(429, headers={"Retry-After": "1"}),
                 _Resp(200, {"value": [INTUNE_DEVICE], "@odata.nextLink": f"{base}?page=2"}),
@@ -265,6 +266,80 @@ def test_read_intune_pages_waits_out_throttling_and_reads_apps() -> None:
     assert [r["external_id"] for r in read.rows] == ["8d3b-intune", "dev-2"]
     assert read.software["8d3b-intune"] == [{"vendor": "Slack", "product": "Slack", "version": "4.41.97"}]
     assert read.software_rows == 1
+    assert read.software_error == ""
+
+
+def test_read_intune_reads_detected_apps_on_the_beta_endpoint() -> None:
+    """v1.0 has no managedDevices/{id}/detectedApps: every per-device read answered HTTP 400 in production."""
+    base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    client = _Client(
+        {
+            f"{base}/8d3b-intune/detectedApps": [
+                _Resp(400, {"error": {"message": "Resource not found for the segment 'detectedApps'."}})
+            ],
+            f"{microsoft.GRAPH_BETA}/deviceManagement/managedDevices/8d3b-intune/detectedApps": [
+                _Resp(200, {"value": [{"displayName": "Slack", "version": "4"}]})
+            ],
+            f"{base}?": [_Resp(200, {"value": [INTUNE_DEVICE]})],
+        }
+    )
+    read = asyncio.run(microsoft.read_intune("t", {}, limit=10, client=client))
+    assert read.software["8d3b-intune"][0]["product"] == "Slack"
+    assert not any("/v1.0/" in url and "detectedApps" in url for url in client.calls)
+
+
+def test_a_software_read_that_fails_says_why_instead_of_a_silent_zero() -> None:
+    base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    client = _Client(
+        {
+            f"{microsoft.GRAPH_BETA}/deviceManagement/managedDevices/8d3b-intune/detectedApps": [
+                _Resp(400, {"error": {"message": "Bad request"}})
+            ],
+            f"{base}?": [_Resp(200, {"value": [INTUNE_DEVICE]})],
+        }
+    )
+    read = asyncio.run(microsoft.read_intune("t", {}, limit=10, client=client))
+    assert read.error is None and len(read.rows) == 1
+    assert read.software_unread == {"8d3b-intune"}
+    assert read.software_error == "intune: HTTP 400 (Bad request)"
+
+
+def test_an_intune_mac_with_an_apostrophe_and_its_openaev_hostname_are_one_asset() -> None:
+    """Intune sends the device name, the OpenAEV agent the hostname macOS derives from it."""
+    intune = identity.section_record(
+        "assets",
+        microsoft.intune_device_row(
+            {
+                **INTUNE_DEVICE,
+                "id": "724d3ba3",
+                "deviceName": "Amani\u2019s MacBook Pro",
+                "operatingSystem": "macOS",
+                "serialNumber": "",
+                "wiFiMacAddress": "",
+            }
+        ),
+    )
+    openaev = identity.section_record(
+        "assets", {"name": "Amanis-MacBook-Pro", "source": "openaev", "external_id": "bfdcefda"}
+    )
+    other = identity.section_record(
+        "assets", {"name": "Adams-MacBook-Pro", "source": "openaev", "external_id": "c033be9a"}
+    )
+    canon = identity.match_records([intune, openaev, other])
+    assert sorted(len(c.records) for c in canon) == [1, 2]
+    merged = next(c for c in canon if len(c.records) == 2)
+    assert {r.source for r in merged.records} == {"intune", "openaev"}
+    assert merged.explanation() == "merged on hostname"
+
+
+def test_an_intune_device_and_an_openaev_endpoint_merge_on_a_mac_address() -> None:
+    intune = identity.section_record("assets", microsoft.intune_device_row({**INTUNE_DEVICE, "serialNumber": ""}))
+    openaev = identity.section_record(
+        "assets",
+        {"name": "some-other-name", "source": "openaev", "external_id": "oaev-9", "mac": ["A1-B2-C3-D4-E5-F6"]},
+    )
+    [asset] = identity.match_records([intune, openaev])
+    assert asset.explanation() == "merged on MAC address"
 
 
 def test_read_intune_names_the_missing_permission() -> None:
@@ -329,11 +404,12 @@ def test_read_defender_machines_sync_when_software_permission_is_missing() -> No
 
 def test_read_intune_marks_devices_whose_apps_read_failed_as_unread() -> None:
     base = f"{microsoft.GRAPH_BASE}/deviceManagement/managedDevices"
+    apps = f"{microsoft.GRAPH_BETA}/deviceManagement/managedDevices"
     second = {**INTUNE_DEVICE, "id": "dev-2", "deviceName": "MAC-7", "serialNumber": "C02X"}
     client = _Client(
         {
-            f"{base}/8d3b-intune/detectedApps": [_Resp(200, {"value": [{"displayName": "Slack", "version": "4"}]})],
-            f"{base}/dev-2/detectedApps": [_Resp(503)],
+            f"{apps}/8d3b-intune/detectedApps": [_Resp(200, {"value": [{"displayName": "Slack", "version": "4"}]})],
+            f"{apps}/dev-2/detectedApps": [_Resp(503)],
             f"{base}?": [_Resp(200, {"value": [INTUNE_DEVICE, second]})],
         }
     )

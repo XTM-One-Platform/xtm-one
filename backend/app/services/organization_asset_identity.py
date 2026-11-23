@@ -95,6 +95,11 @@ _PLACEHOLDER_SERIALS: frozenset[str] = frozenset(
 _HEX = re.compile(r"^[0-9a-f]{12}$")
 _SPACES = re.compile(r"[\s\-_.]+")
 _HOST_LABEL = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+#: Apostrophes of every kind: a device name keeps them, the hostname derived from it drops them
+#: (macOS: "Amani’s MacBook Pro" -> LocalHostName "Amanis-MacBook-Pro").
+_APOSTROPHES = re.compile("['\u2018\u2019\u02bc\u0060\u00b4]")
+#: Blanks and underscores, which a hostname spells as a hyphen.
+_HOST_BLANKS = re.compile(r"[\s_]+")
 
 
 def _serial(value: str) -> str:
@@ -132,6 +137,9 @@ def _hostname(value: str) -> str:
     if _is_ip_shaped(name):  # an address is the weak ip key, never a hostname
         return ""
     name = name.split(".", 1)[0]
+    # A device name ("Amani’s MacBook Pro") and the hostname the OS derives from it
+    # ("Amanis-MacBook-Pro") are one key: apostrophes dropped, blanks and underscores as hyphens.
+    name = re.sub(r"-{2,}", "-", _HOST_BLANKS.sub("-", _APOSTROPHES.sub("", name))).strip("-")
     return name if _HOST_LABEL.match(name) and name not in ("localhost", "unknown") else ""
 
 
