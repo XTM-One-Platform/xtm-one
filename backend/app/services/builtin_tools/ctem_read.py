@@ -172,7 +172,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "opened_by": opened_by(events),
                         "history_total": len(events),
                         "empty_sections": empty_sections(rendered, running),
-                        "scope": await case_signal_scope(db, scope, view.signals),
+                        "scope": await case_signal_scope(db, scope, view.signals, case_id=case.id),
                     }
                 )
         except Exception:

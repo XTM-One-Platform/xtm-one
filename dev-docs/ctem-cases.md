@@ -789,7 +789,9 @@ empty section is empty). `list_ctem_cases` and `get_ctem_case` answer the
 same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
 section 5, #1359) for the signal members of a case, read by the case view's
 rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
-`hidden_by_scope` counts the case-bound signals the person does not see.
+`hidden_by_scope` counts the case-bound signals the person does not see:
+across the organization for `list_ctem_cases`, bound to that case alone for
+`get_ctem_case` (its note then says "on this case").
 Tests: `tests/test_ctem_read_tools.py`.
 
 ## 9. UX decisions (round 1, 13 Nov 2026)

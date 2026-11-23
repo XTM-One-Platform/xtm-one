@@ -95,11 +95,15 @@ async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True)
     return whole, block
 
 
-async def case_signal_scope(db: Any, user_id: uuid.UUID, seen: set[str]) -> dict[str, Any]:
+async def case_signal_scope(
+    db: Any, user_id: uuid.UUID, seen: set[str], *, case_id: uuid.UUID | None = None
+) -> dict[str, Any]:
     """The ``scope`` block of a case answer: the signal members read by the case view's rule.
 
     *seen* holds the ``signal:<id>`` members the person may read; the case-bound
-    signals beyond them are counted (a count only), never named.
+    signals beyond them are counted (a count only), never named. With *case_id*
+    (a single-case read) only the signals bound to that case are counted, so a
+    case with no hidden member never reports one.
     """
     from sqlalchemy import func, select
 
@@ -108,22 +112,29 @@ async def case_signal_scope(db: Any, user_id: uuid.UUID, seen: set[str]) -> dict
     whole, block = await reader_scope(db, user_id, agent_reach=False)
     if whole:
         return block
+    statement = select(func.count()).select_from(CtemSignal)
+    if case_id is None:
+        statement = statement.where(CtemSignal.case_id.is_not(None))
+    else:
+        # The case view's rule for a non-administrator: the signals recorded for them.
+        statement = statement.where(CtemSignal.case_id == case_id, CtemSignal.recorded_by != str(user_id))
     try:
-        statement = select(func.count()).select_from(CtemSignal).where(CtemSignal.case_id.is_not(None))
-        bound = int((await db.execute(statement)).scalar_one() or 0)
+        counted = int((await db.execute(statement)).scalar_one() or 0)
     except Exception:
         logger.info("CTEM cases: case-bound signals not counted for %s", user_id, exc_info=True)
         return block
-    if bound > len(seen):
-        block["hidden_by_scope"] = bound - len(seen)
-        block["note"] = hidden_note(bound - len(seen))
+    hidden = counted if case_id is not None else counted - len(seen)
+    if hidden > 0:
+        block["hidden_by_scope"] = hidden
+        block["note"] = hidden_note(hidden, on_case=case_id is not None)
     return block
 
 
-def hidden_note(hidden: int) -> str:
+def hidden_note(hidden: int, *, on_case: bool = False) -> str:
     """The line an agent repeats when signals exist that the acting person did not record."""
     noun = "signal exists" if hidden == 1 else "signals exist"
-    return f"{hidden} {noun} that this run's person did not record; an administrator's run reads them."
+    where = " on this case" if on_case else ""
+    return f"{hidden} {noun}{where} that this run's person did not record; an administrator's run reads them."
 
 
 def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:

@@ -188,6 +188,34 @@ async def test_the_case_list_counts_the_case_bound_signals_the_scope_hides(
     assert listed["scope"]["note"].startswith("2 signals exist")
 
 
+async def test_the_case_read_counts_only_the_hidden_signals_of_that_case(
+    read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1359 review: a single-case read counts the signals bound to that case alone, never the organization's."""
+    seen: list[str] = []
+    answers = iter([0, 1])
+    original = getattr(read.db, "execute", None)
+
+    async def _execute(statement: Any, *args: Any, **kwargs: Any) -> Any:
+        text = str(statement)
+        if "count(" not in text:
+            if original is None:
+                return SimpleNamespace(scalars=lambda: [], scalar_one=lambda: 0)
+            return await original(statement, *args, **kwargs)
+        seen.append(text)
+        value = next(answers)
+        return SimpleNamespace(scalar_one=lambda: value)
+
+    monkeypatch.setattr(read.db, "execute", _execute, raising=False)
+    call = read.read_for(str(read.user_id))
+    none_hidden = json.loads(await call("get_ctem_case", case_id=str(read.case.id)))
+    assert "hidden_by_scope" not in none_hidden["scope"] and "note" not in none_hidden["scope"]
+    one_hidden = json.loads(await call("get_ctem_case", case_id=str(read.case.id)))
+    assert one_hidden["scope"]["hidden_by_scope"] == 1
+    assert one_hidden["scope"]["note"].startswith("1 signal exists on this case")
+    assert seen and all("ctem_signals.case_id = " in s and "recorded_by != " in s for s in seen)
+
+
 async def test_a_person_who_sees_no_issue_reads_no_case(read: SimpleNamespace) -> None:
     other = read.read_for(str(uuid.uuid4()))
     assert "No case" in await other("get_ctem_case", case_id=str(read.case.id))
