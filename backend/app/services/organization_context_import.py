@@ -58,11 +58,11 @@ from app.services.organization_context import (
 logger = logging.getLogger(__name__)
 
 Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-Source = Literal["openaev", "opencti", "opencrq", "intune", "defender", "github", "gitlab"]
+Source = Literal["openaev", "opencti", "opencrq", "intune", "defender"]
 
 #: section -> the platforms that can feed it, in the order the dialog lists them.
 SECTION_SOURCES: dict[str, tuple[str, ...]] = {
-    "assets": ("openaev", "opencti", "intune", "defender", "github", "gitlab"),
+    "assets": ("openaev", "opencti", "intune", "defender"),
     "asset_groups": ("openaev",),
     "ai_systems": ("openaev",),
     "tech_stack": ("openaev",),
@@ -98,9 +98,6 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     # Microsoft endpoint sources (#1251): devices, OS and software with versions.
     ("assets", "intune"): ("operating_system", "compliance", "ownership", "last_seen_days", "include_owner"),
     ("assets", "defender"): ("os_platform", "health_status", "exposure_level", "last_seen_days"),
-    # Code sources: repositories as source_code assets, their SBOM as software.
-    ("assets", "github"): ("organizations", "include_archived", "include_forks", "skip_dependencies"),
-    ("assets", "gitlab"): ("groups", "include_archived", "include_forks", "skip_dependencies"),
     ("asset_groups", "openaev"): ("tags", "search"),
     ("ai_systems", "openaev"): ("tags", "search"),
     ("tech_stack", "openaev"): ("type",),
@@ -186,6 +183,8 @@ class ReadResult:
     software_rows: int = 0
     #: Devices whose software read failed: their stored software is kept (never read as "none").
     software_unread: set[str] = field(default_factory=set)
+    #: Why the software read failed (devices still sync): said in the run status, never a silent zero.
+    software_error: str = ""
 
 
 @dataclass
@@ -221,6 +220,8 @@ class ImportPlan:
     software_rows: int = 0
     #: Devices whose software read failed: :func:`store_endpoint_software` keeps their stored software.
     software_unread: set[str] = field(default_factory=set)
+    #: Why the software read failed for those devices (empty: every read answered).
+    software_error: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -244,6 +245,8 @@ class ImportPlan:
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
             "software_rows": self.software_rows,
+            "software_unread": len(self.software_unread),
+            "software_error": self.software_error or None,
             "sample": self.sample,
             "truncated": self.truncated,
             "error": self.error,
@@ -329,6 +332,8 @@ def openaev_asset(asset: dict[str, Any], batch_type: str = "") -> AssetEntry | N
         internet_facing=_yes_no(asset.get("asset_internet_facing")),  # type: ignore[arg-type]
         source="openaev",
         external_id=asset_id[:200],
+        # The hostname the agent reports (``asset_hostname``), an identity key beside the name.
+        hostname=str(asset.get("asset_hostname") or "").strip()[:255],
         last_seen=openaev_last_seen(asset.get("asset_last_seen")),
         status=status if status in OPENAEV_ASSET_STATUSES else "",  # type: ignore[arg-type]
     )
@@ -503,6 +508,7 @@ def plan_import(
         software=read.software,
         software_rows=read.software_rows,
         software_unread=read.software_unread,
+        software_error=read.software_error,
     )
     draft = profile.model_copy(deep=True)
     if section in SOURCED_FIELDS:
@@ -694,15 +700,6 @@ async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, 
     for source in microsoft.SOURCES:
         try:
             available, reason, code = await microsoft.connection_status(db, str(user_id), source)
-        except Exception as exc:
-            logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
-            available, reason, code = False, "unreadable", ""
-        statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
-    from app.services import organization_context_code as code_sources
-
-    for source in code_sources.SOURCES:
-        try:
-            available, reason, code = await code_sources.connection_status(db, str(user_id), source)
         except Exception as exc:
             logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
             available, reason, code = False, "unreadable", ""
@@ -966,29 +963,7 @@ async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: 
     result.software = {k: v for k, v in read.software.items() if k in kept}
     result.software_rows = sum(len(v) for v in result.software.values())
     result.software_unread = {k for k in read.software_unread if k in kept}
-    return result
-
-
-async def _read_code(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
-    """Repositories (and their dependencies) from GitHub or GitLab, read-only."""
-    from app.services import organization_context_code as code_sources
-
-    token, api, reason = await code_sources.access_token(db, user_id, source)
-    if not token:
-        return ReadResult(error=f"{source}: {reason}")
-    read = await code_sources.read_repositories(source, token, api, filters, limit=MAX_ROWS)
-    result = ReadResult(total=read.total, truncated=read.truncated, error=read.error)
-    if read.error:
-        return result
-    for row in read.rows:
-        try:
-            result.rows.append(AssetEntry.model_validate(row))
-        except ValueError as exc:  # one bad repository never stops the others
-            logger.info("Organization import: %s repository %s refused: %s", source, row.get("external_id"), exc)
-    kept = {r.external_id for r in result.rows}
-    result.software = {k: v for k, v in read.software.items() if k in kept}
-    result.software_rows = sum(len(v) for v in result.software.values())
-    result.software_unread = {k for k in read.software_unread if k in kept}
+    result.software_error = read.software_error if result.software_unread else ""
     return result
 
 
@@ -1028,8 +1003,6 @@ async def read_source(
             return await _read_opencti(db, str(user_id), section, filters, batch_type)
         if source in ("intune", "defender"):
             return await _read_microsoft(db, str(user_id), source, filters)
-        if source in ("github", "gitlab"):
-            return await _read_code(db, str(user_id), source, filters)
         return await _read_opencrq(db, str(user_id), filters)
     except Exception as exc:  # a platform that fails is reported, never guessed
         logger.warning("Organization import: %s unreadable: %s", source, format_exception_message(exc))
@@ -1239,19 +1212,6 @@ MICROSOFT_FILTER_VALUES: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 
-async def _code_options(db: AsyncSession, user_id: str, source: str) -> FilterOptions:
-    """The organizations (GitHub) or groups (GitLab) the account reaches, and the switches."""
-    from app.services import organization_context_code as code_sources
-
-    owners = "organizations" if source == "github" else "groups"
-    switches = {key: [_option("true")] for key in ("include_archived", "include_forks", "skip_dependencies")}
-    try:
-        return FilterOptions(options={owners: await code_sources.owner_options(db, user_id, source), **switches})
-    except Exception as exc:  # the owners filter says why it is empty, the switches stay
-        logger.info("Organization import: %s owners unreadable: %s", source, format_exception_message(exc))
-        return FilterOptions(options=switches, unavailable={owners: "unreadable"})
-
-
 def _microsoft_options(source: str) -> FilterOptions:
     return FilterOptions(
         options={key: [_option(v) for v in values] for key, values in MICROSOFT_FILTER_VALUES[source].items()}
@@ -1269,8 +1229,6 @@ async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, 
             return await _openaev_options(db, str(user_id), section)
         if source in ("intune", "defender"):
             return _microsoft_options(source)
-        if source in ("github", "gitlab"):
-            return await _code_options(db, str(user_id), source)
         return await _opencrq_options(db, str(user_id))
     except Exception as exc:  # the dialog still opens: the filters say why they are empty
         logger.warning("Organization import: %s options unreadable: %s", source, format_exception_message(exc))
