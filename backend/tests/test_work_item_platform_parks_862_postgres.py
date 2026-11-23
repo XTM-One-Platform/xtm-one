@@ -95,9 +95,13 @@ async def test_the_dispatch_cap_parks_for_a_person_and_the_answer_puts_it_back(m
 
 async def test_a_pull_request_merged_before_the_write_releases_the_item_at_the_write(monkeypatch) -> None:
     reads: list = []
+    # The read waits for the write's read-back: the spawned check may otherwise
+    # release the item before create_work_item returns (merge group of #1586).
+    gate = asyncio.Event()
 
     async def reader(repo, kind, number, token):
         reads.append((repo, kind, number))
+        await gate.wait()
         return PullRequestEvent(
             kind="closed", repo=repo, pr_numbers=(number,), merged=True, closed_at="2026-11-21T07:18:48Z"
         )
@@ -117,6 +121,7 @@ async def test_a_pull_request_merged_before_the_write_releases_the_item_at_the_w
             writer=WRITER,
         )
         assert item["status"] == "blocked"
+        gate.set()
         # The write spawned its one read: wait for it, no polling pass involved.
         await asyncio.gather(*list(refs_mod._checks))
         assert reads == [(REPO, "pull_request", 767)]
