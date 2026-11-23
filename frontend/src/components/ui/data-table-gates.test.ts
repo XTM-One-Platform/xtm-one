@@ -69,6 +69,8 @@ const CONTENT = [
   "components/evaluation/compare/leaderboard-tab.tsx",
   // A fleet's approval gates as a level matrix (#9769 S4, design round 2 A2): the grid is the content.
   "components/fleets/FleetAutonomyCatalog.tsx",
+  // The same gate catalog read at ONE level in the setup step (#1373): each gated action and whether it waits, a fixed grid, not a list of records.
+  "components/fleets/FleetGatesAtLevel.tsx",
   "components/presentation/SchemaFieldControls.tsx",
   "components/presentation/blocks/table.tsx",
   "components/report/blocks.tsx",

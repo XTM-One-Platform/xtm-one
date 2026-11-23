@@ -109,6 +109,28 @@ describe("FleetCapabilitySlotsCard", () => {
     expect(screen.getByRole("button", { name: "Hide Capabilities" })).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("a Not usable row names its first blocked integration in one line, the rest behind +N (UX r2 B4 of #1376)", () => {
+    api.types = [
+      {
+        ...TICKETING_NONE,
+        state: "not_usable",
+        blocked: [
+          { ...JIRA, reason: "not_company_managed" },
+          { ...SNOW, reason: "not_connected" },
+          { integration_id: "i3", provider: "youtrack", name: "YouTrack", reason: "not_company_managed" },
+        ],
+      },
+    ];
+    render(false);
+    const cell = screen.getByTestId("type-blocked-chip-ticketing");
+    expect(screen.getAllByTestId("type-blocked-chip-ticketing")).toHaveLength(1);
+    expect(within(cell).getByText("Jira ITS · Not company-managed")).toBeInTheDocument();
+    expect(within(cell).queryByText("ServiceNow · Sign-in not finished")).toBeNull();
+    const more = screen.getByTestId("type-blocked-chip-more-ticketing");
+    expect(more).toHaveTextContent("+2");
+    expect(more).toHaveAttribute("aria-label", "ServiceNow · Sign-in not finished\nYouTrack · Not company-managed");
+  });
+
   it("resets a custom member to the fleet choice", () => {
     api.types = [TICKETING_CUSTOM];
     render(false);
