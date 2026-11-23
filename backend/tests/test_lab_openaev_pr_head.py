@@ -172,23 +172,70 @@ def test_the_seed_writes_on_the_default_tenant(monkeypatch, tmp_path):
     module = _module()
     calls = []
 
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "api", _seed_api(calls))
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    done = module.seed()
+    writes = [path for method, path, _ in calls if method == "POST"]
+    assert all(path.startswith(f"/api/tenants/{module.TENANT_ID}/") for path in writes)
+    assert len(done) == len(module.SEED_ASSETS) + 8
+    assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
+    assert "seed_missing" not in module.STATE
+
+
+def _seed_api(calls):
     def api(method, path, body=None):
-        calls.append((method, path))
+        calls.append((method, path, body))
+        if path == "/api/settings":
+            return {"platform_version": "3.261123.0"}
         if path.endswith("endpoints/agentless"):
             return {"asset_id": f"a{len(calls)}"}
+        if path.endswith("endpoints/register"):
+            return {"asset_id": "agent-1"}
         if path.endswith("scenarios"):
             return {"scenario_id": "s1"}
         if path.endswith("exercises"):
             return {"exercise_id": "e1"}
+        if path.endswith("/payloads"):
+            return {"payload_id": "p1"}
+        if path.endswith("injector_contracts/search"):
+            return {"content": [{"injector_contract_id": "c1"}]}
+        if path.endswith("/atomic-testings"):
+            return {"inject_id": "i1"}
         return {}
 
-    monkeypatch.setattr(module, "api", api)
+    return api
+
+
+def test_the_seed_launches_an_atomic_testing_on_a_registered_agent(monkeypatch, tmp_path):
+    """Gap lab-openaev-no-running-atomic-testing-seed: the running and pending states render with no hand SQL."""
+    module = _module()
+    calls = []
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "api", _seed_api(calls))
     monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
-    done = module.seed()
-    assert all(path.startswith(f"/api/tenants/{module.TENANT_ID}/") for _, path in calls)
-    assert len(done) == len(module.SEED_ASSETS) + 3
-    assert module.STATE["scenario"] == "s1" and module.STATE["simulation"] == "e1"
-    assert "seed_missing" not in module.STATE
+    module.seed()
+    bodies = {path.rsplit(f"/api/tenants/{module.TENANT_ID}/", 1)[-1]: body for _, path, body in calls}
+    # The agent registers with the backend's own version: any other gets an upgrade job whose installer is absent.
+    assert bodies["endpoints/register"]["endpoint_agent_version"] == "3.261123.0"
+    assert bodies["atomic-testings"]["inject_injector_contract"] == "c1"
+    assert bodies["atomic-testings"]["inject_assets"] == ["agent-1"]
+    assert ("POST", module.tenant_path("atomic-testings/i1/launch"), None) in calls
+    assert module.STATE["atomic_testing"] == "i1" and "seed_missing" not in module.STATE
+
+
+def test_a_missing_platform_version_names_the_agent_step_and_skips_what_depends_on_it(monkeypatch, tmp_path):
+    module = _module()
+    calls = []
+    inner = _seed_api(calls)
+    monkeypatch.setattr(module, "STATE", {})
+    monkeypatch.setattr(module, "api", lambda m, p, b=None: {} if p == "/api/settings" else inner(m, p, b))
+    monkeypatch.setattr(module, "SEEDED", tmp_path / "openaev-seeded.json")
+    module.seed()
+    missing = module.STATE["seed_missing"]
+    assert "agent lab-agent-01" in missing and "platform_version" in missing
+    assert "atomic testing" in missing and "launch of" in missing
+    assert "agent" not in module.STATE
 
 
 def _http_error(module, code: int, body: bytes):
@@ -218,22 +265,18 @@ def test_a_failed_simulation_is_named_with_the_backend_answer_and_seeded_on_the_
     monkeypatch.setattr(module, "STATE", {})
     calls = []
     refuse = {"exercises": True}
+    inner = _seed_api([])
 
     def api(method, path, body=None):
-        calls.append(path)
+        if method == "POST":
+            calls.append(path)
         if path.endswith("exercises") and refuse["exercises"]:
             raise _http_error(module, 400, b'{"message":"exercise_name: must not be blank"}')
-        if path.endswith("endpoints/agentless"):
-            return {"asset_id": f"a{len(calls)}"}
-        if path.endswith("scenarios"):
-            return {"scenario_id": "s1"}
-        if path.endswith("exercises"):
-            return {"exercise_id": "e1"}
-        return {}
+        return inner(method, path, body)
 
     monkeypatch.setattr(module, "api", api)
     first = module.seed()
-    assert len(first) == len(module.SEED_ASSETS) + 2
+    assert len(first) == len(module.SEED_ASSETS) + 7
     assert calls.count(module.tenant_path("exercises")) == 1, "a 4xx is final, never retried"
     assert "HTTP 400" in module.STATE["seed_missing"] and "must not be blank" in module.STATE["seed_missing"]
     assert "simulation" not in module.STATE
