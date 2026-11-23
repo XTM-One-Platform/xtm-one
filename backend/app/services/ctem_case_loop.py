@@ -154,6 +154,9 @@ def fix_of(signal: CtemSignal) -> CaseFix:
     kind = PATH_REMEDIATION.get(path, "manual")
     evidence = getattr(signal, "evidence", None)
     evidence = evidence if isinstance(evidence, dict) else {}
+    named = source_fix_of(evidence)
+    if named is not None:
+        return named
     package = str(evidence.get("affected_package") or "").strip()
     fixed = str(evidence.get("fixed_version") or "").strip()[:100]
     repository = str(evidence.get("repository") or "").strip()
@@ -184,6 +187,26 @@ def fix_of(signal: CtemSignal) -> CaseFix:
     key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
     title = _TITLES.get(kind, "Remediate {subject}").format(subject=subject)[:COLUMN_MAX]
     return CaseFix(key=key, kind=kind, title=title)
+
+
+def source_fix_of(evidence: dict[str, Any]) -> CaseFix | None:
+    """The remediation a source reader named on its signal (#1529), else ``None``.
+
+    The OpenCTI and OpenAEV readers record one signal per source issue with the
+    remediation key the case rules group it on (``ctem_cases.remediation_of``),
+    so the signals of one fix open or join one case, the case a recompute
+    built before signals included.
+    """
+    fix = evidence.get("case_fix")
+    if not isinstance(fix, dict):
+        return None
+    key = str(fix.get("key") or "").strip()
+    kind = str(fix.get("kind") or "").strip()
+    title = str(fix.get("title") or "").strip()
+    if not key or not title or kind not in REMEDIATION_KINDS:
+        return None
+    fixed = str(fix.get("fixed_version") or "").strip()[:100] or None
+    return CaseFix(key=_bounded_key(key), kind=kind, title=title[:COLUMN_MAX], fixed_version=fixed)
 
 
 def severity_of(decision: dict[str, Any] | None) -> tuple[str | None, int | None, list[str]]:
@@ -295,6 +318,7 @@ async def open_from_signal(
             validations=[],
             validation_plan=signal.trigger_path in ("proven_exploitable", "mitigation_regression"),
             fixed_version=fix.fixed_version,
+            product_label=_product_label(signal),
         )
         db.add(case)
         await db.flush()
@@ -309,6 +333,42 @@ async def open_from_signal(
             if current is None or current > due:
                 case.sla_due_at = due
         case.risk_scenario_ids = sorted(set(case.risk_scenario_ids or []) | set(scenarios))
+    _link(db, signal, case, vertical=vertical, events=events, now=now, created=created)
+    if created and events is not None:
+        events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
+    return case
+
+
+def join_case(
+    db: AsyncSession,
+    signal: CtemSignal,
+    case: CtemCase,
+    *,
+    events: PendingEvents | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Join a confirmed, in-scope signal to the case that already holds its fix, whatever the case's state (#1529).
+
+    A source reader's signal about an issue a case already groups joins that
+    case instead of opening a second one; ``False`` when the signal opens no case.
+    """
+    decision = signal.decision or {}
+    if signal.state != "confirmed" or decision.get("outcome") != "case" or signal.case_id is not None:
+        return False
+    _link(db, signal, case, vertical=case.vertical, events=events, now=now or datetime.now(UTC), created=False)
+    return True
+
+
+def _link(
+    db: AsyncSession,
+    signal: CtemSignal,
+    case: CtemCase,
+    *,
+    vertical: str,
+    events: PendingEvents | None,
+    now: datetime,
+    created: bool,
+) -> None:
     db.add(CtemCaseIssue(case_id=case.id, source=SIGNAL_SOURCE, external_id=str(signal.id), open=True))
     db.add(_event(case.id, rules.SYSTEM_ACTOR, "signal", now, issue=f"{SIGNAL_SOURCE}:{signal.id}"))
     signal.state = "case_opened"
@@ -317,9 +377,14 @@ async def open_from_signal(
     if events is not None:
         events.verticals.add(vertical)
         events.frame(case, "created" if created else "signal", now)
-    if created and events is not None:
-        events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
-    return case
+
+
+def _product_label(signal: CtemSignal) -> str | None:
+    """The product a source reader's fix names (the inventory version check reads it, #1252)."""
+    evidence = getattr(signal, "evidence", None)
+    fix = evidence.get("case_fix") if isinstance(evidence, dict) else None
+    label = str(fix.get("product_label") or "").strip() if isinstance(fix, dict) else ""
+    return label[:200] or None
 
 
 def _transition(

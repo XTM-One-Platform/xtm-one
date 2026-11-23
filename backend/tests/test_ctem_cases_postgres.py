@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_signal import CtemSignal
 from app.models.organization import Organization
 from app.models.user import User
 from app.services import ctem_cases as rules
@@ -35,7 +36,9 @@ KEY = "upgrade:apache/tomcat@9.0.98"
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker]:
-    tables = with_referenced_tables([CtemCase.__table__, CtemCaseIssue.__table__, CtemCaseEvent.__table__])
+    tables = with_referenced_tables(
+        [CtemCase.__table__, CtemCaseIssue.__table__, CtemCaseEvent.__table__, CtemSignal.__table__]
+    )
     async with scratch_database("ctemcases", tables=tables) as db:
         yield db.sessions
 
@@ -63,9 +66,22 @@ async def _seed(session) -> tuple[uuid.UUID, uuid.UUID]:
     return org.id, user.id
 
 
+@pytest.fixture(autouse=True)
+def _gate_opens_a_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The scope gate decides ``case`` on every source signal: these tests are about the case store (#1529)."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    async def evaluate(db, row, **_: Any) -> None:
+        row.state = "confirmed"
+        row.decision = {"outcome": "case", "state": "confirmed"}
+
+    monkeypatch.setattr(gate_store, "evaluate", evaluate)
+
+
 async def _members(session, case: CtemCase) -> dict[str, bool]:
+    """The source issue members of *case*; the signals the issues recorded are members too, left out here."""
     rows = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.case_id == case.id))).scalars()
-    return {f"{r.source}:{r.external_id}": r.open for r in rows}
+    return {f"{r.source}:{r.external_id}": r.open for r in rows if r.source != "signal"}
 
 
 async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_closed():
@@ -79,6 +95,7 @@ async def test_recompute_keeps_state_owner_and_due_date_and_resolves_when_all_cl
             "updated": 0,
             "resolved": 0,
             "reopened": 0,
+            "signals": 1,
             "no_known_fix": 0,
             "not_affected": 0,
         }
@@ -243,7 +260,8 @@ async def test_two_users_with_different_visibility_share_cases_and_see_only_thei
         (stored,) = await store.list_cases(session, organization_id=org_id, vertical="cyber")
         case, rows = stored
         assert case.state == "needs_attention"
-        assert {f"{r.source}:{r.external_id}": r.open for r in rows} == {"opencti:v1": True, "opencti:v2": True}
+        issue_rows = {f"{r.source}:{r.external_id}": r.open for r in rows if r.source != "signal"}
+        assert issue_rows == {"opencti:v1": True, "opencti:v2": True}
         # Nothing of the source in the database: no name, score, asset or count column.
         for table in (CtemCase.__table__, CtemCaseIssue.__table__):
             assert not {"name", "cvss", "epss", "kev", "assets", "issue_count", "priority"} & set(table.c.keys())
