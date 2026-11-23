@@ -323,16 +323,24 @@ async def put_health_settings(
 
 
 async def check_module_run_as(db: AsyncSession, user_id: uuid.UUID | None) -> None:
-    """400 when *user_id* cannot read every registered module the checks need; ``None`` passes (not set)."""
+    """400 when *user_id* cannot read every registered module the checks need; ``None`` passes (not set).
+
+    The ``detail`` is ``{code, modules?, message}``: the client words the refusal from its catalogs.
+    """
     if user_id is None:
         return
-    from app.services.health.run_as import missing_module_access, run_as_refusal, user_is_active
+    from app.services.health.run_as import (
+        missing_module_access,
+        run_as_inactive_detail,
+        run_as_refusal_detail,
+        user_is_active,
+    )
 
     if not await user_is_active(db, user_id):
-        raise HTTPException(status_code=400, detail="The run-as user does not exist or is deactivated.")
+        raise HTTPException(status_code=400, detail=run_as_inactive_detail())
     missing = await missing_module_access(db, user_id)
     if missing:
-        raise HTTPException(status_code=400, detail=run_as_refusal(missing))
+        raise HTTPException(status_code=400, detail=run_as_refusal_detail(missing))
 
 
 class ModuleRunAsCheck(BaseModel):

@@ -940,7 +940,10 @@ decision written here).
   card shows that one state with a link to the setting instead of a "not run" line per
   check. `PUT /health/settings` (a changed user) and `PUT /health/settings/run-as` (the
   CTEM setup's Modules step) refuse with a 400 naming the modules a user cannot read,
-  nothing written. A wiring that yields no tool for a usable user is logged as an error
+  nothing written: `detail` is `{code: run_as_missing_module_access, modules, message}`
+  (or `{code: run_as_inactive, message}`), worded by the client from its catalogs and
+  shown under the picker, never in a toast. The cards' "Set the run-as user" link lands
+  on the block's own anchor `#health-settings-run-as`. A wiring that yields no tool for a usable user is logged as an error
   and named on the run ("Module tools not wired", a platform-side defect), never blamed
   on the allow-list.
 - The orchestrator does not delegate to the analyst; it starts only from its own

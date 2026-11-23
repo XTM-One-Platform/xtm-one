@@ -24,7 +24,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useHealthSettings, useSaveHealthRunAs } from "@/hooks/api/useHealthApi";
 import { useFormatter } from "@/i18n";
-import { HealthRunAsPicker } from "@/pages/settings/HealthRunAsBlock";
+import { HealthRunAsPicker, runAsRefusalText } from "@/pages/settings/HealthRunAsBlock";
 
 export function CtemSetupRunAs() {
   const { t_i18n } = useFormatter();
@@ -34,7 +34,8 @@ export function CtemSetupRunAs() {
   const [picked, setPicked] = useState<string | null>(null);
   const value = picked ?? stored;
   const errorId = "ctem-setup-run-as-error";
-  const error = save.isError ? (save.error instanceof Error ? save.error.message : t_i18n("The run-as user was not saved.")) : null;
+  // The refusal in the reader's language, by its code (UX r1 B3); any other failure in general words.
+  const error = save.isError ? (runAsRefusalText(save.error, t_i18n) ?? t_i18n("The run-as user was not saved.")) : null;
   return (
     <div className="space-y-2 border-t border-elevation-subtle-soft pt-3 content-compact" data-testid="ctem-loop-setup-run-as">
       <p className="font-medium">{t_i18n("Run checks as")}</p>

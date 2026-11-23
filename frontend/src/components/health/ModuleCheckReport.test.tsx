@@ -79,7 +79,7 @@ describe("ModuleCheckReportLine", () => {
     );
     const line = await screen.findByTestId("health-checks-run-as");
     expect(line).toHaveTextContent("Checks need a run-as user with OpenAEV access.");
-    expect(screen.getByRole("link", { name: "Set the run-as user" }).getAttribute("href")).toBe("/settings/automations/health#health-settings-checks");
+    expect(screen.getByRole("link", { name: "Set the run-as user" }).getAttribute("href")).toBe("/settings/automations/health#health-settings-run-as");
     expect(screen.queryByTestId("health-checks-counts")).toBeNull();
     expect(screen.queryByText(/not run/)).toBeNull();
   });

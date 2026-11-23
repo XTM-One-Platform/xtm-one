@@ -128,6 +128,8 @@ export function useSaveHealthSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (settings: HealthSettings) => api.put<HealthSettings>("/health/settings", settings),
+    // The settings section answers every failure itself: one toast, or the refused field inline (UX r1 B1).
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (data) => {
       qc.setQueryData(SETTINGS_KEY, data);
       void qc.invalidateQueries({ queryKey: BUDGET_KEY });
@@ -148,6 +150,8 @@ export function useSaveHealthRunAs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) => api.put<{ module_run_as_user_id: string | null }>("/health/settings/run-as", { user_id: userId }),
+    // The onboarding step shows the refusal under its picker.
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
       void qc.invalidateQueries({ queryKey: ["health-overview"] });

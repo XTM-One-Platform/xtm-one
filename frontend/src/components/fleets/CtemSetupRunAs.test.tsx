@@ -41,11 +41,18 @@ describe("CtemSetupRunAs", () => {
 
   it("shows the refusal naming the modules and marks the field invalid", async () => {
     answer({ module_run_as_user_id: null });
-    api.put.mockRejectedValue(new Error("This user has no access to OpenCTI: Platform Health runs the module checks as this user."));
+    // The 400's code and module names, worded from the catalogs (UX r1 B3), never the server's English line.
+    api.put.mockRejectedValue(
+      Object.assign(new Error("server English line"), {
+        status: 400,
+        detail: { code: "run_as_missing_module_access", modules: ["OpenCTI"], message: "server English line" },
+      }),
+    );
     renderWithProviders(<CtemSetupRunAs />);
     await pick("Ana Analyst");
     await userEvent.click(screen.getByTestId("ctem-loop-setup-run-as-save"));
-    expect(await screen.findByTestId("ctem-loop-setup-run-as-error")).toHaveTextContent("no access to OpenCTI");
+    expect(await screen.findByTestId("ctem-loop-setup-run-as-error")).toHaveTextContent("This user has no access to OpenCTI");
+    expect(screen.getByTestId("ctem-loop-setup-run-as-error")).not.toHaveTextContent("server English line");
     expect(screen.getByRole("combobox", { name: "Run checks as" }).getAttribute("aria-invalid")).toBe("true");
   });
 

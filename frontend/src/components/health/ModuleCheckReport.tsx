@@ -28,13 +28,14 @@ import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { useHealthModuleChecks } from "@/hooks/api/useHealthApi";
 import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
+import { HEALTH_RUN_AS_ANCHOR } from "@/pages/settings/HealthRunAsBlock";
 import { HEALTH_SETTINGS_PATH } from "@/pages/settings/settings-routes";
 import { useFormatter } from "@/i18n";
 import { HEALTH_MODULE_LABELS, checkTitle } from "@/lib/health-modules";
 import type { HealthCheckVerdict, HealthModule, HealthModuleCheckEntry, HealthModuleCheckReport } from "@/types";
 
-/** The "Run checks as" block of Settings > Platform Health (its Health checks group anchor). */
-const HEALTH_RUN_AS_SETTINGS_PATH = `${HEALTH_SETTINGS_PATH}#health-settings-checks`;
+/** The "Run checks as" block of Settings > Platform Health, by its own anchor (UX r1 B2). */
+const HEALTH_RUN_AS_SETTINGS_PATH = `${HEALTH_SETTINGS_PATH}#${HEALTH_RUN_AS_ANCHOR}`;
 
 /** A check's verdict in plain words. @i18n-keys */
 const VERDICT_LABELS = {

@@ -21082,5 +21082,7 @@
   "The module checks read OpenCTI, OpenAEV and OpenCRQ as this user. Pick a user with access to every registered module: the save is refused otherwise. Not set: no module check runs.": "Las comprobaciones de los módulos leen OpenCTI, OpenAEV y OpenCRQ como este usuario. Elija un usuario con acceso a cada módulo registrado: de lo contrario se rechaza el guardado. Sin definir: no se ejecuta ninguna comprobación de módulo.",
   "Platform Health reads the modules as this user to check them. Pick a user with access to every connected module.": "Platform Health lee los módulos como este usuario para comprobarlos. Elija un usuario con acceso a cada módulo conectado.",
   "The run-as user was not saved.": "El usuario de ejecución no se guardó.",
-  "Saved. The next check round reads the modules as this user.": "Guardado. La próxima ronda de comprobaciones lee los módulos como este usuario."
+  "Saved. The next check round reads the modules as this user.": "Guardado. La próxima ronda de comprobaciones lee los módulos como este usuario.",
+  "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "Este usuario no tiene acceso a {modules}: Platform Health ejecuta las comprobaciones de los módulos como este usuario. Dale acceso a {modules} o elige un usuario que lo tenga.",
+  "The run-as user does not exist or is deactivated.": "El usuario de ejecución no existe o está desactivado."
 }

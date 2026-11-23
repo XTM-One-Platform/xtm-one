@@ -64,7 +64,10 @@ async def test_the_save_refuses_a_user_without_module_access(monkeypatch):
     with pytest.raises(HTTPException) as refused:
         await platform_health.check_module_run_as(None, uuid.uuid4())
     assert refused.value.status_code == 400
-    assert "no access to OpenCTI" in refused.value.detail
+    detail = refused.value.detail
+    assert detail["code"] == run_as.RUN_AS_MISSING_MODULE_ACCESS
+    assert detail["modules"] == ["OpenCTI"]
+    assert "no access to OpenCTI" in detail["message"]
 
 
 async def test_the_save_accepts_a_user_with_every_module(monkeypatch):
@@ -82,6 +85,7 @@ async def test_the_save_refuses_an_unknown_user(monkeypatch):
     with pytest.raises(HTTPException) as refused:
         await platform_health.check_module_run_as(None, uuid.uuid4())
     assert refused.value.status_code == 400
+    assert refused.value.detail["code"] == run_as.RUN_AS_INACTIVE
 
 
 @pytest.mark.parametrize(

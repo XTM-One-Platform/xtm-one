@@ -52,13 +52,33 @@ def run_as_needed_reason(provider: str) -> str:
     )
 
 
+#: The reason codes of a refused "Run checks as" user: the client words them from its catalogs (13bis.5),
+#: the English ``message`` is kept for a client that does not know the code.
+RUN_AS_MISSING_MODULE_ACCESS = "run_as_missing_module_access"
+RUN_AS_INACTIVE = "run_as_inactive"
+
+
 def run_as_refusal(missing: list[str]) -> str:
-    """The 400 of a run-as user who cannot reach a registered module."""
+    """The English line of a run-as user who cannot reach a registered module."""
     names = ", ".join(_label(p) for p in missing)
     return (
         f"This user has no access to {names}: Platform Health runs the module checks as this user. "
         f"Give them access to {names}, or pick a user who has it."
     )
+
+
+def run_as_refusal_detail(missing: list[str]) -> dict[str, object]:
+    """The 400 ``detail`` of that refusal: a reason code, the module names and the English line."""
+    return {
+        "code": RUN_AS_MISSING_MODULE_ACCESS,
+        "modules": [_label(p) for p in missing],
+        "message": run_as_refusal(missing),
+    }
+
+
+def run_as_inactive_detail() -> dict[str, object]:
+    """The 400 ``detail`` of an unknown or deactivated run-as user."""
+    return {"code": RUN_AS_INACTIVE, "message": "The run-as user does not exist or is deactivated."}
 
 
 async def registered_module_integrations(db: AsyncSession) -> dict[str, list[uuid.UUID]]:
