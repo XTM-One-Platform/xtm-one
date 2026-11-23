@@ -85,6 +85,7 @@ import { FleetAboutSteps } from "./FleetAboutSteps";
 import { FleetAboutSuggestions } from "./FleetAboutSuggestions";
 import { FleetModuleMark as ModuleMark } from "./FleetModuleMark";
 import { FleetOptInBadge } from "./FleetOptInBadge";
+import { FleetTriggerList } from "./FleetTriggerList";
 
 /** The member status chip's variant, as on the Members tab. */
 const MEMBER_STATUS_VARIANT = {
@@ -433,10 +434,17 @@ export function FleetAboutShowcase({
             }
           />
         )}
-        {((s.steps?.length ?? 0) > 0 || kinds.length > 0) && (
+        {((s.steps?.length ?? 0) > 0 || kinds.length > 0 || (s.triggers?.length ?? 0) > 0) && (
           <Section id="about-flow" title={t_i18n("How it works")}>
             <Card className="flex-1">
               <CardContent className="flex flex-col gap-3 p-4">
+                {/* What starts it (#1319): every documented trigger, the same list as the setup wizard's first step. */}
+                {(s.triggers?.length ?? 0) > 0 && (
+                  <div className="space-y-1.5 content-compact" data-testid="about-triggers">
+                    <h3 className="content-caption font-semibold text-default-secondary">{t_i18n("What starts it")}</h3>
+                    <FleetTriggerList triggers={s.triggers} testId="about-trigger" />
+                  </div>
+                )}
                 <FleetAboutSteps structured={s} onExpandedChange={setStepsExpanded} />
               </CardContent>
             </Card>

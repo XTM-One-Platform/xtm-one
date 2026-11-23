@@ -264,6 +264,13 @@ _NODE_SCRIPTS = (
 #: (``check:bundle-size``, ``i18n:check``) is otherwise met in CI only. The words of
 #: :data:`_SCRIPT_SKIP` leave a script out.
 _NODE_SCRIPT_VERBS = frozenset({"generate", "extract", "compile", "check", "test", "validate", "verify"})
+#: A hyphenated script name (``i18n-checker``, ``generate-i18n-checker-constant``, ``check-licenses``)
+#: is read the same way, its segments split on ``-`` too, a gate noun counting as its verb.
+_NODE_SCRIPT_NOUNS = frozenset({"checker", "validator", "verifier"})
+_NODE_SCRIPT_SPLIT = re.compile(r"[:-]")
+#: A script that reaches a URL (``swagger-typescript-api --path=http://localhost:8080``) needs a
+#: service the sandbox does not run: it is not offered.
+_NODE_SCRIPT_URL = re.compile(r"https?://")
 #: A script whose body runs a code generator (``"relay": "relay-compiler relay.config.json"``,
 #: ``"build:types": "graphql-codegen ..."``) is a check whatever its name: a narrow checkout carries
 #: no generated sources (``src/generated``, ``__generated__``), so the types or unit check needs it first.
@@ -2462,7 +2469,7 @@ def _mapping(value: object) -> dict[str, object]:
 
 
 def _node_named_scripts(collector: _Collector, directory: str, path: str, manager: str, scripts: dict, used: set[str]) -> None:
-    """The namespaced generator and gate scripts of a manifest (:data:`_NODE_SCRIPT_VERBS`), one check each.
+    """The namespaced or hyphenated generator and gate scripts of a manifest (:data:`_NODE_SCRIPT_VERBS`), one check each.
 
     A script that runs a code generator (:data:`_NODE_CODEGEN`) is one too, namespaced or not.
 
@@ -2475,13 +2482,17 @@ def _node_named_scripts(collector: _Collector, directory: str, path: str, manage
     for script in sorted(scripts):
         body = scripts[script]
         lowered = script.lower()
-        segments = lowered.split(":")
+        segments = set(_NODE_SCRIPT_SPLIT.split(lowered))
         if script in used or not isinstance(body, str):
             continue
         codegen = bool(_NODE_CODEGEN.search(body))
-        if not codegen and (len(segments) < 2 or not _NODE_SCRIPT_VERBS & set(segments)):
+        if not codegen and (len(segments) < 2 or not (_NODE_SCRIPT_VERBS | _NODE_SCRIPT_NOUNS) & segments):
             continue
-        if any(word in lowered for word in _SCRIPT_SKIP) or "no test specified" in body:
+        if (
+            any(word in lowered for word in _SCRIPT_SKIP)
+            or "no test specified" in body
+            or _NODE_SCRIPT_URL.search(body)
+        ):
             continue
         kind = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
         if not kind or kind.endswith("install") or kind in KINDS:

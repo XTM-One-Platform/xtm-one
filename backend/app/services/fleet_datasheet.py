@@ -50,7 +50,7 @@ from typing import Any
 
 #: The most items each list shows before "+N more".
 CAPS: dict[str, int] = {
-    "triggers": 5,
+    "triggers": 7,
     "steps": 7,
     "integrations": 6,
     "objects": 5,

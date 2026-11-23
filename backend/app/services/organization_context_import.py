@@ -58,11 +58,11 @@ from app.services.organization_context import (
 logger = logging.getLogger(__name__)
 
 Section = Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-Source = Literal["openaev", "opencti", "opencrq"]
+Source = Literal["openaev", "opencti", "opencrq", "intune", "defender"]
 
 #: section -> the platforms that can feed it, in the order the dialog lists them.
 SECTION_SOURCES: dict[str, tuple[str, ...]] = {
-    "assets": ("openaev", "opencti"),
+    "assets": ("openaev", "opencti", "intune", "defender"),
     "asset_groups": ("openaev",),
     "ai_systems": ("openaev",),
     "tech_stack": ("openaev",),
@@ -95,6 +95,9 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
         "created_after",
         "filter_group",
     ),
+    # Microsoft endpoint sources (#1251): devices, OS and software with versions.
+    ("assets", "intune"): ("operating_system", "compliance", "ownership", "last_seen_days", "include_owner"),
+    ("assets", "defender"): ("os_platform", "health_status", "exposure_level", "last_seen_days"),
     ("asset_groups", "openaev"): ("tags", "search"),
     ("ai_systems", "openaev"): ("tags", "search"),
     ("tech_stack", "openaev"): ("type",),
@@ -158,6 +161,8 @@ class SourceStatus:
     source: str
     available: bool
     reason: str = ""
+    #: The reason as a code the dialog words in the user's language (empty: word ``reason`` as given).
+    reason_code: str = ""
 
 
 @dataclass
@@ -172,6 +177,12 @@ class ReadResult:
     truncated: bool = False
     #: Rows that took the batch type because the source gave them none (OpenCTI Systems without a category).
     batch_typed: int = 0
+    #: Software per row ``external_id`` an endpoint source read (#1251), stored on the device record at save.
+    software: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: Software entries read (all devices).
+    software_rows: int = 0
+    #: Devices whose software read failed: their stored software is kept (never read as "none").
+    software_unread: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -202,6 +213,11 @@ class ImportPlan:
     truncated: bool = False
     error: str | None = None
     profile: OrganizationProfile | None = None
+    #: Software per device an endpoint source read (#1251); written by :func:`store_endpoint_software`.
+    software: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    software_rows: int = 0
+    #: Devices whose software read failed: :func:`store_endpoint_software` keeps their stored software.
+    software_unread: set[str] = field(default_factory=set)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -224,6 +240,7 @@ class ImportPlan:
             "excluded": self.excluded[:SAMPLE_SIZE],
             "remove_gone": self.remove_gone,
             "batch_typed": self.batch_typed,
+            "software_rows": self.software_rows,
             "sample": self.sample,
             "truncated": self.truncated,
             "error": self.error,
@@ -480,6 +497,9 @@ def plan_import(
         remove_gone=remove_gone and not read.truncated and not read.error,
         batch_typed=read.batch_typed,
         sync_id=sync_id[:64],
+        software=read.software,
+        software_rows=read.software_rows,
+        software_unread=read.software_unread,
     )
     draft = profile.model_copy(deep=True)
     if section in SOURCED_FIELDS:
@@ -666,6 +686,15 @@ async def source_statuses(db: AsyncSession, *, user_id: uuid.UUID) -> dict[str, 
         available=not isinstance(connection, str),
         reason=connection if isinstance(connection, str) else "",
     )
+    from app.services import organization_context_microsoft as microsoft
+
+    for source in microsoft.SOURCES:
+        try:
+            available, reason, code = await microsoft.connection_status(db, str(user_id), source)
+        except Exception as exc:
+            logger.warning("Organization import: %s status unreadable: %s", source, format_exception_message(exc))
+            available, reason, code = False, "unreadable", ""
+        statuses[source] = SourceStatus(source=source, available=available, reason=reason, reason_code=code)
     return statuses
 
 
@@ -904,6 +933,53 @@ async def _read_opencrq(db: AsyncSession, user_id: str, filters: dict[str, Any])
     return ReadResult(rows=rows, total=len(rows))
 
 
+async def _read_microsoft(db: AsyncSession, user_id: str, source: str, filters: dict[str, Any]) -> ReadResult:
+    """Devices (and their software) from Microsoft Intune or Defender for Endpoint (#1251)."""
+    from app.services import organization_context_microsoft as microsoft
+
+    token, reason = await microsoft.access_token(db, user_id, source)
+    if not token:
+        return ReadResult(error=f"{source}: {reason}")
+    reader = microsoft.read_intune if source == microsoft.INTUNE else microsoft.read_defender
+    read = await reader(token, filters, limit=MAX_ROWS)
+    result = ReadResult(total=read.total, truncated=read.truncated, error=read.error)
+    if read.error:
+        return result
+    for row in read.rows:
+        try:
+            result.rows.append(AssetEntry.model_validate(row))
+        except ValueError as exc:  # one bad device never stops the others
+            logger.info("Organization import: %s device %s refused: %s", source, row.get("external_id"), exc)
+    kept = {r.external_id for r in result.rows}
+    result.software = {k: v for k, v in read.software.items() if k in kept}
+    result.software_rows = sum(len(v) for v in result.software.values())
+    result.software_unread = {k for k in read.software_unread if k in kept}
+    return result
+
+
+async def store_endpoint_software(db: AsyncSession, plan: ImportPlan) -> int:
+    """After a saved plan of an endpoint source, store each device's software and rebuild the store.
+
+    The software of a device the source no longer returns goes with it when the
+    read was complete; a device whose software read failed keeps what was stored.
+    Answers the documents written or removed (0: nothing to do).
+    """
+    from app.services import organization_asset_store as store
+    from app.services.organizations import get_primary
+
+    if plan.source not in store.ENDPOINT_SOFTWARE_FORMATS or plan.error:
+        return 0
+    primary = await get_primary(db)
+    if primary is None:
+        return 0
+    changed = await store.replace_endpoint_software(
+        db, primary.id, plan.source, plan.software, complete=not plan.truncated, unread=plan.software_unread
+    )
+    if changed:
+        await store.rebuild_from_profile(db, primary.id)
+    return changed
+
+
 async def read_source(
     db: AsyncSession, *, user_id: uuid.UUID, section: str, source: str, filters: dict[str, Any], batch_type: str = ""
 ) -> ReadResult:
@@ -915,6 +991,8 @@ async def read_source(
             return await _read_openaev(db, str(user_id), section, filters, batch_type)
         if source == "opencti":
             return await _read_opencti(db, str(user_id), section, filters, batch_type)
+        if source in ("intune", "defender"):
+            return await _read_microsoft(db, str(user_id), source, filters)
         return await _read_opencrq(db, str(user_id), filters)
     except Exception as exc:  # a platform that fails is reported, never guessed
         logger.warning("Organization import: %s unreadable: %s", source, format_exception_message(exc))
@@ -1097,6 +1175,39 @@ async def _opencrq_options(db: AsyncSession, user_id: str) -> FilterOptions:
     return result
 
 
+#: The fixed values of the Microsoft endpoint filters (the APIs' own enumerations, #1251).
+MICROSOFT_FILTER_VALUES: dict[str, dict[str, tuple[str, ...]]] = {
+    "intune": {
+        "operating_system": ("Windows", "macOS", "iOS", "iPadOS", "Android", "Linux"),
+        "compliance": ("compliant", "noncompliant", "inGracePeriod", "conflict", "error", "unknown"),
+        "ownership": ("company", "personal"),
+        "last_seen_days": ("7", "30", "90"),
+        "include_owner": ("true",),
+    },
+    "defender": {
+        "os_platform": (
+            "Windows11",
+            "Windows10",
+            "WindowsServer2022",
+            "WindowsServer2019",
+            "macOS",
+            "Linux",
+            "iOS",
+            "Android",
+        ),
+        "health_status": ("Active", "Inactive", "ImpairedCommunication", "NoSensorData"),
+        "exposure_level": ("High", "Medium", "Low", "None"),
+        "last_seen_days": ("7", "30", "90"),
+    },
+}
+
+
+def _microsoft_options(source: str) -> FilterOptions:
+    return FilterOptions(
+        options={key: [_option(v) for v in values] for key, values in MICROSOFT_FILTER_VALUES[source].items()}
+    )
+
+
 async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, source: str) -> FilterOptions:
     """The values each filter of *section* offers in *source*, read live (a failure is a reason, never raised)."""
     if source not in SECTION_SOURCES.get(section, ()):
@@ -1106,6 +1217,8 @@ async def filter_options(db: AsyncSession, *, user_id: uuid.UUID, section: str, 
             return await _opencti_options(db, str(user_id)) if section == "assets" else FilterOptions()
         if source == "openaev":
             return await _openaev_options(db, str(user_id), section)
+        if source in ("intune", "defender"):
+            return _microsoft_options(source)
         return await _opencrq_options(db, str(user_id))
     except Exception as exc:  # the dialog still opens: the filters say why they are empty
         logger.warning("Organization import: %s options unreadable: %s", source, format_exception_message(exc))

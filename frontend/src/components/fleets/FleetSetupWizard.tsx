@@ -84,6 +84,7 @@ import {
 import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { FleetModuleMark } from "./FleetModuleMark";
+import { FleetTriggerList } from "./FleetTriggerList";
 
 /** The run-as select's value for "the caller": the API reads `null` as the caller. */
 const SELF_VALUE = "__self__";
@@ -268,16 +269,7 @@ export function FleetSetupWizard({
           {step === "about" && (
             <div className="space-y-3 content-compact" data-testid="fleet-setup-about">
               {documentation.data?.structured?.purpose_line && <p className="text-default-primary">{documentation.data.structured.purpose_line}</p>}
-              {(documentation.data?.structured?.triggers?.length ?? 0) > 0 && (
-                <ul className="space-y-1" aria-label={t_i18n("What starts it")}>
-                  {documentation.data?.structured?.triggers?.map((trigger) => (
-                    <li key={`${trigger.module}-${trigger.name}`} className="flex items-center gap-2">
-                      <FleetModuleMark module={trigger.module} className="h-4 w-4" />
-                      <span className="min-w-0">{trigger.detail ? `${trigger.name}: ${trigger.detail}` : trigger.name}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <FleetTriggerList triggers={documentation.data?.structured?.triggers} />
               <p className="text-default-secondary tabular-nums" data-testid="fleet-setup-estimate">
                 {estimate}
               </p>

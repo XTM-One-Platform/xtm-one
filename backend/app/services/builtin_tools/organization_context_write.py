@@ -289,12 +289,20 @@ def build_organization_context_write_tools(
                     "applied": False,
                     "notice": SHARED_CONTEXT_NOTICE,
                 }
-                if plan.error or not apply or not (plan.new or plan.updated) or plan.profile is None:
+                if plan.error or not apply:
+                    return json.dumps(answer, default=str)
+                if not (plan.new or plan.updated) or plan.profile is None:
+                    # An endpoint source (#1251) may change only the software of known devices.
+                    if plan.software and await imp.store_endpoint_software(db, plan):
+                        await db.commit()
+                        answer.update(applied=True)
                     return json.dumps(answer, default=str)
                 sources = imp.provenance(plan, used)
                 row = await org_context.save_version(
                     db, plan.profile, source="draft", author_user_id=person.id, sources=sources
                 )
+                if plan.software:
+                    await imp.store_endpoint_software(db, plan)
                 await db.commit()
                 answer.update(applied=True, version=row.version)
                 return json.dumps(answer, default=str)
@@ -556,8 +564,8 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_UPSERT_ROWS_TOOL,
             description=(
                 "Add or update rows of one profile section without resending the list: assets and asset groups keyed "
-                "on source + external_id (rows a person wrote are never touched), tech stack and AI systems by name "
-                "(added if new). Validated like the CSV import. Preview first (apply false): counts and refusals with "
+                "on source + external_id (rows a person wrote are never touched), tech stack and AI systems by name. "
+                "Validated like the CSV import. Preview first (apply false): counts and refusals with "
                 "reasons. A rows_format other than profile maps a platform's raw objects on the server."
                 + SHARED_CONTEXT_CLAUSE
             ),
@@ -601,8 +609,8 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_IMPORT_TOOL,
             description=(
-                "Run the Settings > Organization import of one section from a connected platform (same rules: "
-                "hand rows kept, the source's own rows updated). Preview first: new, updated, skipped, the source count."
+                "Run the Settings > Organization import of one section from a connected platform (hand rows "
+                "kept, the source's rows updated). Preview first: new, updated, skipped, source count."
                 + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
