@@ -38,6 +38,7 @@ from sqlalchemy import select
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.models.user import User
+from app.services import ctem_case_audit as audit
 from app.services import ctem_cases as rules
 
 logger = logging.getLogger(__name__)
@@ -382,6 +383,11 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
         "reason": None if hidden else row.reason,
         "evidence": None if hidden else row.evidence,
     }
+
+
+def case_phase(events: list[CtemCaseEvent], view: ViewerView) -> str | None:
+    """The CTEM phase of one case as this viewer is served its history (#1503): the list's phase column and grouping."""
+    return audit.current_phase([_event(row, view) for row in events])
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:

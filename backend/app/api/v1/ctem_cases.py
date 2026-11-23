@@ -193,6 +193,10 @@ async def list_ctem_cases(
         limit=limit,
         offset=offset,
     )
+    # The CTEM phase of each case on the page (#1503): the list groups by it and the Kanban lays its columns out by it.
+    history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
+    for row in rows:
+        row["phase"] = view_of.case_phase(history.get(uuid.UUID(row["id"]), []), view)
     return {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},

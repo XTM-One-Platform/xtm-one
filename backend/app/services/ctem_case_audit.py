@@ -363,6 +363,17 @@ def phases(
     return {"current": current, "phases": [rows[p] for p in PHASES]}
 
 
+def current_phase(events: list[dict[str, Any]]) -> str | None:
+    """The CTEM phase a case is in now: the phase of its newest event (``phases``' current), ``None`` with no event.
+
+    The Cases list groups and lays out its Kanban by it (#1503); *events* are the
+    viewer's served events, so a restricted field never decides a phase.
+    """
+    if not events:
+        return None
+    return phases(annotate(events))["current"]
+
+
 def run_phase(created_at: Any, annotated: list[dict[str, Any]]) -> str:
     """The phase the case was in when a fleet run started: the phase of the latest event at or before it."""
     at = _parse(created_at)
