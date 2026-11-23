@@ -228,6 +228,24 @@ async def list_declared(session: WorkspaceSession, *, checkout: str) -> str:
     return f"{len(specs)} service(s) declared in {where} (sandbox_start_service with service=NAME starts one):\n{describe_services(specs)}"
 
 
+def _lab_image_service_refusal(specs: dict[str, ServiceSpec], service: str, image: str) -> str:
+    """Why *service*, on the ``AGENTIC_LABS_IMAGES`` key *image*, cannot be started itself, and what can (#1371).
+
+    A lab runs the started service on the workspace image and only a dependency on a product image of its own,
+    so the refusal names the declared services that depend on *service* rather than an image setting to change.
+    """
+    dependants = sorted(name for name, spec in specs.items() if service in spec.depends_on)
+    start = (
+        f"Start a service that depends on it instead: {', '.join(dependants)}."
+        if dependants
+        else "No declared service depends on it: declare one on a workspace image with depends_on naming it."
+    )
+    return (
+        f"service {service!r} runs on the product image key {image!r} (AGENTIC_LABS_IMAGES): a lab runs it only as a "
+        f"dependency in a container of its own, never as the started service. {start} Nothing was started."
+    )
+
+
 async def resolve(
     session: WorkspaceSession,
     *,
@@ -248,6 +266,8 @@ async def resolve(
         raise ChecksError(f"{service!r} is not declared in {display(_join(root, CHECKS_FILE))}. Declared:\n{describe_services(specs)}")
     chain = service_chain(specs, service, own_images=frozenset(lab_images))
     image = chain[-1].image or DEFAULT_IMAGE_KEY
+    if image not in known_images and image in lab_images:
+        raise ChecksError(_lab_image_service_refusal(specs, service, image))
     if image not in known_images:
         raise ChecksError(
             f"service {service!r} runs on image key {image!r}, which OPENSANDBOX_IMAGES does not configure "
