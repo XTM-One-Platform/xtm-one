@@ -135,20 +135,19 @@ describe("Signals page", () => {
     await waitFor(() => expect(location()).not.toContain("signal="));
   });
 
-  it("says no source is connected and links to the Sources tab when nothing exists", async () => {
+  it("says no source is connected when nothing exists, the table's empty statement alone", async () => {
     renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] }, [PATHS[1]]);
-    const empty = await screen.findByTestId("ctem-signal-empty");
-    expect(within(empty).getByText("No signal yet: no source is connected.")).toBeTruthy();
-    fireEvent.click(within(empty).getByTestId("ctem-signal-sources-link"));
-    await waitFor(() => expect(location()).toBe("/ctem/signals/sources"));
+    expect(await screen.findByText("No signal yet: no source is connected.")).toBeTruthy();
+    // No paths line and no link under it (Sam, 23 Nov 2026, #1344): the strip and the Sources tab carry them.
+    expect(screen.queryByTestId("ctem-signal-empty-paths")).toBeNull();
+    expect(screen.queryByTestId("ctem-signal-sources-link")).toBeNull();
   });
 
   it("says the sources are connected and nothing was seen when one is", async () => {
     renderPage("/ctem/signals", { total: 0, counts: {}, signals: [] });
-    const empty = await screen.findByTestId("ctem-signal-empty");
-    expect(within(empty).getByText("No signal seen yet: your sources are connected and nothing reached the loop.")).toBeTruthy();
-    // The empty list keeps the sources' context (Sam, 22 Nov 2026).
-    await waitFor(() => expect(within(empty).getByTestId("ctem-signal-empty-paths").textContent).toBe("1 of 2 trigger paths connected"));
+    await waitFor(() =>
+      expect(screen.getByText("No signal seen yet: your sources are connected and nothing reached the loop.")).toBeTruthy(),
+    );
   });
 });
 

@@ -306,6 +306,55 @@ async def reader_for(db: AsyncSession, profile: Any) -> OpenCrqEvidenceReader | 
     return OpenCrqEvidenceReader(base_url, headers, tenant)
 
 
+# ── which integration the pass reads (#1344) ───────────────────────────
+
+#: The states of the pass for one platform: it runs on an integration, an
+#: OpenCRQ integration is connected but the pass is off or has none it can pick,
+#: or no OpenCRQ integration is connected.
+PASS_ON, PASS_OFF, PASS_NONE = "on", "off", "none"
+
+
+def resolve_pass(settings: Any, connected: Any) -> tuple[str, str]:
+    """``(state, integration id)`` of the pass for the connected OpenCRQ integration ids *connected*.
+
+    One rule for the signal sources badge (``ctem_signal_sources.bound_sources``)
+    and the tick (:func:`scheduled_pass`), so the badge never reads Connected
+    when the pass would skip:
+
+    - no OpenCRQ integration connected: ``none``;
+    - turned off by an administrator (``enabled`` false with an integration
+      declared): ``off``;
+    - an integration declared: ``on`` when it is connected, else ``off``
+      (never another one picked silently);
+    - none declared and ``enabled`` unset (or the legacy stored default, false
+      with none declared): ``on`` on the single connected integration, ``off``
+      when several are connected and none is declared.
+    """
+    ids = sorted({str(i) for i in connected or () if i})
+    if not ids:
+        return PASS_NONE, ""
+    declared = (getattr(settings, "integration", "") or "").strip()
+    if getattr(settings, "enabled", None) is False and declared:
+        return PASS_OFF, ""
+    if declared:
+        return (PASS_ON, declared) if declared in ids else (PASS_OFF, "")
+    return (PASS_ON, ids[0]) if len(ids) == 1 else (PASS_OFF, "")
+
+
+async def connected_integration_ids(db: AsyncSession) -> list[str]:
+    """The ids of the connected OpenCRQ integrations of the platform (the pass is organization-wide)."""
+    from sqlalchemy import select
+
+    from app.models.integration import Integration
+
+    rows = (
+        await db.execute(
+            select(Integration.id).where(Integration.provider == PROVIDER, Integration.status == "connected")
+        )
+    ).scalars()
+    return [str(i) for i in rows]
+
+
 # ── the schedule ────────────────────────────────────────────────────────
 
 
@@ -335,7 +384,11 @@ async def release_pass_slot() -> None:
 
 
 async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
-    """The tick's pass on the primary organization when its profile turned it on; ``None`` when off."""
+    """The tick's pass on the primary organization; ``None`` when off (:func:`resolve_pass`).
+
+    A declared integration is read as declared (:func:`reader_for` checks it);
+    with none declared, the connected OpenCRQ integrations decide.
+    """
     from app.services import ctem_case_loop
     from app.services import organization_context as org_context
     from app.services.organizations import get_primary
@@ -346,8 +399,15 @@ async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
     row = await org_context.current_version(db, primary.id)
     profile = org_context.parse_profile(row.profile if row else {})
     settings = profile.evidence_health
-    if not settings.enabled:
+    declared = (settings.integration or "").strip()
+    if settings.enabled is False and declared:
         return None
+    if not declared:
+        state, picked = resolve_pass(settings, await connected_integration_ids(db))
+        if state != PASS_ON:
+            return None
+        settings = settings.model_copy(update={"integration": picked})
+        profile = profile.model_copy(update={"evidence_health": settings})
     if not await pass_due(settings.cadence_hours):
         return None
     completed = False

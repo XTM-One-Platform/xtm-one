@@ -1024,6 +1024,18 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   change of event types replaces the trigger.
 - Removed: when `provision` is dropped, the assignment is disabled or deleted.
   An unbound integration leaves the state `orphaned` with the reason.
+- Bound: the assignment's binding, else its agent's; an agent that reaches the
+  module only by template binding (`integration_template_bindings`, the seeded
+  agents) gets the integration its provisioning run-as user resolves at run
+  time (`trigger_provisioning.template_integration_id`: the user's own first,
+  else a company-wide one, oldest first so the receiver URL stays stable; never
+  the seed owner). None resolvable: the state says `template binding opencti:
+  no OpenCTI integration resolvable for the run-as user`. The OpenAEV pass and
+  the CTEM-08 live PIR score re-read (the provisioned `integration_id`) follow
+  the same rule, and so does the event poller (`event_poller._poll_integration`,
+  the OpenCRQ job events): a template-resolved integration is polled as the
+  run-as user. A poll that reads nothing says why in `get_assignment`
+  (`Poll skipped: <reason>`, `event_poll_skip:<assignment>`, a day).
 - Visible: `opencti_provisioning` (status, trigger_id, notifier_id, error,
   checked_at) is returned with the assignment's `trigger_config`, next to
   `last_triggered_at`.

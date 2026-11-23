@@ -40,7 +40,7 @@ async function draftFromPlatforms() {
 /** The cards CTEM > Inventory mounts in place of the two tabs that left Settings (#1178). */
 const INVENTORY_CARDS = {
   technology: ["tech_stack", "ai_systems"],
-  exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens"],
+  exposure: ["assets_exposure", "asset_groups", "prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
 /**
  * Renders the page on one of its tabs (#12329); none is the first tab. The Technology and Exposure cards render

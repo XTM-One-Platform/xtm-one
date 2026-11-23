@@ -121,6 +121,47 @@ export function withIntegrationIds(pass: AttackSurfacePass, ids: string[]): Atta
 /** The bounds the backend's `AttackSurfacePass` enforces. */
 export const ATTACK_SURFACE_BOUNDS = { cadence_hours: { min: 1, max: 24 * 30 }, stale_after_days: { min: 1, max: 365 } } as const;
 
+/**
+ * The evidence health pass (CTEM-28, backend `EvidenceHealthPass`). `enabled` unset (null) means
+ * no administrator chose: the pass runs on the declared integration, else on the single connected
+ * OpenCRQ integration (#1344).
+ */
+export interface EvidenceHealthPass {
+  enabled: boolean | null;
+  /** The id of the OpenCRQ integration the pass reads; empty: the single connected one. */
+  integration: string;
+  max_age_days: number;
+  cadence_hours: number;
+}
+
+export const DEFAULT_EVIDENCE_HEALTH: EvidenceHealthPass = { enabled: null, integration: "", max_age_days: 30, cadence_hours: 24 };
+/** The bounds the backend's `EvidenceHealthPass` enforces. */
+export const EVIDENCE_HEALTH_BOUNDS = { max_age_days: { min: 1, max: 3650 }, cadence_hours: { min: 1, max: 24 * 30 } } as const;
+
+/**
+ * Whether the pass runs, as the backend's `resolve_pass` decides it from the connected OpenCRQ
+ * integration ids: off when turned off with one declared, on a declared one when connected, else
+ * on the single connected one; `integration` is the one it reads.
+ */
+export function evidenceHealthRuns(pass: EvidenceHealthPass, connected: readonly string[]): { runs: boolean; integration: string } {
+  const ids = [...new Set(connected.filter(Boolean))].sort();
+  const declared = (pass.integration ?? "").trim();
+  if (!ids.length || (pass.enabled === false && declared)) return { runs: false, integration: "" };
+  if (declared) return ids.includes(declared) ? { runs: true, integration: declared } : { runs: false, integration: "" };
+  return ids.length === 1 ? { runs: true, integration: ids[0] } : { runs: false, integration: "" };
+}
+
+/**
+ * The integration a save of the pass writes: the one picked, else empty (the single connected one). Turned off on
+ * that default with exactly one connected, it names that one: `enabled: false` with none declared is the legacy
+ * stored default, which `resolve_pass` reads as on, so the off would not hold (UX round 1 on #1356, B4).
+ */
+export function evidenceHealthSavedIntegration(picked: string, enabled: boolean, connected: readonly string[]): string {
+  if (picked) return picked;
+  const ids = [...new Set(connected.filter(Boolean))];
+  return !enabled && ids.length === 1 ? ids[0] : "";
+}
+
 /** A domain as the backend stores it (`OrganizationProfile._domains`): lower case, `@` and trailing dots dropped; null when empty or over 253. */
 export function normalizeDomain(raw: string): string | null {
   const text = raw.trim().toLowerCase().replace(/^@+/, "").replace(/\.+$/, "");
@@ -490,6 +531,8 @@ export const IMPORT_SOURCE_NAMES: Record<string, string> = {
   ...PLATFORM_NAMES,
   intune: "Microsoft Intune",
   defender: "Microsoft Defender for Endpoint",
+  github: "GitHub",
+  gitlab: "GitLab",
 };
 
 /**
@@ -497,7 +540,7 @@ export const IMPORT_SOURCE_NAMES: Record<string, string> = {
  * reads with): Intune through an `intune` integration, Defender for Endpoint through a `defender` one,
  * never the `microsoft` (Outlook, Teams) integration, whose token carries no device permission.
  */
-export const IMPORT_SOURCE_PROVIDER: Record<string, string> = { intune: "intune", defender: "defender" };
+export const IMPORT_SOURCE_PROVIDER: Record<string, string> = { intune: "intune", defender: "defender", github: "github", gitlab: "gitlab" };
 
 /** The import sources a connected integration provider opens (an Intune integration opens Intune, a Defender one Defender). */
 export function importSourcesOfProvider(provider: string): string[] {

@@ -39,7 +39,7 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { CtemPageHeader } from "./ctem/CtemPageHeader";
 import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./ctem/loop/DecisionReason";
-import { SignalSourcesLink, SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
+import { SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
 import { SignalTraceBody, signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
 import { connectedCount } from "./ctem/loop/signal-sources";
@@ -109,7 +109,6 @@ export default function CtemSignals() {
 
 function SignalsTab() {
   const { t_i18n } = useFormatter();
-  const { count } = useNumberFormat();
   const [params, setParams] = useSearchParams();
   const view = readSignalsView(params);
   const { data: pathData } = useCtemSignalPaths();
@@ -124,8 +123,7 @@ function SignalsTab() {
   const counts = first?.counts;
   const all = counts ? CTEM_SIGNAL_STATES.reduce((sum, s) => sum + (counts[s] ?? 0), 0) : undefined;
   const signals = useMemo(() => data?.pages.flatMap((page) => page.signals) ?? [], [data]);
-  const connected = connectedCount(paths);
-  const anyConnected = connected > 0;
+  const anyConnected = connectedCount(paths) > 0;
 
   const setParam = (name: string, value: string | null) =>
     setParams(
@@ -294,23 +292,9 @@ function SignalsTab() {
         isLoading={isLoading && !data}
         isError={isError}
         onRetry={() => void refetch()}
+        // The table's standard empty statement alone (Sam, 23 Nov 2026, #1344): the summary strip
+        // above carries the connected count and the Sources tab is one click away.
         emptyLabel={anyConnected ? t_i18n("No signal seen yet: your sources are connected and nothing reached the loop.") : t_i18n("No signal yet: no source is connected.")}
-        emptyContent={
-          <div className="flex flex-col items-start gap-2" data-testid="ctem-signal-empty">
-            <p className="content-compact text-default-secondary">
-              {anyConnected
-                ? t_i18n("No signal seen yet: your sources are connected and nothing reached the loop.")
-                : t_i18n("No signal yet: no source is connected.")}
-            </p>
-            {/* The empty list keeps the sources' context: how many paths can fire one (Sam, 22 Nov 2026). */}
-            {paths.length > 0 && (
-              <p className="content-caption text-default-secondary" data-testid="ctem-signal-empty-paths">
-                {t_i18n("{connected} of {total} trigger paths connected", { connected: count(connected), total: count(paths.length) })}
-              </p>
-            )}
-            <SignalSourcesLink />
-          </div>
-        }
         noResultsLabel={t_i18n("No signal matches these filters")}
         rowTestId="ctem-signal-row"
       />

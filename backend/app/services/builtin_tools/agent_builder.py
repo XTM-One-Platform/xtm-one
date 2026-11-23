@@ -7665,6 +7665,8 @@ def build_agent_builder_tool(
                     )
                 if delivery.get("mode") != "webhook":
                     parts.append(f"  • Last poll: {delivery.get('last_poll_at') or 'never'}")
+                    if delivery.get("poll_skipped"):
+                        parts.append(f"  • Poll skipped: {delivery['poll_skipped']}")
                 parts.append(f"  • Last notification: {delivery.get('last_notification_at') or 'never'}")
                 _filtered = getattr(assignment, "events_filtered_count", None)
                 parts.append(f"  • Events filtered: {_filtered if isinstance(_filtered, int) else 0}")
