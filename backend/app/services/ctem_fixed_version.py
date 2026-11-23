@@ -18,6 +18,10 @@ remediates Vulnerability`` and only orders the versions it found here.
   names when it is a plain upgrade ("Upgrade to 9.0.98"), the fallback.
 - :func:`smallest_fixing_every` folds the members of one product onto one
   target. Nothing is guessed.
+- :func:`platform_of_software` reads the platform a remediating Software is
+  built for (its CPE ``target_sw`` / ``target_hw``, else one operating system
+  its name or version names); :func:`fixes_by_platform` keeps the smallest fix
+  per platform and :func:`fold_by_platform` folds several of those maps (#1572).
 """
 
 from __future__ import annotations
@@ -41,6 +45,26 @@ _UPGRADE_COA = re.compile(
     re.IGNORECASE,
 )
 _MAX_PARTS = 16
+#: Words naming an operating system, and the ``os_family`` the asset inventory
+#: stores for it (``organization_context_microsoft.os_family`` names), first match wins.
+_PLATFORM_WORDS: tuple[tuple[str, str], ...] = (
+    ("ipados", "iPadOS"),
+    ("iphone_os", "iOS"),
+    ("ios", "iOS"),
+    ("android", "Android"),
+    ("windows", "Windows"),
+    ("macos", "macOS"),
+    ("mac_os", "macOS"),
+    ("mac os", "macOS"),
+    ("os x", "macOS"),
+    ("osx", "macOS"),
+    ("chrome_os", "ChromeOS"),
+    ("chromeos", "ChromeOS"),
+    ("linux", "Linux"),
+)
+_PLATFORM_RES = tuple((re.compile(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])"), f) for w, f in _PLATFORM_WORDS)
+#: CPE 2.3 fields: ``cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other``.
+_CPE_TARGET_SW, _CPE_TARGET_HW = 10, 11
 
 
 def parse_version(value: str | None) -> tuple[Any, ...] | None:
@@ -113,3 +137,76 @@ def smallest_fixing_every(versions: Iterable[str]) -> str | None:
     if not known:
         return None
     return max(known, key=lambda v: parse_version(v) or ())
+
+
+def _platforms_named(text: str) -> set[str]:
+    low = (text or "").strip().lower()
+    found: set[str] = set()
+    for pattern, family in _PLATFORM_RES:
+        if pattern.search(low):
+            found.add(family)
+    return found
+
+
+def platform_of_software(name: str | None, version: str | None, cpe: str | None) -> str | None:
+    """The platform a Software is built for, else ``None`` (pure, #1572).
+
+    The CPE ``target_sw`` (then ``target_hw``) wins when it names an operating
+    system; else the name and the version are read, and a platform counts only
+    when exactly one is named ("Chrome for Windows and macOS" names none).
+    """
+    parts = (cpe or "").strip().lower().split(":")
+    if len(parts) > _CPE_TARGET_SW and parts[0] == "cpe" and parts[1] == "2.3":
+        for index in (_CPE_TARGET_SW, _CPE_TARGET_HW):
+            if index < len(parts) and parts[index] not in ("*", "-", ""):
+                named = _platforms_named(parts[index])
+                if len(named) == 1:
+                    return next(iter(named))
+    named = _platforms_named(f"{name or ''} {version or ''}")
+    return next(iter(named)) if len(named) == 1 else None
+
+
+def fixes_by_platform(fixes: Iterable[tuple[str | None, str | None]], installed: str | None) -> dict[str, str]:
+    """``{platform: smallest fix above installed}`` over *fixes* ``(version, platform)``.
+
+    ``{}`` when one remediating version names no platform: its reach is not
+    known, so the fix stays generic (and unverified across several platforms).
+    """
+    grouped: dict[str, list[str | None]] = {}
+    for version, platform in fixes:
+        if not platform:
+            if smallest_fix_above([version], installed):
+                return {}
+            continue
+        grouped.setdefault(platform, []).append(version)
+    out: dict[str, str] = {}
+    for platform, versions in sorted(grouped.items()):
+        fixed = smallest_fix_above(versions, installed)
+        if fixed:
+            out[platform] = fixed
+    return out
+
+
+def fold_by_platform(maps: Iterable[Any]) -> dict[str, str]:
+    """Per platform, the smallest version fixing every map that names it; ``{}`` when one map is empty.
+
+    A member without a per-platform fix makes the fold generic: its fix is not
+    known per platform, so no platform map is claimed for the group.
+    """
+    grouped: dict[str, list[str]] = {}
+    seen = False
+    for raw in maps:
+        seen = True
+        current = dict(raw or {})
+        if not current:
+            return {}
+        for platform, version in current.items():
+            grouped.setdefault(str(platform), []).append(str(version))
+    if not seen:
+        return {}
+    out: dict[str, str] = {}
+    for platform, versions in sorted(grouped.items()):
+        fixed = smallest_fixing_every(versions)
+        if fixed:
+            out[platform] = fixed
+    return out

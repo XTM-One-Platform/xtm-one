@@ -351,6 +351,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "remediation_kind": case.remediation_kind,
         "product_label": case.product_label,
         "fixed_version": case.fixed_version,
+        # The fix of each platform when the remediation names it (#1572), else {}.
+        "fixed_versions": dict(getattr(case, "fixed_versions", None) or {}),
         "state": case.state,
         "state_since": case.state_since.isoformat() if case.state_since else None,
         "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,

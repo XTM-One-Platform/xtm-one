@@ -209,7 +209,7 @@ FIXES = [
 ]
 
 
-def _stack(version=""):
+def _stack(version: str = "") -> list[dict[str, str]]:
     return [{"product": "Tomcat", "vendor": "Apache", "cpe": "", "version": version, "label": "Apache Tomcat"}]
 
 
@@ -371,3 +371,99 @@ async def test_an_unreadable_remediates_read_keeps_the_issues(monkeypatch):
     issues = await source._read_opencti(None, "http://octi", {}, _stack())
     assert {i.external_id for i in issues} == {"v1", "v2", "v3"}
     assert all(i.fixed_version is None for i in issues)
+
+
+# ---------------------------------------------------------------------------
+# The fix of each platform (#1572)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "version", "cpe", "expected"),
+    [
+        ("chrome", "120.0.36", "cpe:2.3:a:google:chrome:120.0.36:*:*:*:*:windows:*:*", "Windows"),
+        ("chrome", "120.0.37", "cpe:2.3:a:google:chrome:120.0.37:*:*:*:*:macos:*:*", "macOS"),
+        ("chrome", "120.0.37", "cpe:2.3:a:google:chrome:120.0.37:*:*:*:*:*:x64:*", None),
+        ("Chrome for Mac", "120.0.37", "", None),
+        ("Chrome for macOS", "120.0.37", "", "macOS"),
+        ("Chrome", "120.0.36 (Windows)", "", "Windows"),
+        ("Chrome for Windows and macOS", "120.0.36", "", None),
+        ("Chromebook helper", "1.0", "", None),
+        ("tomcat", "9.0.98", "", None),
+    ],
+)
+def test_the_platform_of_a_remediating_software(name: str, version: str, cpe: str, expected: str | None) -> None:
+    assert fv.platform_of_software(name, version, cpe) == expected
+
+
+def test_fixes_by_platform_keep_the_smallest_fix_of_each_platform() -> None:
+    fixes = [("120.0.36", "Windows"), ("120.0.40", "Windows"), ("120.0.37", "macOS")]
+    assert fv.fixes_by_platform(fixes, None) == {"Windows": "120.0.36", "macOS": "120.0.37"}
+    # A remediating version with no platform keeps the fix generic.
+    assert fv.fixes_by_platform([*fixes, ("120.0.38", None)], None) == {}
+    # ...unless it is below the declared version (it is not a fix of it).
+    assert fv.fixes_by_platform([*fixes, ("119.0", None)], "120.0.1") == {"Windows": "120.0.36", "macOS": "120.0.37"}
+
+
+def test_fold_by_platform_takes_the_greatest_fix_and_goes_generic_on_one_untagged_member() -> None:
+    assert fv.fold_by_platform([{"Windows": "1.2", "macOS": "1.3"}, {"Windows": "1.4"}]) == {
+        "Windows": "1.4",
+        "macOS": "1.3",
+    }
+    assert fv.fold_by_platform([{"Windows": "1.2"}, {}]) == {}
+    assert fv.fold_by_platform([]) == {}
+
+
+PLATFORM_FIXES = [
+    {
+        "from": {
+            "id": "sw-w",
+            "name": "tomcat",
+            "vendor": "apache",
+            "version": "9.0.98",
+            "cpe": "cpe:2.3:a:apache:tomcat:9.0.98:*:*:*:*:windows:*:*",
+        },
+        "to": {"id": "v1"},
+    },
+    {
+        "from": {
+            "id": "sw-m",
+            "name": "tomcat",
+            "vendor": "apache",
+            "version": "9.0.99",
+            "cpe": "cpe:2.3:a:apache:tomcat:9.0.99:*:*:*:*:macos:*:*",
+        },
+        "to": {"id": "v1"},
+    },
+]
+
+
+def test_the_reader_keeps_the_fix_of_each_platform_and_the_case_carries_it() -> None:
+    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS[:1], [], PLATFORM_FIXES)
+    (issue,) = issues
+    assert issue.fixed_version == "9.0.98"
+    assert issue.fixed_versions == (("Windows", "9.0.98"), ("macOS", "9.0.99"))
+    grouping = cc.group_issues(issues)
+    (remediation,) = grouping.remediations.values()
+    assert dict(remediation.fixed_versions) == {"Windows": "9.0.98", "macOS": "9.0.99"}
+
+
+def test_a_remediating_software_without_platform_keeps_the_fix_generic() -> None:
+    issues = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS[:1], [], [*PLATFORM_FIXES, FIXES[0]])
+    assert issues[0].fixed_version == "9.0.98" and issues[0].fixed_versions == ()
+
+
+def test_the_signal_and_the_opened_case_carry_the_fix_of_each_platform() -> None:
+    from app.services import ctem_case_loop as loop
+    from app.services import ctem_source_signals as signals
+
+    (issue,) = source.opencti_issues(SOFTWARE, _stack("9.0.90"), RELATIONS[:1], [], PLATFORM_FIXES)
+    fix = cc.remediation_of(issue)
+    assert fix is not None
+    signal = signals.signal_of(issue, fix)
+    assert signal is not None
+    assert signal.evidence["case_fix"]["fixed_versions"] == {"Windows": "9.0.98", "macOS": "9.0.99"}
+    named = loop.source_fix_of(signal.evidence)
+    assert named is not None and named.fixed_versions == {"Windows": "9.0.98", "macOS": "9.0.99"}
+    assert loop.platform_fixes_of({"": "1", "Linux": "", "iOS": " 2 "}) == {"iOS": "2"}
+    assert loop.platform_fixes_of("x") == {}
