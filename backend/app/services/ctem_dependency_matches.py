@@ -52,6 +52,20 @@ query CtemDependencySoftware($filters: FilterGroup, $first: Int) {
 }
 """
 
+# The Software OpenCTI says remediates each vulnerability, with its PURL so a fixed
+# version is only ever taken from the same package (the CTEM-11 query of
+# ctem_cases_source selects no PURL).
+_OCTI_SOFTWARE_REMEDIATES_PURL = """
+query CtemDependencySoftwareRemediates($to: [String], $first: Int) {
+  stixCoreRelationships(toId: $to, relationship_type: ["remediates"], fromTypes: ["Software"], first: $first) {
+    edges { node {
+      from { ... on Software { id name version x_opencti_purl } }
+      to { ... on Vulnerability { id } }
+    } }
+  }
+}
+"""
+
 
 @dataclass(frozen=True)
 class Component:
@@ -164,24 +178,35 @@ def signal_fields(comp: Component, vuln: Mapping[str, Any], fixed_version: str |
 
 
 def fixes_by_vulnerability(relations: Iterable[Mapping[str, Any]]) -> dict[str, list[tuple[str, str]]]:
-    """Vulnerability id -> ``(purl base, version)`` of each Software OpenCTI says remediates it (pure)."""
+    """Vulnerability id -> ``(package key, version)`` of each Software OpenCTI says remediates it (pure).
+
+    The package key is the PURL base, else ``name:<lower-cased name>``; a Software with
+    neither names no package and is left out, so its version can never be taken as a fix.
+    """
     out: dict[str, list[tuple[str, str]]] = {}
     for rel in relations:
         vuln_id = str((rel.get("to") or {}).get("id") or "")
         source = rel.get("from") or {}
         base, version = purl_parts(str(source.get("x_opencti_purl") or ""))
         version = version or str(source.get("version") or "").strip()
-        if vuln_id and version:
-            out.setdefault(vuln_id, []).append((base, version))
+        name = str(source.get("name") or "").strip().lower()
+        key = base or (f"name:{name}" if name else "")
+        if vuln_id and version and key:
+            out.setdefault(vuln_id, []).append((key, version))
     return out
 
 
 def fixed_version_for(comp: Component, fixes: Iterable[tuple[str, str]]) -> str | None:
-    """The smallest remediating version above the installed one, same package when OpenCTI names it."""
+    """The smallest remediating version above the installed one, of the same package only.
+
+    Same package: the same PURL base, or, for a Software OpenCTI holds without a PURL,
+    the same name as the component's package.
+    """
     from app.services import ctem_fixed_version as fixed_versions
 
     base, _ = purl_parts(comp.purl)
-    versions = [v for b, v in fixes if not b or b == base]
+    names = {f"name:{base.rsplit('/', 1)[-1]}", f"name:{comp.product.strip().lower()}"}
+    versions = [v for key, v in fixes if key == base or key in names]
     return fixed_versions.smallest_fix_above(versions, comp.version)
 
 
@@ -193,7 +218,7 @@ async def read_matches(
 ) -> list[tuple[Component, dict[str, Any], str | None]] | None:
     """The ``(component, vulnerability, fixed version)`` OpenCTI knows; ``None`` when it could not answer."""
     from app.integrations.providers.opencti._common import _graphql
-    from app.services.ctem_cases_source import _OCTI_SOFTWARE_REMEDIATES, _OCTI_STACK_VULNS
+    from app.services.ctem_cases_source import _OCTI_STACK_VULNS
     from app.services.ctem_metrics_collector import _fg
 
     purls = sorted({c.purl for c in wanted} | {purl_parts(c.purl)[0] for c in wanted})
@@ -244,7 +269,7 @@ async def read_matches(
             client,
             base_url,
             headers,
-            _OCTI_SOFTWARE_REMEDIATES,
+            _OCTI_SOFTWARE_REMEDIATES_PURL,
             {"to": vuln_ids[start : start + _PAGE], "first": _PAGE * 2},
         )
         if err:  # no remediating Software is a known state: the fixed version stays unknown

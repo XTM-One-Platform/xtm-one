@@ -106,6 +106,36 @@ def test_no_fix_known_is_never_guessed() -> None:
     assert fields is not None and "fixed_version" not in fields["evidence"]
 
 
+def test_the_remediates_query_selects_the_purl() -> None:
+    assert "x_opencti_purl" in dm._OCTI_SOFTWARE_REMEDIATES_PURL
+
+
+def test_a_fix_of_another_package_is_never_the_fixed_version() -> None:
+    lodash = next(c for c in dm.components(SOFTWARE, REPOS) if c.product == "lodash")
+    # The node shape the remediates query answers: id, name, version, x_opencti_purl.
+    fixes = dm.fixes_by_vulnerability(
+        [
+            {"from": {"id": "a", "name": "other", "version": "4.17.22", "x_opencti_purl": None}, "to": {"id": "v1"}},
+            {
+                "from": {"id": "b", "name": "other", "version": "9.0.0", "x_opencti_purl": "pkg:npm/other@9.0.0"},
+                "to": {"id": "v1"},
+            },
+            {"from": {"id": "c", "name": None, "version": "4.17.21", "x_opencti_purl": None}, "to": {"id": "v1"}},
+        ]
+    )
+    assert dm.fixed_version_for(lodash, fixes["v1"]) is None
+    fixes = dm.fixes_by_vulnerability(
+        [
+            {"from": {"id": "d", "name": "Lodash", "version": "4.17.23", "x_opencti_purl": None}, "to": {"id": "v1"}},
+            {
+                "from": {"id": "e", "name": "lodash", "version": "4.17.21", "x_opencti_purl": "pkg:npm/lodash@4.17.21"},
+                "to": {"id": "v1"},
+            },
+        ]
+    )
+    assert dm.fixed_version_for(lodash, fixes["v1"]) == "4.17.21"
+
+
 class _Db:
     def __init__(self) -> None:
         self.sync_session = object()
