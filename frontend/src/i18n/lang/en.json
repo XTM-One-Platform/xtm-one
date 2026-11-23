@@ -21220,5 +21220,21 @@
   "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.": "Decisions of this fleet's members waiting for a person: paused runs and work items. Opening this tab starts no run and uses no quota.",
   "A source read before signals (legacy)": "A source read before signals (legacy)",
   "A signal you cannot see": "A signal you cannot see",
-  "Split into its own case by a person or an agent": "Split into its own case by a person or an agent"
+  "Split into its own case by a person or an agent": "Split into its own case by a person or an agent",
+  "CTEM signal": "CTEM signal",
+  "CTEM signal recorded": "CTEM signal recorded",
+  "CTEM signal triaged": "CTEM signal triaged",
+  "Recorded or triaged": "Recorded or triaged",
+  "Recorded": "Recorded",
+  "Triaged": "Triaged",
+  "A run starts when a signal is first seen, and again each time the scope gate changes its verdict.": "A run starts when a signal is first seen, and again each time the scope gate changes its verdict.",
+  "A run starts when a signal is first seen, with the scope gate's first verdict. Seeing it again starts nothing.": "A run starts when a signal is first seen, with the scope gate's first verdict. Seeing it again starts nothing.",
+  "A run starts when the scope gate changes the verdict of a signal already seen, for example from to validate to confirmed.": "A run starts when the scope gate changes the verdict of a signal already seen, for example from to validate to confirmed.",
+  "Third party": "Third party",
+  "Threat": "Threat",
+  "Recorded by hand": "Recorded by hand",
+  "Starts a run when a signal is": "Starts a run when a signal is",
+  "Subject kind": "Subject kind",
+  "Every signal": "Every signal",
+  "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator.": "A run starts for each matching signal, within the assignment's runs in parallel. The agent reads the signal with list_ctem_signals and its own permissions: a signal recorded by an integration listener reaches an assignment only when it runs as an administrator."
 }
