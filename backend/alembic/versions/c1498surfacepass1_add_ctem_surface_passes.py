@@ -8,7 +8,7 @@ Purely additive: one new table, nothing backfilled, so old replicas during a
 rolling deploy ignore it. Design: dev-docs/ctem-attack-surface.md.
 
 Revision ID: c1498surfacepass1
-Revises: g1467fleettoolgate1
+Revises: s1495software01
 Create Date: 2026-11-23 11:50:00.000000
 """
 
@@ -23,7 +23,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c1498surfacepass1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "g1467fleettoolgate1"
+down_revision: str | Sequence[str] | None = "s1495software01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
