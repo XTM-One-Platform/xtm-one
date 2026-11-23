@@ -44,11 +44,23 @@ def gate_answered_assignment(
     inherit_switch_from: str,
     description: str,
     apply: str,
+    answered_only: bool = False,
 ) -> dict[str, Any]:
     """The "Gate answered" assignment of an orchestrator whose decision items carry *prefixes*.
 
     *apply* says what the run does with the answer, after the claim and the read.
+    *answered_only* hears only the status change a person's answer made (the
+    event's ``answered`` flag), so *prefixes* may be a fleet's whole namespace:
+    a decision keyed outside its catalog resumes the work too, and a dependency
+    release of another item under the same namespace wakes nothing.
     """
+    match: dict[str, Any] = {
+        "previous_status": "blocked",
+        "status": "open",
+        "correlation_key": {"starts_with": list(prefixes)},
+    }
+    if answered_only:
+        match["answered"] = True
     return {
         **common,
         "name": GATE_ANSWERED,
@@ -56,11 +68,7 @@ def gate_answered_assignment(
         "trigger_type": "platform_event",
         "trigger_config": {
             "event": "work_item.status_changed",
-            "filter": {
-                "previous_status": "blocked",
-                "status": "open",
-                "correlation_key": {"starts_with": list(prefixes)},
-            },
+            "filter": match,
             "scope": "own",
         },
         INHERIT_SWITCH_FROM_KEY: inherit_switch_from,
