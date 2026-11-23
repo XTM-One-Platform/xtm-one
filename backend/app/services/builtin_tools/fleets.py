@@ -1763,9 +1763,15 @@ def build_fleet_tools(
 
         holder: dict[str, signals.FleetHealthReport] = {}
         suggestions: list[str] = []
+        missing: list[bool] = []
 
         async def _action(db: AsyncSession, user: User) -> str:
-            fleet = await _visible_fleet(db, user, _one_id(fleet_id, "fleet_id"))
+            try:
+                fleet = await _visible_fleet(db, user, _one_id(fleet_id, "fleet_id"))
+            except _RefusedError:
+                # Structured, so a gate check reads a configuration error (#1400).
+                missing.append(True)
+                raise
             report = await signals.build_fleet_health_report(
                 db, fleet, user_id=str(user.id), run_scope=run_visible_filter(user.id)
             )
@@ -1777,6 +1783,14 @@ def build_fleet_tools(
         text = await _run(_action, write=False)
         report = holder.get("report")
         if report is None:
+            if missing:
+                from app.services.assignment_activation_check import TARGET_MISSING_KEY
+
+                return ToolResult(
+                    tool_call_id="",
+                    content=text,
+                    structured={"fleet_id": str(fleet_id), "healthy": None, TARGET_MISSING_KEY: True},
+                )
             return text
         applied = await signals.apply_safe_fixes(report) if apply_safe_fixes else None
         structured = report.structured()

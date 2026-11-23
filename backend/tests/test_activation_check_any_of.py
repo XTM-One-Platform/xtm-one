@@ -203,13 +203,14 @@ async def test_a_later_check_passing_lets_the_run_go_ahead(monkeypatch, _engine)
     assert calls == ["list_work_items", "get_shared_state"]
 
 
-async def test_a_check_that_cannot_be_evaluated_lets_the_run_go_ahead(monkeypatch, _engine):
+async def test_a_check_on_a_tool_the_agent_does_not_hold_fails_as_misconfigured(monkeypatch, _engine):
+    # #1400: a configuration error is a failed alternative, named on the run, never a pass-through.
     calls: list = []
     _with(monkeypatch, [], {"active": False}, calls)
     unknown = {"tool": "list_things", "condition": "non_empty"}
 
     skipped, run, _db = await _skip(stored_activation_check({**OWN_QUEUE, "or": [unknown, ALERTS]}))
 
-    assert skipped is False and run.status == "pending"
-    assert run.trigger_context["gate_checks_not_evaluated"][0]["position"] == 2
-    assert calls == ["list_work_items"]
+    assert skipped is True and run.status == "completed"
+    assert run.trigger_context["gate_check_misconfigured"]["tool"] == "list_things"
+    assert calls == ["list_work_items", "get_shared_state"]
