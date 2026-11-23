@@ -105,6 +105,12 @@ In XTM One mode, AI switched off included, the health pass also checks the XTM O
 
 A finding resolves by itself after two passes in a row without its cause; fixing or deleting the integration, server or knowledge base it names resolves it too.
 
+## Run checks as
+
+The agentic checks of OpenCTI, OpenAEV and OpenCRQ read each module through its integration, as one user: the **Run checks as** user. The XTM One administrator often has no access to the modules, so an administrator picks a user who has, in **Settings > Agents and automations > Platform Health > Health checks > Run checks as**, or on the **Modules** step of the guided **Set up the CTEM loop** setup. The user must reach every registered module's integration (granted to them and connected for them): otherwise the save is refused and the message names the modules the user cannot read.
+
+There is no other identity: while no user is set, or when the user loses access to a module, no agentic check of that module runs and its card on the Platform Health page reads **Checks need a run-as user with <Module> access**, with a link to the setting. Set the user, then **Run checks now**: the card shows the checks passed, warned and failed.
+
 ## OpenCTI checks
 
 In XTM One mode, AI switched off included, every registered OpenCTI is checked every 5 minutes, with no enrolment. The heartbeat check reads the registration; the others read the health snapshot OpenCTI sends with its registration, as long as it is under 15 minutes old. An OpenCTI release that sends no snapshot is only checked for its heartbeat. Nothing is stored while `PLATFORM_REGISTRATION_TOKEN` is the published default value.

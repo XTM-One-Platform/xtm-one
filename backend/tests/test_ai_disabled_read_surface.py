@@ -417,6 +417,9 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # Settings > Agents and automations > Platform Health (#8254): enable, scope and budget caps; stored
     # configuration reaching no model, and switching it off must stay possible.
     "put_health_settings",
+    # Its "Run checks as" user alone, from the CTEM loop setup (dev-docs/platform-health.md 12.3): the same
+    # stored setting, validated against the module integrations, reaching no model.
+    "put_module_run_as",
     # Platform Health findings triage (#101, S8): dismissing or restoring a stored
     # finding writes its status and an audit row, runs no check and reaches no
     # model; the Health page works with AI switched off, so triage must too.

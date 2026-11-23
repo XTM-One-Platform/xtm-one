@@ -36,6 +36,7 @@ import { useRecordSetupStep } from "@/hooks/api/useOrganizationContextApi";
 import { StepBar } from "@/components/ui/step-bar";
 import { useFormatter } from "@/i18n";
 
+import { CtemSetupRunAs } from "./CtemSetupRunAs";
 import { FleetAutonomyStrip } from "./FleetAutonomyStrip";
 import { FleetCapabilitySlotsCard } from "./FleetCapabilitySlotsCard";
 import { FleetSetupWizard } from "./FleetSetupWizard";
@@ -232,6 +233,8 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
                 })}
               </ul>
             )}
+            {/* Whom Platform Health reads the connected modules as (dev-docs 12.3), saved on its own. */}
+            {step === "modules" && connectedModules(facts).length > 0 && <CtemSetupRunAs />}
             {step === "ecosystem" && (
               // One status per capability (UX r1 B4 of #1209): the card's rows, no second strip read
               // from other facts; inSetup keeps every exit in a new tab (B3).
