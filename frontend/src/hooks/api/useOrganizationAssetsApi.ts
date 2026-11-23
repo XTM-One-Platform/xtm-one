@@ -153,7 +153,7 @@ export function isAssetNotFound(error: unknown): boolean {
 }
 
 /** The strong identifier kinds, most reliable first (organization_asset_identity.DEFAULT_KEY_ORDER). */
-type IdentityKey = "serial" | "cloud_resource_id" | "device_id" | "mac" | "fqdn" | "hostname";
+type IdentityKey = "serial" | "cloud_resource_id" | "repository" | "device_id" | "mac" | "fqdn" | "hostname";
 
 interface IdentitySettings {
   key_order: IdentityKey[];

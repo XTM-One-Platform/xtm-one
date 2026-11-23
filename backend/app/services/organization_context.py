@@ -436,7 +436,8 @@ class AssetEntry(BaseModel):
     #: A cloud or platform resource id, a strong identity key: a code repository's ``<host>:repository:<id>``
     #: (GitHub and GitLab sources), stable across a rename or a transfer.
     cloud_resource_id: str = Field(default="", max_length=300)
-    #: Where the asset is reached or browsed (a repository's web URL), http(s) only.
+    #: Where the asset is reached or browsed (a repository's web URL), http(s) only. A code repository
+    #: row is matched across sources on it (identity kind ``repository``), else on a name shaped ``owner/repo``.
     url: str = Field(default="", max_length=500)
     #: When the source last observed the asset, ISO 8601 UTC (#1134 S4, CTEM-27: OpenAEV's
     #: ``asset_last_seen``; #1251: Intune and Defender's last sync); empty when the source does
@@ -837,8 +838,8 @@ class AssetIdentity(BaseModel):
     model_config = _Strict
 
     #: The strong keys, most reliable first; a key left out never merges (empty: the default order).
-    key_order: list[Literal["serial", "cloud_resource_id", "device_id", "mac", "fqdn", "hostname"]] = Field(
-        default_factory=list, max_length=6
+    key_order: list[Literal["serial", "cloud_resource_id", "repository", "device_id", "mac", "fqdn", "hostname"]] = (
+        Field(default_factory=list, max_length=7)
     )
     #: Per field, the sources or source classes in order (``*`` any other); a field left out keeps its default.
     precedence: dict[

@@ -95,7 +95,6 @@ import { ActivityFeed } from "./ctem/ActivityFeed";
 import { ActivityRow } from "./ctem/ActivityRow";
 import { deterministicActivity, feedCapacity, mergeActivity, signalActivity } from "./ctem/activity-feed";
 import { useRecentCtemSignals, type CtemSignalState } from "@/hooks/api/useCtemSignalsApi";
-import { LegacySignalLinks } from "./ctem/loop/LegacySignalLinks";
 import { signalsHref } from "./ctem/loop/signals-route";
 import { CoverageMatrixCard } from "./ctem/CoverageMatrixCard";
 import { ExposureStatsCard } from "./ctem/ExposureStatsCard";
@@ -1983,7 +1982,6 @@ export default function CtemCommandCenter({
       />
 
       <PostureExplainDialog open={postureExplainOpen} onOpenChange={setPostureExplainOpen} posture={posture} />
-      <LegacySignalLinks />
     </div>
   );
 }
