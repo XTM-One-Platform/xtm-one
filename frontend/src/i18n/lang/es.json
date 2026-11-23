@@ -4322,6 +4322,7 @@
   "Ovrl": "Glob",
   "Owned and shared by {name}": "Propiedad de {name}, compartido",
   "Owned by {name}": "Gestionado por {name}",
+  "No active fleet owns this case": "Ninguna flota activa gestiona este caso",
   "Owner": "Propietario",
   "Owner: {name}": "Propietario: {name}",
   "Owner: {name} ({email})": "Propietario: {name} ({email})",

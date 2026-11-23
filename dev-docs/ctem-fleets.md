@@ -174,7 +174,9 @@ Common rules:
   hourly case sweep, `catch_up` hands every open case its owner never ran
   (no open `ctem:<fleet>:case:<id>` item, no `owner_requested` case event for
   that owner) one `ctem_case.opened`, P1 first, soonest SLA first, 100 per
-  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active}.
+  pass. `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active};
+  the case page header shows "Owned by <fleet>" linked to the fleet page, or
+  "No active fleet owns this case" when it is null or inactive.
   The run owns one work item `ctem:<fleet>:case:<case id>` (an open
   one gets a note, never a second loop), writes owner, state, validation
   (`record_ctem_case_validation`) and ticket (`record_ctem_case_ticket`) on the

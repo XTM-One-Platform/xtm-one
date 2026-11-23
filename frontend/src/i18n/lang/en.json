@@ -4326,6 +4326,7 @@
   "Ovrl": "Ovrl",
   "Owned and shared by {name}": "Owned and shared by {name}",
   "Owned by {name}": "Owned by {name}",
+  "No active fleet owns this case": "No active fleet owns this case",
   "Owner": "Owner",
   "Owner: {name}": "Owner: {name}",
   "Owner: {name} ({email})": "Owner: {name} ({email})",
