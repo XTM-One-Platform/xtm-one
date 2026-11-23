@@ -622,6 +622,7 @@ def test_npm_and_pnpm_use_their_lock_and_run():
     pkg = json.dumps({"scripts": {"test": "jest"}})
     assert _argv(_detect({"package.json": pkg}, extra=("package-lock.json",))) == {
         "node-install": ("npm", "ci"),
+        "node-relock": ("npm", "install", "--package-lock-only", "--ignore-scripts"),
         "node-unit": ("npm", "run", "test"),
     }
     assert _argv(_detect({"package.json": pkg}, extra=("pnpm-lock.yaml",)))["node-install"] == (
@@ -2178,6 +2179,33 @@ def test_referenced_files_spare_an_add_paths_widening_to_the_whole_backend():
     )
     assert tree.sub_paths == ["frontend"] and tree.referenced == ["backend/tests/fixtures/f.json"]
     assert "backend/app/main.py" not in written and "backend" not in tree.sub_paths
+
+
+@pytest.mark.parametrize(
+    ("files", "extra", "relock"),
+    [
+        (
+            {"package.json": '{"packageManager": "yarn@4.5.0"}'},
+            ("yarn.lock", ".yarnrc.yml"),
+            ("yarn", "install", "--mode=update-lockfile"),
+        ),
+        (
+            {"package.json": "{}"},
+            ("pnpm-lock.yaml",),
+            ("pnpm", "install", "--lockfile-only", "--config.strict-dep-builds=false"),
+        ),
+        ({"package.json": "{}"}, ("package-lock.json",), ("npm", "install", "--package-lock-only", "--ignore-scripts")),
+    ],
+)
+def test_a_locked_node_install_gets_a_relock_check_that_rewrites_the_lock(files, extra, relock):
+    found = _detect(files, extra=extra)
+    spec = found.checks["node-relock"]
+    assert (*spec.argv, *spec.default_args) == relock
+    assert spec.install_first is False and not commands.is_install_name(spec.name)
+
+
+def test_an_unlocked_node_install_gets_no_relock_check():
+    assert "node-relock" not in _detect({"package.json": "{}"}).checks
 
 
 def test_broken_files_detect_nothing_instead_of_raising():
