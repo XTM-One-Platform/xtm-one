@@ -41,8 +41,10 @@ async def _database() -> AsyncIterator[async_sessionmaker]:
 class _Gateway:
     """Stands in for the gateway's ``/v1/models``; counts the calls."""
 
-    def __init__(self, monkeypatch, models: list[str] | Exception):
+    def __init__(self, monkeypatch, models: list[str] | Exception, chat_default: str | None = None):
         self.models = models
+        # The model the listing marks ``"default_for": ["chat"]`` (#1421).
+        self.chat_default = chat_default
         self.calls = 0
 
         async def _list_models(provider: FiligranGatewayProvider) -> list[str]:
@@ -51,7 +53,11 @@ class _Gateway:
                 raise self.models
             return sorted(self.models)  # as the gateway's list_models does
 
+        async def _marked_default_model(provider: FiligranGatewayProvider, kind: str) -> str | None:
+            return self.chat_default if kind == "chat" else None
+
         monkeypatch.setattr(FiligranGatewayProvider, "list_models", _list_models)
+        monkeypatch.setattr(FiligranGatewayProvider, "marked_default_model", _marked_default_model)
 
 
 def _env(
@@ -202,6 +208,107 @@ async def test_the_gateway_default_alias_stays_the_default(monkeypatch):
         assert (await _gateway_row(sessions)).default_model == "default"
         async with sessions() as db:
             assert (await get_platform_settings(db)).agent_default_model == "default"
+
+
+async def _agent_default(sessions) -> tuple[str | None, str | None]:
+    async with sessions() as db:
+        ps = await get_platform_settings(db)
+        return ps.agent_default_provider, ps.agent_default_model
+
+
+@pytest.mark.asyncio
+async def test_the_gateway_chat_default_replaces_the_alias(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        _Gateway(monkeypatch, [*LISTED, "default"], chat_default="claude-sonnet-5")
+
+        await _boot()
+
+        assert (await _gateway_row(sessions)).default_model == "claude-sonnet-5"
+        assert await _agent_default(sessions) == ("filigran_gateway", "claude-sonnet-5")
+
+
+@pytest.mark.asyncio
+async def test_a_saved_alias_moves_to_the_gateway_chat_default(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, [*LISTED, "default"])
+        await _boot()
+        assert await _agent_default(sessions) == ("filigran_gateway", "default")
+
+        gateway.chat_default = "gpt-5.4"
+        await _boot()
+
+        assert (await _gateway_row(sessions)).default_model == "gpt-5.4"
+        assert await _agent_default(sessions) == ("filigran_gateway", "gpt-5.4")
+
+
+@pytest.mark.asyncio
+async def test_default_model_in_the_environment_wins_over_the_gateway_chat_default(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch, default_model="gpt-5.4")
+        _Gateway(monkeypatch, [*LISTED, "default"], chat_default="claude-sonnet-5")
+
+        await _boot()
+
+        assert await _agent_default(sessions) == ("filigran_gateway", "gpt-5.4")
+
+
+@pytest.mark.asyncio
+async def test_an_admin_chat_default_wins_over_the_gateway_chat_default(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, [*LISTED, "default"])
+        await _boot()
+        async with sessions() as db:
+            ps = await get_platform_settings(db)
+            ps.agent_default_model = "gpt-5.4"
+            await db.commit()
+
+        gateway.chat_default = "claude-sonnet-5"
+        await _boot()
+
+        assert await _agent_default(sessions) == ("filigran_gateway", "gpt-5.4")
+
+
+@pytest.mark.asyncio
+async def test_a_default_model_on_another_provider_is_not_the_gateway_alias(monkeypatch):
+    """Pins today's behaviour: only a saved alias on the gateway counts as unset."""
+    async with _database() as sessions:
+        _env(monkeypatch)
+        gateway = _Gateway(monkeypatch, [*LISTED, "default"])
+        await _boot()
+        async with sessions() as db:
+            other = LLMProviderConfig(
+                user_id=None,
+                provider="custom_openai",
+                api_key_enc="x",
+                default_model="default",
+                available_models=["default"],
+            )
+            db.add(other)
+            await db.flush()
+            ps = await get_platform_settings(db)
+            ps.agent_default_provider, ps.agent_default_provider_id = "custom_openai", other.id
+            ps.agent_default_model = "default"
+            await db.commit()
+
+        gateway.chat_default = "claude-sonnet-5"
+        await _boot()
+
+        assert await _agent_default(sessions) == ("custom_openai", "default")
+
+
+@pytest.mark.asyncio
+async def test_a_chat_default_the_gateway_does_not_list_keeps_the_alias(monkeypatch):
+    async with _database() as sessions:
+        _env(monkeypatch)
+        _Gateway(monkeypatch, [*LISTED, "default"], chat_default="gpt-retired")
+
+        await _boot()
+
+        assert (await _gateway_row(sessions)).default_model == "default"
+        assert await _agent_default(sessions) == ("filigran_gateway", "default")
 
 
 @pytest.mark.asyncio
