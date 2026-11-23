@@ -70,10 +70,13 @@ describe("DiscoveryMix", () => {
     expect(dataRow.contains(screen.getByTestId("ctem-discovery-gap-openaev"))).toBe(false);
   });
 
-  it("lets every card hug its content: start-aligned row, tactics not wrapped in a stretched column (UX round 3, B1 and B2)", () => {
+  it("ends every card of the data row on the tallest edge, tactics a direct cell of the row (#1612)", () => {
     renderWithProviders(<DiscoveryMix viz={VIZ} connected={{ opencti: true, openaev: false, opencrq: false }} onConnect={() => {}} />);
     const dataRow = screen.getByTestId("ctem-discovery-data-row");
-    expect(dataRow.getAttribute("data-align")).toBe("start");
+    expect(dataRow.getAttribute("data-align")).toBe("stretch");
+    expect(dataRow.className).not.toMatch(/\bitems-start\b/);
+    expect(dataRow.className).toContain("[&>section]:h-full");
+    expect(screen.getByTestId("ctem-discovery-side-column").className).toContain("[&>section:last-child]:grow");
     expect(dataRow.getAttribute("data-wide-columns")).toBe("2");
     expect(screen.getByTestId("ctem-discovery-tactics").parentElement).toBe(dataRow);
     const side = screen.getByTestId("ctem-discovery-side-column");
