@@ -203,7 +203,11 @@ const INVENTORY_HOME = "/ctem/inventory";
  * the AI systems, the assets and exposure, the asset groups, the policy and the outside lens with the same cards,
  * the same per-card edit and the same Save as Settings, nothing stored twice. Without it the whole profile page.
  */
-export type OrganizationEmbed = { cards: readonly ProfileCard[] };
+export type OrganizationEmbed = {
+  cards: readonly ProfileCard[];
+  /** A reader's view (#1511): the cards at rest, no Edit (the outside lens and evidence health cards gate theirs too). */
+  readOnly?: boolean;
+};
 
 export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
   const { t_i18n, locale, intl } = useFormatter();
@@ -1370,7 +1374,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     ) : null;
   /** An exposure card's Edit (read mode, #12256 slice 2), or nothing while the whole form or this card is open. */
   const exposureEditAction = (card: ExposureCard) =>
-    !editing && exposureEdit?.card !== card ? (
+    !embed?.readOnly && !editing && exposureEdit?.card !== card ? (
       <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
         <Button
           variant="secondary"

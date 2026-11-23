@@ -40,10 +40,8 @@ import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ct
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { useInventoryEditView } from "./ctem/inventory-edit-view";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
-
-type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
+import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, type InventoryTab } from "./ctem/inventory-tabs";
 
 const ASSETS_URL_KEY = "a_";
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
@@ -424,14 +422,6 @@ function TechStackTab() {
   );
 }
 
-/**
- * The profile cards that are settings, not rows (#1178 slice 2b, kept by #1367): the rows of every tab are managed
- * in place (Add, row menu, bulk actions), so only the policy cards of the Assets tab keep an edit view, opened by a
- * link to the card (`?card=`, Turn on on the Signals sources, #1356) and closed by Done. No page-level Edit button.
- */
-const EDIT_CARDS = {
-  assets: ["prioritization_policy", "outside_lens", "evidence_health"],
-} as const;
 export default function CtemInventory() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
@@ -440,10 +430,6 @@ export default function CtemInventory() {
   const { isAdmin, isLoading: authLoading } = useAuth();
   const [adding, setAdding] = useState(false);
   const add: AddRequest = { open: adding, onClose: () => setAdding(false) };
-  const editCards = tab === "assets" ? EDIT_CARDS.assets : null;
-  // A link to one of these cards opens the edit view on it and keeps it open once the card parameter leaves
-  // (UX rounds 1 and 2 on #1356, B3 then B1).
-  const [editing, setEditing] = useInventoryEditView(editCards, isAdmin);
   // Asset matching is read by everyone, edited by administrators inside its own card.
   const matching = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
   const navigate = useNavigate();
@@ -496,12 +482,7 @@ export default function CtemInventory() {
         info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         infoLabel={t_i18n("About the inventory")}
         actions={
-          editing ? (
-            <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
-              <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
-            </Button>
-          ) : (
-            <span className="flex flex-wrap items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
               {isAdmin && (tab === "assets" || tab === "asset-groups") && (
                 // The tab's add action, outside the table toolbar (UX round 1 on #1375, B1).
                 <Button
@@ -521,21 +502,12 @@ export default function CtemInventory() {
                 </Button>
               )}
             </span>
-          )
         }
       />
-      <DetailTabs<InventoryTab>
-        ariaLabel={t_i18n("Inventory sections")}
-        active={tab}
-        tabs={[
-          { key: "assets", label: "Assets" },
-          { key: "asset-groups", label: "Asset groups" },
-          { key: "tech-stack", label: "Tech stack" },
-          { key: "ai-systems", label: "AI systems" },
-        ]}
-      />
-      {editing && editCards ? (
-        <OrganizationSection key={tab} embed={{ cards: editCards }} />
+      <DetailTabs<InventoryTab> ariaLabel={t_i18n("Inventory sections")} active={tab} tabs={[...INVENTORY_TABS]} />
+      {tab === "exposure" ? (
+        // Read for everyone; each card's Edit is drawn for administrators only (#1511).
+        <OrganizationSection embed={{ cards: EXPOSURE_TAB_CARDS, readOnly: !isAdmin }} />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
       ) : tab === "tech-stack" ? (
