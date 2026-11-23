@@ -257,15 +257,14 @@ describe("OrganizationSection tabs (#12329)", () => {
     expect(screen.getByTestId("settings.organization.crown-jewels")).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.identity")).toBeNull();
     expect(screen.queryByTestId("settings.organization.assets-exposure")).toBeNull();
-    // One line points to CTEM > Inventory, where the technology and exposure cards live.
-    expect(screen.getByTestId("settings.organization.inventory-pointer").textContent).toContain("CTEM > Inventory");
+    // No move notice: CTEM is unreleased, nothing points from Settings to CTEM > Inventory.
+    expect(screen.queryByText(/now live in/)).toBeNull();
   });
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
     renderPage("exposure");
     expect(await screen.findByTestId("settings.organization.assets-exposure")).toBeTruthy();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    expect(screen.queryByTestId("settings.organization.inventory-pointer")).toBeNull();
     expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
     expect(screen.queryByTestId("settings.organization.crown-jewels")).toBeNull();
   });
@@ -287,6 +286,20 @@ describe("OrganizationSection tabs (#12329)", () => {
     renderPage("nope");
     expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("reads a Technology or Exposure tab path as an unknown tab, with no redirect to CTEM > Inventory", async () => {
+    for (const path of ["/settings/organization/profile/technology", "/settings/organization/profile/exposure?card=tech_stack"]) {
+      const view = renderWithProviders(
+        <MemoryRouter initialEntries={[path]}>
+          <OrganizationSection />
+        </MemoryRouter>,
+      );
+      expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+      expect(screen.getByRole("tab", { name: /^Identity and risk/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByTestId("settings.organization.tech-stack")).toBeNull();
+      view.unmount();
+    }
   });
 
   it("keeps the whole-profile edit across tabs and marks the tab holding an unsaved change", async () => {

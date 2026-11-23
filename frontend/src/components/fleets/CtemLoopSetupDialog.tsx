@@ -54,11 +54,11 @@ import {
   nextStep,
   openingStep,
   previousStep,
-  signalTracePath,
   stepOf,
   testSignal,
   type SetupStepKey,
 } from "./ctem-loop-setup";
+import { signalsHref } from "@/pages/xtm-one/ctem/loop/signals-route";
 
 export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t_i18n } = useFormatter();
@@ -98,13 +98,13 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
       },
     );
 
-  // The end of the setup: the command center with the loop trace of the first
-  // signal, sent now through the real intake when nothing has arrived yet.
+  // The end of the setup: the Signals page with the loop trace of the first
+  // signal open, sent now through the real intake when nothing has arrived yet.
   const sendTestSignal = () =>
     sendTest.mutate(testSignal(new Date()), {
       onSuccess: ({ signal }) => {
         onOpenChange(false);
-        navigate(signalTracePath(signal.id));
+        navigate(signalsHref({ signal: signal.id }));
       },
     });
 

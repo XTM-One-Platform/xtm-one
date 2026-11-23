@@ -57,7 +57,7 @@ describe("asset freshness facts", () => {
   it("the trace names the stale verdict, links the asset and leaves the event keys out of the evidence", async () => {
     get.mockResolvedValue(stale);
     renderWithProviders(
-      <MemoryRouter initialEntries={[`/?loop=signal:${ID}`]}>
+      <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
         <SignalTraceBody id={ID} />
       </MemoryRouter>,
     );

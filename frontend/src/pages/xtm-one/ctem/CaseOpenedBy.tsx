@@ -4,7 +4,7 @@
  * "Opened by" on a case page (CTEM-03-UI, #892; dev-docs/ctem-loop-visibility.md
  * sections 3 and 4): the signals that opened or joined the case, each with its
  * lens, its trigger path, its source (CTEM-29-UI), the scope gate's reason in one sentence, and a
- * link to its loop trace (`?loop=signal:<id>`). Read through
+ * link to its loop trace (`/ctem/signals?signal=<id>`). Read through
  * `GET /ctem-signals?case_id=`, which applies the reader's visibility; a case
  * opened by no signal (one the recompute built from source issues) names the
  * source readers that opened it, from the sources of its issues (#1206).

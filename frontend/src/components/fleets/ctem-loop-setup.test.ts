@@ -15,7 +15,6 @@ import {
   nextStep,
   openingStep,
   previousStep,
-  signalTracePath,
   stepOf,
   testSignal,
 } from "./ctem-loop-setup";
@@ -42,10 +41,6 @@ describe("ctem-loop-setup end (slice 4)", () => {
     expect(loopRuns(undefined)).toBe(false);
     expect(loopRuns(status(1))).toBe(true);
     expect(loopRuns(status(21))).toBe(true);
-  });
-
-  it("opens the command center on the signal's loop trace", () => {
-    expect(signalTracePath("abc-1")).toBe("/?loop=signal%3Aabc-1");
   });
 
   it("shows the setup entry to an XTM One administrator only, never while impersonating", () => {
