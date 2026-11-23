@@ -6,7 +6,7 @@ import { screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { loopFleetOf, readerOpenedLines } from "./case-loop-reason";
+import { loopFleetOf, noSignalOrigin } from "./case-loop-reason";
 import { caseAutomations, caseSources, caseWork, filterTakesCase, listensToCases } from "./case-workers";
 import { CaseLoopProvider, CaseSectionReason } from "./CaseSectionReason";
 import { CaseTreatmentPlan } from "./CaseTreatmentPlan";
@@ -131,16 +131,21 @@ describe("caseWork", () => {
   });
 });
 
-describe("caseSources and readerOpenedLines", () => {
+describe("caseSources and noSignalOrigin", () => {
   it("reads each product from the registrations, OpenBAS read as OpenAEV", () => {
     expect(caseSources(undefined)).toEqual({ opencrq: null, opencti: null, openaev: null });
     expect(caseSources([{ platform_identifier: "opencti" }, { platform_identifier: "openbas" }])).toEqual({ opencrq: false, opencti: true, openaev: true });
   });
 
-  it("names each source reader once, OpenBAS read as OpenAEV", () => {
-    expect(readerOpenedLines(["opencti", "opencti"])).toEqual(["opencti"]);
-    expect(readerOpenedLines(["openbas", "opencti"])).toEqual(["opencti", "openaev"]);
-    expect(readerOpenedLines([])).toEqual([]);
+  it("reads a split from its manual creation, anything else as a legacy source read", () => {
+    expect(noSignalOrigin([{ kind: "created", to: "manual" }])).toBe("split");
+    expect(noSignalOrigin([{ kind: "created", to: "upgrade:fortios" }])).toBe("legacy");
+    expect(noSignalOrigin(undefined)).toBe("legacy");
+  });
+
+  it("reads a case a signal opened, whose signal the reader cannot see, as restricted", () => {
+    expect(noSignalOrigin([{ kind: "created", to: "upgrade:fortios", reason: "signal 057f8fb5" }])).toBe("restricted");
+    expect(noSignalOrigin([{ kind: "created", to: "upgrade:fortios", reason: null }, { kind: "signal", to: null }])).toBe("restricted");
   });
 });
 

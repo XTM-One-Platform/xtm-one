@@ -15,9 +15,10 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Table, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
@@ -39,9 +40,24 @@ NOW = datetime(2026, 11, 21, 18, 0, tzinfo=UTC)
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker]:
-    tables = with_referenced_tables([CtemCase.__table__, CtemCaseIssue.__table__, CtemCaseEvent.__table__])
+    from app.models.ctem_signal import CtemSignal
+
+    models = (CtemCase, CtemCaseIssue, CtemCaseEvent, CtemSignal)
+    tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
     async with scratch_database("ctemticketing", tables=tables) as db:
         yield db.sessions
+
+
+@pytest.fixture(autouse=True)
+def _gate_opens_a_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source read's signal opens its case (#1529): the scope gate decides ``case`` here."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    async def evaluate(db: object, row: Any, **_: object) -> None:
+        row.state = "confirmed"
+        row.decision = {"outcome": "case", "state": "confirmed"}
+
+    monkeypatch.setattr(gate_store, "evaluate", evaluate)
 
 
 def _issue(ext: str, cve: str) -> rules.SourceIssue:
