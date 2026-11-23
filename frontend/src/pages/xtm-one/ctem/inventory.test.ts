@@ -6,12 +6,39 @@ import fr from "@/i18n/lang/fr.json";
 import { isAssetNotFound } from "@/hooks/api/useOrganizationAssetsApi";
 import { IMPORT_SOURCE_NAMES } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
-import { assetCategory, assetCategoryLabel, assetFieldLabel, isCodeRepository, sourceLabel } from "./inventory";
+import {
+  assetCategory,
+  assetCategoryLabel,
+  assetFieldLabel,
+  edgeOwnVersion,
+  isCodeRepository,
+  sourceLabel,
+} from "./inventory";
 
 type Catalog = Record<string, string>;
 const translator = (catalog: Catalog) => (id: string) => catalog[id] ?? id;
 const tEn = translator(en as Catalog);
 const tFr = translator(fr as Catalog);
+
+// UX round 3 on #1549, B1: the API names this software's version in from_version_id in both directions.
+describe("edgeOwnVersion", () => {
+  const openssl = new Map([["v-openssl-3011", "3.0.11"]]);
+
+  it("renders the version of this software on a Used by edge, not Unknown", () => {
+    const usedBy = { from_version_id: "v-openssl-3011", version_id: "v-libcurl-840", version: "8.4.0" };
+    expect(edgeOwnVersion(usedBy, openssl)).toBe("3.0.11");
+  });
+
+  it("renders the version of this software on a Depends on edge", () => {
+    const libcurl = new Map([["v-libcurl-840", "8.4.0"]]);
+    const dependsOn = { from_version_id: "v-libcurl-840", version_id: "v-openssl-3011", version: "3.0.11" };
+    expect(edgeOwnVersion(dependsOn, libcurl)).toBe("8.4.0");
+  });
+
+  it("reads unknown when the version is not one of this software's", () => {
+    expect(edgeOwnVersion({ from_version_id: "v-other" }, openssl)).toBe("unknown");
+  });
+});
 
 describe("assetCategory", () => {
   it("falls back to the category when the API answers an empty subcategory", () => {
@@ -40,7 +67,9 @@ describe("assetCategoryLabel and assetFieldLabel", () => {
     expect(assetCategoryLabel(tEn, { category: "saas_application", subcategory: "saas_app" })).toBe("SaaS application > SaaS app");
     expect(assetCategoryLabel(tEn, { category: "web_application", subcategory: "" })).toBe("Web application");
     expect(assetFieldLabel(tEn, "criticality", "very_high")).toBe("Very high");
-    expect(assetFieldLabel(tEn, "kind", "installed")).toBe("Installed software");
+    expect(assetFieldLabel(tEn, "software_type", "operating_system")).toBe("Operating system");
+    expect(assetFieldLabel(tEn, "cpe_state", "unresolved")).toBe("Not resolved");
+    expect(assetFieldLabel(tEn, "origin", "manual")).toBe("Entered by hand");
     expect(assetFieldLabel(tEn, "environment", "production")).toBe("Production");
   });
 

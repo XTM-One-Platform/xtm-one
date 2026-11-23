@@ -2,7 +2,8 @@
 
 /**
  * The Signals page's routes (#1263): `/ctem/signals` lists the signals of the
- * loop, `/ctem/signals/sources` the signal sources. The filters live in the
+ * loop, `/ctem/signals/sources` the signal sources, a page of its own reached from the
+ * list's header button (#1519). The filters live in the
  * URL (`state`, `path`, the table's `s_` keys) and so does the open loop trace (`signal`),
  * so every view is a link.
  */
