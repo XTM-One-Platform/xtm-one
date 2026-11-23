@@ -223,6 +223,9 @@ _CTEM_CASE_KEYS = (
 )
 #: ctem_case.validation_finished adds the OpenAEV delivery it reports (#918).
 _CTEM_CASE_VALIDATION_KEYS = (*_CTEM_CASE_KEYS, "openaev.event", "openaev.resource_type", "openaev.resource_id")
+#: A CTEM signal event carries the signal id and its routing only (#1409): the run reads the
+#: read the signal with list_ctem_signals signal_id, under its own permissions.
+_CTEM_SIGNAL_KEYS = ("signal_id", "trigger_path", "lens", "source_provider", "subject_kind", "verdict", "case_id")
 _VIDEO_KEYS = (
     "job_kind",
     "job_id",
@@ -480,6 +483,26 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_signal.recorded": {
+        "description": (
+            "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
+            "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
+            "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
+            "the gate did not run), case_id; read the signal with list_ctem_signals signal_id. Heard only when the user the "
+            "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
+            "an administrator's only)."
+        ),
+        "filter_keys": _CTEM_SIGNAL_KEYS,
+    },
+    "ctem_signal.triaged": {
+        "description": (
+            "The scope gate changed the verdict of a CTEM signal after its first sighting (an on-demand or "
+            "bulk evaluation, services/ctem_scope_gate_store.py): confirmed, to_validate, watchlist or "
+            "discarded. Payload: the signal fields, verdict and previous_verdict. Heard only by readers of "
+            "the signal."
+        ),
+        "filter_keys": (*_CTEM_SIGNAL_KEYS, "previous_verdict"),
+    },
     "timer.due": {
         "description": (
             "A timer an agent armed with arm_timer reached its due time (services/platform_timers.py): "
@@ -503,7 +526,8 @@ PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
 
 #: The events about an object whose readers only the object's own view decides
 #: (#933): a CTEM case is shared, its visibility is per viewer
-#: (``services/ctem_cases_view``). Any scope may subscribe; each delivery is then
+#: (``services/ctem_cases_view``); a CTEM signal is read by administrators and
+#: its recorder (#1409). Any scope may subscribe; each delivery is then
 #: checked by :func:`can_read_object` with the identity the run executes as.
 VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
     {
@@ -513,6 +537,8 @@ VIEWER_CHECKED_EVENTS: frozenset[str] = frozenset(
         "ctem_case.sla_breached",
         "ctem_case.validation_finished",
         "ctem_case.retest_requested",
+        "ctem_signal.recorded",
+        "ctem_signal.triaged",
     }
 )
 
@@ -1422,16 +1448,24 @@ def object_identities(sub: Subscription) -> set[str]:
 
 async def user_reads_object(user_id: str, payload: Mapping[str, Any]) -> bool:
     """Whether *user_id* reads the object of a viewer-checked event; any failure refuses."""
-    if payload.get("object_type") != "ctem_case":
+    kind = payload.get("object_type")
+    if kind not in ("ctem_case", "ctem_signal"):
         return False  # a viewer-checked event of no known object reaches no one
     from app.core.database import async_session
-    from app.services.ctem_cases_view import user_sees_case
 
     try:
         async with async_session() as db:
+            if kind == "ctem_signal":
+                from app.services.ctem_signals import user_reads_signal
+
+                return await user_reads_signal(db, user_id, payload.get("signal_id"))
+            from app.services.ctem_cases_view import user_sees_case
+
             return await user_sees_case(db, user_id, payload.get("case_id"), payload.get("vertical"))
     except Exception as exc:  # unreadable: refuse, never leak
-        logger.warning("Platform event: case visibility of %s unreadable: %s", user_id, format_exception_message(exc))
+        logger.warning(
+            "Platform event: %s visibility of %s unreadable: %s", kind, user_id, format_exception_message(exc)
+        )
         return False
 
 
