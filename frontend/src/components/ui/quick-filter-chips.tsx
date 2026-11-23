@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * A row of quick filters above a list (#1503, first on CTEM Cases): one click each,
- * each chip with the count one click on it shows. Two kinds in one row: the scope
- * chips (exactly one on, a radio group) and the toggle chips (any number on,
- * pressed buttons, combined with the scope). Every chip is drawn with the shared
- * filter pill class (`filterPillClass`), so it matches the toolbar's pills and
- * the one-pill grep gate (filter-pill-class.test.ts) holds.
+ * A row of toggle quick filters above a list (#1503, first on CTEM Cases): one
+ * click each, any number on (pressed buttons), each chip with the count one
+ * click on it shows. Multi-select only: a single-choice scope of a list is the
+ * shared `SegmentedFilter selection="radio"` (UX r1 B1 on #1515, as Signals),
+ * never this row; quick-filter-chips-gate.test.ts holds that. Every chip is
+ * drawn with the shared filter pill class (`filterPillClass`), so it matches the
+ * toolbar's pills and the one-pill grep gate (filter-pill-class.test.ts) holds.
  *
  * The row wraps onto a second line when it does not fit, a chip never breaks
  * inside (its label is nowrap), so a long locale at 1080 stays readable.
@@ -24,16 +25,12 @@ export interface QuickFilterChip<K extends string> {
   count?: number;
 }
 
-interface QuickFilterChipsProps<S extends string, T extends string> {
-  scopes: QuickFilterChip<S>[];
-  scope: S | null;
-  onScope: (key: S) => void;
+interface QuickFilterChipsProps<T extends string> {
   toggles: QuickFilterChip<T>[];
   active: readonly T[];
   onToggle: (key: T) => void;
-  /** Accessible names of the two groups, already translated. */
-  scopeLabel: string;
-  toggleLabel: string;
+  /** Accessible name of the group, already translated. */
+  label: string;
   className?: string;
   testId?: string;
 }
@@ -50,59 +47,26 @@ function ChipCount({ count }: { count?: number }) {
   );
 }
 
-export function QuickFilterChips<S extends string, T extends string>({
-  scopes,
-  scope,
-  onScope,
-  toggles,
-  active,
-  onToggle,
-  scopeLabel,
-  toggleLabel,
-  className,
-  testId,
-}: QuickFilterChipsProps<S, T>) {
+export function QuickFilterChips<T extends string>({ toggles, active, onToggle, label, className, testId }: QuickFilterChipsProps<T>) {
   const chip = "whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus";
   return (
-    <div className={cn("flex flex-wrap items-center gap-2", className)} data-testid={testId}>
-      <div role="radiogroup" aria-label={scopeLabel} className="flex flex-wrap items-center gap-2">
-        {scopes.map((s) => {
-          const on = s.key === scope;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              data-chip={s.key}
-              onClick={() => onScope(s.key)}
-              className={filterPillClass(on, chip)}
-            >
-              {s.label}
-              <ChipCount count={s.count} />
-            </button>
-          );
-        })}
-      </div>
-      <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-elevation-hover" />
-      <div role="group" aria-label={toggleLabel} className="flex flex-wrap items-center gap-2">
-        {toggles.map((t) => {
-          const on = active.includes(t.key);
-          return (
-            <button
-              key={t.key}
-              type="button"
-              aria-pressed={on}
-              data-chip={t.key}
-              onClick={() => onToggle(t.key)}
-              className={filterPillClass(on, chip)}
-            >
-              {t.label}
-              <ChipCount count={t.count} />
-            </button>
-          );
-        })}
-      </div>
+    <div role="group" aria-label={label} className={cn("flex flex-wrap items-center gap-2", className)} data-testid={testId}>
+      {toggles.map((t) => {
+        const on = active.includes(t.key);
+        return (
+          <button
+            key={t.key}
+            type="button"
+            aria-pressed={on}
+            data-chip={t.key}
+            onClick={() => onToggle(t.key)}
+            className={filterPillClass(on, chip)}
+          >
+            {t.label}
+            <ChipCount count={t.count} />
+          </button>
+        );
+      })}
     </div>
   );
 }

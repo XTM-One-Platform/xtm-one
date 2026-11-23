@@ -137,6 +137,19 @@ def test_open_wait_is_the_newest_unanswered_waiting_gate() -> None:
     assert audit.open_wait([_e("09:00", "ticket", to="open")]) is None
 
 
+def test_open_wait_falls_back_to_the_move_into_waiting_decision() -> None:
+    # UX r1 B2 on #1515: a person set Waiting for decision by hand, no gate waits.
+    person = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
+    events = [
+        _e("09:00", "state", actor="system", **{"from": None, "to": "new"}),
+        _e("10:00", "state", actor=person, reason="needs the CISO", **{"from": "analyzing", "to": "waiting_decision"}),
+    ]
+    assert audit.open_wait(events) == {"gate": None, "by": person, "since": "2026-11-23T10:00:00+00:00"}  # type: ignore[no-untyped-call]
+    # Moved by the system: since when, nobody named.
+    system_move = [_e("10:00", "state", actor="system", **{"from": "new", "to": "waiting_decision"})]
+    assert audit.open_wait(system_move) == {"gate": None, "by": None, "since": "2026-11-23T10:00:00+00:00"}  # type: ignore[no-untyped-call]
+
+
 def test_run_phase():
     out = audit.annotate(_history(), people=[PERSON])
     assert audit.run_phase("2026-11-23T10:28:30+00:00", out) == "discovery"

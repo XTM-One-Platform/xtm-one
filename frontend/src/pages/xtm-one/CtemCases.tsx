@@ -38,6 +38,8 @@ import { CasesKanban } from "./ctem/CasesKanban";
 import { caseViewPath, readCaseView, type CaseView } from "./ctem/cases-kanban";
 import { CasesViewsPill } from "./ctem/CasesViewsPill";
 import { QuickFilterChips } from "@/components/ui/quick-filter-chips";
+import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { caseWaitWho, caseWaitWhoLabel } from "./ctem/case-wait";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import { CTEM_CASE_STATES, useCtemCases, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
@@ -301,7 +303,8 @@ export default function CtemCases() {
       cell: (c) => {
         const wait = c.state === "waiting_decision" ? c.waiting_on : null;
         if (!wait) return <span className="text-default-secondary">-</span>;
-        const who = wait.by ? (ownerName(wait.by) ?? wait.by) : t_i18n("A decision");
+        // Never the raw `by`: a person by name, a role or policy in words, else "a person" (UX r1 B3 on #1515).
+        const who = caseWaitWhoLabel(caseWaitWho(wait.by, ownerName), t_i18n);
         return (
           <span className="block max-w-[14rem]">
             <TruncatedText
@@ -311,7 +314,7 @@ export default function CtemCases() {
         );
       },
       sortValue: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.since ?? "") : ""),
-      csv: (c) => (c.state === "waiting_decision" ? (c.waiting_on?.by ?? "") : ""),
+      csv: (c) => (c.state === "waiting_decision" && c.waiting_on ? caseWaitWhoLabel(caseWaitWho(c.waiting_on.by, ownerName), t_i18n) : ""),
       hideBelow: "6xl",
       hideable: true,
     },
@@ -329,17 +332,26 @@ export default function CtemCases() {
         actions={<CasesFreshness freshness={data?.freshness} now={now} />}
       />
 
-      <QuickFilterChips<CaseScopeChip, CaseToggle>
-        testId="ctem-cases-quick-filters"
-        scopeLabel={t_i18n("Cases shown")}
-        toggleLabel={t_i18n("Narrow the cases")}
-        scopes={CASE_SCOPES.map((key) => ({ key, label: t_i18n(CASE_QUICK_FILTER_LABEL[key]), count: countOf(key) }))}
-        scope={(CASE_SCOPES as readonly string[]).includes(scope) ? (scope as CaseScopeChip) : null}
-        onScope={setScope}
-        toggles={CASE_TOGGLES.map((key) => ({ key, label: t_i18n(CASE_QUICK_FILTER_LABEL[key]), count: countOf(key) }))}
-        active={toggles}
-        onToggle={flipToggle}
-      />
+      {/* The scope is one choice among four: the shared SegmentedFilter radio, as Signals draws its
+          state scope (UX r1 B1 on #1515); the toggles beside it combine, as pressed chips. */}
+      <div className="flex flex-wrap items-center gap-3" data-testid="ctem-cases-quick-filters">
+        <SegmentedFilter<CaseScopeChip>
+          selection="radio"
+          overflow="menu"
+          ariaLabel={t_i18n("Cases shown")}
+          testId="ctem-cases-scope"
+          value={(CASE_SCOPES as readonly string[]).includes(scope) ? (scope as CaseScopeChip) : ("" as CaseScopeChip)}
+          onChange={setScope}
+          options={CASE_SCOPES.map((key) => ({ key, label: CASE_QUICK_FILTER_LABEL[key], count: countOf(key), countPending: !data }))}
+        />
+        <QuickFilterChips<CaseToggle>
+          testId="ctem-cases-toggles"
+          label={t_i18n("Narrow the cases")}
+          toggles={CASE_TOGGLES.map((key) => ({ key, label: t_i18n(CASE_QUICK_FILTER_LABEL[key]), count: countOf(key) }))}
+          active={toggles}
+          onToggle={flipToggle}
+        />
+      </div>
 
       <DataTable
         rows={rows}

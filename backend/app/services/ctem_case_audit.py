@@ -381,14 +381,26 @@ def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     ``{gate, by, since}``: the gate key, who it waits on (the gate's ``reason``:
     a user id, a role or a policy name, as the loop wrote it) and since when. The
     Cases list shows it on a case Waiting for decision (#1503).
+
+    With no open gate, the latest move into ``waiting_decision`` answers (a
+    person set the status by hand, with its required reason; UX r1 B2 on #1515):
+    ``gate`` ``None``, ``by`` the actor who moved it, ``since`` that move.
     """
-    waiting = [
-        e for e in annotate(events) if e.get("kind") == "gate" and e.get("to") == "waited" and not e.get("answer")
-    ]
-    if not waiting:
+    annotated = annotate(events)
+
+    def _at(e: dict[str, Any]) -> datetime:
+        return _parse(e.get("at")) or datetime.min.replace(tzinfo=UTC)
+
+    waiting = [e for e in annotated if e.get("kind") == "gate" and e.get("to") == "waited" and not e.get("answer")]
+    if waiting:
+        newest = max(waiting, key=_at)
+        return {"gate": newest.get("from"), "by": newest.get("reason"), "since": newest.get("at")}
+    moves = [e for e in annotated if e.get("kind") == "state" and e.get("to") == "waiting_decision"]
+    if not moves:
         return None
-    newest = max(waiting, key=lambda e: _parse(e.get("at")) or datetime.min.replace(tzinfo=UTC))
-    return {"gate": newest.get("from"), "by": newest.get("reason"), "since": newest.get("at")}
+    moved = max(moves, key=_at)
+    actor = moved.get("actor")
+    return {"gate": None, "by": None if actor in (None, "", SYSTEM_ACTOR) else actor, "since": moved.get("at")}
 
 
 def run_phase(created_at: Any, annotated: list[dict[str, Any]]) -> str:

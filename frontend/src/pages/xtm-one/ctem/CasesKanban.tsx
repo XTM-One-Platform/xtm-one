@@ -24,6 +24,7 @@ import { caseGroupLabel } from "./cases-grouping";
 import { kanbanColumns, kanbanDropRefusal, kanbanDropUpdate, type KanbanColumnsBy } from "./cases-kanban";
 import { CaseLoopLine, CaseUrgencyChip } from "./case-loop";
 import { CaseOwner, CaseStateChip } from "./cases-shared";
+import { caseWaitWho } from "./case-wait";
 
 const DRAG_TYPE = "application/x-ctem-case";
 
@@ -39,7 +40,9 @@ function KanbanCard({ c, by, now, ownerName, draggable }: { c: CtemCaseSummary; 
   const { t_i18n, intl } = useFormatter();
   const overdue = c.due_at && Date.parse(c.due_at) < now;
   const wait = c.state === "waiting_decision" ? c.waiting_on : null;
-  const waitBy = wait?.by ? (ownerName(wait.by) ?? wait.by) : null;
+  // Never the raw `by` (UX r1 B3 on #1515): a person by name, else "a person" or "a decision".
+  const who = wait ? caseWaitWho(wait.by, ownerName) : null;
+  const since = wait?.since ? intl.formatDate(wait.since, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null;
   return (
     <li
       draggable={draggable}
@@ -73,11 +76,17 @@ function KanbanCard({ c, by, now, ownerName, draggable }: { c: CtemCaseSummary; 
             <Icon name="clock" size={16} className="shrink-0" aria-hidden />
             <TruncatedText
               text={
-                waitBy && wait.since
-                  ? t_i18n("Waits on {who} since {date}", { who: waitBy, date: intl.formatDate(wait.since, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) })
-                  : wait.since
-                    ? t_i18n("Waits on a decision since {date}", { date: intl.formatDate(wait.since, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) })
-                    : t_i18n("Waits on a decision")
+                who?.kind === "name"
+                  ? since
+                    ? t_i18n("Waits on {who} since {date}", { who: who.name, date: since })
+                    : t_i18n("Waits on {who}", { who: who.name })
+                  : who?.kind === "person"
+                    ? since
+                      ? t_i18n("Waits on a person since {date}", { date: since })
+                      : t_i18n("Waits on a person")
+                    : since
+                      ? t_i18n("Waits on a decision since {date}", { date: since })
+                      : t_i18n("Waits on a decision")
               }
             />
           </span>
