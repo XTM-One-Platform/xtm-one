@@ -21,11 +21,21 @@ export const SOURCED_SECTION_LABELS = {
   asset_groups: "Asset groups",
 } as const satisfies Record<SourcedSection, string>;
 
-/** The URL prefix of each section's table that has a Source filter (`<prefix>f_source`). */
-const SOURCE_FILTER_PREFIX: Partial<Record<SourcedSection, string>> = {
-  crown_jewels: "ocj_",
-  tech_stack: "ots_",
-  ai_systems: "oai_",
+/** A source as a chip names it: its key (the value the Inventory's server filter takes) and its display label. */
+export interface ChipSource {
+  key: string;
+  label: string;
+}
+
+/**
+ * How each section's list filters on a source, where it can (UX round 5 on #1254, B11): the URL prefix of its
+ * Source filter (`<prefix>f_source`) and whether that filter takes the source's key (the Inventory's server-side
+ * Assets filter, values `csv`, `openaev`...) or its display label (the profile tables of Settings). A section with
+ * no entry has no Source filter: its chip is no link, so it never promises a filter it does not apply.
+ */
+const SOURCE_FILTER: Partial<Record<SourcedSection, { prefix: string; value: keyof ChipSource }>> = {
+  crown_jewels: { prefix: "ocj_", value: "label" },
+  assets_exposure: { prefix: "a_", value: "key" },
 };
 
 /** The card of the profile page that lists a section. */
@@ -38,13 +48,14 @@ const SECTION_CARD: Record<SourcedSection, ProfileCard> = {
 };
 
 /**
- * The link of a section chip: the section's tab (on the Inventory when it moved there), landed on
- * its card, with the table filtered on the source's label where the table has a Source filter.
+ * The link of a section chip: the section's tab (on the Inventory when it moved there), landed on its card and
+ * filtered on the source. `null` when the section's list cannot filter on a source (Tech stack, AI systems and
+ * Asset groups of the Inventory): the chip then reads as plain text.
  */
-export function sourceSectionHref(section: SourcedSection, sourceLabel: string): string {
-  const card = SECTION_CARD[section];
+export function sourceSectionHref(section: SourcedSection, source: ChipSource): string | null {
+  const filter = SOURCE_FILTER[section];
+  if (!filter) return null;
   const params = new URLSearchParams();
-  const prefix = SOURCE_FILTER_PREFIX[section];
-  if (prefix) params.set(`${prefix}f_source`, sourceLabel);
-  return profileCardHref(card, params);
+  params.set(`${filter.prefix}f_source`, source[filter.value]);
+  return profileCardHref(SECTION_CARD[section], params);
 }

@@ -215,6 +215,27 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(text).toContain("Changes when a person edits the profile");
   });
 
+  it("lands an Assets chip filtered on the source key and draws a section with no Source filter as plain text (UX round 5 on #1254, B11)", async () => {
+    serve(
+      [sync({ id: "s-1", source: "openaev", section: "tech_stack" })],
+      [
+        source({ key: "openaev", display_name: "OpenAEV", rows: { tech_stack: 4 }, total: 4, sync_ids: ["s-1"] }),
+        source({ key: "csv", kind: "csv", display_name: "csv", rows: { assets_exposure: 12 }, total: 12, sync_ids: [] }),
+      ],
+    );
+    render("inventory");
+    const all = await rows();
+    const csv = all.find((row) => row.textContent?.includes("CSV import"));
+    const openaev = all.find((row) => row.textContent?.includes("OpenAEV"));
+    if (!csv || !openaev) throw new Error("rows missing");
+    const assets = within(csv).getByTestId("organization-sources.chip");
+    expect(assets.tagName).toBe("BUTTON");
+    expect(assets.getAttribute("aria-label")).toBe("Assets from CSV import: 12 rows");
+    const tech = within(openaev).getByTestId("organization-sources.chip");
+    expect(tech.tagName).not.toBe("BUTTON");
+    expect(tech.closest("button")).toBeNull();
+  });
+
   it("labels each history entry in words and never shows the backend's sentence (UX r1 B7 on #1294)", async () => {
     serve([sync()], [source()]);
     const base = get.getMockImplementation();
