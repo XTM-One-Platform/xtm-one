@@ -579,13 +579,14 @@ def keep_vanished_checkouts(removals: list[str]) -> tuple[list[str], list[str]]:
     return kept, vanished
 
 
-def staged_entries(entries: dict[str, Any], cwd: str) -> tuple[dict[str, Any], str]:
+def staged_entries(entries: dict[str, Any], cwd: str, linked: Iterable[str] = ()) -> tuple[dict[str, Any], str]:
     """The part of the workspace a command of *cwd* is staged with, and the checkout root it was cut to.
 
     A command whose directory is inside a checkout (a directory holding a checkout record) gets that
     checkout and the files outside every checkout, never the other checkouts: a workspace holding
-    several large checkouts failed the upload where the one checkout passed. A command outside every
-    checkout (an argv at the workspace root) gets the whole workspace, root ``""``.
+    several large checkouts failed the upload where the one checkout passed. The checkouts in *linked*
+    (the ones a manifest's relative path names, :func:`linked_checkouts`) are staged with it. A command
+    outside every checkout (an argv at the workspace root) gets the whole workspace, root ``""``.
     """
     from app.services.sandbox_workspace.eviction import checkout_roots
     from app.services.sandbox_workspace.paths import is_under
@@ -595,9 +596,74 @@ def staged_entries(entries: dict[str, Any], cwd: str) -> tuple[dict[str, Any], s
     if not holders:
         return entries, ""
     own = max(holders, key=len)
-    others = [root for root in roots if root != own and not is_under(own, root)]
+    kept_roots = set(linked)
+    others = [root for root in roots if root != own and not is_under(own, root) and root not in kept_roots]
     kept = {path: entry for path, entry in entries.items() if not any(is_under(path, root) for root in others)}
     return kept, own
+
+
+#: The manifests whose relative paths may name another checkout (a path dependency, a local package).
+LINK_MANIFESTS = ("pyproject.toml", "package.json", "requirements.txt", "requirements-dev.txt", "setup.cfg")
+
+#: A relative path written in a manifest: ``../x``, ``./x`` (a ``file:`` prefix is cut by the search itself).
+_RELATIVE_PATH = re.compile(r"(?<![\w.])(\.\.?/[^\s\"',;\]\)}]+)")
+
+
+def link_manifest_paths(entries: Mapping[str, Any], cwd: str, root: str) -> list[str]:
+    """The manifests (:data:`LINK_MANIFESTS`) of *cwd* and of each directory up to the checkout *root*."""
+    from app.services.sandbox_workspace.paths import is_under
+
+    found: list[str] = []
+    where = cwd.strip("/")
+    while True:
+        prefix = f"{where}/" if where else ""
+        found.extend(f"{prefix}{name}" for name in LINK_MANIFESTS if f"{prefix}{name}" in entries)
+        if not where or where == root or not is_under(where, root):
+            return found
+        where = posixpath.dirname(where)
+
+
+def linked_checkouts(manifests: Mapping[str, str], own: str, roots: Iterable[str]) -> list[str]:
+    """The checkouts other than *own* that a relative path in *manifests* (path to text) resolves into.
+
+    OpenAEV injectors' ``nmap/pyproject.toml`` names ``pyoaev @ ../../client-python``: with
+    ``client-python/`` checked out beside the injectors, the install needs both in the container.
+    """
+    from app.services.sandbox_workspace.paths import is_under
+
+    others = [root for root in roots if root != own and not is_under(own, root)]
+    linked: list[str] = []
+    for path, text in manifests.items():
+        base = posixpath.dirname(path)
+        for match in _RELATIVE_PATH.finditer(text):
+            target = posixpath.normpath(posixpath.join(base, match.group(1)))
+            if target.startswith(".."):
+                continue
+            for root in others:
+                if root not in linked and (is_under(target, root) or is_under(root, target)) and target:
+                    linked.append(root)
+    return sorted(linked)
+
+
+async def _linked_checkouts(workspace: Any, entries: dict[str, Any], cwd: str) -> list[str]:
+    """:func:`linked_checkouts` of the command's manifests, read from the workspace; ``[]`` on any read error."""
+    from app.services.sandbox_workspace.eviction import checkout_roots
+    from app.services.sandbox_workspace.paths import is_under
+
+    roots = checkout_roots(entries)
+    holders = [root for root in roots if cwd and is_under(cwd, root)]
+    if not holders or len(roots) < 2:
+        return []
+    own = max(holders, key=len)
+    manifests: dict[str, str] = {}
+    for path in link_manifest_paths(entries, cwd, own):
+        try:
+            _entry, data = await workspace.read_entry(entries[path])
+        except Exception:  # an unreadable manifest only means no linked checkout
+            logger.debug("manifest %s unreadable for linked checkouts", path, exc_info=True)
+            continue
+        manifests[path] = data[:262_144].decode("utf-8", "replace")
+    return linked_checkouts(manifests, own, roots)
 
 
 def _largest_directories(entries: dict[str, Any], top: int = 3) -> str:
@@ -1847,11 +1913,13 @@ async def _run_claimed(
     run_id = uuid.uuid4().hex[:12]
     all_entries = await workspace.entries(refresh=True)
     # Only the checkout the command runs from (and the files outside every checkout) goes to the container.
-    entries, staged_root = staged_entries(all_entries, command.cwd)
+    linked = await _linked_checkouts(workspace, all_entries, command.cwd)
+    entries, staged_root = staged_entries(all_entries, command.cwd, linked)
     size_mb = sum(e.size for e in entries.values()) / 1e6
     total_mb = sum(e.size for e in all_entries.values()) / 1e6
+    linked_words = "".join(f", {display(root)}/" for root in linked)
     staged_words = (
-        f"staged {size_mb:.1f} MB: {display(staged_root)}/ and the files outside every checkout, of a {total_mb:.1f} MB workspace"
+        f"staged {size_mb:.1f} MB: {display(staged_root)}/{linked_words} and the files outside every checkout, of a {total_mb:.1f} MB workspace"
         if staged_root
         else f"workspace {size_mb:.1f} MB"
     )
