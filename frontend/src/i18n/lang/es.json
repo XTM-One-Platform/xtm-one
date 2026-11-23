@@ -21087,5 +21087,16 @@
   "The run-as user was not saved.": "El usuario de ejecución no se guardó.",
   "Saved. The next check round reads the modules as this user.": "Guardado. La próxima ronda de comprobaciones lee los módulos como este usuario.",
   "This user has no access to {modules}: Platform Health runs the module checks as this user. Give them access to {modules}, or pick a user who has it.": "Este usuario no tiene acceso a {modules}: Platform Health ejecuta las comprobaciones de los módulos como este usuario. Dale acceso a {modules} o elige un usuario que lo tenga.",
-  "The run-as user does not exist or is deactivated.": "El usuario de ejecución no existe o está desactivado."
+  "The run-as user does not exist or is deactivated.": "El usuario de ejecución no existe o está desactivado.",
+  "Waits for approval": "Espera aprobación",
+  "Not usable": "No utilizable",
+  "Not company-managed": "No gestionada por la empresa",
+  "Sign-in not finished": "Inicio de sesión sin terminar",
+  "At {level}": "En {level}",
+  "Gated actions at {level}": "Acciones sujetas a aprobación en {level}",
+  "Deletes data or speaks in a person's name outside XTM One; it cannot be taken back.": "Borra datos o habla en nombre de una persona fuera de XTM One; no se puede deshacer.",
+  "Creates or changes content outside XTM One that other people and systems act on.": "Crea o cambia fuera de XTM One contenido sobre el que actúan otras personas y sistemas.",
+  "A reversible mark, label or draft outside XTM One.": "Una marca, etiqueta o borrador reversible fuera de XTM One.",
+  "{name} is connected but not company-managed: this fleet's members take company-managed integrations only. An administrator can make it company-managed.": "{name} está conectada pero no gestionada por la empresa: los miembros de esta flota solo usan integraciones gestionadas por la empresa. Un administrador puede hacerla gestionada por la empresa.",
+  "{name} is not connected yet: finish its sign-in on the integration page.": "{name} aún no está conectada: termine su inicio de sesión en la página de la integración."
 }
