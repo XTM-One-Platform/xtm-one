@@ -6,9 +6,11 @@
  *
  * The embedded OrganizationSection drops `?card=` once it has landed on the card, so the view cannot derive from the
  * card parameter alone: it closed as soon as it opened (UX round 2 on #1356, B1). A card link therefore writes
- * `edit=1` into the same URL, and the view stays open after the card parameter leaves; Done clears both.
+ * `edit=1` into the same URL, and the view stays open after the card parameter leaves. The URL alone is not enough
+ * either: on a cold load the section's own write can land after ours from an older URL snapshot and drop `edit=1`
+ * (UX round 3 on #1356, B1), so the open state is also latched here until Done, which clears both parameters.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PROFILE_CARD_PARAM } from "@/lib/organization-profile-tabs";
 
@@ -21,9 +23,14 @@ export function useInventoryEditView(editCards: readonly string[] | null, isAdmi
   const linkedCard = searchParams.get(PROFILE_CARD_PARAM);
   const cardLinked = Boolean(linkedCard && editCards?.includes(linkedCard));
   const editParam = searchParams.get(EDIT_PARAM) === "1";
-  const editing = isAdmin && Boolean(editCards) && (editParam || cardLinked);
+  // Set while a card link is in the URL, cleared by Done only: no later URL write can close the view.
+  const [latched, setLatched] = useState(false);
+  if (isAdmin && cardLinked && !latched) setLatched(true);
+  const editing = isAdmin && Boolean(editCards) && (editParam || cardLinked || latched);
+  // The URL follows the latch: a late write that dropped `edit=1` gets it back, so a reload keeps the view.
+  const opened = cardLinked || latched;
   useEffect(() => {
-    if (!isAdmin || !cardLinked || editParam) return;
+    if (!isAdmin || !opened || editParam) return;
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -32,8 +39,9 @@ export function useInventoryEditView(editCards: readonly string[] | null, isAdmi
       },
       { replace: true },
     );
-  }, [isAdmin, cardLinked, editParam, setSearchParams]);
-  const setEditing = (on: boolean) =>
+  }, [isAdmin, opened, editParam, setSearchParams]);
+  const setEditing = (on: boolean) => {
+    if (!on) setLatched(false);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -47,5 +55,6 @@ export function useInventoryEditView(editCards: readonly string[] | null, isAdmi
       },
       { replace: true },
     );
+  };
   return [editing, setEditing];
 }
