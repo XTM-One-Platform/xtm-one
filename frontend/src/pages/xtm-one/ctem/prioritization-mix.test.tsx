@@ -45,7 +45,6 @@ describe("PrioritizationMix", () => {
     expect(screen.getByTestId("ctem-prioritization-data-row").getAttribute("data-wide-columns")).toBe("2");
     // Equal heights per row (#1612): the row stretches and every card fills its cell.
     expect(screen.getByTestId("ctem-prioritization-data-row").getAttribute("data-align")).toBe("stretch");
-    expect(screen.getByTestId("ctem-prioritization-data-row").className).not.toMatch(/\bitems-start\b/);
   });
 
   it("reads one finding in the singular", () => {

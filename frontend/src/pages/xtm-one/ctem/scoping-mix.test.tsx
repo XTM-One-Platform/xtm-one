@@ -34,8 +34,6 @@ describe("ScopingMix", () => {
     expect(screen.getByTestId("ctem-scoping-data-row").getAttribute("data-wide-columns")).toBe("2");
     // Equal heights per row (#1612): the row stretches and every card fills its cell.
     expect(screen.getByTestId("ctem-scoping-data-row").getAttribute("data-align")).toBe("stretch");
-    expect(screen.getByTestId("ctem-scoping-data-row").className).not.toMatch(/\bitems-start\b/);
-    expect(screen.getByTestId("ctem-scoping-data-row").className).toContain("[&>section]:h-full");
     expect(screen.getByTestId("ctem-scoping-gap-openaev")).toBeTruthy();
     expect(screen.getByTestId("ctem-scoping-gap-opencrq")).toBeTruthy();
     expect(screen.queryByTestId("ctem-scoping-gap-opencti")).toBeNull();

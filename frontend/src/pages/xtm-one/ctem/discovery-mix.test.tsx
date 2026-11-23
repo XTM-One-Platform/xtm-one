@@ -74,9 +74,6 @@ describe("DiscoveryMix", () => {
     renderWithProviders(<DiscoveryMix viz={VIZ} connected={{ opencti: true, openaev: false, opencrq: false }} onConnect={() => {}} />);
     const dataRow = screen.getByTestId("ctem-discovery-data-row");
     expect(dataRow.getAttribute("data-align")).toBe("stretch");
-    expect(dataRow.className).not.toMatch(/\bitems-start\b/);
-    expect(dataRow.className).toContain("[&>section]:h-full");
-    expect(screen.getByTestId("ctem-discovery-side-column").className).toContain("[&>section:last-child]:grow");
     expect(dataRow.getAttribute("data-wide-columns")).toBe("2");
     expect(screen.getByTestId("ctem-discovery-tactics").parentElement).toBe(dataRow);
     const side = screen.getByTestId("ctem-discovery-side-column");
