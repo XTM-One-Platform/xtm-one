@@ -594,30 +594,9 @@ then the existing AI assessment and facts grid unchanged.
   link); its action slot holds only the quiet freshness line of s.4.3, never a
   refresh button. Export CSV is in the table toolbar. The totals live in the
   table toolbar's `TotalChip`, not in the title row.
-- One full list, no state tabs and no "Act on this first" band (#1503):
-  quick filter chips above the table (`QuickFilterChips`), each with its
-  count and in the URL: the scope (`?state=`: Open by default, Waiting for
-  decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
-  Critical and high). A case Waiting for decision says what it waits on, who
-  and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
-- **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
-  (quick filters, search and filters applied) at `/ctem/cases` or as columns
-  at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
-  Columns are the eight statuses in lifecycle order, or the five CTEM phases
-  when grouped by CTEM phase (`phase` on each list row:
-  `ctem_case_audit.current_phase` of the history the viewer is served; a
-  case with no event yet sits in a last "Phase not known yet" column). Cards:
-  title, urgency, owner, due, what a waiting case waits on, the loop line. In
-  the status layout a card is dragged to another column to change its status
-  (`PATCH /ctem-cases/{id}`); New, Analyzing, Remediating and Validating are
-  set by a drop (an unowned case moved to Remediating takes the person
-  dropping it as owner), Waiting for decision, Mitigated watching, Resolved
-  and Accepted risk are refused with their reason (each needs what a drop
-  cannot carry: the case page sets them), and the API's own refusal is shown
-  the same way. The Mobilization stage page's flow strip (7.1) stays a strip.
-- Group by (`?c_group=`, both views in the list): owner, status, CTEM phase,
-  priority, fix family.
+- State tabs: the shared `SegmentedFilter` (`overflow="menu"`, radio) with
+  exact counts: Needs attention, In progress, Resolved ("All time" in its
+  tooltip, A1), Accepted risk, All.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
@@ -933,6 +912,8 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 **Events (platform-wide, ids and facts only, no title).** `ctem_case.opened`, `ctem_case.reopened`, `ctem_case.resolved`, `ctem_case.sla_breached`, raised after the commit with a stable event id, by every writer of a case: the loop (signals, validations, sweep), the source recompute, a manual split and the backfill of section 4.3 (#1206); filter keys `case_id`, `state`, `severity`, `trigger_path`, `remediation_kind`, `validation.provider`, `validation.result` and the rest of `_CTEM_CASE_KEYS`. CTEM-04 starts fleet runs from them; CTEM-15 maps OpenAEV deliveries to the validation route.
 
 **OpenAEV results move the case (CTEM-15, #918).** The seeded assignment "OpenAEV results into cases" of the vulnerability fleet provisions the OpenAEV triggers `simulation_finished`, `finding_updated`, `finding_deleted`, `scenario_score_degraded` and `critical_asset_reached` (optional: an OpenAEV that refuses it keeps the others, its state lists it under `unsupported_events` and the next check retries); its filter drops every delivery, so it never runs. On a verified delivery, the webhook route (`services/ctem_openaev_events.py`) finds the cases that wait on the delivered object (an `openaev` validation reference whose `ref` names it, or an `openaev` member with that id; states `needs_attention`, `in_progress`, `mitigated_watching`, `resolved`), writes one `source_event` history entry per case and raises `ctem_case.validation_finished` once per case and occurrence, with `openaev {event, resource_type, resource_id, platform_url}` on top of the case routing; like the other case events it is in `VIEWER_CHECKED_EVENTS`, so only a run whose user reads the case hears it (#933). Both loop fleets hear it (routed by `trigger_path`), read the result in OpenAEV and write it with `record_ctem_case_validation`, which resolves or reopens the case. No poll, no model call before the run. A `scenario_score_degraded` delivery records a path 8 (`mitigation_regression`) signal through the signal table; an `asset_stale` delivery (an `ASSET` update trigger filtered on `asset_status` = `STALE`, raised once by OpenAEV's freshness job when an asset stays unseen past the tenant's `asset_stale_after_days`, CTEM-27) records a path 6 (`stale_asset`) signal, outside lens, the asset as subject. OpenAEV sends it only to readers of the asset in the trigger's tenant; XTM One records it as a `system` signal, which only administrators read. A `critical_asset_reached` delivery (CTEM-13: a finished simulation's attack path reached a high or very high criticality asset) records a path 4 (`proven_exploitable`) signal with the simulation as subject and its OpenAEV link, and moves the cases waiting on that simulation like `simulation_finished`; the case history names it "Critical asset reached". OpenAEV names no asset in it: the reached assets are read in its attack path with the reader's own rights.
+
+**Gate order (#1606).** A case moves scoping -> validation -> mobilization, one person decision at a time. `services/ctem_gate_order.py` holds three rules at the agent's work item write (`require_person_ask`, the `create_work_item` / `update_work_item` tools): (1) a `ctem.mobilize` item (`ctem:f1:case-mobilize:`, `ctem:f2:mobilize:` + case id) parked for a person is refused while a `ctem.analyst_review` or `ctem.validation.non_readonly` item of the same case (`ctem:review:`, `ctem:validation:`, `ctem:f2:validate:`) still waits for one, in the writer's own items or its workspace; the Gate answered run files it after; (2) the question of a waiting gate item is never changed in place: the item is cancelled with a note naming its replacement and a new item is filed, so the stored decision and the cards sent keep their question; (3) a gate card never points to a run, a trace or a transcript: the evidence is in its context. Autonomous mode files no gate item, so nothing holds it. A person's own write and a system write are not checked. The doctrine the orchestrators apply (doubt moves forward, mobilize on unproven validation, deterministic closure of stale items with the reason, a stated outcome per phase) is in their personas.
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
 
