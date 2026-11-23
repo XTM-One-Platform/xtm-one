@@ -226,6 +226,41 @@ async def test_a_version_reads_whole_and_a_restore_names_its_source(monkeypatch:
     assert stale.value.status_code == 409
 
 
+@pytest.mark.asyncio
+async def test_a_restore_linking_an_asset_gone_since_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A restore runs the checks of a form save: a jewel linking an asset no longer listed is a 422, nothing saved."""
+    versions: dict[int, dict[str, Any]] = {
+        1: {"assets_exposure": [{"name": "ERP"}], "crown_jewels": [{"name": "A", "asset_names": ["ERP"]}]},
+        2: {"assets_exposure": [], "crown_jewels": []},
+    }
+    saved = _store(monkeypatch, versions)
+    admin: Any = SimpleNamespace(id=uuid.uuid4())
+    db: Any = _Db()
+    body = api.RestoreOrganizationContextRequest(fields=["crown_jewels"], based_on_version=2)
+    with pytest.raises(HTTPException) as exc:
+        await api.restore_organization_context_version(1, body, db=db, admin=admin)
+    assert exc.value.status_code == 422 and "ERP" in exc.value.detail
+    assert saved == [] and not db.committed
+
+
+@pytest.mark.asyncio
+async def test_a_restore_rewriting_a_synced_row_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A restore cannot set a synced row's fields by hand (#1367 lock): 422, nothing saved."""
+    synced = {"name": "S", "source": "opencrq", "external_id": "a-S"}
+    versions: dict[int, dict[str, Any]] = {
+        1: {"crown_jewels": [{**synced, "criticality": "medium"}]},
+        2: {"crown_jewels": [{**synced, "criticality": "critical"}]},
+    }
+    saved = _store(monkeypatch, versions)
+    admin: Any = SimpleNamespace(id=uuid.uuid4())
+    db: Any = _Db()
+    body = api.RestoreOrganizationContextRequest(fields=["crown_jewels"], based_on_version=2)
+    with pytest.raises(HTTPException) as exc:
+        await api.restore_organization_context_version(1, body, db=db, admin=admin)
+    assert exc.value.status_code == 422 and "kept in sync from opencrq" in exc.value.detail
+    assert saved == [] and not db.committed
+
+
 def test_restored_profile_takes_the_named_fields_only() -> None:
     current = {"name": "Now", "crown_jewels": []}
     past = {"name": "Then", "crown_jewels": [{"name": "A"}]}

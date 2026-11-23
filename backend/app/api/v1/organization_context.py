@@ -268,6 +268,32 @@ async def list_organization_context_versions(
     ]
 
 
+async def _checked_profile(
+    db: AsyncSession, admin: User, stored: dict[str, Any] | None, profile: org_context.OrganizationProfile
+) -> org_context.OrganizationProfile:
+    """The checks every hand save runs (form PUT and restore, #1473): 422 on the first problem.
+
+    Links between lists (``check_links``), the #1367 lock on synced rows, the
+    ticketing target; then each PIR is stored with its OpenCTI name (#11589).
+    """
+    from app.services.ctem_ticketing import target_problem
+    from app.services.organization_assets_import import check_links
+    from app.services.organization_context_draft import name_saved_pirs
+    from app.services.organization_context_locks import synced_edit_problems
+
+    problems = check_links(profile)
+    if problems:
+        raise HTTPException(status_code=422, detail=problems[0])
+    # A synced row is read-only by hand on every surface: only its local fields change (#1367).
+    locked = synced_edit_problems(stored, profile.model_dump(mode="json"))
+    if locked:
+        raise HTTPException(status_code=422, detail=locked[0])
+    ticketing_problem = await target_problem(db, profile)
+    if ticketing_problem:
+        raise HTTPException(status_code=422, detail=ticketing_problem)
+    return await name_saved_pirs(db, user_id=admin.id, profile=profile)
+
+
 @router.put("", response_model=OrganizationContextResponse)
 async def save_organization_context(
     body: SaveOrganizationContextRequest,
@@ -275,9 +301,6 @@ async def save_organization_context(
     admin: User = Depends(require_admin),
 ) -> OrganizationContextResponse:
     """Save *body.profile* as the next version (administrators); 422 names the bad field."""
-    from app.services.organization_assets_import import check_links
-    from app.services.organization_context_draft import name_saved_pirs
-
     submitted = dict(body.profile or {})
     # #1383: the reference exchange rates are set by API or by an agent, not by the
     # settings form; #1432: the shipped products likewise until a form sends them.
@@ -292,25 +315,10 @@ async def save_organization_context(
         profile = org_context.parse_profile(submitted)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    problems = check_links(profile)
-    if problems:
-        raise HTTPException(status_code=422, detail=problems[0])
-    # A synced row is read-only by hand on every surface: only its local fields change (#1367).
-    from app.services.organization_context_locks import synced_edit_problems
-
     current = await org_context.current_version(db)
     _stale_base(body.based_on_version, current)
     stored = org_context.parse_profile(current.profile).model_dump(mode="json") if current is not None else None
-    locked = synced_edit_problems(stored, profile.model_dump(mode="json"))
-    if locked:
-        raise HTTPException(status_code=422, detail=locked[0])
-    from app.services.ctem_ticketing import target_problem
-
-    ticketing_problem = await target_problem(db, profile)
-    if ticketing_problem:
-        raise HTTPException(status_code=422, detail=ticketing_problem)
-    # Every save stores each PIR with its OpenCTI name, whoever sent the ids (form, drafts, API; #11589).
-    profile = await name_saved_pirs(db, user_id=admin.id, profile=profile)
+    profile = await _checked_profile(db, admin, stored, profile)
     try:
         row = await org_context.save_version(
             db,
@@ -368,6 +376,8 @@ async def restore_organization_context_version(
         profile = org_context.parse_profile(merged)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    # A restore is a hand save: the same checks as PUT (links, synced-row lock, ticketing, PIR names).
+    profile = await _checked_profile(db, admin, stored if current is not None else None, profile)
     basis = f"restored from v{version} by an administrator"
     sources = {name: {"source": f"restored from v{version}", "basis": basis} for name in fields}
     try:
