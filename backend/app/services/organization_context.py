@@ -1299,7 +1299,12 @@ async def save_version(
     from app.services.organization_asset_records import apply_profile_lists
 
     await apply_profile_lists(
-        db, organization_id, profile, origin="profile", actor=f"{source}:{author_user_id or ''}".rstrip(":")
+        db,
+        organization_id,
+        profile,
+        origin="profile",
+        actor=f"{source}:{author_user_id or ''}".rstrip(":"),
+        profile_version=int(latest or 0) + 1,
     )
     row = OrganizationContextVersion(
         organization_id=organization_id,

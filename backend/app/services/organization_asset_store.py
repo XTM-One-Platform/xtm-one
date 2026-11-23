@@ -360,10 +360,15 @@ def check_decision(kind: str, records: Sequence[Mapping[str, Any]]) -> list[iden
 
 
 async def _known_refs(db: AsyncSession, organization_id: uuid.UUID) -> set[identity.RecordRef]:
+    """The records of *organization_id* (since #1543 the asset records, imported on first touch)."""
+    from app.models.organization_asset_record import OrganizationAssetRecord
+    from app.services import organization_asset_records as records
+
+    await records.ensure_records(db, organization_id)
     rows = (
         await db.execute(
-            select(OrganizationAssetSource.source, OrganizationAssetSource.external_id).where(
-                OrganizationAssetSource.organization_id == organization_id
+            select(OrganizationAssetRecord.source, OrganizationAssetRecord.external_id).where(
+                OrganizationAssetRecord.organization_id == organization_id
             )
         )
     ).all()

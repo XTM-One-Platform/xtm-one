@@ -181,7 +181,9 @@ async def test_a_newer_profile_rebuilds_the_store_and_an_unchanged_one_does_not(
         rows = (await session.execute(select(OrganizationAsset))).scalars().all()
         software = (await session.execute(select(func.count()).select_from(OrganizationAssetSoftware))).scalar()
     assert same_ids == first_ids
-    assert [(r.name, r.profile_version) for r in rows] == [("laptop-01", 2)]
+    # Since #1543 a newer profile is applied as row writes: the removed record's asset goes, the
+    # unchanged one is not rewritten (it keeps the version it was built at).
+    assert [(r.name, r.profile_version) for r in rows] == [("laptop-01", 1)]
     assert software == 2
 
 

@@ -37,7 +37,7 @@ from typing import Any
 from sqlalchemy import and_, delete, func, or_, select, text, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
+from app.models.organization_asset import OrganizationAsset
 from app.models.organization_asset_record import (
     OrganizationAssetChange,
     OrganizationAssetGroup,
@@ -108,18 +108,39 @@ def _key(value: Any) -> str:
 # ── Rows <-> records ──────────────────────────────────────────────────
 
 
+#: Most inline software entries one record keeps (a source's own list; an SBOM is a document of its own).
+MAX_INLINE_SOFTWARE = 2000
+
+
 def validate_asset(row: Mapping[str, Any]) -> dict[str, Any]:
-    """*row* as the profile's ``AssetEntry`` would store it (``RecordError`` on a bad field)."""
+    """*row* as the profile's ``AssetEntry`` would store it (``RecordError`` on a bad field).
+
+    The inline ``software`` a source writes on its row (vendor, product,
+    version, ``bundled_in``, ``depends_on``...) is not an ``AssetEntry`` field:
+    it is kept on the record as it came, as the store before #1543 read it
+    from the raw profile row, so the installations and dependency edges of a
+    record match a full rebuild.
+    """
     from pydantic import ValidationError
 
     from app.services.organization_context import AssetEntry
 
+    data = dict(row)
+    software = data.pop("software", None)
+    for listed in ("mac", "ip"):
+        if isinstance(data.get(listed), str):  # one address as a source writes it, read as the list of one
+            data[listed] = [data[listed]]
     try:
-        return AssetEntry.model_validate(dict(row)).model_dump(mode="json")
+        value = AssetEntry.model_validate(data).model_dump(mode="json")
     except ValidationError as exc:
         first = exc.errors()[0]
         where = ".".join(str(p) for p in first.get("loc", ())) or "asset"
         raise RecordError(f"{where}: {first.get('msg', 'invalid value')}") from None
+    if isinstance(software, list):
+        kept = [store._jsonable(dict(s)) for s in software[:MAX_INLINE_SOFTWARE] if isinstance(s, Mapping)]
+        if kept:
+            value["software"] = kept
+    return value
 
 
 def validate_group(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -278,9 +299,11 @@ async def ensure_records(db: AsyncSession, organization_id: uuid.UUID | None = N
     if org is None:
         return None
     if await is_imported(db, org):
+        await _catch_up(db, org, version)
         return org
     await _lock(db, org)
     if await is_imported(db, org):  # another writer imported while this one waited
+        await _catch_up(db, org, version)
         return org
     profile = dict(version.profile or {}) if version is not None else {}
     groups: list[dict[str, Any]] = []
@@ -342,6 +365,51 @@ async def ensure_records(db: AsyncSession, organization_id: uuid.UUID | None = N
     await db.flush()
     await rebuild_from_records(db, org, locked=True)
     return org
+
+
+class _ProfileLists:
+    """The asset and group lists of a stored profile JSON, as :func:`apply_profile_lists` reads a profile model."""
+
+    def __init__(self, profile: Mapping[str, Any] | None) -> None:
+        data = profile or {}
+        self.assets_exposure = [r for r in data.get("assets_exposure") or [] if isinstance(r, Mapping)]
+        self.asset_groups = [g for g in data.get("asset_groups") or [] if isinstance(g, Mapping)]
+
+
+async def imported_version(db: AsyncSession, organization_id: uuid.UUID) -> int:
+    """The profile version the records last took the lists of (0: none yet)."""
+    found = (
+        await db.execute(
+            select(OrganizationAssetImport.profile_version).where(
+                OrganizationAssetImport.organization_id == organization_id
+            )
+        )
+    ).scalar()
+    return int(found or 0)
+
+
+async def _mark_version(db: AsyncSession, organization_id: uuid.UUID, profile_version: int) -> None:
+    await db.execute(
+        update(OrganizationAssetImport)
+        .where(OrganizationAssetImport.organization_id == organization_id)
+        .values(profile_version=profile_version)
+    )
+
+
+async def _catch_up(db: AsyncSession, organization_id: uuid.UUID, version: Any) -> None:
+    """Apply a profile version the records never saw (one written straight to the table) as row writes.
+
+    ``save_version`` marks the version it writes, so a save through the
+    service costs one indexed read here; only a version inserted by another
+    path (a restore of an old release, a test) is diffed against the records.
+    """
+    if version is None or int(version.version) <= await imported_version(db, organization_id):
+        return
+    await _lock(db, organization_id)
+    if int(version.version) <= await imported_version(db, organization_id):
+        return
+    await _mark_version(db, organization_id, int(version.version))
+    await apply_profile_lists(db, organization_id, _ProfileLists(version.profile), origin="profile", actor="import")
 
 
 async def _insert_records(
@@ -1219,7 +1287,9 @@ async def _write_things(
     )
     for thing in things:
         thing["possible_matches"] = []  # recomputed against the whole organization below
-    held = await store.write_canonical(db, organization_id, things, known, profile_version=0)
+    held = await store.write_canonical(
+        db, organization_id, things, known, profile_version=await imported_version(db, organization_id)
+    )
     by_ref = {s.ref: r for s, r in zip(sources, records, strict=True)}
     for ref, asset_id in held.items():
         record = by_ref.get(ref)
@@ -1286,24 +1356,34 @@ async def _refresh_possible_matches(db: AsyncSession, organization_id: uuid.UUID
 
 
 async def _sync_software(db: AsyncSession, organization_id: uuid.UUID) -> None:
+    """Bring the software entity in line with the installations, with the dependency edges of each asset.
+
+    The edges come from each canonical asset's merged software (its records'
+    inline software and SBOM documents), per asset as a full rebuild computes
+    them: a ``bundled_in`` or ``depends_on`` label resolves only within the
+    asset that carries it.
+    """
     from app.services import organization_software_store as software_store
 
-    installs = (
+    sboms = await store.load_sboms(db, organization_id)
+    by_asset: dict[uuid.UUID, list[identity.SourceRecord]] = {}
+    for record in (
         await db.execute(
-            select(OrganizationAssetSoftware).where(OrganizationAssetSoftware.organization_id == organization_id)
+            select(OrganizationAssetRecord).where(
+                OrganizationAssetRecord.organization_id == organization_id,
+                OrganizationAssetRecord.asset_id.is_not(None),
+            )
         )
-    ).scalars()
-    edges = software_store.dependency_edges(
-        [
-            {
-                "vendor": i.vendor,
-                "product": i.product,
-                "version": i.version,
-                "bundled_in": i.bundled_in,
-            }
-            for i in installs
-        ]
-    )
+    ).scalars():
+        source = _source_record(record)
+        bucket = by_asset.setdefault(record.asset_id, [])  # type: ignore[arg-type]
+        bucket.append(source)
+        bucket.extend(sboms.get(source.ref, ()))
+    edges = [
+        edge
+        for records in by_asset.values()
+        for edge in software_store.dependency_edges(identity.merge_software(records))
+    ]
     await software_store.sync_software(db, organization_id, edges)
 
 
@@ -1349,8 +1429,12 @@ async def apply_profile_lists(
     *,
     origin: str,
     actor: str,
+    profile_version: int | None = None,
 ) -> WriteResult | None:
     """Turn the ``assets_exposure`` of a saved *profile* into row writes against the records.
+
+    *profile_version* is the version ``save_version`` is about to write: the
+    records are marked as having seen it, so the next read does not diff it again.
 
     The compat path of ``PUT /organization-context`` (and every writer still on
     ``save_version``): a row whose ``(source, external_id)`` is stored is updated
@@ -1368,6 +1452,8 @@ async def apply_profile_lists(
         return None
     await ensure_records(db, organization_id)
     await _lock(db, organization_id)
+    if profile_version is not None:
+        await _mark_version(db, organization_id, profile_version)
     gone_groups = await _apply_profile_groups(
         db, organization_id, getattr(profile, "asset_groups", None) or [], origin=origin, actor=actor
     )
