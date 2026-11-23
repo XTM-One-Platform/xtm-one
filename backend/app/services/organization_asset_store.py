@@ -470,9 +470,14 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
 ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "github", "gitlab"})
 
 
+#: The format of the hand document that carries an administrator's software attachments on an asset (#1495).
+HAND_SOFTWARE_FORMAT = "manual"
+
+
 def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
+    source = row.format if row.format in ENDPOINT_SOFTWARE_FORMATS | {HAND_SOFTWARE_FORMAT} else SBOM_SOURCE
     return identity.SourceRecord(
-        source=row.format if row.format in ENDPOINT_SOFTWARE_FORMATS else SBOM_SOURCE,
+        source=source,
         external_id=f"{row.anchor_source}:{row.anchor_external_id}:{row.document_key}",
         software=[
             {**c, "first_seen": row.imported_at, "last_seen": row.imported_at}
