@@ -1,8 +1,5 @@
-"""One user's failed fan-out trigger costs that user's run only, against PostgreSQL.
-
-The fan-out rolls back after a per-user failure, and a rollback expires every
-instance of the session: only a real AsyncSession shows the later users, and
-the assignments after it in the same tick, then reading expired attributes.
+"""One user's failed fan-out trigger costs that user's run only, against PostgreSQL:
+only a real AsyncSession expires every instance on the rollback that follows it.
 """
 
 from __future__ import annotations

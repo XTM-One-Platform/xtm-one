@@ -1,11 +1,6 @@
-"""Two scheduler ticks never fan out the same assignment at once (#1470), against
-PostgreSQL.
-
-The window lock of the tick expires after 55 s and ``last_triggered_at`` is
-stamped only once a fan-out returns, so a second replica's tick can reach an
-assignment the first one is still fanning out. Only a real database shows what
-its per-user dedup sees mid fan-out: the runs committed so far, not the rest.
-Redis is an in-memory double shared by both ticks, as two pods share one.
+"""Overlapping scheduler ticks fire each window once (#1470), against PostgreSQL:
+only a real database shows what the per-user dedup sees mid fan-out, the runs
+committed so far. Redis is a double shared by both ticks, as two pods share one.
 """
 
 from __future__ import annotations
@@ -18,6 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -81,8 +77,8 @@ async def _temp_database() -> AsyncIterator[async_sessionmaker]:
         yield db.sessions
 
 
-async def _seed(sessionmaker: async_sessionmaker) -> tuple[uuid.UUID, datetime]:
-    """The due fan-out assignment: its id and the ``last_triggered_at`` it starts with."""
+async def _seed(sessionmaker: async_sessionmaker, *, fan_out: bool = True) -> tuple[uuid.UUID, datetime]:
+    """The due assignment: its id and the ``last_triggered_at`` it starts with."""
     async with sessionmaker() as db:
         admin = User(
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
@@ -114,7 +110,7 @@ async def _seed(sessionmaker: async_sessionmaker) -> tuple[uuid.UUID, datetime]:
             agent_id=agent.id,
             user_id=admin.id,
             is_company_managed=True,
-            run_as_all_users=True,
+            run_as_all_users=fan_out,
             name="Weekly scoping assessment",
             trigger_type="schedule",
             trigger_config={"cron": "0 8 * * 1"},
@@ -133,12 +129,12 @@ async def _seed(sessionmaker: async_sessionmaker) -> tuple[uuid.UUID, datetime]:
 def _committing_trigger():
     """``trigger_assignment`` as far as the dedup sees it: one committed run per user."""
 
-    async def _trigger(*, assignment, agent, db, triggered_by_user_id, trigger_context, **_kwargs):
+    async def _trigger(*, assignment, agent, db, trigger_context, triggered_by_user_id=None, **_kwargs):
         run = AssignmentRun(
             assignment_id=assignment.id,
             agent_id=agent.id,
-            user_id=triggered_by_user_id,
-            status="pending",
+            user_id=triggered_by_user_id or assignment.user_id,
+            status="running",
             trigger_context=trigger_context,
         )
         db.add(run)
@@ -256,6 +252,7 @@ async def test_a_claim_held_elsewhere_leaves_the_window_open_until_it_lapses(mon
         async with sessionmaker() as db:
             assert (await db.get(Assignment, assignment_id)).last_triggered_at == seeded_at
         assert shared_redis.data[key] == "crashed-pod"
+        assert "assignment" not in structlog.contextvars.get_contextvars()
 
         del shared_redis.data[key]  # its TTL lapsed
         async with sessionmaker() as db:
@@ -300,3 +297,60 @@ async def test_the_claim_is_renewed_while_the_fan_out_runs(monkeypatch, shared_r
     renewals = shared_redis.renewals
     await asyncio.sleep(0.05)
     assert shared_redis.renewals == renewals  # renewal stops with the claim
+
+
+async def test_a_fan_out_that_loses_its_claim_stops_and_leaves_the_window_open(monkeypatch, shared_redis):
+    from app.services import autonomous
+
+    monkeypatch.setattr(autonomous, "_FANOUT_CLAIM_RENEW_SECONDS", 0.01)
+    async with _temp_database() as sessionmaker:
+        assignment_id, seeded_at = await _seed(sessionmaker)
+        commit_run = _committing_trigger()
+        key = f"copilot:scheduler_fanout_claim:{assignment_id}"
+
+        async def _trigger(**kwargs):
+            run_id = await commit_run(**kwargs)
+            if shared_redis.data.pop(key, None) is not None:
+                # Redis restarted mid fan-out: the next renewal finds no claim.
+                await asyncio.sleep(0.05)
+            return run_id
+
+        monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", _trigger)
+        async with sessionmaker() as db:
+            await autonomous._process_scheduled_assignments(db)
+        assert sum((await _runs_per_user(sessionmaker, assignment_id)).values()) == 1
+        async with sessionmaker() as db:
+            assert (await db.get(Assignment, assignment_id)).last_triggered_at == seeded_at
+
+        monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", commit_run)
+        async with sessionmaker() as db:
+            await autonomous._process_scheduled_assignments(db)
+        runs = await _runs_per_user(sessionmaker, assignment_id)
+        assert len(runs) == USERS
+        assert set(runs.values()) == {1}, runs
+
+
+async def test_a_tick_with_a_stale_snapshot_does_not_refire_a_served_window(monkeypatch, shared_redis):
+    from app.services import autonomous
+
+    async with _temp_database() as sessionmaker:
+        assignment_id, _ = await _seed(sessionmaker, fan_out=False)
+        monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", _committing_trigger())
+        monkeypatch.setattr(autonomous, "trigger_assignment", _committing_trigger())
+
+        async with sessionmaker() as db_a:
+            # Tick A loads the schedule (held: the identity map is weak), then
+            # tick B serves the window.
+            snapshot = await db_a.get(Assignment, assignment_id)
+            async with sessionmaker() as db_b:
+                await autonomous._process_scheduled_assignments(db_b)
+            await autonomous._process_scheduled_assignments(db_a)
+            del snapshot
+
+        async with sessionmaker() as db:
+            statuses = (
+                (await db.execute(select(AssignmentRun.status).where(AssignmentRun.assignment_id == assignment_id)))
+                .scalars()
+                .all()
+            )
+        assert statuses == ["running"]
