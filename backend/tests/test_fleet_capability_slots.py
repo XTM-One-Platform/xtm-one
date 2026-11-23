@@ -25,8 +25,10 @@ _CATALOG = {
 }
 
 
-def _ref(iid: str, provider: str, *, company: bool = True) -> IntegrationRef:
-    return IntegrationRef(integration_id=iid, provider=provider, name=f"{provider}-{iid}", company_managed=company)
+def _ref(iid: str, provider: str, *, company: bool = True, connected: bool = True) -> IntegrationRef:
+    return IntegrationRef(
+        integration_id=iid, provider=provider, name=f"{provider}-{iid}", company_managed=company, connected=connected
+    )
 
 
 def test_every_capability_maps_to_types_the_catalog_uses() -> None:
@@ -223,6 +225,68 @@ def test_type_states_none_connected_and_not_bound() -> None:
         [(_member("m1"), slots.slot_states("Validation", {}, [_ref("e1", "edr_vendor")], _CATALOG))]
     )
     assert next(t for t in offered if t.capability == "edr_xdr").state == slots.TYPE_NOT_BOUND
+
+
+def test_a_connected_integration_a_company_managed_member_cannot_take_is_named_never_hidden() -> None:
+    """#1373: a Jira connected but not company-managed read "None connected" on a built-in fleet."""
+    jira = _ref("j1", "ticketer", company=False)
+    states = slots.slot_states("Mobilization", {}, [jira], _CATALOG, company_managed_only=True)
+    ticketing = next(s for s in states if s.capability == "ticketing")
+    assert ticketing.candidates == []
+    assert ticketing.state == slots.SLOT_UNAVAILABLE
+    assert [(b.integration_id, b.reason) for b in ticketing.blocked] == [("j1", slots.BLOCKED_NOT_COMPANY_MANAGED)]
+    types = {t.capability: t for t in slots.type_states([(_member("m1"), states)])}
+    assert types["ticketing"].state == slots.TYPE_NOT_USABLE
+    assert [b.integration_id for b in types["ticketing"].blocked] == ["j1"]
+    # The same integration on an agent that is not company-managed is a plain candidate.
+    free = slots.slot_states("Mobilization", {}, [jira], _CATALOG)
+    assert [c.integration_id for c in free[0].candidates] == ["j1"] and free[0].blocked == []
+
+
+def test_an_integration_not_connected_yet_is_blocked_and_never_a_candidate() -> None:
+    pending = IntegrationRef(
+        integration_id="j2", provider="ticketer", name="Jira", company_managed=True, connected=False
+    )
+    ticketing = slots.slot_states("Mobilization", {}, [pending], _CATALOG, company_managed_only=True)[0]
+    assert ticketing.candidates == []
+    assert [(b.integration_id, b.reason) for b in ticketing.blocked] == [("j2", slots.BLOCKED_NOT_CONNECTED)]
+
+
+def test_a_bound_integration_is_never_blocked() -> None:
+    jira = _ref("j1", "ticketer", company=False)
+    ticketing = slots.slot_states("Mobilization", {"ticketer": ["j1"]}, [jira], _CATALOG, company_managed_only=True)[0]
+    assert ticketing.state == slots.SLOT_FILLED and ticketing.blocked == []
+
+
+def test_defender_fills_siem_beside_sentinel_and_stays_an_edr_xdr() -> None:
+    """#1373: Sentinel and Defender XDR converge; Defender's advanced hunting is a SIEM source."""
+    siem = slots.providers_for("siem", PROVIDER_CATALOG)
+    assert {"defender", "sentinel"} <= siem
+    assert "defender" in slots.providers_for("edr_xdr", PROVIDER_CATALOG)
+
+
+def test_both_reasons_are_listed_and_the_type_reads_not_usable() -> None:
+    """#1373: a personal Jira under a company-managed member reads why, not "None connected"."""
+    connected = [_ref("t1", "ticketer", company=False), _ref("t2", "ticketer", connected=False)]
+    states = slots.slot_states("Mobilization", {}, connected, _CATALOG, company_managed_only=True)
+    ticketing = next(s for s in states if s.capability == "ticketing")
+    assert ticketing.candidates == []
+    assert ticketing.state == slots.SLOT_UNAVAILABLE
+    assert [(b.integration_id, b.reason) for b in ticketing.blocked] == [
+        ("t1", slots.BLOCKED_NOT_COMPANY_MANAGED),
+        ("t2", slots.BLOCKED_NOT_CONNECTED),
+    ]
+    types = {t.capability: t for t in slots.type_states([(_member("m1"), states)])}
+    assert types["ticketing"].state == slots.TYPE_NOT_USABLE
+    assert [b.integration_id for b in types["ticketing"].blocked] == ["t1", "t2"]
+
+
+def test_a_bindable_integration_keeps_the_type_not_bound_beside_a_blocked_one() -> None:
+    connected = [_ref("t1", "ticketer"), _ref("t2", "ticketer", company=False)]
+    states = slots.slot_states("Mobilization", {}, connected, _CATALOG, company_managed_only=True)
+    ticketing = next(t for t in slots.type_states([(_member("m1"), states)]) if t.capability == "ticketing")
+    assert ticketing.state == slots.TYPE_NOT_BOUND
+    assert [b.integration_id for b in ticketing.blocked] == ["t2"]
 
 
 def test_a_scalar_binding_value_is_read_as_one_id() -> None:

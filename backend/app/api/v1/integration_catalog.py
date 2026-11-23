@@ -6771,7 +6771,9 @@ PROVIDER_CATALOG = {
         "logo": "/logos/defender.svg",
         "category": "integration",
         "integration_category": "detection_response",
-        "integration_types": ["xdr", "edr", "threat_intel", "soar"],
+        # Also a SIEM (#1373): advanced hunting over the unified Defender and
+        # Sentinel tables, so it fills a fleet's SIEM capability beside Sentinel.
+        "integration_types": ["xdr", "edr", "siem", "threat_intel", "soar"],
         # Delegated OAuth (sign-in) is the default; app-only application
         # permissions remain available via the "API Key" auth mode and are
         # recommended for fully-unattended assignments.
