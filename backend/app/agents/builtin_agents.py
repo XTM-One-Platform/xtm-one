@@ -2598,9 +2598,10 @@ _INDICATOR_DECAY_WINDOW_CHECK: dict = {
 BUILTIN_ASSIGNMENTS: list[dict] = [
     {
         # Automatic, monthly, PER USER. run_as_all_users makes the scheduler fan
-        # out one run per active user (each as themselves -> their OpenCTI/OpenAEV
-        # scope). hide_runs is inherited from the agent, so each run is private to
-        # its user. EE-gated in the scheduler (skipped on CE-only).
+        # out one run per user of the CTEM command center (each as themselves ->
+        # their OpenCTI/OpenAEV scope). hide_runs is inherited from the agent, so
+        # each run is private to its user. EE-gated in the scheduler (skipped on
+        # CE-only).
         "agent_slug": "exposure-briefing-analyst",
         "name": "Monthly exposure briefing",
         "description": (
@@ -2610,8 +2611,12 @@ BUILTIN_ASSIGNMENTS: list[dict] = [
         ),
         "trigger_type": "schedule",
         # 1st of every month, 08:00 (a never-run schedule also fires on the first
-        # tick after seeding, so briefings populate shortly after deploy).
-        "trigger_config": {"cron": "0 8 1 * *"},
+        # tick after seeding, so briefings populate shortly after deploy), for
+        # the users of the CTEM command center only (a posture built for them
+        # within 30 days): a user who never opens it gets no monthly run. The
+        # seed sync rewrites the trigger config on every boot, so seeded
+        # instances get it too.
+        "trigger_config": {"cron": "0 8 1 * *", "fanout_audience": "ctem_users"},
         "run_as_all_users": True,
         "prompt": _EXPOSURE_BRIEFING_PROMPT,
         "enabled": True,
