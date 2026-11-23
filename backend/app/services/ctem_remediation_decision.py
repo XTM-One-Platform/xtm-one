@@ -81,7 +81,9 @@ def _number(value: Any, name: str) -> float | None:
 
 
 def _text(value: Any, limit: int) -> str:
-    return " ".join(str(value or "").split())[:limit]
+    from app.services.decision_ask import fit
+
+    return fit(" ".join(str(value or "").split()), limit)
 
 
 def parse_options(raw: Any) -> list[RemediationOption]:
@@ -185,17 +187,21 @@ def decide(
     return Decision(False, f"decided by policy ({gate_by})", chosen=choice.key, figures_shown=figures_visible)
 
 
-def _money(value: float | None) -> str:
-    return "unknown" if value is None else f"{value:,.0f}"
+def _money(value: float | None, currency: str = "") -> str:
+    """A figure in words, with the organization's currency when the profile names one (#1598)."""
+    if value is None:
+        return "unknown"
+    return f"{value:,.0f} {currency}" if currency else f"{value:,.0f}"
 
 
-def option_effect(option: RemediationOption, *, figures: bool) -> str:
+def option_effect(option: RemediationOption, *, figures: bool, currency: str = "") -> str:
     """One line per option: what it costs, the risk it leaves, how long it takes (figures only when readable)."""
     parts: list[str] = []
     if figures:
-        parts.append(f"cost {_money(option.cost)}")
+        parts.append(f"cost {_money(option.cost, currency)}")
         parts.append(
-            f"expected loss {_money(option.expected_loss_before)} before, {_money(option.expected_loss_after)} after"
+            f"expected loss {_money(option.expected_loss_before, currency)} before, "
+            f"{_money(option.expected_loss_after, currency)} after"
         )
     if option.residual_risk:
         parts.append(f"residual risk {option.residual_risk}")
@@ -203,7 +209,9 @@ def option_effect(option: RemediationOption, *, figures: bool) -> str:
         parts.append(f"time to apply {option.time_to_apply}")
     if option.preapproved:
         parts.append(f"pre-approved runbook {option.runbook}")
-    return "; ".join(parts)[:400] or "no figures given"
+    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
+
+    return fit("; ".join(parts), MAX_EFFECT_CHARS) or "no figures given"
 
 
 def decision_ask(
@@ -214,15 +222,23 @@ def decision_ask(
     figures: bool,
     reason: str,
     case_url: str = "",
+    currency: str = "",
 ) -> dict[str, Any]:
-    """The ask of the unified decision system for a waiting remediation decision, validated by ``normalize_ask``."""
+    """The ask of the unified decision system for a waiting remediation decision, validated by ``normalize_ask``.
+
+    *currency* is the organization profile's (ISO 4217): the figures read in it;
+    empty when the profile names none.
+    """
     from app.services.decision_ask import normalize_ask
 
     choice = recommended(options, recommendation)
     ask: dict[str, Any] = {
         "question": _text(f"Which remediation do we apply to the case {case_title}?", 500),
         "context": _text(f"The remediation decision waits because {reason}.", 800),
-        "options": [{"key": o.key, "label": o.label, "effect": option_effect(o, figures=figures)} for o in options],
+        "options": [
+            {"key": o.key, "label": o.label, "effect": option_effect(o, figures=figures, currency=currency)}
+            for o in options
+        ],
         "recommendation": choice.key,
     }
     if case_url:
