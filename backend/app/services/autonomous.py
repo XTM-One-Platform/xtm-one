@@ -3277,7 +3277,7 @@ return 0
 """
 
 
-async def _renew_fanout_claim(redis, key: str, token: str, lost: asyncio.Event) -> None:
+async def _renew_fanout_claim(redis, key: str, token: str) -> None:
     while True:
         await asyncio.sleep(_FANOUT_CLAIM_RENEW_SECONDS)
         try:
@@ -3287,16 +3287,29 @@ async def _renew_fanout_claim(redis, key: str, token: str, lost: asyncio.Event) 
             continue
         if not renewed:
             logger.warning("Fan-out claim %s lapsed before its fan-out ended", key)
-            lost.set()
             return
+
+
+class _FanoutClaim:
+    def __init__(self, redis, key: str, token: str):
+        self._redis, self._key, self._token = redis, key, token
+
+    async def held(self) -> bool:
+        """Still ours. Asked before each user: a lost claim (Redis restart) can be
+        retaken at once, long before the next renewal would notice."""
+        try:
+            return await self._redis.get(self._key) == self._token
+        except Exception:
+            # Unreachable for every tick alike: nobody can take it meanwhile.
+            return True
 
 
 @contextlib.asynccontextmanager
 async def _fanout_claim(assignment_id):
     """The claim to fan out *assignment_id*, or ``None`` when another tick holds it.
 
-    An event set once the claim is lost; released on exit, raise included. Not
-    held when Redis does not answer: the window stays open.
+    Released on exit, raise included. Not held when Redis does not answer: the
+    window stays open.
     """
     key = f"copilot:scheduler_fanout_claim:{assignment_id}"
     token = uuid.uuid4().hex
@@ -3311,10 +3324,9 @@ async def _fanout_claim(assignment_id):
     if not held:
         yield None
         return
-    lost = asyncio.Event()
-    renewal = asyncio.create_task(_renew_fanout_claim(redis, key, token, lost))
+    renewal = asyncio.create_task(_renew_fanout_claim(redis, key, token))
     try:
-        yield lost
+        yield _FanoutClaim(redis, key, token)
     finally:
         renewal.cancel()
         try:
@@ -3438,7 +3450,7 @@ async def _fanout_assignment_to_users(
     agent,
     now: datetime,
     cron_expr: str,
-    claim_lost: asyncio.Event | None = None,
+    claim: _FanoutClaim | None = None,
 ) -> int | None:
     """Fan a scheduled assignment out to ONE run per active user.
 
@@ -3449,7 +3461,7 @@ async def _fanout_assignment_to_users(
 
     Returns the number of runs triggered, or ``None`` when agentic AI is
     unavailable here - before the fan-out or in the middle of it - or once
-    *claim_lost* is set, so the caller leaves the cron window open.
+    *claim* is lost, so the caller leaves the cron window open.
     """
     from app.models.assignment import AssignmentRun
     from app.models.user import User
@@ -3529,7 +3541,7 @@ async def _fanout_assignment_to_users(
 
     triggered = 0
     for index, (user_id, ctem_vertical) in enumerate(eligible):
-        if claim_lost is not None and claim_lost.is_set():
+        if claim is not None and not await claim.held():
             # Another tick may claim it now: going on would race its dedup.
             logger.warning(
                 "Fan-out of '%s' stopped after %d run(s) - its claim was lost",
@@ -3799,8 +3811,8 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                     # Dedup sees only committed runs, so a tick overlapping one
                     # still fanning out would serve its remaining users twice. The
                     # claim is held until the stamp below is committed.
-                    async with _fanout_claim(assignment.id) as claim_lost:
-                        if claim_lost is None:
+                    async with _fanout_claim(assignment.id) as claim:
+                        if claim is None:
                             logger.info(
                                 "Fan-out of '%s' not claimed - another tick is fanning it "
                                 "out or Redis is unavailable; its window stays open",
@@ -3810,7 +3822,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                         if not await _still_due(db, assignment, cron_expr, now):
                             continue
                         fanned = await _fanout_assignment_to_users(
-                            db, assignment, agent, now, cron_expr, claim_lost
+                            db, assignment, agent, now, cron_expr, claim
                         )
                         if fanned is None:
                             # Agentic AI unavailable or claim lost: the window stays open.

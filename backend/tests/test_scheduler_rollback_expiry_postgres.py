@@ -38,6 +38,9 @@ class _Redis:
         self.data[key] = str(value)
         return True
 
+    async def get(self, key):
+        return self.data.get(key)
+
     async def eval(self, script, _numkeys, key, token, *_args):
         if self.data.get(key) != token:
             return 0

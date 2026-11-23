@@ -302,7 +302,6 @@ async def test_the_claim_is_renewed_while_the_fan_out_runs(monkeypatch, shared_r
 async def test_a_fan_out_that_loses_its_claim_stops_and_leaves_the_window_open(monkeypatch, shared_redis):
     from app.services import autonomous
 
-    monkeypatch.setattr(autonomous, "_FANOUT_CLAIM_RENEW_SECONDS", 0.01)
     async with _temp_database() as sessionmaker:
         assignment_id, seeded_at = await _seed(sessionmaker)
         commit_run = _committing_trigger()
@@ -310,9 +309,8 @@ async def test_a_fan_out_that_loses_its_claim_stops_and_leaves_the_window_open(m
 
         async def _trigger(**kwargs):
             run_id = await commit_run(**kwargs)
-            if shared_redis.data.pop(key, None) is not None:
-                # Redis restarted mid fan-out: the next renewal finds no claim.
-                await asyncio.sleep(0.05)
+            # Redis restarted mid fan-out, long before the next renewal.
+            shared_redis.data.pop(key, None)
             return run_id
 
         monkeypatch.setattr("app.services.assignment_engine.trigger_assignment", _trigger)
