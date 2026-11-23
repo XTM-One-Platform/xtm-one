@@ -131,4 +131,43 @@ describe("the sources side panel (#1445)", () => {
     fireEvent.click(screen.getAllByTestId("ctem-path-source-use")[0]);
     expect(state.saved).toHaveLength(0);
   });
+
+  it("gives a reader Connect on an integration source only, never on a profile pass (UX r1 #1461 B1)", () => {
+    state.admin = false;
+    const path: CtemSignalPath = {
+      ...EXPOSURE,
+      sources: [
+        { provider: "gti", kind: "pass", event: "A new host or port", bound: false },
+        { provider: "censys", kind: "listener", event: "A new host", bound: false },
+      ],
+    };
+    open(path);
+    const [gti, censys] = screen.getAllByTestId("ctem-path-source");
+    expect(gti.getAttribute("data-state")).toBe("not_connected");
+    expect(within(gti).queryByTestId("ctem-path-source-connect")).toBeNull();
+    expect(within(censys).getByTestId("ctem-path-source-connect")).toBeTruthy();
+    state.admin = true;
+  });
+
+  it("moves focus into the panel, keeps Tab inside it and gives focus back on close (UX r1 #1461 B2)", () => {
+    const opener = document.createElement("button");
+    opener.textContent = "row";
+    document.body.appendChild(opener);
+    opener.focus();
+    const view = open();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    const close = screen.getByTestId("ctem-path-sources-close");
+    const focusables = Array.from(dialog.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"));
+    const last = focusables[focusables.length - 1];
+    last.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(document.activeElement).toBe(focusables[0]);
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    expect(close).toBeTruthy();
+    view.unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
 });

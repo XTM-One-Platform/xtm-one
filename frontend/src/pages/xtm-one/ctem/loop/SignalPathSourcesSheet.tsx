@@ -41,6 +41,7 @@ import {
   SOURCE_KIND_LABEL,
   canExclude,
   connectHref,
+  connectNeedsAdmin,
   pathStatus,
   profilePassField,
   sourceKey,
@@ -186,7 +187,8 @@ function SourceRow({
         </label>
       )}
 
-      {state === "not_connected" && (
+      {/* A profile pass or the PIR playbook is connected from the organization profile: no Connect for a reader (UX r1 #1461 B1). */}
+      {state === "not_connected" && (isAdmin || !connectNeedsAdmin(source)) && (
         <span>
           <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(source))} data-testid="ctem-path-source-connect">
             {t_i18n("Connect")}
