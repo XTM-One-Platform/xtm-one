@@ -7,7 +7,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
-import { SignalSourcesButton, SignalSourcesPanel } from "./SignalSourcesPanel";
+import { SignalSourcesPanel } from "./SignalSourcesPanel";
 import { TriggerPathsCard } from "./TriggerPathsCard";
 import { connectHref, connectTarget, connectedCount, pathStatus } from "./signal-sources";
 
@@ -57,6 +57,8 @@ describe("signal source rules", () => {
     expect(pathStatus({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }] })).toBe("not_connected");
     expect(pathStatus({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: true }] })).toBe("connected");
     expect(pathStatus({ status: "agents_api", sources: [] })).toBe("agents_api");
+    // A pass whose provider is connected but which does not run reads Off, never Not connected (#1344).
+    expect(pathStatus({ sources: [{ provider: "opencrq", kind: "pass", event: "", bound: false, off: true }] })).toBe("off");
   });
 
   it("counts connected paths only, agents-only paths in the total", () => {
@@ -70,6 +72,13 @@ describe("signal source rules", () => {
     expect(connectHref({ provider: "opencti", kind: "pir_playbook" })).toContain("/settings/organization");
     expect(connectTarget(PATHS[0])?.kind).toBe("pir_playbook");
     expect(connectTarget(PATHS[2])).toBeNull();
+  });
+
+  it("sends the OpenCRQ pass to the evidence health card, never to a new OpenCRQ integration (#1344)", () => {
+    expect(connectHref({ provider: "opencrq", kind: "pass" })).toBe("/settings/organization/profile/exposure?card=evidence_health");
+    expect(connectHref({ provider: "opencrq", kind: "listener" })).toBe("/integrations/new?provider=opencrq");
+    const off = { provider: "opencrq", kind: "pass" as const, event: "", bound: false, off: true };
+    expect(connectTarget({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }, off] })).toBe(off);
   });
 });
 
@@ -89,9 +98,13 @@ describe("SignalSourcesPanel", () => {
     expect(rows.map((r) => r.getAttribute("data-path")).sort()).toEqual(["blind_spot", "code_flaw", "new_vulnerability"]);
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    const world = screen.getByTestId("ctem-signal-sources-lens-world");
-    expect(within(world).getByText("Connected")).toBeTruthy();
-    expect(within(world).getByText("4 signals in 30 days")).toBeTruthy();
+    // Grouped by lens: a group header row per lens, with its help line.
+    expect(screen.getByTestId("ctem-signal-sources-lens-world").textContent).toContain("World");
+    const vulnRow = rows.find((r) => r.getAttribute("data-path") === "new_vulnerability") as HTMLElement;
+    expect(within(vulnRow).getByText("Connected")).toBeTruthy();
+    expect(within(vulnRow).getByTestId("ctem-signal-sources-30d").textContent).toBe("4");
+    // The status chip sits in its own column: one cell per row (Sam, 23 Nov 2026, #1344).
+    expect(within(vulnRow).getAllByTestId("ctem-signal-sources-status")).toHaveLength(1);
 
     const agents = rows.find((r) => r.getAttribute("data-path") === "blind_spot") as HTMLElement;
     expect(within(agents).getByText("Agents and API only")).toBeTruthy();
@@ -137,17 +150,3 @@ describe("SignalSourcesPanel", () => {
   });
 });
 
-describe("SignalSourcesButton", () => {
-  it("links to the Sources tab, its aria-label kept", async () => {
-    renderWithProviders(
-      <MemoryRouter>
-        <SignalSourcesButton />
-        <Probe />
-      </MemoryRouter>,
-    );
-    const button = screen.getByRole("link", { name: "Signal sources" });
-    fireEvent.click(button);
-    expect(screen.getByTestId("location").textContent).toBe("/ctem/signals/sources");
-  });
-
-});
