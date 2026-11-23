@@ -156,7 +156,7 @@ def test_golden_dashboard_and_decay_automations_unchanged():
         weekly = seeded[(slug, f"Weekly {stage} assessment")]
         assert (weekly["trigger_type"], weekly["trigger_config"], weekly["run_as_all_users"], weekly["enabled"]) == (
             "schedule",
-            {"cron": "0 8 * * 1"},
+            {"cron": "0 8 * * 1", "fanout_audience": "ctem_users"},
             True,
             True,
         )
