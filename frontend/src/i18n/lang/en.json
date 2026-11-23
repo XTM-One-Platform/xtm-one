@@ -21210,6 +21210,7 @@
   "Nothing happened on this case yet": "Nothing happened on this case yet",
   "Still waiting since {date}": "Still waiting since {date}",
   "Answered by {name} on {date}": "Answered by {name} on {date}",
+  "Validated by policy on {date}": "Validated by policy on {date}",
   "Waited since {date}": "Waited since {date}",
   "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}",
   "Shipped products": "Shipped products",

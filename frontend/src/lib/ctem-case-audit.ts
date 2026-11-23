@@ -144,6 +144,17 @@ function answeredClass(e: CtemCaseEvent, served: AutonomyClass): AutonomyClass {
   return "waited";
 }
 
+/**
+ * How a waiting gate was answered (review of #1520, P3): the backend pairs the request
+ * with any later event of the same gate key, so an answer whose outcome is
+ * `passed_automatically` was given by policy (its `by` is the policy reason, not a
+ * person); every other outcome was answered by a person.
+ */
+export function gateAnswerKind(answer: { outcome: string | null } | null | undefined): "policy" | "person" | null {
+  if (!answer) return null;
+  return answer.outcome === "passed_automatically" ? "policy" : "person";
+}
+
 /** The classes a phase header counts: an answered request is told by its answer row. */
 export const COUNTED_AUTONOMY_CLASSES: readonly AutonomyClass[] = AUTONOMY_CLASSES.filter((c) => c !== "waited");
 

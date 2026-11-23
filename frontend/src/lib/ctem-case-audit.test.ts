@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
 import type { CtemCaseEvent, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
-import { auditChange, auditRows, filterRows, groupByPhase, personReason, phaseBand, reasonLabel, runPhase, type ChangeWords } from "./ctem-case-audit";
+import { auditChange, auditRows, filterRows, gateAnswerKind, groupByPhase, personReason, phaseBand, reasonLabel, runPhase, type ChangeWords } from "./ctem-case-audit";
 import en from "@/i18n/lang/en.json";
 import fr from "@/i18n/lang/fr.json";
 import ja from "@/i18n/lang/ja.json";
@@ -155,6 +155,21 @@ describe("answer row copy in the past tense (UX round 3 on #1520, B1)", () => {
   it("never reads Waited since as still waiting in fr and ja", () => {
     expect((fr as Record<string, string>)["Waited since {date}"]).not.toMatch(/^En attente/);
     expect((ja as Record<string, string>)["Waited since {date}"]).not.toMatch(/待機$/);
+  });
+});
+
+describe("gateAnswerKind (review of #1520, P3)", () => {
+  it("tells a gate passed by policy from one a person answered", () => {
+    expect(gateAnswerKind({ outcome: "passed_automatically" })).toBe("policy");
+    expect(gateAnswerKind({ outcome: "answered" })).toBe("person");
+    expect(gateAnswerKind({ outcome: null })).toBe("person");
+    expect(gateAnswerKind(null)).toBeNull();
+  });
+
+  it("words the policy answer in every locale", () => {
+    for (const lang of [en, fr, ja] as Record<string, string>[]) {
+      expect(lang["Validated by policy on {date}"]).toContain("{date}");
+    }
   });
 });
 

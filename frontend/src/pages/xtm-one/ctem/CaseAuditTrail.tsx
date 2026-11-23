@@ -28,6 +28,7 @@ import {
   filterRows,
   groupByPhase,
   isAuditPhase,
+  gateAnswerKind,
   phaseBand,
   type AuditPhase,
   type AuditRow,
@@ -104,6 +105,13 @@ function GateStory({ event, actorName }: { event: CtemCaseEvent; actorName: (id:
     );
   }
   if (event.to === "waited" && event.answer) {
+    if (gateAnswerKind(event.answer) === "policy") {
+      return (
+        <span className="basis-full content-compact text-default-secondary" data-testid="ctem-audit-gate-story">
+          {t_i18n("Validated by policy on {date}", { date: date(event.answer.at) })}
+        </span>
+      );
+    }
     return (
       <span className="basis-full content-compact text-default-secondary" data-testid="ctem-audit-gate-story">
         {t_i18n("Answered by {name} on {date}", { name: actorName(event.answer.by), date: date(event.answer.at) })}
