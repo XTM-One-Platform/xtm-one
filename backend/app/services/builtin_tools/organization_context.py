@@ -38,6 +38,7 @@ linked knowledge bases THE CALLER can read (``user_id``), never others.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -54,7 +55,7 @@ _SOURCE = "builtin:organization_context"
 
 
 def build_organization_context_tool(
-    *, user_id: object = None, is_admin: bool = False
+    *, user_id: object = None, is_admin: bool = False, agent: object = None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The one read tool of the organization profiles (no caller scope: platform-wide data).
 
@@ -64,9 +65,22 @@ def build_organization_context_tool(
     category of the primary profile by page (#11533). *user_id* (and
     *is_admin*) is the person the turn acts for: the enterprise knowledge
     passages come only from the knowledge bases that person can read; no
-    person, no passage.
+    person, no passage. *agent* (the turn's agent) decides whether the reading
+    names the CTEM-only fields and asks for the brief notice: only a run that
+    is CTEM work does (``organization_context.ctem_work_for``, #1384).
     """
     caller = _uuid(user_id)
+    # A snapshot of the columns the CTEM signal reads: the tool runs in its own session.
+    run_agent = (
+        None
+        if agent is None
+        else SimpleNamespace(
+            id=getattr(agent, "id", None),
+            slug=getattr(agent, "slug", None),
+            is_builtin=bool(getattr(agent, "is_builtin", False)),
+            builtin_tool_ids=list(getattr(agent, "builtin_tool_ids", None) or []),
+        )
+    )
 
     async def _get(
         organization: str = "",
@@ -78,7 +92,7 @@ def build_organization_context_tool(
         from app.core.database import async_session
         from app.services import organization_context_categories as cats
         from app.services import organizations as orgs
-        from app.services.organization_context import current_version, parse_profile, render_for_agent
+        from app.services.organization_context import ctem_work_for, current_version, parse_profile, render_for_agent
         from app.services.organization_context_injection import category_counts
 
         ref = str(organization or "").strip()
@@ -115,7 +129,7 @@ def build_organization_context_tool(
                         limit=_int(limit) or cats.DEFAULT_PAGE,
                     )
                 if not ref:
-                    return render_for_agent(await current_version(db))
+                    return render_for_agent(await current_version(db), ctem_work=await ctem_work_for(db, run_agent))
                 if ref == orgs.EVERY_ORGANIZATION:
                     return orgs.render_tracked_list(await orgs.list_organizations(db))
                 found = await orgs.resolve(db, ref)
@@ -125,7 +139,7 @@ def build_organization_context_tool(
                         'Call get_organization_context(organization="*") for the list.'
                     )
                 if found.role == "primary":
-                    return render_for_agent(await current_version(db))
+                    return render_for_agent(await current_version(db), ctem_work=await ctem_work_for(db, run_agent))
                 return orgs.render_tracked_for_agent(found, await current_version(db, found.id))
         except Exception:
             logger.warning("Organization context read failed", exc_info=True)

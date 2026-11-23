@@ -81,6 +81,84 @@ def provision_spec_error(trigger_type: object, trigger_config: object) -> str | 
     return None
 
 
+def direct_binding_id(assignment: Any, agent: Any, provider: str) -> str | None:
+    """The *provider* integration the assignment binds (its own bindings, else the agent's).
+
+    An assignment's bindings replace the agent's when set (``{}`` = none at all).
+    """
+    own = getattr(assignment, "integration_bindings", None)
+    bindings = own if isinstance(own, dict) else getattr(agent, "integration_bindings", None)
+    if not isinstance(bindings, dict):
+        return None
+    value = bindings.get(provider)
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return str(value) if value else None
+
+
+def uses_template(agent: Any, provider: str) -> bool:
+    """Whether *agent* reaches *provider* through a per-user template binding."""
+    return provider in {str(p) for p in (getattr(agent, "integration_template_bindings", None) or []) if p}
+
+
+async def template_integration_id(
+    db: Any, agent: Any, provider: str, label: str, user_id: Any
+) -> tuple[str | None, str]:
+    """``(integration_id, "")`` for the *provider* integration *user_id* gets at run time, else ``(None, reason)``.
+
+    The run path's resolution of a template binding (``assignment_engine``):
+    the integrations eligible for the user (``template_candidate_filter``,
+    platform-managed ones included) and connected for them, the user's own
+    preferred, else a company-wide one. Ordered by creation then id, so the
+    pick, and the receiver URL that carries it, stays the same across rechecks.
+    """
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.models.integration import Integration
+    from app.services.integration_tools import pick_template_integration, template_candidate_filter
+    from app.services.integration_user_credentials import connected_for_clause
+
+    unresolved = f"template binding {provider}: no {label} integration resolvable for the run-as user"
+    try:
+        user_uuid = uuid.UUID(str(user_id)) if user_id is not None else None
+    except ValueError:
+        user_uuid = None
+    if user_uuid is None:
+        return None, unresolved
+    rows = (
+        (
+            await db.execute(
+                select(Integration)
+                .where(
+                    Integration.provider == provider,
+                    await template_candidate_filter(
+                        db, user_uuid, company_automation=bool(getattr(agent, "is_company_managed", False))
+                    ),
+                    connected_for_clause(user_uuid),
+                )
+                .order_by(Integration.created_at, Integration.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    candidates = list(rows)
+    if len(candidates) > 1 and any(getattr(i, "scope_config", None) for i in candidates):
+        # The run path never auto-picks among scoped integrations either.
+        return None, (
+            f"template binding {provider}: several scoped {label} integrations for the run-as user; "
+            f"bind one to the assignment"
+        )
+    picked, _origin = pick_template_integration(
+        candidates, user_uuid, provider=provider, context=f"trigger provisioning agent={getattr(agent, 'name', '')}"
+    )
+    if picked is None:
+        return None, unresolved
+    return str(picked.id), ""
+
+
 async def receiver_secret(integration: Any) -> str | None:
     """The ``webhook_secret`` a provisioned notifier sends to the receiver, ``None`` when there is none.
 

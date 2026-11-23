@@ -26,7 +26,10 @@ describe("Intune and Defender as import sources (#1251)", () => {
     // The Outlook and Teams integration carries no device permission: it opens neither.
     expect(importSourcesOfProvider("microsoft")).toEqual([]);
     expect(importSourcesOfProvider("openaev")).toEqual(["openaev"]);
-    expect(importSourcesOfProvider("github")).toEqual([]);
+    // GitHub and GitLab integrations open their repositories as a code source.
+    expect(importSourcesOfProvider("github")).toEqual(["github"]);
+    expect(importSourcesOfProvider("gitlab")).toEqual(["gitlab"]);
+    expect(importSourcesOfProvider("slack")).toEqual([]);
   });
 
   it("words the Microsoft filter values and summarizes a sync's filters", () => {
