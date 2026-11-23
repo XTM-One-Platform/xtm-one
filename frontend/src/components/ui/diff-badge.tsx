@@ -44,7 +44,7 @@ export function DiffBadge({
     <Tip content={`Was ${formatValue(previous)} ${label}`}>
       <span
         className={cn(
-          "inline-flex items-center gap-0.5 content-caption font-medium rounded-full px-1.5 py-0.5",
+          "inline-flex items-center gap-0.5 content-caption font-medium rounded-sm px-1.5 py-0.5",
           isNeutral
             ? "bg-elevation-hover text-default-secondary"
             : isGood
