@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """The AI Gateway's flagged embedding model, saved into an EMPTY platform embedding default (#1422).
 
 Saved only where it re-embeds no stored vector: a re-embedding is hours of
