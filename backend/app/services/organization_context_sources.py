@@ -56,7 +56,7 @@ DISPLAY_NAMES: dict[str, str] = {
     "openaev": "OpenAEV",
     "opencrq": "OpenCRQ",
     "intune": "Microsoft Intune",
-    "defender": "Microsoft Defender",
+    "defender": "Microsoft Defender for Endpoint",
     "github": "GitHub",
     "gitlab": "GitLab",
     "crowdstrike": "CrowdStrike",
