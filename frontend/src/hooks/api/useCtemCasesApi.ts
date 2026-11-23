@@ -152,6 +152,35 @@ export interface CtemCaseEvent {
   to: string | null;
   reason: string | null;
   evidence: string | null;
+  /**
+   * The audit trail (#1490): the CTEM phase the event belongs to, its autonomy class, who acted
+   * (and the agent's name when the viewer may see it), one sentence for a note, the task, run and
+   * item ids a note names. Absent on an API older than #1494.
+   */
+  phase?: string;
+  autonomy?: string;
+  actor_type?: "person" | "agent" | "system";
+  actor_name?: string | null;
+  headline?: string | null;
+  refs?: { kind: "task" | "run" | "item"; id: string; full: boolean }[];
+  /** A waiting gate: its later answer, null while it still waits. */
+  answer?: { at: string | null; outcome: string | null; by: string | null; option: string | null } | null;
+  /** The answer of a gate: since when it waited. */
+  waited_since?: string | null;
+}
+
+/** One CTEM phase of a case (#1490): when it was entered and left, its time and counts. */
+export interface CtemCasePhase {
+  phase: string;
+  entered_at: string | null;
+  exited_at: string | null;
+  seconds: number;
+  events: number;
+  runs: number;
+  /** Gates of the phase still waiting for a person. */
+  waiting: number;
+  current: boolean;
+  autonomy?: Record<string, number>;
 }
 
 /**
@@ -292,6 +321,9 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
+  /** The phases of the audit trail in CTEM order (#1490); absent on an API older than #1494. */
+  phases?: CtemCasePhase[];
+  current_phase?: string | null;
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
   /** Null before triage read it; absent on an API older than #1289. */
