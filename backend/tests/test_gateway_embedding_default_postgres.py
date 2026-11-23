@@ -108,12 +108,15 @@ async def _added(sessions, config: LLMProviderConfig, **kwargs) -> None:
         await db.commit()
 
 
-async def _chunk(sessions, provider: str | None, model: str | None, dims: int, *, stamp_dims: bool = True) -> None:
+async def _chunk(
+    sessions, provider: str | None, model: str | None, dims: int, *, stamp_dims: bool = True, provider_id=None
+) -> None:
     async with sessions() as db:
         db.add(
             Embedding(
                 source_type="document",
                 embedding_provider=provider,
+                embedding_provider_id=provider_id,
                 embedding_model=model,
                 embedding_dimensions=dims if stamp_dims else None,
                 content="chunk",
@@ -484,10 +487,10 @@ async def test_lookup_never_waits_on_the_callers_own_settings_row_lock(monkeypat
             ps = await get_platform_settings(db)
             ps.routing_model = "claude-haiku-5-5"
             await db.flush()  # the caller now holds the row
-            with pytest.raises(router.EmbeddingConfigurationError):
-                await asyncio.wait_for(router.get_embedding_provider(db), timeout=20)
+            _provider, model, _id = await asyncio.wait_for(router.get_embedding_provider(db), timeout=20)
             await db.rollback()
 
+        assert model == FLAGGED  # used for this call, saved by a later lookup
         assert await _stored(sessions) == (None, None, None, None)
 
 
@@ -530,3 +533,151 @@ async def test_vectors_of_another_model_refuse_without_probing(monkeypatch, nati
 
         assert await _stored(sessions) == (None, None, None, None)
         assert native.calls == 0
+
+
+# --- Review follow-ups ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_finding_the_row_locked_by_another_worker_still_embeds(monkeypatch):
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+        async with sessions() as db:
+            await get_platform_settings(db)
+            await db.commit()
+
+        async with sessions() as holder:  # another worker mid-save
+            ps = await get_platform_settings(holder)
+            await holder.refresh(ps, with_for_update=True)
+            async with sessions() as db:
+                _provider, model, config_id = await router.get_embedding_provider(db)
+            await holder.rollback()
+
+        assert (model, config_id) == (FLAGGED, gateway.id)
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_install_lookup_embeds_before_the_row_is_committed(monkeypatch):
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+
+        async with sessions() as db:  # the lookup creates the settings row, uncommitted
+            _provider, model, config_id = await router.get_embedding_provider(db)
+
+        assert (model, config_id) == (FLAGGED, gateway.id)
+
+
+@pytest.mark.parametrize(("stamped", "saved"), [("this", True), ("other", False)])
+@pytest.mark.asyncio
+async def test_vectors_are_matched_to_the_gateway_config_not_its_name(monkeypatch, stamped, saved):
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+        other = await _add_config(sessions, GATEWAY)
+        await _chunk(sessions, GATEWAY, FLAGGED, 4, provider_id=gateway.id if stamped == "this" else other.id)
+
+        await _added(sessions, gateway)
+
+        assert (await _stored(sessions))[2] == (FLAGGED if saved else None)
+
+
+@pytest.mark.asyncio
+async def test_a_model_less_embedding_only_choice_is_kept(monkeypatch):
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        async with sessions() as db:
+            tei = LLMProviderConfig(
+                user_id=None,
+                provider="tei",
+                api_key_enc=encrypt_value("none||http://tei.local"),
+                default_model="",
+                available_models=[],
+            )
+            db.add(tei)
+            await db.flush()
+            ps = await get_platform_settings(db)
+            ps.embedding_provider, ps.embedding_provider_id, ps.embedding_model = "tei", tei.id, None
+            await db.commit()
+        gateway = await _add_config(sessions, GATEWAY)
+
+        await _added(sessions, gateway)
+
+        assert await _stored(sessions) == ("tei", tei.id, None, None)
+
+
+@pytest.mark.asyncio
+async def test_deletion_preview_of_todays_implicit_fallback_names_the_gateway(monkeypatch):
+    from app.services.llm_provider_deletion import compute_deletion_impact
+
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        openai = await _add_config(sessions, "openai")  # no default stored: implicit fallback
+        gateway = await _add_config(sessions, GATEWAY)
+
+        async with sessions() as db:
+            ps = await get_platform_settings(db)
+            impact = await compute_deletion_impact(
+                db, await db.get(LLMProviderConfig, openai.id), platform_settings=ps, general_assistant=None
+            )
+
+        assert impact.embedding_default.fallback_moves
+        fallback = impact.embedding_default.fallback
+        assert fallback is not None
+        assert (fallback.provider_id, fallback.model) == (gateway.id, FLAGGED)
+
+
+@pytest.mark.asyncio
+async def test_empty_knowledge_bases_take_the_saved_model(monkeypatch):
+    from app.models.knowledge_base import KnowledgeBase
+
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+        async with sessions() as db:
+            empty = KnowledgeBase(name="empty", embedding_model="text-embedding-3-large", chunk_count=0)
+            db.add(empty)
+            await db.commit()
+
+        await _added(sessions, gateway)
+
+        async with sessions() as db:
+            assert (await db.get(KnowledgeBase, empty.id)).embedding_model == FLAGGED
+
+
+@pytest.mark.asyncio
+async def test_a_failed_size_probe_is_retried_soon(monkeypatch, native):
+    from app.llm import gateway_embedding_default as module
+
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+        await _chunk(sessions, GATEWAY, FLAGGED, 4)
+        clock = [1000.0]
+        monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+        native.size = None
+        await _added(sessions, gateway)
+        assert await _stored(sessions) == (None, None, None, None)
+
+        native.size = 4
+        clock[0] += 60  # well under the 5-minute refusal of mismatched vectors
+        await _added(sessions, gateway)
+
+        assert await _stored(sessions) == (GATEWAY, gateway.id, FLAGGED, None)
+
+
+@pytest.mark.asyncio
+async def test_the_size_probe_leaves_the_shared_provider_alone(monkeypatch, native):
+    async with _database() as sessions:
+        _Flag(monkeypatch, FLAGGED)
+        gateway = await _add_config(sessions, GATEWAY)
+        await _chunk(sessions, GATEWAY, FLAGGED, 4)
+        async with sessions() as db:
+            shared = await router._cached_provider(await db.get(LLMProviderConfig, gateway.id))
+        shared.embedding_dimensions = 1024
+
+        await _added(sessions, gateway)
+
+        assert native.calls == 1
+        assert shared.embedding_dimensions == 1024

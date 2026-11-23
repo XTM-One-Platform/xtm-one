@@ -19,12 +19,13 @@ heavy load. Once saved it is the platform's choice; a later flag never moves it.
 
 from __future__ import annotations
 
+import copy
 import logging
 import time
 import uuid
 from collections.abc import Iterable
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,8 +41,10 @@ logger = logging.getLogger(__name__)
 GATEWAY = FiligranGatewayProvider.provider_name
 
 # A refused flag is not re-checked at every embedding lookup: the check reads
-# the vector tables, and vectors rarely start matching.
+# the vector tables, and vectors rarely start matching. A failed size probe
+# may be transient, so it is retried sooner.
 _REFUSED_TTL_SECONDS = 300.0
+_UNPROBED_TTL_SECONDS = 30.0
 _refused_until: dict[tuple[uuid.UUID, str, int | None], float] = {}
 
 
@@ -49,35 +52,37 @@ def _dims(table) -> object:
     return func.coalesce(table.embedding_dimensions, func.vector_dims(table.embedding))
 
 
+def no_embedding_choice(ps) -> bool:
+    """No embedding default stored: an embedding-only provider (TEI) is a choice without a model."""
+    return not (ps.embedding_model or ps.embedding_provider_id or ps.embedding_provider)
+
+
 async def _native_size(provider: BaseLLMProvider, model: str) -> int | None:
     """The size *model* embeds at with no dimensions set, or ``None`` when the probe fails."""
-    provider.embedding_dimensions = None  # what ``get_embedding_provider`` sets with none stored
+    probe = copy.copy(provider)  # the shared instance keeps its dimensions
+    probe.embedding_dimensions = None
     try:
-        return len(await provider.embed("dimension probe", model=model)) or None
+        return len(await probe.embed("dimension probe", model=model)) or None
     except Exception as exc:
         logger.warning("AI Gateway embedding model %s not probed: %s", model, format_exception_message(exc))
         return None
 
 
-async def _reembeds_nothing(db: AsyncSession, provider: BaseLLMProvider, model: str, dimensions: int | None) -> bool:
-    """Whether *model* from the gateway re-embeds no stored vector.
+async def _reembeds_nothing(
+    db: AsyncSession, config: LLMProviderConfig, provider: BaseLLMProvider, model: str, dimensions: int | None
+) -> bool | None:
+    """Whether *model* from the gateway *config* re-embeds no stored vector; ``None`` when its size is unknown.
 
-    True with no vector stored, or when every one is the gateway's *model* at
-    one size: *dimensions* (the stored setting), else the model's native size.
+    True with no vector stored, or when every one is *config*'s *model* at one
+    size: *dimensions* (the stored setting), else the model's native size.
     """
-    chunk = (
-        await db.execute(select(Embedding.embedding_provider, Embedding.embedding_model, _dims(Embedding)).limit(1))
-    ).first()
+    chunk = (await db.execute(select(_dims(Embedding)).limit(1))).first()
     memory = (
-        await db.execute(
-            select(AgentMemoryEntry.embedding_model, _dims(AgentMemoryEntry))
-            .where(AgentMemoryEntry.embedding.is_not(None))
-            .limit(1)
-        )
+        await db.execute(select(_dims(AgentMemoryEntry)).where(AgentMemoryEntry.embedding.is_not(None)).limit(1))
     ).first()
     if chunk is None and memory is None:
         return True
-    size = chunk[2] if chunk is not None else memory[1]
+    size = (chunk or memory)[0]
     if dimensions is not None and dimensions != size:
         return False
     other_chunk = (
@@ -85,6 +90,8 @@ async def _reembeds_nothing(db: AsyncSession, provider: BaseLLMProvider, model: 
         .where(
             or_(
                 Embedding.embedding_provider.is_distinct_from(GATEWAY),
+                # NULL once its config is deleted: the model and size still decide.
+                and_(Embedding.embedding_provider_id.is_not(None), Embedding.embedding_provider_id != config.id),
                 Embedding.embedding_model.is_distinct_from(model),
                 _dims(Embedding).is_distinct_from(size),
             )
@@ -105,9 +112,12 @@ async def _reembeds_nothing(db: AsyncSession, provider: BaseLLMProvider, model: 
     )
     if (await db.execute(select(or_(other_chunk, other_memory)))).scalar():
         return False
+    if dimensions is not None:
+        return True
     # Unset dimensions embed at the native size: stored vectors at any other would be re-embedded.
     # Probed last, once every stored vector is known to match.
-    return dimensions is not None or await _native_size(provider, model) == size
+    native = await _native_size(provider, model)
+    return None if native is None else native == size
 
 
 async def _flagged(
@@ -130,30 +140,43 @@ async def adoptable_gateway_default(
 ) -> tuple[LLMProviderConfig, str] | None:
     """The first AI Gateway of *configs* flagging an embedding model that re-embeds nothing, and that model."""
     for config, provider, model in await _flagged(configs, dimensions):
-        if await _reembeds_nothing(db, provider, model, dimensions):
+        verdict = await _reembeds_nothing(db, config, provider, model, dimensions)
+        if verdict:
             return config, model
-        _refused_until[(config.id, model, dimensions)] = time.monotonic() + _REFUSED_TTL_SECONDS
-        logger.info("AI Gateway default embedding model %s not used: stored vectors would be re-embedded", model)
+        ttl = _UNPROBED_TTL_SECONDS if verdict is None else _REFUSED_TTL_SECONDS
+        _refused_until[(config.id, model, dimensions)] = time.monotonic() + ttl
+        if verdict is False:
+            logger.info("AI Gateway default embedding model %s not used: stored vectors would be re-embedded", model)
     return None
 
 
 async def fill_from_gateway(
     db: AsyncSession, ps, configs: Iterable[LLMProviderConfig]
 ) -> tuple[LLMProviderConfig, str] | None:
-    """Save the gateway's flagged embedding model into *ps* when its embedding model is empty."""
-    if ps.embedding_model:
+    """Save the gateway's flagged embedding model into *ps* when no embedding default is stored."""
+    if not no_embedding_choice(ps):
         return None
     adopted = await adoptable_gateway_default(db, configs, dimensions=ps.embedding_dimensions)
     if adopted is not None:
-        _save(ps, *adopted)
+        await _save(db, ps, *adopted)
         await db.flush()
     return adopted
 
 
-def _save(ps, config: LLMProviderConfig, model: str) -> None:
+async def _save(db: AsyncSession, ps, config: LLMProviderConfig, model: str) -> None:
+    from app.models.knowledge_base import KnowledgeBase
+
     ps.embedding_provider = GATEWAY
     ps.embedding_provider_id = config.id
     ps.embedding_model = model
+    # An empty knowledge base was labelled with a fallback model while none was set;
+    # left so, the health check would ask to re-embed it.
+    await db.execute(
+        update(KnowledgeBase)
+        .where(or_(KnowledgeBase.chunk_count == 0, KnowledgeBase.chunk_count.is_(None)))
+        .where(KnowledgeBase.embedding_model.is_distinct_from(model))
+        .values(embedding_model=model)
+    )
 
 
 async def byollm_keeps_it_empty(db: AsyncSession) -> bool:
@@ -170,7 +193,8 @@ async def byollm_keeps_it_empty(db: AsyncSession) -> bool:
 async def fill_at_lookup(ps, configs: list[LLMProviderConfig]) -> tuple[LLMProviderConfig, str] | None:
     """:func:`fill_from_gateway` for an embedding lookup that found no model, committed in its own session.
 
-    The caller's transaction may roll back, or hold the settings row for long.
+    The caller's transaction may roll back, or hold the settings row: then the
+    model serves this lookup unsaved, and a later lookup saves it.
     """
     from sqlalchemy.orm.attributes import set_committed_value
 
@@ -184,7 +208,9 @@ async def fill_at_lookup(ps, configs: list[LLMProviderConfig]) -> tuple[LLMProvi
     async with database.async_session() as db:
         # Never waits on a row lock: the caller's own transaction may hold it.
         stored = await peek_platform_settings(db)
-        if stored is None or stored.embedding_model or await byollm_keeps_it_empty(db):
+        if stored is None:  # a fresh install's row, not committed yet: nothing configured
+            return await adoptable_gateway_default(db, configs, dimensions=ps.embedding_dimensions)
+        if not no_embedding_choice(stored) or await byollm_keeps_it_empty(db):
             return None
         configs = list((await db.execute(select_provider_configs())).scalars().all())
         adopted = await adoptable_gateway_default(db, configs, dimensions=stored.embedding_dimensions)
@@ -193,14 +219,14 @@ async def fill_at_lookup(ps, configs: list[LLMProviderConfig]) -> tuple[LLMProvi
         try:
             await db.refresh(stored, with_for_update={"nowait": True})
         except DBAPIError:
-            return None
-        if stored.embedding_model:
+            return adopted
+        if not no_embedding_choice(stored):
             # Another lookup saved first: use what it saved.
             adopted = next(((c, stored.embedding_model) for c in configs if c.id == stored.embedding_provider_id), None)
-            if adopted is None:
+            if adopted is None or not adopted[1]:
                 return None
         else:
-            _save(stored, *adopted)
+            await _save(db, stored, *adopted)
             await db.commit()
     for attr in ("embedding_provider", "embedding_provider_id", "embedding_model"):
         set_committed_value(ps, attr, getattr(stored, attr))

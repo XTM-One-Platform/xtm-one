@@ -1051,6 +1051,12 @@ async def compute_deletion_impact(
         if no_embedding_default and not embedding_orphaned
         else None
     )
+    async def survivors_embedding_fallback(fallback):
+        if fallback is not None or await byollm_keeps_it_empty(db):
+            return fallback
+        # As ``get_embedding_provider`` does next: an AI Gateway's flagged model, where it re-embeds nothing.
+        return await adoptable_gateway_default(db, survivors, dimensions=getattr(ps, "embedding_dimensions", None))
+
     embedding_target = (
         pick_embedding_target(survivors, embedding_before.model)
         if embedding_orphaned and embedding_before is not None
@@ -1069,12 +1075,7 @@ async def compute_deletion_impact(
             knowledge_base_count=await indexed_knowledge_bases(),
         )
     elif embedding_orphaned:
-        fallback = implicit_embedding_fallback(survivors)
-        if fallback is None and not await byollm_keeps_it_empty(db):
-            # As ``get_embedding_provider`` does next: an AI Gateway's flagged model, where it re-embeds nothing.
-            fallback = await adoptable_gateway_default(
-                db, survivors, dimensions=getattr(ps, "embedding_dimensions", None)
-            )
+        fallback = await survivors_embedding_fallback(implicit_embedding_fallback(survivors))
         embedding_default = EmbeddingImpact(
             "cleared",
             embedding_before,
@@ -1087,6 +1088,8 @@ async def compute_deletion_impact(
         fallback = implicit_embedding_fallback(
             survivors, embedding_provider=stored_embedding[0], embedding_model=stored_embedding[1]
         )
+        if not stored_embedding[1]:
+            fallback = await survivors_embedding_fallback(fallback)
         embedding_default = EmbeddingImpact(
             "unchanged",
             embedding_before,
