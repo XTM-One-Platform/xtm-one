@@ -21265,5 +21265,6 @@
   "Next step": "次のステップ",
   "Recorded on the case: pending": "ケースへの記録: 保留中",
   "{count, plural, one {# minute} other {# minutes}}": "{count, plural, other {#分}}",
-  "{count, plural, one {# second} other {# seconds}}": "{count, plural, other {#秒}}"
+  "{count, plural, one {# second} other {# seconds}}": "{count, plural, other {#秒}}",
+  "Subcategories of {category}": "{category} のサブカテゴリ"
 }
