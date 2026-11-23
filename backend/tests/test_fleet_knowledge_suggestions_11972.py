@@ -137,6 +137,14 @@ async def test_a_fleet_without_a_shared_base_gets_the_informational_suggestion_o
     assert [s["kind"] for s in await _found(desk)] == ["fleet_without_working_knowledge"]
 
 
+async def test_a_built_in_fleet_gets_no_knowledge_suggestion_and_its_fork_does(desk) -> None:
+    """The knowledge wiring of a built-in fleet is seeded mechanics (#1510): its fork keeps the suggestion."""
+    desk.fleet.is_builtin = True
+    assert await _found(desk) == []
+    desk.fleet.is_builtin = False
+    assert [s["kind"] for s in await _found(desk)] == ["fleet_without_working_knowledge"]
+
+
 async def test_a_second_writer_is_named(desk) -> None:
     _bind_all(desk, lead_writes=True)
     desk.members[1].knowledge_base_permissions = {desk.kb: "write"}
