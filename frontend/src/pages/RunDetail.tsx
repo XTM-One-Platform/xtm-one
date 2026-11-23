@@ -60,6 +60,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { DelegationIndent } from "@/components/ui/delegation-indent";
 import { DisclosureSummary } from "@/components/ui/disclosure";
 import { RunCancelledCard } from "@/components/ui/run-cancelled-card";
@@ -986,15 +987,17 @@ export default function RunDetail() {
       <div>
         {/* The opener may name where Back goes (the fleet timeline: "Back to Command Center"). */}
         <LocationBackButton to={-1} label="Back" className="mb-4" />
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
+          {/* The title block shrinks before the header actions; its badges stay on one line
+              and the agent name is cut with a tooltip (UX r1 B1 on #1590). */}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
             <div className={cn(
               "flex h-14 w-14 shrink-0 items-center justify-center rounded-sm",
               isRunning ? "bg-accent/10" : unfinishedNotice || waitingOnCaller ? "bg-feedback-warning-primary/10" : run.status === "completed" ? "bg-feedback-success-primary/10" : "bg-feedback-error-primary/10",
             )}>
               <AgentIcon className={cn("h-7 w-7", isRunning ? "text-accent" : unfinishedNotice ? "text-feedback-warning-primary" : statusCfg.color)} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold">
                 {run.assignment_name
                   || (scheduledItemId
@@ -1002,23 +1005,23 @@ export default function RunDetail() {
                     : t_i18n("Delegation Run"))}
               </h1>
               <div className="flex items-center gap-2 mt-1">
-                <Badge variant={statusCfg.badge} className="gap-1">
+                <Badge variant={statusCfg.badge} className="shrink-0 gap-1 whitespace-nowrap">
                   <StatusIcon className={cn("h-3 w-3", isRunning && "animate-spin")} />
                   {t_i18n(statusCfg.label)}
                 </Badge>
                 {heldReason && <HeldBadge reason={heldReason} />}
                 {unfinishedNotice && (
-                  <Badge variant="outline" className="gap-1 text-feedback-warning-primary border-feedback-warning-primary/40">
+                  <Badge variant="outline" className="shrink-0 gap-1 whitespace-nowrap text-feedback-warning-primary border-feedback-warning-primary/40">
                     <AlertTriangle className="h-3 w-3" />
                     {run.stop_reason === "integrations_unreadable" ? t_i18n("Not assessable") : t_i18n("Partial result")}
                   </Badge>
                 )}
                 {run.parent_run_id && !run.assignment_name && run.parent_agent_name && (
-                  <span className="content-compact text-accent flex items-center gap-1">
+                  <span className="content-compact text-accent flex shrink-0 items-center gap-1 whitespace-nowrap">
                     {t_i18n("Delegated from")} <span className="font-medium">{run.parent_agent_name}</span>
                   </span>
                 )}
-                <span className="content-compact text-default-secondary">{run.agent_name}</span>
+                <TruncatedText text={run.agent_name} className="content-compact text-default-secondary" />
               </div>
             </div>
           </div>
