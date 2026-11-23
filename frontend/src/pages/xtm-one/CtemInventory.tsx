@@ -11,7 +11,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
@@ -36,30 +36,27 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AssetFacetSidebar, SIDEBAR_FACETS } from "./ctem/AssetFacetSidebar";
-import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
+import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { useInventoryEditView } from "./ctem/inventory-edit-view";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
-
-type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "sources";
-
-/**
- * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
- * Assets tab filtered on that category, so a bookmark or a fleet link keeps working.
- */
-const RETIRED_AI_SYSTEMS_TAB = "ai-systems";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
+import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, type InventoryTab } from "./ctem/inventory-tabs";
 
 const ASSETS_URL_KEY = "a_";
-const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?${ASSETS_URL_KEY}f_category=ai_target`;
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
 const TECH_URL_KEY = "t_";
 const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
+/** The server filters of the asset list, in the order the toolbar shows them. */
+const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
+  { key: "category", label: "Category" },
+  { key: "criticality", label: "Criticality" },
+  { key: "internet_facing", label: "Internet facing" },
+  { key: "source", label: "Source" },
+];
 
 /**
  * The query parameter of the former Asset matching view (UX round 2 on #1254, B7). Asset matching now sits under the syncs
@@ -79,15 +76,14 @@ function AssetsTab({ add }: { add: AddRequest }) {
     sort: NAME_SORT,
     pageSize: storedPageSize(ASSETS_STORAGE_KEY, PAGE_SIZE),
   });
-  // The sidebar's facets (#1501): OR within one, AND across them; the counts follow the search and the other picks.
-  const picked = Object.fromEntries(SIDEBAR_FACETS.map((key) => [key, table.filters[key] ?? []])) as Record<AssetFilterKey, string[]>;
+  const picked = Object.fromEntries(ASSET_FILTERS.map((f) => [f.key, table.filters[f.key] ?? []]));
   const { data, isLoading, isError, refetch } = useCanonicalAssets({
     q: table.search,
     offset: table.page * table.pageSize,
     limit: table.pageSize,
     filters: picked,
   });
-  const facets = useAssetFacets({ q: table.search, filters: picked });
+  const facets = useAssetFacets();
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
@@ -117,6 +113,15 @@ function AssetsTab({ add }: { add: AddRequest }) {
     );
   };
   const syncedReason = t_i18n("Synced from its source: exclude it from the sync to remove it.");
+
+  const filters: DataTableFilter<CanonicalAssetSummary>[] = ASSET_FILTERS.map(({ key, label }) => ({
+    key,
+    label,
+    options: (facets.data?.[key] ?? []).map((value) => ({
+      value,
+      label: key === "source" ? sourceLabel(t_i18n, value) : assetFieldLabel(t_i18n, key, value),
+    })),
+  }));
 
   const rows = data?.items ?? [];
   const mergeRecords = rows.filter((a) => selected.includes(a.id)).flatMap((a) => a.records ?? []);
@@ -158,8 +163,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
     {
       key: "criticality",
       header: "Criticality",
-      // One line at every width: the short "Unknown" under the heading, never wrapped (#1501 UX r1 B2).
-      cell: (a) => <span className="whitespace-nowrap">{criticalityShortLabel(t_i18n, a.criticality)}</span>,
+      cell: (a) => assetFieldLabel(t_i18n, "criticality", a.criticality),
       csv: (a) => a.criticality,
       hideable: true,
     },
@@ -222,9 +226,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
 
   return (
     <>
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} fitBeside />
-      <div className="min-w-0 flex-1">
       <DataTable<CanonicalAssetSummary>
         rows={rows}
         columns={columns}
@@ -236,6 +237,7 @@ function AssetsTab({ add }: { add: AddRequest }) {
         defaultSort={NAME_SORT}
         defaultPageSize={PAGE_SIZE}
         searchPlaceholder={t_i18n("Search assets by name")}
+        filters={filters}
         exportName="ctem-inventory-assets"
         isLoading={isLoading && !data}
         isError={isError}
@@ -303,8 +305,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
             : undefined
         }
       />
-      </div>
-      </div>
       <InventoryEntryDialog
         section="assets_exposure"
         mode={dialog ?? (add.open ? { kind: "add" } : null)}
@@ -425,21 +425,7 @@ function TechStackTab() {
   );
 }
 
-/**
- * The profile cards that are settings, not rows (#1178 slice 2b, kept by #1367): the rows of every tab are managed
- * in place (Add, row menu, bulk actions), so only the policy cards of the Assets tab keep an edit view, opened by a
- * link to the card (`?card=`, Turn on on the Signals sources, #1356) and closed by Done. No page-level Edit button.
- */
-const EDIT_CARDS = {
-  assets: ["prioritization_policy", "outside_lens", "evidence_health"],
-} as const;
 export default function CtemInventory() {
-  const [tab] = useTabParam<InventoryTab>("assets");
-  if ((tab as string) === RETIRED_AI_SYSTEMS_TAB) return <Navigate to={AI_TARGET_ASSETS_HREF} replace />;
-  return <InventoryPage />;
-}
-
-function InventoryPage() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
@@ -447,10 +433,6 @@ function InventoryPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
   const [adding, setAdding] = useState(false);
   const add: AddRequest = { open: adding, onClose: () => setAdding(false) };
-  const editCards = tab === "assets" ? EDIT_CARDS.assets : null;
-  // A link to one of these cards opens the edit view on it and keeps it open once the card parameter leaves
-  // (UX rounds 1 and 2 on #1356, B3 then B1).
-  const [editing, setEditing] = useInventoryEditView(editCards, isAdmin);
   // Asset matching is read by everyone, edited by administrators inside its own card, under the syncs table.
   const matchingLink = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
   const navigate = useNavigate();
@@ -495,12 +477,7 @@ function InventoryPage() {
         info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         infoLabel={t_i18n("About the inventory")}
         actions={
-          editing ? (
-            <Button variant="secondary" className="gap-1.5" onClick={() => setEditing(false)} data-testid="ctem-inventory-edit-done">
-              <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
-            </Button>
-          ) : (
-            <span className="flex flex-wrap items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
               {/* Sources, a secondary action top right (#1367, point 4: a button, not a tab), for administrators only: the
                   sources API is admin-only (UX round 1 on #1476, B2). Secondary before the filled action, which stays at the
                   right end (design-system Page-title actions). */}
@@ -521,24 +498,18 @@ function InventoryPage() {
                 </Button>
               )}
             </span>
-          )
         }
       />
-      <DetailTabs<InventoryTab>
-        ariaLabel={t_i18n("Inventory sections")}
-        active={tab}
-        tabs={[
-          { key: "assets", label: "Assets" },
-          { key: "asset-groups", label: "Asset groups" },
-          { key: "tech-stack", label: "Tech stack" },
-        ]}
-      />
-      {editing && editCards ? (
-        <OrganizationSection key={tab} embed={{ cards: editCards }} />
+      <DetailTabs<InventoryTab> ariaLabel={t_i18n("Inventory sections")} active={tab} tabs={[...INVENTORY_TABS]} />
+      {tab === "exposure" ? (
+        // Read for everyone; each card's Edit is drawn for administrators only (#1511).
+        <OrganizationSection embed={{ cards: EXPOSURE_TAB_CARDS, readOnly: !isAdmin }} />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
       ) : tab === "tech-stack" ? (
         <TechStackTab />
+      ) : tab === "ai-systems" ? (
+        <AiSystemsTab />
       ) : (
         <AssetsTab add={add} />
       )}

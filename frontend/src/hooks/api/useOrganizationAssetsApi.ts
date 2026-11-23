@@ -104,16 +104,9 @@ function pageQuery(params: Record<string, string | number | readonly string[] | 
 }
 
 /** The asset fields the list filters on, and the source of a record (`GET /assets/facets`). */
-export type AssetFilterKey = "category" | "subcategory" | "criticality" | "internet_facing" | "source";
+export type AssetFilterKey = "category" | "criticality" | "internet_facing" | "source";
 
-/** One facet value with the assets it holds; a subcategory names its category. */
-export interface AssetFacetValue {
-  value: string;
-  count: number;
-  category?: string;
-}
-
-export type AssetFacets = Record<AssetFilterKey, AssetFacetValue[]>;
+export type AssetFacets = Record<AssetFilterKey, string[]>;
 
 /** A page of canonical assets, filtered on a name substring and on the filter values picked. */
 export function useCanonicalAssets(query: {
@@ -130,16 +123,11 @@ export function useCanonicalAssets(query: {
   });
 }
 
-/**
- * The values each asset filter offers with their counts, read from the store: a facet's counts apply the search and
- * the other facets picked (#1501), so the sidebar says how many assets a value adds.
- */
-export function useAssetFacets(query: { q?: string; filters?: Partial<Record<AssetFilterKey, readonly string[]>> } = {}) {
-  const qs = pageQuery({ q: query.q?.trim(), ...query.filters });
+/** The values each asset filter offers, read from the store. */
+export function useAssetFacets() {
   return useQuery<AssetFacets>({
-    queryKey: [...KEY, "facets", qs],
-    queryFn: () => api.get(`/organization-context/assets/facets${qs ? `?${qs}` : ""}`),
-    placeholderData: keepPreviousData,
+    queryKey: [...KEY, "facets"],
+    queryFn: () => api.get("/organization-context/assets/facets"),
     throwOnError: false,
   });
 }
@@ -165,7 +153,7 @@ export function isAssetNotFound(error: unknown): boolean {
 }
 
 /** The strong identifier kinds, most reliable first (organization_asset_identity.DEFAULT_KEY_ORDER). */
-type IdentityKey = "serial" | "cloud_resource_id" | "device_id" | "mac" | "fqdn" | "hostname";
+type IdentityKey = "serial" | "cloud_resource_id" | "repository" | "device_id" | "mac" | "fqdn" | "hostname";
 
 interface IdentitySettings {
   key_order: IdentityKey[];
