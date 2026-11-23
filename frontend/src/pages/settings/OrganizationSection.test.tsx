@@ -1157,6 +1157,9 @@ describe("OrganizationSection", () => {
     // The current version is never offered; the newest one holding crown jewels is picked and previewed.
     expect(within(dialog).queryByText("Version 46")).toBeNull();
     expect(await within(dialog).findByText("Ledger")).toBeTruthy();
+    // The preview badges carry the criticality words of the card, never the bare "High" key (#1567 UX r2 B2).
+    expect(within(dialog).getByText("High (criticality)")).toBeTruthy();
+    expect(within(dialog).getByText("Critical (criticality)")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),

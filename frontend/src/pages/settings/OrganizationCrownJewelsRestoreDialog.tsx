@@ -22,10 +22,8 @@ import {
   useRestoreOrganizationContextVersion,
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
+import { CRITICALITY_LABELS } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
-
-/** The profile's criticality words. @i18n-keys */
-const CRITICALITY = { low: "Low", medium: "Medium", high: "High", critical: "Critical" } as const;
 
 function VersionRows({ version }: { version: number }) {
   const { t_i18n } = useFormatter();
@@ -38,7 +36,7 @@ function VersionRows({ version }: { version: number }) {
       {jewels.map((jewel, index) => (
         <li key={`${jewel.name}-${index}`} className="flex items-center justify-between gap-2 content-compact">
           <span className="min-w-0 truncate text-default-primary">{jewel.name}</span>
-          <Badge variant="outline">{t_i18n(CRITICALITY[jewel.criticality as keyof typeof CRITICALITY] ?? "High")}</Badge>
+          <Badge variant="outline">{t_i18n(CRITICALITY_LABELS[jewel.criticality as keyof typeof CRITICALITY_LABELS] ?? CRITICALITY_LABELS.high)}</Badge>
         </li>
       ))}
     </ul>
@@ -140,7 +138,7 @@ export function OrganizationCrownJewelsRestoreDialog({
           </div>
         </div>
         {restore.isError && (
-          <div role="alert" className="flex flex-wrap items-center gap-2 content-compact text-feedback-error-primary" data-testid="settings.organization.restore-error">
+          <div role="alert" className="flex flex-wrap items-center gap-2 content-compact text-feedback-error-tertiary" data-testid="settings.organization.restore-error">
             <span>{t_i18n("The crown jewels could not be restored: {reason}", { reason: restore.error.message })}</span>
             {refusedConflict && (
               <Button variant="secondary" size="sm" onClick={reloadVersions}>
