@@ -961,6 +961,8 @@ class ImportSourceStatus(BaseModel):
     available: bool
     #: Why the platform cannot feed the section (empty when it can).
     reason: str = ""
+    #: The reason as a code the dialog words in the user's language: ``not_connected``, ``no_token`` or empty.
+    reason_code: str = ""
     #: The filters this source supports for the section.
     filters: list[str]
 
@@ -978,7 +980,7 @@ class ImportSourcesResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"]
-    source: Literal["openaev", "opencti", "opencrq"]
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender"]
     filters: dict[str, Any] = {}
     #: The asset type of the batch, for a source without a type taxonomy (OpenCTI Systems).
     batch_type: str = ""
@@ -1013,6 +1015,7 @@ async def list_organization_import_sources(
                     source=source,
                     available=statuses[source].available,
                     reason=statuses[source].reason,
+                    reason_code=statuses[source].reason_code,
                     filters=list(imp.SOURCE_FILTERS.get((section, source), ())),
                 )
                 for source in imp.SECTION_SOURCES[section]
@@ -1042,7 +1045,7 @@ class ImportFilterOptionsResponse(BaseModel):
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs"],
-    source: Literal["openaev", "opencti", "opencrq"],
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender"],
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ImportFilterOptionsResponse:
@@ -1111,11 +1114,18 @@ async def apply_organization_import(
     response = ImportPreviewResponse(based_on_version=version, plan=plan.as_dict())
     removes = plan.remove_gone and bool(plan.gone)
     if not (plan.new or plan.updated or removes) or plan.profile is None:
+        if not plan.error and plan.software:
+            # An endpoint source (#1251): only the software changed (a re-run with new versions).
+            changed = await imp.store_endpoint_software(db, plan)
+            await db.commit()
+            response.applied = bool(changed)
         return response
     try:
         saved = await org_context.save_version(
             db, plan.profile, source="draft", author_user_id=admin.id, sources=imp.provenance(plan, body.filters)
         )
+        if not plan.error and plan.software:
+            await imp.store_endpoint_software(db, plan)
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -1130,7 +1140,7 @@ async def apply_organization_import(
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
     section: Literal["assets", "asset_groups", "ai_systems", "tech_stack", "crown_jewels", "pirs", "all"]
-    source: Literal["openaev", "opencti", "opencrq", ""] = ""
+    source: Literal["openaev", "opencti", "opencrq", "intune", "defender", ""] = ""
     filters: dict[str, Any] = {}
     batch_type: str = ""
     #: A deletion upstream deletes the row here (default since #1134).

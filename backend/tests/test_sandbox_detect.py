@@ -745,6 +745,35 @@ def test_a_workspace_member_namespaced_generator_and_gate_scripts_are_checks():
     assert not {"front:node-fds-css", "front:node-lint-fix", "node-lint-lint", "node-knip-fix"} & set(argv)
 
 
+def test_a_hyphenated_gate_or_generator_script_is_a_check() -> None:
+    """OpenAEV's front names its i18n gate ``i18n-checker``: it was met in CI only, and argv is refused."""
+    front = json.dumps(
+        {
+            "packageManager": "yarn@4.18.1",
+            "scripts": {
+                "i18n-checker": "npm run generate-i18n-checker-constant && node scripts/i18n-checker.js",
+                "generate-i18n-checker-constant": "tsc src/constants/Lang.ts --outDir scripts/constants",
+                "extract-translation": "node scripts/extract-i18n-keyword.js",
+                "check-licenses": "license-checker-rseidelsohn --production --summary",
+                "check-ts": "tsc",
+                "sort-translation": "node scripts/sort-translation-files.js",
+                "generate-types-from-api": "swagger-typescript-api generate --path=${API_URL:-http://localhost:8080}/api-docs",
+                "generate-test-e2e": "yarn playwright codegen http://localhost:3001/",
+                "show-report-e2e": "start test-results/report.html",
+            },
+        }
+    )
+    argv = _argv(_detect({"openaev-front/package.json": front}, extra=("openaev-front/yarn.lock",)))
+    assert argv["openaev-front:node-i18n-checker"] == ("yarn", "i18n-checker")
+    assert argv["openaev-front:node-generate-i18n-checker-constant"] == ("yarn", "generate-i18n-checker-constant")
+    assert argv["openaev-front:node-extract-translation"] == ("yarn", "extract-translation")
+    assert argv["openaev-front:node-check-licenses"] == ("yarn", "check-licenses")
+    # check-ts is the types kind; no gate word, a URL (a live API) or an end-to-end word leaves a script out.
+    assert argv["openaev-front:node-types"] == ("yarn", "check-ts") and "openaev-front:node-check-ts" not in argv
+    left_out = {"sort-translation", "generate-types-from-api", "generate-test-e2e", "show-report-e2e"}
+    assert not {f"openaev-front:node-{name}" for name in left_out} & set(argv)
+
+
 def test_a_named_script_a_workflow_already_runs_is_not_offered_twice():
     flow = "jobs:\n  ci:\n    steps:\n      - run: npm ci\n      - run: npm run check:lint\n"
     pkg = json.dumps({"scripts": {"check:lint": "eslint .", "generate:docs": "typedoc"}})

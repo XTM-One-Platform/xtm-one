@@ -370,8 +370,22 @@ class AssetEntry(BaseModel):
     external_id: str = Field(default="", max_length=200)
     #: The sync that last wrote the row (#1134; empty: typed, a one-off import or an agent).
     sync_id: str = Field(default="", max_length=64)
+    #: Identity keys the asset store matches records on (#1251; ``organization_asset_identity``):
+    #: an endpoint manager or EDR source fills them, a typed row may leave them empty.
+    serial: str = Field(default="", max_length=200)
+    #: The Entra (Azure AD) device id, the key Intune and Defender share.
+    device_id: str = Field(default="", max_length=200)
+    hostname: str = Field(default="", max_length=255)
+    fqdn: str = Field(default="", max_length=255)
+    mac: list[str] = Field(default_factory=list, max_length=10)
+    ip: list[str] = Field(default_factory=list, max_length=10)
+    #: Operating system as the source reports it (field-level provenance in the store).
+    os_family: str = Field(default="", max_length=80)
+    os_version: str = Field(default="", max_length=80)
+    os_build: str = Field(default="", max_length=80)
     #: When the source last observed the asset, ISO 8601 UTC (#1134 S4, CTEM-27: OpenAEV's
-    #: ``asset_last_seen``); empty when the source does not say. Owned by the source.
+    #: ``asset_last_seen``; #1251: Intune and Defender's last sync); empty when the source does
+    #: not say. Owned by the source.
     last_seen: str = Field(default="", max_length=40)
     #: The source's activity status (OpenAEV ``asset_status`` lower-cased: ``stale`` when unseen
     #: past the tenant's threshold); empty when the source does not say.
@@ -381,6 +395,11 @@ class AssetEntry(BaseModel):
     @classmethod
     def _legacy_type(cls, data: Any) -> Any:
         return upgrade_legacy_type(data) if isinstance(data, dict) else data
+
+    @field_validator("mac", "ip")
+    @classmethod
+    def _clean_addresses(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(v.strip()[:64] for v in value if v and v.strip()))
 
     @field_validator("tech_stack", "tags")
     @classmethod

@@ -29,6 +29,8 @@ const SOURCES = {
           reason: "",
           filters: ["labels", "markings", "created_by", "creator", "category", "subcategory", "criticality", "internet_facing", "environment", "platform", "created_after", "filter_group"],
         },
+        { source: "intune", available: false, reason: "no Microsoft Intune integration is connected", reason_code: "not_connected", filters: [] },
+        { source: "defender", available: false, reason: "no token for the Microsoft Defender integration: authorize it again", reason_code: "no_token", filters: [] },
       ],
     },
     { section: "crown_jewels", field: "crown_jewels", sources: [{ source: "opencrq", available: true, reason: "", filters: ["min_criticality", "tenant_id"] }] },
@@ -124,6 +126,19 @@ describe("OrganizationImportDialog (#11780)", () => {
     expect(openaev.disabled).toBe(true);
     expect(openaev.textContent).toContain("not connected, or no token for this administrator");
     expect((await choice("opencti")).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("words the reason of an endpoint source from its code, never the backend's English sentence (#1251)", async () => {
+    open();
+    fireEvent.click(await choice("assets"));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const intune = await choice("intune");
+    expect(intune.disabled).toBe(true);
+    expect(intune.textContent).toContain("Not available: no Microsoft Intune integration is connected. Connect it in Settings > Integrations.");
+    const defender = await choice("defender");
+    expect(defender.disabled).toBe(true);
+    expect(defender.textContent).toContain("the Microsoft Defender for Endpoint integration has no token. Authorize it again");
+    expect(defender.textContent).not.toContain("authorize it again");
   });
 
   it("moves the section with the arrow keys, as a radio group", async () => {

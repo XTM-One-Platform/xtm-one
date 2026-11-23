@@ -251,6 +251,7 @@ class KubeClient:
         context = self.config.ssl_context()
         out, err = bytearray(), bytearray()
         status: dict[str, Any] = {}
+        cut: list[Exception] = []
 
         async def _session() -> None:
             async with connect(
@@ -261,8 +262,14 @@ class KubeClient:
                 max_size=None,
             ) as ws:
                 if stdin is not None:
-                    for start in range(0, len(stdin), _STDIN_CHUNK):
-                        await ws.send(bytes([_STDIN]) + stdin[start : start + _STDIN_CHUNK])
+                    try:
+                        for start in range(0, len(stdin), _STDIN_CHUNK):
+                            await ws.send(bytes([_STDIN]) + stdin[start : start + _STDIN_CHUNK])
+                    except ConnectionClosed as exc:
+                        # The command may end before it reads all of stdin (tar stops at its end-of-archive
+                        # blocks, before the record padding): the server then closes the stream while the
+                        # last chunk is sent. The frames it sent first (output, status) are still read below.
+                        cut.append(exc)
                 async for frame in ws:
                     data = frame if isinstance(frame, bytes) else frame.encode("utf-8")
                     if not data:
@@ -274,6 +281,9 @@ class KubeClient:
                         err.extend(payload)
                     elif channel == _STATUS and payload:
                         status.update(json.loads(payload))
+            if cut and not status:
+                # Closed while stdin was sent and no status came: the command's end is unknown.
+                raise cut[0]
 
         try:
             await asyncio.wait_for(_session(), timeout)
@@ -285,6 +295,14 @@ class KubeClient:
             code = int(getattr(exc.response, "status_code", 0) or 0)
             raise KubeError(f"the API server refused the exec stream (HTTP {code})", handshake=code) from exc
         except (InvalidHandshake, ConnectionClosed, OSError) as exc:
+            if status:
+                # The status frame arrived before the stream closed: the command ended, its answer stands.
+                return ExecResult(
+                    exit_code=exit_code_of(status),
+                    stdout=bytes(out),
+                    stderr=bytes(err),
+                    message=str(status.get("message") or ""),
+                )
             # A stream lost before the status frame: as retryable as a stall, never an unknown type.
             detail = str(exc).strip()
             raise KubeError(

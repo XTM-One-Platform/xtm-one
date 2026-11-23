@@ -27,6 +27,15 @@ export const FILTER_LABELS = {
   tenant_id: "Tenant",
   pir_ids: "PIRs",
   search: "Name contains",
+  // Microsoft Intune and Defender for Endpoint (#1251).
+  operating_system: "Operating system",
+  compliance: "Compliance",
+  ownership: "Ownership",
+  last_seen_days: "Last seen",
+  include_owner: "Device owner",
+  os_platform: "OS platform",
+  health_status: "Sensor health",
+  exposure_level: "Exposure level",
 } as const;
 export type FilterKey = keyof typeof FILTER_LABELS;
 
@@ -38,6 +47,29 @@ export const EXPOSURE_LABELS = { yes: "Internet-facing", no: "Not internet-facin
 
 /** @i18n-keys */
 export const ENVIRONMENT_LABELS = { production: "Production", staging: "Staging", development: "Development", test: "Test", other: "Other" } as const;
+
+/** The words of the Microsoft endpoint filter values (the APIs' own enumerations, #1251). @i18n-keys */
+const MICROSOFT_VALUE_LABELS = {
+  compliant: "Compliant",
+  noncompliant: "Not compliant",
+  ingraceperiod: "In grace period",
+  conflict: "Conflict",
+  error: "Error",
+  unknown: "Unknown",
+  company: "Company",
+  personal: "Personal",
+  active: "Active",
+  inactive: "Inactive",
+  impairedcommunication: "Impaired communication",
+  nosensordata: "No sensor data",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  none: "None",
+} as const;
+
+/** The Microsoft filters whose values are enumerations worded above. */
+const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership", "health_status", "exposure_level"]);
 
 /** The filters whose values are ids of the source (labels, markings, authors, groups, tags, PIRs, tenant): counted, never printed. */
 const ID_FILTERS: ReadonlySet<string> = new Set(["labels", "markings", "created_by", "creator", "asset_groups", "tags", "pir_ids", "tenant_id"]);
@@ -52,6 +84,9 @@ export function filterValueLabel(t: Translate, key: string, value: string): stri
   if (key === "min_criticality" && lower in MIN_CRITICALITY_LABELS) return t(MIN_CRITICALITY_LABELS[lower as keyof typeof MIN_CRITICALITY_LABELS]);
   if (key === "internet_facing" && lower in EXPOSURE_LABELS) return t(EXPOSURE_LABELS[lower as keyof typeof EXPOSURE_LABELS]);
   if (key === "environment" && lower in ENVIRONMENT_LABELS) return t(ENVIRONMENT_LABELS[lower as keyof typeof ENVIRONMENT_LABELS]);
+  if (MICROSOFT_WORDED.has(key) && lower in MICROSOFT_VALUE_LABELS) return t(MICROSOFT_VALUE_LABELS[lower as keyof typeof MICROSOFT_VALUE_LABELS]);
+  if (key === "last_seen_days" && /^\d+$/.test(value)) return t("{count, plural, one {Within # day} other {Within # days}}", { count: Number(value) });
+  if (key === "include_owner") return t("Kept as the asset owner");
   return value;
 }
 
