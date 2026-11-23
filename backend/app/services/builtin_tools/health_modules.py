@@ -574,14 +574,27 @@ async def add_module_read_tools(
     from app.services.integration_read_only import READ_ONLY_CONTEXT_KEY
     from app.services.integration_tools import build_integration_tools
 
-    reader_id = await module_reader_user_id(db, user_id)
+    from app.services.health.run_as import configured_run_as, reaches_integration, run_as_needed_reason
+
+    # The reads act as the "Run checks as" user alone (12.3): never the run's user, the
+    # service account, the seed owner or an administrator by default.
+    reader = await configured_run_as(db)
+    if reader is None or not await reaches_integration(db, reader, integration_id):
+        logger.warning(
+            "Platform Health %s checker run %s: no run-as user with access to integration %s, no module read wired",
+            provider,
+            run_id,
+            integration_id,
+        )
+        composite.withhold_integrations({provider: run_as_needed_reason(provider)})
+        return 0
     context = {
         "source": "health_module_analyst",
         "agent_id": str(agent_id),
         "run_id": run_id,
         "autonomous": True,
         "hitl_enabled": False,
-        "user_id": reader_id,
+        "user_id": str(reader),
         READ_ONLY_CONTEXT_KEY: frozenset({str(integration_id)}),
     }
     definitions, executor = await build_integration_tools(db, {provider: str(integration_id)}, context=context)
@@ -605,19 +618,3 @@ MODULE_TOOLS_NOT_WIRED = (
     "Module tools not wired: the platform could not build this module's read tools for the run "
     "(a platform-side defect, not the checker's allow-list). Report every check as not run for this reason."
 )
-
-
-async def module_reader_user_id(db: AsyncSession, user_id: str | None) -> str | None:
-    """Whom the module reads act as: the run's user, else the platform service account.
-
-    A Platform Health cycle starts its run with nobody triggering it (``cycles.start_cycle``),
-    so a company-managed checker can run with no user; a platform-managed module
-    integration then has nobody to sign its JWT for and builds no tool. The reads fall
-    back to the service account (``ADMIN_EMAIL``), the identity background work signs with.
-    """
-    if user_id and user_id != "anonymous":
-        return user_id
-    from app.llm.identity import service_account_id
-
-    account = await service_account_id(db)
-    return str(account) if account is not None else None
