@@ -296,6 +296,62 @@ async def test_an_aikido_closed_issue_closes_its_members_and_records_nothing(mon
     assert closed == [("aikido", "42")]
 
 
+def _dependabot(action: str, **alert) -> dict:
+    base = {
+        "number": 12,
+        "html_url": "https://github.com/filigran/portal/security/dependabot/12",
+        "dependency": {"package": {"ecosystem": "npm", "name": "lodash"}, "manifest_path": "package-lock.json"},
+        "security_advisory": {"ghsa_id": "GHSA-x", "cve_id": "CVE-2021-23337", "severity": "high"},
+        "security_vulnerability": {
+            "severity": "high",
+            "vulnerable_version_range": "< 4.17.21",
+            "first_patched_version": {"identifier": "4.17.21"},
+        },
+    }
+    base.update(alert)
+    return {"action": action, "alert": base, "repository": {"id": 991, "full_name": "filigran/portal"}}
+
+
+def test_a_dependabot_alert_is_a_path_3_signal_on_its_repository():
+    """#1331: the repository and its identity key go to evidence.assets, the fix to the case."""
+    row, fields = listeners.match("github", "dependabot_alert.created", _dependabot("created"))
+    assert (row.trigger_path, row.lens, row.subject_kind) == ("code_flaw", "inside", "code")
+    assert (fields["external_id"], fields["ref"]) == ("991:12", "lodash")
+    evidence = fields["evidence"]
+    assert evidence["assets"] == ["filigran/portal", "991", "github.com:repository:991"]
+    assert evidence["fixed_version"] == "4.17.21" and evidence["repository"] == "filigran/portal"
+    assert evidence["cve_id"] == "CVE-2021-23337" and evidence["vulnerable_range"] == "< 4.17.21"
+    reopened = listeners.match("github", "dependabot_alert.reopened", _dependabot("reopened"))
+    assert reopened[1]["external_id"] == "991:12"
+
+
+def test_other_github_events_and_an_alert_without_its_repository_are_nothing():
+    assert listeners.match("github", "issues.opened", _dependabot("opened")) is None
+    assert listeners.match("github", "dependabot_alert.fixed", _dependabot("fixed")) is None
+    orphan = _dependabot("created")
+    orphan.pop("repository")
+    assert listeners.match("github", "dependabot_alert.created", orphan) is None
+
+
+async def test_a_fixed_or_dismissed_dependabot_alert_closes_its_members(monkeypatch):
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    closed: list = []
+
+    async def _close(provider, external_id):
+        closed.append((provider, external_id))
+        return 1
+
+    monkeypatch.setattr(listeners, "_close_at_source", _close)
+    for action in ("fixed", "dismissed"):
+        assert (
+            await listeners.note_event("github", f"dependabot_alert.{action}", _dependabot(action), verified=True)
+            is False
+        )
+    assert closed == [("github", "991:12"), ("github", "991:12")]
+    assert await listeners.note_event("github", "dependabot_alert.fixed", _dependabot("fixed"), verified=False) is False
+    assert len(closed) == 2
+
+
 async def test_note_event_records_through_the_store_as_system(monkeypatch):
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
     seen: dict = {}

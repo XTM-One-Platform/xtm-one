@@ -20689,6 +20689,7 @@
   "An intrusion set, threat actor, campaign or malware is created or updated": "Un intrusion set, un acteur, une campagne ou un malware est créé ou mis à jour",
   "The PIR playbook flags a threat in one of your PIRs": "Le playbook PIR signale une menace dans l'un de vos PIR",
   "A new issue, an SLA breach, a failed CI gate or an image scan with issues": "Un nouveau problème, un SLA dépassé, une barrière CI en échec ou un scan d'image avec problèmes",
+  "A Dependabot alert is opened or reopened on one of your repositories": "Une alerte Dependabot est ouverte ou rouverte sur l'un de vos dépôts",
   "A finished simulation reached a high or very high criticality asset": "Une simulation terminée a atteint un actif de criticité haute ou très haute",
   "A reachability assertion failed: a target that should not answer answers": "Une assertion d'accessibilité a échoué : une cible qui ne devrait pas répondre répond",
   "The attack-surface pass sees a declared asset answer on a new port": "La passe de surface d'attaque voit un actif déclaré répondre sur un nouveau port",

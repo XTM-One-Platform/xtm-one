@@ -253,6 +253,23 @@ def test_a_dependency_flaw_with_a_fixed_version_is_an_upgrade_to_that_version():
     assert leak.kind == "rotate_credential"
 
 
+def test_a_dependabot_alert_is_an_upgrade_in_its_repository():
+    """#1331: the same package and fix in two repositories are two cases, each named after its repository."""
+    evidence = {"affected_package": "lodash", "fixed_version": "4.17.21", "repository": "Filigran/Portal"}
+    fix = loop.fix_of(_signal(trigger_path="code_flaw", subject_kind="code", subject_ref="lodash", evidence=evidence))
+    assert fix.kind == "upgrade" and fix.key == "upgrade:filigran/portal/lodash@4.17.21"
+    assert fix.title == "Upgrade lodash to 4.17.21 in Filigran/Portal" and fix.fixed_version == "4.17.21"
+    other = loop.fix_of(
+        _signal(
+            trigger_path="code_flaw",
+            subject_kind="code",
+            subject_ref="lodash",
+            evidence={**evidence, "repository": "Filigran/Docs"},
+        )
+    )
+    assert other.key != fix.key
+
+
 class CloseSession(FakeSession):
     """The reads of ``close_signal_members`` in order: the signals, then per signal its member and what stays open."""
 

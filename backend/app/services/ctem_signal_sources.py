@@ -87,6 +87,7 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     ),
     "code_flaw": (
         Source("aikido", "listener", "A new issue, an SLA breach, a failed CI gate or an image scan with issues"),
+        Source("github", "listener", "A Dependabot alert is opened or reopened on one of your repositories"),
     ),
     "proven_exploitable": (
         Source("openaev", "listener", "A finished simulation reached a high or very high criticality asset"),
