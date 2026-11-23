@@ -595,10 +595,12 @@ const SYNCS = [...KEY, "syncs"] as const;
 /** Where a list of syncs is shown (#1134 S2): the business profile, the inventory, or every sync (""). */
 export type OrganizationSyncScope = "profile" | "inventory" | "";
 
-export function useOrganizationSyncs(scope: OrganizationSyncScope = "") {
+/** `enabled` false for a reader: the syncs API is for administrators only (403 otherwise, UX r1 B1 on #1540). */
+export function useOrganizationSyncs(scope: OrganizationSyncScope = "", enabled = true) {
   return useQuery<OrganizationSync[]>({
     queryKey: [...SYNCS, scope],
     queryFn: () => api.get(scope ? `/organization-context/syncs?scope=${scope}` : "/organization-context/syncs"),
+    enabled,
     // The list says its own failure with a retry; it never takes the page down.
     throwOnError: false,
     meta: { suppressGlobalErrorToast: true },

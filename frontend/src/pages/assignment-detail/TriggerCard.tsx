@@ -64,6 +64,17 @@ import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
 import { useAuth } from "@/hooks/useAuth";
 import { PlatformEventFields, PlatformEventSummary } from "./PlatformEventFields";
+import { CtemSignalSummary, CtemSignalTriggerFields } from "./CtemSignalTriggerFields";
+import {
+  CTEM_SIGNAL_TILE,
+  ctemSignalConfig,
+  ctemSignalDraft,
+  isCtemSignalTrigger,
+  triggerTile,
+  triggerTiles,
+  type CtemSignalDraft,
+} from "@/lib/ctem-signal-trigger";
+import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { ProvisioningSummary } from "./ProvisioningSummary";
 import { platformDeadlineSavable, platformEventConfig, platformEventDraft, type PlatformEventDraft } from "@/lib/platform-events";
 import { WORK_ITEM_MAX_ITEMS_IN_PARALLEL, inboxSlots, parseItemsInParallel } from "./inbox-slots";
@@ -127,6 +138,10 @@ export function TriggerCard({
   const [workItemSlots, setWorkItemSlots] = useState("1");
   // platform_event config
   const [platformDraft, setPlatformDraft] = useState<PlatformEventDraft>(() => platformEventDraft(undefined));
+  // The CTEM signal tile (#1409): a platform_event trigger on the ctem_signal.* events, edited on its own fields.
+  const isXtmOne = useIsXtmOne();
+  const [ctemTile, setCtemTile] = useState(false);
+  const [ctemDraft, setCtemDraft] = useState<CtemSignalDraft>(() => ctemSignalDraft("manual", undefined));
 
   // Derived data
   const agentIntegrations = allIntegrations?.filter((i) =>
@@ -137,13 +152,15 @@ export function TriggerCard({
   );
   const eventDataLoading = !agent || !allIntegrations || !catalog;
 
-  const TriggerIcon = TRIGGER_ICONS[assignment.trigger_type] ?? Zap;
+  // A CTEM signal trigger reads as its own tile (#1409), a platform_event trigger underneath.
+  const storedTile = triggerTile(assignment.trigger_type, assignment.trigger_config);
+  const TriggerIcon = TRIGGER_ICONS[storedTile] ?? Zap;
   const cronExpr = assignment.trigger_type === "schedule" ? assignment.trigger_config.cron : null;
 
   // Validation: prevent saving incomplete trigger configuration
   const canSave =
     (triggerType !== "integration_event" || (!!eventProvider && !!eventType && !!eventIntegrationId))
-    && (triggerType !== "platform_event" || (platformDraft.events.length > 0 && platformDeadlineSavable(platformDraft.expiresAt)));
+    && (triggerType !== "platform_event" || ctemTile || (platformDraft.events.length > 0 && platformDeadlineSavable(platformDraft.expiresAt)));
 
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -199,6 +216,8 @@ export function TriggerCard({
     setWorkItemPriorityMin(cfg.priority_min ?? "");
     setWorkItemSlots(String(inboxSlots(assignment.trigger_type === "work_item" ? cfg : undefined)));
     setPlatformDraft(platformEventDraft(assignment.trigger_type === "platform_event" ? cfg : undefined));
+    setCtemTile(isCtemSignalTrigger(assignment.trigger_type, cfg));
+    setCtemDraft(ctemSignalDraft(assignment.trigger_type, cfg));
     setEditing(true);
   };
 
@@ -265,7 +284,7 @@ export function TriggerCard({
         triggerConfig.express_lane = assignment.trigger_config.express_lane;
       }
     }
-    if (triggerType === "platform_event") Object.assign(triggerConfig, platformEventConfig(platformDraft));
+    if (triggerType === "platform_event") Object.assign(triggerConfig, ctemTile ? ctemSignalConfig(ctemDraft) : platformEventConfig(platformDraft));
     // The queue keys are set through the API or the agent builder and
     // this editor does not show them: a save keeps them while the trigger keeps
     // its type, and the ordering key - a path into the payload - its provider.
@@ -372,19 +391,24 @@ export function TriggerCard({
             <div className="space-y-3">
               <p className="content-caption font-medium text-default-secondary uppercase tracking-wider">{t_i18n("Trigger type")}</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {TRIGGER_TYPES.map((t) => {
+                {triggerTiles(TRIGGER_TYPES, isXtmOne).map((t) => {
                   const Icon = TRIGGER_ICONS[t] ?? Zap;
                   const disabled = t === "integration_event" && !eventDataLoading && eventCapableIntegrations.length === 0;
+                  const active = t === CTEM_SIGNAL_TILE ? ctemTile : triggerType === t && !ctemTile;
                   return (
                     <Tip key={t} content={disabled ? t_i18n("No agent integrations support events") : undefined}>
                       <button
                         className={cn(
                           "flex items-center gap-2 rounded-sm border px-3 py-2 content-compact transition-colors text-left",
                           disabled && "opacity-40 cursor-not-allowed",
-                          triggerType === t ? "border-accent/40 bg-accent/5 text-accent" : "border-elevation-subtle-soft text-default-secondary hover:border-elevation-subtle",
+                          active ? "border-accent/40 bg-accent/5 text-accent" : "border-elevation-subtle-soft text-default-secondary hover:border-elevation-subtle",
                         )}
+                        aria-pressed={active}
                         disabled={disabled}
-                        onClick={() => setTriggerType(t)}
+                        onClick={() => {
+                          setCtemTile(t === CTEM_SIGNAL_TILE);
+                          setTriggerType((t === CTEM_SIGNAL_TILE ? "platform_event" : t) as TriggerType);
+                        }}
                       >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
                         {t_i18n(TRIGGER_LABELS[t])}
@@ -467,9 +491,10 @@ export function TriggerCard({
                 </div>
               )}
 
-              {triggerType === "platform_event" && (
+              {triggerType === "platform_event" && !ctemTile && (
                 <PlatformEventFields draft={platformDraft} onChange={setPlatformDraft} isAdmin={isAdmin} />
               )}
+              {triggerType === "platform_event" && ctemTile && <CtemSignalTriggerFields draft={ctemDraft} onChange={setCtemDraft} />}
 
               {triggerType === "integration_event" && (
                 <div className="space-y-4">
@@ -766,7 +791,7 @@ export function TriggerCard({
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Col 1: Trigger type */}
-              <ConfigCard icon={TriggerIcon} iconColor="text-accent" label={t_i18n("Trigger type")} value={t_i18n(TRIGGER_LABELS[assignment.trigger_type] ?? assignment.trigger_type)} />
+              <ConfigCard icon={TriggerIcon} iconColor="text-accent" label={t_i18n("Trigger type")} value={t_i18n(TRIGGER_LABELS[storedTile] ?? assignment.trigger_type)} />
 
               {/* Col 2: Schedule / Webhook / Integration */}
               {cronExpr && <ConfigCard icon={Clock} iconColor="text-feedback-info-primary" label={t_i18n("Schedule")} value={describeCron(cronExpr)} />}
@@ -1044,7 +1069,11 @@ export function TriggerCard({
             )}
 
             {/* Platform event */}
-            {assignment.trigger_type === "platform_event" && <PlatformEventSummary config={assignment.trigger_config} />}
+            {storedTile === CTEM_SIGNAL_TILE ? (
+              <CtemSignalSummary config={assignment.trigger_config} />
+            ) : (
+              assignment.trigger_type === "platform_event" && <PlatformEventSummary config={assignment.trigger_config} />
+            )}
 
             {/* Webhook URLs */}
             {assignment.trigger_type === "webhook" && assignment.webhook_url && (

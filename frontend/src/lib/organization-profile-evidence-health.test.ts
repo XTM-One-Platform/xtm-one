@@ -37,6 +37,6 @@ describe("evidenceHealthRuns", () => {
   });
 
   it("opens its card on CTEM > Inventory, with the outside lens card", () => {
-    expect(profileFieldHref("evidence_health")).toBe("/ctem/inventory?card=evidence_health");
+    expect(profileFieldHref("evidence_health")).toBe("/ctem/inventory/exposure?card=evidence_health");
   });
 });
