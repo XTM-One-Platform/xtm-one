@@ -626,7 +626,6 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                     "purl": "",
                     "install_date": None,
                     "bundled_in": "",
-                    "type": "",
                     "depends_on": [],
                     "first_seen": None,
                     "last_seen": None,
@@ -641,9 +640,6 @@ def merge_software(records: Sequence[SourceRecord]) -> list[dict[str, Any]]:
                 entry["install_date"] = raw["install_date"]
             if not entry["bundled_in"] and raw.get("bundled_in"):
                 entry["bundled_in"] = str(raw["bundled_in"]).strip()
-            # A declared type (an SBOM's component type) other than the default wins over none.
-            if raw.get("type") and entry["type"] in ("", "application"):
-                entry["type"] = str(raw["type"]).strip()
             for target in raw.get("depends_on") or ():
                 label = str(target or "").strip()
                 if label and label not in entry["depends_on"]:
@@ -886,7 +882,6 @@ SECTION_IDENTITY: dict[
     "asset_groups": (("external_reference", "name"), _group_ids, frozenset()),
     "tech_stack": (("cpe", "product", "name"), _tech_ids, frozenset()),
     "crown_jewels": (("platform_id", "name"), _platform_ids("opencrq_asset_id"), frozenset()),
-    "ai_systems": (("platform_id", "name"), _platform_ids("openaev_asset_id"), frozenset()),
     "pirs": (("platform_id", "name"), _platform_ids("id"), frozenset()),
     "tracked_organizations": (("name",), _name_ids, frozenset()),
 }

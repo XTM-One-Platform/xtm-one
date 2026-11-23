@@ -2,7 +2,7 @@
 
 /**
  * The canonical asset store of the organization (#1178, dev-docs/asset-model.md section 9): one asset per real
- * thing across sources, its software (one entity per vendor and product, #1495), the merge and split decisions and the SBOMs.
+ * thing across sources, its software, the tech stack built from it, the merge and split decisions and the SBOMs.
  * Read by the CTEM > Inventory page; every list is paginated on the server (`limit` at most 200).
  */
 
@@ -35,8 +35,6 @@ export interface CanonicalAssetSummary {
 }
 
 export interface AssetSoftware {
-  /** The software this row installs (its page), absent before the first rebuild links it (#1495). */
-  software_id?: string | null;
   vendor: string;
   product: string;
   /** `unknown` when no source knows it, never empty. */
@@ -74,80 +72,24 @@ export interface Page<T> {
   limit: number;
 }
 
-/** The types of a software (organization_software_store.SOFTWARE_TYPES). */
-export type SoftwareType = "application" | "operating_system" | "library" | "firmware" | "container_image" | "saas";
+interface TechStackVersion {
+  version: string;
+  asset_count: number;
+}
 
-/** How sure its CPE is (organization_asset_identity.CPE_CONFIDENCES). */
-export type CpeState = "override" | "reported" | "high" | "medium" | "low" | "unresolved";
-
-/** One software of the organization (#1495): one per vendor and product across every asset and SBOM. */
-export interface SoftwareSummary {
-  id: string;
-  name: string;
+export interface TechStackItem {
   vendor: string;
   product: string;
-  type: SoftwareType;
-  description: string;
-  cpe: string;
-  cpe_state: CpeState;
-  cpe_override: string;
-  purl: string;
-  /** `synced`: a source reports it, read-only; `manual`: typed by an administrator. */
-  origin: "synced" | "manual";
-  editable: boolean;
-  sources: string[];
-  version_count: number;
-  asset_count: number;
-  has_unknown_version: boolean;
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-export interface SoftwareVersion {
-  id: string;
-  /** `unknown` when no source knows it, never empty. */
-  version: string;
-  cpe: string;
-  purl: string;
-  eol: string | null;
-  asset_count: number;
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-export interface SoftwareInstallation {
-  asset_id: string;
-  asset_name: string;
-  version_id: string | null;
-  version: string;
-  install_date: string | null;
-  bundled_in: string | null;
-  sources: string[];
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-/** One dependency edge: a version of this software and the version of another it depends on (or that uses it). */
-export interface SoftwareEdge {
-  /** `depends_on` or `bundled_in`. */
+  /** installed, saas or cloud_service. */
   kind: string;
-  scope: string;
-  from_version_id: string;
-  version_id: string;
-  version: string;
-  software_id: string;
-  software_name: string;
+  versions: TechStackVersion[];
+  asset_count: number;
+  sources: string[];
+  manual: boolean;
+  cpe?: string;
+  cpe_source?: string;
+  cpe_confidence?: string;
 }
-
-export interface SoftwareDetail extends SoftwareSummary {
-  versions: SoftwareVersion[];
-  installations: Page<SoftwareInstallation>;
-  depends_on: SoftwareEdge[];
-  used_by: SoftwareEdge[];
-}
-
-/** The server filters of the software list. */
-export type SoftwareFilterKey = "type" | "origin" | "cpe_state";
 
 const KEY = ["organization-assets"] as const;
 
@@ -163,9 +105,16 @@ function pageQuery(params: Record<string, string | number | readonly string[] | 
 }
 
 /** The asset fields the list filters on, and the source of a record (`GET /assets/facets`). */
-export type AssetFilterKey = "category" | "criticality" | "internet_facing" | "source";
+export type AssetFilterKey = "category" | "subcategory" | "criticality" | "internet_facing" | "source";
 
-export type AssetFacets = Record<AssetFilterKey, string[]>;
+/** One facet value with the assets it holds; a subcategory names its category. */
+export interface AssetFacetValue {
+  value: string;
+  count: number;
+  category?: string;
+}
+
+export type AssetFacets = Record<AssetFilterKey, AssetFacetValue[]>;
 
 /** A page of canonical assets, filtered on a name substring and on the filter values picked. */
 export function useCanonicalAssets(query: {
@@ -182,11 +131,16 @@ export function useCanonicalAssets(query: {
   });
 }
 
-/** The values each asset filter offers, read from the store. */
-export function useAssetFacets() {
+/**
+ * The values each asset filter offers with their counts, read from the store: a facet's counts apply the search and
+ * the other facets picked (#1501), so the sidebar says how many assets a value adds.
+ */
+export function useAssetFacets(query: { q?: string; filters?: Partial<Record<AssetFilterKey, readonly string[]>> } = {}) {
+  const qs = pageQuery({ q: query.q?.trim(), ...query.filters });
   return useQuery<AssetFacets>({
-    queryKey: [...KEY, "facets"],
-    queryFn: () => api.get("/organization-context/assets/facets"),
+    queryKey: [...KEY, "facets", qs],
+    queryFn: () => api.get(`/organization-context/assets/facets${qs ? `?${qs}` : ""}`),
+    placeholderData: keepPreviousData,
     throwOnError: false,
   });
 }
@@ -458,35 +412,12 @@ function outcome(ids: readonly string[], settled: readonly PromiseSettledResult<
   return { written: settled.length - refused.length, refused };
 }
 
-/** A page of the organization's software (#1495), filtered on a name and on one value per filter. */
-export function useSoftwareList(query: {
-  q?: string;
-  offset: number;
-  limit: number;
-  filters?: Partial<Record<SoftwareFilterKey, readonly string[]>>;
-}) {
-  const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit, ...query.filters });
-  return useQuery<Page<SoftwareSummary>>({
-    queryKey: [...KEY, "software", qs],
-    queryFn: () => api.get(`/organization-context/software?${qs}`),
+/** The tech stack built from the assets' software: per product its kind, versions with asset counts, CPE. */
+export function useTechStackInventory(query: { q?: string; offset: number; limit: number }) {
+  const qs = pageQuery({ q: query.q?.trim(), offset: query.offset, limit: query.limit });
+  return useQuery<Page<TechStackItem>>({
+    queryKey: [...KEY, "tech-stack", qs],
+    queryFn: () => api.get(`/organization-context/inventory/tech-stack?${qs}`),
     placeholderData: keepPreviousData,
-  });
-}
-
-/** One software with its versions, a page of its installations and its dependencies both ways. */
-export function useSoftware(id: string | undefined, installations: { offset: number; limit: number; q?: string }) {
-  const qs = pageQuery({
-    installations_offset: installations.offset,
-    installations_limit: installations.limit,
-    installations_q: installations.q?.trim(),
-  });
-  return useQuery<SoftwareDetail>({
-    queryKey: [...KEY, "software-detail", id, qs],
-    queryFn: () => api.get(`/organization-context/software/${id}?${qs}`),
-    enabled: Boolean(id),
-    placeholderData: keepPreviousData,
-    // A software a rebuild removed answers 404: the page draws its not-found state, never the error boundary.
-    retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
-    throwOnError: (error) => !isAssetNotFound(error),
   });
 }

@@ -533,6 +533,7 @@ async def list_canonical_assets(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     category: list[str] = Query(default_factory=list, max_length=50),
+    subcategory: list[str] = Query(default_factory=list, max_length=50),
     criticality: list[str] = Query(default_factory=list, max_length=50),
     internet_facing: list[str] = Query(default_factory=list, max_length=50),
     source: list[str] = Query(default_factory=list, max_length=50),
@@ -548,23 +549,42 @@ async def list_canonical_assets(
     org = await _built_store(db)
     if org is None:
         return CanonicalAssetsPage(items=[], total=0, offset=offset, limit=limit)
-    filters = {"category": category, "criticality": criticality, "internet_facing": internet_facing, "source": source}
+    filters = {
+        "category": category,
+        "subcategory": subcategory,
+        "criticality": criticality,
+        "internet_facing": internet_facing,
+        "source": source,
+    }
     page = await list_assets(db, org, q=q, offset=offset, limit=limit, filters=filters)
     return CanonicalAssetsPage(**vars(page))
 
 
 @router.get("/assets/facets")
 async def read_asset_facets(
+    q: str = Query("", max_length=200),
+    category: list[str] = Query(default_factory=list, max_length=50),
+    subcategory: list[str] = Query(default_factory=list, max_length=50),
+    criticality: list[str] = Query(default_factory=list, max_length=50),
+    internet_facing: list[str] = Query(default_factory=list, max_length=50),
+    source: list[str] = Query(default_factory=list, max_length=50),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-) -> dict[str, list[str]]:
-    """The values the asset list filters on: category, criticality, internet facing and source."""
+) -> dict[str, list[dict[str, Any]]]:
+    """Each value the asset list filters on with its asset count, given the search and the other filters picked."""
     from app.services.organization_asset_store import FILTER_FIELDS, asset_facets
 
     org = await _built_store(db)
     if org is None:
         return {name: [] for name in (*FILTER_FIELDS, "source")}
-    return await asset_facets(db, org)
+    filters = {
+        "category": category,
+        "subcategory": subcategory,
+        "criticality": criticality,
+        "internet_facing": internet_facing,
+        "source": source,
+    }
+    return await asset_facets(db, org, q=q, filters=filters)
 
 
 @router.get("/assets/identity")
@@ -692,12 +712,11 @@ async def list_tech_stack_inventory(
 @router.get("/software", response_model=CanonicalAssetsPage)
 async def list_organization_software(
     q: str = Query("", max_length=200),
-    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
-    type: list[str] = Query(default_factory=list, max_length=10),
+    type: str = Query("", max_length=30),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: list[str] = Query(default_factory=list, max_length=10),
-    cpe_state: list[str] = Query(default_factory=list, max_length=10),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
     unknown_version: bool | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -754,12 +773,11 @@ async def list_assets_of_software_version(
 @router.get("/software/export.csv")
 async def export_organization_software(
     q: str = Query("", max_length=200),
-    # Several values of one filter answer any of them (the Software tab's multi-select filters, #1495 slice 2).
-    type: list[str] = Query(default_factory=list, max_length=10),
+    type: str = Query("", max_length=30),
     vendor: str = Query("", max_length=200),
     source: str = Query("", max_length=80),
-    origin: list[str] = Query(default_factory=list, max_length=10),
-    cpe_state: list[str] = Query(default_factory=list, max_length=10),
+    origin: str = Query("", max_length=10),
+    cpe_state: str = Query("", max_length=20),
     unknown_version: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
@@ -1010,11 +1028,10 @@ async def get_organization_software(
     software_id: uuid.UUID,
     installations_offset: int = Query(0, ge=0),
     installations_limit: int = Query(100, ge=1, le=200),
-    installations_q: str = Query("", max_length=200),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One software: its versions with asset counts, its installations (searchable by asset name), what it depends on and what uses it."""
+    """One software: its versions with asset counts, its installations, what it depends on and what uses it."""
     from app.services.organization_software_store import get_software
 
     org = await _built_store(db)
@@ -1025,7 +1042,6 @@ async def get_organization_software(
             software_id,
             installations_offset=installations_offset,
             installations_limit=installations_limit,
-            installations_q=installations_q,
         )
         if org is not None
         else None

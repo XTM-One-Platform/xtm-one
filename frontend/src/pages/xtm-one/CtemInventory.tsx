@@ -2,16 +2,16 @@
 
 /**
  * CTEM > Inventory `/ctem/inventory/:tab?` (#1178, Sam 22 Nov 2026): the organization's assets, read from the
- * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and their
- * software, one entity per vendor and product (#1495). Every list is paginated on the server, so 10,000 assets read
- * as fast as ten.
+ * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and the
+ * tech stack built from their software. Every list is paginated on the server, so 10,000 assets read as fast as
+ * ten.
  */
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
@@ -22,8 +22,10 @@ import {
   useCanonicalAssets,
   useDeleteAssetRecords,
   useRecordAssetDecision,
+  useTechStackInventory,
   type AssetFilterKey,
   type CanonicalAssetSummary,
+  type TechStackItem,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,26 +35,29 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
-import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
+import { AssetFacetSidebar, AssetFacetsButton, FACETS_BESIDE_QUERY, SIDEBAR_FACETS } from "./ctem/AssetFacetSidebar";
+import { useMediaQuery } from "@/hooks/useCompactToolbar";
+import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { deletableRows, recordRefs, type RowRef } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { SoftwareTab } from "./ctem/SoftwareTab";
-import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
-import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, RETIRED_TABS, type InventoryTab } from "./ctem/inventory-tabs";
+import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
+import { EXPOSURE_TAB_CARDS, INVENTORY_TABS, type InventoryTab } from "./ctem/inventory-tabs";
+
+/**
+ * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
+ * Assets tab filtered on that category, so a bookmark or a fleet link keeps working.
+ */
+const RETIRED_AI_SYSTEMS_TAB = "ai-systems";
 
 const ASSETS_URL_KEY = "a_";
+const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?${ASSETS_URL_KEY}f_category=ai_target`;
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
+const TECH_URL_KEY = "t_";
+const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
-/** The server filters of the asset list, in the order the toolbar shows them. */
-const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
-  { key: "category", label: "Category" },
-  { key: "criticality", label: "Criticality" },
-  { key: "internet_facing", label: "Internet facing" },
-  { key: "source", label: "Source" },
-];
 
 /**
  * The query parameter of the former Asset matching view (UX round 2 on #1254, B7). Asset matching now sits under the syncs
@@ -72,14 +77,17 @@ function AssetsTab({ add }: { add: AddRequest }) {
     sort: NAME_SORT,
     pageSize: storedPageSize(ASSETS_STORAGE_KEY, PAGE_SIZE),
   });
-  const picked = Object.fromEntries(ASSET_FILTERS.map((f) => [f.key, table.filters[f.key] ?? []]));
+  // The sidebar's facets (#1501): OR within one, AND across them; the counts follow the search and the other picks.
+  const picked = Object.fromEntries(SIDEBAR_FACETS.map((key) => [key, table.filters[key] ?? []])) as Record<AssetFilterKey, string[]>;
   const { data, isLoading, isError, refetch } = useCanonicalAssets({
     q: table.search,
     offset: table.page * table.pageSize,
     limit: table.pageSize,
     filters: picked,
   });
-  const facets = useAssetFacets();
+  const facets = useAssetFacets({ q: table.search, filters: picked });
+  // Beside the table only where both fit (UX r4 B1); below, the same facets behind a Filters button of the toolbar.
+  const facetsBeside = useMediaQuery(FACETS_BESIDE_QUERY, true);
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
@@ -108,15 +116,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
     );
   };
   const syncedReason = t_i18n("Synced from its source: exclude it from the sync to remove it.");
-
-  const filters: DataTableFilter<CanonicalAssetSummary>[] = ASSET_FILTERS.map(({ key, label }) => ({
-    key,
-    label,
-    options: (facets.data?.[key] ?? []).map((value) => ({
-      value,
-      label: key === "source" ? sourceLabel(t_i18n, value) : assetFieldLabel(t_i18n, key, value),
-    })),
-  }));
 
   const rows = data?.items ?? [];
   const mergeRecords = rows
@@ -161,7 +160,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
     {
       key: "criticality",
       header: "Criticality",
-      cell: (a) => assetFieldLabel(t_i18n, "criticality", a.criticality),
+      // One line at every width: the short "Unknown" under the heading, never wrapped (#1501 UX r1 B2).
+      cell: (a) => <span className="whitespace-nowrap">{criticalityShortLabel(t_i18n, a.criticality)}</span>,
       csv: (a) => a.criticality,
       hideable: true,
     },
@@ -224,7 +224,11 @@ function AssetsTab({ add }: { add: AddRequest }) {
 
   return (
     <>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      {facetsBeside && <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} fitBeside />}
+      <div className="min-w-0 flex-1">
       <DataTable<CanonicalAssetSummary>
+        toolbarLead={facetsBeside ? undefined : <AssetFacetsButton facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} />}
         rows={rows}
         columns={columns}
         rowKey={(a) => a.id}
@@ -235,7 +239,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
         defaultSort={NAME_SORT}
         defaultPageSize={PAGE_SIZE}
         searchPlaceholder={t_i18n("Search assets by name")}
-        filters={filters}
         exportName="ctem-inventory-assets"
         isLoading={isLoading && !data}
         isError={isError}
@@ -304,6 +307,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
             : undefined
         }
       />
+      </div>
+      </div>
       <InventoryEntryDialog
         section="assets_exposure"
         mode={dialog ?? (add.open ? { kind: "add" } : null)}
@@ -337,7 +342,100 @@ function AssetsTab({ add }: { add: AddRequest }) {
   );
 }
 
+function TechStackTab() {
+  const { t_i18n, intl } = useFormatter();
+  const [searchParams] = useSearchParams();
+  const table = readTableState(searchParams, TECH_URL_KEY, {
+    sort: { key: "product", direction: "asc" },
+    pageSize: storedPageSize(TECH_STORAGE_KEY, PAGE_SIZE),
+  });
+  const { data, isLoading, isError, refetch } = useTechStackInventory({
+    q: table.search,
+    offset: table.page * table.pageSize,
+    limit: table.pageSize,
+  });
+
+  const versions = (item: TechStackItem) =>
+    item.versions.map((v) => `${v.version} (${formatCount(intl.locale, v.asset_count)})`).join(", ");
+
+  const columns: DataTableColumn<TechStackItem>[] = [
+    {
+      key: "product",
+      header: "Product",
+      cell: (i) => <TruncatedText text={[i.vendor, i.product].filter(Boolean).join(" ")} className="max-w-[18rem] font-medium" />,
+      csv: (i) => [i.vendor, i.product].filter(Boolean).join(" "),
+      // The inventory answers by vendor and product: the one server sort.
+      sortValue: (i) => `${i.vendor} ${i.product}`.toLowerCase(),
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      cell: (i) => assetFieldLabel(t_i18n, "kind", i.kind),
+      csv: (i) => i.kind,
+      hideable: true,
+    },
+    {
+      key: "assets",
+      header: "Assets",
+      align: "right",
+      hint: t_i18n("The number of assets running the product, each counted once whatever its versions."),
+      cell: (i) => formatCount(intl.locale, i.asset_count),
+      csv: (i) => i.asset_count,
+    },
+    {
+      key: "versions",
+      header: "Versions in use",
+      cell: (i) => <TruncatedText text={versions(i)} className="max-w-[18rem]" />,
+      csv: (i) => versions(i),
+      hideable: true,
+    },
+    {
+      key: "cpe",
+      header: "CPE",
+      cell: (i) => <TruncatedText text={i.cpe ?? ""} className="max-w-[16rem] font-mono" />,
+      csv: (i) => i.cpe,
+      hideable: true,
+      hideBelow: "6xl",
+    },
+    {
+      key: "sources",
+      header: "Sources",
+      cell: (i) => <TruncatedText text={i.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[14rem]" />,
+      csv: (i) => i.sources.join(" "),
+      hideable: true,
+    },
+  ];
+
+  return (
+    <DataTable<TechStackItem>
+      rows={data?.items ?? []}
+      columns={columns}
+      rowKey={(i) => `${i.vendor}|${i.product}`}
+      server={{ total: data?.total ?? 0 }}
+      urlKey={TECH_URL_KEY}
+      storageKey={TECH_STORAGE_KEY}
+      defaultSort={{ key: "product", direction: "asc" }}
+      defaultPageSize={PAGE_SIZE}
+      searchPlaceholder={t_i18n("Search vendor or product")}
+      noFilters="The inventory answers a vendor or product search only."
+      exportName="ctem-inventory-tech-stack"
+      isLoading={isLoading && !data}
+      isError={isError}
+      onRetry={() => void refetch()}
+      emptyLabel={t_i18n("No product yet. It fills from the software of your assets and the products you add.")}
+      noResultsLabel={t_i18n("No product matches this search")}
+      rowTestId="ctem-inventory-tech-row"
+    />
+  );
+}
+
 export default function CtemInventory() {
+  const [tab] = useTabParam<InventoryTab>("assets");
+  if ((tab as string) === RETIRED_AI_SYSTEMS_TAB) return <Navigate to={AI_TARGET_ASSETS_HREF} replace />;
+  return <InventoryPage />;
+}
+
+function InventoryPage() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).
@@ -364,7 +462,6 @@ export default function CtemInventory() {
   // syncs table, then Asset matching below it with no click (Sam, 23 Nov 2026: no header button).
   // The sources and syncs are read and written by administrators only (the API answers 403 to a reader): a reader
   // who opens the URL lands on the inventory (UX round 1 on #1476, B2).
-  if (RETIRED_TABS[tab]) return <Navigate to={`${INVENTORY_PATH}/${RETIRED_TABS[tab]}`} replace />;
   if (tab === "sources" && !isAdmin) {
     return authLoading ? null : <Navigate to={INVENTORY_PATH} replace />;
   }
@@ -387,7 +484,7 @@ export default function CtemInventory() {
       {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border). */}
       <ListPageHeader
         title={t_i18n(INVENTORY_LABEL)}
-        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The software tab lists every software the assets run, with its versions and where it is installed.")}
+        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         infoLabel={t_i18n("About the inventory")}
         actions={
           <span className="flex flex-wrap items-center gap-2">
@@ -419,10 +516,8 @@ export default function CtemInventory() {
         <OrganizationSection embed={{ cards: EXPOSURE_TAB_CARDS, readOnly: !isAdmin }} />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
-      ) : tab === "software" ? (
-        <SoftwareTab />
-      ) : tab === "ai-systems" ? (
-        <AiSystemsTab />
+      ) : tab === "tech-stack" ? (
+        <TechStackTab />
       ) : (
         <AssetsTab add={add} />
       )}

@@ -149,11 +149,24 @@ as resolved at sync time.
 
 ## 7. AI systems
 
-`AiSystem` (`name`, `kind`, `owner`, `exposure` internal / partner / public, `openaev_asset_id`) is the inventory of
-AI systems the organization runs. In OpenAEV the same object is an asset of category `ai_target`
-(`llm_model`, `ai_agent`, `mcp_server`, `rag_pipeline`) with its `ai_target_*` fields; `openaev_asset_id` links
-the two. It stays a list of its own in the profile (it carries the AI governance fields), and an AI system that
-is also part of the attack surface is an asset of category `ai_target` too.
+Since #1501 an AI system is an asset of category `ai_target`, as in OpenAEV: subcategory `llm_model`,
+`ai_agent`, `mcp_server` or `rag_pipeline`, with the `ai_target_provider`, `ai_target_endpoint`,
+`ai_target_model` and `ai_target_modality` fields on `AssetEntry`. It lives in `assets_exposure`, merged and
+identified like any asset; there is no `AiSystem` list in the profile any more.
+
+- **Profiles saved before #1501**: their `ai_systems` rows become `ai_target` assets at parse
+  (`OrganizationProfile._ai_systems_into_assets`): kind `agent` -> `ai_agent`, `model_api` -> `llm_model`,
+  `assistant` and `embedded` keep no subcategory and carry the tag `ai_kind:<kind>`; exposure `public` ->
+  internet facing, every exposure kept as the tag `exposure:<value>`; `openaev_asset_id` becomes source
+  `openaev` with that `external_id`, so the OpenAEV record merges instead of duplicating.
+- **Sync with OpenAEV**: the assets import reads `/api/ai_targets/search` beside the endpoints; the outbound
+  assets sync creates and updates XTM One-owned AI target assets through `/api/ai_targets`, deletes only what it
+  created, and never writes a row an OpenAEV inbound sync owns.
+- **Deprecated alias** (one release): `ai_systems` in `get_organization_context`, `upsert_organization_rows`,
+  `run_organization_import` and the syncs reads and writes the assets of category `ai_target`;
+  `OrganizationProfile.ai_systems` is a derived property and `legacy_dump` still emits the list for old readers.
+- **CTEM > Inventory**: no AI systems tab; `/ctem/inventory/ai-systems` opens the Assets tab filtered on
+  category `ai_target`.
 
 ## 8. OpenCTI Systems
 
@@ -415,7 +428,6 @@ Reads (any signed-in user):
 
 - `GET /api/v1/organization-context/software?q=&type=&vendor=&source=&origin=&cpe_state=&unknown_version=&offset=&limit=`:
   one item per software with `version_count`, `asset_count` (distinct assets), `has_unknown_version`, `editable`.
-  `type`, `origin` and `cpe_state` repeat for several values (any of them), as the Software tab's filters send them.
 - `GET /api/v1/organization-context/software/{id}`: the software, its versions with asset counts, its
   installations (paginated), `depends_on` and `used_by` (one level, each edge with its version and kind).
 - `GET /api/v1/organization-context/software/versions/{id}/assets?through_dependencies=`: the assets where a
@@ -443,13 +455,7 @@ Writes (administrators, audited `entity_type organization_context`, `entity_name
 - `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
   attachment (every version when `version` is empty); 404 when the asset holds none.
 
-UI (slice 2): CTEM > Inventory has a Software tab (`/ctem/inventory/software`, the old `tech-stack` tab redirects
-there) listing every software with its type, asset and version counts, CPE or its state, and sources, filtered on
-type, origin and CPE state; each row opens `/ctem/inventory/software/{id}`: the identity and CPE card, versions with
-asset counts (`unknown` named), the assets it is installed on (server paged), depends on and used by. Each row of
-an asset page's Software section carries `software_id` and opens that page.
-
-Next slice: the `tech_stack` profile rows migrated to manual software
+Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
 and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
 (`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
 events for software writes are not raised yet: no subscriber needs them before slice 3.

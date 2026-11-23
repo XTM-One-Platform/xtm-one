@@ -75,51 +75,15 @@ export function assetCategory(asset: { category?: string | null; subcategory?: s
 /** Whether an asset is reachable from the internet, in the column's words. @i18n-keys */
 const INTERNET_FACING_LABELS = { yes: "Yes", no: "No", unknown: "Unknown" } as const;
 
-/** The type of a software (organization_software_store.SOFTWARE_TYPES, #1495). @i18n-keys */
-export const SOFTWARE_TYPE_LABELS = {
-  application: "Application",
-  operating_system: "Operating system",
-  library: "Library",
-  firmware: "Firmware",
-  container_image: "Container image",
-  saas: "SaaS application",
-} as const;
-
-/** How sure a software's CPE is (organization_asset_identity.CPE_CONFIDENCES). @i18n-keys */
-export const CPE_STATE_LABELS = {
-  override: "Set by hand",
-  reported: "Reported by a source",
-  high: "High confidence",
-  medium: "Medium confidence",
-  low: "Low confidence",
-  unresolved: "Not resolved",
-} as const;
-
-/** Who owns a software: a source (read-only) or an administrator. @i18n-keys */
-export const SOFTWARE_ORIGIN_LABELS = { synced: "Synced", manual: "Entered by hand" } as const;
+/** How the tech stack holds a product (`installed`, `saas`, `cloud_service`). @i18n-keys */
+const TECH_KIND_LABELS = { installed: "Installed software", saas: "SaaS application", cloud_service: "Cloud service" } as const;
 
 const FIELD_LABELS: Record<string, Record<string, string>> = {
   criticality: ASSET_CRITICALITY_LABELS,
   internet_facing: INTERNET_FACING_LABELS,
   environment: ENVIRONMENT_LABELS,
-  software_type: SOFTWARE_TYPE_LABELS,
-  cpe_state: CPE_STATE_LABELS,
-  origin: SOFTWARE_ORIGIN_LABELS,
+  kind: TECH_KIND_LABELS,
 };
-
-/** A software's page. */
-export function softwarePath(id: string): string {
-  return `${INVENTORY_PATH}/software/${id}`;
-}
-
-/**
- * The version of the software a page shows that one dependency edge was reported for, or `unknown`. The API puts
- * that version in `from_version_id` in both directions (Depends on and Used by); `version_id` is always the other
- * software's version (UX round 3 on #1549, B1: Used by read `version_id` and always showed Unknown).
- */
-export function edgeOwnVersion(edge: { from_version_id: string }, versionOf: ReadonlyMap<string, string>): string {
-  return versionOf.get(edge.from_version_id) ?? "unknown";
-}
 
 /**
  * The translated words of one stored value of an inventory field (`host`, `very_high`, `yes`, `production`), the
@@ -131,6 +95,54 @@ export function assetFieldLabel(t: Translate, field: string, value: string | nul
   if (field === "category" || field === "subcategory") return taxonomyValueLabel(t, value);
   const label = FIELD_LABELS[field]?.[value.toLowerCase()];
   return label ? t(label) : value;
+}
+
+/**
+ * The criticality of an asset in a column or a facet whose heading already says "Criticality": "Unknown" instead of
+ * "Criticality unknown", so the cell keeps one line at 1080 and reads like the Internet facing column (#1501 UX r1 B2).
+ */
+export function criticalityShortLabel(t: Translate, value: string | null | undefined): string {
+  return (value ?? "").toLowerCase() === "unknown" ? t("Unknown") : assetFieldLabel(t, "criticality", value);
+}
+
+/** OpenAEV's criticality scale, most severe first: the order a reader expects (#1501 UX r1 B3). */
+const CRITICALITY_ORDER: readonly string[] = ["very_high", "high", "medium", "low", "unknown"];
+
+/** Internet facing as a reader asks it: Yes, No, then Unknown last, as Criticality ends (#1501 UX r2 B1). */
+const INTERNET_FACING_ORDER: readonly string[] = ["yes", "no", "unknown"];
+
+/** The enum facets listed on their own scale, never by key. */
+const SCALE_ORDERS: Readonly<Record<string, readonly string[]>> = {
+  criticality: CRITICALITY_ORDER,
+  internet_facing: INTERNET_FACING_ORDER,
+};
+
+/** The category a facet lists last, whatever its translated label: the assets still to classify. */
+const UNCLASSIFIED_CATEGORY = "generic_asset";
+
+/**
+ * Facet values in the order a first-time reader expects, never by key (#1501 UX r1 B3, r2 B1): criticality on its
+ * scale, most severe first; internet facing Yes, No, Unknown; categories by their translated label with "Other
+ * asset" last; a value outside a scale after the known ones. Every other facet keeps the order it came in.
+ */
+export function orderFacetValues<T extends { value: string }>(facet: string, values: readonly T[], label: (value: string) => string): T[] {
+  const out = [...values];
+  const scale = SCALE_ORDERS[facet];
+  if (scale) {
+    const rank = (v: string) => {
+      const i = scale.indexOf(v.toLowerCase());
+      return i === -1 ? scale.length : i;
+    };
+    return out.sort((a, b) => rank(a.value) - rank(b.value));
+  }
+  if (facet === "category") {
+    return out.sort((a, b) => {
+      const lastA = a.value === UNCLASSIFIED_CATEGORY ? 1 : 0;
+      const lastB = b.value === UNCLASSIFIED_CATEGORY ? 1 : 0;
+      return lastA - lastB || label(a.value).localeCompare(label(b.value));
+    });
+  }
+  return out;
 }
 
 /** An asset's category in words: "Category > Subcategory", or the category alone. */
