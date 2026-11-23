@@ -14,6 +14,7 @@ import type { AssetIdentitySettings } from "./organization-profile";
 export const IDENTITY_KEY_LABELS: Readonly<Record<string, string>> = {
   serial: "Serial number",
   cloud_resource_id: "Cloud resource ID",
+  repository: "Repository",
   device_id: "Device ID",
   mac: "MAC address",
   fqdn: "FQDN",
