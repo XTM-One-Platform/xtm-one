@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { FleetSetupStatus, FleetSetupStep } from "@/hooks/api/useFleetApi";
 
 import {
+  SETUP_ENTRY_DISMISS_KEY,
   SETUP_STEPS,
   SETUP_STEP_INTROS,
   SETUP_STEP_TITLES,
   connectedModules,
   countFact,
+  dashboardSetupEntryShown,
   isSettled,
   loopRuns,
   nextStep,
@@ -51,6 +53,47 @@ describe("ctem-loop-setup end (slice 4)", () => {
     expect(showsCtemLoopSetupEntry(false, true, false)).toBe(false);
     expect(showsCtemLoopSetupEntry(true, false, false)).toBe(false);
     expect(showsCtemLoopSetupEntry(true, true, true)).toBe(false);
+  });
+});
+
+describe("the command center's setup entry (Sam, 23 Nov 2026)", () => {
+  const status = (enabled: number) => ({ steps: [step("enable", { automations_enabled: enabled, automations_total: 21 })] }) as unknown as FleetSetupStatus;
+  const facts = (over: Partial<Parameters<typeof dashboardSetupEntryShown>[0]> = {}) => ({
+    canSetUp: true,
+    status: status(0),
+    statusLoading: false,
+    fleetAutomationsOn: [0, 0] as (number | null)[] | null,
+    dismissed: null as string[] | null,
+    ...over,
+  });
+
+  it("shows while no CTEM work runs, to an administrator who has not closed it", () => {
+    expect(dashboardSetupEntryShown(facts())).toBe(true);
+    expect(dashboardSetupEntryShown(facts({ fleetAutomationsOn: [] }))).toBe(true);
+    expect(dashboardSetupEntryShown(facts({ dismissed: ["generic:other"] }))).toBe(true);
+  });
+
+  it("is gone once the CTEM loop fleet has an automation on", () => {
+    expect(dashboardSetupEntryShown(facts({ status: status(1) }))).toBe(false);
+    expect(dashboardSetupEntryShown(facts({ status: status(21) }))).toBe(false);
+  });
+
+  it("is gone once a custom CTEM fleet of the page runs an automation", () => {
+    expect(dashboardSetupEntryShown(facts({ fleetAutomationsOn: [0, 3] }))).toBe(false);
+  });
+
+  it("is gone for good once the person closed it", () => {
+    expect(dashboardSetupEntryShown(facts({ dismissed: [SETUP_ENTRY_DISMISS_KEY] }))).toBe(false);
+  });
+
+  it("is not drawn while the status or a fleet's automations are loading", () => {
+    expect(dashboardSetupEntryShown(facts({ statusLoading: true }))).toBe(false);
+    expect(dashboardSetupEntryShown(facts({ fleetAutomationsOn: null }))).toBe(false);
+    expect(dashboardSetupEntryShown(facts({ fleetAutomationsOn: [0, null] }))).toBe(false);
+  });
+
+  it("is never drawn for a non-administrator", () => {
+    expect(dashboardSetupEntryShown(facts({ canSetUp: false }))).toBe(false);
   });
 });
 

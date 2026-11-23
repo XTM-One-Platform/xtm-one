@@ -77,6 +77,8 @@ const SOURCE_LOGOS: Record<ImportSourceKey, ElementType> = {
   opencrq: logo("opencrq"),
   intune: logo("intune"),
   defender: logo("defender"),
+  github: logo("github"),
+  gitlab: logo("gitlab"),
 };
 
 /** @i18n-keys */
@@ -158,6 +160,11 @@ const FILTER_HELP = {
   os_platform: { helper: "Only machines on these systems. Empty: every system.", info: "The OS platform Defender for Endpoint reports for the machine." },
   health_status: { helper: "Only machines in these states. Empty: every state.", info: "The health of the Defender sensor on the machine." },
   exposure_level: { helper: "Only machines at these levels. Empty: every level.", info: "The exposure level Defender Vulnerability Management gives the machine." },
+  organizations: { helper: "Only repositories of these organizations. Empty: every repository the account reaches.", info: "The GitHub organizations the connected account is a member of." },
+  groups: { helper: "Only projects of these groups, subgroups included. Empty: every project the token is a member of.", info: "The GitLab groups the connected token can read." },
+  include_archived: { helper: "Off: archived repositories are left out.", info: "On: archived repositories are imported too, marked inactive." },
+  include_forks: { helper: "Off: forks are left out.", info: "On: forked repositories are imported too, tagged fork." },
+  skip_dependencies: { helper: "Off: each repository's dependencies are read.", info: "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster." },
 } as const;
 
 /** The filters read from the source as a list of values (a picker, never free text). */
@@ -181,6 +188,8 @@ const PICKED: FilterKey[] = [
   "os_platform",
   "health_status",
   "exposure_level",
+  "organizations",
+  "groups",
 ];
 
 /** @i18n-keys */
@@ -207,6 +216,9 @@ const PROFILE_FIELDS = {
   os_version: "OS version",
   os_build: "OS build",
   last_seen: "Last seen",
+  resource_id: "Resource ID",
+  url: "URL",
+  software: "Software",
 } as const;
 type ProfileField = keyof typeof PROFILE_FIELDS;
 
@@ -222,6 +234,13 @@ const MAPPING_NOTES = {
   osTaxonomy: "From the operating system, and the device model when the source gives it",
   deviceTags: "OS, compliance and ownership, each as a prefixed tag",
   machineTags: "OS, exposure level, health and risk, each as a prefixed tag",
+  codeRepository: "Always Source code, Code repository",
+  repoExposure: "Internet-facing when public, else not internet-facing",
+  repoTags: "Owner, visibility, language, topics and default branch as prefixed tags, plus archived and fork when they apply",
+  repoTagsGitlab: "Owner, visibility, topics and default branch as prefixed tags, plus archived and fork when they apply",
+  repoKey: "The host and the repository's numeric ID, kept across a rename",
+  githubSbom: "The dependency graph SBOM (SPDX): name, version, PURL",
+  gitlabDependencies: "The dependency list (GitLab Ultimate): name, version, PURL from the package manager",
 } as const;
 
 /** One profile field: the source attribute(s) it reads, and the fallback when the source gives none. */
@@ -235,6 +254,8 @@ interface MappingRow {
 const ASSET_FIELDS: ProfileField[] = ["name", "type", "criticality", "exposure", "environment", "owner", "group", "tags", "external_id"];
 /** An endpoint source also fills the identity keys and the operating system of the asset (#1251). */
 const DEVICE_FIELDS: ProfileField[] = [...ASSET_FIELDS, "hostname", "fqdn", "serial", "device_id", "os_family", "os_version", "os_build", "last_seen"];
+/** A code source fills the repository's identity key, its link and its dependencies. */
+const REPOSITORY_FIELDS: ProfileField[] = [...ASSET_FIELDS, "resource_id", "url", "last_seen", "software"];
 
 /** How the source's attributes map to the profile, per section and source; the profile fields absent here are "not provided". */
 const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> = {
@@ -292,6 +313,34 @@ const MAPPINGS: Record<string, { fields: ProfileField[]; rows: MappingRow[] }> =
       { to: "os_version", from: ["version"] },
       { to: "os_build", from: ["osBuild"] },
       { to: "last_seen", from: ["lastSeen"] },
+    ],
+  },
+  "assets:github": {
+    fields: REPOSITORY_FIELDS,
+    rows: [
+      { to: "name", from: ["full_name"] },
+      { to: "type", from: [], note: "codeRepository" },
+      { to: "exposure", from: ["visibility"], note: "repoExposure" },
+      { to: "tags", from: ["owner.login", "visibility", "language", "topics", "default_branch"], note: "repoTags" },
+      { to: "external_id", from: ["id"] },
+      { to: "resource_id", from: ["id"], note: "repoKey" },
+      { to: "url", from: ["html_url"] },
+      { to: "last_seen", from: ["pushed_at"] },
+      { to: "software", from: ["dependency-graph/sbom"], note: "githubSbom" },
+    ],
+  },
+  "assets:gitlab": {
+    fields: REPOSITORY_FIELDS,
+    rows: [
+      { to: "name", from: ["path_with_namespace"] },
+      { to: "type", from: [], note: "codeRepository" },
+      { to: "exposure", from: ["visibility"], note: "repoExposure" },
+      { to: "tags", from: ["namespace.full_path", "visibility", "topics", "default_branch"], note: "repoTagsGitlab" },
+      { to: "external_id", from: ["id"] },
+      { to: "resource_id", from: ["id"], note: "repoKey" },
+      { to: "url", from: ["web_url"] },
+      { to: "last_seen", from: ["last_activity_at"] },
+      { to: "software", from: ["dependencies"], note: "gitlabDependencies" },
     ],
   },
   "asset_groups:openaev": { fields: ["name", "external_id"], rows: [{ to: "name", from: ["asset_group_name"] }, { to: "external_id", from: ["asset_group_id"] }] },
@@ -498,14 +547,14 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     const id = `org-import-filter-${key}`;
     const reason = reasonOf(key);
     // An on/off choice is a switch row of its own, never a control inside a labelled field.
-    if (key === "include_owner")
+    if (key === "include_owner" || key === "include_archived" || key === "include_forks" || key === "skip_dependencies")
       return (
         <SettingsSwitchField
           key={key}
           id={id}
-          label={t_i18n(FILTER_LABELS.include_owner)}
-          helper={t_i18n(FILTER_HELP.include_owner.helper)}
-          info={t_i18n(FILTER_HELP.include_owner.info)}
+          label={t_i18n(FILTER_LABELS[key])}
+          helper={t_i18n(FILTER_HELP[key].helper)}
+          info={t_i18n(FILTER_HELP[key].info)}
           checked={filters[key] === "true"}
           onCheckedChange={(checked) => setFilter(key, checked ? "true" : "")}
         />

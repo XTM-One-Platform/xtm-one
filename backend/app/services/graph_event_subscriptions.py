@@ -671,6 +671,11 @@ async def delivery_mode(redis: Redis, assignment: Any) -> dict:
         notified = _decoded(await redis.get(f"{NOTIFIED_KEY_PREFIX}{assignment_id}"))
         if notified:
             info["last_notification_at"] = notified
+        if info.get("mode") == "poll":
+            # Why the poller read nothing on its last pass (#1378).
+            skipped = _decoded(await redis.get(f"event_poll_skip:{assignment_id}"))
+            if skipped:
+                info["poll_skipped"] = skipped
     except Exception as exc:
         logger.debug("Could not read the delivery times of assignment %s: %r", assignment_id, exc)
     return info

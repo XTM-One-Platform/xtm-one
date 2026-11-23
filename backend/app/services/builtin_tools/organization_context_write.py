@@ -609,9 +609,8 @@ def build_organization_context_write_tools(
         ToolDefinition(
             name=ORGANIZATION_IMPORT_TOOL,
             description=(
-                "Run the Settings > Organization import of one section from a connected platform (hand rows "
-                "kept, the source's rows updated). Preview first: new, updated, skipped, source count."
-                + SHARED_CONTEXT_CLAUSE
+                "Run the Settings > Organization import of one section from a connected platform (hand rows kept). "
+                "Preview first: new, updated, skipped, source count." + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
                 "type": "object",
@@ -634,7 +633,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_LIST_SYNCS_TOOL,
             description=(
                 "The scheduled syncs of Settings > Organization > Syncs: section, source, filters, schedule, "
-                "enabled, paused reason, next and last run with its counts. Read it before creating one."
+                "enabled, paused reason, next and last run with its counts."
             ),
             input_schema={"type": "object", "properties": {}},
             source=_SOURCE,
@@ -644,7 +643,7 @@ def build_organization_context_write_tools(
             name=ORGANIZATION_CREATE_SYNC_TOOL,
             description=(
                 "Keep one section in sync with a platform on a schedule (the import's rules: hand rows kept), or "
-                "section all to run every section sync. Runs with your administrator's token. Preview the import "
+                "section all to run every section sync. Runs with your admin's token. Preview the import "
                 "with run_organization_import first." + SHARED_CONTEXT_CLAUSE
             ),
             input_schema={
