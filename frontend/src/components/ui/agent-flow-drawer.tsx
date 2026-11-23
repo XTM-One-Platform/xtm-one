@@ -47,6 +47,7 @@ import {
   handoverTypeConfig,
 } from "@/lib/constants";
 import { humanizeCron } from "@/lib/cron";
+import { triggerTile } from "@/lib/ctem-signal-trigger";
 import { shownHandoverType } from "@/lib/handover-types";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -78,7 +79,7 @@ function triggerLine(a: Assignment, t_i18n: (s: string) => string, locale: strin
     const cfg = a.trigger_config as TriggerConfig;
     return humanizeCron(cfg?.cron, locale) || t_i18n("Scheduled");
   }
-  return t_i18n(TRIGGER_LABELS[a.trigger_type] ?? a.trigger_type);
+  return t_i18n(TRIGGER_LABELS[triggerTile(a.trigger_type, a.trigger_config)] ?? a.trigger_type);
 }
 
 function DrawerBody({
@@ -204,7 +205,7 @@ function DrawerBody({
           ) : (
             <div className="space-y-1.5">
               {agentAssignments.map((a) => {
-                const TriggerIcon = TRIGGER_ICONS[a.trigger_type] ?? Bot;
+                const TriggerIcon = TRIGGER_ICONS[triggerTile(a.trigger_type, a.trigger_config)] ?? Bot;
                 return (
                   <div
                     key={a.id}

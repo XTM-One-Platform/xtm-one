@@ -64,7 +64,7 @@ import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { CardEditActions } from "@/components/ui/card-edit-actions";
 import { useAuth } from "@/hooks/useAuth";
 import { PlatformEventFields, PlatformEventSummary } from "./PlatformEventFields";
-import { CtemSignalTriggerFields } from "./CtemSignalTriggerFields";
+import { CtemSignalSummary, CtemSignalTriggerFields } from "./CtemSignalTriggerFields";
 import {
   CTEM_SIGNAL_TILE,
   ctemSignalConfig,
@@ -1069,7 +1069,11 @@ export function TriggerCard({
             )}
 
             {/* Platform event */}
-            {assignment.trigger_type === "platform_event" && <PlatformEventSummary config={assignment.trigger_config} />}
+            {storedTile === CTEM_SIGNAL_TILE ? (
+              <CtemSignalSummary config={assignment.trigger_config} />
+            ) : (
+              assignment.trigger_type === "platform_event" && <PlatformEventSummary config={assignment.trigger_config} />
+            )}
 
             {/* Webhook URLs */}
             {assignment.trigger_type === "webhook" && assignment.webhook_url && (

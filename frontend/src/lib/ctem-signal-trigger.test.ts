@@ -9,6 +9,7 @@ import {
   triggerTile,
   triggerTiles,
 } from "./ctem-signal-trigger";
+import { TRIGGER_ICONS, TRIGGER_LABELS } from "./constants";
 
 const cfg = (value: Record<string, unknown>) => value as unknown as TriggerConfig;
 
@@ -53,6 +54,15 @@ describe("CTEM signal trigger (#1409)", () => {
     ];
     for (const config of cases) expect(triggerTile("platform_event", config)).toBe("platform_event");
     expect(triggerTile("schedule", cfg({ event: "ctem_signal.recorded" }))).toBe("schedule");
+  });
+
+  it("names a saved CTEM signal trigger the same way everywhere it is listed (UX round 1, B1)", () => {
+    const saved = cfg({ event: ["ctem_signal.recorded", "ctem_signal.triaged"], filter: { verdict: ["confirmed"] } });
+    const tile = triggerTile("platform_event", saved);
+    expect(TRIGGER_LABELS[tile]).toBe("CTEM signal");
+    expect(TRIGGER_ICONS[tile]).toBe(TRIGGER_ICONS[CTEM_SIGNAL_TILE]);
+    expect(TRIGGER_ICONS[tile]).not.toBe(TRIGGER_ICONS.platform_event);
+    expect(TRIGGER_LABELS[triggerTile("platform_event", cfg({ event: "run.failed" }))]).toBe(TRIGGER_LABELS.platform_event);
   });
 
   it("places the tile after Platform event on XTM One only", () => {

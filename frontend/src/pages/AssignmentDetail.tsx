@@ -48,6 +48,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { canManageEntity, cn, formatCompactNumber, isEntityShared } from "@/lib/utils";
 import { assignmentTracesPath } from "@/lib/trace-links";
+import { triggerTile } from "@/lib/ctem-signal-trigger";
 import { useFormatter } from "@/i18n";
 import { useAiActionDisabled, useAiDisabledReason } from "@/hooks/useAiDisabled";
 import { AiDisabledTip } from "@/components/ui/ai-disabled";
@@ -157,7 +158,9 @@ export default function AssignmentDetail() {
       : []),
   ];
 
-  const TriggerIcon = TRIGGER_ICONS[assignment.trigger_type] ?? Zap;
+  // A CTEM signal trigger reads as its own tile (#1409), as the Trigger card does.
+  const tile = triggerTile(assignment.trigger_type, assignment.trigger_config);
+  const TriggerIcon = TRIGGER_ICONS[tile] ?? Zap;
   const cronExpr = assignment.trigger_type === "schedule" ? assignment.trigger_config.cron : null;
   // The header icon follows the badge: an ended platform trigger is never tinted as active.
   const tint = assignmentStatusTint(assignmentDisplayStatus(assignment));
@@ -179,7 +182,7 @@ export default function AssignmentDetail() {
                 ) : (
                   <AssignmentStatusBadge assignment={assignment} />
                 )}
-                <Badge variant="outline">{t_i18n(TRIGGER_LABELS[assignment.trigger_type] ?? assignment.trigger_type)}</Badge>
+                <Badge variant="outline">{t_i18n(TRIGGER_LABELS[tile] ?? assignment.trigger_type)}</Badge>
                 {cronExpr && <Badge variant="outline">{describeCron(cronExpr)}</Badge>}
                 {assignment.delay && <Badge variant="outline"><Clock className="h-2.5 w-2.5 mr-0.5" />{t_i18n("{delay} delay", { delay: assignment.delay })}</Badge>}
                 {assignment.dry_run && <Badge variant="warning"><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t_i18n("Dry run")}</Badge>}
