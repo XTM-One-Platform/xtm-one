@@ -350,8 +350,9 @@ def tailored_ctem_posture(environ: dict) -> bool:
     """``LAB_CTEM_KEV_TAILORED=on``: the cyber KEV count is narrowed to the saved tech stack; whether it is.
 
     Nothing answers OpenCTI here, so the collector's tailoring query (``_octi_kev_tailored``) never runs: the
-    saved organization software (``ctem_metrics_collector._organization_software``, the route's own reader, #1495) is matched by
-    ``ctem_sample.tailored_kev`` on the posture the other switches answer. No stack, no tailored count, as live.
+    saved organization software (``ctem_metrics_collector._organization_software``, the route's own reader,
+    #1495) is matched by ``ctem_sample.tailored_kev`` on the posture the other switches answer. No stack, no
+    tailored count, as live.
     """
     if environ.get("LAB_CTEM_KEV_TAILORED", "").strip().lower() != "on":
         return False
