@@ -141,7 +141,7 @@ export default function CtemAssetDetail() {
           {
             key: "purl",
             header: "Package URL",
-            cell: (s: AssetSoftware) => <TruncatedText text={s.purl ?? ""} className="max-w-[22rem] font-mono" />,
+            cell: (s: AssetSoftware) => <TruncatedText text={s.purl ?? ""} className="max-w-[16rem] font-mono 4xl:max-w-[22rem]" />,
             csv: (s: AssetSoftware) => s.purl,
             hideable: true,
           },
