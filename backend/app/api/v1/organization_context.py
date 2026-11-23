@@ -1195,7 +1195,7 @@ async def apply_organization_import(
     if not (plan.new or plan.updated or removes) or plan.profile is None:
         if not plan.error and plan.software:
             # An endpoint source (#1251): only the software changed (a re-run with new versions).
-            changed = await imp.store_endpoint_software(db, plan)
+            changed = await imp.store_endpoint_software(db, plan, user_id=admin.id)
             await db.commit()
             response.applied = bool(changed)
         return response
@@ -1204,7 +1204,7 @@ async def apply_organization_import(
             db, plan.profile, source="draft", author_user_id=admin.id, sources=imp.provenance(plan, body.filters)
         )
         if not plan.error and plan.software:
-            await imp.store_endpoint_software(db, plan)
+            await imp.store_endpoint_software(db, plan, user_id=admin.id)
         await db.commit()
     except IntegrityError:
         await db.rollback()
