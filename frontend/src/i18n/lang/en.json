@@ -20627,6 +20627,7 @@
   "Left for later: Members screen": "Left for later: Members screen",
   "Complete on the Members screen": "Complete on the Members screen",
   "Run estimate": "Run estimate",
+  "Expected load": "Expected load",
   "I will do it later": "I will do it later",
   "Autonomy": "Autonomy",
   "Run as and automations": "Run as and automations",
@@ -21285,5 +21286,13 @@
   "{count, plural, one {# low} other {# low}}": "{count, plural, one {# low} other {# low}}",
   "{count, plural, one {# medium} other {# medium}}": "{count, plural, one {# medium} other {# medium}}",
   "{count, plural, one {# high} other {# high}}": "{count, plural, one {# high} other {# high}}",
-  "{count, plural, one {# very high} other {# very high}}": "{count, plural, one {# very high} other {# very high}}"
+  "{count, plural, one {# very high} other {# very high}}": "{count, plural, one {# very high} other {# very high}}",
+  "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}": "{count, plural, =0 {No scheduled run a day.} one {About # scheduled run a day.} other {About # scheduled runs a day.}}",
+  "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}": "{count, plural, one {About # scheduled run a month.} other {About # scheduled runs a month.}}",
+  "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}": "{count, plural, one {About # scheduled run a year.} other {About # scheduled runs a year.}}",
+  "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}": "{count, plural, one {# automation runs once per event, as often as its events arrive.} other {# automations run once per event, as often as their events arrive.}}",
+  "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.": "No cost yet: these automations have not run in the last {days, plural, one {# day} other {# days}}.",
+  "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "About {cost} a day for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.",
+  "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "About {cost} a month for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.",
+  "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}.": "About {cost} a year for the scheduled runs, from the mean cost of their runs over the last {days, plural, one {# day} other {# days}}."
 }
