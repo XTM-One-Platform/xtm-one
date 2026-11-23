@@ -460,7 +460,7 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
 
 #: Software documents an endpoint source writes on its own device records (#1251): ``format`` is the
 #: source, so the software ranks by that source's class (``mdm``, ``edr``), not as an SBOM.
-ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender"})
+ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "github", "gitlab"})
 
 
 def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
@@ -539,8 +539,8 @@ async def replace_endpoint_software(
                 "vendor": _cut(e.get("vendor"), 200),
                 "product": _cut(e.get("product"), 300),
                 "version": _cut(e.get("version"), 100) or identity.UNKNOWN_VERSION,
-                "cpe": "",
-                "purl": "",
+                "cpe": _cut(e.get("cpe"), 500),
+                "purl": _cut(e.get("purl"), 500),
                 "bundled_in": "",
             }
             for e in entries

@@ -36,6 +36,12 @@ export const FILTER_LABELS = {
   os_platform: "OS platform",
   health_status: "Sensor health",
   exposure_level: "Exposure level",
+  // GitHub and GitLab repositories.
+  organizations: "Organizations",
+  groups: "Groups",
+  include_archived: "Archived repositories",
+  include_forks: "Forks",
+  skip_dependencies: "Skip dependencies",
 } as const;
 export type FilterKey = keyof typeof FILTER_LABELS;
 
@@ -74,6 +80,15 @@ const MICROSOFT_WORDED: ReadonlySet<string> = new Set(["compliance", "ownership"
 /** The filters whose values are ids of the source (labels, markings, authors, groups, tags, PIRs, tenant): counted, never printed. */
 const ID_FILTERS: ReadonlySet<string> = new Set(["labels", "markings", "created_by", "creator", "asset_groups", "tags", "pir_ids", "tenant_id"]);
 
+/** The on/off filters: a switch row of their own, "true" when on. @i18n-keys */
+export const SWITCH_VALUE_LABELS = {
+  include_owner: "Kept as the asset owner",
+  include_archived: "Included",
+  include_forks: "Included",
+  skip_dependencies: "Not read",
+} as const;
+export const SWITCH_FILTERS: ReadonlySet<string> = new Set(Object.keys(SWITCH_VALUE_LABELS));
+
 type Translate = (text: string, values?: Record<string, string | number>) => string;
 
 /** The words of one filter value as the source writes it: a taxonomy, criticality, exposure or environment in the profile's words, else the value. */
@@ -86,7 +101,7 @@ export function filterValueLabel(t: Translate, key: string, value: string): stri
   if (key === "environment" && lower in ENVIRONMENT_LABELS) return t(ENVIRONMENT_LABELS[lower as keyof typeof ENVIRONMENT_LABELS]);
   if (MICROSOFT_WORDED.has(key) && lower in MICROSOFT_VALUE_LABELS) return t(MICROSOFT_VALUE_LABELS[lower as keyof typeof MICROSOFT_VALUE_LABELS]);
   if (key === "last_seen_days" && /^\d+$/.test(value)) return t("{count, plural, one {Within # day} other {Within # days}}", { count: Number(value) });
-  if (key === "include_owner") return t("Kept as the asset owner");
+  if (key in SWITCH_VALUE_LABELS) return t(SWITCH_VALUE_LABELS[key as keyof typeof SWITCH_VALUE_LABELS]);
   return value;
 }
 
