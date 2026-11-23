@@ -66,6 +66,13 @@ describe("case-review helpers", () => {
     expect(reviewStage({ state: "validated", coverage_requested: true, coverage_drafted: false })).toBe("coverage_requested");
   });
 
+  it("reads a review answered without approval as re-plan or refused, whatever the page (#1573)", () => {
+    expect(reviewStage({ state: "replan", coverage_requested: false, coverage_drafted: false })).toBe("replan");
+    expect(reviewStage({ state: "rejected", coverage_requested: false, coverage_drafted: false })).toBe("rejected");
+    expect(reviewStage({ state: "awaiting_review", coverage_requested: false, coverage_drafted: true })).toBe("awaiting_validation");
+    expect(reviewStage({ state: "awaiting_review", coverage_requested: false, coverage_drafted: false })).toBe("drafted");
+  });
+
   it("names a person by id, the OpenCTI mark as the mark, anything else as unknown", () => {
     expect(reviewAnswerer(USER)).toEqual({ kind: "person", id: USER });
     expect(reviewAnswerer("OpenCTI analyst mark")).toEqual({ kind: "mark" });
