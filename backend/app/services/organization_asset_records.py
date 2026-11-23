@@ -1361,12 +1361,11 @@ async def _sync_software(db: AsyncSession, organization_id: uuid.UUID) -> None:
         bucket = by_asset.setdefault(record.asset_id, [])  # type: ignore[arg-type]
         bucket.append(source)
         bucket.extend(sboms.get(source.ref, ()))
-    edges = [
-        edge
-        for records in by_asset.values()
-        for edge in software_store.dependency_edges(identity.merge_software(records))
-    ]
-    await software_store.sync_software(db, organization_id, edges)
+    merged = [identity.merge_software(records) for records in by_asset.values()]
+    edges = [edge for software in merged for edge in software_store.dependency_edges(software)]
+    # Software as an entity (#1495): the type the sources declare (library, operating system, ...).
+    types = software_store.software_types(soft for software in merged for soft in software)
+    await software_store.sync_software(db, organization_id, edges, types)
 
 
 async def rebuild_from_records(db: AsyncSession, organization_id: uuid.UUID, *, locked: bool = False) -> int:

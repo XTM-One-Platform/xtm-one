@@ -306,7 +306,8 @@ depends_on = ["lab-opencti"]
 # serves the front through a proxy that signs every request in as the lab admin. It seeds a label, a vocabulary
 # entry and one filled and one empty Organization, Individual, Sector, System, Malware, Indicator and Report; the
 # start answer lists their pages ("seeded opencti page <label>: <url>"). A PR adds its own seed in
-# opencti-lab-seed.json at this checkout's root. Theme: /lab/theme/dark or /lab/theme/light (?next=<path>). Heavy
+# opencti-lab-seed.json at this checkout's root: GraphQL entries, a playbook, or {label, script, path?} naming the PR's
+# own .mjs/.js seed, run with the lab's pinned node (OPENCTI_URL, OPENCTI_TOKEN in its environment). Theme: /lab/theme/dark or /lab/theme/light (?next=<path>). Heavy
 # (the four OpenCTI store image keys, a full backend build), started only on purpose.
 [service.lab-opencti-pr-head]
 description = "OpenCTI's backend and front built from a nested opencti/ checkout at a PR head, seeded, every page signed in as the lab admin"
