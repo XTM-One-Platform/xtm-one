@@ -47,7 +47,7 @@ import {
 } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { filtersSummary } from "@/lib/organization-import-filters";
-import { PLATFORM_NAMES } from "@/lib/organization-profile";
+import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-profile";
 import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 import { SOURCED_SECTION_LABELS, sourceSectionHref, type SourcedSection } from "@/lib/organization-sources";
 import { useScheduleLabel } from "@/lib/organization-sync-schedule";
@@ -183,7 +183,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
 
   const nameOf = (row: Row): string => {
     if (row.sync?.section === "all") return t_i18n("Every section sync");
-    if (row.sync) return row.source?.display_name ?? PLATFORM_NAMES[row.sync.source] ?? row.sync.source;
+    if (row.sync) return row.source?.display_name ?? IMPORT_SOURCE_NAMES[row.sync.source] ?? row.sync.source;
     if (row.source.kind === "manual") return t_i18n(SOURCE_KIND_NAMES.manual);
     if (row.source.kind === "api") return t_i18n(SOURCE_KIND_NAMES.api);
     if (row.source.kind === "csv") return t_i18n(SOURCE_KIND_NAMES.csv);
@@ -275,7 +275,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         const platform = row.sync?.source || (kind === "platform" ? row.source?.key : "");
         return (
           <span className="flex min-w-0 items-center gap-2">
-            {platform ? <ProviderLogo provider={platform} decorative className="h-4 w-4 shrink-0" /> : <Icon name={kind === "agent" ? "bot" : kind === "csv" ? "file-text" : "user"} size={16} aria-hidden className="shrink-0 text-default-secondary" />}
+            {platform ? <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[platform] ?? platform} decorative className="h-4 w-4 shrink-0" /> : <Icon name={kind === "agent" ? "bot" : kind === "csv" ? "file-text" : "user"} size={16} aria-hidden className="shrink-0 text-default-secondary" />}
             <span className="min-w-0">
               <TruncatedText text={nameOf(row)} className="max-w-[12rem] font-medium" />
               {kind === "agent" && row.source?.written_by_agent && (

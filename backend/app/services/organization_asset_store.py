@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -458,9 +458,14 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
     return _cut(file_name or "sbom", 300)
 
 
+#: Software documents an endpoint source writes on its own device records (#1251): ``format`` is the
+#: source, so the software ranks by that source's class (``mdm``, ``edr``), not as an SBOM.
+ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender"})
+
+
 def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
     return identity.SourceRecord(
-        source=SBOM_SOURCE,
+        source=row.format if row.format in ENDPOINT_SOFTWARE_FORMATS else SBOM_SOURCE,
         external_id=f"{row.anchor_source}:{row.anchor_external_id}:{row.document_key}",
         software=[
             {**c, "first_seen": row.imported_at, "last_seen": row.imported_at}
@@ -490,6 +495,82 @@ async def load_sboms(
     for row in rows:
         out.setdefault(identity.RecordRef(row.anchor_source, row.anchor_external_id), []).append(_sbom_record(row))
     return out
+
+
+async def replace_endpoint_software(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    source: str,
+    software: Mapping[str, list[dict[str, Any]]],
+    *,
+    complete: bool,
+    unread: Collection[str] = (),
+) -> int:
+    """Store the software an endpoint source read per device, anchored on its device record (#1251).
+
+    One document per device (``document_key`` the source): a re-run replaces its
+    components, so versions follow the source. When the read was *complete*, the
+    documents of devices it no longer returned are removed with them, except the
+    *unread* devices (their software read failed): their stored document is kept.
+    Answers the number of documents written or removed; the caller rebuilds the store.
+    """
+    if source not in ENDPOINT_SOFTWARE_FORMATS:
+        raise ValueError(f"source must be one of {', '.join(sorted(ENDPOINT_SOFTWARE_FORMATS))}")
+    stored = {
+        row.anchor_external_id: row
+        for row in (
+            await db.execute(
+                select(OrganizationAssetSbom).where(
+                    OrganizationAssetSbom.organization_id == organization_id,
+                    OrganizationAssetSbom.anchor_source == source,
+                    OrganizationAssetSbom.document_key == source,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+    changed = 0
+    now = datetime.now(UTC)
+    for external_id, entries in software.items():
+        external_id = _cut(external_id, 200)
+        components = [
+            {
+                "vendor": _cut(e.get("vendor"), 200),
+                "product": _cut(e.get("product"), 300),
+                "version": _cut(e.get("version"), 100) or identity.UNKNOWN_VERSION,
+                "cpe": "",
+                "purl": "",
+                "bundled_in": "",
+            }
+            for e in entries
+            if isinstance(e, Mapping) and str(e.get("product") or "").strip()
+        ]
+        row = stored.pop(external_id, None)
+        if row is None:
+            row = OrganizationAssetSbom(
+                organization_id=organization_id,
+                anchor_source=source,
+                anchor_external_id=external_id,
+                document_key=source,
+                format=source,
+                file_name="",
+            )
+            db.add(row)
+        elif row.components == components:
+            continue
+        row.components = components
+        row.imported_at = now
+        changed += 1
+    if complete:
+        keep = {_cut(external_id, 200) for external_id in unread}
+        for external_id, row in stored.items():
+            if external_id in keep:
+                continue
+            await db.delete(row)
+            changed += 1
+    await db.flush()
+    return changed
 
 
 async def import_sbom(

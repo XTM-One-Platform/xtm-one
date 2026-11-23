@@ -192,6 +192,16 @@ records several sources hold on one thing into one canonical thing; the store of
   exposure), customisable; `unknown` never wins over a known value; local fields come from hand sources only.
 - Software: one entry per vendor, product and version across sources, with first and last seen; an unknown
   version is `unknown`, never empty.
+- Endpoint sources (`organization_context_microsoft`): Microsoft Intune (Graph `managedDevices` and
+  `detectedApps`, permission `DeviceManagementManagedDevices.Read.All`) and Microsoft Defender for Endpoint
+  (`/api/machines` and `SoftwareInventoryByMachine`, `Machine.Read.All` and `Software.Read.All`) feed the
+  `assets` section like any import source, scheduled through the section syncs. A device row carries its
+  identity keys (serial, Entra device id, hostname, FQDN, MAC, IP), its OS and its last-seen date; its software
+  is stored as a document anchored on that row (`replace_endpoint_software`, `document_key` the source, replaced
+  at every run, removed with the device on a complete read), so it ranks by the source's class: `intune` is
+  `mdm`, `defender` is `edr` (`BUILTIN_SOURCE_CLASSES`). Reads are paged, a 429 or 503 is waited out with its
+  `Retry-After` (bounded), and a refused permission is answered with the permission to grant. A Defender
+  read without the software permission still syncs the machines.
 - Tech stack: derived from asset software (`derive_tech_stack`), one item per vendor and product with the
   versions seen and the assets running each; typed SaaS and cloud rows stay, without versions. The CPE comes
   from an administrator's override (kept across syncs), else a source that reported it, else a dictionary

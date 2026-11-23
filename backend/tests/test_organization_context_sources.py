@@ -39,6 +39,8 @@ def test_kinds_and_display_names_never_show_a_raw_platform_slug():
     assert osources.kind_of("manual") == "manual" and osources.kind_of("csv") == "csv"
     assert osources.display_name("opencrq") == "OpenCRQ"
     assert osources.display_name("intune") == "Microsoft Intune"
+    # One name everywhere: the row, its menus and the sync edit dialog (IMPORT_SOURCE_NAMES).
+    assert osources.display_name("defender") == "Microsoft Defender for Endpoint"
     assert osources.display_name("agent:CISO Office") == "CISO Office"
     assert osources.source_key("") == "manual"
 
