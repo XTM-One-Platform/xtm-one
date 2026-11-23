@@ -78,6 +78,17 @@ export function sourceText(row: WaitingDecision, t_i18n: Translate): string {
   return row.origin ? `${kind}: ${row.origin}` : kind;
 }
 
+/** The From cell: the kind icon, then the source words cut with a DS tooltip. Shared with the fleet Approval tab (UX r1 B1 of #1497). */
+export function DecisionSourceCell({ row }: { row: WaitingDecision }) {
+  const { t_i18n } = useFormatter();
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <Icon name={SOURCE_ICONS[row.kind]} size={16} className="shrink-0 text-default-secondary" aria-hidden />
+      <TruncatedText text={sourceText(row, t_i18n)} />
+    </span>
+  );
+}
+
 /** The first row of the list, where focus lands when the answered row has left it (A1). */
 function firstRow(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-testid="waiting-for-you-row"]');
@@ -169,12 +180,7 @@ export function WaitingForYou({ toolbarLead }: { toolbarLead?: ReactNode } = {})
       header: "From",
       width: 220,
       hideable: true,
-      cell: (row) => (
-        <span className="flex min-w-0 items-center gap-1.5">
-          <Icon name={SOURCE_ICONS[row.kind]} size={16} className="shrink-0 text-default-secondary" aria-hidden />
-          <TruncatedText text={sourceText(row, t_i18n)} />
-        </span>
-      ),
+      cell: (row) => <DecisionSourceCell row={row} />,
       csv: (row) => sourceText(row, t_i18n),
       sortValue: (row) => sourceText(row, t_i18n).toLowerCase(),
     },

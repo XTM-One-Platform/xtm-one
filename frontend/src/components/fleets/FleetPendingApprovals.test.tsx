@@ -149,6 +149,16 @@ describe("FleetPendingApprovals with the decisions read on (#1493)", () => {
     expect(screen.getByTestId("fleet-pending-read-only").textContent).toBe("Read only");
     fireEvent.click(screen.getByTestId("fleet-pending-toggle"));
     expect(screen.getByText("Read only: this decision is addressed to someone else.")).toBeTruthy();
+    // A card shown read only never says "your decision" (UX r1 B2 of #1497).
+    expect(screen.queryByText("Waiting for your decision")).toBeNull();
+    expect(screen.getByText("Waiting for a decision")).toBeTruthy();
+  });
+
+  it("names the source with the inbox cell, never a native title (UX r1 B1 of #1497)", () => {
+    decisions.data = { enabled: true, reason: null, items: [decision("work_item:3", {})] };
+    renderWithProviders(<MemoryRouter><FleetPendingApprovals fleetId="f1" /></MemoryRouter>);
+    const source = screen.getByText("Work item: Item work_item:3");
+    expect(source.closest("[title]")).toBeNull();
   });
 });
 

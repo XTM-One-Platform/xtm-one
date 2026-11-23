@@ -285,7 +285,8 @@ export function DecisionCard({
       <div className="flex flex-wrap items-center gap-2">
         <Icon name="message-square" size={16} className="shrink-0 text-accent" aria-hidden />
         <span className="content-caption font-medium uppercase tracking-wider text-default-secondary">
-          {t_i18n("Waiting for your decision")}
+          {/* A card shown read only never says "your decision" (UX r1 B2 of #1497). */}
+          {canAnswer ? t_i18n("Waiting for your decision") : t_i18n("Waiting for a decision")}
         </span>
         {view.deadline && (
           <Badge variant="secondary" className="content-caption ml-auto gap-1" data-testid={`${testId}-deadline`}>

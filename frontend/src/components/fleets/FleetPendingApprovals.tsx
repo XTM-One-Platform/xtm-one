@@ -41,7 +41,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DecisionCard } from "@/components/decisions/DecisionCard";
 import { RunPauseDecision } from "@/components/decisions/RunPauseDecision";
-import { sourceText, waitingDecisionView } from "@/components/decisions/WaitingForYou";
+import { DecisionSourceCell, sourceText, waitingDecisionView } from "@/components/decisions/WaitingForYou";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -227,11 +227,8 @@ function FleetPendingDecisions({ rows, isLoading, isError, onRetry }: {
       hideBelow: "4xl",
       hideable: true,
       width: ASSIGNMENT_WIDTH,
-      cell: (row) => (
-        <span className="block min-w-0 truncate whitespace-nowrap" title={sourceText(row, t_i18n)}>
-          {sourceText(row, t_i18n)}
-        </span>
-      ),
+      // The inbox From cell: kind icon and DS tooltip on cut text (UX r1 B1 of #1497).
+      cell: (row) => <DecisionSourceCell row={row} />,
       sortValue: (row) => sourceText(row, t_i18n),
       csv: (row) => sourceText(row, t_i18n),
     },
