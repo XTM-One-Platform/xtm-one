@@ -5,6 +5,13 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## The Filigran AI Gateway's throttle backs assignments off
+
+**No migration, no configuration change.**
+
+- **Back-off**: an assignment whose run meets the gateway's throttle (`502 provider_error`, `retryable: true`) or load shedding (`503 gateway_overloaded`) has its cap halved, as a provider's 429 already did.
+- **Fewer requests**: a gateway chat call is sent at most 6 times (it was up to 18): the OpenAI SDK no longer retries under XTM One's own retries. Embeddings, images, speech, video and listings keep the SDK's retries.
+
 ## The Filigran AI Gateway provider is always offered
 
 **No migration. Drop `FILIGRAN_GATEWAY_PROVIDER` from `ENABLED_FEATURES` if it is set.**

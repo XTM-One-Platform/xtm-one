@@ -803,6 +803,24 @@ restart_target = 120
 lifetime = 7200
 env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_LANGFUSE = "env" }
 
+# The screens that change when SMTP is configured (#1542): the Platform email integration offered, the
+# invitation and password reset sends, the Settings email states. LAB_SMTP = "on" hands the backend lab-only
+# SMTP_* values (host 127.0.0.1, the loopback's discard port 9): is_email_configured() answers true and a send
+# is refused at connect, so the caller's failure path renders and no mail leaves the lab.
+[service.lab-smtp]
+description = "xtm-one from this checkout with SMTP configured (lab-only, nothing sent): lab@filigran.io / lab-only-password"
+argv = ["python", ".xtm-one/lab/lab.py"]
+port = 3100
+image = "python-dev"
+ready_path = "/"
+ready_log = "lab up: "
+session_log = "seeded signed-in session"
+needs = [".xtm-one/lab", ".xtm-one/stores.py", "backend", "frontend"]
+timeout = 280
+restart_target = 120
+lifetime = 7200
+env = { ADMIN_EMAIL = "lab@filigran.io", ADMIN_PASSWORD = "lab-only-password", SECRET_KEY = "lab-only-secret-key-never-used-outside-the-lab", PLATFORM_MODE = "xtm_one", ENABLED_FEATURES = "*", LAB_SMTP = "on" }
+
 # The same lab with LAB_CTEM_SAMPLE = "1": OpenAEV is left unregistered (a CTEM
 # blind spot with its Connect button), the cyber posture collection answers the
 # deterministic OpenCTI facts of .xtm-one/lab/ctem_sample.py (lab_asgi) and three
