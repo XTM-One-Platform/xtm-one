@@ -2,11 +2,11 @@
 
 /**
  * CTEM > Inventory `/ctem/inventory/:tab?` (#1178, Sam 22 Nov 2026): the organization's assets, read from the
- * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and their
- * software, one entity per vendor and product (#1495). Every list is paginated on the server, so 10,000 assets read
- * as fast as ten.
+ * canonical asset store (one asset per real thing across sources, dev-docs/asset-model.md section 9), and the
+ * tech stack built from their software. Every list is paginated on the server, so 10,000 assets read as fast as
+ * ten.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
@@ -21,8 +21,10 @@ import {
   useAssetFacets,
   useCanonicalAssets,
   useRecordAssetDecision,
+  useTechStackInventory,
   type AssetFilterKey,
   type CanonicalAssetSummary,
+  type TechStackItem,
 } from "@/hooks/api/useOrganizationAssetsApi";
 import { useTabParam } from "@/hooks/useTabParam";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,17 +40,15 @@ import { AiSystemsTab, AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ct
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
 import { AssetMatchingCard, InventorySourcesCard } from "./ctem/InventorySourcesCard";
-import { SoftwareTab } from "./ctem/SoftwareTab";
 import { useInventoryEditView } from "./ctem/inventory-edit-view";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./ctem/inventory";
 
-type InventoryTab = "assets" | "asset-groups" | "software" | "ai-systems" | "sources";
-
-/** The tab the Software tab replaced (#1495): an old link lands on Software. */
-const RETIRED_TABS: Record<string, InventoryTab> = { "tech-stack": "software" };
+type InventoryTab = "assets" | "asset-groups" | "tech-stack" | "ai-systems" | "sources";
 
 const ASSETS_URL_KEY = "a_";
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
+const TECH_URL_KEY = "t_";
+const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
@@ -60,7 +60,10 @@ const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
   { key: "source", label: "Source" },
 ];
 
-/** The query parameter of the Asset matching view of the Sources tab: nothing renders under the syncs table (UX round 2, B7). */
+/**
+ * The query parameter of the former Asset matching view (UX round 2 on #1254, B7). Asset matching now sits under the syncs
+ * table (Sam, 23 Nov 2026): an old link lands on the Sources page and scrolls to the card, the parameter dropped.
+ */
 const MATCHING_PARAM = "matching";
 
 /** The most records one merge names (organization_asset_store.MAX_MERGE_RECORDS). */
@@ -337,6 +340,93 @@ function AssetsTab({ add }: { add: AddRequest }) {
   );
 }
 
+function TechStackTab() {
+  const { t_i18n, intl } = useFormatter();
+  const [searchParams] = useSearchParams();
+  const table = readTableState(searchParams, TECH_URL_KEY, {
+    sort: { key: "product", direction: "asc" },
+    pageSize: storedPageSize(TECH_STORAGE_KEY, PAGE_SIZE),
+  });
+  const { data, isLoading, isError, refetch } = useTechStackInventory({
+    q: table.search,
+    offset: table.page * table.pageSize,
+    limit: table.pageSize,
+  });
+
+  const versions = (item: TechStackItem) =>
+    item.versions.map((v) => `${v.version} (${formatCount(intl.locale, v.asset_count)})`).join(", ");
+
+  const columns: DataTableColumn<TechStackItem>[] = [
+    {
+      key: "product",
+      header: "Product",
+      cell: (i) => <TruncatedText text={[i.vendor, i.product].filter(Boolean).join(" ")} className="max-w-[18rem] font-medium" />,
+      csv: (i) => [i.vendor, i.product].filter(Boolean).join(" "),
+      // The inventory answers by vendor and product: the one server sort.
+      sortValue: (i) => `${i.vendor} ${i.product}`.toLowerCase(),
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      cell: (i) => assetFieldLabel(t_i18n, "kind", i.kind),
+      csv: (i) => i.kind,
+      hideable: true,
+    },
+    {
+      key: "assets",
+      header: "Assets",
+      align: "right",
+      hint: t_i18n("The number of assets running the product, each counted once whatever its versions."),
+      cell: (i) => formatCount(intl.locale, i.asset_count),
+      csv: (i) => i.asset_count,
+    },
+    {
+      key: "versions",
+      header: "Versions in use",
+      cell: (i) => <TruncatedText text={versions(i)} className="max-w-[18rem]" />,
+      csv: (i) => versions(i),
+      hideable: true,
+    },
+    {
+      key: "cpe",
+      header: "CPE",
+      cell: (i) => <TruncatedText text={i.cpe ?? ""} className="max-w-[16rem] font-mono" />,
+      csv: (i) => i.cpe,
+      hideable: true,
+      hideBelow: "6xl",
+    },
+    {
+      key: "sources",
+      header: "Sources",
+      cell: (i) => <TruncatedText text={i.sources.map((source) => sourceLabel(t_i18n, source)).join(", ")} className="max-w-[14rem]" />,
+      csv: (i) => i.sources.join(" "),
+      hideable: true,
+    },
+  ];
+
+  return (
+    <DataTable<TechStackItem>
+      rows={data?.items ?? []}
+      columns={columns}
+      rowKey={(i) => `${i.vendor}|${i.product}`}
+      server={{ total: data?.total ?? 0 }}
+      urlKey={TECH_URL_KEY}
+      storageKey={TECH_STORAGE_KEY}
+      defaultSort={{ key: "product", direction: "asc" }}
+      defaultPageSize={PAGE_SIZE}
+      searchPlaceholder={t_i18n("Search vendor or product")}
+      noFilters="The inventory answers a vendor or product search only."
+      exportName="ctem-inventory-tech-stack"
+      isLoading={isLoading && !data}
+      isError={isError}
+      onRetry={() => void refetch()}
+      emptyLabel={t_i18n("No product yet. It fills from the software of your assets and the products you add.")}
+      noResultsLabel={t_i18n("No product matches this search")}
+      rowTestId="ctem-inventory-tech-row"
+    />
+  );
+}
+
 /**
  * The profile cards that are settings, not rows (#1178 slice 2b, kept by #1367): the rows of every tab are managed
  * in place (Add, row menu, bulk actions), so only the policy cards of the Assets tab keep an edit view, opened by a
@@ -357,24 +447,25 @@ export default function CtemInventory() {
   // A link to one of these cards opens the edit view on it and keeps it open once the card parameter leaves
   // (UX rounds 1 and 2 on #1356, B3 then B1).
   const [editing, setEditing] = useInventoryEditView(editCards, isAdmin);
-  // Asset matching is read by everyone, edited by administrators inside its own card.
-  const matching = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
+  // Asset matching is read by everyone, edited by administrators inside its own card, under the syncs table.
+  const matchingLink = tab === "sources" && searchParams.get(MATCHING_PARAM) === "1";
   const navigate = useNavigate();
-  const setMatching = (on: boolean) =>
+  useEffect(() => {
+    if (!matchingLink || !isAdmin) return;
+    document.querySelector('[data-testid="ctem-inventory.matching"]')?.scrollIntoView({ block: "start" });
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (on) next.set(MATCHING_PARAM, "1");
-        else next.delete(MATCHING_PARAM);
+        next.delete(MATCHING_PARAM);
         return next;
       },
       { replace: true },
     );
-  // Sources is a page of its own, not a tab (#1367, point 4): the standard back link to the inventory, its title, and
-  // Asset matching as the header action.
+  }, [matchingLink, isAdmin, setSearchParams]);
+  // Sources is a page of its own, not a tab (#1367, point 4): the standard back link to the inventory, its title, the
+  // syncs table, then Asset matching below it with no click (Sam, 23 Nov 2026: no header button).
   // The sources and syncs are read and written by administrators only (the API answers 403 to a reader): a reader
   // who opens the URL lands on the inventory (UX round 1 on #1476, B2).
-  if (RETIRED_TABS[tab]) return <Navigate to={`${INVENTORY_PATH}/${RETIRED_TABS[tab]}`} replace />;
   if (tab === "sources" && !isAdmin) {
     return authLoading ? null : <Navigate to={INVENTORY_PATH} replace />;
   }
@@ -386,19 +477,9 @@ export default function CtemInventory() {
           title={t_i18n("Inventory sources")}
           info={t_i18n("The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.")}
           infoLabel={t_i18n("About the inventory sources")}
-          actions={
-            matching ? (
-              <Button variant="secondary" className="gap-1.5" onClick={() => setMatching(false)} data-testid="ctem-inventory-matching-done">
-                <Icon name="check" size={16} aria-hidden /> {t_i18n("Done")}
-              </Button>
-            ) : (
-              <Button variant="secondary" className="gap-1.5" onClick={() => setMatching(true)} data-testid="ctem-inventory-matching">
-                <Icon name="settings" size={16} aria-hidden /> {t_i18n("Asset matching")}
-              </Button>
-            )
-          }
         />
-        {matching ? <AssetMatchingCard /> : <InventorySourcesCard />}
+        <InventorySourcesCard />
+        <AssetMatchingCard />
       </div>
     );
   }
@@ -407,7 +488,7 @@ export default function CtemInventory() {
       {/* The app's standard list header (#1367, Sam 23 Nov 2026: no band with a surface and a border). */}
       <ListPageHeader
         title={t_i18n(INVENTORY_LABEL)}
-        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The software tab lists every software the assets run, with its versions and where it is installed.")}
+        info={t_i18n("One asset per real thing across your sources: the records of several sources on one thing are merged on their identifiers. The tech stack is built from the software the assets run.")}
         infoLabel={t_i18n("About the inventory")}
         actions={
           editing ? (
@@ -416,22 +497,23 @@ export default function CtemInventory() {
             </Button>
           ) : (
             <span className="flex flex-wrap items-center gap-2">
+              {/* Sources, a secondary action top right (#1367, point 4: a button, not a tab), for administrators only: the
+                  sources API is admin-only (UX round 1 on #1476, B2). Secondary before the filled action, which stays at the
+                  right end (design-system Page-title actions). */}
+              {isAdmin && (
+                <Button variant="secondary" className="gap-1.5" onClick={() => navigate(`${INVENTORY_PATH}/sources`)} data-testid="ctem-inventory-sources">
+                  <Icon name="database" size={16} aria-hidden /> {t_i18n("Sources")}
+                </Button>
+              )}
               {isAdmin && (tab === "assets" || tab === "asset-groups") && (
-                // The tab's add action, outside the table toolbar (UX round 1 on #1375, B1).
+                // The tab's add action, outside the table toolbar (UX round 1 on #1375, B1), the page's primary action
+                // (Sam, 23 Nov 2026: Add filled, Sources outlined).
                 <Button
-                  variant="secondary"
                   className="gap-1.5"
                   onClick={() => setAdding(true)}
                   data-testid={tab === "assets" ? "ctem-inventory-asset-add" : "ctem-inventory-group-add"}
                 >
                   <Icon name="plus" size={16} aria-hidden /> {t_i18n(tab === "assets" ? "Add an asset" : "Add an asset group")}
-                </Button>
-              )}
-              {/* Sources, the page's primary action top right (#1367, point 4: a button, not a tab), for administrators
-                  only: the sources API is admin-only (UX round 1 on #1476, B2). */}
-              {isAdmin && (
-                <Button className="gap-1.5" onClick={() => navigate(`${INVENTORY_PATH}/sources`)} data-testid="ctem-inventory-sources">
-                  <Icon name="database" size={16} aria-hidden /> {t_i18n("Sources")}
                 </Button>
               )}
             </span>
@@ -444,7 +526,7 @@ export default function CtemInventory() {
         tabs={[
           { key: "assets", label: "Assets" },
           { key: "asset-groups", label: "Asset groups" },
-          { key: "software", label: "Software" },
+          { key: "tech-stack", label: "Tech stack" },
           { key: "ai-systems", label: "AI systems" },
         ]}
       />
@@ -452,8 +534,8 @@ export default function CtemInventory() {
         <OrganizationSection key={tab} embed={{ cards: editCards }} />
       ) : tab === "asset-groups" ? (
         <AssetGroupsTab add={add} />
-      ) : tab === "software" ? (
-        <SoftwareTab />
+      ) : tab === "tech-stack" ? (
+        <TechStackTab />
       ) : tab === "ai-systems" ? (
         <AiSystemsTab />
       ) : (
