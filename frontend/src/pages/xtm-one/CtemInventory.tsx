@@ -11,7 +11,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useToast } from "@/components/ui/toast";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
@@ -36,6 +36,7 @@ import { readTableState, storedPageSize } from "@/lib/data-table-state";
 import { formatCount } from "@/lib/number-format";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { CategoryMark, OsMark, SourceLogo } from "./ctem/inventory-icons";
+import { AssetFacetSidebar, SIDEBAR_FACETS } from "./ctem/AssetFacetSidebar";
 import { AssetGroupsTab, BULK_ACTION, type AddRequest } from "./ctem/InventoryProfileTabs";
 import { assetRowIndexes, deleteRows, isSyncedRow } from "./ctem/inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
@@ -59,13 +60,6 @@ const TECH_STORAGE_KEY = "ctem-inventory-tech-stack";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
 
-/** The server filters of the asset list, in the order the toolbar shows them. */
-const ASSET_FILTERS: { key: AssetFilterKey; label: string }[] = [
-  { key: "category", label: "Category" },
-  { key: "criticality", label: "Criticality" },
-  { key: "internet_facing", label: "Internet facing" },
-  { key: "source", label: "Source" },
-];
 
 /** The query parameter of the Asset matching view of the Sources tab: nothing renders under the syncs table (UX round 2, B7). */
 const MATCHING_PARAM = "matching";
@@ -82,14 +76,15 @@ function AssetsTab({ add }: { add: AddRequest }) {
     sort: NAME_SORT,
     pageSize: storedPageSize(ASSETS_STORAGE_KEY, PAGE_SIZE),
   });
-  const picked = Object.fromEntries(ASSET_FILTERS.map((f) => [f.key, table.filters[f.key] ?? []]));
+  // The sidebar's facets (#1501): OR within one, AND across them; the counts follow the search and the other picks.
+  const picked = Object.fromEntries(SIDEBAR_FACETS.map((key) => [key, table.filters[key] ?? []])) as Record<AssetFilterKey, string[]>;
   const { data, isLoading, isError, refetch } = useCanonicalAssets({
     q: table.search,
     offset: table.page * table.pageSize,
     limit: table.pageSize,
     filters: picked,
   });
-  const facets = useAssetFacets();
+  const facets = useAssetFacets({ q: table.search, filters: picked });
   const decide = useRecordAssetDecision();
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmMerge, setConfirmMerge] = useState(false);
@@ -119,15 +114,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
     );
   };
   const syncedReason = t_i18n("Synced from its source: exclude it from the sync to remove it.");
-
-  const filters: DataTableFilter<CanonicalAssetSummary>[] = ASSET_FILTERS.map(({ key, label }) => ({
-    key,
-    label,
-    options: (facets.data?.[key] ?? []).map((value) => ({
-      value,
-      label: key === "source" ? sourceLabel(t_i18n, value) : assetFieldLabel(t_i18n, key, value),
-    })),
-  }));
 
   const rows = data?.items ?? [];
   const mergeRecords = rows.filter((a) => selected.includes(a.id)).flatMap((a) => a.records ?? []);
@@ -232,6 +218,9 @@ function AssetsTab({ add }: { add: AddRequest }) {
 
   return (
     <>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <AssetFacetSidebar facets={facets.data} picked={picked} prefix={ASSETS_URL_KEY} />
+      <div className="min-w-0 flex-1">
       <DataTable<CanonicalAssetSummary>
         rows={rows}
         columns={columns}
@@ -243,7 +232,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
         defaultSort={NAME_SORT}
         defaultPageSize={PAGE_SIZE}
         searchPlaceholder={t_i18n("Search assets by name")}
-        filters={filters}
         exportName="ctem-inventory-assets"
         isLoading={isLoading && !data}
         isError={isError}
@@ -311,6 +299,8 @@ function AssetsTab({ add }: { add: AddRequest }) {
             : undefined
         }
       />
+      </div>
+      </div>
       <InventoryEntryDialog
         section="assets_exposure"
         mode={dialog ?? (add.open ? { kind: "add" } : null)}
