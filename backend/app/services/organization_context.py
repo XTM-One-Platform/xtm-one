@@ -383,6 +383,11 @@ class AssetEntry(BaseModel):
     os_family: str = Field(default="", max_length=80)
     os_version: str = Field(default="", max_length=80)
     os_build: str = Field(default="", max_length=80)
+    #: A cloud or platform resource id, a strong identity key: a code repository's ``<host>:repository:<id>``
+    #: (GitHub and GitLab sources), stable across a rename or a transfer.
+    cloud_resource_id: str = Field(default="", max_length=300)
+    #: Where the asset is reached or browsed (a repository's web URL), http(s) only.
+    url: str = Field(default="", max_length=500)
     #: When the source last observed the asset, ISO 8601 UTC (#1134 S4, CTEM-27: OpenAEV's
     #: ``asset_last_seen``; #1251: Intune and Defender's last sync); empty when the source does
     #: not say. Owned by the source.
