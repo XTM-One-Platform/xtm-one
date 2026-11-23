@@ -2,6 +2,8 @@
 
 /** The URL writes of the asset facet sidebar (#1501): the keys the table reads, back on the first page. */
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { clearFacetParams, facetParam, facetsBeside, pickedFacetCount, toggleFacetParam } from "./AssetFacetSidebar";
 import { criticalityShortLabel, orderFacetValues } from "./inventory";
 
@@ -38,6 +40,13 @@ describe("asset facets at the window's width (#1501 UX r4 B1)", () => {
     expect(facetsBeside(1536)).toBe(true);
     expect(facetsBeside(1440)).toBe(false);
     expect(facetsBeside(1080)).toBe(false);
+  });
+
+  test("draws the Filters button at the one toolbar control height of Search, Columns, page size and Export (UX r5 B1)", () => {
+    // Source guard (vitest runs from frontend/): the button takes the DataTable toolbar height constant, never a size of its own.
+    const source = readFileSync(join(process.cwd(), "src/pages/xtm-one/ctem/AssetFacetSidebar.tsx"), "utf8");
+    const button = source.slice(source.indexOf("export function AssetFacetsButton"));
+    expect(button).toMatch(/<Button[^>]*\{cn\(TOOLBAR_CONTROL_HEIGHT,/s);
   });
 
   test("counts every picked value for the Filters badge", () => {

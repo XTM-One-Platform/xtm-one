@@ -11,9 +11,11 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
+import { TOOLBAR_CONTROL_HEIGHT } from "@/components/ui/data-table";
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FacetBranch, FacetCheckbox, FacetGroup, FacetSidebar } from "@/components/ui/facet-sidebar";
 import { formatCount } from "@/lib/number-format";
+import { cn } from "@/lib/utils";
 import type { AssetFacetValue, AssetFacets, AssetFilterKey } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import { CategoryMark, SourceLogo } from "./inventory-icons";
@@ -211,7 +213,8 @@ export function AssetFacetsButton({
       <Button
         variant="secondary"
         size="sm"
-        className="gap-1.5"
+        // The one toolbar control height (32 px) of Search, Columns, page size and Export (UX r5 B1).
+        className={cn(TOOLBAR_CONTROL_HEIGHT, "gap-1.5")}
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
         data-testid="ctem-inventory-asset-facets-button"
