@@ -40,14 +40,39 @@ export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): Ct
 }
 
 /**
+ * The providers connected on this platform: those with a bound source or a pass turned off on any
+ * path (a pass turned off exists only on a connected provider). Read once over every path.
+ */
+export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources">[]): Set<string> {
+  return new Set(paths.flatMap((p) => (p.sources ?? []).filter((s) => s.bound || s.off).map((s) => s.provider)));
+}
+
+/**
+ * One source's state on this platform (UX round 1 on #1405, B1): bound, a pass turned off, not set
+ * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
+ * OpenCTI), or not connected (no integration of its provider here).
+ */
+type SourceState = "bound" | "off" | "not_set_up" | "not_connected";
+
+export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
+  if (source.bound) return "bound";
+  if (source.off) return "off";
+  return connected.has(source.provider) ? "not_set_up" : "not_connected";
+}
+
+/**
  * A path's sources split by what feeds it on this platform (Sam, 23 Nov 2026, #1401): `live` are the
- * bound sources and the passes turned off (their provider is connected, Turn on is one click);
- * `possible` are the sources whose provider has no integration here. A possible source is never
+ * sources of a connected provider (bound, a pass turned off, or not set up yet), each saying its own
+ * state; `possible` are the sources whose provider has no integration here. A possible source is never
  * listed with the weight of a live one: the Sources tab folds them into one muted "+N possible".
  */
-export function splitSources(path: Pick<CtemSignalPath, "sources">): { live: CtemSignalPathSource[]; possible: CtemSignalPathSource[] } {
+export function splitSources(
+  path: Pick<CtemSignalPath, "sources">,
+  connected: ReadonlySet<string>,
+): { live: CtemSignalPathSource[]; possible: CtemSignalPathSource[] } {
   const sources = path.sources ?? [];
-  return { live: sources.filter((s) => s.bound || s.off), possible: sources.filter((s) => !s.bound && !s.off) };
+  const possible = (s: CtemSignalPathSource) => sourceState(s, connected) === "not_connected";
+  return { live: sources.filter((s) => !possible(s)), possible: sources.filter(possible) };
 }
 
 /** "N of M trigger paths connected": agents-only paths count in M, never in N. */

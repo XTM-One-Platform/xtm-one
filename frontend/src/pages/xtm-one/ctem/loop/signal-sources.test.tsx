@@ -9,7 +9,16 @@ import { renderWithProviders } from "@/testing/providers";
 import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { SignalSourcesPanel } from "./SignalSourcesPanel";
 import { TriggerPathsCard } from "./TriggerPathsCard";
-import { connectHref, connectNeedsAdmin, connectTarget, connectedCount, pathStatus, splitSources } from "./signal-sources";
+import {
+  connectHref,
+  connectNeedsAdmin,
+  connectTarget,
+  connectedCount,
+  connectedProviders,
+  pathStatus,
+  sourceState,
+  splitSources,
+} from "./signal-sources";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -170,10 +179,26 @@ describe("SignalSourcesPanel", () => {
       status: "off",
       sources: [{ provider: "opencrq", kind: "pass", event: "", bound: false, off: true }],
     });
-    expect(splitSources(outside).live.map((s) => s.provider)).toEqual(["shodan"]);
-    expect(splitSources(outside).possible.map((s) => s.provider)).toEqual(["gti"]);
-    expect(splitSources(decay).live).toHaveLength(1);
-    get.mockResolvedValue({ paths: [outside, leak, decay, PATHS[1]] });
+    // OpenCTI is connected (its listener is bound): its PIR playbook not provisioned is "Not set up", never possible.
+    const vuln = path({
+      id: "new_vulnerability",
+      label: "New vulnerability on a running version",
+      default_lens: "world",
+      status: "connected",
+      sources: [
+        { provider: "opencti", kind: "listener", event: "A new vulnerability", bound: true },
+        { provider: "opencti", kind: "pir_playbook", event: "A PIR match", bound: false },
+      ],
+    });
+    const all = [outside, leak, decay, vuln, PATHS[1]];
+    const connected = connectedProviders(all);
+    expect(sourceState(vuln.sources![1], connected)).toBe("not_set_up");
+    expect(sourceState(outside.sources![1], connected)).toBe("not_connected");
+    expect(splitSources(outside, connected).live.map((s) => s.provider)).toEqual(["shodan"]);
+    expect(splitSources(outside, connected).possible.map((s) => s.provider)).toEqual(["gti"]);
+    expect(splitSources(vuln, connected).possible).toHaveLength(0);
+    expect(splitSources(decay, connected).live).toHaveLength(1);
+    get.mockResolvedValue({ paths: all });
     renderWithProviders(
       <MemoryRouter>
         <SignalSourcesPanel />
@@ -197,6 +222,13 @@ describe("SignalSourcesPanel", () => {
     expect(off.getAttribute("data-off")).toBe("true");
     expect(off.textContent).toContain("Off");
     expect(within(row("control_decay")).queryByTestId("ctem-signal-sources-possible")).toBeNull();
+
+    // A source of a connected provider not set up is listed with its own words, never folded as "Not connected".
+    const vulnSources = within(row("new_vulnerability")).getAllByTestId("ctem-signal-source");
+    expect(vulnSources.map((s) => s.getAttribute("data-state"))).toEqual(["bound", "not_set_up"]);
+    expect(vulnSources[1].textContent).toContain("Not set up");
+    expect(within(row("new_vulnerability")).queryByTestId("ctem-signal-sources-possible")).toBeNull();
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-compact").textContent).not.toContain("possible");
 
     // Nothing live: the possible sources stay listed, muted, under Not connected, with Connect on the first.
     const code = within(row("code_flaw")).getByTestId("ctem-signal-source");
