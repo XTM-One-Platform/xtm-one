@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import en from "@/i18n/lang/en.json";
+import es from "@/i18n/lang/es.json";
+import fr from "@/i18n/lang/fr.json";
+import ja from "@/i18n/lang/ja.json";
 import {
+  CASE_QUICK_FILTER_LABEL,
   applyCaseQuickFilters,
   caseQuickFilterCount,
   readCaseScope,
@@ -69,6 +74,21 @@ describe("cases quick filters (#1503)", () => {
     expect(caseQuickFilterCount("closed", CASES, "open", ["critical_high"], NOW, "me")).toBe(1);
     expect(caseQuickFilterCount("unassigned", CASES, "open", ["critical_high"], NOW, "me")).toBe(1);
     expect(caseQuickFilterCount("critical_high", CASES, "open", ["critical_high"], NOW, "me")).toBe(2);
+  });
+
+  it("labels the open and closed scopes as the cases they hold, never the verb buttons use", () => {
+    const catalogs = { en, es, fr, ja } as Record<string, Record<string, string>>;
+    for (const scope of ["open", "closed"] as const) {
+      const key = CASE_QUICK_FILTER_LABEL[scope];
+      expect(key).not.toBe("Open");
+      expect(key).not.toBe("Closed");
+      for (const [locale, catalog] of Object.entries(catalogs)) {
+        expect(catalog[key], `${locale} has no "${key}"`).toBeTruthy();
+        if (locale !== "en") expect(catalog[key], `${locale} reads the ${scope} scope as the verb`).not.toBe(catalog.Open);
+      }
+    }
+    expect(fr["Open (case scope)"]).toBe("Ouverts");
+    expect(fr["Closed (case scope)"]).toBe("Fermés");
   });
 
   it("writes the toggles in chip order and reads unknown ones as absent", () => {

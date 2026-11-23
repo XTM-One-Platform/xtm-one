@@ -13680,6 +13680,8 @@
   "Work items, shared state and worksets: hand work over and keep state across runs": "Work items, shared state and worksets: hand work over and keep state across runs",
   "Coordinate a fleet across runs: a durable, claimable work queue (create, update, list, atomically claim and complete work items, delegate a tracked run to an assignment), a cross-run key-value store so agents never cold-start, and a workset, a working corpus for material too large for one context, summarised and searchable. Work items are shared data: they never trigger an agent by themselves.": "Coordinate a fleet across runs: a durable, claimable work queue (create, update, list, atomically claim and complete work items, delegate a tracked run to an assignment), a cross-run key-value store so agents never cold-start, and a workset, a working corpus for material too large for one context, summarised and searchable. Work items are shared data: they never trigger an agent by themselves.",
   "Open (status)": "Open",
+  "Open (case scope)": "Open",
+  "Closed (case scope)": "Closed",
   "Assigning Jira issue": "Assigning Jira issue",
   "Attaching file to Jira issue": "Attaching file to Jira issue",
   "Building presentation": "Building presentation",

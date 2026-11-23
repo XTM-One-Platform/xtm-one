@@ -18,17 +18,22 @@ export type CaseScope = CaseScopeChip | CtemCaseState;
 export const CASE_TOGGLES = ["mine", "unassigned", "overdue", "critical_high"] as const;
 export type CaseToggle = (typeof CASE_TOGGLES)[number];
 
-/** English labels, translated where drawn. */
-export const CASE_QUICK_FILTER_LABEL: Record<CaseScopeChip | CaseToggle, string> = {
-  open: "Open",
+/**
+ * English labels, translated where drawn. @i18n-keys
+ * The open and closed scopes have their own keys: the bare "Open" is the verb
+ * buttons use ("Ouvrir") and a scope names the cases it holds, plural adjective
+ * ("Ouverts", "Fermés").
+ */
+export const CASE_QUICK_FILTER_LABEL = {
+  open: "Open (case scope)",
   waiting_decision: "Waiting for decision",
-  closed: "Closed",
+  closed: "Closed (case scope)",
   all: "All",
   mine: "Mine",
   unassigned: "Unassigned",
   overdue: "Overdue",
   critical_high: "Critical and high",
-};
+} as const satisfies Record<CaseScopeChip | CaseToggle, string>;
 
 /** The first-model states a saved link may still carry, read as the open scope. */
 const LEGACY_SCOPES: ReadonlySet<string> = new Set(["needs_attention", "in_progress"]);
