@@ -1402,6 +1402,50 @@ async def gate_fleet_refusal(db: AsyncSession, check: object) -> str | None:
     return None
 
 
+def grant_health_check_tools(agent: Agent) -> bool:
+    """Give *agent*, which holds a weekly health check, the tools its gate and run call (#1428).
+
+    Its built-in selection is made canonical (a former id such as
+    ``work_items`` becomes its group), then the ``platform`` group gets
+    :data:`FLEET_HEALTH_FUNCTIONS`: scoped to those alone when the agent did
+    not enable it, added to a scoped list, an unscoped group left as is. An
+    allow-list entry left for a group the agent does not enable is dropped.
+    Whether anything changed. Idempotent.
+    """
+    from app.services.builtin_allowed_tools import without_groups_not_enabled
+    from app.services.builtin_tool_aliases import fold_builtin_selection
+
+    folded = fold_builtin_selection(agent)
+    granted = grant_group_functions(agent, "platform", FLEET_HEALTH_FUNCTIONS)
+    pruned = without_groups_not_enabled(agent.builtin_tool_ids or [], agent.builtin_allowed_tools)
+    stale = pruned != (agent.builtin_allowed_tools or None)
+    if stale:
+        agent.builtin_allowed_tools = pruned
+    return folded or granted or stale
+
+
+async def grant_health_check_holders(db: AsyncSession) -> int:
+    """Grant :func:`grant_health_check_tools` to every agent holding a weekly health check; how many changed.
+
+    A desk lead seeded with a check but without the ``platform`` group had
+    its gate skipped as misconfigured on every firing (#1428). Run at boot
+    after the seed rewrote the built-in agents' ids, so an instance seeded
+    before the fix is repaired without a manual change. The caller commits.
+    """
+    from app.models.assignment import Assignment
+
+    rows = (await db.execute(select(Assignment).where(Assignment.name == FLEET_HEALTH_CHECK_NAME))).scalars().all()
+    agent_ids = list(dict.fromkeys(row.agent_id for row in rows if is_fleet_health_check(row) and row.agent_id))
+    changed = 0
+    for agent_id in agent_ids:
+        agent = await db.get(Agent, agent_id)
+        if agent is not None and grant_health_check_tools(agent):
+            changed += 1
+    if changed:
+        await db.flush()
+    return changed
+
+
 async def backfill_fleet_health_advisory(db: AsyncSession) -> int:
     """Give every fleet orchestrator the health advisory (#11700); orchestrators changed.
 
@@ -1422,6 +1466,7 @@ async def backfill_fleet_health_advisory(db: AsyncSession) -> int:
         listening = await ensure_fleet_health_answered(db, fleet, agent)
         if granted or created or listening:
             changed += 1
+    changed += await grant_health_check_holders(db)
     if changed:
         await db.commit()
     return changed
