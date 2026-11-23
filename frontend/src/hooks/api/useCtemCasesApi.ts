@@ -152,35 +152,6 @@ export interface CtemCaseEvent {
   to: string | null;
   reason: string | null;
   evidence: string | null;
-  /**
-   * The audit trail (#1490): the CTEM phase the event belongs to, its autonomy class, who acted
-   * (and the agent's name when the viewer may see it), one sentence for a note, the task, run and
-   * item ids a note names. Absent on an API older than #1494.
-   */
-  phase?: string;
-  autonomy?: string;
-  actor_type?: "person" | "agent" | "system";
-  actor_name?: string | null;
-  headline?: string | null;
-  refs?: { kind: "task" | "run" | "item"; id: string; full: boolean }[];
-  /** A waiting gate: its later answer, null while it still waits. */
-  answer?: { at: string | null; outcome: string | null; by: string | null; option: string | null } | null;
-  /** The answer of a gate: since when it waited. */
-  waited_since?: string | null;
-}
-
-/** One CTEM phase of a case (#1490): when it was entered and left, its time and counts. */
-export interface CtemCasePhase {
-  phase: string;
-  entered_at: string | null;
-  exited_at: string | null;
-  seconds: number;
-  events: number;
-  runs: number;
-  /** Gates of the phase still waiting for a person. */
-  waiting: number;
-  current: boolean;
-  autonomy?: Record<string, number>;
 }
 
 /**
@@ -244,11 +215,15 @@ export interface CtemCaseTreatmentPlan {
  * are served. `state` is `drafted` while the package sits in an OpenCTI draft
  * (its link is the draft page, nothing reached OpenAEV) and `validated` once it
  * is in the live graph; `coverage_requested` is true only for a validated
- * package (#1480).
+ * package (#1480). From the analyst review gate (#1573): `awaiting_review`
+ * while it waits, `replan` once answered with free text or another option,
+ * `rejected` once refused; `validated` needs the review approved.
  */
+export type CtemThreatPackageState = "drafted" | "awaiting_review" | "replan" | "rejected" | "validated";
+
 export interface CtemCaseThreatPackage {
   restricted: boolean;
-  state?: "drafted" | "validated";
+  state?: CtemThreatPackageState;
   coverage_requested: boolean;
   /** The coverage is written in the draft: not sent to OpenAEV until the draft is validated. */
   coverage_drafted?: boolean;
@@ -317,9 +292,6 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   keys: string[];
   issues: CtemCaseIssue[];
   history: CtemCaseEvent[];
-  /** The phases of the audit trail in CTEM order (#1490); absent on an API older than #1494. */
-  phases?: CtemCasePhase[];
-  current_phase?: string | null;
   /** Absent on an API older than #936. */
   exploitation?: CtemCaseExploitation[];
   /** Null before triage read it; absent on an API older than #1289. */
