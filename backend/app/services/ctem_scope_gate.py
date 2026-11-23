@@ -195,6 +195,9 @@ def _account_disabled(evidence: dict[str, Any]) -> bool:
 
 # ── reconcile ──────────────────────────────────────────────────────────
 
+#: #1505: the subject kinds a hostname names, matched to the owned domains it sits under.
+HOST_SUBJECT_KINDS: frozenset[str] = frozenset({"asset"})
+
 
 @dataclass
 class Resolution:
@@ -207,6 +210,10 @@ class Resolution:
     keys: list[str] = field(default_factory=list)
     #: CTEM-29: the owned domain an identity subject belongs to.
     domains: list[str] = field(default_factory=list)
+    #: #1505: the owned domain a host subject sits under (``app.corp.example`` under ``corp.example``).
+    #: It places the host in the inventory but carries no criticality: such a host goes to the
+    #: watchlist, never one case per host, until an asset or a crown jewel names it.
+    hosted_domains: list[str] = field(default_factory=list)
     #: #1432: the shipped products the software names, each ``{product, by, repositories}``.
     shipped: list[dict[str, Any]] = field(default_factory=list)
     #: #1432: their source repositories (``owner/name``), the subject's assets.
@@ -215,7 +222,13 @@ class Resolution:
     @property
     def resolved(self) -> bool:
         return bool(
-            self.assets or self.groups or self.crown_jewels or self.products or self.domains or self.repositories
+            self.assets
+            or self.groups
+            or self.crown_jewels
+            or self.products
+            or self.domains
+            or self.repositories
+            or self.hosted_domains
         )
 
 
@@ -230,10 +243,22 @@ def owned_domain_of(profile: OrganizationProfile, ref: str) -> str:
     domain = identity_domain(ref)
     if not domain:
         return ""
+    return _under_owned(profile, domain)
+
+
+def _under_owned(profile: OrganizationProfile, domain: str) -> str:
     for owned in profile.owned_domains:
         if domain == owned or domain.endswith(f".{owned}"):
             return owned
     return ""
+
+
+def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
+    """#1505: the owned domain a hostname or URL *ref* sits under, ``""`` for an IP or no match."""
+    host = stable_key(ref)
+    if not host or "@" in host or "." not in host or host.replace(".", "").replace(":", "").isdigit():
+        return ""
+    return _under_owned(profile, host)
 
 
 def _product_matches(product: str, ref: str) -> bool:
@@ -332,6 +357,10 @@ def resolve(profile: OrganizationProfile, facts: SignalFacts) -> Resolution:
         owned = owned_domain_of(profile, facts.subject_ref)
         if owned:
             out.domains.append(owned)
+    elif facts.subject_kind in HOST_SUBJECT_KINDS and not (out.assets or out.groups or out.crown_jewels):
+        hosted = host_owned_domain(profile, facts.subject_ref)
+        if hosted:
+            out.hosted_domains.append(hosted)
     software = _evidence_list(facts.evidence, "software", "products", "cpe")
     if facts.subject_kind == "software":
         software.insert(0, facts.subject_ref)
@@ -488,6 +517,7 @@ def decide(
             "tech_stack": resolution.products,
             "shipped_products": resolution.shipped,
             "repositories": resolution.repositories,
+            "hosted_under": resolution.hosted_domains,
             "lenses": lenses,
             "confidence": confidence,
             "proven": proven,

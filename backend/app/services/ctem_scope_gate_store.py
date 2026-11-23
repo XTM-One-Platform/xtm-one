@@ -322,6 +322,58 @@ async def evaluate_open(
     return counts
 
 
+#: How many parked signals one tick decides again after a profile change (#1505); the next tick takes the rest.
+RECHECK_BATCH = 500
+
+
+async def recheck_parked(
+    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH
+) -> dict[str, int]:
+    """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
+
+    A change to assets, groups, crown jewels, owned domains, tech stack or
+    shipped products writes a new profile version; every ``to_validate``
+    signal last decided before it is decided again, *batch* per call, oldest
+    first. Each is read with its recorder's OpenCRQ read. A signal the gate
+    confirms waits for the case sweep, which groups it by case key, so a
+    profile change never opens one case per host here. The caller commits.
+    """
+    from app.models.organization_context import OrganizationContextVersion
+
+    latest = (
+        select(
+            OrganizationContextVersion.organization_id,
+            func.max(OrganizationContextVersion.created_at).label("changed_at"),
+        )
+        .group_by(OrganizationContextVersion.organization_id)
+        .subquery()
+    )
+    rows = list(
+        (
+            await db.execute(
+                select(CtemSignal)
+                .join(latest, latest.c.organization_id == CtemSignal.organization_id)
+                .where(CtemSignal.state == "to_validate", CtemSignal.updated_at < latest.c.changed_at)
+                .order_by(CtemSignal.updated_at)
+                .limit(max(1, int(batch)))
+            )
+        ).scalars()
+    )
+    counts: dict[str, int] = {}
+    profiles: dict[uuid.UUID, Any] = {}
+    by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
+    at = now or datetime.now(UTC)
+    for row in rows:
+        if row.organization_id not in profiles:
+            profiles[row.organization_id] = await _profile(db, row.organization_id)
+        reader = scenario_reader(row, None)
+        if reader not in by_reader:
+            by_reader[reader] = await read_scenarios(db, user_id=reader)
+        await evaluate(db, row, profile=profiles[row.organization_id], scenarios=by_reader[reader], now=at)
+        counts[row.state] = counts.get(row.state, 0) + 1
+    return counts
+
+
 def dismissal_record(row: CtemSignal, *, by: str, at: datetime) -> dict[str, Any]:
     """The decision record of a dismissal (#1505): who and when, the state it left, the reconcile kept."""
     previous = dict(row.decision or {})

@@ -8,7 +8,7 @@ are checked on plain rows; the gate's own rules are ``test_ctem_scope_gate.py``.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +18,7 @@ from app.services import ctem_scope_gate_store as store
 from app.services import organization_context as oc
 
 NOW = datetime(2026, 11, 23, 12, 0, tzinfo=UTC)
+TODAY = date(2026, 11, 23)
 
 
 def _profile(*hosts: str) -> oc.OrganizationProfile:
@@ -63,6 +64,36 @@ def fake_io(monkeypatch):
     monkeypatch.setattr(store, "_profile", _profile_of)
     monkeypatch.setattr(store, "read_scenarios", _scenarios)
     return inventory
+
+
+def _host(ref: str) -> gate.SignalFacts:
+    return gate.SignalFacts(
+        trigger_path="surface_drift",
+        lens="outside",
+        subject_kind="asset",
+        subject_ref=ref,
+        source_provider="shodan",
+        evidence={},
+    )
+
+
+def test_a_host_under_an_owned_domain_is_in_the_inventory_without_opening_a_case():
+    profile = oc.parse_profile({"owned_domains": ["corp.example"]})
+    decision = gate.decide(profile, _host("https://langfuse.one.corp.example"), today=TODAY)
+    assert decision.outcome == "watchlist" and decision.record["reason_code"] == "criticality_unknown"
+    assert decision.record["reconcile"]["hosted_under"] == ["corp.example"]
+    # Not under it, an IP, or a look-alike suffix: still unmatched.
+    for ref in ("langfuse.other.example", "10.0.0.4", "evilcorp.example"):
+        assert gate.decide(profile, _host(ref), today=TODAY).outcome == "to_validate", ref
+
+
+def test_an_asset_named_in_the_inventory_wins_over_its_owned_domain():
+    profile = oc.parse_profile(
+        {"owned_domains": ["corp.example"], "assets_exposure": [{"name": "vpn.corp.example", "criticality": "high"}]}
+    )
+    decision = gate.decide(profile, _host("vpn.corp.example"), today=TODAY)
+    assert decision.outcome == "case"
+    assert decision.record["reconcile"]["hosted_under"] == []
 
 
 async def test_dismiss_records_who_and_keeps_the_reconcile(fake_io):
@@ -172,6 +203,28 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
     assert ok.json() == {"matched": 150, "counts": {"changed": 150, "skipped": 0, "discarded": 150}}
     assert seen["recorded_by"] == str(alice) and seen["state"] == "to_validate"
     assert both.status_code == 422 and unknown.status_code == 422
+
+
+async def test_a_profile_change_checks_the_unmatched_signals_again(fake_io):
+    """The tick decides again the parked signals older than the newest profile version, in one batch."""
+    rows = [_row(ref="langfuse.example.com"), _row(ref="other.example.com")]
+    statements: list = []
+
+    class _Result:
+        def scalars(self):
+            return iter(rows)
+
+    class _Db:
+        async def execute(self, statement):
+            statements.append(str(statement))
+            return _Result()
+
+    fake_io.append("langfuse.example.com")
+    counts = await store.recheck_parked(_Db(), now=NOW, batch=50)
+    assert counts == {"confirmed": 1, "to_validate": 1}
+    assert rows[0].state == "confirmed" and rows[1].updated_at == NOW
+    sql = statements[0]
+    assert "organization_context_versions" in sql and "ctem_signals.updated_at <" in sql
 
 
 class _Nested:
