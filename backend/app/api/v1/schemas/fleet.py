@@ -1052,6 +1052,9 @@ class FleetApprovalGatesResponse(BaseModel):
     instructions_position: str | None = None
     #: Whether the members are told it in their run prompt (a person moved it).
     instructions_position_announced: bool = False
+    #: Whether the platform also pauses the tool calls of a waiting gate (#1467).
+    #: Off by default: the gates are instructions to the members.
+    enforce_at_tool_level: bool = False
 
 
 class FleetInstructionsPositionRequest(BaseModel):
@@ -1072,6 +1075,9 @@ class FleetAutonomyApplyRequest(BaseModel):
     level: Literal["full_gates", "medium", "low", "autonomous"]
     #: ``{gate key: "wait" | "run"}``; omitted, the stored pins are kept.
     pins: dict[str, Literal["wait", "run"]] | None = Field(default=None, max_length=200)
+    #: Opt the fleet in to (or out of) tool-level pauses (#1467), administrators
+    #: only; omitted, the stored value is kept.
+    enforce_at_tool_level: bool | None = None
 
 
 class FleetApprovalGatesUpdateRequest(BaseModel):
