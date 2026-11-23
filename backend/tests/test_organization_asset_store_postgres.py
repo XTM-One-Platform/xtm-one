@@ -214,6 +214,46 @@ async def test_pagination_and_search_are_by_name_and_organizations_never_cross()
     assert foreign is None
 
 
+async def test_a_lookup_finds_an_asset_by_any_identifier_a_platform_holds_and_never_another_organization() -> None:
+    host = {
+        "name": "db-01",
+        "category": "host",
+        "source": "intune",
+        "external_id": "d-7",
+        "fqdn": "db-01.corp.example",
+        "ip": ["10.0.0.5"],
+        "mac": "AA-BB-CC-DD-EE-01",
+    }
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        other = await _org(session, "B", primary=False)
+        await _save(session, org, 1, [host, SERVER])
+        await _save(session, other, 1, [{**SERVER, "name": "web-99", "external_id": "z-1"}])
+        await store.ensure_built(session)
+        await store.ensure_built(session, other)
+        await session.commit()
+        found = await store.find_assets_by_identifier(
+            session,
+            org,
+            ["DB-01", "db-01.corp.example.", "10.0.0.5", "aa:bb:cc:dd:ee:01", "web-02", "web-99", "nothing", ""],
+        )
+    assert sorted(found) == ["10.0.0.5", "DB-01", "aa:bb:cc:dd:ee:01", "db-01.corp.example.", "web-02"]
+    assert {m["name"] for k, m in found.items() if k != "web-02"} == {"db-01"}
+    assert found["web-02"]["name"] == "web-02"
+    assert found["DB-01"]["matches"] == 1
+    assert set(found["DB-01"]) == {"id", "name", "category", "criticality", "internet_facing", "owner", "matches"}
+
+
+async def test_a_lookup_never_reads_a_free_value_as_a_serial() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A", primary=True)
+        await _save(session, org, 1, [{**SERVER, "name": "srv", "serial": "WEB02"}])
+        await store.ensure_built(session)
+        await session.commit()
+        found = await store.find_assets_by_identifier(session, org, ["web-02"])
+    assert found == {}
+
+
 async def test_a_split_keeps_two_records_apart_across_rebuilds_and_its_removal_merges_them_again() -> None:
     async with _database() as sessions, sessions() as session:
         org = await _org(session, "A", primary=True)
