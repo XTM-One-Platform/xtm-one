@@ -185,23 +185,24 @@ export function DiscoveryMix({
 
   const hasData = tacticsCard !== null || sideCards.length > 0;
   if (!hasData && gapCards.length === 0) return null;
-  // UX rounds 1 to 3 of #12027: every card hugs its content (no stretched card, so no empty
-  // band inside a card). Below 2xl the cards stack on one column; from 2xl the tactics sit
-  // beside top threats and targeting, the row aligned to the start. The gap fillers keep a
-  // row of their own; a lone gap filler takes the full row.
+  // Below 2xl the cards stack on one column; from 2xl the tactics sit beside top threats
+  // and targeting. Every card of a row ends on the tallest edge (Sam, 24 Nov 2026, #1612:
+  // equal heights as in the rest of the app): the tactics card fills its cell and the last
+  // side card grows to the column's end, content top-aligned. The gap fillers keep a row of
+  // their own; a lone gap filler takes the full row.
   const twoColumns = tacticsCard !== null && sideCards.length > 0;
   return (
     <div className="space-y-5" data-testid="ctem-discovery-mix">
       {hasData && (
         <div
-          className={cn("grid items-start gap-5", twoColumns && "2xl:grid-cols-2")}
+          className={cn("grid gap-5 [&>section]:h-full", twoColumns && "2xl:grid-cols-2")}
           data-testid="ctem-discovery-data-row"
-          data-align="start"
+          data-align="stretch"
           data-wide-columns={twoColumns ? 2 : 1}
         >
           {tacticsCard}
           {sideCards.length > 0 && (
-            <div className="flex flex-col gap-5" data-testid="ctem-discovery-side-column">
+            <div className="flex flex-col gap-5 [&>section:last-child]:grow" data-testid="ctem-discovery-side-column">
               {sideCards}
             </div>
           )}
