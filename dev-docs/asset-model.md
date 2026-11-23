@@ -257,11 +257,18 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 - `POST /api/v1/organization-context/assets/lookup` `{keys: [...]}` (at most 200): the cross-product pivot of
   OpenCTI, OpenAEV and OpenCRQ (contract v3, the XTM One emblem). Each key is read as an FQDN and its hostname, a
   hostname, a MAC or an IP address (never a serial or a cloud id), normalised as the identity engine compares them,
-  and matched against every source record of the primary organization, then the asset's name. The answer holds one
+  and matched against every source record of the primary organization, then the asset's name. A key of the form
+  `<source>:<external id>` (`openaev:<asset id>`) is a source reference: it is matched exactly on the source and
+  external id of the records and, when found, wins over every weak reading of the same key, so a product that
+  imported the same OpenAEV asset finds it whatever its name or addresses. The answer holds one
   item per key found: `{key, id, name, category, criticality, internet_facing, owner, matches, url}`, `url` the
   asset's page `/ctem/inventory/assets/{id}`, `matches` the number of assets holding a weak key (the first by name
   answers). The platforms call it with the user's own cross-platform token, so a user reads what the inventory list
   answers him.
+- The OpenAEV assets import reads `/api/endpoints/search` (endpoints with hostname, IPs and MACs), then
+  `/api/assets/search` for the rest of the inventory (web applications, cloud resources, SaaS, network devices
+  created as generic assets; AI targets keep their own read). A `platform` filter names endpoints alone and skips
+  the second read.
 
 ### 9.2 Writes through the store, merge and split (S3)
 
