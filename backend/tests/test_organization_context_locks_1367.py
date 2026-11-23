@@ -55,9 +55,11 @@ def test_a_synced_field_changed_by_hand_is_refused_with_the_row_and_field():
 
 
 def test_a_synced_ai_system_renamed_by_hand_is_refused():
+    # #1501: the profile AI system is the third asset (category ai_target), locked like any synced asset.
     stored = _profile()
+    assert stored["assets_exposure"][2]["category"] == "ai_target" and "ai_systems" not in stored
     incoming = copy.deepcopy(stored)
-    incoming["ai_systems"][0]["name"] = "Renamed"
+    incoming["assets_exposure"][2]["name"] = "Renamed"
     assert synced_edit_problems(stored, incoming)
 
 
@@ -67,7 +69,7 @@ def test_local_fields_of_a_synced_row_and_every_field_of_a_hand_row_stay_editabl
     incoming["assets_exposure"][0]["owner"] = "Alice"
     incoming["assets_exposure"][0]["environment"] = "production"
     incoming["assets_exposure"][1]["criticality"] = "very_high"
-    incoming["ai_systems"][0]["owner"] = "IT"
+    incoming["assets_exposure"][2]["owner"] = "IT"
     assert synced_edit_problems(stored, incoming) == []
 
 

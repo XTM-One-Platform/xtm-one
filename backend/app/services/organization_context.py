@@ -166,6 +166,9 @@ EXPOSURE_FIELDS: tuple[str, ...] = (
 #: Profile fields read by a CTEM page only (#11547 S2e), never dumped into the
 #: always-on block and not contract fields, like the parts above.
 PAGE_ONLY_FIELDS: tuple[str, ...] = ("posture_target",)
+#: Profile parts read like fields but derived from another (#1501: ``ai_systems`` is the assets of
+#: category ai_target): readers, prerequisite checks and the contract name them, nothing stores them.
+DERIVED_FIELDS: tuple[str, ...] = ("ai_systems",)
 
 _Strict = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -940,6 +943,11 @@ class OrganizationProfile(BaseModel):
     #: ``missing_fields`` still reports them; the onboarding no longer asks.
     onboarding_skipped: list[str] = Field(default_factory=list, max_length=20)
 
+    @property
+    def ai_systems(self) -> list[AssetEntry]:
+        """The AI systems: the assets of category ``ai_target`` (#1501; read-only, never dumped)."""
+        return ai_target_assets(self)
+
     @model_validator(mode="before")
     @classmethod
     def _ai_systems_into_assets(cls, data: Any) -> Any:
@@ -954,6 +962,11 @@ class OrganizationProfile(BaseModel):
         legacy = data.pop("ai_systems") or []
         assets = list(data.get("assets_exposure") or [])
         for raw in legacy if isinstance(legacy, list) else []:
+            try:
+                AiSystem.model_validate(raw)
+            except ValueError as exc:
+                # Never dropped in silence: a bad row is refused and named, as before #1501.
+                raise ValueError(f"ai_systems: {exc}") from None
             row = ai_system_asset(raw)
             if row is not None and not _carried(assets, row):
                 assets.append(row)
@@ -1095,9 +1108,6 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
 
 
 def _value(profile: OrganizationProfile, path: str) -> Any:
-    if path == "ai_systems":
-        # #1501: the contract field is filled by the assets of category ai_target.
-        return ai_target_assets(profile)
     value: Any = profile
     for part in path.split("."):
         value = getattr(value, part)
@@ -1447,6 +1457,26 @@ def _drop_typed_provenance(row: dict[str, Any]) -> None:
             row.pop(key, None)
 
 
+def _ai_block_row(asset: AssetEntry) -> dict[str, Any]:
+    """An AI target asset as the always-on block names an AI system (#1501)."""
+    row: dict[str, Any] = {"name": asset.name, "subcategory": asset.subcategory, "owner": asset.owner}
+    row["internet_facing"] = asset.internet_facing
+    if asset.source not in HAND_SOURCES:
+        row["source"] = asset.source
+    return {k: v for k, v in row.items() if v not in ("", None) or k == "name"}
+
+
+def _insert_before(data: dict[str, Any], before: str, key: str, value: Any) -> dict[str, Any]:
+    """*data* with *key* set just before *before* (at the end when *before* is absent)."""
+    out: dict[str, Any] = {}
+    for k, v in data.items():
+        if k == before:
+            out[key] = value
+        out[k] = v
+    out.setdefault(key, value)
+    return out
+
+
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
 
@@ -1468,6 +1498,10 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     for key in ("crown_jewels", "tech_stack"):
         for row in dumped.get(key) or []:
             _drop_typed_provenance(row)
+    # #1501: the always-on block keeps naming the AI systems, now the assets of category ai_target,
+    # at the place the list had (the block of a profile without any reads as before).
+    ai_rows = [_ai_block_row(asset) for asset in ai_target_assets(profile)]
+    dumped = _insert_before(dumped, "pir_ids", "ai_systems", ai_rows)
     if not dumped.get("fx_rates"):
         # #1383: a profile with no reference rate dumps as before.
         dumped.pop("fx_rates", None)
