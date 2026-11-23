@@ -552,13 +552,18 @@ def list_for_viewer(
     state: str | None = None,
     owner_user_id: str | None = None,
     priority: str | None = None,
+    asset: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """One page of the cases this viewer sees and their counts by state.
 
     A case with no issue visible to the viewer is in neither: a count is data.
+    *asset* keeps the cases one of whose issues the viewer sees names that asset
+    (case-insensitive), the counts included: the cases on one asset.
     """
+    if asset and asset.strip():
+        cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
     rows = [s for s in (summary(c, members, view) for c, members in cases) if s is not None]
     counts: dict[str, int] = {}
     for row in rows:
@@ -572,6 +577,16 @@ def list_for_viewer(
     rows.sort(key=lambda r: (_PRIORITY_RANK.get(r["priority"], 9), -r["open_issue_count"], r["id"]))
     start = max(0, offset)
     return rows[start : start + max(1, limit)], counts
+
+
+def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool:
+    """Whether an issue of the case this viewer sees names *asset* (case-insensitive, spaces folded)."""
+    wanted = " ".join(asset.split()).casefold()
+    for row in visible_members(rows, view):
+        issue = view.issues.get(_member_id(row))
+        if issue is not None and any(" ".join(a.split()).casefold() == wanted for a in issue.assets):
+            return True
+    return False
 
 
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:

@@ -43,10 +43,14 @@ export function sourcePlatform(source: string | undefined): string {
   return isPlatformSource(source) ? norm(source) : "";
 }
 
-/** The Source labels a table and its filter draw for the hand and agent kinds. @i18n-keys */
+/**
+ * The Source labels a table and its filter draw for the hand and agent kinds: the ONE name of each source on every
+ * surface (Settings profile tables, the Sources and syncs table, the CTEM Inventory lists and filters; UX round 6 on
+ * #1254, B12). @i18n-keys
+ */
 export const SOURCE_KIND_LABELS = {
   manual: "Entered by hand",
-  csv: "CSV",
+  csv: "CSV import",
   api: "API",
   agent: "Agent",
 } as const;

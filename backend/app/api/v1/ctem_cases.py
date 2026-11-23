@@ -139,12 +139,16 @@ async def list_ctem_cases(
     state: CaseState | None = Query(default=None),
     priority: Literal["critical", "high", "medium", "low"] | None = Query(default=None),
     owner_user_id: uuid.UUID | None = Query(default=None),
+    asset: str | None = Query(default=None, max_length=300),
     limit: int = Query(default=50, ge=1, le=store.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One page of the cases the caller sees and their counts by state (the board and the list)."""
+    """One page of the cases the caller sees and their counts by state (the board and the list).
+
+    ``asset`` keeps the cases on one asset (an issue the caller sees names it): the asset page's cases.
+    """
     _require_xtm_one()
     vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
     primary = await get_primary(db)
@@ -171,6 +175,7 @@ async def list_ctem_cases(
         state=state,
         owner_user_id=str(owner_user_id) if owner_user_id else None,
         priority=priority,
+        asset=asset,
         limit=limit,
         offset=offset,
     )
