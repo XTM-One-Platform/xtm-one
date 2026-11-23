@@ -24,6 +24,13 @@ const STATUS_LABEL: Record<NonNullable<CtemCaseAffectedAsset["status"]>, string>
   not_comparable: "Cannot be compared",
 };
 
+/**
+ * Status and Sources step aside below a 896 px card (the case page at 1080), back from the
+ * Columns pill: every row keeps one height and the table never scrolls sideways (design
+ * standards s.3, UX r1 B2 on #1324). The text cells are cut on one line with a tooltip.
+ */
+const SECONDARY_HIDE_BELOW = "4xl" as const;
+
 const STATUS_RANK: Record<NonNullable<CtemCaseAffectedAsset["status"]>, number> = { below_fixed: 0, not_comparable: 1, fixed: 2 };
 
 /** The version cell of an asset: its versions, "Unknown" for an unknown one, "Not in the inventory" when no inventory asset runs the product. */
@@ -81,7 +88,9 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
             key: "version",
             header: "Running version",
             cell: (a: CtemCaseAffectedAsset) => (
-              <span className={a.in_inventory ? undefined : "text-default-secondary"}>{assetVersionText(a, t_i18n)}</span>
+              <span className={a.in_inventory ? undefined : "text-default-secondary"}>
+                <TruncatedText text={assetVersionText(a, t_i18n)} className="max-w-[10rem]" />
+              </span>
             ),
             sortValue: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join(",") : "~"),
             csv: (a: CtemCaseAffectedAsset) => (a.in_inventory ? (a.versions ?? []).join("; ") : ""),
@@ -91,19 +100,24 @@ export function CaseAffectedAssets({ data }: { data: CtemCaseAffectedAssets | un
                 {
                   key: "status",
                   header: "Status",
-                  cell: (a: CtemCaseAffectedAsset) => (a.status ? t_i18n(STATUS_LABEL[a.status]) : null),
+                  cell: (a: CtemCaseAffectedAsset) =>
+                    a.status ? <TruncatedText text={t_i18n(STATUS_LABEL[a.status])} className="max-w-[12rem]" /> : null,
                   sortValue: (a: CtemCaseAffectedAsset) => (a.status ? STATUS_RANK[a.status] : 9),
                   csv: (a: CtemCaseAffectedAsset) => a.status ?? "",
                   hideable: true,
+                  hideBelow: SECONDARY_HIDE_BELOW,
                 } satisfies DataTableColumn<CtemCaseAffectedAsset>,
               ]
             : []),
           {
             key: "sources",
             header: "Sources",
-            cell: (a: CtemCaseAffectedAsset) => (a.sources ?? []).map((s) => t_i18n(versionSourceName(s))).join(", "),
+            cell: (a: CtemCaseAffectedAsset) => (
+              <TruncatedText text={(a.sources ?? []).map((s) => t_i18n(versionSourceName(s))).join(", ")} className="max-w-[12rem]" />
+            ),
             csv: (a: CtemCaseAffectedAsset) => (a.sources ?? []).map(versionSourceName).join("; "),
             hideable: true,
+            hideBelow: SECONDARY_HIDE_BELOW,
           } satisfies DataTableColumn<CtemCaseAffectedAsset>,
         ]
       : []),

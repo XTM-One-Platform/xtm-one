@@ -222,12 +222,27 @@ def affected_assets(issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     asset and are skipped). Each row counts the issues naming the asset, the open
     ones, whether one of them is known exploited and the highest CVSS; the rows
     most exposed come first (open issues, then KEV, then CVSS, then the name).
-    Names fold case and spaces, the first spelling met is shown.
+    Names fold case and spaces, the first spelling met is shown. KEV and CVSS
+    are the facts of the issue's CVE folded across every visible source: an
+    asset named by an OpenAEV finding of a CVE that OpenCTI marks known
+    exploited reads KEV yes (UX r1 B3 on #1324).
     """
-    rows: dict[str, dict[str, Any]] = {}
-    for issue in issues:
-        if issue.get("restricted"):
+    visible = [issue for issue in issues if not issue.get("restricted")]
+    cve_kev: dict[str, bool] = {}
+    cve_cvss: dict[str, float] = {}
+    for issue in visible:
+        cve = str(issue.get("cve") or "").strip().upper()
+        if not cve:
             continue
+        cve_kev[cve] = cve_kev.get(cve, False) or bool(issue.get("kev"))
+        cvss = issue.get("cvss")
+        if isinstance(cvss, int | float) and cvss > cve_cvss.get(cve, -1.0):
+            cve_cvss[cve] = float(cvss)
+    rows: dict[str, dict[str, Any]] = {}
+    for issue in visible:
+        cve = str(issue.get("cve") or "").strip().upper()
+        kev = bool(issue.get("kev")) or cve_kev.get(cve, False)
+        cvss = cve_cvss.get(cve, issue.get("cvss")) if cve else issue.get("cvss")
         for name in dict.fromkeys(str(a).strip() for a in issue.get("assets") or () if str(a).strip()):
             row = rows.setdefault(
                 _key(name),
@@ -235,8 +250,7 @@ def affected_assets(issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             )
             row["issue_count"] += 1
             row["open_issue_count"] += 1 if issue.get("open") else 0
-            row["kev"] = row["kev"] or bool(issue.get("kev"))
-            cvss = issue.get("cvss")
+            row["kev"] = row["kev"] or kev
             if isinstance(cvss, int | float) and (row["max_cvss"] is None or cvss > row["max_cvss"]):
                 row["max_cvss"] = float(cvss)
     ordered = sorted(

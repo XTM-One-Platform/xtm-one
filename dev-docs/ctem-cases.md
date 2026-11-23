@@ -209,7 +209,11 @@ The case read also carries `affected_assets` (`ctem_case_versions.assets_for_cas
 one row per asset the caller's visible issues name (restricted rows and signal
 rows add none), names folded on case and spaces, with `issue_count`,
 `open_issue_count`, `kev` and `max_cvss`, the most exposed first, at most 500
-(`more_assets` counts the rest). On an upgrade case each row is joined to the
+(`more_assets` counts the rest). `kev` and `max_cvss` fold the facts of the
+same CVE across every visible source: an asset named by an OpenAEV finding of a
+CVE that OpenCTI marks known exploited reads `kev` true. The page cuts the
+version, status and sources cells on one line with a tooltip, and hides Status
+and Sources below a 56 rem card (back from the Columns pill). On an upgrade case each row is joined to the
 inventory by asset name (`organization_assets.name_key`) and adds
 `in_inventory`, the `versions` of the case's product it runs, their `sources`
 and, with a fixed version known, its worst `status`; `version_source` is then

@@ -188,6 +188,36 @@ def test_affected_assets_are_one_row_per_asset_from_the_visible_issues() -> None
     )
 
 
+def test_affected_assets_fold_kev_and_cvss_of_the_same_cve_across_sources() -> None:
+    # OpenCTI marks the CVE known exploited without naming assets; the OpenAEV finding
+    # of the same CVE names the assets with no KEV flag (UX r1 B3 on #1324).
+    answer = versions.affected_assets(
+        [
+            {"source": "opencti", "cve": "CVE-2024-21762", "assets": [], "open": True, "kev": True, "cvss": 9.6},
+            {
+                "source": "openaev",
+                "cve": "cve-2024-21762",
+                "assets": ["fw-paris-01", "fw-lyon-02"],
+                "open": True,
+                "kev": False,
+                "cvss": None,
+            },
+            {
+                "source": "openaev",
+                "cve": "CVE-2023-0001",
+                "assets": ["web-01"],
+                "open": True,
+                "kev": False,
+                "cvss": 5.0,
+            },
+        ]
+    )
+    rows = {row["name"]: row for row in answer["assets"]}
+    assert (rows["fw-paris-01"]["kev"], rows["fw-paris-01"]["max_cvss"]) == (True, 9.6)
+    assert (rows["fw-lyon-02"]["kev"], rows["fw-lyon-02"]["max_cvss"]) == (True, 9.6)
+    assert (rows["web-01"]["kev"], rows["web-01"]["max_cvss"]) == (False, 5.0)
+
+
 def test_versions_on_assets_take_the_worst_status_per_asset() -> None:
     rows = [
         {
