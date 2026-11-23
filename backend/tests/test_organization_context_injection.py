@@ -30,6 +30,7 @@ _NO_DB = cast(AsyncSession, None)
 
 def _row(profile: dict[str, Any] | None, version: int = 2) -> SimpleNamespace:
     return SimpleNamespace(
+        organization_id=None,  # no asset records read: the session is a stub
         version=version,
         created_at=datetime(2026, 11, 13, 6, 0, tzinfo=UTC),
         source="form",

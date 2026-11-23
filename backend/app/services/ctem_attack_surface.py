@@ -1111,8 +1111,7 @@ async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
     primary = await get_primary(db)
     if primary is None:
         return None
-    row = await org_context.current_version(db, primary.id)
-    profile = org_context.parse_profile(row.profile if row else {})
+    _row, profile = await org_context.current_profile(db, primary.id)  # assets from the records (#1543)
     surface = profile.attack_surface
     if not surface.enabled or not (profile.owned_domains or profile.address_ranges):
         return None
