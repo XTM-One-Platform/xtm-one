@@ -21208,5 +21208,17 @@
   "Still waiting since {date}": "En attente depuis le {date}",
   "Answered by {name} on {date}": "Répondu par {name} le {date}",
   "Waited since {date}": "En attente depuis le {date}",
-  "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {aucune validation en attente} one {# validation en attente} other {# validations en attente}}"
+  "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, =0 {aucune validation en attente} one {# validation en attente} other {# validations en attente}}",
+  "Package URL": "URL du paquet",
+  "Dependencies": "Dépendances",
+  "No dependency known in this repository yet.": "Aucune dépendance connue dans ce dépôt pour l'instant.",
+  "Shipped products": "Produits livrés",
+  "Source repositories": "Dépôts de code",
+  "owner/name, Enter to add": "propriétaire/nom, Entrée pour ajouter",
+  "Add a shipped product": "Ajouter un produit livré",
+  "Paste shipped products": "Coller des produits livrés",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "Les produits que votre organisation livre, avec leurs dépôts de code : une vulnérabilité sur l'un d'eux est rattachée à ses dépôts dans CTEM.",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "Aucun produit livré : une vulnérabilité sur un produit que vous livrez reste non résolue.",
+  "A repository is not owner/name": "Un dépôt n'est pas au format propriétaire/nom"
 }

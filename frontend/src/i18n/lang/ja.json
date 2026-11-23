@@ -21208,5 +21208,17 @@
   "Still waiting since {date}": "{date} から待機中",
   "Answered by {name} on {date}": "{name} が {date} に回答",
   "Waited since {date}": "{date} から待機",
-  "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, other {# 件の承認待ち}}"
+  "{count, plural, =0 {no gate waiting} one {# gate waiting} other {# gates waiting}}": "{count, plural, other {# 件の承認待ち}}",
+  "Package URL": "パッケージ URL",
+  "Dependencies": "依存関係",
+  "No dependency known in this repository yet.": "このリポジトリの依存関係はまだ不明です。",
+  "Shipped products": "出荷製品",
+  "Source repositories": "ソースリポジトリ",
+  "owner/name, Enter to add": "owner/name、Enterで追加",
+  "Add a shipped product": "出荷製品を追加",
+  "Paste shipped products": "出荷製品を貼り付け",
+  "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*": "Acme Server, Acme, cpe:2.3:a:acme:server:*:*:*:*:*:*:*:*",
+  "The products your organization ships, with their source repositories: a vulnerability on one resolves to its repositories in CTEM.": "組織が出荷する製品とそのソースリポジトリ。製品の脆弱性はCTEMでそのリポジトリに紐付けられます。",
+  "No shipped product yet: a vulnerability on a product you ship stays unresolved.": "出荷製品はまだありません。出荷製品の脆弱性は未解決のままです。",
+  "A repository is not owner/name": "owner/name 形式でないリポジトリがあります"
 }
