@@ -202,6 +202,8 @@ function isPickable(column: { hideable?: boolean; header: string }): boolean {
 }
 
 const PAGE_SIZES = [10, 25, 50, 100] as const;
+/** The page size a table opens at when its caller names none and the user kept none: 25 across the platform (Sam, 23 Nov 2026). */
+const DEFAULT_PAGE_SIZE = 25;
 
 /**
  * The two row heights of every records table (standard v2, dev-docs/reference/data-tables.md):
@@ -527,7 +529,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const preferences = readPreferences(props.storageKey);
   const defaults: DataTableDefaults = {
     sort: props.defaultSort ?? null,
-    pageSize: props.paginate === false ? Number.MAX_SAFE_INTEGER : (preferences.pageSize ?? props.defaultPageSize ?? 10),
+    pageSize: props.paginate === false ? Number.MAX_SAFE_INTEGER : (preferences.pageSize ?? props.defaultPageSize ?? DEFAULT_PAGE_SIZE),
   };
   if (props.state) return <DataTableView {...props} state={props.state} setState={ignoreState} />;
   // An empty prefix is a valid one (the page's only table): test for presence, not truthiness.

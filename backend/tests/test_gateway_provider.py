@@ -1674,13 +1674,12 @@ async def test_the_image_tool_offers_pictures_for_a_gateway_model_that_edits(mon
 
 
 class TestListedDefaults:
-    """The gateway's ``"default": true`` per type (XTM-One-Platform/ai-gateway#376), read for #746."""
+    """The gateway's ``"default_for": [...]`` per entry (XTM-One-Platform/ai-gateway#391), read for #746 and #1421."""
 
-    # As XTM-One-Platform/ai-gateway#381 lists them: never on a chat-only or decision model.
     _LISTING = (
         {"id": "gpt-image-1", "type": "image", "types": ["image"], "image_edit": True},
-        {"id": "gpt-image-2", "type": "image", "types": ["image"], "image_edit": True, "default": True},
-        {"id": "gpt-4o-mini-tts", "type": "speech", "types": ["speech"], "default": True},
+        {"id": "gpt-image-2", "type": "image", "types": ["image"], "image_edit": True, "default_for": ["image"]},
+        {"id": "gpt-4o-mini-tts", "type": "speech", "types": ["speech"], "default_for": ["speech"]},
         {"id": "gpt-6", "type": "chat", "types": ["chat"]},
     )
 
@@ -1703,15 +1702,37 @@ class TestListedDefaults:
         assert await provider.marked_default_model("chat") is None
 
     @pytest.mark.asyncio
-    async def test_a_flagged_model_is_default_for_the_types_it_lists_only(self):
+    async def test_the_chat_and_embedding_defaults_are_read(self):
         provider = _listing_provider(
-            # A chat model that also draws is the image default.
-            {"id": "gemini-3-image", "type": "chat", "types": ["chat", "image"], "default": True},
+            {"id": "claude-sonnet-5", "types": ["chat"], "default_for": ["chat"]},
+            {"id": "text-embedding-3-large", "types": ["embedding"], "default_for": ["embedding"]},
+        )
+        assert await provider.marked_default_model("chat") == "claude-sonnet-5"
+        assert await provider.marked_default_model("embedding") == "text-embedding-3-large"
+
+    @pytest.mark.asyncio
+    async def test_a_model_is_default_for_the_types_it_names_only(self):
+        provider = _listing_provider(
+            # A chat model that also draws is the image default, not the chat one.
+            {"id": "gemini-3-image", "type": "chat", "types": ["chat", "image"], "default_for": ["image"]},
+            {"id": "gpt-6", "types": ["chat"], "default_for": ["chat"]},
             # An entry declaring no type is never taken by its id's look.
-            {"id": "tts-1", "default": True},
+            {"id": "tts-1", "default_for": ["speech"]},
+            # Named for a type the entry does not declare.
+            {"id": "gpt-6-mini", "types": ["chat"], "default_for": ["image"]},
         )
         assert await provider.marked_default_model("image") == "gemini-3-image"
+        assert await provider.marked_default_model("chat") == "gpt-6"
         assert await provider.marked_default_model("speech") is None
+
+    @pytest.mark.asyncio
+    async def test_the_old_default_flag_is_not_read(self):
+        provider = _listing_provider(
+            {"id": "gpt-image-2", "types": ["image"], "default": True},
+            {"id": "gpt-6", "types": ["chat"], "default": True},
+        )
+        assert await provider.marked_default_model("image") is None
+        assert await provider.marked_default_model("chat") is None
 
     @pytest.mark.asyncio
     async def test_an_older_gateway_marks_none(self):
@@ -1737,7 +1758,7 @@ class TestListedDefaults:
     @pytest.mark.asyncio
     async def test_a_failed_listing_keeps_the_last_defaults_read(self):
         answers = [httpx.Response(200, json={"object": "list", "data": [
-            {"id": "gpt-image-2", "object": "model", "owned_by": "openai", "types": ["image"], "default": True},
+            {"id": "gpt-image-2", "object": "model", "owned_by": "openai", "types": ["image"], "default_for": ["image"]},
         ]}), httpx.Response(503, json={"error": {"message": "down"}})]
         set_llm_caller(USER_ID, EMAIL)
         provider = _mock_provider(lambda _r: answers.pop(0))
@@ -1757,7 +1778,10 @@ class TestListedDefaults:
 class TestImageFallsBackToTheGatewayDefault:
     """#746: with no image model chosen, the gateway's default draws, after every other fallback."""
 
-    _LISTING = ({"id": "gpt-image-1", "types": ["image"]}, {"id": "gpt-image-2", "types": ["image"], "default": True})
+    _LISTING = (
+        {"id": "gpt-image-1", "types": ["image"]},
+        {"id": "gpt-image-2", "types": ["image"], "default_for": ["image"]},
+    )
 
     @pytest.fixture
     def resolve(self, monkeypatch):

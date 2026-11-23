@@ -13,7 +13,7 @@ You orchestrate a fleet. This skill is how a fleet works well in production with
 
 1. Create the fleet with its orchestrator and members (`create_fleet`); give each home member a **Consult** handover to you and make it report to you (`set_fleet_member_parent`). The fleet's **Graph** view then shows members, handovers and live state; its **About** page lists what is missing.
 2. Give each member one inbox: an assignment with trigger type `work_item` (filters below). Members are driven by work items, with chat off unless a person needs one directly.
-3. Give yourself three listeners, each an assignment with trigger type `platform_event`: `work_item.completed` filtered on `fleet_impact.targets` (section 5), `run.failed` and `run.orphaned` (section 6).
+3. Give yourself three listeners, each an assignment with trigger type `platform_event`: `work_item.completed` filtered on `fleet_impact.targets` (section 5), `run.failed` and `run.orphaned` (section 6). Give the `run.*` listeners a `batch_window_seconds` (60 is a good start) so a burst of failures is one run reading the list, not one run per event.
 4. Turn on the built-in "Weekly fleet health check" (`set_fleet_automations`): it runs only when `get_fleet_health` reads the fleet unhealthy, so a healthy week costs no model call.
 5. Hand work over with `create_work_item`: owner set, a correlation key prefix per member, the ask and the deliverable in the description.
 
