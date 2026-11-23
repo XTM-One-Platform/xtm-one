@@ -39,6 +39,29 @@ describe("auditRows (#1490)", () => {
   });
 });
 
+describe("answered waiting gate (UX round 1 on #1520, B2)", () => {
+  it("reads an answered gate as its answer, an unanswered one as Waiting, in rows and group counts", () => {
+    const answered = event("2026-11-19T10:00:00Z", "gate", {
+      phase: "prioritization",
+      autonomy: "waiting",
+      to: "waited",
+      answer: { at: "2026-11-19T11:00:00Z", outcome: "answered", by: "u-1", option: "A" },
+    });
+    const byPolicy = event("2026-11-19T09:00:00Z", "gate", {
+      phase: "validation",
+      autonomy: "waiting",
+      to: "waited",
+      answer: { at: "2026-11-19T09:30:00Z", outcome: "passed_automatically", by: null, option: null },
+    });
+    const open = event("2026-11-19T08:00:00Z", "gate", { phase: "remediation", autonomy: "waiting", to: "waited", answer: null });
+    const rows = auditRows([answered, byPolicy, open], undefined);
+    expect(rows.map((r) => r.autonomy)).toEqual(["validated_by_person", "validated_by_policy", "waiting"]);
+    const prioritization = groupByPhase(rows).find((g) => g.phase === "prioritization");
+    expect(prioritization?.counts.waiting).toBe(0);
+    expect(prioritization?.counts.validated_by_person).toBe(1);
+  });
+});
+
 describe("runPhase", () => {
   it("reads the phase of the latest event at or before the run, Discovery before any", () => {
     expect(runPhase("2026-11-23T11:59:00Z", history)).toBe("remediation");

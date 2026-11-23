@@ -181,9 +181,24 @@ const SOURCE_EVENT_LABEL: Record<string, string> = {
 const VALIDATION_RESULT_LABEL: Record<string, string> = {
   passed: "Passed",
   not_exposed: "Not exposed",
+  exposed: "Exposed",
   failed: "Failed",
   pending: "Pending",
 };
+
+/**
+ * The word of one side of an event's from -> to, through the labels its action uses
+ * (UX round 1 on #1520, B3): never a raw key such as `needs_attention`.
+ */
+function changeWord(kind: string, value: string): string {
+  if (kind === "ticket") return TICKET_EVENT_STATUS[value] ?? value;
+  return (
+    CASE_STATE_LABEL[value as keyof typeof CASE_STATE_LABEL] ??
+    VALIDATION_RESULT_LABEL[value] ??
+    TICKET_EVENT_STATUS[value] ??
+    value
+  );
+}
 
 /**
  * The badge of a fleet run on the case history, the keys the fleet timeline
@@ -319,6 +334,8 @@ export default function CtemCaseDetail() {
     const detail = e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : (e.headline ?? "");
     return detail ? `${eventLabel(e)}: ${detail}` : eventLabel(e);
   };
+  const changeTextOf = (e: CtemCaseEvent) =>
+    e.from && e.to ? { from: t_i18n(changeWord(e.kind, e.from)), to: t_i18n(changeWord(e.kind, e.to)) } : null;
   const renderRun = (run: CtemCaseRun) => {
     const outcome = timelineOutcome(run.outcome, run.status);
     return (
@@ -781,6 +798,7 @@ export default function CtemCaseDetail() {
             personName={personName}
             actorName={actorNameOf}
             actionText={actionTextOf}
+            changeText={changeTextOf}
             renderRun={renderRun}
             renderEvent={renderEvent}
           />

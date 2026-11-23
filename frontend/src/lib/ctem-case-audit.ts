@@ -118,15 +118,26 @@ export function auditRows(history: readonly CtemCaseEvent[], runs: readonly Ctem
     }
     const e = item.event;
     const actorType = fallbackActorType(e);
-    const autonomy: AutonomyClass = isAutonomy(e.autonomy)
+    const served: AutonomyClass = isAutonomy(e.autonomy)
       ? e.autonomy
       : actorType === "agent"
         ? "autonomous"
         : actorType === "person"
           ? "by_person"
           : "system";
-    return { ...item, phase: isAuditPhase(e.phase) ? e.phase : "discovery", autonomy, actorType };
+    return { ...item, phase: isAuditPhase(e.phase) ? e.phase : "discovery", autonomy: answeredClass(e, served), actorType };
   });
+}
+
+/**
+ * A waiting gate that has an answer reads as its answer (UX round 1 on #1520, B2):
+ * validated by policy when the answer passed it automatically, else by a person.
+ * Only an unanswered gate stays Waiting, in the row badge, the group counts and the
+ * Autonomy filter alike.
+ */
+function answeredClass(e: CtemCaseEvent, served: AutonomyClass): AutonomyClass {
+  if (served !== "waiting" || e.kind !== "gate" || !e.answer) return served;
+  return e.answer.outcome === "passed_automatically" ? "validated_by_policy" : "validated_by_person";
 }
 
 export interface AuditFilter {

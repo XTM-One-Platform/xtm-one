@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useFormatter } from "@/i18n";
 import type { CtemCaseEvent, CtemCasePhase, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
 import {
@@ -53,6 +54,8 @@ interface CaseAuditTrailProps {
   actorName: (row: AuditRow) => string;
   /** The text the CSV and the search read for an event's action (plain words). */
   actionText: (row: AuditRow) => string;
+  /** An event's from -> to in words (the labels the action uses), null when it changed nothing. */
+  changeText: (event: CtemCaseEvent) => { from: string; to: string } | null;
   /** A person's name from their user id (a gate answered by a person names them by id). */
   personName: (id: string | null | undefined) => string | null;
 }
@@ -113,7 +116,7 @@ function GateStory({ event, actorName }: { event: CtemCaseEvent; actorName: (id:
   return null;
 }
 
-export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, renderRun, actorName, actionText, personName }: CaseAuditTrailProps) {
+export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, renderRun, actorName, actionText, changeText, personName }: CaseAuditTrailProps) {
   const { t_i18n, intl } = useFormatter();
   const [view, setView] = useState<HistoryView>("timeline");
   const [phase, setPhase] = useState<AuditPhase | null>(null);
@@ -127,17 +130,37 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
   const personOf = (id: string | null) => personName(id) ?? t_i18n("a person");
 
   const autonomyBadge = (row: AuditRow) => (
-    <Badge variant={AUTONOMY_VARIANT[row.autonomy]} className="shrink-0" data-testid="ctem-audit-autonomy">
+    <Badge variant={AUTONOMY_VARIANT[row.autonomy]} className="shrink-0 whitespace-nowrap" data-testid="ctem-audit-autonomy">
       {t_i18n(AUTONOMY_LABEL[row.autonomy])}
     </Badge>
   );
 
-  const actorChip = (row: AuditRow) => (
-    <span className="inline-flex items-baseline gap-1">
-      <span className="font-medium">{actorName(row)}</span>
-      <span className="content-compact text-default-secondary">{t_i18n(ACTOR_TYPE_LABEL[row.actorType])}</span>
-    </span>
-  );
+  // The actor's type is said only when it adds to the name shown (UX round 1 on #1520, B5:
+  // never "System System" or "Agent Agent").
+  const actorType = (row: AuditRow): string | null => {
+    const type = t_i18n(ACTOR_TYPE_LABEL[row.actorType]);
+    return type.trim().toLowerCase() === actorName(row).trim().toLowerCase() ? null : type;
+  };
+  const actorChip = (row: AuditRow) => {
+    const type = actorType(row);
+    return (
+      <span className="inline-flex items-baseline gap-1 whitespace-nowrap" data-testid="ctem-audit-actor">
+        <span className="font-medium">{actorName(row)}</span>
+        {type && <span className="content-compact text-default-secondary">{type}</span>}
+      </span>
+    );
+  };
+  // In the table the type sits on line 2 under the name, so a row holds two lines at most (B1).
+  const actorCell = (row: AuditRow) => {
+    const type = actorType(row);
+    return (
+      <span className="flex min-w-0 flex-col" data-testid="ctem-audit-actor">
+        <TruncatedText text={actorName(row)} className="font-medium" />
+        {type && <span className="content-compact text-default-secondary">{type}</span>}
+      </span>
+    );
+  };
+  const change = (r: AuditRow) => (r.kind === "event" && r.event.kind !== "gate" ? changeText(r.event) : null);
 
   const columns: DataTableColumn<AuditRow>[] = [
     {
@@ -158,16 +181,23 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
     {
       key: "actor",
       header: "Actor",
-      cell: actorChip,
+      cell: actorCell,
       sortValue: (r) => actorName(r),
       csv: (r) => actorName(r),
     },
     {
       key: "action",
       header: "Action",
-      cell: (r) => (
-        <span className="flex flex-wrap items-baseline gap-x-2">{r.kind === "run" ? renderRun(r.run) : renderEvent(r.event)}</span>
-      ),
+      // At most two lines, cut with the shared tooltip; the gate reason and the note body
+      // stay in the Timeline and the CSV, never in the cell (UX round 1 on #1520, B1).
+      cell: (r) =>
+        r.kind === "run" ? (
+          <span className="flex items-center gap-2 whitespace-nowrap">{renderRun(r.run)}</span>
+        ) : (
+          <span className="block max-w-[32rem]">
+            <TruncatedText text={actionText(r)} lines={2} />
+          </span>
+        ),
       csv: (r) => actionText(r),
     },
     {
@@ -182,8 +212,14 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
       header: "Change",
       hideable: true,
       hideBelow: "6xl",
-      cell: (r) => (r.kind === "event" && r.event.from && r.event.to && r.event.kind !== "gate" ? `${r.event.from} → ${r.event.to}` : null),
-      csv: (r) => (r.kind === "event" && r.event.from && r.event.to ? `${r.event.from} -> ${r.event.to}` : ""),
+      cell: (r) => {
+        const c = change(r);
+        return c ? <span className="whitespace-nowrap">{`${c.from} → ${c.to}`}</span> : null;
+      },
+      csv: (r) => {
+        const c = change(r);
+        return c ? `${c.from} -> ${c.to}` : "";
+      },
     },
     {
       key: "details",
@@ -264,6 +300,7 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
           urlKey="h_"
           emptyLabel={t_i18n("Nothing happened on this case yet")}
           rowTestId="ctem-audit-row"
+          rowLines={2}
         />
       ) : (
         <div className="space-y-4" data-testid="ctem-case-history">
@@ -301,17 +338,24 @@ export function CaseAuditTrail({ rows, phases, currentPhase, renderEvent, render
                 {!isCollapsed && (
                   <ol className="mt-2 space-y-3 border-l border-elevation-subtle pl-4">
                     {group.rows.map((row) => (
+                      // A fixed row grid (UX round 1 on #1520, B4): the actor, the content that
+                      // wraps, then the badge and the time pinned on the first line, at the same
+                      // x on every row; the gate story and the note body sit under the content.
                       <li
                         key={row.key}
-                        className="flex flex-wrap items-baseline gap-x-2 gap-y-1 content-base"
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 content-base"
                         data-testid={row.kind === "run" ? "ctem-case-run" : "ctem-audit-event"}
                       >
-                        {row.kind === "event" && actorChip(row)}
-                        {row.kind === "run" ? renderRun(row.run) : renderEvent(row.event)}
-                        {autonomyBadge(row)}
-                        {row.at && <span className="ml-auto whitespace-nowrap text-default-secondary">{date(row.at)}</span>}
-                        {row.kind === "event" && <GateStory event={row.event} actorName={personOf} />}
-                        {row.kind === "event" && <NoteBody event={row.event} />}
+                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                          {row.kind === "event" && actorChip(row)}
+                          {row.kind === "run" ? renderRun(row.run) : renderEvent(row.event)}
+                          {row.kind === "event" && <GateStory event={row.event} actorName={personOf} />}
+                          {row.kind === "event" && <NoteBody event={row.event} />}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                          {autonomyBadge(row)}
+                          {row.at && <span className="text-default-secondary">{date(row.at)}</span>}
+                        </div>
                       </li>
                     ))}
                   </ol>
