@@ -31,6 +31,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { Tip } from "@/components/ui/tooltip";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { primeChatDraft } from "@/lib/chat-launch";
 import { useFormatter } from "@/i18n";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
@@ -139,13 +140,13 @@ function ActNowRowButton({
           <CaseUrgencyChip severity={row.caseUrgency.severity} priority={row.caseUrgency.priority} />
         </span>
       ) : actNowShowsPriority(row) ? (
-        <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold", prio.cls)} data-testid="ctem-act-now-priority">
+        <ToneBadge tone={prio.tone} data-testid="ctem-act-now-priority">
           {t_i18n(prio.label)}
-        </span>
+        </ToneBadge>
       ) : (
-        <span aria-hidden className="invisible shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold" data-testid="ctem-act-now-priority-slot">
+        <ToneBadge tone={prio.tone} aria-hidden className="invisible" data-testid="ctem-act-now-priority-slot">
           {t_i18n(prio.label)}
-        </span>
+        </ToneBadge>
       )}
       <ChevronRight className="h-4 w-4 shrink-0 text-default-secondary" aria-hidden />
     </button>

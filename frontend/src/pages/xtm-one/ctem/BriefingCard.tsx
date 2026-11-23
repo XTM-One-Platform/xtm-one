@@ -52,6 +52,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AiLockedFooter } from "@/components/ui/enterprise-upsell";
 import { SampleBadge } from "@/components/ui/sample-badge";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import type { AiLockReason } from "@/hooks/useAiLockReason";
 import { IconButton } from "@filigran/design-system";
 import { Tip } from "@/components/ui/tooltip";
@@ -296,12 +297,12 @@ export function BriefingCard({
                           {numbers.count(i + 1)}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="content-compact font-medium leading-tight">
+                          <div className="content-compact font-medium leading-tight">
                             {s.action}{" "}
-                            <span className={cn("ml-1 inline-block rounded-sm px-1.5 py-0.5 align-middle text-xs font-semibold", prio.cls)}>
+                            <ToneBadge tone={prio.tone} className="ml-1 inline-flex align-middle">
                               {t_i18n(prio.label)}
-                            </span>
-                          </p>
+                            </ToneBadge>
+                          </div>
                           {ready && (
                             <div className="mt-1">
                               <FollowUpInChatButton
