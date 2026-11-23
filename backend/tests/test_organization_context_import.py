@@ -31,7 +31,17 @@ def test_every_section_has_a_field_sources_and_filters():
         for source in sources:
             assert (section, source) in imp.SOURCE_FILTERS
     # Assets need no OpenAEV: OpenCTI alone can feed them; Intune and Defender bring devices and software (#1251).
-    assert imp.SECTION_SOURCES["assets"] == ("openaev", "opencti", "intune", "defender", "github", "gitlab")
+    assert imp.SECTION_SOURCES["assets"] == (
+        "openaev",
+        "opencti",
+        "intune",
+        "defender",
+        "tanium",
+        "crowdstrike",
+        "servicenow",
+        "github",
+        "gitlab",
+    )
 
 
 def test_openaev_asset_maps_exposure_and_provenance():
