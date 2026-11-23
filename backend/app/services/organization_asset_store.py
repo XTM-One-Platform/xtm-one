@@ -470,9 +470,14 @@ def sbom_document_key(doc: Any, file_name: str) -> str:
 ENDPOINT_SOFTWARE_FORMATS: frozenset[str] = frozenset({"intune", "defender", "github", "gitlab"})
 
 
+#: The format of the hand document that carries an administrator's software attachments on an asset (#1495).
+HAND_SOFTWARE_FORMAT = "manual"
+
+
 def _sbom_record(row: OrganizationAssetSbom) -> identity.SourceRecord:
+    source = row.format if row.format in ENDPOINT_SOFTWARE_FORMATS | {HAND_SOFTWARE_FORMAT} else SBOM_SOURCE
     return identity.SourceRecord(
-        source=row.format if row.format in ENDPOINT_SOFTWARE_FORMATS else SBOM_SOURCE,
+        source=source,
         external_id=f"{row.anchor_source}:{row.anchor_external_id}:{row.document_key}",
         software=[
             {**c, "first_seen": row.imported_at, "last_seen": row.imported_at}
@@ -979,6 +984,18 @@ MAX_LOOKUP_KEYS = 200
 LOOKUP_KINDS: tuple[str, ...] = ("fqdn", "hostname", "mac", "ip")
 
 
+#: A source reference another product holds for the same thing: ``<source>:<external id>``, e.g.
+#: ``openaev:3f2a...`` for the OpenAEV asset both products imported. Matched exactly on the source
+#: records, before the identifiers and the name, since it names one record of one source.
+_SOURCE_REFERENCE = re.compile(r"^([a-z][a-z0-9_-]{1,79}):(\S{1,200})$")
+
+
+def _source_reference(value: str) -> tuple[str, str] | None:
+    """``(source, external_id)`` when *value* reads as a source reference, else ``None``."""
+    found = _SOURCE_REFERENCE.match(value)
+    return (found.group(1), found.group(2)) if found else None
+
+
 def _lookup_keys(value: str) -> set[tuple[str, str]]:
     """The (kind, normalised value) pairs *value* may be: an FQDN and its hostname, a MAC, an IP."""
     return {(kind, key) for kind in LOOKUP_KINDS if (key := identity.normalize_identifier(kind, value))}
@@ -995,25 +1012,38 @@ async def find_assets_by_identifier(
     hostname, ``10.0.0.5`` an IP, ``aa:bb:...`` a MAC, ``web-02.corp.example``
     an FQDN and the hostname ``web-02``) and matched against the identifiers of every
     source record, normalised as the identity engine compares them, then
-    against the asset's name. A value no asset holds is absent; when several
-    assets hold it (a weak key such as a shared IP), the first by name answers.
-    The profile caps its rows at 5,000, so one scan of the records is bounded.
+    against the asset's name. A value of the form ``<source>:<external id>``
+    (``openaev:<asset id>``) names one source record: it is matched exactly on
+    the records' source and external id and, when found, wins over every
+    weak reading of the same value. A value no asset holds is absent; when
+    several assets hold it (a weak key such as a shared IP), the first by name
+    answers. The profile caps its rows at 5,000, so one scan of the records is bounded.
     """
     asked: dict[str, set[tuple[str, str]]] = {}
+    references: dict[str, tuple[str, str]] = {}
     for value in values[:MAX_LOOKUP_KEYS]:
         text_value = str(value or "").strip()
         if text_value and text_value not in asked:
             asked[text_value] = _lookup_keys(text_value)
+            if (reference := _source_reference(text_value)) is not None:
+                references[text_value] = reference
     if not asked:
         return {}
     held: dict[tuple[str, str], set[uuid.UUID]] = {}
-    for asset_id, identifiers in (
+    by_reference: dict[tuple[str, str], set[uuid.UUID]] = {}
+    wanted_references = set(references.values())
+    for asset_id, source, external_id, identifiers in (
         await db.execute(
-            select(OrganizationAssetSource.asset_id, OrganizationAssetSource.identifiers).where(
-                OrganizationAssetSource.organization_id == organization_id
-            )
+            select(
+                OrganizationAssetSource.asset_id,
+                OrganizationAssetSource.source,
+                OrganizationAssetSource.external_id,
+                OrganizationAssetSource.identifiers,
+            ).where(OrganizationAssetSource.organization_id == organization_id)
         )
     ).all():
+        if (source, external_id) in wanted_references:
+            by_reference.setdefault((source, external_id), set()).add(asset_id)
         record = identity.SourceRecord(source="lookup", external_id="", identifiers=dict(identifiers or {}))
         for kind in LOOKUP_KINDS:
             for key in record.keys(kind):
@@ -1030,6 +1060,10 @@ async def find_assets_by_identifier(
         by_name.setdefault(name_key, set()).add(asset_id)
     matched: dict[str, set[uuid.UUID]] = {}
     for value, keys in asked.items():
+        exact = by_reference.get(references[value], set()) if value in references else set()
+        if exact:
+            matched[value] = exact
+            continue
         ids: set[uuid.UUID] = set()
         for pair in keys:
             ids |= held.get(pair, set())

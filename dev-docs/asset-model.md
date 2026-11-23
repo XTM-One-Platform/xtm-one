@@ -257,11 +257,18 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 - `POST /api/v1/organization-context/assets/lookup` `{keys: [...]}` (at most 200): the cross-product pivot of
   OpenCTI, OpenAEV and OpenCRQ (contract v3, the XTM One emblem). Each key is read as an FQDN and its hostname, a
   hostname, a MAC or an IP address (never a serial or a cloud id), normalised as the identity engine compares them,
-  and matched against every source record of the primary organization, then the asset's name. The answer holds one
+  and matched against every source record of the primary organization, then the asset's name. A key of the form
+  `<source>:<external id>` (`openaev:<asset id>`) is a source reference: it is matched exactly on the source and
+  external id of the records and, when found, wins over every weak reading of the same key, so a product that
+  imported the same OpenAEV asset finds it whatever its name or addresses. The answer holds one
   item per key found: `{key, id, name, category, criticality, internet_facing, owner, matches, url}`, `url` the
   asset's page `/ctem/inventory/assets/{id}`, `matches` the number of assets holding a weak key (the first by name
   answers). The platforms call it with the user's own cross-platform token, so a user reads what the inventory list
   answers him.
+- The OpenAEV assets import reads `/api/endpoints/search` (endpoints with hostname, IPs and MACs), then
+  `/api/assets/search` for the rest of the inventory (web applications, cloud resources, SaaS, network devices
+  created as generic assets; AI targets keep their own read). A `platform` filter names endpoints alone and skips
+  the second read.
 
 ### 9.2 Writes through the store, merge and split (S3)
 
@@ -361,8 +368,31 @@ Reads (any signed-in user):
   version is present, directly (`via` empty) or through an installed version that depends on it, transitively
   (`via` names it; the walk stops at 5,000 versions).
 
-Next slices: hand-typed software writes, CPE override, attach to an asset and events (1b); the Software tab and
-software page (2); the `tech_stack` profile rows migrated to manual software and the concept retired (3).
+- `GET /api/v1/organization-context/software/export.csv` (same filters): the list as CSV, at most 50,000 rows,
+  a cell starting with `=`, `+`, `-`, `@`, tab or CR prefixed with `'` so a spreadsheet never runs it.
+
+Writes (administrators, audited `entity_type organization_context`, `entity_name software`; 404 unknown,
+409 a vendor and product that exist, 422 refused):
+
+- `POST /api/v1/organization-context/software` `{vendor, product, name, type, description, cpe, purl}`: a
+  hand-typed software (`origin manual`); `cpe` is a CPE 2.3 string kept as its override (`cpe_state override`).
+- `PATCH /api/v1/organization-context/software/{id}` `{name, type, description, purl, cpe_override}`: a synced
+  software takes `cpe_override` only (any other field is 422: its name, type and versions come from its
+  sources); the override is kept across syncs and an empty one lets the sources decide again.
+- `DELETE /api/v1/organization-context/software/{id}`: 204; a hand-typed software and its hand attachments
+  (422 for a synced one, which goes when no source reports it).
+- `POST /api/v1/organization-context/software/{id}/installations` `{asset_id, version}`: attach a hand-typed
+  software to an asset (`unknown` when no version). The attachment is a component of the asset's hand
+  document, `organization_asset_sboms` format `manual` anchored on the asset's first source record like an
+  SBOM, so it follows the asset through every rebuild and merge and shows as source `manual`. The same
+  version again changes nothing. A synced software is attached by its sources only (422).
+- `DELETE /api/v1/organization-context/software/{id}/installations/{asset_id}?version=`: remove the hand
+  attachment (every version when `version` is empty); 404 when the asset holds none.
+
+Next slices: the Software tab and software page (2); the `tech_stack` profile rows migrated to manual software
+and the concept retired, every reader moved to the Software entity, the CVE matcher of the CTEM case source
+(`ctem_cases_source.read_open_issues`, `ctem_metrics_collector._profile_tech_stack`) included (3). Platform
+events for software writes are not raised yet: no subscriber needs them before slice 3.
 
 ## 10. OpenCRQ alignment
 

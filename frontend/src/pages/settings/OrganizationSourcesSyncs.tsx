@@ -502,7 +502,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
           <span className="flex flex-wrap items-center gap-2">
             {!hasSyncAll && sectionSyncs.length > 0 && (
               <Button variant="secondary" className="gap-1.5" onClick={() => setEditing("all")} disabled={disabled}>
-                <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add Sync all")}
+                <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a Sync all schedule")}
               </Button>
             )}
             {rows.length > 0 && addSource}

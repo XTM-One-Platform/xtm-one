@@ -181,3 +181,103 @@ async def test_an_sbom_gives_dependency_edges_and_the_assets_of_a_version_throug
     assert direct is not None and direct.total == 1 and direct.items[0]["via"] is None
     assert through is not None and through.total == 3
     assert {i["via"] for i in through.items} == {None, "openssl 3.0.15", "web-app 2.0"}
+
+
+# ── Slice 1b: an administrator's writes ───────────────────────────────────────────
+
+PORTAL_CPE = "cpe:2.3:a:acme:portal:*:*:*:*:*:*:*:*"
+
+
+async def test_a_hand_typed_software_takes_its_cpe_override_and_survives_a_rebuild() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        made = await sw.create_software(
+            session, org, vendor="Acme", product="Portal", software_type="saas", cpe=PORTAL_CPE, name="Portal"
+        )
+        await session.commit()
+        await _profile(session, org, 2, [{**HOST, "name": "web-02b"}])
+        kept = await sw.get_software(session, org, uuid.UUID(made["id"]))
+        with pytest.raises(sw.SoftwareError) as twice:
+            await sw.create_software(session, org, vendor="acme", product="PORTAL")
+        with pytest.raises(sw.SoftwareError) as bad_cpe:
+            await sw.create_software(session, org, vendor="Acme", product="Other", cpe="acme portal")
+    assert made["origin"] == "manual" and made["editable"] and made["type"] == "saas"
+    assert made["cpe"] == PORTAL_CPE and made["cpe_state"] == "override"
+    assert kept is not None and kept["name"] == "Portal" and kept["cpe"] == PORTAL_CPE
+    assert twice.value.status == 409 and bad_cpe.value.status == 422
+
+
+async def test_a_synced_software_is_read_only_but_for_its_cpe_override() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        chrome = uuid.UUID((await sw.list_software(session, org)).items[0]["id"])
+        with pytest.raises(sw.SoftwareError) as rename:
+            await sw.update_software(session, org, chrome, {"name": "Browser"})
+        with pytest.raises(sw.SoftwareError) as delete:
+            await sw.delete_software(session, org, chrome)
+        with pytest.raises(sw.SoftwareError) as attach:
+            await sw.attach_software(session, org, chrome, uuid.uuid4())
+        cpe = "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*"
+        after, changed = await sw.update_software(session, org, chrome, {"cpe_override": cpe})
+        await session.commit()
+        await _profile(session, org, 2, [{**HOST, "name": "web-02b"}])
+        rebuilt = await sw.get_software(session, org, chrome)
+    assert rename.value.status == 422 and delete.value.status == 422 and attach.value.status == 422
+    assert changed == {"cpe_override": ["", cpe]} and after["cpe_state"] == "override"
+    assert rebuilt is not None and rebuilt["cpe"] == cpe and rebuilt["cpe_state"] == "override"
+
+
+async def test_a_hand_attachment_follows_the_asset_through_rebuilds_and_detaches() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        asset_id = (await session.execute(select(OrganizationAsset.id))).scalars().one()
+        made = await sw.create_software(session, org, vendor="Acme", product="Agent", cpe="")
+        soft_id = uuid.UUID(made["id"])
+        first = await sw.attach_software(session, org, soft_id, asset_id, version="4.2")
+        again = await sw.attach_software(session, org, soft_id, asset_id, version="4.2")
+        await store.rebuild_from_profile(session, org)
+        await session.commit()
+        await _profile(session, org, 2, [{**HOST, "name": "web-02b"}])
+        attached = await sw.get_software(session, org, soft_id)
+        with pytest.raises(sw.SoftwareError) as unknown_asset:
+            await sw.attach_software(session, org, soft_id, uuid.uuid4())
+        removed = await sw.detach_software(session, org, soft_id, asset_id)
+        await store.rebuild_from_profile(session, org)
+        await session.commit()
+        detached = await sw.get_software(session, org, soft_id)
+        docs = (await session.execute(select(OrganizationAssetSbom))).scalars().all()
+    assert first["added"] and not again["added"]
+    assert attached is not None and attached["asset_count"] == 1
+    assert [i["version"] for i in attached["installations"]["items"]] == ["4.2"]
+    assert attached["installations"]["items"][0]["sources"] == ["manual"]
+    assert unknown_asset.value.status == 404 and removed == 1
+    assert detached is not None and detached["asset_count"] == 0 and detached["origin"] == "manual"
+    assert docs == []
+
+
+async def test_deleting_a_hand_typed_software_removes_its_attachments() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        asset_id = (await session.execute(select(OrganizationAsset.id))).scalars().one()
+        made = await sw.create_software(session, org, vendor="Acme", product="Agent")
+        await sw.attach_software(session, org, uuid.UUID(made["id"]), asset_id)
+        await store.rebuild_from_profile(session, org)
+        gone = await sw.delete_software(session, org, uuid.UUID(made["id"]))
+        await store.rebuild_from_profile(session, org)
+        await session.commit()
+        names = [s["name"] for s in (await sw.list_software(session, org)).items]
+    assert gone["detached"] == 1
+    assert names == ["Google Chrome"]
+
+
+async def test_the_csv_export_lists_the_software_and_neutralises_formulas() -> None:
+    async with _database() as sessions, sessions() as session:
+        org = await _setup(session, [HOST])
+        await sw.create_software(session, org, vendor="", product="=HYPERLINK(1)")
+        await session.commit()
+        body = await sw.software_csv(session, org)
+    lines = body.splitlines()
+    assert lines[0] == ",".join(sw.CSV_COLUMNS)
+    assert len(lines) == 3
+    assert any(line.startswith("'=HYPERLINK(1)") for line in lines[1:])
+    assert any(line.startswith("Google Chrome,Google,Chrome,application") for line in lines[1:])
