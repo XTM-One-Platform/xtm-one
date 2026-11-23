@@ -87,6 +87,7 @@ from app.services import (
     assignment_run_resume,
     chat_reply_guard,
     chat_turn_coalescing,
+    event_batching,
     event_coalescing,
     event_run_dedup,
 )
@@ -10908,6 +10909,26 @@ async def trigger_or_queue_assignment(
             )
             return QueuedTriggerResult(status="coalesced", run_id=folded_into)
 
+    batch_window = event_batching.window_seconds(assignment.trigger_config, trigger_context)
+    if batch_window:
+        # An observer with a batch window (``services/event_batching.py``): the
+        # event joins the batch run still waiting, else opens a new batch run
+        # that starts once the window ends.
+        joined = await _join_waiting_batch(db, assignment, payload)
+        if joined is not None:
+            await db.commit()
+            await _release_event_claim(assignment.agent_id, dedup_key)
+            logger.info(
+                "Assignment '%s' (%s): event %s joined batch run %s",
+                assignment.name,
+                assignment.id,
+                (payload or {}).get("event_id") or (payload or {}).get("message_id") or "?",
+                joined,
+            )
+            return QueuedTriggerResult(status="coalesced", run_id=joined)
+        payload = event_batching.batch_payload(payload, batch_window)
+        trigger_context = {**(trigger_context or {}), event_batching.WINDOW_CONTEXT: batch_window}
+
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
     start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
@@ -10928,6 +10949,7 @@ async def trigger_or_queue_assignment(
             payload=payload,
             db=db,
             trigger_context=trigger_context,
+            extra_delay_seconds=batch_window,
         )
         return QueuedTriggerResult(status="ok", run_id=run_id, queue_depth=0)
     if not queue:
@@ -11046,6 +11068,55 @@ async def _fold_into_queued_run(
     if run is None:
         return None
     run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
+    await db.flush()
+    return str(run.id)
+
+
+async def _join_waiting_batch(
+    db: AsyncSession,
+    assignment: Assignment,
+    payload: dict[str, Any] | None,
+) -> str | None:
+    """Append an event to the batch run of *assignment* still waiting; its id, or ``None``.
+
+    The newest batch run (``event_batching.WINDOW_CONTEXT`` in its context)
+    that has not started: queued, or delayed in its window with more than
+    ``chat_turn_coalescing.MERGE_MARGIN_SECONDS`` left. Locked so two events
+    joining at once never lose one. A full batch answers ``None``: the event
+    opens the next one. Flushes, the caller commits.
+    """
+    from app.models.orchestration import OrchestrationExecution
+
+    result = await db.execute(
+        select(AssignmentRun)
+        .where(
+            AssignmentRun.assignment_id == assignment.id,
+            AssignmentRun.status.in_((QUEUED_RUN_STATUS, "delayed")),
+            AssignmentRun.trigger_context[event_batching.WINDOW_CONTEXT].as_string().is_not(None),
+        )
+        .order_by(AssignmentRun.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+    if event_batching.carries(run.trigger_payload, payload):
+        return str(run.id)
+    if not event_batching.can_join(run.trigger_payload):
+        return None
+    if run.status != QUEUED_RUN_STATUS:
+        run_at = (
+            await db.execute(
+                select(OrchestrationExecution.run_at).where(
+                    OrchestrationExecution.dedup_key == f"assignment_run:{run.id}",
+                    OrchestrationExecution.state == "pending",
+                )
+            )
+        ).scalar_one_or_none()
+        if not chat_turn_coalescing.still_open(run_at, datetime.now(UTC)):
+            return None
+    run.trigger_payload = event_batching.merged_payload(run.trigger_payload or {}, payload or {})
     await db.flush()
     return str(run.id)
 

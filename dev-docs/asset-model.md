@@ -327,6 +327,43 @@ The tech stack inventory (9.3) counts SBOM software like any other.
   replaced an earlier import; 404 on an unknown asset; 422 on a file refused. The upload in the UI comes with the
   asset sources panel.
 
+### 9.5 Software as an entity (#1495)
+
+Software is a first-class object of the store, aligned with the STIX 2.1 Software SCO (name, vendor,
+CPE, plus `x_opencti_product`) so a later pivot to OpenCTI converts it field for field. Three tables,
+kept across the rebuilds of the store (their ids are stable), filled by `organization_software_store.sync_software`
+at the end of every rebuild:
+
+- `organization_software`: one per organization, vendor and product (case-folded keys). Type (`application`,
+  `operating_system`, `library`, `firmware`, `container_image`, `saas`), product-level CPE 2.3 (version `*`) and
+  its state (`override`, `reported`, `high`, `medium`, `low`, `unresolved`, the `resolve_cpe` rule: never guessed),
+  the administrator's `cpe_override`, product PURL (no `@version`), sources, first and last seen. `origin`
+  `synced`: a source reports it, read-only to people; `manual`: typed by an administrator.
+- `organization_software_versions`: one per software and version, `unknown` when no source gives it (never empty),
+  with the version's CPE (reported, else the software's with the version set) and PURL; `eol` when known.
+- `organization_software_dependencies`: a version that `depends_on` another (CycloneDX `dependencies`, SPDX
+  `DEPENDS_ON` / `DEPENDENCY_OF`) or is `bundled_in` it (CycloneDX nesting, SPDX `CONTAINS` / `CONTAINED_BY`);
+  scope when the SBOM gives one. A label resolves only within the asset's own software. Rebuilt whole with the
+  installations, so an SBOM removed takes its edges with it.
+
+`organization_asset_software` is the installation (a version on an asset, any category: host, container image,
+code repository) and names its `software_version_id`; one store, no copy. A synced software nothing installs any
+more is removed with its versions; a manual one stays. A store built before this change is linked by the next
+read (`ensure_built` finds an installation without a version and rebuilds once).
+
+Reads (any signed-in user):
+
+- `GET /api/v1/organization-context/software?q=&type=&vendor=&source=&origin=&cpe_state=&unknown_version=&offset=&limit=`:
+  one item per software with `version_count`, `asset_count` (distinct assets), `has_unknown_version`, `editable`.
+- `GET /api/v1/organization-context/software/{id}`: the software, its versions with asset counts, its
+  installations (paginated), `depends_on` and `used_by` (one level, each edge with its version and kind).
+- `GET /api/v1/organization-context/software/versions/{id}/assets?through_dependencies=`: the assets where a
+  version is present, directly (`via` empty) or through an installed version that depends on it, transitively
+  (`via` names it; the walk stops at 5,000 versions).
+
+Next slices: hand-typed software writes, CPE override, attach to an asset and events (1b); the Software tab and
+software page (2); the `tech_stack` profile rows migrated to manual software and the concept retired (3).
+
 ## 10. OpenCRQ alignment
 
 OpenCRQ-Platform/opencrq#3152 closed the three divergences: `security_platform` and its 10 subcategories are

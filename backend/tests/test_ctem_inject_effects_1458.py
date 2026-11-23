@@ -272,6 +272,7 @@ async def test_a_read_only_inject_keeps_safe_mode_and_resolves() -> None:
         result="passed",
         safe_mode=True,
         inject_class=effects_of.READ_ONLY,
+        evidence_type=effects_of.REMEDIATION_EVIDENCE,
         now=NOW,
     )
     assert case.state == "resolved" and case.validations[-1]["safe_mode"] is True
