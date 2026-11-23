@@ -393,9 +393,15 @@ async def test_put_refuses_another_conversations_file_naming_its_owner_scope(sto
         # The owned lookup admits nothing here (a template asset, a row gone): only the refusal is tested.
         return None, None
 
+    async def no_asset(_file_id, _user_id):
+        return None
+
+    from app.services import template_containers
+
     monkeypatch.setattr(_shared, "load_scoped_file_ref", scoped)
     monkeypatch.setattr(_shared, "_own_session", own_session)
     monkeypatch.setattr(wi_files, "load_owned_file_ref", not_owned)
+    monkeypatch.setattr(template_containers, "load_visible_asset", no_asset)
     file_id = str(uuid.uuid4())
     put = await composite.execute_tool(
         ToolCall(id="1", name="sandbox_put_file", arguments={"file_id": file_id, "path": "x.png"})
@@ -430,6 +436,41 @@ async def test_put_takes_a_file_another_run_of_the_same_user_produced(store, mon
     assert "to workspace/in/brief.md (5 B" in put.content, put.content
     assert asked == [(ref.file_id[:8], str(user))]
     assert composite.file_context.is_fetched(ref.file_id)
+
+
+async def test_put_takes_a_template_asset_the_caller_can_see(store, monkeypatch):
+    """A template asset (a brand logo from get_template) is put by its id when its container is visible to the
+    acting user (#1318); the lookup is asked with the bare id whatever spelling the model used."""
+    from types import SimpleNamespace
+
+    from app.services import template_containers
+    from app.services.builtin_tools import _shared
+
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _ = _composite(conversation, user)
+    asset_id = uuid.uuid4()
+    asked: list[tuple[str, str]] = []
+
+    async def scoped(_file_id, **_scope):
+        return None
+
+    async def not_owned(_file_id, _user_id):
+        return None, None
+
+    async def visible(file_id, user_id):
+        asked.append((file_id, user_id))
+        return SimpleNamespace(id=asset_id) if file_id == str(asset_id) and user_id == str(user) else None
+
+    ref = FileRef.from_bytes(data=b"<svg/>", filename="logo.svg", content_type="image/svg+xml")
+    monkeypatch.setattr(_shared, "load_scoped_file_ref", scoped)
+    monkeypatch.setattr(wi_files, "load_owned_file_ref", not_owned)
+    monkeypatch.setattr(template_containers, "load_visible_asset", visible)
+    monkeypatch.setattr(FileRef, "from_attachment", staticmethod(lambda _row: ref))
+    put = await composite.execute_tool(
+        ToolCall(id="1", name="sandbox_put_file", arguments={"file_id": f"[[FILE:{asset_id}]]", "path": "brand/logo.svg"})
+    )
+    assert "to workspace/brand/logo.svg (6 B" in put.content, put.content
+    assert asked == [(str(asset_id), str(user))]
 
 
 async def test_put_refuses_an_ambiguous_prefix_with_its_candidates(store, monkeypatch):
