@@ -187,7 +187,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
     if (row.source.kind === "manual") return t_i18n(SOURCE_KIND_NAMES.manual);
     if (row.source.kind === "api") return t_i18n(SOURCE_KIND_NAMES.api);
     if (row.source.kind === "csv") return t_i18n(SOURCE_KIND_NAMES.csv);
-    return row.source.written_by_agent || row.source.display_name;
+    // An agent or a partner row is named by the source it writes for (Microsoft Intune), its
+    // agent on the subline; the agent names the row only when the source has no name of its own.
+    const named = row.source.display_name && row.source.display_name !== row.source.key;
+    return named ? row.source.display_name : row.source.written_by_agent || row.source.display_name;
   };
 
   const kindOf = (row: Row): OrganizationSource["kind"] => (row.sync ? "platform" : row.source.kind);
@@ -277,9 +280,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
           <span className="flex min-w-0 items-center gap-2">
             {platform ? <ProviderLogo provider={IMPORT_SOURCE_PROVIDER[platform] ?? platform} decorative className="h-4 w-4 shrink-0" /> : <Icon name={kind === "agent" ? "bot" : kind === "csv" ? "file-text" : "user"} size={16} aria-hidden className="shrink-0 text-default-secondary" />}
             <span className="min-w-0">
-              <TruncatedText text={nameOf(row)} className="max-w-[12rem] font-medium" />
+              <TruncatedText text={nameOf(row)} className="max-w-[11rem] font-medium" />
               {kind === "agent" && row.source?.written_by_agent && (
-                <span className="block content-compact text-default-secondary">{t_i18n("Written by agent {name}", { name: row.source.written_by_agent })}</span>
+                // One line, ellipsized with the whole text in the tooltip: a wrapped subline made agent rows taller in es and ja.
+                <TruncatedText text={t_i18n("Written by agent {name}", { name: row.source.written_by_agent })} className="max-w-[11rem] content-compact text-default-secondary" />
               )}
             </span>
           </span>
@@ -295,7 +299,8 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       // The Kind filter and the source's icon keep the kind readable when the column steps aside.
       hideable: true,
       hideBelow: "4xl",
-      cell: (row) => <span className="whitespace-nowrap">{row.sync?.section === "all" ? t_i18n("Sync all") : t_i18n(SOURCE_KIND_NAMES[kindOf(row)])}</span>,
+      // Wraps on two lines: a long translation (es "Agente o socio") never widens the table.
+      cell: (row) => <span className="block max-w-[8rem]">{row.sync?.section === "all" ? t_i18n("Sync all") : t_i18n(SOURCE_KIND_NAMES[kindOf(row)])}</span>,
       sortValue: (row) => kindOf(row),
       csv: (row) => kindOf(row),
     },
@@ -350,7 +355,9 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       key: "filters",
       header: "Filters",
       hideable: true,
-      hideBelow: "6xl",
+      // Behind Columns by default: at 1728 the fr, es and ja headers pushed Actions out of the
+      // 1458 px card (UX lab retest of #1294). Still searched and exported.
+      defaultHidden: true,
       cell: (row) => (row.sync ? <TruncatedText text={filtersLine(row.sync)} lines={2} className="w-max max-w-[14rem] content-compact text-default-secondary" /> : null),
       csv: (row) => (row.sync ? filtersLine(row.sync) : ""),
     },
@@ -361,7 +368,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       hideBelow: "6xl",
       cell: (row) =>
         row.sync ? (
-          <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[13rem]" />
+          <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[12rem]" />
         ) : (
           <span className="text-default-secondary">{t_i18n(SOURCE_SCHEDULE_LABELS[row.source.kind])}</span>
         ),
@@ -378,12 +385,12 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         const sync = row.sync;
         return sync.last_result?.error ? (
           <Tip content={sync.last_result.error}>
-            <span className="block w-max max-w-[14rem] line-clamp-2 text-feedback-error-primary" tabIndex={0} data-testid="organization-sources.last-error">
+            <span className="block w-max max-w-[12rem] line-clamp-2 text-feedback-error-primary" tabIndex={0} data-testid="organization-sources.last-error">
               {lastRunLine(sync)}
             </span>
           </Tip>
         ) : (
-          <TruncatedText text={lastRunLine(sync)} lines={2} className="w-max max-w-[14rem] text-default-secondary" />
+          <TruncatedText text={lastRunLine(sync)} lines={2} className="w-max max-w-[12rem] text-default-secondary" />
         );
       },
       sortValue: (row) => row.sync?.last_run_at ?? "",
@@ -394,7 +401,7 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       header: "Next run",
       hideable: true,
       // Clamped so the default columns fit an 810 px card; the whole reason is in the tooltip.
-      cell: (row) => (row.sync ? <TruncatedText text={nextRunLine(row.sync)} lines={2} className="w-max max-w-[10rem] text-default-secondary" /> : null),
+      cell: (row) => (row.sync ? <TruncatedText text={nextRunLine(row.sync)} lines={2} className="w-max max-w-[8rem] text-default-secondary" /> : null),
       sortValue: (row) => row.sync?.next_run_at ?? "",
       csv: (row) => row.sync?.next_run_at ?? "",
     },
