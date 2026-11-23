@@ -276,6 +276,69 @@ async def test_a_passing_retest_resolves_the_case_and_raises_resolved(
     assert {"validation", "state"} <= kinds
 
 
+async def test_safe_mode_of_an_intrusive_inject_is_corrected_and_its_pass_is_inconclusive(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1458: safe_mode=true on an intrusive inject is recorded false with a warning; the case stays open."""
+    from app.services import ctem_case_loop
+
+    async def _publish(_pending: ctem_case_loop.PendingEvents) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
+    body = json.loads(
+        await env.call(
+            "record_ctem_case_validation",
+            case_id=str(env.case.id),
+            provider="openaev",
+            ref="inject-7",
+            result="not_exposed",
+            safe_mode=True,
+            inject_class="intrusive",
+        )
+    )
+    assert body["updated"]["state"] == "needs_attention"
+    assert "intrusive" in body["warning"] and "inconclusive" in body["inconclusive"]
+    assert env.case.validations[-1]["safe_mode"] is False and env.case.validations[-1]["conclusive"] is False
+
+
+async def test_a_requested_id_with_no_template_is_never_recorded_negative(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import ctem_case_loop
+
+    async def _publish(_pending: ctem_case_loop.PendingEvents) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
+    body = json.loads(
+        await env.call(
+            "record_ctem_case_validation",
+            case_id=str(env.case.id),
+            provider="openaev",
+            ref="inject-8",
+            result="not_exposed",
+            inject_class="read_only",
+            not_tested=["CVE-2026-2"],
+        )
+    )
+    assert body["updated"]["state"] == "needs_attention" and body["not_tested"] == ["CVE-2026-2"]
+    entry = env.case.validations[-1]
+    assert entry["conclusive"] is False and "not tested" in entry["note"]
+
+
+async def test_the_assess_tool_answers_the_classification_and_the_gate_ask(env: SimpleNamespace) -> None:
+    body = json.loads(
+        await env.call(
+            "assess_ctem_validation_inject",
+            subject="CVE-2026-1",
+            template="id: t\ninfo:\n  tags: rce\nhttp:\n  - method: POST\n    path:\n      - '{{BaseURL}}/run'\n",
+        )
+    )
+    assert body["effects"]["classification"] == "intrusive"
+    assert body["gate_ask"]["recommendation"] != "A"
+
+
 async def test_a_validation_without_its_reference_is_refused(env: SimpleNamespace) -> None:
     answer = await env.call(
         "record_ctem_case_validation", case_id=str(env.case.id), provider="openaev", ref="", result="passed"

@@ -204,9 +204,16 @@ async def run_pass(
         for gap in gaps_of(scenario, health):
             gaps.setdefault(gap.dedupe_key, gap)
 
+    from app.services.ctem_signal_sources import excluded_sources, is_excluded
+
+    # A path an administrator took the pass off (#1445) records nothing from it.
+    excluded = await excluded_sources(db, organization_id)
     pending = ctem_case_loop.PendingEvents()
     counts: dict[str, int] = {"scenarios": len(scenarios), "recorded": 0, "new": 0}
     for gap in gaps.values():
+        if is_excluded(excluded, gap.trigger_path, PROVIDER, "pass"):
+            counts["excluded"] = counts.get("excluded", 0) + 1
+            continue
         signal, created = await ctem_signals.record_signal(
             db,
             organization_id=organization_id,
