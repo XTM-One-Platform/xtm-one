@@ -36,7 +36,7 @@ import type { DeckChartBlock, DeckChartSeries } from '../src/types';
 // ticks, value labels, tooltips, the gauge dial), which colour a series takes
 // and what the legend names; the PPTX writer mirrors these rules when it
 // builds the editable chart. It is plain TypeScript with no DOM, so it is
-// exercised here directly, like `logo-position.spec.ts`. The rendered figure
+// exercised here directly, like `logo-position.test.ts`. The rendered figure
 // (the same strings in SVG glyphs, the palette as computed colours) is
 // asserted on a live deck in `presentation-charts.spec.ts`.
 // ---------------------------------------------------------------------------

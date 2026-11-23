@@ -8,7 +8,7 @@ import type { DeckLogoPosition, PresentationSlide, SlideLayout } from '../src/ty
 // Logo placement resolver - the per-slide answer, table-driven.
 //
 // `resolveLogoPosition` is pure TypeScript (no DOM), so it is exercised here
-// directly, without a page, like `architecture-layout.spec.ts`. The deck stores
+// directly, without a page, like `architecture-layout.test.ts`. The deck stores
 // ONE value; what the chrome draws is decided per slide, and this table pins
 // every layout x every stored value x every title alignment. The rendered
 // geometry (where the bar actually puts the mark) is asserted on a live deck in

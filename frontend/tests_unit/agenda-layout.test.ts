@@ -18,7 +18,7 @@ import type { AgendaSlide, DeckAgendaFlow, DeckAgendaItem } from '../src/types';
 // Agenda layout resolver - columns, look, rows, table-driven.
 //
 // `agenda-layout.ts` is pure TypeScript (no DOM), so it is exercised here
-// directly, without a page, like `logo-position.spec.ts`. The backend owns the
+// directly, without a page, like `logo-position.test.ts`. The backend owns the
 // rule (`auto_agenda_columns` / `auto_agenda_style` in `presentation_spec.py`)
 // and `tests/test_presentation_spec_v2.py` pins the two SOURCES together; this
 // spec runs the frontend half, so a threshold moved on one side only fails a

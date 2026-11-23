@@ -7,7 +7,7 @@ import { regularUserEmail } from '../tests_e2e/constants';
 // table-driven.
 //
 // `regularUserEmail` is pure TypeScript, so it is exercised here directly,
-// without a page, like `logo-position.spec.ts`. The specs that call it only
+// without a page, like `logo-position.test.ts`. The specs that call it only
 // ever pass valid labels, so this is where its refusals are held: a label or
 // a slot it let through would surface as a 422 or a 409 when the user is
 // created, or as two specs sharing one account.
