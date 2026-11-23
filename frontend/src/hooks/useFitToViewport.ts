@@ -45,10 +45,18 @@ export function fitRoom({ viewport, top, below }: FitMeasure, floor = FIT_FLOOR_
 }
 
 /**
+ * The attribute of a side panel that fits the window on its own beside the page's list (the
+ * faceted filter sidebar of a records list, #1501 UX r1 B1): the list beside it is still the
+ * page's last block, so both are bounded and the page never scrolls.
+ */
+export const FIT_BESIDE_ATTRIBUTE = "data-fit-beside";
+
+/**
  * True when `root` is the page's last block: at every level up to `main`, no laid-out
  * sibling sits beside it or under it (a sibling above it, a page title or a toolbar, is
  * fine). A widget in a dashboard grid has one (#11470): its bound came from the next row
  * of the page, not from the window, and cut the table to a few rows inside its card.
+ * A side panel marked `FIT_BESIDE_ATTRIBUTE` is not such a sibling: it bounds itself.
  */
 function isLastBlock(root: HTMLElement, main: HTMLElement): boolean {
   for (let node: HTMLElement | null = root; node && node !== main; node = node.parentElement) {
@@ -56,7 +64,7 @@ function isLastBlock(root: HTMLElement, main: HTMLElement): boolean {
     if (!parent) return false;
     const top = node.getBoundingClientRect().top;
     for (const sibling of Array.from(parent.children)) {
-      if (sibling === node || !(sibling instanceof HTMLElement)) continue;
+      if (sibling === node || !(sibling instanceof HTMLElement) || sibling.hasAttribute(FIT_BESIDE_ATTRIBUTE)) continue;
       const position = getComputedStyle(sibling).position;
       if (position === "absolute" || position === "fixed") continue;
       const box = sibling.getBoundingClientRect();
@@ -147,6 +155,44 @@ export function useFitToViewport(el: HTMLElement | null, root?: HTMLElement | nu
       observer?.disconnect();
     };
   }, [el, root]);
+  return room;
+}
+
+/**
+ * The max height of a side panel marked `FIT_BESIDE_ATTRIBUTE` (a facet sidebar beside the page's
+ * list): the window's height minus the panel's top in the document and the main's bottom padding,
+ * so the panel ends where the list beside it ends and scrolls inside itself, never the page (#1501
+ * UX r1 B1). Undefined outside the app's page or before the first measure: the caller keeps its cap.
+ */
+export function useFitBeside(el: HTMLElement | null): number | undefined {
+  const [room, setRoom] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!el || typeof window === "undefined") return;
+    const main = el.closest<HTMLElement>("#app-content");
+    if (!main || el.closest("[role=dialog]")) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        const padding = Number.parseFloat(getComputedStyle(main).paddingBottom) || 0;
+        const next = Math.floor(window.innerHeight - top - padding);
+        setRoom(next >= FIT_FLOOR_PX ? next : undefined);
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(update);
+      for (const child of Array.from(main.children)) observer.observe(child);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", update);
+      observer?.disconnect();
+    };
+  }, [el]);
   return room;
 }
 

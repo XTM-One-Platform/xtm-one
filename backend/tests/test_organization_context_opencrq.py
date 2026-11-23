@@ -75,6 +75,9 @@ def test_the_plan_leaves_the_input_profile_untouched_and_summarizes():
         "not_in_opencrq",
         "kept_below_sync_threshold",
         "in_sync",
+        "min_criticality",
+        "assets_read",
+        "by_criticality",
     }
     assert summary["in_sync"] is False
 
@@ -108,3 +111,28 @@ def test_a_profile_matching_opencrq_is_in_sync() -> None:
         [{"id": "a1", "name": "ERP", "criticality": "high"}],
     )
     assert plan.in_sync and plan.summary()["in_sync"] is True
+
+
+def test_an_empty_plan_over_unrated_assets_names_the_threshold_and_the_counts() -> None:
+    # #1558: 0 jewels and every OpenCRQ asset rated "unknown" - the plan is empty and says why.
+    assets = [
+        {"id": "a1", "name": "ERP", "criticality": "unknown"},
+        {"id": "a2", "name": "Wiki", "criticality": None},
+        {"id": "a3", "name": "CRM", "criticality": "medium"},
+    ]
+    plan = plan_sync(_profile(), assets)
+    summary = plan.summary()
+    assert plan.pulled == [] and summary["in_sync"] is True
+    assert summary["min_criticality"] == "high"
+    assert summary["assets_read"] == 3
+    assert summary["by_criticality"] == {"unknown": 2, "medium": 1}
+
+
+def test_a_medium_asset_is_pulled_at_the_medium_threshold_and_the_summary_names_it() -> None:
+    plan = plan_sync(_profile(), [{"id": "a1", "name": "ERP", "criticality": "medium"}], "medium")
+    assert plan.pulled == [("a1", "ERP")]
+    assert plan.summary()["min_criticality"] == "medium"
+
+
+def test_an_unknown_threshold_is_reported_as_the_default_it_fell_back_to() -> None:
+    assert plan_sync(_profile(), [], "bogus").summary()["min_criticality"] == "high"

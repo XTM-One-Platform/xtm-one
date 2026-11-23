@@ -61,9 +61,6 @@ class User(Base):
     theme: Mapped[str | None] = mapped_column(
         String(20), nullable=True
     )  # "dark" (default/NULL) or "light"
-    # "Pastel colours" profile preference (#1305): the client sets the design
-    # system's ``.pastel`` root class when true; standard colours by default.
-    pastel_colours: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     # UI language override. "auto" (default) inherits the platform language
     # (PlatformSettings.platform_language), which itself defaults to browser
     # detection. Concrete values are locale codes like "en-us", "fr-fr".

@@ -154,14 +154,9 @@ An SBOM (software bill of materials) lists what an application or a container im
 
 The same device read from two sources (an endpoint manager and OpenAEV, for example) is one asset when they share a strong identifier: hardware serial, cloud resource id, code repository path, managed device id, MAC address, FQDN or hostname, in that order by default. A code repository is matched on its path (`github.com/owner/repo`, read from its URL or from a name such as `Owner/Repo`, whatever the case or a trailing `.git`), so the repository OpenAEV lists and the one GitHub or GitLab sends are one asset; two repositories with different GitHub or GitLab ids are never merged on the path. An IP address alone never merges two assets. Each field shows the value of the source that ranks first for it (by default the endpoint manager or EDR for the operating system and software, OpenCRQ for criticality, OpenAEV for exposure), and every source's value is kept. An administrator can change the order of the identifiers, leave one out, or change the source order of a field in the profile's `asset_identity` part; `GET /api/v1/organization-context/assets/identity` shows the saved settings, the defaults and what applies.
 
-## AI systems inventory
+## AI systems are assets
 
-The AI systems inventory lists the AI your organization runs or exposes, so that AI security work knows what to test. `Add an AI system` adds a row with:
-
-- its `Name`;
-- its `Kind`: `Assistant`, `Agent`, `Model API` or `Embedded`;
-- its `Exposure`: `Internal`, `Partner` or `Public`;
-- its `Owner`.
+The AI your organization runs or exposes is an asset of category `AI target`, as in OpenAEV, with its subcategory (`LLM model`, `AI agent`, `MCP server` or `RAG pipeline`), provider, endpoint, model and modality. It is listed, filtered and synced in CTEM > Inventory > Assets like any other asset, and AI security work reads it from there. AI systems saved in the profile before this change were turned into AI target assets, linked to their OpenAEV record when they had one. The `ai_systems` section of the API and the agent tools still answers the AI target assets for one release.
 
 ## Saved versions
 
@@ -262,7 +257,7 @@ An outbound run writes with the token of the administrator who saved the sync, l
 | Asset groups | OpenAEV | Inbound (outbound planned) |
 | PIRs | OpenCTI | Inbound (outbound planned) |
 | Assets | OpenCTI | Inbound: Systems are owned by OpenCTI connectors |
-| AI systems | OpenAEV | Inbound: OpenAEV has no AI system object to write |
+| Assets of category AI target | OpenAEV (AI targets) | Inbound, Outbound: XTM One-owned AI target assets are created and updated in OpenAEV |
 | Tech stack | OpenAEV | Inbound: the software inventory is read from OpenAEV agents |
 
 ### What each platform feeds
@@ -273,7 +268,7 @@ The source x section x direction matrix, read from the platform APIs the syncs c
 |---|---|---|---|
 | OpenAEV | Assets | Endpoints (`POST /api/endpoints/search`): name, category and subcategory, criticality, exposure, and since #1134 S4 the freshness: **last seen** (`asset_last_seen`) and **status** (`asset_status`: active, inactive, agentless, or stale when unseen past the tenant's threshold) | Inbound |
 | OpenAEV | Asset groups | Asset groups (`POST /api/asset_groups/search`) | Inbound |
-| OpenAEV | AI systems | Endpoints that name an AI target provider | Inbound |
+| OpenAEV | Assets of category AI target | AI targets (`POST /api/ai_targets/search`) | Inbound, Outbound |
 | OpenAEV | Tech stack | Security platforms (`POST /api/security_platforms/search`) | Inbound |
 | OpenCTI | Assets | Systems, with the OpenAEV taxonomy when OpenCTI carries it | Inbound |
 | OpenCTI | PIRs | Priority intelligence requirements | Inbound |

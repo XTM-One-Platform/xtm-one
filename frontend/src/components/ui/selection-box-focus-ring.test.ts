@@ -32,6 +32,7 @@ test("the enabled SelectionBox carries the 2 px offset plus 2 px ring-focus ring
 });
 
 test("a disabled catalog facet's count chip takes the disabled ink", () => {
-  const source = readFileSync(join(SRC, "components", "integrations", "integration-catalog-browser.tsx"), "utf8");
+  // The facet row lives in the shared FacetSidebar since #1501 (the catalog and the CTEM asset list draw it).
+  const source = readFileSync(join(SRC, "components", "ui", "facet-sidebar.tsx"), "utf8");
   expect(source).toContain('disabled ? "text-default-disabled" : "text-default-secondary",\n        )}\n      >\n        {count}');
 });
