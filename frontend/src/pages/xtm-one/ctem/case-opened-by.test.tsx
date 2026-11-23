@@ -1,5 +1,6 @@
-// "Opened by" on a case the source readers built (#1206, slice D): it names
-// the reader that opened it, never "No signal opened this case" alone.
+// "Opened by" on a case no signal opened (#1529): a case is opened only by a
+// signal or split by a person or an agent; a source read before signals is
+// labelled legacy, never a reader sentence.
 
 import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
@@ -12,15 +13,23 @@ vi.mock("@/hooks/api/useCtemSignalsApi", async (importOriginal) => ({
 
 const { CaseOpenedBy } = await import("./CaseOpenedBy");
 
+const created = (to: string | null, reason: string | null = null) => ({ at: null, actor: "system", kind: "created", issue: null, from: null, to, reason, evidence: null });
+
 describe("CaseOpenedBy", () => {
-  it("names the OpenCTI reader on a case with no signal", () => {
-    renderWithProviders(<CaseOpenedBy caseId="c1" sources={["opencti", "opencti"]} />);
-    expect(screen.getByText("Opened from OpenCTI vulnerabilities matched to your inventory")).toBeInTheDocument();
-    expect(screen.queryByText(/No signal opened this case/)).toBeNull();
+  it("labels a case a source read built before signals as legacy", () => {
+    renderWithProviders(<CaseOpenedBy caseId="c1" history={[created("upgrade:fortios")]} />);
+    expect(screen.getByText("A source read before signals (legacy)")).toBeInTheDocument();
+    expect(screen.queryByText(/matched to your inventory/)).toBeNull();
   });
 
-  it("keeps the generic line when no issue is visible", () => {
-    renderWithProviders(<CaseOpenedBy caseId="c1" sources={[]} />);
-    expect(screen.getByText(/No signal opened this case/)).toBeInTheDocument();
+  it("names the split of a case a person or an agent made", () => {
+    renderWithProviders(<CaseOpenedBy caseId="c1" history={[created("manual")]} />);
+    expect(screen.getByText("Split into its own case by a person or an agent")).toBeInTheDocument();
+  });
+
+  it("says a signal opened the case when the reader cannot see that signal, never legacy", () => {
+    renderWithProviders(<CaseOpenedBy caseId="c1" history={[created("upgrade:fortios", "signal 057f8fb5")]} />);
+    expect(screen.getByText("A signal you cannot see")).toBeInTheDocument();
+    expect(screen.queryByText(/legacy/)).toBeNull();
   });
 });
