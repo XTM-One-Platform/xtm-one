@@ -203,6 +203,20 @@ for any other case or when no asset runs the product:
 Two grouped reads, in a savepoint: an unreadable store answers `null`, never a
 failed case read. Versions compare with `ctem_fixed_version.compare_versions`.
 
+### 4.2quater Affected assets on the case read
+
+The case read also carries `affected_assets` (`ctem_case_versions.assets_for_case`):
+one row per asset the caller's visible issues name (restricted rows and signal
+rows add none), names folded on case and spaces, with `issue_count`,
+`open_issue_count`, `kev` and `max_cvss`, the most exposed first, at most 500
+(`more_assets` counts the rest). On an upgrade case each row is joined to the
+inventory by asset name (`organization_assets.name_key`) and adds
+`in_inventory`, the `versions` of the case's product it runs, their `sources`
+and, with a fixed version known, its worst `status`; `version_source` is then
+`inventory`. Any other case, or an inventory that cannot be read, answers
+`version_source` `none` and the page says "Version source: none yet", never a
+version to type in the tech stack.
+
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
 against the inventory (`ctem_case_versions.fixed_in_inventory`): when every

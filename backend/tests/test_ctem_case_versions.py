@@ -157,3 +157,99 @@ async def test_an_unreadable_inventory_never_breaks_the_case_read():
         remediation_kind="upgrade", organization_id=uuid.uuid4(), product_label="Microsoft Windows", fixed_version=None
     )
     assert await versions.for_case(_Broken(), case) is None
+
+
+def test_affected_assets_are_one_row_per_asset_from_the_visible_issues() -> None:
+    answer = versions.affected_assets(
+        [
+            {"assets": ["web-01", "db-01"], "open": True, "kev": False, "cvss": 7.5},
+            {"assets": ["WEB-01 "], "open": True, "kev": True, "cvss": 9.8},
+            {"assets": ["db-01"], "open": False, "kev": False, "cvss": None},
+            {"restricted": True},
+            {"source": "signal", "external_id": "x", "open": True},
+        ]
+    )
+    assert answer["asset_count"] == 2
+    assert answer["more_assets"] == 0
+    web, db = answer["assets"]
+    assert (web["name"], web["issue_count"], web["open_issue_count"], web["kev"], web["max_cvss"]) == (
+        "web-01",
+        2,
+        2,
+        True,
+        9.8,
+    )
+    assert (db["name"], db["issue_count"], db["open_issue_count"], db["kev"], db["max_cvss"]) == (
+        "db-01",
+        2,
+        1,
+        False,
+        7.5,
+    )
+
+
+def test_versions_on_assets_take_the_worst_status_per_asset() -> None:
+    rows = [
+        {
+            "name": "web-01",
+            "asset_id": "a1",
+            "vendor": "Oracle",
+            "product": "Java",
+            "version": "8.0.9",
+            "sources": ["intune"],
+        },
+        {
+            "name": "web-01",
+            "asset_id": "a1",
+            "vendor": "Oracle",
+            "product": "Java",
+            "version": "8.0.1",
+            "sources": ["sbom"],
+        },
+        {
+            "name": "db-01",
+            "asset_id": "a2",
+            "vendor": "Oracle",
+            "product": "Java",
+            "version": "",
+            "sources": ["openaev"],
+        },
+        {"name": "db-01", "asset_id": "a2", "vendor": "Oracle", "product": "MySQL", "version": "1", "sources": []},
+    ]
+    out = versions.versions_on_assets(rows, product_label="Oracle Java", fixed_version="8.0.9")
+    assert out["web-01"]["versions"] == ["8.0.1", "8.0.9"]
+    assert out["web-01"]["sources"] == ["intune", "sbom"]
+    assert out["web-01"]["status"] == "below_fixed"
+    assert out["db-01"] == {
+        "asset_id": "a2",
+        "versions": ["unknown"],
+        "sources": ["openaev"],
+        "status": "not_comparable",
+    }
+    no_fix = versions.versions_on_assets(rows, product_label="Oracle Java", fixed_version=None)
+    assert "status" not in no_fix["web-01"]
+
+
+@pytest.mark.asyncio
+async def test_a_case_that_is_not_an_upgrade_lists_its_assets_with_no_version_source() -> None:
+    case = SimpleNamespace(
+        remediation_kind="course_of_action", organization_id=uuid.uuid4(), product_label="x", fixed_version=None
+    )
+    answer = await versions.assets_for_case(cast(AsyncSession, None), case, [{"assets": ["web-01"], "open": True}])
+    assert answer["version_source"] == "none"
+    assert [a["name"] for a in answer["assets"]] == ["web-01"]
+    assert "versions" not in answer["assets"][0]
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_inventory_keeps_the_asset_list() -> None:
+    class _Broken:
+        def begin_nested(self) -> None:
+            raise RuntimeError("no store")
+
+    case = SimpleNamespace(
+        remediation_kind="upgrade", organization_id=uuid.uuid4(), product_label="Oracle Java", fixed_version="8.0.9"
+    )
+    answer = await versions.assets_for_case(cast(AsyncSession, _Broken()), case, [{"assets": ["web-01"], "open": True}])
+    assert answer["version_source"] == "none"
+    assert answer["asset_count"] == 1

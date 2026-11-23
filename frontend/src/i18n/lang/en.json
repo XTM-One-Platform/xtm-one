@@ -20951,5 +20951,13 @@
   "The remediation options with their cost and the one approved, once the case is validated.": "The remediation options with their cost and the one approved, once the case is validated.",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.",
   "Work CTEM cases": "Work CTEM cases",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product."
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.",
+  "Affected assets": "Affected assets",
+  "Version source: none yet": "Version source: none yet",
+  "Not in the inventory": "Not in the inventory",
+  "Running version": "Running version",
+  "Search asset": "Search asset",
+  "Assets not listed": "Assets not listed",
+  "No asset": "No asset",
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# more asset not listed} other {# more assets not listed}}"
 }

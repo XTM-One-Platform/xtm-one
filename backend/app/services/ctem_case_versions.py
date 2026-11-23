@@ -29,7 +29,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization_asset import OrganizationAssetSoftware
+from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
 from app.services import ctem_fixed_version as fixed_versions
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,8 @@ FIXED_VERSION_SOURCES: tuple[str, ...] = (
 )
 #: The most version rows a case answers; the rest are counted in ``more_versions``.
 MAX_VERSIONS = 50
+#: The most affected asset rows a case answers; the rest are counted in ``more_assets``.
+MAX_ASSETS = 500
 UNKNOWN = "unknown"
 
 
@@ -211,6 +213,139 @@ async def read_running_versions(
         for vk, pk, version, vendor, product, asset_ids in counted
     ]
     return running_versions(rows, product_label=product_label, fixed_version=fixed_version)
+
+
+def affected_assets(issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """The assets the visible issues of a case name, one row per asset (pure).
+
+    *issues* are the rendered issues of the case read (restricted rows carry no
+    asset and are skipped). Each row counts the issues naming the asset, the open
+    ones, whether one of them is known exploited and the highest CVSS; the rows
+    most exposed come first (open issues, then KEV, then CVSS, then the name).
+    Names fold case and spaces, the first spelling met is shown.
+    """
+    rows: dict[str, dict[str, Any]] = {}
+    for issue in issues:
+        if issue.get("restricted"):
+            continue
+        for name in dict.fromkeys(str(a).strip() for a in issue.get("assets") or () if str(a).strip()):
+            row = rows.setdefault(
+                _key(name),
+                {"name": name, "issue_count": 0, "open_issue_count": 0, "kev": False, "max_cvss": None},
+            )
+            row["issue_count"] += 1
+            row["open_issue_count"] += 1 if issue.get("open") else 0
+            row["kev"] = row["kev"] or bool(issue.get("kev"))
+            cvss = issue.get("cvss")
+            if isinstance(cvss, int | float) and (row["max_cvss"] is None or cvss > row["max_cvss"]):
+                row["max_cvss"] = float(cvss)
+    ordered = sorted(
+        rows.values(),
+        key=lambda r: (-r["open_issue_count"], not r["kev"], -(r["max_cvss"] or 0.0), _key(r["name"])),
+    )
+    return {
+        "assets": ordered[:MAX_ASSETS],
+        "asset_count": len(ordered),
+        "more_assets": max(0, len(ordered) - MAX_ASSETS),
+    }
+
+
+def versions_on_assets(
+    rows: Iterable[Mapping[str, Any]], *, product_label: str | None, fixed_version: str | None
+) -> dict[str, dict[str, Any]]:
+    """Per asset name key, the versions of the case's product it runs (pure).
+
+    *rows* hold ``name``, ``asset_id``, ``vendor``, ``product``, ``version`` and
+    ``sources`` (one software entry of one asset). With a fixed version known,
+    each asset gets the worst status of its versions, as :func:`running_versions`
+    counts it.
+    """
+    rank = {"below_fixed": 0, "not_comparable": 1, "fixed": 2}
+    fixed = (fixed_version or "").strip() or None
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not matches_case(product_label, row.get("vendor"), row.get("product")):
+            continue
+        version = str(row.get("version") or "").strip() or UNKNOWN
+        entry = out.setdefault(
+            _key(row.get("name")), {"asset_id": str(row.get("asset_id") or ""), "versions": [], "sources": []}
+        )
+        if version not in entry["versions"]:
+            entry["versions"].append(version)
+        for source in row.get("sources") or ():
+            if source and str(source) not in entry["sources"]:
+                entry["sources"].append(str(source))
+        if fixed:
+            cmp = fixed_versions.compare_versions(version, fixed)
+            status = "not_comparable" if cmp is None else "below_fixed" if cmp < 0 else "fixed"
+            current = entry.get("status")
+            if current is None or rank[status] < rank[current]:
+                entry["status"] = status
+    for entry in out.values():
+        entry["versions"].sort(key=lambda v: (fixed_versions.parse_version(v) is None, v))
+        entry["sources"].sort()
+    return out
+
+
+async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """The affected assets of a case as its reader sees them, with the version each runs (#1176 slice 3b).
+
+    The assets come from the visible issues only; an upgrade case adds, per
+    asset, the versions of its product the inventory reports (``versions``,
+    ``sources``, ``status`` against the fixed version) and ``version_source``
+    ``inventory``; any other case, or an inventory that cannot be read, answers
+    ``version_source`` ``none``, never a version typed in the tech stack.
+    """
+    answer = affected_assets(issues)
+    answer["version_source"] = "none"
+    if getattr(case, "remediation_kind", None) != "upgrade" or not answer["assets"]:
+        return answer
+    keys = product_keys(getattr(case, "product_label", None))
+    if not keys:
+        return answer
+    names = [_key(a["name"]) for a in answer["assets"]]
+    try:
+        async with db.begin_nested():
+            found = await _read_asset_rows(db, case.organization_id, keys, names)
+    except Exception:  # the inventory never breaks a case read
+        logger.info("CTEM case asset versions unavailable", exc_info=True)
+        return answer
+    by_asset = versions_on_assets(found, product_label=case.product_label, fixed_version=case.fixed_version)
+    answer["version_source"] = "inventory"
+    for row in answer["assets"]:
+        seen = by_asset.get(_key(row["name"]))
+        row["in_inventory"] = seen is not None
+        if seen:
+            row.update(seen)
+    return answer
+
+
+async def _read_asset_rows(
+    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], names: list[str]
+) -> list[dict[str, Any]]:
+    """The software entries of the case's product on the named assets (one read)."""
+    soft, asset = OrganizationAssetSoftware, OrganizationAsset
+    result = await db.execute(
+        select(asset.name_key, asset.id, soft.vendor, soft.product, soft.version, soft.sources)
+        .join(asset, asset.id == soft.asset_id)
+        .where(
+            soft.organization_id == organization_id,
+            soft.product_key.in_(keys),
+            asset.organization_id == organization_id,
+            asset.name_key.in_([n[:300] for n in names]),
+        )
+    )
+    return [
+        {
+            "name": name,
+            "asset_id": asset_id,
+            "vendor": vendor,
+            "product": product,
+            "version": version,
+            "sources": sources,
+        }
+        for name, asset_id, vendor, product, version, sources in result.all()
+    ]
 
 
 async def _read_rows(

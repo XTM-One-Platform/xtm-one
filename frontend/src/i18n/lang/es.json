@@ -20951,5 +20951,13 @@
   "The remediation options with their cost and the one approved, once the case is validated.": "Las opciones de remediación con su coste y la aprobada, una vez validado el caso.",
   "The treatment plan the approved remediation writes in OpenCRQ, with its cost and promised loss reduction.": "El plan de tratamiento que la remediación aprobada redacta en OpenCRQ, con su coste y la reducción de pérdida prometida.",
   "Work CTEM cases": "Trabajar casos CTEM",
-  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tonos suaves para los colores de gravedad, estado y marcado. Desactivado: colores estándar, iguales en todos los productos."
+  "Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.": "Tonos suaves para los colores de gravedad, estado y marcado. Desactivado: colores estándar, iguales en todos los productos.",
+  "Affected assets": "Activos afectados",
+  "Version source: none yet": "Origen de la versión: ninguno por ahora",
+  "Not in the inventory": "No está en el inventario",
+  "Running version": "Versión en uso",
+  "Search asset": "Buscar activo",
+  "Assets not listed": "Activos no listados",
+  "No asset": "Ningún activo",
+  "{count, plural, one {# more asset not listed} other {# more assets not listed}}": "{count, plural, one {# activo más no listado} other {# activos más no listados}}"
 }

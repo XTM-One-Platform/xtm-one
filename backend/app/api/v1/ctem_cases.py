@@ -400,6 +400,8 @@ async def get_ctem_case(
         **rendered,
         # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
         "running_versions": await case_versions.for_case(db, case),
+        # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
+        "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
         "ticketing": await ticketing.ticketing_target(db),
     }
 
