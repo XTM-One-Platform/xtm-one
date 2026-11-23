@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Entity management of CTEM > Inventory (#1367, point 2): add, update and delete the rows of the organization profile
- * the Inventory lists (assets, asset groups), one at a time from the row menu or in bulk from the selection. A row a
- * platform sync wrote stays read-only by hand but for its local fields (`LOCAL_FIELDS`, the backend's
- * `SOURCED_FIELDS`), and a synced row is never deleted here: its sync owns it (exclude it from the sync instead). The
- * backend refuses the same changes (`organization_context_locks.synced_edit_problems`), so this module only spares the
- * person a refusal. Pure, so the page and its tests share it.
+ * Entity management of CTEM > Inventory (#1367, point 2; row APIs since #1543): add, update and delete the asset
+ * records and asset groups the Inventory lists, one at a time from the row menu or in bulk from the selection. Each
+ * write is one row API call addressed by the row's id, never the whole profile. A row a platform sync wrote stays
+ * read-only by hand but for its local fields (`LOCAL_FIELDS`, the backend's `SOURCED_FIELDS`), and a synced row is never
+ * deleted here: its sync owns it (exclude it from the sync instead). The backend refuses the same changes (422), so
+ * this module only spares the person a refusal. Pure, so the page and its tests share it.
  */
-import type { AssetRecordRef } from "@/hooks/api/useOrganizationAssetsApi";
 import type { AssetGroupRow, AssetRow } from "@/lib/organization-profile";
 import { LOCAL_FIELDS, isPlatformSource } from "@/lib/organization-provenance";
 
-/** The profile lists the Inventory manages. */
+/** The lists the Inventory manages (the profile section names the backend's locks use). */
 export type InventorySection = "assets_exposure" | "asset_groups";
 
 /** The fields a person sets on an asset from the Inventory. */
@@ -21,8 +20,12 @@ export type AssetPatch = Partial<Pick<AssetRow, "name" | "category" | "subcatego
 /** The fields a person sets on an asset group from the Inventory. */
 export type AssetGroupPatch = Partial<Pick<AssetGroupRow, "name" | "description" | "environment" | "internet_facing" | "owner">>;
 
-/** The address the asset store gives a row typed by hand (no `external_id`): its position (`identity.section_record`). */
-const positionalId = (index: number) => `row-${index}`;
+/** A row a write addresses: its id (an asset record or an asset group) and where it comes from. */
+export interface RowRef {
+  id: string;
+  source?: string;
+  external_id?: string;
+}
 
 /** Whether *row* is owned by a platform sync (read-only by hand but for its local fields). */
 export function isSyncedRow(row: { source?: string; external_id?: string }): boolean {
@@ -34,73 +37,37 @@ export function fieldEditable(section: InventorySection, row: { source?: string;
   return !isSyncedRow(row) || (LOCAL_FIELDS[section] as readonly string[]).includes(key);
 }
 
-/**
- * The indexes in `assets_exposure` of the source records of one canonical asset. A record of a row typed by hand is
- * addressed by its position (`row-<index>`), as the store addresses it.
- */
-export function assetRowIndexes(rows: readonly AssetRow[], records: readonly AssetRecordRef[]): number[] {
-  const out: number[] = [];
-  rows.forEach((row, index) => {
-    const source = (row.source || "manual").trim().toLowerCase();
-    const id = (row.external_id ?? "").trim() || positionalId(index);
-    if (records.some((r) => r.source === source && r.external_id === id)) out.push(index);
-  });
-  return out;
+/** The asset records behind canonical assets (what a row write addresses); a ref of an older API without id is skipped. */
+export function recordRefs(assets: readonly { records?: readonly { id?: string; source: string; external_id: string }[] }[]): RowRef[] {
+  return assets.flatMap((a) => (a.records ?? []).flatMap((r) => (r.id ? [{ id: r.id, source: r.source, external_id: r.external_id }] : [])));
 }
 
-/** The outcome of a change: the rows to save, how many rows it changed and how many it left for their sync. */
-export interface EntryChange<R> {
-  rows: R[];
-  changed: number;
-  /** Synced rows the change could not touch (deleted, or every field it sets locked). */
-  locked: number;
-}
-
-/**
- * Apply *patch* to the rows at *indexes* of *section*: a synced row takes only its local fields. A row where nothing
- * applies counts as locked; a row whose values do not move counts as neither.
- */
-export function patchRows<R extends { source?: string; external_id?: string }>(
+/** The patch of each row: a synced row takes only its local fields; a row where nothing applies counts as locked. */
+export function rowPatches<P extends Record<string, string>>(
   section: InventorySection,
-  rows: readonly R[],
-  indexes: readonly number[],
-  patch: Partial<R>,
-): EntryChange<R> {
-  const wanted = new Set(indexes);
-  let changed = 0;
+  rows: readonly RowRef[],
+  patch: P,
+): { patches: { id: string; patch: Partial<P> }[]; locked: number } {
+  const keys = Object.keys(patch).filter((key) => patch[key] !== undefined);
   let locked = 0;
-  const next = rows.map((row, index) => {
-    if (!wanted.has(index)) return row;
-    const keys = (Object.keys(patch) as (keyof R & string)[]).filter((key) => patch[key] !== undefined);
+  const patches = rows.flatMap((row) => {
     const allowed = keys.filter((key) => fieldEditable(section, row, key));
     if (allowed.length === 0) {
       if (keys.length > 0) locked += 1;
-      return row;
+      return [];
     }
-    const moved = allowed.filter((key) => row[key] !== patch[key]);
-    if (moved.length === 0) return row;
-    changed += 1;
-    return { ...row, ...Object.fromEntries(moved.map((key) => [key, patch[key]])) } as R;
+    return [{ id: row.id, patch: Object.fromEntries(allowed.map((key) => [key, patch[key]])) as Partial<P> }];
   });
-  return { rows: next, changed, locked };
+  return { patches, locked };
 }
 
-/** Delete the rows at *indexes* of a section; a synced row stays (its sync owns it) and counts as locked. */
-export function deleteRows<R extends { source?: string; external_id?: string }>(rows: readonly R[], indexes: readonly number[]): EntryChange<R> {
-  const wanted = new Set(indexes);
-  let locked = 0;
-  const next = rows.filter((row, index) => {
-    if (!wanted.has(index)) return true;
-    if (isSyncedRow(row)) {
-      locked += 1;
-      return true;
-    }
-    return false;
-  });
-  return { rows: next, changed: rows.length - next.length, locked };
+/** The rows a delete removes (a synced row stays: its sync owns it) and how many it leaves for their sync. */
+export function deletableRows(rows: readonly RowRef[]): { ids: string[]; locked: number } {
+  const ids = rows.filter((row) => !isSyncedRow(row)).map((row) => row.id);
+  return { ids, locked: rows.length - ids.length };
 }
 
-/** A new asset entered by hand, with the profile's defaults for every field the dialog leaves out. */
+/** A new asset entered by hand, with the defaults for every field the dialog leaves out. */
 export function newAssetRow(patch: AssetPatch): AssetRow {
   return {
     name: (patch.name ?? "").trim(),
@@ -133,10 +100,10 @@ export function newAssetGroupRow(patch: AssetGroupPatch): AssetGroupRow {
   };
 }
 
-/** Why *name* cannot be a new row of *rows* (empty, or another row of the hand already holds it), else undefined. */
-export function nameProblem(rows: readonly { name: string; source?: string }[], name: string, keepIndex?: number): "empty" | "taken" | undefined {
+/** Why *name* cannot be the name of a group (empty, or another group holds it), else undefined. */
+export function nameProblem(rows: readonly { id: string; name: string }[], name: string, keepId?: string): "empty" | "taken" | undefined {
   const key = name.trim().toLowerCase();
   if (!key) return "empty";
-  const taken = rows.some((row, index) => index !== keepIndex && !isPlatformSource(row.source) && row.name.trim().toLowerCase() === key);
+  const taken = rows.some((row) => row.id !== keepId && row.name.trim().toLowerCase() === key);
   return taken ? "taken" : undefined;
 }

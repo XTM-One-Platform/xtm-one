@@ -477,6 +477,18 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "delete_organization_software",
     "attach_organization_software",
     "detach_organization_software",
+    # The asset records, groups, crown-jewel links and change log (#1543): an administrator
+    # or an API client writing stored rows one at a time or in a batch; no model involved.
+    "create_asset_record",
+    "upsert_asset_records",
+    "update_asset_record",
+    "delete_asset_record",
+    "bulk_delete_asset_records",
+    "create_asset_group",
+    "update_asset_group",
+    "delete_asset_group",
+    "set_crown_jewel_asset_links",
+    "restore_asset_changes",
     # A change proposed from chat for that profile (#9484 S-a2): an
     # administrator accepting or rejecting a stored proposal. Accepted fields are
     # saved as the next version, accepted organizations created with monitoring
