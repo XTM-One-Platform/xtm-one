@@ -147,16 +147,36 @@ class OrganizationAssetGroup(Base):
 
 
 class OrganizationAssetGroupMember(Base):
-    """A record in a group: a record names one group today, a group may hold many records."""
+    """A record in a group, many to many, with who says so (a person, a group sync, the record's ``group``).
+
+    Keyed on the source record, not the canonical asset: a record keeps its
+    memberships when the identity engine moves it to another asset, and the
+    group's assets are the distinct ``asset_id`` of its records. The primary
+    key ``(group_id, record_id)`` serves the per-group member count and the
+    per-group keyset member list; ``(record_id)`` the groups of one record.
+    """
 
     __tablename__ = "organization_asset_group_members"
-    __table_args__ = (Index("ix_organization_asset_group_members_record", "record_id"),)
+    __table_args__ = (
+        Index("ix_organization_asset_group_members_record", "record_id"),
+        Index("ix_organization_asset_group_members_sync", "group_id", "sync_id"),
+    )
 
     group_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organization_asset_groups.id", ondelete="CASCADE"), primary_key=True
     )
     record_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organization_asset_records.id", ondelete="CASCADE"), primary_key=True
+    )
+    #: Who put the record in the group: ``record`` (its ``group`` field), ``manual``, or a group source.
+    source: Mapped[str] = mapped_column(String(80), nullable=False, default="record", server_default="record")
+    #: The sync that last wrote the membership (empty: not a sync).
+    sync_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now, server_default=text("now()")
     )
 
 

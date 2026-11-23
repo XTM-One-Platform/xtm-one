@@ -175,7 +175,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("organization_id", "source", "external_id", name="uq_organization_asset_groups_ref"),
         if_not_exists=True,
     )
-    op.create_index("ix_organization_asset_groups_org_name", _GROUPS, ["organization_id", "name_key"], if_not_exists=True)
+    op.create_index(
+        "ix_organization_asset_groups_org_name", _GROUPS, ["organization_id", "name_key"], if_not_exists=True
+    )
     op.create_table(
         _MEMBERS,
         sa.Column(
@@ -190,9 +192,14 @@ def upgrade() -> None:
             sa.ForeignKey(f"{_RECORDS}.id", ondelete="CASCADE"),
             primary_key=True,
         ),
+        _text("source", 80, "record"),
+        _text("sync_id", 64),
+        _at("created_at"),
+        _at("updated_at"),
         if_not_exists=True,
     )
     op.create_index("ix_organization_asset_group_members_record", _MEMBERS, ["record_id"], if_not_exists=True)
+    op.create_index("ix_organization_asset_group_members_sync", _MEMBERS, ["group_id", "sync_id"], if_not_exists=True)
     op.create_table(
         _LINKS,
         _uuid_pk(),

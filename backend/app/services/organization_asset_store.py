@@ -185,23 +185,47 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
     }
     # Children go with their asset (ON DELETE CASCADE).
     await db.execute(delete(OrganizationAsset).where(OrganizationAsset.organization_id == org))
+    await write_canonical(db, org, things, known, profile_version=int(version.version))
+    # Software as an entity (#1495): what the installations install, kept across rebuilds.
+    from app.services import organization_software_store as software_store
+
+    edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
+    await software_store.sync_software(db, org, edges)
+    return len(things)
+
+
+async def write_canonical(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    things: Sequence[Mapping[str, Any]],
+    known: Mapping[str, uuid.UUID],
+    *,
+    profile_version: int,
+) -> dict[identity.RecordRef, uuid.UUID]:
+    """Write *things* (:func:`canonical_rows`) as assets with their sources and installations; flushed.
+
+    The caller deleted the assets they replace. An asset whose canonical key is in
+    *known* keeps that id. Answers the asset id of every source record written.
+    """
+    held: dict[identity.RecordRef, uuid.UUID] = {}
     for thing in things:
         asset = OrganizationAsset(
             id=known.get(thing["canonical_key"]) or uuid.uuid4(),
-            organization_id=org,
+            organization_id=organization_id,
             canonical_key=thing["canonical_key"],
             name=thing["name"],
             name_key=_key(thing["name"])[:300],
             fields=_jsonable(thing["fields"]),
             merged_on=thing["merged_on"],
             possible_matches=thing["possible_matches"],
-            profile_version=int(version.version),
+            profile_version=profile_version,
         )
         db.add(asset)
         for rec in thing["sources"]:
+            held[identity.RecordRef(rec["source"], rec["external_id"])] = asset.id
             db.add(
                 OrganizationAssetSource(
-                    organization_id=org,
+                    organization_id=organization_id,
                     asset_id=asset.id,
                     source=_cut(rec["source"], 80),
                     external_id=_cut(rec["external_id"], 200),
@@ -213,7 +237,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
         for soft in thing["software"]:
             db.add(
                 OrganizationAssetSoftware(
-                    organization_id=org,
+                    organization_id=organization_id,
                     asset_id=asset.id,
                     vendor=_cut(soft["vendor"], 200),
                     product=_cut(soft["product"], 200),
@@ -230,12 +254,7 @@ async def rebuild_from_profile(db: AsyncSession, organization_id: uuid.UUID | No
                 )
             )
     await db.flush()
-    # Software as an entity (#1495): what the installations install, kept across rebuilds.
-    from app.services import organization_software_store as software_store
-
-    edges = [edge for thing in things for edge in software_store.dependency_edges(thing["software"])]
-    await software_store.sync_software(db, org, edges)
-    return len(things)
+    return held
 
 
 # ── Administrator decisions: merge and split (S3) ──────────────────────
