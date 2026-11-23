@@ -466,8 +466,8 @@ async def import_organization_assets(
     from app.services import organization_assets_import as assets_import
 
     content = await file.read(assets_import.MAX_BYTES + 1)
-    row = await org_context.current_version(db)
-    profile = org_context.parse_profile(row.profile if row else {})
+    # Planned on the records' lists (#1543): the stored JSON misses the row writes, and its save would remove them.
+    _row, profile = await org_context.current_profile(db)
     try:
         preview = assets_import.parse_assets_csv(content, profile)
     except ValueError as exc:
@@ -2324,8 +2324,8 @@ async def _save_rows_plan(
     """Purge or release a source's rows (one sync's when *sync* is given) as a new version; the caller commits."""
     from app.services import organization_context_sources as osources
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    # The asset lists come from the records (#1543): a plan on the stored JSON would re-save stale lists.
+    _current, base = await org_context.current_profile(db)
     try:
         plan = osources.plan_rows(
             base,
@@ -2371,8 +2371,7 @@ async def preview_organization_sync_rows(
     from app.services import organization_context_sources as osources
 
     row = await _sync_or_404(db, sync_id)
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    _current, base = await org_context.current_profile(db)
     if not row.source:
         return RowsPlanResponse(source="", mode=mode, count=0, counts={}, rows={}, kept_elsewhere={})
     plan = osources.plan_rows(
@@ -2431,8 +2430,7 @@ async def list_organization_sources(
     from app.services import organization_context_sources as osources
     from app.services import organization_context_sync as osync
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    _current, base = await org_context.current_profile(db)
     syncs = await osync.all_syncs(db, scope)
     writers = await osources.writer_agents(db)
     return [
@@ -2451,8 +2449,7 @@ async def preview_organization_source_rows(
     """What purging or releasing every row of *source* would do; nothing saved (#1276)."""
     from app.services import organization_context_sources as osources
 
-    current = await org_context.current_version(db)
-    base = org_context.parse_profile(current.profile if current else {})
+    _current, base = await org_context.current_profile(db)
     try:
         plan = osources.plan_rows(base, source=source, mode=mode)
     except osources.SourceRefusedError as exc:

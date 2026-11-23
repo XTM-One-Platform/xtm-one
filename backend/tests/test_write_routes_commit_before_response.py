@@ -78,6 +78,22 @@ EXEMPTIONS: dict[str, tuple[frozenset[str], str]] = {
         "dict _user_creds builds (setattr on a non-ORM object), never a row of "
         "the request session",
     ),
+    # The draft and the rows previews plan on current_profile (#1543): a pydantic copy of the profile, never a row.
+    "POST /api/v1/organization-context/draft": (
+        frozenset({"app.services.organization_context_draft.merge_draft.<_fill>"}),
+        "merge_draft fills a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the draft route saves nothing",
+    ),
+    "GET /api/v1/organization-context/syncs/{sync_id}/rows-preview": (
+        frozenset({"app.services.organization_context_sources.plan_rows"}),
+        "plan_rows edits a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the preview saves nothing",
+    ),
+    "GET /api/v1/organization-context/sources/{source}/rows-preview": (
+        frozenset({"app.services.organization_context_sources.plan_rows"}),
+        "plan_rows edits a model_copy of the OrganizationProfile current_profile answers "
+        "(a pydantic model, not an ORM row); the preview saves nothing",
+    ),
     # The import filter picker (#11886) lists the platform's values with the same read.
     "GET /api/v1/organization-context/import/options": (
         frozenset({"app.integrations.providers.opencti._common._drop_dead_draft"}),

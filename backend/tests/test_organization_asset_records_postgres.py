@@ -332,3 +332,59 @@ async def test_a_profile_save_that_removes_a_row_still_removes_its_record() -> N
         await session.commit()
         counts = await org_context.asset_list_counts(session, org)
     assert counts == {"assets_exposure": 1, "asset_groups": 0}
+
+
+async def test_a_source_purge_planned_on_the_read_profile_keeps_the_row_writes_of_other_sources() -> None:
+    """The purge and draft paths plan on ``current_profile``: a row API write the JSON never saw survives."""
+    from app.services import organization_context as org_context
+    from app.services import organization_context_sources as osources
+
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, [SYNCED])
+        await records.create_record(session, org, {"name": "db-01", "category": "host"}, origin="form", actor="form:u")
+        await session.commit()
+        _row, base = await org_context.current_profile(session, org)
+        plan = osources.plan_rows(base, source="intune", mode="purge")
+        assert plan.profile is not None
+        await org_context.save_version(session, plan.profile, source="draft", author_user_id=None, organization_id=org)
+        await session.commit()
+        _row, after = await org_context.current_profile(session, org)
+    assert [a.name for a in after.assets_exposure] == ["db-01"]
+
+
+async def test_on_2000_assets_one_row_write_stays_under_500_ms_and_a_bulk_delete_of_50_under_2_s() -> None:
+    """The #1543 acceptance, measured on PostgreSQL: a row write refreshes its cluster, never the organization."""
+    import time
+
+    fleet = [
+        {"name": f"host-{i:04d}", "category": "host", "source": "intune", "external_id": f"d-{i}", "serial": f"SN-{i}"}
+        for i in range(2000)
+    ]
+    async with _database() as sessions, sessions() as session:
+        org = await _primary(session, fleet)
+        await records.ensure_records(session, org)
+        await session.commit()
+        timings: dict[str, float] = {}
+        started = time.perf_counter()
+        record = await records.create_record(session, org, HAND, origin="form", actor="form:u")
+        await session.commit()
+        timings["create"] = time.perf_counter() - started
+        started = time.perf_counter()
+        await records.update_record(
+            session, org, record.id, {"criticality": "high"}, origin="form", actor="form:u", if_match=1
+        )
+        await session.commit()
+        timings["update"] = time.perf_counter() - started
+        started = time.perf_counter()
+        await records.delete_records(session, org, [record.id], origin="form", actor="form:u")
+        await session.commit()
+        timings["delete"] = time.perf_counter() - started
+        ids = [r.id for r in await records.asset_rows(session, org, limit=50)]
+        started = time.perf_counter()
+        await records.delete_records(session, org, ids, origin="form", actor="form:u")
+        await session.commit()
+        timings["bulk_delete_50"] = time.perf_counter() - started
+    print("timings #1543:", {k: round(v * 1000) for k, v in timings.items()})  # noqa: T201 - pasted in the PR
+    assert len(ids) == 50
+    assert max(timings["create"], timings["update"], timings["delete"]) < 0.5, timings
+    assert timings["bulk_delete_50"] < 2.0, timings
