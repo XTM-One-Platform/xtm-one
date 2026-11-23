@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import en from "@/i18n/lang/en.json";
 import fr from "@/i18n/lang/fr.json";
 import { isAssetNotFound } from "@/hooks/api/useOrganizationAssetsApi";
+import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 import { assetCategory, assetCategoryLabel, assetFieldLabel, sourceLabel } from "./inventory";
 
 type Catalog = Record<string, string>;
@@ -53,7 +54,7 @@ describe("assetCategoryLabel and assetFieldLabel", () => {
 describe("sourceLabel", () => {
   it("reads a CSV row in French", () => {
     expect(sourceLabel(tFr, "csv")).toBe("Import CSV");
-    expect(sourceLabel(tFr, "manual")).toBe("Manuel");
+    expect(sourceLabel(tFr, "manual")).toBe("Saisi à la main");
     expect(sourceLabel(tFr, "agent:triage")).toBe("Agent");
   });
 
@@ -61,6 +62,13 @@ describe("sourceLabel", () => {
     expect(sourceLabel(tEn, "csv")).toBe("CSV import");
     expect(sourceLabel(tEn, "opencti")).toBe("OpenCTI");
     expect(sourceLabel(tEn, "custom_feed")).toBe("custom_feed");
+  });
+
+  // UX round 6 on #1254, B12: the Sources tab chip and the list it lands on name a source the same way.
+  it("names each hand and agent kind as the Sources and syncs table does", () => {
+    for (const kind of ["manual", "csv", "api"] as const) expect(sourceLabel(tEn, kind)).toBe(SOURCE_KIND_LABELS[kind]);
+    expect(sourceLabel(tEn, "agent:triage")).toBe(SOURCE_KIND_LABELS.agent);
+    expect(sourceLabel(tEn, "manual")).toBe("Entered by hand");
   });
 });
 

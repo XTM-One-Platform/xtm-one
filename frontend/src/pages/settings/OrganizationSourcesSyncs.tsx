@@ -56,13 +56,21 @@ import { formatTimeAgo } from "@/lib/relative-time";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { bodyOf, DIRECTION_LABELS, directionOf, stateOf, SYNC_SECTION_LABELS, SyncEditDialog, type SyncState } from "./OrganizationSyncEditDialog";
 
-/** The kinds of source in words (#1276: never "Typed", never a raw slug). @i18n-keys */
-const SOURCE_KIND_NAMES = {
+/** The kinds of source only this table names. @i18n-keys */
+const SYNC_KIND_NAMES = {
   platform: "Platform sync",
   agent: "Agent or partner",
-  csv: "CSV import",
-  api: "API",
-  manual: "Entered by hand",
+} as const;
+
+/**
+ * The kinds of source in words (#1276: never "Typed", never a raw slug). CSV, API and hand rows reuse the shared
+ * SOURCE_KIND_LABELS, the names the Inventory lists and filters use (UX round 6 on #1254, B12).
+ */
+const SOURCE_KIND_NAMES = {
+  ...SYNC_KIND_NAMES,
+  csv: SOURCE_KIND_LABELS.csv,
+  api: SOURCE_KIND_LABELS.api,
+  manual: SOURCE_KIND_LABELS.manual,
 } as const satisfies Record<OrganizationSource["kind"], string>;
 
 /** The state of a row: a sync's own state, or "source" for a source with no sync. */

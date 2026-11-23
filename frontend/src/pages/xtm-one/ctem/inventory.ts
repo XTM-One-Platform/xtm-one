@@ -6,6 +6,7 @@
  */
 import { ASSET_CRITICALITY_LABELS, taxonomyValueLabel, typeLabel } from "@/lib/asset-taxonomy";
 import { ENVIRONMENT_LABELS } from "@/lib/organization-import-filters";
+import { SOURCE_KIND_LABELS } from "@/lib/organization-provenance";
 
 type Translate = (text: string) => string;
 
@@ -15,11 +16,8 @@ export const INVENTORY_LABEL = "Inventory";
 /** The page's route; `/ctem/assets` redirects to it. */
 export const INVENTORY_PATH = "/ctem/inventory";
 
-/** The source names a record carries, as people read them; an unknown source keeps its own name. @i18n-keys */
-const SOURCE_LABELS = {
-  manual: "Manual",
-  csv: "CSV import",
-  api: "API",
+/** The names of the sources only the Inventory lists (SBOM and the platforms). @i18n-keys */
+const INVENTORY_SOURCE_LABELS = {
   sbom: "SBOM",
   opencti: "OpenCTI",
   openaev: "OpenAEV",
@@ -27,12 +25,24 @@ const SOURCE_LABELS = {
 } as const;
 
 /**
+ * The source names a record carries, as people read them; an unknown source keeps its own name. The hand, CSV and API
+ * names are the shared SOURCE_KIND_LABELS, so the Sources tab, its chips and the list they land on say the same word
+ * (UX round 6 on #1254, B12: "Entered by hand" on the chip, "Manual" on the landed filter).
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  manual: SOURCE_KIND_LABELS.manual,
+  csv: SOURCE_KIND_LABELS.csv,
+  api: SOURCE_KIND_LABELS.api,
+  ...INVENTORY_SOURCE_LABELS,
+};
+
+/**
  * The translated name of a record's source (`csv` reads "Import CSV" in French; UX round 3 on #1254, B10). A source
  * outside the known set is shown as stored.
  */
 export function sourceLabel(t: Translate, source: string): string {
-  if (source.startsWith("agent:")) return t("Agent");
-  const label = (SOURCE_LABELS as Record<string, string>)[source];
+  if (source.startsWith("agent:")) return t(SOURCE_KIND_LABELS.agent);
+  const label = SOURCE_LABELS[source];
   return label ? t(label) : source;
 }
 
