@@ -914,8 +914,11 @@ def fleet_health_check_gate(fleet_id: uuid.UUID) -> dict[str, object]:
 
 def fleet_health_check_prompt(fleet: Fleet) -> str:
     return (
-        f"Weekly health check of the fleet '{fleet.name}' (fleet_id {fleet.id}). The gate read it unhealthy. "
-        "Follow the skill 'Fleet health advisory': read get_fleet_health, apply the safe fixes once "
+        f"Weekly health check of the fleet '{fleet.name}' (fleet_id {fleet.id}). The gate starts this run only "
+        "when it read the fleet unhealthy; when it could not read it, the run record names the check as not "
+        "evaluated, so never take the finding for granted. Follow the skill 'Fleet health advisory': read "
+        "get_fleet_health yourself first; when it does not answer for this fleet, stop and file nothing. "
+        "Otherwise apply the safe fixes once "
         "(apply_safe_fixes=true), then send the fleet owner one deduplicated advisory for the owner "
         "findings, with a recommendation and the evidence ids per finding. Nothing else."
     )
@@ -1133,15 +1136,166 @@ async def drop_fleet_health_check(db: AsyncSession, agent_id: uuid.UUID) -> bool
     return dropped
 
 
+def _gated_fleet_id(assignment: object) -> uuid.UUID | None:
+    """The fleet id a seeded health check gates on, ``None`` when it names none."""
+    arguments = (getattr(assignment, "activation_check", None) or {}).get("arguments") or {}
+    try:
+        return uuid.UUID(str(arguments.get("fleet_id")))
+    except ValueError:
+        return None
+
+
+#: How a work item left open by a health check gated on a deleted fleet is closed.
+MOOT_HEALTH_ITEM_RESULT = (
+    "Cancelled as moot by the platform: it came from a weekly fleet health check gated on fleet {fleet_id}, "
+    "which no longer exists (#1400). The check was {action}."
+)
+
+
+async def _cancel_moot_health_items(
+    db: AsyncSession, fleet_id: uuid.UUID, run_ids: Sequence[uuid.UUID], action: str
+) -> int:
+    """Cancel the open items a health check gated on the gone *fleet_id* created; how many.
+
+    Those keyed ``fleet-health:<fleet_id>:*`` and those its runs (*run_ids*)
+    filed, ownerless ones included.
+    """
+    from sqlalchemy import or_
+
+    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+
+    clauses = [WorkItem.correlation_key.like(f"fleet-health:{fleet_id}:%")]
+    if run_ids:
+        clauses.append(WorkItem.origin_run_id.in_(list(run_ids)))
+    items = (
+        (
+            await db.execute(
+                select(WorkItem).where(or_(*clauses), WorkItem.status.notin_(WORK_ITEM_TERMINAL_STATUSES))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for item in items:
+        item.status = "cancelled"
+        item.needs_human = False
+        item.result = MOOT_HEALTH_ITEM_RESULT.format(fleet_id=fleet_id, action=action)
+    return len(items)
+
+
+async def repair_orphaned_fleet_health_checks(db: AsyncSession) -> int:
+    """Re-point or delete the seeded health checks gated on a fleet that no longer exists (#1400); how many.
+
+    A fleet deleted or absorbed (a built-in fleet swept by its successor)
+    leaves its former orchestrator's weekly check gated on a missing id, ran
+    or not. The check is re-pointed at the live fleet the agent leads when
+    that fleet has no seeded check of the agent yet, else deleted with its
+    runs kept; the open items its runs filed are cancelled as moot. Run at
+    every boot and after a sweep, so an instance seeded before the fix is
+    repaired at source. The caller commits.
+    """
+    import logging
+
+    from app.models.assignment import Assignment, AssignmentRun
+    from app.services.assignment_retire import detach_runs_clause
+
+    logger = logging.getLogger(__name__)
+    checks = [
+        row
+        for row in (
+            await db.execute(select(Assignment).where(Assignment.name == FLEET_HEALTH_CHECK_NAME))
+        )
+        .scalars()
+        .all()
+        if is_fleet_health_check(row)
+    ]
+    if not checks:
+        return 0
+    gated = {row.id: _gated_fleet_id(row) for row in checks}
+    wanted = {fid for fid in gated.values() if fid is not None}
+    live = set(
+        (await db.execute(select(Fleet.id).where(Fleet.id.in_(wanted)))).scalars().all() if wanted else []
+    )
+    repaired = 0
+    for row in checks:
+        fleet_id = gated[row.id]
+        if fleet_id is None or fleet_id in live:
+            continue
+        led = (
+            (await db.execute(select(Fleet).where(Fleet.orchestrator_agent_id == row.agent_id)))
+            .scalars()
+            .first()
+        )
+        already = led is not None and any(
+            other.agent_id == row.agent_id and gated[other.id] == led.id for other in checks if other is not row
+        )
+        run_ids = (
+            (await db.execute(select(AssignmentRun.id).where(AssignmentRun.assignment_id == row.id)))
+            .scalars()
+            .all()
+        )
+        if led is not None and not already:
+            row.activation_check = fleet_health_check_gate(led.id)
+            row.prompt = fleet_health_check_prompt(led)
+            gated[row.id] = led.id
+            action = f"re-pointed at fleet {led.id}"
+        else:
+            await db.execute(detach_runs_clause(row.id))
+            await db.delete(row)
+            action = "deleted"
+        cancelled = await _cancel_moot_health_items(db, fleet_id, run_ids, action)
+        logger.info(
+            "Fleet health check %s of agent %s gated on missing fleet %s: %s; %d moot item(s) cancelled",
+            row.id,
+            row.agent_id,
+            fleet_id,
+            action,
+            cancelled,
+        )
+        repaired += 1
+    if repaired:
+        await db.flush()
+    return repaired
+
+
+async def gate_fleet_refusal(db: AsyncSession, check: object) -> str | None:
+    """Why an activation check may not be saved: a ``fleet_id`` it names does not exist (#1400).
+
+    Read on every check of a chain (``also`` / ``or``); a placeholder or a
+    value that is not an id is left to the run. ``None`` when it may be saved.
+    """
+    from app.services.assignment_activation_check import chained_checks, stored_activation_check
+
+    stored = stored_activation_check(check)
+    if stored is None:
+        return None
+    for one in chained_checks(stored):
+        raw = (one.get("arguments") or {}).get("fleet_id")
+        if not isinstance(raw, str):
+            continue
+        try:
+            fleet_id = uuid.UUID(raw.strip())
+        except ValueError:
+            continue
+        if await db.get(Fleet, fleet_id) is None:
+            return (
+                f"The gate check {one.get('tool')} names fleet_id {fleet_id}, which does not exist: "
+                "it could never be evaluated. Name an existing fleet."
+            )
+    return None
+
+
 async def backfill_fleet_health_advisory(db: AsyncSession) -> int:
     """Give every fleet orchestrator the health advisory (#11700); orchestrators changed.
 
     Run at boot after the skills and the built-in fleets are seeded, so a fleet
     created before the skill existed gets it too: the tool, the skill and the
-    weekly health check (born off). Idempotent.
+    weekly health check (born off). Idempotent. First, the checks gated on a
+    fleet that no longer exists are re-pointed or deleted (#1400).
     """
+    repaired = await repair_orphaned_fleet_health_checks(db)
     fleets = (await db.execute(select(Fleet).where(Fleet.orchestrator_agent_id.isnot(None)))).scalars().all()
-    changed = 0
+    changed = repaired
     for fleet in fleets:
         agent = await db.get(Agent, fleet.orchestrator_agent_id)
         if agent is None:

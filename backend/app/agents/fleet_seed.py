@@ -484,6 +484,11 @@ async def seed_builtin_fleets(db: AsyncSession, *, platform_mode: str, fleets: l
     # A former slug of a current entry is adopted by _upsert_fleet, never swept.
     kept = {f["slug"] for f in entries} | {s for f in entries for s in f.get("previous_slugs") or []}
     removed = await _sweep_stale(db, kept)
+    if removed:
+        # The swept fleets' former leads keep no check gated on them (#1400).
+        from app.services.fleets import repair_orphaned_fleet_health_checks
+
+        await repair_orphaned_fleet_health_checks(db)
     if not entries:
         await db.commit()
         if removed:
