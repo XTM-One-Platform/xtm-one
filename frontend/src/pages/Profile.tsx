@@ -60,7 +60,7 @@ import { useToolApprovals } from "@/hooks/api/useToolApprovals";
 import { hitlGlyph } from "@/lib/hitl";
 import { cn, toggleArrayItem, formatCompactNumber, formatQuotaLimit, mergeSandboxIntoAgenticCount, QUOTA_NOT_APPLICABLE_LABEL, validatePassword, MIN_PASSWORD_LENGTH, pluralize } from "@/lib/utils";
 import { ICON_MAP, INTEGRATION_PROVIDER_NAMES, ssoProviderLabel, inferMCPLogo, COPY_FEEDBACK_DELAY, CHANNEL_ICONS, CHANNEL_TYPE_LABELS, COMMON_TIMEZONES, QUOTA_PERIOD_LABELS } from "@/lib/constants";
-import { applyPastel, applyTheme, effectiveTheme } from "@/hooks/useThemeEffect";
+import { applyTheme, effectiveTheme } from "@/hooks/useThemeEffect";
 import { useFormatter, AVAILABLE_LANGUAGES, LANGUAGE_AUTO, languageLabel } from "@/i18n";
 import { formatTimeAgo } from "@/lib/relative-time";
 
@@ -119,7 +119,6 @@ export default function Profile() {
   const [email, setEmail] = useState("");
   const [timezone, setTimezone] = useState("");
   const [theme, setTheme] = useState<string>("dark");
-  const [pastelColours, setPastelColours] = useState(false);
   const [language, setLanguage] = useState<string>(LANGUAGE_AUTO);
 
   // Detect browser timezone for default suggestion
@@ -144,7 +143,6 @@ export default function Profile() {
     setEmail(user.email);
     setTimezone(user.timezone ?? "");
     setTheme(effectiveTheme(user.theme));
-    setPastelColours(user.pastel_colours === true);
     setLanguage(user.language ?? LANGUAGE_AUTO);
     setEditing(true);
   };
@@ -157,13 +155,11 @@ export default function Profile() {
         email: email !== user.email ? email : undefined,
         timezone: timezone || null,
         theme,
-        pastel_colours: pastelColours,
         language,
       },
       {
         onSuccess: () => {
           applyTheme(theme);
-          applyPastel(pastelColours);
           toast({ title: t_i18n("Profile updated"), variant: "success" });
           setEditing(false);
         },
@@ -314,24 +310,6 @@ export default function Profile() {
                     </Select>
                   ) : (
                     <span className="content-base">{effectiveTheme(user.theme) === "light" ? t_i18n("Light") : t_i18n("Dark")}</span>
-                  )}
-                </InfoRow>
-
-                <InfoRow icon={Palette} label={t_i18n("Pastel colours")} editing={editing} fieldId="profile-pastel-colours">
-                  {editing ? (
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        id="profile-pastel-colours"
-                        aria-labelledby="profile-pastel-colours-label"
-                        checked={pastelColours}
-                        onCheckedChange={setPastelColours}
-                      />
-                      <span className="content-base text-default-secondary">
-                        {t_i18n("Softer tones for severity, status and marking colours. Off: standard colours, the same in every product.")}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="content-base">{user.pastel_colours === true ? t_i18n("On") : t_i18n("Off")}</span>
                   )}
                 </InfoRow>
 

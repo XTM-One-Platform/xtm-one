@@ -68,6 +68,7 @@ from app.services.builtin_tool_aliases import (
 from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
 from app.services.element_scope import ScopeEnforcementError, parse_scope_enforcement
 from app.services.handover_types import is_legacy_handover_map
+from app.services.integration_auth_guard import UNREADABLE_STOP_REASON, auth_failures_line
 from app.services.integration_credentials import (
     PIPELINE_TOOL_REF_FIELDS,
     added_integration_bindings,
@@ -1271,6 +1272,20 @@ def _searchable_trigger_payload():
         ),
         otherwise=None,
     )
+
+
+def _run_degraded_lines(run: Any, *, prefix: str) -> str:
+    """The run list's and ``get_run``'s lines for a run degraded by integration
+    auth failures (#1589): the marker, then the failures. Empty for a clean run."""
+    failures = getattr(run, "integration_auth_failures", None)
+    if not failures:
+        return ""
+    marker = (
+        "Degraded: needs attention, no integration was readable (result not assessable)"
+        if getattr(run, "stop_reason", None) == UNREADABLE_STOP_REASON
+        else "Degraded: partial integration coverage"
+    )
+    return f"{prefix}{marker}{prefix}{auth_failures_line(failures)}"
 
 
 def _event_latency_line(run) -> str | None:
@@ -8926,6 +8941,7 @@ def build_agent_builder_tool(
                 if r.completed_at and r.started_at:
                     secs = (r.completed_at - r.started_at).total_seconds()
                     line += f" | Duration: {secs:.0f}s"
+                line += _run_degraded_lines(r, prefix="\n  ")
                 if r.status == "failed" and r.error:
                     err_text = " ".join(r.error.split())
                     if len(err_text) > 200:
@@ -9059,9 +9075,12 @@ def build_agent_builder_tool(
                     # A completed run that ended on a limit: its
                     # result is partial, not the finished task.
                     [f"Stopped before finishing: {run.stop_reason} (partial result)"]
-                    if run.stop_reason
+                    if run.stop_reason and run.stop_reason != UNREADABLE_STOP_REASON
                     else []
                 ),
+                # Integration auth failures: a degraded run, never a plain
+                # success (#1589).
+                *[ln for ln in _run_degraded_lines(run, prefix="\n").split("\n") if ln],
                 f"Trigger: {trigger_source or 'unknown'}",
                 f"Company-managed: {'Yes' if run.is_company_managed else 'No'}",
             ]
